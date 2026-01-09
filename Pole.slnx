@@ -1,3 +1,5 @@
 <Solution>
+  <Project Path="Pole.AppHost/Pole.AppHost.csproj" />
   <Project Path="Pole.Server/Pole.Server.csproj" />
+  <Project Path="Pole.ServiceDefaults/Pole.ServiceDefaults.csproj" />
 </Solution>
