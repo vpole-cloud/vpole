@@ -12,12 +12,7 @@ public static class ResultExtensions
         return error switch
         {
             NotFoundFailure => Results.NotFound(error),
-            ValidationFailure validationFailure => Results.ValidationProblem(
-                new Dictionary<string, string[]>
-                {
-                    { "Errors", validationFailure.ValidationErrors.ToArray() }
-                },
-                detail: error.Message),
+            ValidationFailure validationFailure => Results.ValidationProblem(validationFailure.ValidationErrors, error.Message),
             UnauthorizedFailure => Results.Unauthorized(),
             ConflictFailure => Results.Conflict(error),
             InternalFailure => Results.InternalServerError(error),
