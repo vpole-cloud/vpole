@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
+using Scalar.AspNetCore;
 
 namespace Pole.ServiceDefaults;
 
@@ -119,6 +120,12 @@ public static class Extensions
             app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
             {
                 Predicate = r => r.Tags.Contains("live")
+            });
+            app.MapOpenApi();
+            app.MapScalarApiReference(options =>
+            {
+                options.Title = "My API";
+                options.Theme = ScalarTheme.Default;
             });
         }
 

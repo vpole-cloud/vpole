@@ -1,0 +1,4 @@
+apiVersion: v2
+name: pole-platform
+version: 0.1.0
+description: Pole platform cluster resources
