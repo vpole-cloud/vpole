@@ -9,6 +9,7 @@ var assembly = typeof(Program).Assembly;
 
 builder.AddServiceDefaults();
 builder.AddMongoDBClient("pole-mongo");
+builder.AddSecurity();
 
 builder.Services.AddKubernetes(configuration)
     .AddEventBus(configuration, assembly)
@@ -21,6 +22,12 @@ var app = builder.Build();
 
 app.MapDefaultEndpoints()
     .UseHttpsRedirection();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapGet("/qwer", () => "Hello World!")
+    .RequireAuthorization();
 
 app.MapApiEndpoints();
 
