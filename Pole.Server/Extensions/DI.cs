@@ -1,6 +1,7 @@
 ﻿using System.Reflection;
 using k8s;
 using MassTransit;
+using MongoDB.Driver;
 using Pole.Server.Database;
 using Pole.Server.Mediator;
 
@@ -12,7 +13,7 @@ public static class DI
     {
         public IServiceCollection AddPoleMediator(IConfiguration configuration, Assembly assembly)
         {
-            services.AddSingleton<IMediator, Mediator.Mediator>();
+            services.AddScoped<IMediator, Mediator.Mediator>();
 
             var handlerTypes = assembly.GetTypes()
                 .Where(t => t is { IsClass: true, IsAbstract: false } && t.GetInterfaces()
@@ -53,6 +54,8 @@ public static class DI
         
         public IServiceCollection AddDatabase()
         {
+            services.AddSingleton<IMongoDatabase>(sp =>
+                sp.GetRequiredService<IMongoClient>().GetDatabase("pole-database"));
             services.AddSingleton<MongoDbContext>();
             return services;
         }

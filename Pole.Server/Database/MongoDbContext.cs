@@ -1,17 +1,16 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
-using Pole.Server.Models;
+using Pole.Server.Features.ResourceGroups.Common;
+using Pole.Server.Features.WebServices.Common;
 
 namespace Pole.Server.Database;
 
-public class MongoDbContext
+public class MongoDbContext(
+    IMongoClient client,
+    IMongoDatabase database)
 {
-    [FromServices]
-    public required IMongoDatabase Database { get; init; }
-    [FromServices]
-    public required IMongoClient Client { get; init; }
-    [FromServices]
-    public required IMongoCollection<WebService> WebServices { get; init; }
-    [FromServices]
-    public required IMongoCollection<ResourceGroup> ResourceGroups { get; init; }
+    public IMongoDatabase Database { get; } = database;
+    public IMongoClient Client { get; } = client;
+    public IMongoCollection<WebService> WebServices { get; } = database.GetCollection<WebService>("WebServices");
+    public IMongoCollection<ResourceGroup> ResourceGroups { get; } = database.GetCollection<ResourceGroup>("ResourceGroups");
 }

@@ -5,9 +5,11 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+        <InterceptorsNamespaces>$(InterceptorsNamespaces);Microsoft.AspNetCore.OpenApi.Generated</InterceptorsNamespaces>
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Aspire.Keycloak.Authentication" Version="13.1.0-preview.1.25616.3" />
         <PackageReference Include="Aspire.MongoDB.Driver" Version="13.1.0" />
         <PackageReference Include="Aspire.RabbitMQ.Client" Version="13.1.0" />
         <PackageReference Include="FluentValidation" Version="12.1.1" />
@@ -15,8 +17,9 @@
         <PackageReference Include="Hangfire" Version="1.8.22" />
         <PackageReference Include="Hangfire.Mongo" Version="1.12.2" />
         <PackageReference Include="KubernetesClient" Version="18.0.13" />
-        <PackageReference Include="MassTransit.RabbitMQ" Version="9.0.0-develop.31" />
+        <PackageReference Include="MassTransit.RabbitMQ" Version="8.5.7" />
         <PackageReference Include="MongoDB.Driver" Version="3.5.2" />
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     </ItemGroup>
 
     <ItemGroup>
@@ -27,6 +30,10 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Pole.ServiceDefaults\Pole.ServiceDefaults.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="Settings\" />
     </ItemGroup>
 
 </Project>
