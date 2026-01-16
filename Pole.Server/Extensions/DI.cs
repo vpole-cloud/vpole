@@ -1,6 +1,8 @@
 ﻿using System.Reflection;
 using k8s;
 using MassTransit;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MongoDB.Driver;
 using Pole.Server.Database;
 using Pole.Server.Mediator;
@@ -58,6 +60,49 @@ public static class DI
                 sp.GetRequiredService<IMongoClient>().GetDatabase("pole-database"));
             services.AddSingleton<MongoDbContext>();
             return services;
+        }
+        
+        
+    }
+
+    extension(WebApplicationBuilder builder)
+    {
+        public  WebApplicationBuilder AddSecurity()
+        {
+            builder.Services.AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+
+                })
+                .AddKeycloakJwtBearer(
+                    serviceName: "keycloak",
+                    realm: "pole.controlplane",
+                    options =>
+                    {
+                        options.Audience = "pole.controlplane";
+
+                        if (builder.Environment.IsDevelopment())
+                        {
+                            options.RequireHttpsMetadata = false;
+                        }
+                    })
+                .AddKeycloakOpenIdConnect(
+                    serviceName: "keycloak",
+                    realm: "pole.controlplane",
+                    options =>
+                    {
+                        options.ClientId = "pole-ui";
+                        options.ResponseType = OpenIdConnectResponseType.Code;
+                        options.Scope.Add("store:all");
+                        options.ClientSecret = builder.Configuration["Keycloak:ClientSecret"];
+                        options.SaveTokens = true;
+                        options.Scope.Add("openid");
+                        options.Scope.Add("profile");
+                    });
+            //builder.Services.AddAuthorization();
+
+            return builder;
         }
     }
 }
