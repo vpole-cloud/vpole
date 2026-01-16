@@ -9,9 +9,9 @@ var rabbitMq = builder.AddRabbitMQ("pole-rabbitmq")
     .WithLifetime(ContainerLifetime.Persistent);
 
 builder.AddProject<Projects.Pole_Server>("pole-server")
-    .WithReference(database)
+    .WithReference(mongoServer)
     .WithReference(rabbitMq)
-    .WaitFor(database)
+    .WaitFor(mongoServer)
     .WaitFor(rabbitMq);
 
 builder.Build().Run();
