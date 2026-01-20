@@ -17,16 +17,28 @@ builder.Services.AddKubernetes(configuration)
     .AddValidatorsFromAssembly(assembly)
     .AddOpenApi()
     .AddPoleMediator(configuration, assembly);
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("frontend-dev", policy =>
+        policy.WithOrigins("http://localhost:5173")
+            .AllowAnyHeader()
+            .AllowAnyMethod());
+});
 
 var app = builder.Build();
 
-app.MapDefaultEndpoints()
-    .UseHttpsRedirection();
+app.MapDefaultEndpoints();
 
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
+app.UseCors("frontend-dev");
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapGet("/qwer", () => "Hello World!")
+app.MapGet("/test-keycloak", () => "Hello World!")
     .RequireAuthorization();
 
 app.MapApiEndpoints();
