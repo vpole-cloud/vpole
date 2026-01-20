@@ -77,30 +77,18 @@ public static class DI
                 })
                 .AddKeycloakJwtBearer(
                     serviceName: "keycloak",
-                    realm: "pole.controlplane",
+                    realm: "pole.control-plane",
                     options =>
                     {
-                        options.Audience = "pole.controlplane";
-
+                        options.Audience = "pole.control-plane.api";
                         if (builder.Environment.IsDevelopment())
                         {
                             options.RequireHttpsMetadata = false;
+                            options.MetadataAddress =
+                                "http://localhost:8080/realms/pole.control-plane/.well-known/openid-configuration";
                         }
-                    })
-                .AddKeycloakOpenIdConnect(
-                    serviceName: "keycloak",
-                    realm: "pole.controlplane",
-                    options =>
-                    {
-                        options.ClientId = "pole-ui";
-                        options.ResponseType = OpenIdConnectResponseType.Code;
-                        options.Scope.Add("store:all");
-                        options.ClientSecret = builder.Configuration["Keycloak:ClientSecret"];
-                        options.SaveTokens = true;
-                        options.Scope.Add("openid");
-                        options.Scope.Add("profile");
                     });
-            //builder.Services.AddAuthorization();
+            builder.Services.AddAuthorization();
 
             return builder;
         }
