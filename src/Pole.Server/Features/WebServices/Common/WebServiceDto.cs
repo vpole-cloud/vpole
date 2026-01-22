@@ -1,6 +1,4 @@
-﻿
-
-// ReSharper disable MemberCanBePrivate.Global
+﻿// ReSharper disable MemberCanBePrivate.Global
 
 namespace Pole.Server.Features.WebServices.Common;
 
@@ -18,9 +16,31 @@ public sealed record DnsRecordDto(
 public sealed record WebServiceSpecDto(
     ImageInfoDto Image,
     int Replicas,
+    ResourcesDto Resources,
+    WebServiceConfigDto Config,
+    ProbeSpecDto Probes
+);
+public record ResourcesDto(
+    ResourceDto Requests,
+    ResourceDto Limits
+);
+public record ResourceDto(
     int CpuCores,
-    int MemoryMi,
-    WebServiceConfigDto Config
+    int MemoryMi
+);
+public record ProbeSpecDto(
+    ProbeConfigDto Startup,
+    ProbeConfigDto Liveness,
+    ProbeConfigDto Readiness
+);
+public record ProbeConfigDto(
+    string Path,
+    int Port,
+    int InitialDelaySeconds,
+    int PeriodSeconds,
+    int TimeoutSeconds,
+    int FailureThreshold,
+    int SuccessThreshold
 );
 
 public sealed record WebServiceConfigDto( 
@@ -54,9 +74,32 @@ public static class WebServiceDtoExtensions
     public static WebServiceSpecDto ToDto(this WebServiceSpec spec) => new(
         spec.Image.ToDto(),
         spec.Replicas,
-        spec.CpuCores,
-        spec.MemoryMi,
-        spec.Config.ToDto()
+        spec.Resources.ToDto(),
+        spec.Config.ToDto(),
+        spec.Probes.ToDto()
+    );
+    public static ResourceDto ToDto(this Resource resource) => new(
+        resource.CpuCores,
+        resource.MemoryMi
+    );
+    public static ResourcesDto ToDto(this Resources resources) => new(
+        resources.Requests.ToDto(),
+        resources.Limits.ToDto()
+    );
+    public static ProbeSpecDto ToDto(this ProbeSpec probes) => new(
+        probes.Startup.ToDto(),
+        probes.Liveness.ToDto(),
+        probes.Readiness.ToDto()
+    );
+    
+    public static ProbeConfigDto ToDto(this ProbeConfig probe) => new(
+        probe.Path,
+        probe.Port,
+        probe.InitialDelaySeconds,
+        probe.PeriodSeconds,
+        probe.TimeoutSeconds,
+        probe.FailureThreshold,
+        probe.SuccessThreshold
     );
     public static WebServiceConfigDto ToDto(this WebServiceConfig config) => new(
         config.EnvironmentVariables,
@@ -73,9 +116,31 @@ public static class WebServiceDtoExtensions
     public static WebServiceSpec ToDomain(this WebServiceSpecDto dto) => new(
         dto.Image.ToDomain(),
         dto.Replicas,
+        dto.Resources.ToDomain(),
+        dto.Config.ToDomain(),
+        dto.Probes.ToDomain()
+    );
+    public static Resource ToDomain(this ResourceDto dto) => new(
         dto.CpuCores,
-        dto.MemoryMi,
-        dto.Config.ToDomain()
+        dto.MemoryMi
+    );
+    public static Resources ToDomain(this ResourcesDto dto) => new(
+        dto.Requests.ToDomain(),
+        dto.Limits.ToDomain()
+    );
+    public static ProbeSpec ToDomain(this ProbeSpecDto dto) => new(
+        dto.Startup.ToDomain(),
+        dto.Liveness.ToDomain(),
+        dto.Readiness.ToDomain()
+    );
+    public static ProbeConfig ToDomain(this ProbeConfigDto dto) => new(
+        dto.Path,
+        dto.Port,
+        dto.InitialDelaySeconds,
+        dto.PeriodSeconds,
+        dto.TimeoutSeconds,
+        dto.FailureThreshold,
+        dto.SuccessThreshold
     );
     public static WebServiceConfig ToDomain(this WebServiceConfigDto dto) => new(
         dto.EnvironmentVariables,

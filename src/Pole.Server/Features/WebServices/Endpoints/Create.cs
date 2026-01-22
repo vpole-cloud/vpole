@@ -1,4 +1,5 @@
 ﻿using FluentValidation;
+using FluentValidation.Validators;
 using k8s;
 using MassTransit;
 using Microsoft.AspNetCore.Mvc;
@@ -167,14 +168,72 @@ public sealed class WebServiceSpecDtoValidator : AbstractValidator<WebServiceSpe
             .SetValidator(new ImageInfoDtoValidator());
         RuleFor(x => x.Replicas)
             .GreaterThan(0);
-        RuleFor(x => x.CpuCores)
-            .GreaterThan(0);
-        RuleFor(x => x.MemoryMi)
-            .GreaterThan(0);
+        RuleFor(x => x.Resources)
+            .SetValidator(new ResourcesDtoValidator());
+        RuleFor(x => x.Probes)
+            .SetValidator(new ProbeSpecDtoValidator());
         RuleFor(x => x.Config)
             .SetValidator(new WebServiceConfigDtoValidator());
     }
 }
+
+public class ProbeSpecDtoValidator : AbstractValidator<ProbeSpecDto>
+{
+    public ProbeSpecDtoValidator()
+    {
+        RuleFor(x => x.Startup)
+            .SetValidator(new ProbeConfigDtoValidator());
+        RuleFor(x => x.Liveness)
+            .SetValidator(new ProbeConfigDtoValidator());
+        RuleFor(x => x.Readiness)
+            .SetValidator(new ProbeConfigDtoValidator());
+    }
+}
+
+public class ProbeConfigDtoValidator : AbstractValidator<ProbeConfigDto>
+{
+    public ProbeConfigDtoValidator()
+    {
+        RuleFor(x => x.Path)
+            .NotEmpty()
+            .MaximumLength(200);
+        RuleFor(x => x.Port)
+            .InclusiveBetween(1, 65535);
+        RuleFor(x => x.InitialDelaySeconds)
+            .GreaterThanOrEqualTo(0);
+        RuleFor(x => x.PeriodSeconds)
+            .GreaterThan(0);
+        RuleFor(x => x.TimeoutSeconds)
+            .GreaterThan(0);
+        RuleFor(x => x.FailureThreshold)
+            .GreaterThan(0);
+        RuleFor(x => x.SuccessThreshold)
+            .GreaterThan(0);
+    }
+}
+
+public class ResourcesDtoValidator : AbstractValidator<ResourcesDto>
+{
+    public ResourcesDtoValidator()
+    {
+        RuleFor(x => x.Requests)
+            .SetValidator(new ResourceDtoValidator());
+        RuleFor(x => x.Limits)
+            .SetValidator(new ResourceDtoValidator());
+    }
+}
+
+public class ResourceDtoValidator : AbstractValidator<ResourceDto>
+{
+    public ResourceDtoValidator()
+    {
+        RuleFor(x => x.CpuCores)
+            .GreaterThan(0);
+        RuleFor(x => x.MemoryMi)
+            .GreaterThan(0);
+    }
+}
+
 
 public sealed class ImageInfoDtoValidator : AbstractValidator<ImageInfoDto>
 {
