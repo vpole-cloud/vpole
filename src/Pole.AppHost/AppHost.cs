@@ -7,7 +7,7 @@ var database = mongoServer.AddDatabase("pole-database");
 
 var username = builder.AddParameter("keycloak-username");
 var password = builder.AddParameter("keycloak-password", secret: true);
-var keycloak = builder.AddKeycloak("pole-keycloak",8080, adminUsername: username, adminPassword: password)
+var keycloak = builder.AddKeycloak("pole-keycloak",8080, username, password)
     .WithRealmImport("../../infrastructure/keycloak/realms/pole.control-plane.realm.json")
     .WithDataVolume("pole-keycloak-data")
     .WithLifetime(ContainerLifetime.Persistent);

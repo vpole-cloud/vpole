@@ -43,10 +43,31 @@ public record DnsRecord(
 public record WebServiceSpec(
     ImageInfo Image,
     int Replicas,
-    int CpuCores,
-    int MemoryMi,
-    WebServiceConfig Config
+    Resources Resources,
+    WebServiceConfig Config,
+    ProbeSpec Probes
 );
+public record Resources(
+    Resource Requests,
+    Resource Limits
+);
+public record Resource(
+    int CpuCores,
+    int MemoryMi
+);
+public record ProbeSpec(
+    ProbeConfig Startup,
+    ProbeConfig Liveness,
+    ProbeConfig Readiness
+);
+public record ProbeConfig(
+    string Path,
+    int Port,
+    int InitialDelaySeconds = 10,
+    int PeriodSeconds = 10,
+    int TimeoutSeconds = 5,
+    int FailureThreshold = 3,
+    int SuccessThreshold = 1);
 
 public record WebServiceConfig( 
     Dictionary<string, string> EnvironmentVariables,

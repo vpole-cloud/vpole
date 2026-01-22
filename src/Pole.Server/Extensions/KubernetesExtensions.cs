@@ -38,6 +38,23 @@ public static class WebServiceExtensions
     {
         public WebServiceInKubernetes ToKubernetes() => new(webService);
     }
+
+    extension(ProbeConfig probeConfig)
+    {
+        public V1Probe ToV1Probe() => new()
+        {
+            HttpGet = new V1HTTPGetAction
+            {
+                Path = probeConfig.Path,
+                Port = probeConfig.Port
+            },
+            InitialDelaySeconds = probeConfig.InitialDelaySeconds,
+            PeriodSeconds = probeConfig.PeriodSeconds,
+            TimeoutSeconds = probeConfig.TimeoutSeconds,
+            FailureThreshold = probeConfig.FailureThreshold,
+            SuccessThreshold = probeConfig.SuccessThreshold,
+        };
+    }
 }
 
 public readonly record struct WebServiceInKubernetes(WebService WebService)
@@ -101,7 +118,23 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
                                     {
                                         ContainerPort = 80
                                     }
-                                }
+                                },
+                                StartupProbe = WebService.Spec.Probes.Startup.ToV1Probe(),
+                                LivenessProbe = WebService.Spec.Probes.Liveness.ToV1Probe(),
+                                ReadinessProbe = WebService.Spec.Probes.Readiness.ToV1Probe(),
+                                Resources = new V1ResourceRequirements()
+                                {
+                                    Requests = new Dictionary<string, ResourceQuantity>()
+                                    {
+                                        ["cpu"] = new ($"{WebService.Spec.CpuCores}"),
+                                        ["memory"] = new ($"{WebService.Spec.MemoryMi}Mi")
+                                    },
+                                    Limits = new Dictionary<string, ResourceQuantity>()
+                                    {
+                                        ["cpu"] = new ($"{WebService.Spec.CpuCores}"),
+                                        ["memory"] = new ($"{WebService.Spec.MemoryMi}Mi")
+                                    },
+                                },
                             }
                         ]
                     }
@@ -109,7 +142,6 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
                 }
             }
         };
-        
         public V1Service ToService() => new()
         {
             ApiVersion = "v1",
