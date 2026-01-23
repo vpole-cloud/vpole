@@ -1,7 +1,10 @@
 using k8s;
+using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 using Pole.Server.Database;
+using Pole.Server.Extensions;
+using Pole.Server.Features.ResourceGroups.Events;
 using Pole.Server.Mediator;
 using Pole.Server.ResultType;
 
@@ -32,24 +35,48 @@ public sealed record DeleteResourceGroupRequest(
 public record DeleteResourceGroupResponse(bool Deleted);
 
 public sealed class DeleteResourceGroupHandler(
-    IKubernetes kubernetes,
-    MongoDbContext mongoDbContext
+    MongoDbContext dbContext
     ) : IMediatorHandler<DeleteResourceGroupRequest, DeleteResourceGroupResponse>
 {
     public async Task<Result<DeleteResourceGroupResponse>> HandleAsync(
         DeleteResourceGroupRequest request, CancellationToken cancellationToken = default)
     {
-        var resourceGroup = await mongoDbContext.ResourceGroups
+        var resourceGroup = await dbContext.ResourceGroups
             .Find(rg => rg.Id == request.Id)
             .FirstOrDefaultAsync(cancellationToken: cancellationToken);
 
         if (resourceGroup is null)
             return Result.NotFound($"Resource group with ID '{request.Id}' not found.");
 
-        await kubernetes.CoreV1.DeleteNamespaceAsync(resourceGroup.NamespaceName, cancellationToken: cancellationToken);
-        
-        await mongoDbContext.ResourceGroups.DeleteOneAsync(rg => rg.Id == request.Id, cancellationToken: cancellationToken);
-        
-        return new DeleteResourceGroupResponse(Deleted: true);
+        return await dbContext.RunInTransactionAsync<DeleteResourceGroupResponse>(async (sh, ct) =>
+        {
+            await dbContext.ResourceGroups.DeleteOneAsync(
+                session: sh,
+                filter: rg => rg.Id == request.Id,
+                cancellationToken: ct);
+
+            await dbContext.StoreEventAsync(new DeleteEvent(
+                ResourceGroupId: request.Id,
+                NamespaceName: resourceGroup.NamespaceName
+            ), sh, ct);
+
+            return new DeleteResourceGroupResponse(Deleted: true);
+        }, cancellationToken: cancellationToken);
     }
 }
+
+public class DeleteResourceGroupEventConsumer(
+    IKubernetes kubernetes
+    ) : IConsumer<DeleteEvent>
+{
+    public async Task Consume(ConsumeContext<DeleteEvent> context)
+    {
+        var message = context.Message;
+        var ct = context.CancellationToken;
+
+        await kubernetes.CoreV1.DeleteNamespaceAsync(
+            name: message.NamespaceName,
+            cancellationToken: ct);
+    }
+}
+

@@ -1,5 +1,6 @@
 ﻿using Pole.Server.Features.ResourceGroups.Common;
 using Pole.Server.Features.WebServices.Common;
+using Pole.Server.Features.DomainNames.Common;
 
 namespace Pole.Server.Features;
 
@@ -9,7 +10,8 @@ public static class MapApi
     {
         app.MapGroup("/api/v1")
             .MapResourceGroupEndpoints()
-            .MapWebServiceEndpoints();
+            .MapWebServiceEndpoints()
+            .MapDomainNameEndpoints();
         return app;
     }
     

@@ -31,7 +31,7 @@ public static class Get
 }
 
 public sealed class GetWebServicesHandler(
-    MongoDbContext mongoDbContext)
+    MongoDbContext dbContext)
     : IMediatorHandler<GetWebServicesRequest, PaginatedResponse<WebServiceDto>>
 {
     public async Task<Result<PaginatedResponse<WebServiceDto>>> HandleAsync(
@@ -42,10 +42,10 @@ public sealed class GetWebServicesHandler(
             ? Builders<WebService>.Filter.Eq(ws => ws.ResourceGroupId, request.ResourceGroupId)
             : Builders<WebService>.Filter.Empty;
 
-        var totalCount = (int)await mongoDbContext.WebServices
+        var totalCount = (int)await dbContext.WebServices
             .CountDocumentsAsync(filter, cancellationToken: cancellationToken);
 
-        var webServices = await mongoDbContext.WebServices
+        var webServices = await dbContext.WebServices
             .Find(filter)
             .ApplyPagination(request)
             .ToListAsync(cancellationToken: cancellationToken);

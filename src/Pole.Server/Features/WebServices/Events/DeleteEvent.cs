@@ -6,5 +6,6 @@ namespace Pole.Server.Features.WebServices.Events;
 [EntityName("delete-web-service")]
 public record DeleteEvent(
     string WebServiceId,
+    string WebServiceName,
     string ResourceGroupId
 ) : BaseEvent;

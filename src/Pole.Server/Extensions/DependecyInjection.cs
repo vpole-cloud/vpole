@@ -1,15 +1,21 @@
 ﻿using System.Reflection;
+using Hangfire;
+using Hangfire.Mongo;
+using Hangfire.Mongo.Migration.Strategies;
+using Hangfire.Mongo.Migration.Strategies.Backup;
 using k8s;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.Server.Database;
+using Pole.Server.Features.Common.Outbox;
+using Pole.Server.Features.DomainNames.Common;
 using Pole.Server.Mediator;
 
 namespace Pole.Server.Extensions;
 
-public static class DI
+public static class DependecyInjection
 {
     extension(IServiceCollection services)
     {
@@ -61,6 +67,50 @@ public static class DI
             services.AddSingleton<MongoDbContext>();
             return services;
         }
+
+        public IServiceCollection AddSettings(IConfiguration configuration)
+        {
+            services.AddSettingsSection<OutboxSettings>(OutboxSettings.SectionName, configuration);
+            return services;
+        }
+        
+        private void AddSettingsSection<TSettings>(string sectionName, IConfiguration configuration)
+            where TSettings : class
+        {
+            services.Configure<TSettings>(configuration.GetSection(sectionName));
+            services.AddSingleton<TSettings>(sp => sp.GetRequiredService<IOptions<TSettings>>().Value);
+        }
+
+        public IServiceCollection AddHangfireWithMongo(IConfiguration configuration)
+        {
+            var mongoConnectionString = configuration.GetConnectionString("pole-mongo");
+            
+            services.AddHangfire(config =>
+            {
+                config.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+                    .UseSimpleAssemblyNameTypeSerializer()
+                    .UseRecommendedSerializerSettings()
+                    .UseMongoStorage(mongoConnectionString, new MongoStorageOptions
+                    {
+                        MigrationOptions = new MongoMigrationOptions
+                        {
+                            MigrationStrategy = new MigrateMongoMigrationStrategy(),
+                            BackupStrategy = new CollectionMongoBackupStrategy()
+                        },
+                        Prefix = "hangfire",
+                        CheckConnection = true,
+                        CheckQueuedJobsStrategy = CheckQueuedJobsStrategy.TailNotificationsCollection
+                    });
+            });
+
+            services.AddHangfireServer(options =>
+            {
+                options.ServerName = $"{Environment.MachineName}:pole-server";
+            });
+            services.AddScoped<OutboxProcessorJob>();
+
+            return services;
+        }
         
         
     }
@@ -91,6 +141,30 @@ public static class DI
             builder.Services.AddAuthorization();
 
             return builder;
+        }
+    }
+
+    extension(WebApplication app)
+    {
+        public WebApplication UseHangfire()
+        {
+            var outboxSettings = app.Services.GetRequiredService<IOptions<OutboxSettings>>().Value;
+
+            // Configure Hangfire Dashboard (open to everyone for now)
+            app.UseHangfireDashboard();
+
+            // Schedule recurring jobs for outbox processing
+            RecurringJob.AddOrUpdate<OutboxProcessorJob>(
+                "process-outbox-messages",
+                job => job.ProcessOutboxMessagesAsync(),
+                outboxSettings.ProcessingCronExpression);
+
+            RecurringJob.AddOrUpdate<OutboxProcessorJob>(
+                "cleanup-outbox-messages",
+                job => job.CleanupProcessedMessagesAsync(),
+                Cron.Daily(3)); // Daily at 3 AM
+
+            return app;
         }
     }
 }

@@ -6,9 +6,9 @@ public sealed record WebServiceDto(
     string Name,
     string ResourceGroupId,
     WebServiceSpecDto Spec,
-    DnsRecordDto DnsRecord
+    DnsRecordShortInfoDto DnsRecordShortInfo
 );
-public sealed record DnsRecordDto(
+public sealed record DnsRecordShortInfoDto(
     string Id,
     string Domain
 );
@@ -18,7 +18,17 @@ public sealed record WebServiceSpecDto(
     int Replicas,
     ResourcesDto Resources,
     WebServiceConfigDto Config,
+    AutoscalingSpecDto? Autoscaling,
     ProbeSpecDto Probes
+);
+public sealed record AutoscalingSpecDto(
+    int MinReplicas,
+    int MaxReplicas,
+    AutoscalingMetricDto Metric
+);
+public sealed record AutoscalingMetricDto(
+    string Type,
+    int TargetAverageUtilization
 );
 public record ResourcesDto(
     ResourceDto Requests,
@@ -35,7 +45,7 @@ public record ProbeSpecDto(
 );
 public record ProbeConfigDto(
     string Path,
-    int Port,
+    string Port,
     int InitialDelaySeconds,
     int PeriodSeconds,
     int TimeoutSeconds,
@@ -50,8 +60,9 @@ public sealed record WebServiceConfigDto(
 
 public sealed record PortMappingDto(
     int ServicePort,
-    int TargetPort,
-    string Protocol
+    string TargetPort,
+    string Protocol,
+    string Name
 );
 
 public sealed record ImageInfoDto(
@@ -67,7 +78,7 @@ public static class WebServiceDtoExtensions
         webService.Spec.ToDto(),
         webService.DnsRecord.ToDto()
     );
-    public static DnsRecordDto ToDto(this DnsRecord dnsRecord) => new(
+    public static DnsRecordShortInfoDto ToDto(this DnsRecordShortInfo dnsRecord) => new(
         dnsRecord.Id,
         dnsRecord.Domain
     );
@@ -76,7 +87,17 @@ public static class WebServiceDtoExtensions
         spec.Replicas,
         spec.Resources.ToDto(),
         spec.Config.ToDto(),
+        spec.Autoscaling?.ToDto(),
         spec.Probes.ToDto()
+    );
+    public static AutoscalingSpecDto ToDto(this AutoscalingSpec autoscaling) => new(
+        autoscaling.MinReplicas,
+        autoscaling.MaxReplicas,
+        autoscaling.Metric.ToDto()
+    );
+    public static AutoscalingMetricDto ToDto(this AutoscalingMetric metric) => new(
+        metric.Type,
+        metric.TargetAverageUtilization
     );
     public static ResourceDto ToDto(this Resource resource) => new(
         resource.CpuCores,
@@ -104,7 +125,7 @@ public static class WebServiceDtoExtensions
     public static WebServiceConfigDto ToDto(this WebServiceConfig config) => new(
         config.EnvironmentVariables,
         config.PortMappings
-            .Select(pm => new PortMappingDto(pm.ServicePort, pm.TargetPort, pm.Protocol))
+            .Select(pm => new PortMappingDto(pm.ServicePort, pm.TargetPort, pm.Protocol, pm.Name))
             .ToList()
     );
     public static ImageInfoDto ToDto(this ImageInfo image) => new(
@@ -118,7 +139,17 @@ public static class WebServiceDtoExtensions
         dto.Replicas,
         dto.Resources.ToDomain(),
         dto.Config.ToDomain(),
+        dto.Autoscaling?.ToDomain(),
         dto.Probes.ToDomain()
+    );
+    public static AutoscalingSpec ToDomain(this AutoscalingSpecDto dto) => new(
+        dto.MinReplicas,
+        dto.MaxReplicas,
+        dto.Metric.ToDomain()
+    );
+    public static AutoscalingMetric ToDomain(this AutoscalingMetricDto dto) => new(
+        dto.Type,
+        dto.TargetAverageUtilization
     );
     public static Resource ToDomain(this ResourceDto dto) => new(
         dto.CpuCores,
@@ -145,7 +176,7 @@ public static class WebServiceDtoExtensions
     public static WebServiceConfig ToDomain(this WebServiceConfigDto dto) => new(
         dto.EnvironmentVariables,
         dto.PortMappings
-            .Select(pm => new PortMapping(pm.ServicePort, pm.TargetPort, pm.Protocol))
+            .Select(pm => new PortMapping(pm.ServicePort, pm.TargetPort, pm.Protocol, pm.Name))
             .ToList()
     );
     public static ImageInfo ToDomain(this ImageInfoDto dto) => new(
@@ -153,8 +184,8 @@ public static class WebServiceDtoExtensions
         dto.Name,
         dto.Tag
     );
-    public static DnsRecord ToDomain(this DnsRecordDto dto) => new(
-        dto.Id,
-        dto.Domain
+    public static DnsRecordShortInfo ToDomain(this DnsRecordShortInfoDto shortInfoDto) => new(
+        shortInfoDto.Id,
+        shortInfoDto.Domain
     );
 }

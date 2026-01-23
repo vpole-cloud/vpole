@@ -29,7 +29,7 @@ public static class PaginatedRequestExtensions
     }
 }
 
-public sealed record PaginatedResponse<T>(IEnumerable<T> Items, int TotalCount, int PageNumber, int PageSize)
+public sealed record PaginatedResponse<T>(IEnumerable<T> Items, long TotalCount, int PageNumber, int PageSize)
 {
     public int TotalPages => (int)Math.Ceiling((double)TotalCount / (PageSize == 0 ? 1 : PageSize));
     public bool HasPrevious => PageNumber > 1;

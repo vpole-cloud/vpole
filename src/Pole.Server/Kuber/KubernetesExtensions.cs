@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Collections.Immutable;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using k8s;
@@ -6,37 +7,28 @@ using k8s.Autorest;
 using k8s.Models;
 using Pole.Server.Features.WebServices.Common;
 
-namespace Pole.Server.Extensions;
+namespace Pole.Server.Kuber;
 
 public static class KubernetesExtensions
 {
-    public static bool IsAlreadyExists(HttpOperationException ex)
-        => ex.Response?.StatusCode == HttpStatusCode.Conflict;
-
     public static async Task CreateOrIgnoreAsync(Func<Task> createCall)
     {
         try
         {
             await createCall();
         }
-        catch (HttpOperationException ex) when (IsAlreadyExists(ex))
+        catch (HttpOperationException ex) when (ex.Response?.StatusCode == HttpStatusCode.Conflict)
         {
             // create-only semantics
         }
     }
-    
-    extension (IKubernetes kubernetes)
-    {
-    }
-    
-    
 }
 
 public static class WebServiceExtensions
 {
     extension(WebService webService)
     {
-        public WebServiceInKubernetes ToKubernetes() => new(webService);
+        public WebServiceInKubernetes ToKubernetes(string @namespace) => new(webService, @namespace);
     }
 
     extension(ProbeConfig probeConfig)
@@ -57,20 +49,26 @@ public static class WebServiceExtensions
     }
 }
 
-public readonly record struct WebServiceInKubernetes(WebService WebService)
+public readonly record struct WebServiceInKubernetes(WebService WebService, string Namespace)
 {
-    public string ConfigMapName => $"{WebService.Name}-config";
-        public string IngressName => $"{WebService.Name}-ing";
-        public string ServiceName => $"{WebService.Name}-svc";
-        public string DeploymentName => WebService.Name;
-        public string TlsSecretName => $"{WebService.Name}-tls";
-        public V1Deployment ToDeployment() => new V1Deployment()
+    public string ConfigMapName => BuildConfigMapName(WebService.Name);
+    public static string BuildConfigMapName(string webServiceName) => $"{webServiceName}-config";
+    public string IngressName => BuildIngressName(WebService.Name);
+    public static string BuildIngressName(string webServiceName) => $"{webServiceName}-ing";
+    public string ServiceName => BuildServiceName(WebService.Name);
+    public static string BuildServiceName(string webServiceName) => $"{webServiceName}-svc";
+    public string DeploymentName => BuildDeploymentName(WebService.Name);
+    public static string BuildDeploymentName(string webServiceName) => webServiceName;
+    public string TlsSecretName => BuildTlsSecretName(WebService.Name);
+    public static string BuildTlsSecretName(string webServiceName) => $"{webServiceName}-tls";
+    public V1Deployment ToDeployment() => new ()
         {
             ApiVersion = "apps/v1",
             Kind = "Deployment",
             Metadata = new V1ObjectMeta()
             {
                 Name = WebService.Name,
+                NamespaceProperty = Namespace,
                 Labels = new Dictionary<string, string>()
                 {
                     { "app", WebService.Name }
@@ -95,7 +93,7 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
                             { "app", WebService.Name }
                             
                         },
-                        Annotations = DefaultAnnotations,
+                        Annotations = _defaultAnnotations,
                     },
                     Spec = new V1PodSpec()
                     {
@@ -119,6 +117,7 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
                                         ContainerPort = 80
                                     }
                                 },
+                                EnvFrom = [new V1EnvFromSource { ConfigMapRef = new V1ConfigMapEnvSource { Name = ConfigMapName } }],
                                 StartupProbe = WebService.Spec.Probes.Startup.ToV1Probe(),
                                 LivenessProbe = WebService.Spec.Probes.Liveness.ToV1Probe(),
                                 ReadinessProbe = WebService.Spec.Probes.Readiness.ToV1Probe(),
@@ -126,13 +125,13 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
                                 {
                                     Requests = new Dictionary<string, ResourceQuantity>()
                                     {
-                                        ["cpu"] = new ($"{WebService.Spec.CpuCores}"),
-                                        ["memory"] = new ($"{WebService.Spec.MemoryMi}Mi")
+                                        ["cpu"] = new ($"{WebService.Spec.Resources.Requests.CpuCores}"),
+                                        ["memory"] = new ($"{WebService.Spec.Resources.Requests.MemoryMi}Mi")
                                     },
                                     Limits = new Dictionary<string, ResourceQuantity>()
                                     {
-                                        ["cpu"] = new ($"{WebService.Spec.CpuCores}"),
-                                        ["memory"] = new ($"{WebService.Spec.MemoryMi}Mi")
+                                        ["cpu"] = new ($"{WebService.Spec.Resources.Limits.CpuCores}"),
+                                        ["memory"] = new ($"{WebService.Spec.Resources.Limits.MemoryMi}Mi")
                                     },
                                 },
                             }
@@ -153,7 +152,7 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
                 {
                     { "app", WebService.Name }
                 },
-                Annotations = DefaultAnnotations,
+                Annotations = _defaultAnnotations,
             },
             Spec = new V1ServiceSpec()
             {
@@ -204,7 +203,7 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
                     {
                         ["app"] = WebService.Name
                     },
-                    Annotations = DefaultAnnotations,
+                    Annotations = _defaultAnnotations,
                 },
                 Type = "kubernetes.io/dockerconfigjson",
                 Data = new Dictionary<string, byte[]>
@@ -225,7 +224,7 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
                 {
                     { "app", WebService.Name }
                 },
-                Annotations = DefaultAnnotations,
+                Annotations = _defaultAnnotations,
             },
             Data = WebService.Spec.Config.EnvironmentVariables,
         };
@@ -238,7 +237,7 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
             {
                 Name = IngressName,
                 Labels = new Dictionary<string, string> { ["app"] = WebService.Name },
-                Annotations = DefaultAnnotations.Concat(new Dictionary<string, string>
+                Annotations = _defaultAnnotations.Concat(new Dictionary<string, string>
                 {
                     ["cert-manager.io/cluster-issuer"] = "letsencrypt-prod",
                     ["nginx.ingress.kubernetes.io/ssl-redirect"] = "true",
@@ -288,20 +287,83 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
             }
         };
         
-        private Dictionary<string, string> DefaultAnnotations => new()
+        public V1HorizontalPodAutoscaler? ToHorizontalPodAutoscaler() => WebService.Spec.Autoscaling is null ? null : new V1HorizontalPodAutoscaler
+        {
+            ApiVersion = "autoscaling/v2",
+            Kind = "HorizontalPodAutoscaler",
+            Metadata = new V1ObjectMeta()
+            {
+                Name = $"{WebService.Name}-hpa",
+                Labels = new Dictionary<string, string>()
+                {
+                    { "app", WebService.Name }
+                },
+                Annotations = _defaultAnnotations,
+            },
+            Spec = new V1HorizontalPodAutoscalerSpec()
+            {
+                ScaleTargetRef = new V1CrossVersionObjectReference()
+                {
+                    ApiVersion = "apps/v1",
+                    Kind = "Deployment",
+                    Name = WebService.Name
+                },
+                MinReplicas = WebService.Spec.Autoscaling.MinReplicas,
+                MaxReplicas = WebService.Spec.Autoscaling.MaxReplicas,
+            }
+        };
+        
+        public object ToServiceMonitor() => new
+        {
+            apiVersion = "monitoring.coreos.com/v1",
+            kind = "ServiceMonitor",
+            metadata = new
+            {
+                name = $"{WebService.Name}-sm",
+                labels = new Dictionary<string, string>
+                {
+                    { "app", WebService.Name }
+                },
+                annotations = _defaultAnnotations,
+                @namespace = Namespace,
+            },
+            spec = new
+            {
+                selector = new
+                {
+                    matchLabels = new Dictionary<string, string>
+                    {
+                        { "app", DeploymentName }
+                    }
+                },
+                namespaceSelector = new
+                {
+                    matchNames = Namespace,
+                },
+                endpoints = new[]
+                {
+                    new
+                    {
+                        port = "metrics",
+                        path = "/metrics",
+                        interval = "30s",
+                        scrapeTimeout = "10s"
+                    }
+                }
+            }
+        };
+        
+        private readonly ImmutableDictionary<string, string> _defaultAnnotations =
+            new Dictionary<string, string>
         {
             { "pole.server/version", WebService.Version },
             { "app.kubernetes.io/managed-by", "pole-server" },
-            { "pole.server/webAppId", WebService.Id },
-        };
+            { "pole.server/webServiceId", WebService.Id },
+        }.ToImmutableDictionary();
         
         private static int GetIngressServicePort(WebService webService)
         {
             // Simple default: first mapping
-            var first = webService.Spec.Config.PortMappings.FirstOrDefault();
-            if (first is null)
-                throw new InvalidOperationException("PortMappings is empty; cannot create Service/Ingress.");
-
-            return first.ServicePort;
+            return webService.Spec.Config.PortMappings.FirstOrDefault()?.ServicePort ?? throw new InvalidOperationException("PortMappings is empty; cannot create Service/Ingress.");
         }
 }

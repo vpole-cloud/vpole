@@ -1,7 +1,18 @@
-﻿namespace Pole.Server.Features.Common.Abstractions;
+﻿using System.Text.Json;
+
+namespace Pole.Server.Features.Common.Abstractions;
 
 public abstract record BaseEvent
 {
     public DateTime OccurredOn { get; init; } = DateTime.UtcNow;
     public string TraceId { get; init; } = Guid.NewGuid().ToString();
+}
+
+public static class EventExtensions
+{
+    public static JsonSerializerOptions SerializerOptions { get; } = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false,
+    };
 }

@@ -27,14 +27,14 @@ public static class GetById
 }
 
 public sealed class GetWebServiceByIdHandler(
-    MongoDbContext mongoDbContext)
+    MongoDbContext dbContext)
     : IMediatorHandler<GetWebServiceByIdRequest, WebServiceDto>
 {
     public async Task<Result<WebServiceDto>> HandleAsync(
         GetWebServiceByIdRequest request,
         CancellationToken cancellationToken = default)
     {
-        var webService = await mongoDbContext.WebServices
+        var webService = await dbContext.WebServices
             .Find(ws => ws.Id == request.Id)
             .FirstOrDefaultAsync(cancellationToken: cancellationToken);
 

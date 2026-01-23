@@ -1,9 +1,12 @@
 using System.Collections.Immutable;
 using k8s;
 using k8s.Models;
+using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using Pole.Server.Database;
+using Pole.Server.Extensions;
 using Pole.Server.Features.ResourceGroups.Common;
+using Pole.Server.Features.ResourceGroups.Events;
 using Pole.Server.Mediator;
 using Pole.Server.ResultType;
 
@@ -39,8 +42,7 @@ public sealed record CreateResourceGroupRequestBody(
     );
 
 public sealed class CreateResourceGroupHandler(
-    IKubernetes kubernetes,
-    MongoDbContext mongoDbContext
+    MongoDbContext dbContext
     ) : IMediatorHandler<CreateResourceGroupRequest, ResourceGroupDto>
 {
     public async Task<Result<ResourceGroupDto>> HandleAsync(
@@ -48,17 +50,41 @@ public sealed class CreateResourceGroupHandler(
         CancellationToken cancellationToken = default)
     {
         var resourceGroup = new ResourceGroup(request.Body.Name, request.Body.Description, [], request.Body.Tags);
-        await mongoDbContext.ResourceGroups.InsertOneAsync(resourceGroup, cancellationToken: cancellationToken);
         
+        return await dbContext.RunInTransactionAsync<ResourceGroupDto>(async (sh, ct) =>
+        {
+            await dbContext.ResourceGroups.InsertOneAsync(
+                session: sh,
+                document: resourceGroup,
+                cancellationToken: ct);
+            
+            await dbContext.StoreEventAsync(new CreateEvent(
+                ResourceGroupId: resourceGroup.Id,
+                NamespaceName: resourceGroup.NamespaceName
+            ), sh, ct);
+            
+            return resourceGroup.ToDto();
+        }, cancellationToken: cancellationToken);
+    }
+}
+
+public class CreateResourceGroupEventConsumer(
+    IKubernetes kubernetes
+    ) : IConsumer<CreateEvent>
+{
+    public async Task Consume(ConsumeContext<CreateEvent> context)
+    {
+        var message = context.Message;
+        var ct = context.CancellationToken;
+
         await kubernetes.CoreV1.CreateNamespaceAsync(new V1Namespace()
         {
             ApiVersion = "v1",
             Kind = "Namespace",
             Metadata = new V1ObjectMeta()
             {
-                Name = resourceGroup.NamespaceName
+                Name = message.NamespaceName
             },
-        }, cancellationToken: cancellationToken);
-        return resourceGroup.ToDto();
+        }, cancellationToken: ct);
     }
 }
