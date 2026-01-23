@@ -1,5 +1,4 @@
-﻿using System.Collections.Immutable;
-using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace Pole.Server.ResultType;
@@ -67,7 +66,7 @@ public abstract record Result
     };
     
     public static InternalFailure Internal(string message,
-        string details,
+        string details = "",
         [CallerMemberName] string callerName = "",
         [CallerFilePath] string callerFile = "",
         [CallerLineNumber] int callerLine = 0) => new(details)

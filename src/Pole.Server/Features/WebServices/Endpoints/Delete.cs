@@ -4,6 +4,7 @@ using MongoDB.Driver;
 using Pole.Server.Database;
 using Pole.Server.Extensions;
 using Pole.Server.Features.WebServices.Events;
+using Pole.Server.Kuber;
 using Pole.Server.Mediator;
 using Pole.Server.ResultType;
 
@@ -27,29 +28,34 @@ public static class Delete
 }
 
 public sealed class DeleteWebServiceHandler(
-    MongoDbContext mongoDbContext,
+    MongoDbContext dbContext,
     IPublishEndpoint publishEndpoint
     ) : IMediatorHandler<DeleteWebServiceRequest, DeleteWebServiceResponse>
 {
     public async Task<Result<DeleteWebServiceResponse>> HandleAsync(DeleteWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var webService = await mongoDbContext.WebServices
+        var webService = await dbContext.WebServices
             .Find(ws => ws.Id == request.Id)
             .FirstOrDefaultAsync(cancellationToken);
         if (webService is null)
             return Result.NotFound($"Web service with ID '{request.Id}' not found.");
         
-        await publishEndpoint.Publish(new DeleteEvent(request.Id, webService.ResourceGroupId), cancellationToken);
-
-        return new DeleteWebServiceResponse(
-            Id: request.Id
-        );
+        return await dbContext.RunInTransactionAsync<DeleteWebServiceResponse>(async (sh, ct) =>
+        {
+            await dbContext.WebServices
+                .DeleteOneAsync(ws => ws.Id == request.Id, cancellationToken: ct);
+        
+            await dbContext.StoreEventAsync(new DeleteEvent(webService.Id, webService.Name, webService.ResourceGroupId), sh, ct);
+            return new DeleteWebServiceResponse(
+                Id: request.Id
+            );
+        }, cancellationToken: cancellationToken);
     }
 }
 
 public class DeleteWebServiceRequestedEventConsumer(
-    MongoDbContext mongoDbContext,
+    MongoDbContext dbContext,
     IKubernetes kubernetes
     ) : IConsumer<DeleteEvent>
 {
@@ -58,48 +64,44 @@ public class DeleteWebServiceRequestedEventConsumer(
         var message = context.Message;
         var ct = context.CancellationToken;
         
-        var webService = await mongoDbContext.WebServices
-            .Find(ws => ws.Id == message.WebServiceId)
+        var resourceGroup = await dbContext.ResourceGroups
+            .Find(rg => rg.Id == message.ResourceGroupId)
             .FirstOrDefaultAsync(ct);
-        if (webService is null)
+        if (resourceGroup is null)
             return;
-
-        var inKuber = webService.ToKubernetes();
+        var ns = resourceGroup.NamespaceName;
         
         await kubernetes.AppsV1.DeleteNamespacedDeploymentAsync(
-            name: inKuber.DeploymentName,
-            namespaceParameter: message.ResourceGroupId,
+            name: WebServiceInKubernetes.BuildDeploymentName(message.WebServiceId),
+            namespaceParameter: ns,
             cancellationToken: ct);
         
         await kubernetes.CoreV1.DeleteNamespacedServiceAsync(
-            name: inKuber.ServiceName,
-            namespaceParameter: message.ResourceGroupId,
+            name: WebServiceInKubernetes.BuildServiceName(message.WebServiceId),
+            namespaceParameter: ns,
             cancellationToken: ct);
         
         await kubernetes.CoreV1.DeleteNamespacedSecretAsync(
-            name: inKuber.TlsSecretName,
-            namespaceParameter: message.ResourceGroupId,
+            name: WebServiceInKubernetes.BuildTlsSecretName(message.WebServiceId),
+            namespaceParameter: ns,
             cancellationToken: ct);
         
         await kubernetes.NetworkingV1.DeleteNamespacedIngressAsync(
-            name: message.WebServiceId,
-            namespaceParameter: message.ResourceGroupId,
+            name: WebServiceInKubernetes.BuildIngressName(message.WebServiceId),
+            namespaceParameter: ns,
             cancellationToken: ct);
         
         await kubernetes.CoreV1.DeleteNamespacedConfigMapAsync(
-            name: inKuber.ConfigMapName,
-            namespaceParameter: message.ResourceGroupId,
+            name: WebServiceInKubernetes.BuildConfigMapName(message.WebServiceId),
+            namespaceParameter: ns,
             cancellationToken: ct);
-
-        await mongoDbContext.WebServices
-            .DeleteOneAsync(ws => ws.Id == message.WebServiceId, cancellationToken: ct);
     }
 }
 
 public sealed record DeleteWebServiceRequest(
     string Id
-    ) : IMediatorRequest<DeleteWebServiceResponse>;
+) : IMediatorRequest<DeleteWebServiceResponse>;
 
 public sealed record DeleteWebServiceResponse(
     string Id
-    );
+);

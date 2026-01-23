@@ -14,6 +14,8 @@ builder.AddSecurity();
 builder.Services.AddKubernetes(configuration)
     .AddEventBus(configuration, assembly)
     .AddDatabase()
+    .AddSettings(configuration)
+    .AddHangfireWithMongo(configuration)
     .AddValidatorsFromAssembly(assembly)
     .AddOpenApi()
     .AddPoleMediator(configuration, assembly);
@@ -37,6 +39,8 @@ if (!app.Environment.IsDevelopment())
 app.UseCors("frontend-dev");
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.UseHangfire();
 
 app.MapGet("/test-keycloak", () => "Hello World!")
     .RequireAuthorization();

@@ -8,7 +8,7 @@ public record WebService(
     string Name,
     string ResourceGroupId,
     WebServiceSpec Spec,
-    DnsRecord DnsRecord
+    DnsRecordShortInfo DnsRecord
     ) : BaseEntity
 {
     public WebServiceStatus Status { get; init; } = new Provisioning();
@@ -35,7 +35,7 @@ public sealed record Failed(string Reason) : WebServiceStatus;
 public sealed record Stopped : WebServiceStatus;
 
 
-public record DnsRecord(
+public record DnsRecordShortInfo (
     string Id,
     string Domain
 );
@@ -45,8 +45,21 @@ public record WebServiceSpec(
     int Replicas,
     Resources Resources,
     WebServiceConfig Config,
+    AutoscalingSpec? Autoscaling,
     ProbeSpec Probes
 );
+
+public record AutoscalingSpec(
+    int MinReplicas,
+    int MaxReplicas,
+    AutoscalingMetric Metric
+);
+
+public record AutoscalingMetric(
+    string Type,
+    int TargetAverageUtilization
+);
+
 public record Resources(
     Resource Requests,
     Resource Limits
@@ -62,7 +75,7 @@ public record ProbeSpec(
 );
 public record ProbeConfig(
     string Path,
-    int Port,
+    string Port,
     int InitialDelaySeconds = 10,
     int PeriodSeconds = 10,
     int TimeoutSeconds = 5,
@@ -82,8 +95,9 @@ public record WebServiceConfig(
 /// <param name="Protocol">TCP, UDP, </param>
 public record PortMapping(
     int ServicePort,
-    int TargetPort,
-    string Protocol = "TCP"
+    string TargetPort,
+    string Protocol,
+    string Name
 );
 
 public record ImageInfo(

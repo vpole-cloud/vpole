@@ -1,13 +1,14 @@
 ﻿using FluentValidation;
-using FluentValidation.Validators;
 using k8s;
 using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 using Pole.Server.Database;
 using Pole.Server.Extensions;
+using Pole.Server.Features.DomainNames.Common;
 using Pole.Server.Features.WebServices.Common;
 using Pole.Server.Features.WebServices.Events;
+using Pole.Server.Kuber;
 using Pole.Server.Mediator;
 using Pole.Server.ResultType;
 
@@ -33,45 +34,54 @@ public static class Create
 }
 
 public sealed class CreateWebServiceHandler(
-    IPublishEndpoint publishEndpoint,
-    IKubernetes kubernetes,
-    MongoDbContext mongoDbContext)
+    MongoDbContext dbContext)
     : IMediatorHandler<CreateWebServiceRequest, CreateWebServiceResponse>
 {
     public async Task<Result<CreateWebServiceResponse>> HandleAsync(CreateWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var group = await mongoDbContext.ResourceGroups
+        var group = await dbContext.ResourceGroups
             .Find(rg => rg.Id == request.Body.ResourceGroupId)
             .FirstOrDefaultAsync(cancellationToken);
-        if (group is null) return Result.Failure($"Resource group with ID '{request.Body.ResourceGroupId}' not found.");
+        if (group is null) return Result.NotFound($"Resource group with ID '{request.Body.ResourceGroupId}' not found.");
         
+        var dnsRecord = await dbContext.DnsRecords
+            .Find(dn => dn.Name == request.Body.DomainName)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (dnsRecord is not null)
+            return Result.Conflict($"Domain name '{dnsRecord.Name}' is already in use.");
+
+        var webId = dbContext.GenerateNewId();
+        dnsRecord = new DnsRecord(
+            Name: request.Body.DomainName,
+            ResourceType: ResourceType.WebService,
+            ResourceId: webId,
+            ResourceName: request.Body.Name,
+            GroupId: request.Body.ResourceGroupId
+        );
+            
         var newWebService = new WebService(
             Name: request.Body.Name,
             ResourceGroupId: request.Body.ResourceGroupId,
             Spec: request.Body.Spec.ToDomain(),
-            DnsRecord: request.Body.DnsRecord.ToDomain()
-        );
-        // var pullSecret = newWebService.ToImagePullSecret();
-        // if (request.Body.Spec.Image.SecretName is not null)
-        //     await K8sCreateOnly.CreateOrIgnoreAsync(() =>
-        //         kubernetes.CoreV1.CreateNamespacedSecretAsync(pullSecret, group.NamespaceName, cancellationToken: cancellationToken));
-
-        await mongoDbContext.WebServices.InsertOneAsync(newWebService, cancellationToken: cancellationToken);
-
-        await publishEndpoint.Publish(new CreateEvent
+            DnsRecord: new DnsRecordShortInfo(Id: dnsRecord.Id, Domain: dnsRecord.Name)
+        ) { Id = webId };
+        
+        return await dbContext.RunInTransactionAsync<CreateWebServiceResponse>(async (sh, ct) =>
         {
-            WebServiceId = newWebService.Id,
-        }, cancellationToken);
+            await dbContext.WebServices.InsertOneAsync(sh, newWebService, cancellationToken: ct);
 
-        return new CreateWebServiceResponse(
-            WebServiceId: newWebService.Id
-        );
+            await dbContext.DnsRecords.InsertOneAsync(sh, dnsRecord, cancellationToken: ct);
+            
+            await dbContext.StoreEventAsync(new CreateEvent(newWebService.Id), sh, ct);
+
+            return new CreateWebServiceResponse(newWebService.Id);
+        }, cancellationToken: cancellationToken);
     }
 }
 
 public class CreateWebServiceEventConsumer(
-    MongoDbContext mongoDbContext,
+    MongoDbContext dbContext,
     IKubernetes kubernetes)
     : IConsumer<CreateEvent>
 {
@@ -79,23 +89,24 @@ public class CreateWebServiceEventConsumer(
     {
         var ct = context.CancellationToken;
 
-        var webApp = await mongoDbContext.WebServices
+        var webApp = await dbContext.WebServices
             .Find(wa => wa.Id == context.Message.WebServiceId)
             .FirstOrDefaultAsync(ct);
         if (webApp is null) return;
 
-        var resourceGroup = await mongoDbContext.ResourceGroups
+        var resourceGroup = await dbContext.ResourceGroups
             .Find(rg => rg.Id == webApp.ResourceGroupId)
             .FirstOrDefaultAsync(ct);
         if (resourceGroup is null) return;
 
         var ns = resourceGroup.NamespaceName;
-        var inKuber = webApp.ToKubernetes();
+        var inKuber = webApp.ToKubernetes(ns);
 
         var configMap = inKuber.ToConfigMap();
         var deployment = inKuber.ToDeployment();
         var service = inKuber.ToService();
         var ingress = inKuber.ToIngress();
+        var serviceMonitor = inKuber.ToServiceMonitor();
 
         await KubernetesExtensions.CreateOrIgnoreAsync(() =>
             kubernetes.CoreV1.CreateNamespacedConfigMapAsync(configMap, ns, cancellationToken: ct));
@@ -108,6 +119,15 @@ public class CreateWebServiceEventConsumer(
 
         await KubernetesExtensions.CreateOrIgnoreAsync(() =>
             kubernetes.NetworkingV1.CreateNamespacedIngressAsync(ingress, ns, cancellationToken: ct));
+        
+        await KubernetesExtensions.CreateOrIgnoreAsync(() =>
+            kubernetes.CustomObjects.CreateNamespacedCustomObjectAsync(
+                serviceMonitor,
+                group: "monitoring.coreos.com",
+                version: "v1",
+                namespaceParameter: ns,
+                plural: "servicemonitors",
+                cancellationToken: ct));
     }
 }
 
@@ -119,8 +139,8 @@ public sealed record CreateWebServiceRequestBody(
     string Name,
     string ResourceGroupId,
     WebServiceSpecDto Spec,
-    DnsRecordDto DnsRecord);
-
+    string DomainName
+);
 public sealed record CreateWebServiceResponse(
     string WebServiceId
 );
@@ -145,12 +165,13 @@ public sealed class CreateWebServiceRequestBodyValidator : AbstractValidator<Cre
             .NotEmpty();
         RuleFor(x => x.Spec)
             .SetValidator(new WebServiceSpecDtoValidator());
-        RuleFor(x => x.DnsRecord)
-            .SetValidator(new DnsRecordDtoValidator());
+        RuleFor(x => x.DomainName)
+            .NotEmpty()
+            .MaximumLength(100);
     }
 }
 
-public sealed class DnsRecordDtoValidator : AbstractValidator<DnsRecordDto>
+public sealed class DnsRecordDtoValidator : AbstractValidator<DnsRecordShortInfoDto>
 {
     public DnsRecordDtoValidator()
     {
@@ -198,17 +219,24 @@ public class ProbeConfigDtoValidator : AbstractValidator<ProbeConfigDto>
             .NotEmpty()
             .MaximumLength(200);
         RuleFor(x => x.Port)
-            .InclusiveBetween(1, 65535);
+            .NotEmpty()
+            .MaximumLength(10);
         RuleFor(x => x.InitialDelaySeconds)
-            .GreaterThanOrEqualTo(0);
+            .GreaterThanOrEqualTo(0)
+            .LessThanOrEqualTo(300);
         RuleFor(x => x.PeriodSeconds)
-            .GreaterThan(0);
+            .GreaterThan(0)
+            .LessThanOrEqualTo(120);
         RuleFor(x => x.TimeoutSeconds)
-            .GreaterThan(0);
+            .GreaterThan(0)
+            .LessThanOrEqualTo(60);
         RuleFor(x => x.FailureThreshold)
-            .GreaterThan(0);
+            .GreaterThan(0)
+            .LessThanOrEqualTo(10);
         RuleFor(x => x.SuccessThreshold)
-            .GreaterThan(0);
+            .GreaterThan(0)
+            .LessThanOrEqualTo(10);
+                
     }
 }
 
@@ -275,10 +303,11 @@ public sealed class PortMappingDtoValidator : AbstractValidator<PortMappingDto>
         RuleFor(x => x.ServicePort)
             .InclusiveBetween(1, 65535);
         RuleFor(x => x.TargetPort)
-            .InclusiveBetween(1, 65535);
+            .NotEmpty()
+            .MaximumLength(10);
         RuleFor(x => x.Protocol)
             .NotEmpty()
-            .Must(p => p is "TCP" or "UDP")
+            .Must(p => p is "TCP" or "UDP" or "SCTP")
             .WithMessage("Protocol must be either 'TCP' or 'UDP'.");
     }
 }

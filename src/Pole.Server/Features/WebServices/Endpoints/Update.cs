@@ -7,6 +7,7 @@ using Pole.Server.Database;
 using Pole.Server.Extensions;
 using Pole.Server.Features.WebServices.Common;
 using Pole.Server.Features.WebServices.Events;
+using Pole.Server.Kuber;
 using Pole.Server.Mediator;
 using Pole.Server.ResultType;
 
@@ -14,13 +15,11 @@ namespace Pole.Server.Features.WebServices.Endpoints;
 
 public static class Update
 {
-    public const string Route = "/{Id}";
-    
     extension(IEndpointRouteBuilder app)
     {
         public IEndpointRouteBuilder MapUpdateWebServiceEndpoint()
         {
-            app.MapPut(Route, async (IMediator mediator, UpdateWebServiceRequest request, CancellationToken cancellationToken) =>
+            app.MapPut("/{Id}", async (IMediator mediator, UpdateWebServiceRequest request, CancellationToken cancellationToken) =>
                 {
                     var result = await mediator.Send(request, cancellationToken);
                     return result.ToHttpResult(x => Results.Accepted(value: x));
@@ -31,7 +30,6 @@ public static class Update
             return app;
         }
     }
-    
 }
 
 public sealed record UpdateWebServiceRequest(
@@ -41,69 +39,67 @@ public sealed record UpdateWebServiceRequest(
 
 public sealed record UpdateWebServiceRequestBody(
     string ResourceGroupId,
-    WebServiceSpecDto Spec,
-    DnsRecordDto DnsRecord);
+    WebServiceSpecDto Spec
+);
 
 public sealed record UpdateWebServiceResponse(string Id);
 
 public sealed class UpdateWebServiceHandler(
-    IPublishEndpoint publishEndpoint,
-    MongoDbContext mongoDbContext)
+    MongoDbContext dbContext)
     : IMediatorHandler<UpdateWebServiceRequest, UpdateWebServiceResponse>
 {
     public async Task<Result<UpdateWebServiceResponse>> HandleAsync(
         UpdateWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var webService = await mongoDbContext.WebServices
+        var webService = await dbContext.WebServices
             .Find(ws => ws.Id == request.Id)
             .FirstOrDefaultAsync(cancellationToken: cancellationToken);
 
         if (webService is null)
             return Result.NotFound($"Web service with ID '{request.Id}' not found.");
 
-        webService = webService with
+        return await dbContext.RunInTransactionAsync<UpdateWebServiceResponse>(async (sh, ct) =>
         {
-            Spec = request.Body.Spec.ToDomain(),
-            DnsRecord = request.Body.DnsRecord.ToDomain()
-        };
+            await dbContext.WebServices.UpdateOneAsync(
+                session: sh,
+                ws => ws.Id == request.Id,
+                Builders<WebService>.Update
+                    .Set(ws => ws.Spec, request.Body.Spec.ToDomain()),
+                cancellationToken: ct);
 
-        await mongoDbContext.WebServices.ReplaceOneAsync(
-            ws => ws.Id == request.Id,
-            webService,
-            cancellationToken: cancellationToken);
-
-        await publishEndpoint.Publish(new UpdateEvent
-        {
-            WebServiceId = request.Id
-        }, cancellationToken);
-
-        return new UpdateWebServiceResponse(
-            Id: webService.Id
+            await dbContext.StoreEventAsync(new UpdateEvent
+            {
+                WebServiceId = request.Id
+            }, sh, ct);
+            
+            return new UpdateWebServiceResponse(
+                Id: webService.Id
             );
+        }, cancellationToken: cancellationToken);
     }
 }
 
 public class UpdateWebServiceEventConsumer(
-    MongoDbContext mongoDbContext,
+    MongoDbContext dbContext,
     IKubernetes kubernetes)
     : IConsumer<UpdateEvent>
 {
     public async Task Consume(ConsumeContext<UpdateEvent> context)
     {
         var ct = context.CancellationToken;
-        var webApp = await mongoDbContext.WebServices
+        var webApp = await dbContext.WebServices
             .Find(wa => wa.Id == context.Message.WebServiceId)
             .FirstOrDefaultAsync(ct);
         if (webApp is null) return;
 
-        var resourceGroup = await mongoDbContext.ResourceGroups
+        var resourceGroup = await dbContext.ResourceGroups
             .Find(rg => rg.Id == webApp.ResourceGroupId)
             .FirstOrDefaultAsync(ct);
         if (resourceGroup is null) return;
 
         var ns = resourceGroup.NamespaceName;
-        var inKuber = webApp.ToKubernetes();
+        var inKuber = webApp.ToKubernetes(ns);
 
         var configMap = inKuber.ToConfigMap();
         var deployment = inKuber.ToDeployment();
@@ -132,9 +128,5 @@ public sealed class UpdateWebServiceValidator : AbstractValidator<UpdateWebServi
         RuleFor(x => x.Body.Spec)
             .NotNull().WithMessage("Web service specification is required.")
             .SetValidator(new WebServiceSpecDtoValidator());
-        
-        RuleFor(x => x.Body.DnsRecord)
-            .NotNull().WithMessage("DNS record is required.")
-            .SetValidator(new DnsRecordDtoValidator());
     }
 }
