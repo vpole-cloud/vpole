@@ -12,9 +12,9 @@ namespace Pole.Server.Features.ResourceGroups.Endpoints;
 
 public static class Delete
 {
-    public static RouteGroupBuilder MapDeleteResourceGroupEndpoints(this RouteGroupBuilder group)
+    public static IEndpointRouteBuilder MapDeleteResourceGroupEndpoints(this IEndpointRouteBuilder app)
     {
-        group.MapDelete("/{Id}", async ( IMediator mediator, [AsParameters] DeleteResourceGroupRequest request, CancellationToken cancellationToken) =>
+        app.MapDelete("/{Id}", async ( IMediator mediator, [AsParameters] DeleteResourceGroupRequest request, CancellationToken cancellationToken) =>
         {
             var result = await mediator.Send(request, cancellationToken);
             return result.ToHttpResult(_ => Results.NoContent());
@@ -24,7 +24,7 @@ public static class Delete
         .WithDescription("Deletes the specified resource group. Returns 204 No Content if successful, or 404 Not Found if the resource group does not exist.")
         .Produces(StatusCodes.Status204NoContent);
 
-        return group;
+        return app;
     }
 }
 

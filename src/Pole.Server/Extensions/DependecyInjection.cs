@@ -10,7 +10,6 @@ using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.Server.Database;
 using Pole.Server.Features.Common.Outbox;
-using Pole.Server.Features.DomainNames.Common;
 using Pole.Server.Mediator;
 
 namespace Pole.Server.Extensions;
@@ -83,14 +82,14 @@ public static class DependecyInjection
 
         public IServiceCollection AddHangfireWithMongo(IConfiguration configuration)
         {
-            var mongoConnectionString = configuration.GetConnectionString("pole-mongo");
-            
-            services.AddHangfire(config =>
+            services.AddHangfire((serviceProvider, config) =>
             {
+                var mongoClient = serviceProvider.GetRequiredService<IMongoClient>();
+                
                 config.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
                     .UseSimpleAssemblyNameTypeSerializer()
                     .UseRecommendedSerializerSettings()
-                    .UseMongoStorage(mongoConnectionString, new MongoStorageOptions
+                    .UseMongoStorage(mongoClient, "pole-database", new MongoStorageOptions
                     {
                         MigrationOptions = new MongoMigrationOptions
                         {
@@ -98,14 +97,18 @@ public static class DependecyInjection
                             BackupStrategy = new CollectionMongoBackupStrategy()
                         },
                         Prefix = "hangfire",
-                        CheckConnection = true,
-                        CheckQueuedJobsStrategy = CheckQueuedJobsStrategy.TailNotificationsCollection
+                        CheckConnection = false,
+                        CheckQueuedJobsStrategy = CheckQueuedJobsStrategy.TailNotificationsCollection,
+                        ConnectionCheckTimeout = TimeSpan.FromSeconds(30)
                     });
             });
 
             services.AddHangfireServer(options =>
             {
                 options.ServerName = $"{Environment.MachineName}:pole-server";
+                options.ServerTimeout = TimeSpan.FromMinutes(5);
+                options.ServerCheckInterval = TimeSpan.FromMinutes(1);
+                options.HeartbeatInterval = TimeSpan.FromSeconds(30);
             });
             services.AddScoped<OutboxProcessorJob>();
 
@@ -148,21 +151,28 @@ public static class DependecyInjection
     {
         public WebApplication UseHangfire()
         {
-            var outboxSettings = app.Services.GetRequiredService<IOptions<OutboxSettings>>().Value;
+            try
+            {
+                var outboxSettings = app.Services.GetRequiredService<IOptions<OutboxSettings>>().Value;
 
-            // Configure Hangfire Dashboard (open to everyone for now)
-            app.UseHangfireDashboard();
+                // Configure Hangfire Dashboard (open to everyone for now)
+                app.UseHangfireDashboard();
 
-            // Schedule recurring jobs for outbox processing
-            RecurringJob.AddOrUpdate<OutboxProcessorJob>(
-                "process-outbox-messages",
-                job => job.ProcessOutboxMessagesAsync(),
-                outboxSettings.ProcessingCronExpression);
+                // Schedule recurring jobs for outbox processing
+                RecurringJob.AddOrUpdate<OutboxProcessorJob>(
+                    "process-outbox-messages",
+                    job => job.ProcessOutboxMessagesAsync(),
+                    outboxSettings.ProcessingCronExpression);
 
-            RecurringJob.AddOrUpdate<OutboxProcessorJob>(
-                "cleanup-outbox-messages",
-                job => job.CleanupProcessedMessagesAsync(),
-                Cron.Daily(3)); // Daily at 3 AM
+                RecurringJob.AddOrUpdate<OutboxProcessorJob>(
+                    "cleanup-outbox-messages",
+                    job => job.CleanupProcessedMessagesAsync(),
+                    Cron.Daily(3)); // Daily at 3 AM
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogError(ex, "Failed to initialize Hangfire. Background jobs will not be available.");
+            }
 
             return app;
         }

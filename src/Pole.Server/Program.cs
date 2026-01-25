@@ -8,7 +8,7 @@ var configuration = builder.Configuration;
 var assembly = typeof(Program).Assembly;
 
 builder.AddServiceDefaults();
-builder.AddMongoDBClient("pole-mongo");
+builder.AddMongoDBClient("pole-database");
 builder.AddSecurity();
 
 builder.Services.AddKubernetes(configuration)

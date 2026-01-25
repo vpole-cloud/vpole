@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
+using MongoDB.Driver.Linq;
 using Pole.Server.Database;
 using Pole.Server.Features.Common.Abstractions;
 using Pole.Server.Features.WebServices.Common;
@@ -38,17 +39,17 @@ public sealed class GetWebServicesHandler(
         GetWebServicesRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = request.ResourceGroupId is not null
-            ? Builders<WebService>.Filter.Eq(ws => ws.ResourceGroupId, request.ResourceGroupId)
-            : Builders<WebService>.Filter.Empty;
-
-        var totalCount = (int)await dbContext.WebServices
-            .CountDocumentsAsync(filter, cancellationToken: cancellationToken);
-
-        var webServices = await dbContext.WebServices
-            .Find(filter)
+        var query = dbContext.WebServices.AsQueryable();
+        
+        if (request.ResourceGroupId is not null)
+            query = query.Where(ws => ws.ResourceGroupId == request.ResourceGroupId);
+        if (!string.IsNullOrEmpty(request.Search))
+            query = query.Where(ws => ws.Name.Contains(request.Search) || ws.Id.Contains(request.Search));
+        
+        var totalCount = await query.CountAsync(cancellationToken);
+        var webServices = await query
             .ApplyPagination(request)
-            .ToListAsync(cancellationToken: cancellationToken);
+            .ToListAsync(cancellationToken);
 
         return new PaginatedResponse<WebServiceDto>(
             Items: webServices.Select(x => x.ToDto()),
@@ -58,6 +59,8 @@ public sealed class GetWebServicesHandler(
     }
 }
 
-public record GetWebServicesRequest(
-    [FromQuery] string? ResourceGroupId = null)
-    : PaginatedRequest<WebServiceDto>;
+public record GetWebServicesRequest : PaginatedRequest<WebServiceDto>
+{
+    [FromQuery] public string? ResourceGroupId { get; init; }
+    [FromQuery] public string? Search { get; init; }
+}

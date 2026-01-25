@@ -1,4 +1,5 @@
-﻿using Pole.Server.Features.ResourceGroups.Common;
+﻿using Pole.Server.Features.RedisServices.Common;
+using Pole.Server.Features.ResourceGroups.Common;
 using Pole.Server.Features.WebServices.Common;
 using Pole.Server.Features.DomainNames.Common;
 
@@ -11,6 +12,7 @@ public static class MapApi
         app.MapGroup("/api/v1")
             .MapResourceGroupEndpoints()
             .MapWebServiceEndpoints()
+            .MapRedisServiceEndpoints()
             .MapDomainNameEndpoints();
         return app;
     }

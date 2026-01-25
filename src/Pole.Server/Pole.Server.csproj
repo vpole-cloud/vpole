@@ -34,7 +34,6 @@
 
     <ItemGroup>
       <Folder Include="Features\DomainNames\Events\" />
-      <Folder Include="Settings\" />
     </ItemGroup>
 
 </Project>

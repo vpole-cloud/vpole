@@ -1,9 +1,15 @@
+using Pole.AppHost.MongoDb;
+
 var builder = DistributedApplication.CreateBuilder(args);
 
 var mongoServer = builder.AddMongoDB("pole-mongo")
     .WithDataVolume("pole-mongo-data")
-    .WithLifetime(ContainerLifetime.Persistent);
-var database = mongoServer.AddDatabase("pole-database");
+    .WithLifetime(ContainerLifetime.Persistent)
+    .WithReplicaSet();
+var database = mongoServer.AddDatabase("pole-database-base");
+var mongoReplicaSet = builder
+    .AddMongoReplicaSet("pole-database", database.Resource);
+// var hangfireDatabase = mongoServer.AddDatabase("hangfire-database");
 
 var username = builder.AddParameter("keycloak-username");
 var password = builder.AddParameter("keycloak-password", secret: true);
@@ -19,9 +25,13 @@ var rabbitMq = builder.AddRabbitMQ("pole-rabbitmq")
 var api = builder.AddProject<Projects.Pole_Server>("pole-server")
     .WithReference(keycloak)
     .WithReference(mongoServer)
+    .WithReference(database)
+    .WithReference(mongoReplicaSet)
     .WithReference(rabbitMq)
     .WaitFor(keycloak)
     .WaitFor(mongoServer)
+    .WaitFor(mongoReplicaSet)
+    .WaitFor(database)
     .WaitFor(rabbitMq);
 
 var frontend = builder.AddViteApp("frontend", "../frontend")

@@ -1,20 +1,27 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using System.ComponentModel;
+using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 using Pole.Server.Mediator;
 
 namespace Pole.Server.Features.Common.Abstractions;
 
-public abstract record PaginatedRequest<T>(
-    [FromQuery] int PageNumber = 1, 
-    [FromQuery] int PageSize = 10
-    ) : IMediatorRequest<PaginatedResponse<T>>
+/// <summary>
+/// Should be inherited by records without primary constructor
+/// because value binding does not work with them in inherited records.
+/// </summary>
+/// <typeparam name="T"></typeparam>
+public abstract record PaginatedRequest<T> : IMediatorRequest<PaginatedResponse<T>>
 {
-    public int Skip => (PageNumber - 1) * PageSize;
+    [FromQuery, DefaultValue(1), Description("The page number to retrieve (1-based).")]
+    public int PageNumber { get; init; } = 1;
+    [FromQuery, DefaultValue(10), Description("The number of items per page.")]
+    public int PageSize { get; init; } = 10;
+    internal int Skip => (PageNumber - 1) * PageSize;
 }
 
 public static class PaginatedRequestExtensions
 {
-    public static IQueryable<T> ApplyPagination<T>(this IQueryable<T> query, PaginatedRequest<T> request)
+    public static IQueryable<TEntity> ApplyPagination<TEntity, TRequest>(this IQueryable<TEntity> query, PaginatedRequest<TRequest> request)
     {
         return query
             .Skip(request.Skip)

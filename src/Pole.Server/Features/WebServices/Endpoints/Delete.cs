@@ -28,8 +28,7 @@ public static class Delete
 }
 
 public sealed class DeleteWebServiceHandler(
-    MongoDbContext dbContext,
-    IPublishEndpoint publishEndpoint
+    MongoDbContext dbContext
     ) : IMediatorHandler<DeleteWebServiceRequest, DeleteWebServiceResponse>
 {
     public async Task<Result<DeleteWebServiceResponse>> HandleAsync(DeleteWebServiceRequest request,

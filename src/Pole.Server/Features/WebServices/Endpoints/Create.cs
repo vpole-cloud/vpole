@@ -20,9 +20,9 @@ public static class Create
     {
         public IEndpointRouteBuilder MapCreateWebServiceEndpoint()
         {
-            app.MapPost("/", async (IMediator mediator, [AsParameters] CreateWebServiceRequest request) =>
+            app.MapPost("/", async (IMediator mediator, [AsParameters] CreateWebServiceRequest request, CancellationToken cancellationToken) =>
                 {
-                    var response = await mediator.Send(request);
+                    var response = await mediator.Send(request, cancellationToken);
                     return response.ToHttpResult(v => Results.Accepted(value: v));
                 })
                 .WithName("CreateWebService")
@@ -63,6 +63,7 @@ public sealed class CreateWebServiceHandler(
         var newWebService = new WebService(
             Name: request.Body.Name,
             ResourceGroupId: request.Body.ResourceGroupId,
+            Namespace: group.NamespaceName,
             Spec: request.Body.Spec.ToDomain(),
             DnsRecord: new DnsRecordShortInfo(Id: dnsRecord.Id, Domain: dnsRecord.Name)
         ) { Id = webId };
@@ -94,13 +95,7 @@ public class CreateWebServiceEventConsumer(
             .FirstOrDefaultAsync(ct);
         if (webApp is null) return;
 
-        var resourceGroup = await dbContext.ResourceGroups
-            .Find(rg => rg.Id == webApp.ResourceGroupId)
-            .FirstOrDefaultAsync(ct);
-        if (resourceGroup is null) return;
-
-        var ns = resourceGroup.NamespaceName;
-        var inKuber = webApp.ToKubernetes(ns);
+        var inKuber = webApp.ToKubernetes();
 
         var configMap = inKuber.ToConfigMap();
         var deployment = inKuber.ToDeployment();
@@ -108,24 +103,24 @@ public class CreateWebServiceEventConsumer(
         var ingress = inKuber.ToIngress();
         var serviceMonitor = inKuber.ToServiceMonitor();
 
-        await KubernetesExtensions.CreateOrIgnoreAsync(() =>
-            kubernetes.CoreV1.CreateNamespacedConfigMapAsync(configMap, ns, cancellationToken: ct));
+        await KubernetesExtensions.CreateIfNotExistAsync(() =>
+            kubernetes.CoreV1.CreateNamespacedConfigMapAsync(configMap, webApp.Namespace, cancellationToken: ct));
 
-        await KubernetesExtensions.CreateOrIgnoreAsync(() =>
-            kubernetes.AppsV1.CreateNamespacedDeploymentAsync(deployment, ns, cancellationToken: ct));
+        await KubernetesExtensions.CreateIfNotExistAsync(() =>
+            kubernetes.AppsV1.CreateNamespacedDeploymentAsync(deployment, webApp.Namespace, cancellationToken: ct));
 
-        await KubernetesExtensions.CreateOrIgnoreAsync(() =>
-            kubernetes.CoreV1.CreateNamespacedServiceAsync(service, ns, cancellationToken: ct));
+        await KubernetesExtensions.CreateIfNotExistAsync(() =>
+            kubernetes.CoreV1.CreateNamespacedServiceAsync(service, webApp.Namespace, cancellationToken: ct));
 
-        await KubernetesExtensions.CreateOrIgnoreAsync(() =>
-            kubernetes.NetworkingV1.CreateNamespacedIngressAsync(ingress, ns, cancellationToken: ct));
+        await KubernetesExtensions.CreateIfNotExistAsync(() =>
+            kubernetes.NetworkingV1.CreateNamespacedIngressAsync(ingress, webApp.Namespace, cancellationToken: ct));
         
-        await KubernetesExtensions.CreateOrIgnoreAsync(() =>
+        await KubernetesExtensions.CreateIfNotExistAsync(() =>
             kubernetes.CustomObjects.CreateNamespacedCustomObjectAsync(
                 serviceMonitor,
                 group: "monitoring.coreos.com",
                 version: "v1",
-                namespaceParameter: ns,
+                namespaceParameter: webApp.Namespace,
                 plural: "servicemonitors",
                 cancellationToken: ct));
     }

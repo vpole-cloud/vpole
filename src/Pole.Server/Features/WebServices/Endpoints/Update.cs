@@ -19,7 +19,7 @@ public static class Update
     {
         public IEndpointRouteBuilder MapUpdateWebServiceEndpoint()
         {
-            app.MapPut("/{Id}", async (IMediator mediator, UpdateWebServiceRequest request, CancellationToken cancellationToken) =>
+            app.MapPut("/{Id}", async (IMediator mediator, [AsParameters] UpdateWebServiceRequest request, CancellationToken cancellationToken) =>
                 {
                     var result = await mediator.Send(request, cancellationToken);
                     return result.ToHttpResult(x => Results.Accepted(value: x));
@@ -98,18 +98,17 @@ public class UpdateWebServiceEventConsumer(
             .FirstOrDefaultAsync(ct);
         if (resourceGroup is null) return;
 
-        var ns = resourceGroup.NamespaceName;
-        var inKuber = webApp.ToKubernetes(ns);
+        var inKuber = webApp.ToKubernetes();
 
         var configMap = inKuber.ToConfigMap();
         var deployment = inKuber.ToDeployment();
         var service = inKuber.ToService();
         var ingress = inKuber.ToIngress();
         
-        await kubernetes.CoreV1.ReplaceNamespacedConfigMapAsync(configMap, configMap.Metadata.Name, ns, cancellationToken: ct);
-        await kubernetes.AppsV1.ReplaceNamespacedDeploymentAsync(deployment, deployment.Metadata.Name, ns, cancellationToken: ct);
-        await kubernetes.CoreV1.ReplaceNamespacedServiceAsync(service, service.Metadata.Name, ns, cancellationToken: ct);
-        await kubernetes.NetworkingV1.ReplaceNamespacedIngressAsync(ingress, ingress.Metadata.Name, ns, cancellationToken: ct);
+        await kubernetes.CoreV1.ReplaceNamespacedConfigMapAsync(configMap, configMap.Metadata.Name, webApp.Namespace, cancellationToken: ct);
+        await kubernetes.AppsV1.ReplaceNamespacedDeploymentAsync(deployment, deployment.Metadata.Name, webApp.Namespace, cancellationToken: ct);
+        await kubernetes.CoreV1.ReplaceNamespacedServiceAsync(service, service.Metadata.Name, webApp.Namespace, cancellationToken: ct);
+        await kubernetes.NetworkingV1.ReplaceNamespacedIngressAsync(ingress, ingress.Metadata.Name, webApp.Namespace, cancellationToken: ct);
         
         await context.Publish(new UpdatedEvent(WebServiceId: webApp.Id), ct);
     }

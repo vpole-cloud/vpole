@@ -1,6 +1,7 @@
-using System.Text.RegularExpressions;
 using FluentValidation;
+using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
+using MongoDB.Driver.Linq;
 using Pole.Server.Database;
 using Pole.Server.Features.Common.Abstractions;
 using Pole.Server.Features.ResourceGroups.Common;
@@ -27,9 +28,10 @@ public static class Get
     }
 }
 
-public record GetResourceGroupsRequest(
-    string? Search
-) : PaginatedRequest<ResourceGroupDto>;
+public record GetResourceGroupsRequest : PaginatedRequest<ResourceGroupDto>
+{
+    [FromQuery] public string? Search { get; init; }
+}
 
 
 public sealed class GetResourceGroupsHandler(
@@ -40,20 +42,14 @@ public sealed class GetResourceGroupsHandler(
         GetResourceGroupsRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<ResourceGroup>.Filter.Empty;
+        var query = dbContext.ResourceGroups.AsQueryable();
         if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var pattern = $".*{Regex.Escape(request.Search)}.*";
-            filter = Builders<ResourceGroup>.Filter.Regex(rg => rg.Name, new MongoDB.Bson.BsonRegularExpression(pattern, "i"));
-        }
+            query = query.Where(rg => rg.Name.Contains(request.Search, StringComparison.OrdinalIgnoreCase));
 
-        var totalCount = await dbContext.ResourceGroups
-            .CountDocumentsAsync(filter, cancellationToken: cancellationToken);
-
-        var items = await dbContext.ResourceGroups
-            .Find(filter)
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await query
             .ApplyPagination(request)
-            .ToListAsync(cancellationToken: cancellationToken);
+            .ToListAsync(cancellationToken);
 
         return new PaginatedResponse<ResourceGroupDto>(
             Items: items.Select(x => x.ToDto()),
@@ -67,11 +63,5 @@ public class GetResourceGroupsRequestValidator : AbstractValidator<GetResourceGr
 {
     public GetResourceGroupsRequestValidator()
     {
-        RuleFor(x => x.PageNumber)
-            .GreaterThan(0).WithMessage("Page number must be greater than 0.");
-
-        RuleFor(x => x.PageSize)
-            .GreaterThan(0).WithMessage("Page size must be greater than 0.")
-            .LessThanOrEqualTo(100).WithMessage("Page size must not exceed 100.");
     }
 }
