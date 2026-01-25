@@ -60,8 +60,7 @@ public sealed class GetDomainNamesHandler(
     }
 }
 
-public record GetDomainNamesRequest(
-    [FromQuery] string? Search = null)
-    : PaginatedRequest<DnsRecordDto>
+public record GetDomainNamesRequest : PaginatedRequest<DnsRecordDto>
 {
+    [FromQuery] public string? Search { get; init; }
 }

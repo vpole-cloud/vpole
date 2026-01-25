@@ -12,11 +12,9 @@ public static class ResourceGroupEndpoints
         {
             app.MapGroup(Route)
                 .WithTags("ResourceGroups")
-                .MapCreateResourceGroupEndpoint();
-                // .MapUpdateResourceGroupEndpoint()
-                // .MapDeleteResourceGroupEndpoints()
-                // .MapGetResourceGroupByIdEndpoint()
-                // .MapGetResourceGroupsEndpoint();
+                .MapCreateResourceGroupEndpoint()
+                .MapGetResourceGroupsEndpoint()
+                .MapDeleteResourceGroupEndpoints();
                 
             return app;
         }

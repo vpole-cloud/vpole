@@ -11,8 +11,8 @@ public static class ClientSessionHandleExtensions
     {
         public async Task<Result> RunInTransactionAsync(
             Func<IClientSessionHandle, CancellationToken, Task<Result>> callbackAsync,
-            TransactionOptions transactionOptions = null,
-            CancellationToken cancellationToken = default(CancellationToken))
+            TransactionOptions? transactionOptions = null,
+            CancellationToken cancellationToken = default)
         {
             using var session = await dbContext.Client.StartSessionAsync(cancellationToken: cancellationToken);
             try
@@ -37,8 +37,8 @@ public static class ClientSessionHandleExtensions
         }
         public async Task<Result<T>> RunInTransactionAsync<T>(
             Func<IClientSessionHandle, CancellationToken, Task<Result<T>>> callbackAsync,
-            TransactionOptions transactionOptions = null,
-            CancellationToken cancellationToken = default(CancellationToken)) where T : notnull
+            TransactionOptions? transactionOptions = null,
+            CancellationToken cancellationToken = default) where T : notnull
         {
             using var session = await dbContext.Client.StartSessionAsync(cancellationToken: cancellationToken);
             try

@@ -16,7 +16,7 @@ public static class Create
 {
     public static IEndpointRouteBuilder MapCreateResourceGroupEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/", async (CreateResourceGroupRequest request, IMediator mediator) =>
+        app.MapPost("/", async ([AsParameters] CreateResourceGroupRequest request, [FromServices] IMediator mediator) =>
             {
                 var result = await mediator.Send(request);
                 return result.ToHttpResult(r => Results.Created($"/resource-groups/{r.Id}", r));

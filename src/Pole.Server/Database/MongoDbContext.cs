@@ -6,6 +6,7 @@ using MongoDB.Driver;
 using Pole.Server.Features.Common.Abstractions;
 using Pole.Server.Features.Common.Outbox;
 using Pole.Server.Features.DomainNames.Common;
+using Pole.Server.Features.RedisServices.Common;
 using Pole.Server.Features.ResourceGroups.Common;
 using Pole.Server.Features.WebServices.Common;
 using EventExtensions = Pole.Server.Features.Common.Abstractions.EventExtensions;
@@ -19,6 +20,7 @@ public class MongoDbContext(
     public IMongoDatabase Database { get; } = database;
     public IMongoClient Client { get; } = client;
     public IMongoCollection<WebService> WebServices { get; } = database.GetCollection<WebService>("WebServices");
+    public IMongoCollection<Redis> RedisServices { get; } = database.GetCollection<Redis>("RedisServices");
     public IMongoCollection<ResourceGroup> ResourceGroups { get; } = database.GetCollection<ResourceGroup>("ResourceGroups");
     public IMongoCollection<DnsRecord> DnsRecords { get; } = database.GetCollection<DnsRecord>("DnsRecords");
     public IMongoCollection<OutboxMessage> OutboxMessages { get; } = database.GetCollection<OutboxMessage>("OutboxMessages");

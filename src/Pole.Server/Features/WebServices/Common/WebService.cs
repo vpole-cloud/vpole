@@ -1,39 +1,14 @@
-﻿using System.Collections.Immutable;
-using MongoDB.Bson.Serialization.Attributes;
-using Pole.Server.Features.Common.Abstractions;
+﻿using Pole.Server.Features.ResourceGroups.Common;
 
 namespace Pole.Server.Features.WebServices.Common;
 
 public record WebService(
     string Name,
     string ResourceGroupId,
+    string Namespace,
     WebServiceSpec Spec,
     DnsRecordShortInfo DnsRecord
-    ) : BaseEntity
-{
-    public WebServiceStatus Status { get; init; } = new Provisioning();
-    public ImmutableList<string> Tags { get; init; } = ImmutableList<string>.Empty;
-    public ImmutableList<ServiceEvent> Events { get; init; } = ImmutableList<ServiceEvent>.Empty;
-    public string Version { get; init; } = Guid.NewGuid().ToString("N");
-}
-
-public record ServiceEvent(
-    DateTime OccurredOn,
-    string Message
-);
-
-[BsonDiscriminator(RootClass =  true)]
-[BsonKnownTypes(typeof(Provisioning), typeof(Running), typeof(Failed), typeof(Stopped))]
-public abstract record WebServiceStatus
-{
-    public DateTime LastUpdatedOn { get; init; } = DateTime.UtcNow;
-}
-
-public sealed record Provisioning : WebServiceStatus;
-public sealed record Running : WebServiceStatus;
-public sealed record Failed(string Reason) : WebServiceStatus;
-public sealed record Stopped : WebServiceStatus;
-
+) : PoleService(Name, ResourceGroupId, Namespace);
 
 public record DnsRecordShortInfo (
     string Id,
