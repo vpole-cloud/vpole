@@ -4,7 +4,6 @@ using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 using Pole.Server.Database;
-using Pole.Server.Extensions;
 using Pole.Server.Features.DomainNames.Common;
 using Pole.Server.Features.WebServices.Common;
 using Pole.Server.Features.WebServices.Events;

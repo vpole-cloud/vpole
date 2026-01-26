@@ -2,7 +2,6 @@
 using MassTransit;
 using MongoDB.Driver;
 using Pole.Server.Database;
-using Pole.Server.Extensions;
 using Pole.Server.Features.WebServices.Events;
 using Pole.Server.Kuber;
 using Pole.Server.Mediator;

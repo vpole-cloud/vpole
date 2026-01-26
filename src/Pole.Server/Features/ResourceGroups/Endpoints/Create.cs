@@ -4,7 +4,6 @@ using k8s.Models;
 using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using Pole.Server.Database;
-using Pole.Server.Extensions;
 using Pole.Server.Features.ResourceGroups.Common;
 using Pole.Server.Features.ResourceGroups.Events;
 using Pole.Server.Mediator;

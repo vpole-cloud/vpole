@@ -1,9 +1,8 @@
 ﻿using MongoDB.Driver;
-using Pole.Server.Database;
 using Pole.Server.Features.Common.Exeptions;
 using Pole.Server.ResultType;
 
-namespace Pole.Server.Extensions;
+namespace Pole.Server.Database;
 
 public static class ClientSessionHandleExtensions
 {

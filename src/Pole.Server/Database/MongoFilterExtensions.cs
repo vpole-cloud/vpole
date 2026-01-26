@@ -1,7 +1,7 @@
 ﻿using System.Linq.Expressions;
 using MongoDB.Driver;
 
-namespace Pole.Server.Extensions;
+namespace Pole.Server.Database;
 
 public static class MongoFilterExtensions
 {
