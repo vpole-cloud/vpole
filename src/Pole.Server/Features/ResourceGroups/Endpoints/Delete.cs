@@ -3,7 +3,6 @@ using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 using Pole.Server.Database;
-using Pole.Server.Extensions;
 using Pole.Server.Features.ResourceGroups.Events;
 using Pole.Server.Mediator;
 using Pole.Server.ResultType;
