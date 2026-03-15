@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
-using Pole.Features.Database;
+using Pole.Database;
 using Pole.Features.DomainNames.Common;
 using Pole.Mediator;
 using Pole.ResultType;

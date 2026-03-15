@@ -4,16 +4,11 @@ using MassTransit;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Domain.Models;
-using Pole.Features.Common.Outbox;
 using Pole.Features.Core.Abstractions;
 using Pole.Features.Core.Outbox;
-using Pole.Features.DomainNames.Common;
-using Pole.Features.RedisServices.Common;
-using Pole.Features.ResourceGroups.Common;
-using Pole.Features.WebServices.Common;
 using EventExtensions = Pole.Features.Core.Abstractions.EventExtensions;
 
-namespace Pole.Features.Database;
+namespace Pole.Database;
 
 public class MongoDbContext(
     IMongoClient client,
