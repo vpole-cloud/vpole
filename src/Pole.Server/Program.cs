@@ -1,6 +1,6 @@
 using FluentValidation;
+using Pole.Features;
 using Pole.Server.Extensions;
-using Pole.Server.Features;
 using Pole.ServiceDefaults;
 
 var builder = WebApplication.CreateBuilder(args);
