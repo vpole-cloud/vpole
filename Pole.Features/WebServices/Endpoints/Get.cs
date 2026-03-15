@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using MongoDB.Driver.Linq;
-using Pole.Features.Database;
+using Pole.Database;
 using Pole.Features.Request;
 using Pole.Features.WebServices.Common;
 using Pole.Mediator;

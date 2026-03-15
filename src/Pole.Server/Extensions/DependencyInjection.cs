@@ -8,8 +8,8 @@ using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Features.Common.Outbox;
-using Pole.Features.Database;
 using Pole.Mediator;
 
 namespace Pole.Server.Extensions;

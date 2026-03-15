@@ -2,7 +2,7 @@
 using Pole.Features.Core.Exeptions;
 using Pole.ResultType;
 
-namespace Pole.Features.Database;
+namespace Pole.Database;
 
 public static class ClientSessionHandleExtensions
 {

@@ -1,8 +1,7 @@
 using MassTransit;
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Domain.Models;
-using Pole.Features.Database;
-using Pole.Features.ResourceGroups.Common;
 using Pole.Features.WebServices.Events;
 
 namespace Pole.Features.ResourceGroups.Consumers;
