@@ -4,6 +4,7 @@ using MassTransit;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Domain.Models;
+using Pole.Domain.Models.FSharp;
 using Pole.Features.Core.Abstractions;
 using Pole.Features.Core.Outbox;
 using EventExtensions = Pole.Features.Core.Abstractions.EventExtensions;
@@ -20,10 +21,10 @@ public class MongoDbContext(
     public IMongoCollection<Redis> RedisServices { get; } = database.GetCollection<Redis>("RedisServices");
     public IMongoCollection<ResourceGroup> ResourceGroups { get; } = database.GetCollection<ResourceGroup>("ResourceGroups");
     public IMongoCollection<DnsRecord> DnsRecords { get; } = database.GetCollection<DnsRecord>("DnsRecords");
+    public IMongoCollection<PostgresCluster>  Postgres { get; } = database.GetCollection<PostgresCluster>("Postgres");
     public IMongoCollection<OutboxMessage> OutboxMessages { get; } = database.GetCollection<OutboxMessage>("OutboxMessages");
 
     public async Task StoreEventAsync<TEvent>(TEvent @event, IClientSessionHandle session, CancellationToken cancellationToken = default)
-        where TEvent : BaseEvent
     {
         var eventType = typeof(TEvent);
         var entityNameAttribute = eventType.GetCustomAttribute<EntityNameAttribute>();
@@ -36,7 +37,7 @@ public class MongoDbContext(
         {
             EventType = eventTypeName,
             PayloadJson = payloadJson,
-            OccurredOn = @event.OccurredOn
+            OccurredOn = DateTime.UtcNow,
         };
 
         await OutboxMessages.InsertOneAsync(session, outboxMessage, cancellationToken: cancellationToken);

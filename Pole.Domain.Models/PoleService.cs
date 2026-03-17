@@ -1,5 +1,6 @@
 ﻿using System.Collections.Immutable;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Domain.Models.Abstractions;
 
 namespace Pole.Domain.Models;
 

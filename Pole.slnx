@@ -1,7 +1,10 @@
 <Solution>
   <Project Path="Pole.Database/Pole.Database.csproj" />
+  <Project Path="Pole.Domain.Models.Abstractions/Pole.Domain.Models.Abstractions.csproj" />
+  <Project Path="Pole.Domain.Models.FSharp/Pole.Domain.Models.FSharp.fsproj" />
   <Project Path="Pole.Domain.Models/Pole.Domain.Models.csproj" />
   <Project Path="Pole.Features.Core/Pole.Features.Core.csproj" />
+  <Project Path="Pole.Features.Postgres/Pole.Features.Postgres.fsproj" />
   <Project Path="Pole.Features.Request/Pole.Features.Request.csproj" />
   <Project Path="Pole.Features/Pole.Features.csproj" />
   <Project Path="Pole.Mediator/Pole.Mediator.csproj" />
