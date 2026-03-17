@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using Pole.Domain.Models.Abstractions;
 
 namespace Pole.Domain.Models;
 

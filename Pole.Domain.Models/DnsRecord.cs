@@ -1,3 +1,5 @@
+using Pole.Domain.Models.Abstractions;
+
 namespace Pole.Domain.Models;
 
 public record DnsRecord(

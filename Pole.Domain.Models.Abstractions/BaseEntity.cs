@@ -1,7 +1,7 @@
 ﻿using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace Pole.Domain.Models;
+namespace Pole.Domain.Models.Abstractions;
 
 public abstract record BaseEntity
 {
