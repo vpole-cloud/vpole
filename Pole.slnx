@@ -1,14 +1,14 @@
 <Solution>
-  <Project Path="Pole.Database/Pole.Database.csproj" />
-  <Project Path="Pole.Domain.Models.Abstractions/Pole.Domain.Models.Abstractions.csproj" />
-  <Project Path="Pole.Domain.Models.FSharp/Pole.Domain.Models.FSharp.fsproj" />
-  <Project Path="Pole.Domain.Models/Pole.Domain.Models.csproj" />
-  <Project Path="Pole.Features.Core/Pole.Features.Core.csproj" />
-  <Project Path="Pole.Features.Postgres/Pole.Features.Postgres.fsproj" />
-  <Project Path="Pole.Features.Request/Pole.Features.Request.csproj" />
-  <Project Path="Pole.Features/Pole.Features.csproj" />
-  <Project Path="Pole.Mediator/Pole.Mediator.csproj" />
-  <Project Path="Pole.ResultType/Pole.ResultType.csproj" />
+  <Project Path="src/Pole.Database/Pole.Database.csproj" />
+  <Project Path="src/Pole.Domain.Models.Abstractions/Pole.Domain.Models.Abstractions.csproj" />
+  <Project Path="src/Pole.Domain.Models.FSharp/Pole.Domain.Models.FSharp.fsproj" />
+  <Project Path="src/Pole.Domain.Models/Pole.Domain.Models.csproj" />
+  <Project Path="src/Pole.Features.Core/Pole.Features.Core.csproj" />
+  <Project Path="src/Pole.Features.Postgres/Pole.Features.Postgres.fsproj" />
+  <Project Path="src/Pole.Features.Request/Pole.Features.Request.csproj" />
+  <Project Path="src/Pole.Features/Pole.Features.csproj" />
+  <Project Path="src/Pole.Mediator/Pole.Mediator.csproj" />
+  <Project Path="src/Pole.ResultType/Pole.ResultType.csproj" />
   <Project Path="src/Pole.AppHost/Pole.AppHost.csproj" />
   <Project Path="src/Pole.Server/Pole.Server.csproj" />
   <Project Path="src/Pole.ServiceDefaults/Pole.ServiceDefaults.csproj" />
