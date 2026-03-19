@@ -1,4 +1,4 @@
-﻿namespace Pole.Features.Common.Outbox;
+﻿namespace Pole.Features.Outbox;
 
 public class OutboxSettings
 {

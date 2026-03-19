@@ -9,8 +9,8 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Domain.Models;
+using Pole.Features.Events.ResourceGroups;
 using Pole.Features.ResourceGroups.Common;
-using Pole.Features.ResourceGroups.Events;
 using Pole.Mediator;
 using Pole.ResultType;
 

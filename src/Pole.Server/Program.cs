@@ -1,14 +1,22 @@
 using System.Reflection;
-using Pole.Features.WebServices.Endpoints;
+using Pole.Feature.DomainNames.Common;
+using Pole.Features.Outbox;
 using Pole.Server.Extensions;
 using Pole.ServiceDefaults;
 using Pole.Features.Postgres.Endpoints;
+using Pole.Features.RedisServices.Common;
+using Pole.Features.ResourceGroups.Common;
+using Pole.Features.WebServices.Common;
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
 Assembly[] assemblies = [
-    typeof(CreateWebServiceHandler).Assembly,
-    typeof(CreatePostgresClusterHandler).Assembly
+    typeof(WebServiceEndpoints).Assembly,
+    typeof(PostgresClusterEndpoints).Assembly,
+    typeof(DomainNameEndpoints).Assembly,
+    typeof(OutboxProcessorJob).Assembly,
+    typeof(ResourceGroupEndpoints).Assembly,
+    typeof(RedisServiceEndpoints).Assembly,
 ];
 
 builder.AddServiceDefaults();

@@ -1,6 +1,6 @@
 ﻿using Pole.Domain.Models;
 
-namespace Pole.Features.DomainNames.Common;
+namespace Pole.Feature.DomainNames.Common;
 
 public sealed record DnsRecordDto(
     string Id,
