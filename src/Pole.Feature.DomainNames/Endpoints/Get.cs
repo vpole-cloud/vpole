@@ -8,12 +8,12 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Domain.Models;
-using Pole.Features.DomainNames.Common;
+using Pole.Feature.DomainNames.Common;
 using Pole.Features.Request;
 using Pole.Mediator;
 using Pole.ResultType;
 
-namespace Pole.Features.DomainNames.Endpoints;
+namespace Pole.Feature.DomainNames.Endpoints;
 
 public static class Get
 {

@@ -1,9 +1,9 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using Pole.Features.DomainNames.Endpoints;
+using Pole.Feature.DomainNames.Endpoints;
 
-namespace Pole.Features.DomainNames.Common;
+namespace Pole.Feature.DomainNames.Common;
 
 public static class DomainNameEndpoints
 {

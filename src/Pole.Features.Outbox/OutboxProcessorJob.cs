@@ -10,7 +10,7 @@ using Pole.Features.Core.Outbox;
 using Pole.Features.Events.Abstractions;
 using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
 
-namespace Pole.Features.Common.Outbox;
+namespace Pole.Features.Outbox;
 
 public partial class OutboxProcessorJob(
     MongoDbContext dbContext,

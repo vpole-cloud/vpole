@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Features.ResourceGroups.Events;
+using Pole.Features.Events.ResourceGroups;
 using Pole.Mediator;
 using Pole.ResultType;
 

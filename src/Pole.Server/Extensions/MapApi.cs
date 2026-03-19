@@ -1,4 +1,4 @@
-﻿using Pole.Features.DomainNames.Common;
+﻿using Pole.Feature.DomainNames.Common;
 using Pole.Features.Postgres.Endpoints;
 using Pole.Features.RedisServices.Common;
 using Pole.Features.ResourceGroups.Common;

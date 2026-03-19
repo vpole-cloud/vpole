@@ -26,10 +26,12 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Pole.Feature.DomainNames\Pole.Feature.DomainNames.csproj" />
+      <ProjectReference Include="..\Pole.Features.Outbox\Pole.Features.Outbox.csproj" />
       <ProjectReference Include="..\Pole.Features.Postgres\Pole.Features.Postgres.fsproj" />
       <ProjectReference Include="..\Pole.Features.RedisServices\Pole.Features.RedisServices.csproj" />
+      <ProjectReference Include="..\Pole.Features.ResourceGroups\Pole.Features.ResourceGroups.csproj" />
       <ProjectReference Include="..\Pole.Features.WebServices\Pole.Features.WebServices.csproj" />
-      <ProjectReference Include="..\Pole.Features\Pole.Features.csproj" />
       <ProjectReference Include="..\Pole.ServiceDefaults\Pole.ServiceDefaults.csproj" />
     </ItemGroup>
 

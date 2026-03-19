@@ -5,11 +5,11 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Features.DomainNames.Common;
+using Pole.Feature.DomainNames.Common;
 using Pole.Mediator;
 using Pole.ResultType;
 
-namespace Pole.Features.DomainNames.Endpoints;
+namespace Pole.Feature.DomainNames.Endpoints;
 
 public static class GetById
 {

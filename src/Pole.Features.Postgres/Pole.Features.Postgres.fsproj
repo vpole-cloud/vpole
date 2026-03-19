@@ -30,8 +30,9 @@
         <PackageReference Include="KubernetesClient" Version="18.0.13" />
     </ItemGroup>
     <ItemGroup>
+      <ProjectReference Include="..\Pole.ASP.Helpers\Pole.ASP.Helpers.csproj" />
       <ProjectReference Include="..\Pole.Database\Pole.Database.csproj" />
-      <ProjectReference Include="..\Pole.Features\Pole.Features.csproj" />
+      <ProjectReference Include="..\Pole.Features.Request\Pole.Features.Request.csproj" />
       <ProjectReference Include="..\Pole.Mediator\Pole.Mediator.csproj" />
     </ItemGroup>
 </Project>
