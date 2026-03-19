@@ -1,5 +1,5 @@
 ﻿using MassTransit;
-using Pole.Features.Core.Abstractions;
+using Pole.Features.Events.Abstractions;
 
 namespace Pole.Features.ResourceGroups.Events;
 

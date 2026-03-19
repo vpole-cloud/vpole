@@ -1,16 +1,27 @@
 <Solution>
-  <Project Path="src/Pole.ASP.Helpers/Pole.ASP.Helpers.csproj" />
-  <Project Path="src/Pole.Database/Pole.Database.csproj" />
-  <Project Path="src/Pole.Domain.Models.Abstractions/Pole.Domain.Models.Abstractions.csproj" />
-  <Project Path="src/Pole.Domain.Models.FSharp/Pole.Domain.Models.FSharp.fsproj" />
-  <Project Path="src/Pole.Domain.Models/Pole.Domain.Models.csproj" />
-  <Project Path="src/Pole.Features.Core/Pole.Features.Core.csproj" />
-  <Project Path="src/Pole.Features.Postgres/Pole.Features.Postgres.fsproj" />
-  <Project Path="src/Pole.Features.Request/Pole.Features.Request.csproj" />
-  <Project Path="src/Pole.Features/Pole.Features.csproj" />
-  <Project Path="src/Pole.Mediator/Pole.Mediator.csproj" />
-  <Project Path="src/Pole.ResultType/Pole.ResultType.csproj" />
-  <Project Path="src/Pole.AppHost/Pole.AppHost.csproj" />
-  <Project Path="src/Pole.Server/Pole.Server.csproj" />
-  <Project Path="src/Pole.ServiceDefaults/Pole.ServiceDefaults.csproj" />
+  <Folder Name="/api/">
+    <Project Path="src/Pole.AppHost/Pole.AppHost.csproj" />
+    <Project Path="src/Pole.Server/Pole.Server.csproj" />
+  </Folder>
+  <Folder Name="/domain/">
+    <Project Path="src/Pole.Domain.Models.Abstractions/Pole.Domain.Models.Abstractions.csproj" />
+    <Project Path="src/Pole.Domain.Models.FSharp/Pole.Domain.Models.FSharp.fsproj" />
+    <Project Path="src/Pole.Domain.Models/Pole.Domain.Models.csproj" />
+  </Folder>
+  <Folder Name="/features/">
+    <Project Path="src/Pole.Database/Pole.Database.csproj" />
+    <Project Path="src/Pole.Features.Core/Pole.Features.Core.csproj" />
+    <Project Path="src/Pole.Features.Events/Pole.Features.Events.csproj" />
+    <Project Path="src/Pole.Features.Postgres/Pole.Features.Postgres.fsproj" />
+    <Project Path="src/Pole.Features.RedisServices/Pole.Features.RedisServices.csproj" />
+    <Project Path="src/Pole.Features.Request/Pole.Features.Request.csproj" />
+    <Project Path="src/Pole.Features.WebServices/Pole.Features.WebServices.csproj" />
+    <Project Path="src/Pole.Features/Pole.Features.csproj" />
+  </Folder>
+  <Folder Name="/helpers/">
+    <Project Path="src/Pole.ASP.Helpers/Pole.ASP.Helpers.csproj" />
+    <Project Path="src/Pole.Mediator/Pole.Mediator.csproj" />
+    <Project Path="src/Pole.ResultType/Pole.ResultType.csproj" />
+    <Project Path="src/Pole.ServiceDefaults/Pole.ServiceDefaults.csproj" />
+  </Folder>
 </Solution>

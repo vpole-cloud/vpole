@@ -10,6 +10,7 @@
       <ProjectReference Include="..\Pole.Domain.Models.FSharp\Pole.Domain.Models.FSharp.fsproj" />
       <ProjectReference Include="..\Pole.Domain.Models\Pole.Domain.Models.csproj" />
       <ProjectReference Include="..\Pole.Features.Core\Pole.Features.Core.csproj" />
+      <ProjectReference Include="..\Pole.Features.Events\Pole.Features.Events.csproj" />
       <ProjectReference Include="..\Pole.ResultType\Pole.ResultType.csproj" />
     </ItemGroup>
 

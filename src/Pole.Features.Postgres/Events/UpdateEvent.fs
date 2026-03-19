@@ -1,6 +1,6 @@
 namespace Pole.Features.Postgres.Events
 
-open Pole.Features.Core.Abstractions
+open Pole.Features.Events.Abstractions
 
 type UpdateEvent =
     { ClusterId : string

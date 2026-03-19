@@ -6,9 +6,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Core.Abstractions;
 using Pole.Features.Core.Outbox;
-using EventExtensions = Pole.Features.Core.Abstractions.EventExtensions;
+using Pole.Features.Events.Abstractions;
+using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
 
 namespace Pole.Features.Common.Outbox;
 
