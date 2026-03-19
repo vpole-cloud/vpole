@@ -15,6 +15,7 @@
         <PackageReference Include="KubernetesClient" Version="18.0.13" />
     </ItemGroup>
     <ItemGroup>
+      <ProjectReference Include="..\Pole.ASP.Helpers\Pole.ASP.Helpers.csproj" />
       <ProjectReference Include="..\Pole.Database\Pole.Database.csproj" />
       <ProjectReference Include="..\Pole.Domain.Models\Pole.Domain.Models.csproj" />
       <ProjectReference Include="..\Pole.Features.Core\Pole.Features.Core.csproj" />

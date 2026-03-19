@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using FluentValidation;
 using Hangfire;
 using Hangfire.Mongo;
 using Hangfire.Mongo.Migration.Strategies;
@@ -18,21 +19,33 @@ public static class DependencyInjection
 {
     extension(IServiceCollection services)
     {
-        public IServiceCollection AddPoleMediator(IConfiguration configuration, Assembly assembly)
+        public IServiceCollection AddPoleMediator(params Assembly[] assemblies)
         {
             services.AddScoped<IMediator, Pole.Mediator.Mediator>();
 
-            var handlerTypes = assembly.GetTypes()
-                .Where(t => t is { IsClass: true, IsAbstract: false } && t.GetInterfaces()
-                    .Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IMediatorHandler<,>)));
-
-            foreach (var handlerType in handlerTypes)
+            foreach (var assembly in assemblies)
             {
-                var interfaceType = handlerType.GetInterfaces()
-                    .First(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IMediatorHandler<,>));
-                services.AddScoped(interfaceType, handlerType);
+                var handlerTypes = assembly.GetTypes()
+                    .Where(t => t is { IsClass: true, IsAbstract: false } && t.GetInterfaces()
+                        .Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IMediatorHandler<,>)));
+
+                foreach (var handlerType in handlerTypes)
+                {
+                    var interfaceType = handlerType.GetInterfaces()
+                        .First(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IMediatorHandler<,>));
+                    services.AddScoped(interfaceType, handlerType);
+                }
             }
 
+            return services;
+        }
+        
+        public IServiceCollection AddValidatorsFromAssemblies(params Assembly[] assemblies)
+        {
+            foreach (var assembly in assemblies)
+            {
+                services.AddValidatorsFromAssembly(assembly);
+            }
             return services;
         }
 
@@ -45,7 +58,7 @@ public static class DependencyInjection
             });
             return services;
         }
-        public IServiceCollection AddEventBus(IConfiguration configuration, Assembly assembly)
+        public IServiceCollection AddEventBus(IConfiguration configuration, Assembly[] assemblies)
         {
             services.AddMassTransit(x =>
             {
@@ -54,7 +67,7 @@ public static class DependencyInjection
                     cfg.Host(configuration.GetConnectionString("pole-rabbitmq"));
                     cfg.ConfigureEndpoints(context);
                 });
-                x.AddConsumers(assembly);
+                x.AddConsumers(assemblies);
             });
             return services;
         }

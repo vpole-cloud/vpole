@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="src/Pole.ASP.Helpers/Pole.ASP.Helpers.csproj" />
   <Project Path="src/Pole.Database/Pole.Database.csproj" />
   <Project Path="src/Pole.Domain.Models.Abstractions/Pole.Domain.Models.Abstractions.csproj" />
   <Project Path="src/Pole.Domain.Models.FSharp/Pole.Domain.Models.FSharp.fsproj" />

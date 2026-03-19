@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Pole.ResultType;
 
-namespace Pole.Features;
+namespace Pole.ASP.Helpers;
 
 public static class ResultExtensions
 {

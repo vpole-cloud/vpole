@@ -17,6 +17,7 @@ type PostgresCluster =
       Id : string
       Name : string
       GroupId : string
+      Username : string
       Spec : PostgresClusterSpec
       Databases : PostgresDatabase list }
     
@@ -33,9 +34,10 @@ module PostgresCluster =
           Id = None
           Databases = None }
         
-    let create name groupId options=
+    let create name groupId username options=
         { Id = defaultArg options.Id (ObjectId.GenerateNewId().ToString())
           Name = name
+          Username = username
           Spec = { Instances = defaultArg options.Instances 1
                    Storage = defaultArg options.Storage 10 }
           GroupId = groupId

@@ -9,6 +9,7 @@
         <Compile Include="Common\PostgresClusterDto.fs" />
         <Compile Include="Common\MongoExtensions.fs" />
         <Compile Include="Common\ResultF.fs" />
+        <Compile Include="Kubernetes\PostgresClusterKubernetesBuilder.fs" />
         <Compile Include="Events\CreateEvent.fs" />
         <Compile Include="Events\DeleteEvent.fs" />
         <Compile Include="Events\UpdateEvent.fs" />
@@ -17,6 +18,7 @@
         <Compile Include="Endpoints\Update.fs" />
         <Compile Include="Endpoints\GetById.fs" />
         <Compile Include="Endpoints\Get.fs" />
+        <Compile Include="Endpoints\AllPostgresEndpoints.fs" />
     </ItemGroup>
 
     <ItemGroup>

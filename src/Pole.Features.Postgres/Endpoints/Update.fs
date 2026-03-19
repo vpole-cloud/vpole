@@ -1,8 +1,13 @@
-module Pole.Features.Postgres.Endpoints.Update
+namespace Pole.Features.Postgres.Endpoints
 
+open System.Runtime.CompilerServices
 open FluentValidation
+open Microsoft.AspNetCore.Builder
+open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.Mvc
+open Microsoft.AspNetCore.Routing
 open MongoDB.Driver
+open Pole.ASP.Helpers
 open Pole.Database
 open Pole.Domain.Models.FSharp
 open Pole.Features.Postgres.Common
@@ -15,6 +20,8 @@ type UpdatePostgresClusterRequestBody =
       GroupId : string option
       Instances : int option
       Storage : int option
+      Username : string option
+      Password : string option
       Databases : PostgresDatabase list option }
 
 type UpdatePostgresClusterResponse =
@@ -47,6 +54,7 @@ type UpdatePostgresClusterHandler(dbContext : MongoDbContext) =
                         { cluster with
                             Name = defaultArg request.Body.Name cluster.Name
                             GroupId = defaultArg request.Body.GroupId cluster.GroupId
+                            Username = defaultArg request.Body.Username cluster.Username
                             Spec =
                                 { Instances = defaultArg request.Body.Instances cluster.Spec.Instances
                                   Storage = defaultArg request.Body.Storage cluster.Spec.Storage }
@@ -64,7 +72,8 @@ type UpdatePostgresClusterHandler(dbContext : MongoDbContext) =
                                             cancellationToken = ct
                                         )
 
-                                    do! dbContext.StoreEventAsync(UpdateEvent(cluster.Id), session, ct)
+                                    let event = UpdateEvent.create cluster.Id request.Body.Password
+                                    do! dbContext.StoreEventAsync(event, session, ct)
 
                                     return { Id = request.ClusterId } |> ResultF.ofValue
                                 }
@@ -76,4 +85,21 @@ type UpdatePostgresClusterHandler(dbContext : MongoDbContext) =
 type UpdatePostgresClusterRequestValidator() as this =
     inherit AbstractValidator<UpdatePostgresClusterRequest>()
     do
-        this.RuleFor(_.ClusterId).NotEmpty().WithMessage("Cluster ID must not be empty.") |> ignore
+        this.RuleFor(_.ClusterId)
+            .NotEmpty()
+        |> ignore
+
+[<AbstractClass; Sealed>]
+type UpdatePostgresClusterEndpoint =
+    [<Extension>]
+    static member MapUpdatePostgresClusterEndpoint(endpoints: IEndpointRouteBuilder) =
+        endpoints.MapMethod<UpdatePostgresClusterEndpoint>("/{ClusterId}", nameof UpdatePostgresClusterEndpoint.Handle, EndpointHttpMethod.Put)
+            .WithName("UpdatePostgresCluster")
+            |> ignore
+        endpoints
+        
+    static member Handle([<AsParameters>] request: UpdatePostgresClusterRequest, [<FromServices>] mediator: IMediator) =
+        task {
+            let! result = mediator.Send request
+            return result.ToHttpResult(fun value -> Results.Ok(value))
+        }
