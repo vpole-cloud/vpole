@@ -27,7 +27,7 @@
     <ItemGroup>
         <PackageReference Include="MassTransit.Abstractions" Version="8.5.7" />
         <PackageReference Include="FluentValidation" Version="12.1.1" />
-        <PackageReference Include="KubernetesClient" Version="18.0.13" />
+        <PackageReference Include="KubernetesClient" Version="19.0.2" />
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\Pole.ASP.Helpers\Pole.ASP.Helpers.csproj" />
