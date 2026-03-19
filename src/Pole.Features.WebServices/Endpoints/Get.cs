@@ -1,11 +1,13 @@
-﻿using Microsoft.AspNetCore.Builder;
+﻿using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using MongoDB.Bson;
 using MongoDB.Driver;
-using MongoDB.Driver.Linq;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Domain.Models;
 using Pole.Features.Request;
 using Pole.Features.WebServices.Common;
 using Pole.Mediator;
@@ -43,15 +45,23 @@ public sealed class GetWebServicesHandler(
         GetWebServicesRequest request,
         CancellationToken cancellationToken = default)
     {
-        var query = dbContext.WebServices.AsQueryable();
+        var filter = Builders<WebService>.Filter.Empty;
         
         if (request.ResourceGroupId is not null)
-            query = query.Where(ws => ws.ResourceGroupId == request.ResourceGroupId);
+        {
+            filter &= Builders<WebService>.Filter.Eq(ws => ws.ResourceGroupId, request.ResourceGroupId);
+        }
         if (!string.IsNullOrEmpty(request.Search))
-            query = query.Where(ws => ws.Name.Contains(request.Search) || ws.Id.Contains(request.Search));
+        {
+            var namePattern = new BsonRegularExpression($".*{Regex.Escape(request.Search)}.*", "i");
+            var nameFilter = Builders<WebService>.Filter.Regex(ws => ws.Name, namePattern);
+            filter &= ObjectId.TryParse(request.Search, out _)
+                ? Builders<WebService>.Filter.Or(nameFilter, Builders<WebService>.Filter.Eq(ws => ws.Id, request.Search))
+                : nameFilter;
+        }
         
-        var totalCount = await query.CountAsync(cancellationToken);
-        var webServices = await query
+        var totalCount = await dbContext.WebServices.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
+        var webServices = await dbContext.WebServices.Find(filter)
             .ApplyPagination(request)
             .ToListAsync(cancellationToken);
 

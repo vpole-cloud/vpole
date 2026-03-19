@@ -1,0 +1,86 @@
+using System.Collections.Immutable;
+using Pole.Domain.Models;
+using Pole.Feature.DomainNames.Common;
+using Pole.Features.Core.Models;
+using Pole.Features.RedisServices.Common;
+using Pole.Features.RedisServices.Endpoints;
+using Pole.Features.ResourceGroups.Endpoints;
+using Pole.Features.WebServices.Common;
+using Pole.Features.WebServices.Endpoints;
+
+namespace Pole.Tests.Integration.Infrastructure;
+
+public static class TestData
+{
+    public static CreateResourceGroupRequest CreateResourceGroupRequest(
+        string name = "alpha",
+        string description = "primary group")
+        => new(new CreateResourceGroupRequestBody(
+            Name: name,
+            Description: description,
+            Tags: ImmutableList.Create("home", "lab")));
+
+    public static CreateWebServiceRequest CreateWebServiceRequest(
+        string resourceGroupId,
+        string name = "web-api",
+        string domainName = "api.example.com")
+        => new(new CreateWebServiceRequestBody(
+            Name: name,
+            ResourceGroupId: resourceGroupId,
+            Spec: ValidWebServiceSpec(),
+            DomainName: domainName));
+
+    public static CreateRedisServiceRequest CreateRedisServiceRequest(
+        string resourceGroupId,
+        string name = "redis-main")
+        => new(new CreateRedisServiceRequestBody(
+            Name: name,
+            ResourceGroupId: resourceGroupId,
+            Spec: ValidRedisSpec()));
+
+    public static WebServiceSpecDto ValidWebServiceSpec() => new(
+        Image: new ImageInfoDto("docker.io", "nginx", "1.27"),
+        Replicas: 2,
+        Resources: new ResourcesDto(
+            Requests: new ResourceDto(1, 256),
+            Limits: new ResourceDto(2, 512)),
+        Config: new WebServiceConfigDto(
+            EnvironmentVariables: new Dictionary<string, string> { ["ASPNETCORE_ENVIRONMENT"] = "Development" },
+            PortMappings:
+            [
+                new PortMappingDto(80, "8080", "TCP", "http")
+            ]),
+        Autoscaling: null,
+        Probes: new ProbeSpecDto(
+            Startup: ValidProbe(),
+            Liveness: ValidProbe(),
+            Readiness: ValidProbe()));
+
+    public static RedisSpecDto ValidRedisSpec() => new(
+        Storage: new StorageDto(5, "standard"),
+        Resources: new ResourcesDto(
+            Requests: new ResourceDto(1, 128),
+            Limits: new ResourceDto(2, 256)));
+
+    public static ProbeConfigDto ValidProbe() => new(
+        Path: "/health",
+        Port: "8080",
+        InitialDelaySeconds: 5,
+        PeriodSeconds: 10,
+        TimeoutSeconds: 5,
+        FailureThreshold: 3,
+        SuccessThreshold: 1);
+
+    public static ResourceGroup SeedResourceGroup(string name = "alpha") => new(
+        Name: name,
+        Description: $"{name} description",
+        Resources: [],
+        Tags: ImmutableList.Create("seed"));
+
+    public static DnsRecord SeedDnsRecord(string groupId, string resourceId, string name = "existing.example.com") => new(
+        Name: name,
+        ResourceType: ResourceType.WebService,
+        ResourceId: resourceId,
+        ResourceName: "existing-web",
+        GroupId: groupId);
+}

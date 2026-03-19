@@ -26,4 +26,7 @@
     <Project Path="src/Pole.ResultType/Pole.ResultType.csproj" />
     <Project Path="src/Pole.ServiceDefaults/Pole.ServiceDefaults.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj" />
+  </Folder>
 </Solution>

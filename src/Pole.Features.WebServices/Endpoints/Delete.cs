@@ -46,7 +46,10 @@ public sealed class DeleteWebServiceHandler(
         return await dbContext.RunInTransactionAsync<DeleteWebServiceResponse>(async (sh, ct) =>
         {
             await dbContext.WebServices
-                .DeleteOneAsync(ws => ws.Id == request.Id, cancellationToken: ct);
+                .DeleteOneAsync(sh, ws => ws.Id == request.Id, cancellationToken: ct);
+
+            await dbContext.DnsRecords
+                .DeleteOneAsync(sh, record => record.ResourceId == request.Id, cancellationToken: ct);
         
             await dbContext.StoreEventAsync(new DeleteEvent(webService.Id, webService.Name, webService.ResourceGroupId), sh, ct);
             return new DeleteWebServiceResponse(
