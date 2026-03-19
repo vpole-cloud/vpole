@@ -5,9 +5,9 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Domain.Models;
 using Pole.Domain.Models.FSharp;
-using Pole.Features.Core.Abstractions;
 using Pole.Features.Core.Outbox;
-using EventExtensions = Pole.Features.Core.Abstractions.EventExtensions;
+using Pole.Features.Events.Abstractions;
+using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
 
 namespace Pole.Database;
 

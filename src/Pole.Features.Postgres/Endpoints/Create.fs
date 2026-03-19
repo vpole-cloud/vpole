@@ -11,10 +11,10 @@ open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
 open Pole.Domain.Models.FSharp
+open Pole.Features.Core.Kubernetes
 open Pole.Features.Postgres.Events
 open Pole.Features.Postgres.Common
 open Pole.Features.Postgres.Kubernetes
-open Pole.Features.Kuber
 open Pole.Mediator
 open Pole.ResultType
 open k8s
