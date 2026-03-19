@@ -1,12 +1,14 @@
 using FluentValidation;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using MongoDB.Bson;
 using MongoDB.Driver;
-using MongoDB.Driver.Linq;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Domain.Models;
 using Pole.Features.Request;
 using Pole.Features.ResourceGroups.Common;
 using Pole.Mediator;
@@ -46,12 +48,15 @@ public sealed class GetResourceGroupsHandler(
         GetResourceGroupsRequest request,
         CancellationToken cancellationToken = default)
     {
-        var query = dbContext.ResourceGroups.AsQueryable();
+        var filter = Builders<ResourceGroup>.Filter.Empty;
         if (!string.IsNullOrWhiteSpace(request.Search))
-            query = query.Where(rg => rg.Name.Contains(request.Search, StringComparison.OrdinalIgnoreCase));
+        {
+            var pattern = $".*{Regex.Escape(request.Search)}.*";
+            filter = Builders<ResourceGroup>.Filter.Regex(rg => rg.Name, new BsonRegularExpression(pattern, "i"));
+        }
 
-        var totalCount = await query.CountAsync(cancellationToken);
-        var items = await query
+        var totalCount = await dbContext.ResourceGroups.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
+        var items = await dbContext.ResourceGroups.Find(filter)
             .ApplyPagination(request)
             .ToListAsync(cancellationToken);
 

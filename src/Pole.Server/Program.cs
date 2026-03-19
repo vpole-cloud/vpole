@@ -60,3 +60,5 @@ app.MapGet("/test-keycloak", () => "Hello World!")
 app.MapApiEndpoints();
 
 app.Run();
+
+public partial class Program;

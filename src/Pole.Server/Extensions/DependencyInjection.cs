@@ -22,6 +22,8 @@ public static class DependencyInjection
         public IServiceCollection AddPoleMediator(params Assembly[] assemblies)
         {
             services.AddScoped<IMediator, Pole.Mediator.Mediator>();
+            services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
+            services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 
             foreach (var assembly in assemblies)
             {
