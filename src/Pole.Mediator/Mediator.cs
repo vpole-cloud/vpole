@@ -11,7 +11,9 @@ public sealed class Mediator(IServiceProvider sp) : IMediator
 
         var requestType = request.GetType();
         var handlerType = typeof(IMediatorHandler<,>).MakeGenericType(requestType, typeof(TResponse));
-        dynamic handler = sp.GetRequiredService(handlerType);
+        var handler = sp.GetRequiredService(handlerType);
+        var handleAsyncMethod = handlerType.GetMethod(nameof(IMediatorHandler<IMediatorRequest<TResponse>, TResponse>.HandleAsync))
+            ?? throw new InvalidOperationException($"HandleAsync was not found on handler type '{handlerType.FullName}'.");
 
         var behaviorsType = typeof(IPipelineBehavior<,>).MakeGenericType(requestType, typeof(TResponse));
         var behaviors = sp.GetServices(behaviorsType)
@@ -20,7 +22,8 @@ public sealed class Mediator(IServiceProvider sp) : IMediator
                         ?? Array.Empty<dynamic>();
 
         // Final delegate = actual handler
-        RequestHandlerDelegate<TResponse> next = () => handler.HandleAsync((dynamic)request, cancellationToken);
+        RequestHandlerDelegate<TResponse> next = () =>
+            (Task<Result<TResponse>>)handleAsyncMethod.Invoke(handler, [request, cancellationToken])!;
 
         // Wrap with behaviors (last registered runs closest to handler)
         for (var i = behaviors.Length - 1; i >= 0; i--)

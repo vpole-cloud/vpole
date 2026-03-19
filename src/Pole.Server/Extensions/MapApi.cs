@@ -1,21 +1,23 @@
-﻿using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Routing;
-using Pole.Features.DomainNames.Common;
+﻿using Pole.Features.DomainNames.Common;
+using Pole.Features.Postgres.Endpoints;
 using Pole.Features.RedisServices.Common;
 using Pole.Features.ResourceGroups.Common;
 using Pole.Features.WebServices.Common;
 
-namespace Pole.Features;
+namespace Pole.Server.Extensions;
 
 public static class MapApi
 {
     public static IEndpointRouteBuilder MapApiEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGroup("/api/v1")
-            .MapResourceGroupEndpoints()
+        var group = app.MapGroup("/api/v1");
+
+        group.MapResourceGroupEndpoints()
             .MapWebServiceEndpoints()
             .MapRedisServiceEndpoints()
+            .MapPostgresClusterEndpoints()
             .MapDomainNameEndpoints();
+
         return app;
     }
     

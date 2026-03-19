@@ -2,7 +2,9 @@
 
 namespace Pole.Features.Core.Abstractions;
 
-public abstract record BaseEvent
+public interface IPoleEvent;
+
+public abstract record BaseEvent : IPoleEvent
 {
     public DateTime OccurredOn { get; init; } = DateTime.UtcNow;
     public string TraceId { get; init; } = Guid.NewGuid().ToString();

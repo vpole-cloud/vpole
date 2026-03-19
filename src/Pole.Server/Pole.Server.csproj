@@ -26,6 +26,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Pole.Features.Postgres\Pole.Features.Postgres.fsproj" />
       <ProjectReference Include="..\Pole.Features\Pole.Features.csproj" />
       <ProjectReference Include="..\Pole.ServiceDefaults\Pole.ServiceDefaults.csproj" />
     </ItemGroup>

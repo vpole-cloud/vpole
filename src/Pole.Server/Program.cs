@@ -1,24 +1,28 @@
-using FluentValidation;
-using Pole.Features;
+using System.Reflection;
+using Pole.Features.WebServices.Endpoints;
 using Pole.Server.Extensions;
 using Pole.ServiceDefaults;
+using Pole.Features.Postgres.Endpoints;
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
-var assembly = typeof(Program).Assembly;
+Assembly[] assemblies = [
+    typeof(CreateWebServiceHandler).Assembly,
+    typeof(CreatePostgresClusterHandler).Assembly
+];
 
 builder.AddServiceDefaults();
 builder.AddMongoDBClient("pole-database");
 builder.AddSecurity();
 
 builder.Services.AddKubernetes(configuration)
-    .AddEventBus(configuration, assembly)
+    .AddEventBus(configuration, assemblies)
     .AddDatabase()
     .AddSettings(configuration)
     .AddHangfireWithMongo(configuration)
-    .AddValidatorsFromAssembly(assembly)
+    .AddValidatorsFromAssemblies(assemblies)
     .AddOpenApi()
-    .AddPoleMediator(configuration, assembly);
+    .AddPoleMediator(assemblies);
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("frontend-dev", policy =>

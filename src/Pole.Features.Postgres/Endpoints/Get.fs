@@ -1,9 +1,14 @@
-module Pole.Features.Postgres.Endpoints.Get
+namespace Pole.Features.Postgres.Endpoints
 
 open System.ComponentModel
+open System.Runtime.CompilerServices
 open Microsoft.AspNetCore.Mvc
 open FluentValidation
+open Microsoft.AspNetCore.Builder
+open Microsoft.AspNetCore.Http
+open Microsoft.AspNetCore.Routing
 open MongoDB.Driver
+open Pole.ASP.Helpers
 open Pole.Database
 open Pole.Features.Postgres.Common
 open Pole.Features.Request
@@ -47,3 +52,18 @@ type GetPostgresClustersHandler(dbContext : MongoDbContext) =
 
 type GetPostgresClustersRequestValidator() =
     inherit AbstractValidator<GetPostgresClustersRequest>()
+
+[<AbstractClass; Sealed>]
+type PostgresClusterGetEndpoints =
+    [<Extension>]
+    static member MapGetPostgresClustersEndpoint(endpoints: IEndpointRouteBuilder) =
+        endpoints.MapMethod<PostgresClusterGetEndpoints>("/", nameof PostgresClusterGetEndpoints.Handle, EndpointHttpMethod.Get)
+            .WithName("GetPostgresClusters")
+            |> ignore
+        endpoints
+
+    static member Handle([<AsParameters>] request: GetPostgresClustersRequest, [<FromServices>] mediator: IMediator) =
+        task {
+            let! result = mediator.Send request
+            return result.ToHttpResult(fun value -> Results.Ok(value))
+        }

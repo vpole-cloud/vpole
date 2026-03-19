@@ -1,8 +1,13 @@
-module Pole.Features.Postgres.Endpoints.Delete
+namespace Pole.Features.Postgres.Endpoints
 
+open System.Runtime.CompilerServices
 open FluentValidation
+open Microsoft.AspNetCore.Builder
+open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.Mvc
+open Microsoft.AspNetCore.Routing
 open MongoDB.Driver
+open Pole.ASP.Helpers
 open Pole.Database
 open Pole.Domain.Models.FSharp
 open Pole.Features.Postgres.Common
@@ -45,7 +50,8 @@ type DeletePostgresClusterHandler(dbContext : MongoDbContext) =
                                             cancellationToken = ct
                                         )
 
-                                    do! dbContext.StoreEventAsync(DeleteEvent(cluster.Id), session, ct)
+                                    let event = DeleteEvent.create cluster.Id
+                                    do! dbContext.StoreEventAsync(event, session, ct)
 
                                     return { Id = request.ClusterId } |> ResultF.ofValue
                                 }
@@ -58,3 +64,18 @@ type DeletePostgresClusterRequestValidator() as this =
     inherit AbstractValidator<DeletePostgresClusterRequest>()
     do
         this.RuleFor(_.ClusterId).NotEmpty().WithMessage("Cluster ID must not be empty.") |> ignore
+
+[<AbstractClass; Sealed>]
+type PostgresClusterDeleteEndpoints =
+    [<Extension>]
+    static member MapDeletePostgresClusterEndpoint(endpoints: IEndpointRouteBuilder) =
+        endpoints.MapMethod<PostgresClusterDeleteEndpoints>("/{ClusterId}", nameof PostgresClusterDeleteEndpoints.Handle, EndpointHttpMethod.Delete)
+            .WithName("DeletePostgresCluster")
+            |> ignore
+        endpoints
+
+    static member Handle([<AsParameters>] request: DeletePostgresClusterRequest, [<FromServices>] mediator: IMediator) =
+        task {
+            let! result = mediator.Send request
+            return result.ToHttpResult(fun value -> Results.Ok(value))
+        }

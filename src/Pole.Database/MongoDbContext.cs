@@ -25,6 +25,7 @@ public class MongoDbContext(
     public IMongoCollection<OutboxMessage> OutboxMessages { get; } = database.GetCollection<OutboxMessage>("OutboxMessages");
 
     public async Task StoreEventAsync<TEvent>(TEvent @event, IClientSessionHandle session, CancellationToken cancellationToken = default)
+        where TEvent : IPoleEvent
     {
         var eventType = typeof(TEvent);
         var entityNameAttribute = eventType.GetCustomAttribute<EntityNameAttribute>();

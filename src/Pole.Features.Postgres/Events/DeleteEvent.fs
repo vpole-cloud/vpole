@@ -2,8 +2,10 @@ namespace Pole.Features.Postgres.Events
 
 open Pole.Features.Core.Abstractions
 
-type DeleteEvent(clusterId : string) =
-    inherit BaseEvent()
-
-    member _.ClusterId = clusterId
-    override _.``<Clone>$``() = DeleteEvent(clusterId) :> BaseEvent
+type DeleteEvent =
+    { ClusterId : string }
+    interface IPoleEvent
+    
+module DeleteEvent =
+    let create clusterId : DeleteEvent =
+        { ClusterId = clusterId }
