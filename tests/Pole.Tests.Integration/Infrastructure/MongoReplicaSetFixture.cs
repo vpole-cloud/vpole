@@ -16,19 +16,17 @@ public sealed class MongoReplicaSetFixture : IAsyncLifetime
 
     public string ConnectionString { get; private set; } = string.Empty;
     public string DirectConnectionString { get; private set; } = string.Empty;
-    public IMongoClient Client { get; private set; } = default!;
-    public IMongoDatabase Database { get; private set; } = default!;
-    public MongoDbContext DbContext { get; private set; } = default!;
+    public IMongoClient Client { get; private set; } = null!;
+    public IMongoDatabase Database { get; private set; } = null!;
+    public MongoDbContext DbContext { get; private set; } = null!;
 
     public MongoReplicaSetFixture()
     {
-        Environment.SetEnvironmentVariable("DOCKER_HOST", "unix:///var/run/docker.sock");
         _mongoPort = GetFreePort();
 
-        _container = new ContainerBuilder()
-            .WithImage("mongo:7.0")
+        _container = new ContainerBuilder("mongo:8.0")
             .WithPortBinding(_mongoPort, _mongoPort)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(_mongoPort))
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(_mongoPort))
             .WithCommand("mongod", "--replSet", "rs0", "--bind_ip_all", "--port", _mongoPort.ToString())
             .Build();
     }
