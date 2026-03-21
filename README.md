@@ -134,6 +134,11 @@ See the [architecture overview](docs/architecture_overview.md) for details about
 
 ---
 
+## Testing
+See the [testing notes](docs/testing.md) for information about the current backend test setup, requirements, and how to run the integration suite.
+
+---
+
 ## License
 
 [GNU Affero General Public License v3.0](LICENSE.txt)
