@@ -3,6 +3,14 @@ using Pole.AppHost.MongoDb;
 var builder = DistributedApplication.CreateBuilder(args);
 
 var mongoServer = builder.AddMongoDB("pole-mongo")
+    .WithBindMount("MongoDb/mongo-entrypoint.sh", "/usr/local/bin/mongo-entrypoint.sh", isReadOnly: true)
+    .WithEntrypoint("/usr/local/bin/mongo-entrypoint.sh")
+    .WithEndpoint("tcp", endpoint =>
+    {
+        endpoint.Port = 27017;
+        endpoint.TargetPort = 27017;
+        endpoint.IsProxied = false;
+    }, createIfNotExists: true)
     .WithDataVolume("pole-mongo-data")
     .WithLifetime(ContainerLifetime.Persistent)
     .WithReplicaSet();
