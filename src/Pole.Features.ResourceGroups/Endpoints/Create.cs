@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using FluentValidation;
 using k8s;
 using k8s.Models;
 using MassTransit;
@@ -69,6 +70,21 @@ public sealed class CreateResourceGroupHandler(
             
             return resourceGroup.ToDto();
         }, cancellationToken: cancellationToken);
+    }
+}
+
+public sealed class CreateResourceGroupValidator : AbstractValidator<CreateResourceGroupRequest>
+{
+    public CreateResourceGroupValidator()
+    {
+        RuleFor(x => x.Body.Name)
+            .NotEmpty()
+            .MaximumLength(50);
+        RuleFor(x => x.Body.Description)
+            .MaximumLength(200);
+        RuleForEach(x => x.Body.Tags)
+            .NotEmpty()
+            .MaximumLength(30);
     }
 }
 

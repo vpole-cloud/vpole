@@ -17,6 +17,7 @@ public static class ResourceGroupEndpoints
                 .WithTags("ResourceGroups")
                 .MapCreateResourceGroupEndpoint()
                 .MapGetResourceGroupsEndpoint()
+                .MapUpdateResourceGroupEndpoint()
                 .MapDeleteResourceGroupEndpoints();
                 
             return app;

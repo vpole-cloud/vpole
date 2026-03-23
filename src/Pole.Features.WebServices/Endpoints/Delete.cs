@@ -18,7 +18,7 @@ public static class Delete
     public const string Route = "/{Id}";
     public static IEndpointRouteBuilder MapDeleteWebServiceEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/", async (IMediator mediator, [AsParameters] DeleteWebServiceRequest request, CancellationToken ct) =>
+        app.MapDelete(Route, async (IMediator mediator, [AsParameters] DeleteWebServiceRequest request, CancellationToken ct) =>
             {
                 var result = await mediator.Send(request, ct);
                 return result.ToHttpResult(x => Results.Accepted(value: x.Id));
@@ -104,7 +104,7 @@ public class DeleteWebServiceRequestedEventConsumer(
 }
 
 public sealed record DeleteWebServiceRequest(
-    string Id
+    [Microsoft.AspNetCore.Mvc.FromRoute] string Id
 ) : IMediatorRequest<DeleteWebServiceResponse>;
 
 public sealed record DeleteWebServiceResponse(
