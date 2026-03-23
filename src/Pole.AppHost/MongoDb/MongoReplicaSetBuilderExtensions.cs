@@ -15,11 +15,7 @@ public static class MongoReplicaSetBuilderExtensions
     /// <returns>A reference to the <see cref="IResourceBuilder{MongoDBServerResource}"/>.</returns>
     public static IResourceBuilder<MongoDBServerResource> WithReplicaSet(this IResourceBuilder<MongoDBServerResource> builder)
     {
-        var initFilePath = Path.Combine(AppContext.BaseDirectory, "MongoDb", "mongo-init.sh");
-
-        return builder
-            .WithInitFiles(initFilePath)
-            .WithArgs("--replSet", "rs0", "--bind_ip_all", "--keyFile", "/tmp/mongodb-keyfile");
+        return builder.WithArgs("--replSet", "rs0", "--bind_ip_all", "--keyFile", "/tmp/mongodb-keyfile");
     }
 
     /// <summary>
