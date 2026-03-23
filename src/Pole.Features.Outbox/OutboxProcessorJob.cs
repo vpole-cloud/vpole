@@ -81,8 +81,9 @@ public partial class OutboxProcessorJob(
 
     private static ImmutableDictionary<string, Type> BuildEventTypeCache()
     {
-        var assembly = Assembly.GetExecutingAssembly();
-        var eventTypes = assembly.GetTypes()
+        var eventTypes = AppDomain.CurrentDomain.GetAssemblies()
+            .Where(assembly => !assembly.IsDynamic && assembly.GetName().Name?.StartsWith("Pole.", StringComparison.Ordinal) == true)
+            .SelectMany(GetLoadableTypes)
             .Where(t => t is { IsClass: true, IsAbstract: false } && t.IsSubclassOf(typeof(BaseEvent)));
 
         var cache = new Dictionary<string, Type>();
@@ -97,6 +98,18 @@ public partial class OutboxProcessorJob(
         }
 
         return cache.ToImmutableDictionary();
+    }
+
+    private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            return ex.Types.OfType<Type>();
+        }
     }
     
     private object? DeserializeEvent(string eventType, string payloadJson)
