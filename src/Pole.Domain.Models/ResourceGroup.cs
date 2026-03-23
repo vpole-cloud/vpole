@@ -10,8 +10,7 @@ public record ResourceGroup(
     ImmutableList<string> Tags
     ) : BaseEntity
 {
-    public string NamespaceName => $"rg-{Id}-{Name}";
-    
+    public string NamespaceName => $"pole-rg-{Id}";
 }
 
 public sealed record ShortResourceInfo(

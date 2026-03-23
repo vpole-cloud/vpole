@@ -6,6 +6,7 @@ using Pole.Features.Core.Models;
 namespace Pole.Features.WebServices.Common;
 
 public sealed record WebServiceDto(
+    string Id,
     string Name,
     string ResourceGroupId,
     WebServiceSpecDto Spec,
@@ -69,6 +70,7 @@ public sealed record ImageInfoDto(
 public static class WebServiceDtoExtensions
 {
     public static WebServiceDto ToDto(this WebService webService) => new(
+        webService.Id,
         webService.Name,
         webService.ResourceGroupId,
         webService.Spec.ToDto(),

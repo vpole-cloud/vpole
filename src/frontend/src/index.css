@@ -1,0 +1,61 @@
+:root {
+  font-family:
+    "Segoe UI",
+    "SF Pro Display",
+    "Helvetica Neue",
+    sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #10233d;
+  background-color: #e9eef5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --top-band-height: 92px;
+  --color-app-bg-top: #edf2f9;
+  --color-app-bg-bottom: #e4ebf4;
+  --color-surface: rgba(252, 253, 255, 0.88);
+  --color-surface-raised: rgba(255, 255, 255, 0.92);
+  --color-surface-muted: rgba(236, 242, 249, 0.92);
+  --color-border: rgba(127, 153, 186, 0.22);
+  --color-border-strong: rgba(91, 122, 163, 0.26);
+  --color-text-strong: #10233d;
+  --color-text-soft: #51647f;
+  --color-text-muted: #69809f;
+  --color-accent: #3d7ddf;
+  --color-accent-strong: #1f5fc7;
+  --shadow-soft: 0 18px 48px rgba(24, 51, 91, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 1280px;
+}
+
+body {
+  margin: 0;
+  min-width: 1280px;
+  min-height: 100vh;
+}
+
+body,
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  min-height: 100vh;
+}
