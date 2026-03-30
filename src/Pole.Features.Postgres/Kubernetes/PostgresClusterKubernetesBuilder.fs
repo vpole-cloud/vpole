@@ -6,7 +6,6 @@ open k8s.Models
 type PostgresClusterKubernetesBuilder(
     cluster : PostgresCluster) as this =
     member _.ClusterSecretName = $"{cluster.Id}-secret"
-    member _.ClusterInitConfigMapName = $"{cluster.Id}-init"
     member _.BuildCluster() =
         {|
             apiVersion = "postgresql.cnpg.io/v1"
@@ -27,27 +26,8 @@ type PostgresClusterKubernetesBuilder(
                         {|
                             name = this.ClusterSecretName
                         |}
-                    postInitApplicationSQLRefs =        
-                        {|
-                            name = this.ClusterInitConfigMapName
-                            key = "init.sql"
-                        |}
                 |}
         |}
-    
-    member _.BuildConfigMap() =
-        let configMap = V1ConfigMap()
-        configMap.ApiVersion <- "v1"
-        configMap.Kind <- "ConfigMap"
-        configMap.Metadata <- V1ObjectMeta(Name = this.ClusterInitConfigMapName)
-        configMap.Data <- dict [ "init.sql", this.BuildInitSql() ]
-        configMap
-    
-    member _.BuildInitSql() =
-        let sqlCommands =
-            cluster.Databases
-            |> List.map (fun db -> $"CREATE DATABASE {db.Name};")
-        String.concat "\n" sqlCommands
         
     member _.BuildSecret(password) =
         let secret = V1Secret()

@@ -25,6 +25,7 @@
         <ProjectReference Include="..\..\src\Pole.Feature.DomainNames\Pole.Feature.DomainNames.csproj" />
         <ProjectReference Include="..\..\src\Pole.Features.Core\Pole.Features.Core.csproj" />
         <ProjectReference Include="..\..\src\Pole.Features.Events\Pole.Features.Events.csproj" />
+        <ProjectReference Include="..\..\src\Pole.Features.Postgres\Pole.Features.Postgres.fsproj" />
         <ProjectReference Include="..\..\src\Pole.Features.RedisServices\Pole.Features.RedisServices.csproj" />
         <ProjectReference Include="..\..\src\Pole.Features.Request\Pole.Features.Request.csproj" />
         <ProjectReference Include="..\..\src\Pole.Features.ResourceGroups\Pole.Features.ResourceGroups.csproj" />

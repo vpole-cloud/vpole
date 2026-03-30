@@ -21,8 +21,7 @@ type UpdatePostgresClusterRequestBody =
       Instances : int option
       Storage : int option
       Username : string option
-      Password : string option
-      Databases : PostgresDatabase list option }
+      Password : string option }
 
 type UpdatePostgresClusterResponse =
     { Id : string }
@@ -57,8 +56,7 @@ type UpdatePostgresClusterHandler(dbContext : MongoDbContext) =
                             Username = defaultArg request.Body.Username cluster.Username
                             Spec =
                                 { Instances = defaultArg request.Body.Instances cluster.Spec.Instances
-                                  Storage = defaultArg request.Body.Storage cluster.Spec.Storage }
-                            Databases = defaultArg request.Body.Databases cluster.Databases }
+                                  Storage = defaultArg request.Body.Storage cluster.Spec.Storage } }
 
                     return!
                         dbContext.RunInTransactionAsync<UpdatePostgresClusterResponse>(
