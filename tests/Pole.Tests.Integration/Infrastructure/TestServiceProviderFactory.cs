@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Pole.Database;
 using Pole.Feature.DomainNames.Common;
+using Pole.Features.Postgres.Endpoints;
 using Pole.Features.RedisServices.Common;
 using Pole.Features.ResourceGroups.Common;
 using Pole.Features.WebServices.Common;
@@ -15,6 +16,7 @@ public static class TestServiceProviderFactory
     private static readonly Assembly[] Assemblies =
     [
         typeof(WebServiceEndpoints).Assembly,
+        typeof(PostgresClusterEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,
         typeof(RedisServiceEndpoints).Assembly,
         typeof(DomainNameEndpoints).Assembly

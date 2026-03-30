@@ -1,7 +1,8 @@
 using System.Collections.Immutable;
+using Microsoft.FSharp.Core;
 using Pole.Domain.Models;
-using Pole.Feature.DomainNames.Common;
 using Pole.Features.Core.Models;
+using Pole.Features.Postgres.Endpoints;
 using Pole.Features.RedisServices.Common;
 using Pole.Features.RedisServices.Endpoints;
 using Pole.Features.ResourceGroups.Endpoints;
@@ -37,6 +38,19 @@ public static class TestData
             Name: name,
             ResourceGroupId: resourceGroupId,
             Spec: ValidRedisSpec()));
+
+    public static CreatePostgresClusterRequest CreatePostgresClusterRequest(
+        string resourceGroupId,
+        string name = "postgres-main",
+        string username = "postgres",
+        string password = "postgres-secret")
+        => new(new CreatePostgresClusterRequestBody(
+            name,
+            resourceGroupId,
+            FSharpOption<int>.Some(1),
+            FSharpOption<int>.Some(10),
+            username,
+            password));
 
     public static WebServiceSpecDto ValidWebServiceSpec() => new(
         Image: new ImageInfoDto("docker.io", "nginx", "1.27"),

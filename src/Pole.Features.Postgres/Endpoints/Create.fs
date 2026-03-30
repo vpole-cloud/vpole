@@ -25,8 +25,7 @@ type CreatePostgresClusterRequestBody =
       Instances : int option
       Storage : int option
       Username : string
-      Password : string
-      Databases : PostgresDatabase list option }
+      Password : string }
 
 type CreatePostgresClusterRequest =
     { [<FromBody>] Body : CreatePostgresClusterRequestBody }
@@ -38,8 +37,7 @@ type CreatePostgresClusterHandler(dbContext : MongoDbContext) =
             let cluster = PostgresCluster.create request.Body.Name request.Body.GroupId request.Body.Username
                             { Id = None
                               Instances = request.Body.Instances
-                              Storage = request.Body.Storage
-                              Databases =  request.Body.Databases }
+                              Storage = request.Body.Storage }
             dbContext.RunInTransactionAsync<PostgresClusterDto>(
                 (fun session ct ->
                     task {
@@ -94,7 +92,6 @@ type PostgresClusterCreatedConsumer(
                 | Some cluster ->
                     let builder = PostgresClusterKubernetesBuilder(cluster)
                     let clusterResource = builder.BuildCluster()
-                    let clusterConfigMap = builder.BuildConfigMap()
                     let clusterSecret = builder.BuildSecret(event.Password)
 
                     do!
@@ -105,14 +102,6 @@ type PostgresClusterCreatedConsumer(
                                 version = "v1",
                                 namespaceParameter = cluster.GroupId,
                                 plural = "clusters",
-                                cancellationToken = context.CancellationToken
-                            )
-                        )
-                    do!
-                        KubernetesExtensions.CreateIfNotExistAsync(fun () ->
-                            kubernetes.CoreV1.CreateNamespacedConfigMapAsync(
-                                clusterConfigMap,
-                                namespaceParameter = cluster.GroupId,
                                 cancellationToken = context.CancellationToken
                             )
                         )

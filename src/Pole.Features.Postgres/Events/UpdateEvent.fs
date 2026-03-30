@@ -1,7 +1,9 @@
 namespace Pole.Features.Postgres.Events
 
+open MassTransit
 open Pole.Features.Events.Abstractions
 
+[<EntityName("update-postgres-cluster-requested")>]
 type UpdateEvent =
     { ClusterId : string
       NewPassword : string option }

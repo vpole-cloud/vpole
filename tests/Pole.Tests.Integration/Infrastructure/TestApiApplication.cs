@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Pole.Database;
 using Pole.Feature.DomainNames.Common;
+using Pole.Features.Postgres.Endpoints;
 using Pole.Features.RedisServices.Common;
 using Pole.Features.ResourceGroups.Common;
 using Pole.Features.WebServices.Common;
@@ -19,6 +20,7 @@ public sealed class TestApiApplication : IAsyncDisposable
     private static readonly Assembly[] Assemblies =
     [
         typeof(WebServiceEndpoints).Assembly,
+        typeof(PostgresClusterEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,
         typeof(RedisServiceEndpoints).Assembly,
         typeof(DomainNameEndpoints).Assembly
@@ -51,6 +53,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapResourceGroupEndpoints()
             .MapWebServiceEndpoints()
             .MapRedisServiceEndpoints()
+            .MapPostgresClusterEndpoints()
             .MapDomainNameEndpoints();
 
         await app.StartAsync();
