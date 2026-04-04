@@ -29,6 +29,7 @@
         <ProjectReference Include="..\..\src\Pole.Features.RedisServices\Pole.Features.RedisServices.csproj" />
         <ProjectReference Include="..\..\src\Pole.Features.Request\Pole.Features.Request.csproj" />
         <ProjectReference Include="..\..\src\Pole.Features.ResourceGroups\Pole.Features.ResourceGroups.csproj" />
+        <ProjectReference Include="..\..\src\Pole.Features.Search\Pole.Features.Search.fsproj" />
         <ProjectReference Include="..\..\src\Pole.Features.WebServices\Pole.Features.WebServices.csproj" />
         <ProjectReference Include="..\..\src\Pole.Mediator\Pole.Mediator.csproj" />
         <ProjectReference Include="..\..\src\Pole.ResultType\Pole.ResultType.csproj" />

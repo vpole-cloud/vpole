@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Features.Events.ResourceGroups;
 using Pole.Features.ResourceGroups.Common;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -56,20 +57,26 @@ public sealed class UpdateResourceGroupHandler(
         if (resourceGroup is null)
             return Result.NotFound($"Resource group with ID '{request.Id}' not found.");
 
-        await dbContext.ResourceGroups.UpdateOneAsync(
-            rg => rg.Id == request.Id,
-            Builders<Pole.Domain.Models.ResourceGroup>.Update
-                .Set(rg => rg.Description, request.Body.Description)
-                .Set(rg => rg.Tags, request.Body.Tags),
-            cancellationToken: cancellationToken);
+        return await dbContext.RunInTransactionAsync<ResourceGroupDto>(async (sh, ct) =>
+        {
+            await dbContext.ResourceGroups.UpdateOneAsync(
+                session: sh,
+                filter: rg => rg.Id == request.Id,
+                update: Builders<Pole.Domain.Models.ResourceGroup>.Update
+                    .Set(rg => rg.Description, request.Body.Description)
+                    .Set(rg => rg.Tags, request.Body.Tags),
+                cancellationToken: ct);
 
-        return new ResourceGroupDto(
-            Id: resourceGroup.Id,
-            Name: resourceGroup.Name,
-            Description: request.Body.Description,
-            Resources: resourceGroup.Resources.Select(x => new ShortResourceInfoDto(x.Id, x.Name, x.Type)),
-            Tags: request.Body.Tags
-        );
+            await dbContext.StoreEventAsync(new UpdateEvent(request.Id), sh, ct);
+
+            return new ResourceGroupDto(
+                Id: resourceGroup.Id,
+                Name: resourceGroup.Name,
+                Description: request.Body.Description,
+                Resources: resourceGroup.Resources.Select(x => new ShortResourceInfoDto(x.Id, x.Name, x.Type)),
+                Tags: request.Body.Tags
+            );
+        }, cancellationToken: cancellationToken);
     }
 }
 

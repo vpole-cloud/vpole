@@ -31,6 +31,7 @@
       <ProjectReference Include="..\Pole.Features.Postgres\Pole.Features.Postgres.fsproj" />
       <ProjectReference Include="..\Pole.Features.RedisServices\Pole.Features.RedisServices.csproj" />
       <ProjectReference Include="..\Pole.Features.ResourceGroups\Pole.Features.ResourceGroups.csproj" />
+      <ProjectReference Include="..\Pole.Features.Search\Pole.Features.Search.fsproj" />
       <ProjectReference Include="..\Pole.Features.WebServices\Pole.Features.WebServices.csproj" />
       <ProjectReference Include="..\Pole.ServiceDefaults\Pole.ServiceDefaults.csproj" />
     </ItemGroup>

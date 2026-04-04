@@ -19,6 +19,7 @@ public abstract class MediatorIntegrationTestBase : IAsyncLifetime
     protected MongoReplicaSetFixture Fixture { get; }
     protected MongoDbContext DbContext => Fixture.DbContext;
     protected IMediator Mediator => _scope!.ServiceProvider.GetRequiredService<IMediator>();
+    protected IServiceProvider Services => _scope!.ServiceProvider;
 
     public virtual async Task InitializeAsync()
     {

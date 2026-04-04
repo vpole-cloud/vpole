@@ -6,7 +6,10 @@ using Pole.ServiceDefaults;
 using Pole.Features.Postgres.Endpoints;
 using Pole.Features.RedisServices.Common;
 using Pole.Features.ResourceGroups.Common;
+using Pole.Features.Search.Common;
+using Pole.Features.Search.Services;
 using Pole.Features.WebServices.Common;
+using Pole.Database;
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
@@ -17,6 +20,7 @@ Assembly[] assemblies = [
     typeof(OutboxProcessorJob).Assembly,
     typeof(ResourceGroupEndpoints).Assembly,
     typeof(RedisServiceEndpoints).Assembly,
+    typeof(SearchEndpoints).Assembly,
 ];
 
 builder.AddServiceDefaults();
@@ -26,6 +30,8 @@ builder.AddSecurity();
 builder.Services.AddKubernetes(configuration)
     .AddEventBus(configuration, assemblies)
     .AddDatabase()
+    .AddMigrations(assemblies)
+    .AddSearchFeature()
     .AddSettings(configuration)
     .AddHangfireWithMongo(configuration)
     .AddValidatorsFromAssemblies(assemblies)
@@ -40,6 +46,8 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+await app.Services.GetRequiredService<MigrationRunner>().RunMigrations();
 
 app.MapDefaultEndpoints();
 
