@@ -8,6 +8,8 @@ using Pole.Feature.DomainNames.Common;
 using Pole.Features.Postgres.Endpoints;
 using Pole.Features.RedisServices.Common;
 using Pole.Features.ResourceGroups.Common;
+using Pole.Features.Search.Common;
+using Pole.Features.Search.Services;
 using Pole.Features.WebServices.Common;
 using Pole.Server.Extensions;
 
@@ -23,7 +25,8 @@ public sealed class TestApiApplication : IAsyncDisposable
         typeof(PostgresClusterEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,
         typeof(RedisServiceEndpoints).Assembly,
-        typeof(DomainNameEndpoints).Assembly
+        typeof(DomainNameEndpoints).Assembly,
+        typeof(SearchEndpoints).Assembly
     ];
 
     private TestApiApplication(WebApplication app)
@@ -45,6 +48,8 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton(fixture.Client);
         builder.Services.AddSingleton(fixture.Database);
         builder.Services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
+        builder.Services.AddMigrations(Assemblies);
+        builder.Services.AddSearchFeature();
         builder.Services.AddValidatorsFromAssemblies(Assemblies);
         builder.Services.AddPoleMediator(Assemblies);
 
@@ -54,6 +59,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapWebServiceEndpoints()
             .MapRedisServiceEndpoints()
             .MapPostgresClusterEndpoints()
+            .MapSearchEndpoints()
             .MapDomainNameEndpoints();
 
         await app.StartAsync();

@@ -1,6 +1,4 @@
-﻿using System.Net;
-using k8s.Autorest;
-using k8s.Models;
+﻿using k8s.Models;
 using Pole.Domain.Models;
 
 namespace Pole.Features.WebServices.Kubernetes;

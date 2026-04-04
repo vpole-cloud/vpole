@@ -51,6 +51,21 @@ public static class DependencyInjection
             return services;
         }
 
+        public IServiceCollection AddMigrations(params Assembly[] assemblies)
+        {
+            var migrationTypes = assemblies
+                .SelectMany(assembly => assembly.GetTypes())
+                .Where(type => type is { IsClass: true, IsAbstract: false } &&
+                               typeof(IMigration).IsAssignableFrom(type));
+
+            foreach (var migrationType in migrationTypes)
+            {
+                services.AddSingleton(typeof(IMigration), migrationType);
+            }
+
+            return services;
+        }
+
         public IServiceCollection AddKubernetes(IConfiguration configuration)
         {
             services.AddSingleton<IKubernetes>(_ =>
@@ -79,6 +94,7 @@ public static class DependencyInjection
             services.AddSingleton<IMongoDatabase>(sp =>
                 sp.GetRequiredService<IMongoClient>().GetDatabase("pole-database"));
             services.AddSingleton<MongoDbContext>();
+            services.AddSingleton<MigrationRunner>();
             return services;
         }
 

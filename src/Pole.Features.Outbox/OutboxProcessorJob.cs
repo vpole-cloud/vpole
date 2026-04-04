@@ -84,7 +84,9 @@ public partial class OutboxProcessorJob(
         var eventTypes = AppDomain.CurrentDomain.GetAssemblies()
             .Where(assembly => !assembly.IsDynamic && assembly.GetName().Name?.StartsWith("Pole.", StringComparison.Ordinal) == true)
             .SelectMany(GetLoadableTypes)
-            .Where(t => t is { IsClass: true, IsAbstract: false } && t.IsSubclassOf(typeof(BaseEvent)));
+            .Where(t =>
+                t is { IsClass: true, IsAbstract: false }
+                && typeof(IPoleEvent).IsAssignableFrom(t));
 
         var cache = new Dictionary<string, Type>();
 
