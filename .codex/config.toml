@@ -5,3 +5,24 @@ cwd = "."
 startup_timeout_sec = 20
 tool_timeout_sec = 120
 enabled = true
+
+[mcp_servers.aspire.tools.list_apphosts]
+approval_mode = "approve"
+
+[mcp_servers.aspire.tools.list_resources]
+approval_mode = "approve"
+
+[mcp_servers.aspire.tools.list_traces]
+approval_mode = "approve"
+
+[mcp_servers.aspire.tools.doctor]
+approval_mode = "approve"
+
+[mcp_servers.aspire.tools.select_apphost]
+approval_mode = "approve"
+
+[mcp_servers.aspire.tools.refresh_tools]
+approval_mode = "approve"
+
+[mcp_servers.aspire.tools.get_doc]
+approval_mode = "approve"
