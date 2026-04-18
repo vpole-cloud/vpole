@@ -10,7 +10,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Pole.Domain.Models.Abstractions\Pole.Domain.Models.Abstractions.csproj" />
+        <PackageReference Include="MongoDB.Driver" Version="3.7.1" />
     </ItemGroup>
-
 </Project>

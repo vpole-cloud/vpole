@@ -77,12 +77,13 @@ public sealed class CreateWebServiceHandler(
         {
             Tags = request.Body.Tags,
         };
-        var dnsRecord = new DnsRecord(
-            Name: request.Body.DomainName,
-            ResourceType: ResourceType.WebService,
-            ResourceId: createWebServiceOptions.Id,
-            ResourceName: request.Body.Name,
-            GroupId: request.Body.ResourceGroupId
+        var dnsRecord = DnsRecordFactory.Create(
+            name: request.Body.DomainName,
+            resourceType: ResourceType.WebService,
+            resourceId: createWebServiceOptions.Id,
+            resourceName: request.Body.Name,
+            groupId: request.Body.ResourceGroupId,
+            options: DnsRecordFactory.DefaultCreateOptions
         );
             
         var newWebService = WebServiceFactory.Create(
