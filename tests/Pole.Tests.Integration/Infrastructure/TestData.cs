@@ -104,10 +104,12 @@ public static class TestData
             options: options);
     }
 
-    public static DnsRecord SeedDnsRecord(string groupId, string resourceId, string name = "existing.example.com") => new(
-        Name: name,
-        ResourceType: ResourceType.WebService,
-        ResourceId: resourceId,
-        ResourceName: "existing-web",
-        GroupId: groupId);
+    public static DnsRecord SeedDnsRecord(string groupId, string resourceId, string name = "existing.example.com") =>
+        DnsRecordFactory.Create(
+            name: name,
+            resourceType: ResourceType.WebService,
+            resourceId: resourceId,
+            resourceName: "existing-web",
+            groupId: groupId,
+            options: DnsRecordFactory.DefaultCreateOptions);
 }

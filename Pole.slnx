@@ -4,7 +4,6 @@
     <Project Path="src/Pole.Server/Pole.Server.csproj" />
   </Folder>
   <Folder Name="/domain/">
-    <Project Path="src/Pole.Domain.Models.Abstractions/Pole.Domain.Models.Abstractions.csproj" />
     <Project Path="src/Pole.Domain.Models.FSharp/Pole.Domain.Models.FSharp.fsproj" />
     <Project Path="src/Pole.Domain.Models/Pole.Domain.Models.csproj" />
   </Folder>

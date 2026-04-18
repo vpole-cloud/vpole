@@ -11,8 +11,8 @@ public sealed class DomainNameIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task GetList_ReturnsPaginatedDnsRecords()
     {
-        await DbContext.InsertDnsRecordAsync(new DnsRecord("alpha.example.com", ResourceType.WebService, "web-1", "alpha", "rg-1"));
-        await DbContext.InsertDnsRecordAsync(new DnsRecord("beta.example.com", ResourceType.WebService, "web-2", "beta", "rg-1"));
+        await DbContext.InsertDnsRecordAsync(DnsRecordFactory.Create("alpha.example.com", ResourceType.WebService, "web-1", "alpha", "rg-1", DnsRecordFactory.DefaultCreateOptions));
+        await DbContext.InsertDnsRecordAsync(DnsRecordFactory.Create("beta.example.com", ResourceType.WebService, "web-2", "beta", "rg-1", DnsRecordFactory.DefaultCreateOptions));
 
         var result = await Mediator.Send(new GetDomainNamesRequest
         {
@@ -31,8 +31,8 @@ public sealed class DomainNameIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task Search_IsCaseInsensitive_AndMatchesSubstrings()
     {
-        await DbContext.InsertDnsRecordAsync(new DnsRecord("Admin.Example.com", ResourceType.WebService, "web-1", "admin", "rg-1"));
-        await DbContext.InsertDnsRecordAsync(new DnsRecord("worker.example.com", ResourceType.WebService, "web-2", "worker", "rg-1"));
+        await DbContext.InsertDnsRecordAsync(DnsRecordFactory.Create("Admin.Example.com", ResourceType.WebService, "web-1", "admin", "rg-1", DnsRecordFactory.DefaultCreateOptions));
+        await DbContext.InsertDnsRecordAsync(DnsRecordFactory.Create("worker.example.com", ResourceType.WebService, "web-2", "worker", "rg-1", DnsRecordFactory.DefaultCreateOptions));
 
         var result = await Mediator.Send(new GetDomainNamesRequest
         {
