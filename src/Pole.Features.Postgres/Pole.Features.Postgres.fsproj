@@ -10,9 +10,6 @@
         <Compile Include="Common\MongoExtensions.fs" />
         <Compile Include="Common\ResultF.fs" />
         <Compile Include="Kubernetes\PostgresClusterKubernetesBuilder.fs" />
-        <Compile Include="Events\CreateEvent.fs" />
-        <Compile Include="Events\DeleteEvent.fs" />
-        <Compile Include="Events\UpdateEvent.fs" />
         <Compile Include="Endpoints\Create.fs" />
         <Compile Include="Endpoints\Delete.fs" />
         <Compile Include="Endpoints\Update.fs" />
@@ -32,6 +29,7 @@
     <ItemGroup>
       <ProjectReference Include="..\Pole.ASP.Helpers\Pole.ASP.Helpers.csproj" />
       <ProjectReference Include="..\Pole.Database\Pole.Database.csproj" />
+      <ProjectReference Include="..\Pole.Features.Events.FSharp\Pole.Features.Events.FSharp.fsproj" />
       <ProjectReference Include="..\Pole.Features.Request\Pole.Features.Request.csproj" />
       <ProjectReference Include="..\Pole.Mediator\Pole.Mediator.csproj" />
     </ItemGroup>

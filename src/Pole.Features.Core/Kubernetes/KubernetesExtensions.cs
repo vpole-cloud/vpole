@@ -16,4 +16,16 @@ public static class KubernetesExtensions
             // create-only semantics
         }
     }
+
+    public static async Task DeleteIfExistsAsync(Func<Task> deleteCall)
+    {
+        try
+        {
+            await deleteCall();
+        }
+        catch (HttpOperationException ex) when (ex.Response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            // delete-only semantics
+        }
+    }
 }

@@ -49,11 +49,11 @@ public sealed class CreateRedisServiceHandler(
             .FirstOrDefaultAsync(cancellationToken);
         if (group is null) return Result.NotFound($"Resource group with ID '{request.Body.ResourceGroupId}' not found.");
 
-        var newRedis = new Redis(
-            Name: request.Body.Name,
-            ResourceGroupId: request.Body.ResourceGroupId,
-            Namespace: group.NamespaceName,
-            Spec: request.Body.Spec.ToDomain()
+        var newRedis = RedisFactory.Create(
+            name: request.Body.Name,
+            resourceGroupId: request.Body.ResourceGroupId,
+            spec: request.Body.Spec.ToDomain(group.KubernetesNamespace),
+            options: RedisFactory.DefaultCreateOptions
         );
         
         return await dbContext.RunInTransactionAsync<CreateRedisServiceResponse>(async (sh, ct) =>
@@ -86,10 +86,10 @@ public class CreateRedisServiceEventConsumer(
         var service = inKuber.ToService();
 
         await KubernetesExtensions.CreateIfNotExistAsync(() =>
-            kubernetes.AppsV1.CreateNamespacedStatefulSetAsync(statefulSet, redis.Namespace, cancellationToken: ct));
+            kubernetes.AppsV1.CreateNamespacedStatefulSetAsync(statefulSet, redis.Spec.KubernetesNamespace, cancellationToken: ct));
 
         await KubernetesExtensions.CreateIfNotExistAsync(() =>
-            kubernetes.CoreV1.CreateNamespacedServiceAsync(service, redis.Namespace, cancellationToken: ct));
+            kubernetes.CoreV1.CreateNamespacedServiceAsync(service, redis.Spec.KubernetesNamespace, cancellationToken: ct));
     }
 }
 

@@ -69,7 +69,7 @@ public sealed class UpdateRedisServiceHandler(
                 session: sh,
                 r => r.Id == request.Id,
                 Builders<Redis>.Update
-                    .Set(r => r.Spec, request.Body.Spec.ToDomain()),
+                    .Set(r => r.Spec, request.Body.Spec.ToDomain(redis.Spec.KubernetesNamespace)),
                 cancellationToken: ct);
 
             await dbContext.StoreEventAsync(new UpdateEvent
@@ -107,8 +107,8 @@ public class UpdateRedisServiceEventConsumer(
         var statefulSet = inKuber.ToStatefulSet();
         var service = inKuber.ToService();
         
-        await kubernetes.AppsV1.ReplaceNamespacedStatefulSetAsync(statefulSet, statefulSet.Metadata.Name, redis.Namespace, cancellationToken: ct);
-        await kubernetes.CoreV1.ReplaceNamespacedServiceAsync(service, service.Metadata.Name, redis.Namespace, cancellationToken: ct);
+        await kubernetes.AppsV1.ReplaceNamespacedStatefulSetAsync(statefulSet, statefulSet.Metadata.Name, redis.Spec.KubernetesNamespace, cancellationToken: ct);
+        await kubernetes.CoreV1.ReplaceNamespacedServiceAsync(service, service.Metadata.Name, redis.Spec.KubernetesNamespace, cancellationToken: ct);
     }
 }
 

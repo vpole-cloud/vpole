@@ -24,6 +24,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
         var saved = await DbContext.ResourceGroups.Find(group => group.Id == created.Id).FirstOrDefaultAsync();
         Assert.NotNull(saved);
         Assert.Equal(request.Body.Name, saved.Name);
+        Assert.StartsWith("test-", saved.KubernetesNamespace);
 
         var outboxCount = await DbContext.CountOutboxMessagesAsync("create-resource-group");
         Assert.Equal(1L, outboxCount);

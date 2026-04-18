@@ -12,6 +12,7 @@ using Pole.Database;
 using Pole.Domain.Models;
 using Pole.Features.Events.ResourceGroups;
 using Pole.Features.ResourceGroups.Common;
+using Pole.Features.ResourceGroups.Services;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -43,10 +44,11 @@ public sealed record CreateResourceGroupRequest(
 public sealed record CreateResourceGroupRequestBody(
     string Name,
     string Description,
-    ImmutableList<string> Tags
+    ImmutableHashSet<string> Tags
     );
 
 public sealed class CreateResourceGroupHandler(
+    IKubernetesNamespaceGenerator namespaceGenerator,
     MongoDbContext dbContext
     ) : IMediatorHandler<CreateResourceGroupRequest, ResourceGroupDto>
 {
@@ -54,8 +56,16 @@ public sealed class CreateResourceGroupHandler(
         CreateResourceGroupRequest request,
         CancellationToken cancellationToken = default)
     {
-        var resourceGroup = new ResourceGroup(request.Body.Name, request.Body.Description, [], request.Body.Tags);
-        
+        var createOptions = ResourceGroupFactory.DefaultCreateOptions with
+        {
+            Tags = request.Body.Tags
+        };
+        var resourceGroup = ResourceGroupFactory.Create(
+            name: request.Body.Name,
+            description: request.Body.Description,
+            kubernetesNamespace: namespaceGenerator.GenerateNamespaceName(createOptions.Id),
+            options: createOptions
+        );
         return await dbContext.RunInTransactionAsync<ResourceGroupDto>(async (sh, ct) =>
         {
             await dbContext.ResourceGroups.InsertOneAsync(
@@ -65,7 +75,7 @@ public sealed class CreateResourceGroupHandler(
             
             await dbContext.StoreEventAsync(new CreateEvent(
                 ResourceGroupId: resourceGroup.Id,
-                NamespaceName: resourceGroup.NamespaceName
+                NamespaceName: resourceGroup.KubernetesNamespace
             ), sh, ct);
             
             return resourceGroup.ToDto();
@@ -79,7 +89,7 @@ public sealed class CreateResourceGroupValidator : AbstractValidator<CreateResou
     {
         RuleFor(x => x.Body.Name)
             .NotEmpty()
-            .MaximumLength(50);
+            .MaximumLength(20);
         RuleFor(x => x.Body.Description)
             .MaximumLength(200);
         RuleForEach(x => x.Body.Tags)

@@ -81,32 +81,13 @@ public class DeleteWebServiceRequestedEventConsumer(
             .FirstOrDefaultAsync(ct);
         if (resourceGroup is null)
             return;
-        var ns = resourceGroup.NamespaceName;
+        var ns = resourceGroup.KubernetesNamespace;
         
-        await kubernetes.AppsV1.DeleteNamespacedDeploymentAsync(
-            name: WebServiceInKubernetes.BuildDeploymentName(message.WebServiceId),
-            namespaceParameter: ns,
-            cancellationToken: ct);
-        
-        await kubernetes.CoreV1.DeleteNamespacedServiceAsync(
-            name: WebServiceInKubernetes.BuildServiceName(message.WebServiceId),
-            namespaceParameter: ns,
-            cancellationToken: ct);
-        
-        await kubernetes.CoreV1.DeleteNamespacedSecretAsync(
-            name: WebServiceInKubernetes.BuildTlsSecretName(message.WebServiceId),
-            namespaceParameter: ns,
-            cancellationToken: ct);
-        
-        await kubernetes.NetworkingV1.DeleteNamespacedIngressAsync(
-            name: WebServiceInKubernetes.BuildIngressName(message.WebServiceId),
-            namespaceParameter: ns,
-            cancellationToken: ct);
-        
-        await kubernetes.CoreV1.DeleteNamespacedConfigMapAsync(
-            name: WebServiceInKubernetes.BuildConfigMapName(message.WebServiceId),
-            namespaceParameter: ns,
-            cancellationToken: ct);
+        await WebServiceKubernetesResourceManager.DeleteAsync(
+            kubernetes,
+            message.WebServiceName,
+            ns,
+            ct);
     }
 }
 

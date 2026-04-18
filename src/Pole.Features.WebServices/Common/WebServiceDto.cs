@@ -124,7 +124,8 @@ public static class WebServiceDtoExtensions
         image.Tag
     );
     
-    public static WebServiceSpec ToDomain(this WebServiceSpecDto dto) => new(
+    public static WebServiceSpec ToDomain(this WebServiceSpecDto dto, string kubernetesNamespace) => new(
+        kubernetesNamespace,
         dto.Image.ToDomain(),
         dto.Replicas,
         dto.Resources.ToDomain(),

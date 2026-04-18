@@ -69,7 +69,7 @@ public sealed class UpdateWebServiceHandler(
                 session: sh,
                 ws => ws.Id == request.Id,
                 Builders<WebService>.Update
-                    .Set(ws => ws.Spec, request.Body.Spec.ToDomain()),
+                    .Set(ws => ws.Spec, request.Body.Spec.ToDomain(webService.Spec.KubernetesNamespace)),
                 cancellationToken: ct);
 
             await dbContext.StoreEventAsync(new UpdateEvent
@@ -97,22 +97,7 @@ public class UpdateWebServiceEventConsumer(
             .FirstOrDefaultAsync(ct);
         if (webApp is null) return;
 
-        var resourceGroup = await dbContext.ResourceGroups
-            .Find(rg => rg.Id == webApp.ResourceGroupId)
-            .FirstOrDefaultAsync(ct);
-        if (resourceGroup is null) return;
-
-        var inKuber = webApp.ToKubernetes();
-
-        var configMap = inKuber.ToConfigMap();
-        var deployment = inKuber.ToDeployment();
-        var service = inKuber.ToService();
-        var ingress = inKuber.ToIngress();
-        
-        await kubernetes.CoreV1.ReplaceNamespacedConfigMapAsync(configMap, configMap.Metadata.Name, webApp.Namespace, cancellationToken: ct);
-        await kubernetes.AppsV1.ReplaceNamespacedDeploymentAsync(deployment, deployment.Metadata.Name, webApp.Namespace, cancellationToken: ct);
-        await kubernetes.CoreV1.ReplaceNamespacedServiceAsync(service, service.Metadata.Name, webApp.Namespace, cancellationToken: ct);
-        await kubernetes.NetworkingV1.ReplaceNamespacedIngressAsync(ingress, ingress.Metadata.Name, webApp.Namespace, cancellationToken: ct);
+        await WebServiceKubernetesResourceManager.ReplaceAsync(kubernetes, webApp.ToKubernetes(), ct);
         
         await context.Publish(new UpdatedEvent(WebServiceId: webApp.Id), ct);
     }

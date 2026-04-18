@@ -6,6 +6,7 @@ using Pole.Feature.DomainNames.Common;
 using Pole.Features.Postgres.Endpoints;
 using Pole.Features.RedisServices.Common;
 using Pole.Features.ResourceGroups.Common;
+using Pole.Features.ResourceGroups.Services;
 using Pole.Features.Search.Common;
 using Pole.Features.Search.Services;
 using Pole.Features.WebServices.Common;
@@ -32,6 +33,8 @@ public static class TestServiceProviderFactory
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
         services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
+        services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
+        services.AddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
         services.AddMigrations(Assemblies);
         services.AddSearchFeature();
         services.AddValidatorsFromAssemblies(Assemblies);

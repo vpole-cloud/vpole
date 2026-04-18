@@ -6,6 +6,7 @@ using Pole.Features.Postgres.Endpoints;
 using Pole.Features.RedisServices.Common;
 using Pole.Features.RedisServices.Endpoints;
 using Pole.Features.ResourceGroups.Endpoints;
+using Pole.Features.ResourceGroups.Services;
 using Pole.Features.WebServices.Common;
 using Pole.Features.WebServices.Endpoints;
 
@@ -13,13 +14,16 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 public static class TestData
 {
+    private static readonly IKubernetesNamespaceGenerator NamespaceGenerator =
+        new KubernetesNamespaceGenerator(new KubernetesOptions { NamespaceNamePrefix = "test" });
+
     public static CreateResourceGroupRequest CreateResourceGroupRequest(
         string name = "alpha",
         string description = "primary group")
         => new(new CreateResourceGroupRequestBody(
             Name: name,
             Description: description,
-            Tags: ImmutableList.Create("home", "lab")));
+            Tags: ImmutableHashSet.Create("home", "lab")));
 
     public static CreateWebServiceRequest CreateWebServiceRequest(
         string resourceGroupId,
@@ -29,7 +33,8 @@ public static class TestData
             Name: name,
             ResourceGroupId: resourceGroupId,
             Spec: ValidWebServiceSpec(),
-            DomainName: domainName));
+            DomainName: domainName,
+            Tags: ImmutableHashSet<string>.Empty));
 
     public static CreateRedisServiceRequest CreateRedisServiceRequest(
         string resourceGroupId,
@@ -85,11 +90,19 @@ public static class TestData
         FailureThreshold: 3,
         SuccessThreshold: 1);
 
-    public static ResourceGroup SeedResourceGroup(string name = "alpha") => new(
-        Name: name,
-        Description: $"{name} description",
-        Resources: [],
-        Tags: ImmutableList.Create("seed"));
+    public static ResourceGroup SeedResourceGroup(string name = "alpha", string? kubernetesNamespace = null)
+    {
+        var options = ResourceGroupFactory.DefaultCreateOptions with
+        {
+            Tags = ImmutableHashSet.Create("seed")
+        };
+
+        return ResourceGroupFactory.Create(
+            name: name,
+            description: $"{name} description",
+            kubernetesNamespace: kubernetesNamespace ?? NamespaceGenerator.GenerateNamespaceName(options.Id),
+            options: options);
+    }
 
     public static DnsRecord SeedDnsRecord(string groupId, string resourceId, string name = "existing.example.com") => new(
         Name: name,

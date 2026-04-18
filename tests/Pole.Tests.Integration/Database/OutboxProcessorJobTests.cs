@@ -9,10 +9,14 @@ public sealed class OutboxProcessorJobTests
     [Fact]
     public void EventTypeCache_Includes_FSharpPostgresEvents()
     {
-        var cacheField = typeof(OutboxProcessorJob).GetField("EventTypeCache", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(cacheField);
-
-        var cache = cacheField!.GetValue(null);
+        var buildMethod = typeof(OutboxProcessorJob).GetMethod("BuildEventTypeCache", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(buildMethod);
+        var eventAssemblies = new[]
+        {
+            typeof(Pole.Features.Events.WebServices.CreateEvent).Assembly,
+            typeof(Pole.Features.Events.FSharp.Postgres.CreateEvent).Assembly
+        };
+        var cache = buildMethod!.Invoke(null, [eventAssemblies]);
         Assert.NotNull(cache);
 
         var containsKeyMethod = cache!.GetType().GetMethod("ContainsKey");
