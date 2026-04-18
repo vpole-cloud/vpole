@@ -11,7 +11,7 @@ open Pole.ASP.Helpers
 open Pole.Database
 open Pole.Domain.Models.FSharp
 open Pole.Features.Postgres.Common
-open Pole.Features.Postgres.Events
+open Pole.Features.Events.FSharp.Postgres
 open Pole.Mediator
 open Pole.ResultType
 

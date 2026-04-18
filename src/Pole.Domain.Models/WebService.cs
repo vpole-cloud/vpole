@@ -1,12 +1,22 @@
-﻿namespace Pole.Domain.Models;
+﻿using System.Collections.Immutable;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
+
+namespace Pole.Domain.Models;
 
 public record WebService(
+    [property: BsonId]
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string Id,
     string Name,
     string ResourceGroupId,
-    string Namespace,
     WebServiceSpec Spec,
-    DnsRecordShortInfo DnsRecord
-) : PoleService(Name, ResourceGroupId, Namespace);
+    DnsRecordShortInfo DnsRecord,
+    ServiceStatus Status,
+    ImmutableHashSet<string> Tags,
+    ImmutableList<ServiceEvent> Events,
+    string Version
+);
 
 public record DnsRecordShortInfo (
     string Id,
@@ -14,6 +24,7 @@ public record DnsRecordShortInfo (
 );
 
 public record WebServiceSpec(
+    string KubernetesNamespace,
     ImageInfo Image,
     int Replicas,
     Resources Resources,
@@ -81,4 +92,42 @@ public record ImageInfo(
 )
 {
     public string FullImageName => $"{Server}/{Name}:{Tag}";
+}
+
+public static class WebServiceFactory
+{
+    public sealed record CreateWebServiceOptions(
+        string Id,
+        ServiceStatus Status,
+        ImmutableHashSet<string> Tags,
+        ImmutableList<ServiceEvent> Events,
+        string Version
+    );
+    
+    public static CreateWebServiceOptions DefaultOptions =>
+        new CreateWebServiceOptions(
+            Id: ObjectId.GenerateNewId().ToString(),
+            Status: new Provisioning(),
+            Tags: ImmutableHashSet<string>.Empty,
+            Events: ImmutableList<ServiceEvent>.Empty,
+            Version: Guid.NewGuid().ToString()
+        );
+    
+    public static WebService Create(
+        string name,
+        string resourceGroupId,
+        WebServiceSpec spec,
+        DnsRecordShortInfo dnsRecord,
+        CreateWebServiceOptions options) =>
+        new(
+            options.Id,
+            Name: name,
+            ResourceGroupId: resourceGroupId,
+            Spec: spec,
+            DnsRecord: dnsRecord,
+            Status: options.Status,
+            Tags: options.Tags,
+            Events: options.Events,
+            Version: options.Version
+        );
 }

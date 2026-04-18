@@ -18,7 +18,9 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
     public static string BuildDeploymentName(string webServiceName) => webServiceName;
     public string TlsSecretName => BuildTlsSecretName(WebService.Name);
     public static string BuildTlsSecretName(string webServiceName) => $"{webServiceName}-tls";
-    public string Namespace => WebService.Namespace;
+    public string ServiceMonitorName => BuildServiceMonitorName(WebService.Name);
+    public static string BuildServiceMonitorName(string webServiceName) => $"{webServiceName}-sm";
+    public string Namespace => WebService.Spec.KubernetesNamespace;
     public V1Deployment ToDeployment() => new ()
     {
         ApiVersion = "apps/v1",
@@ -106,6 +108,7 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
         Metadata = new V1ObjectMeta()
         {
             Name = ServiceName,
+            NamespaceProperty = Namespace,
             Labels = new Dictionary<string, string>()
             {
                 { "app", WebService.Name }
@@ -157,6 +160,7 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
             Metadata = new V1ObjectMeta
             {
                 Name = WebService.Spec.Image.SecretName,
+                NamespaceProperty = Namespace,
                 Labels = new Dictionary<string, string>
                 {
                     ["app"] = WebService.Name
@@ -178,6 +182,7 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
         Metadata = new V1ObjectMeta()
         {
             Name = ConfigMapName,
+            NamespaceProperty = Namespace,
             Labels = new Dictionary<string, string>()
             {
                 { "app", WebService.Name }
@@ -194,6 +199,7 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
         Metadata = new V1ObjectMeta
         {
             Name = IngressName,
+            NamespaceProperty = Namespace,
             Labels = new Dictionary<string, string> { ["app"] = WebService.Name },
             Annotations = _defaultAnnotations.Concat(new Dictionary<string, string>
             {
@@ -250,6 +256,7 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
         Metadata = new V1ObjectMeta()
         {
             Name = $"{WebService.Name}-hpa",
+            NamespaceProperty = Namespace,
             Labels = new Dictionary<string, string>()
             {
                 { "app", WebService.Name }
@@ -275,7 +282,7 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
         kind = "ServiceMonitor",
         metadata = new
         {
-            name = $"{WebService.Name}-sm",
+            name = ServiceMonitorName,
             labels = new Dictionary<string, string>
             {
                 { "app", WebService.Name }
@@ -294,13 +301,13 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
             },
             namespaceSelector = new
             {
-                matchNames = Namespace,
+                matchNames = new[] { Namespace },
             },
             endpoints = new[]
             {
                 new
                 {
-                    port = "metrics",
+                    port = GetServicePortName(WebService, 0),
                     path = "/metrics",
                     interval = "30s",
                     scrapeTimeout = "10s"
@@ -321,5 +328,12 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
     {
         // Simple default: first mapping
         return webService.Spec.Config.PortMappings.FirstOrDefault()?.ServicePort ?? throw new InvalidOperationException("PortMappings is empty; cannot create Service/Ingress.");
+    }
+
+    private static string GetServicePortName(WebService webService, int index)
+    {
+        var portMapping = webService.Spec.Config.PortMappings.ElementAtOrDefault(index)
+                          ?? throw new InvalidOperationException("PortMappings is empty; cannot create Service resources.");
+        return $"p{index}-{portMapping.ServicePort}";
     }
 }

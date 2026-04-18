@@ -1,4 +1,4 @@
-namespace Pole.Features.Postgres.Events
+namespace Pole.Features.Events.FSharp.Postgres
 
 open MassTransit
 open Pole.Features.Events.Abstractions

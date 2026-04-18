@@ -48,7 +48,7 @@ public sealed class DeleteRedisServiceHandler(
             await dbContext.RedisServices
                 .DeleteOneAsync(r => r.Id == request.Id, cancellationToken: ct);
         
-            await dbContext.StoreEventAsync(new DeleteEvent(redis.Id, redis.Name, redis.Namespace), sh, ct);
+            await dbContext.StoreEventAsync(new DeleteEvent(redis.Id, redis.Name, redis.Spec.KubernetesNamespace), sh, ct);
             return new DeleteRedisServiceResponse(
                 Id: request.Id
             );

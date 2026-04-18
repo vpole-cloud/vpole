@@ -1,5 +1,5 @@
 ﻿using MongoDB.Driver;
-using Pole.Features.Core.Exeptions;
+using Pole.Features.Core.Exceptions;
 using Pole.ResultType;
 
 namespace Pole.Database;
@@ -28,7 +28,7 @@ public static class ClientSessionHandleExtensions
         {
             return Result.Conflict("A conflict occurred due to duplicate key error.");
         }
-        catch (ConflictExeption e)
+        catch (ConflictException e)
         {
             return Result.Conflict(e.Message);
         }
@@ -55,7 +55,7 @@ public static class ClientSessionHandleExtensions
         {
             return Result.Conflict("A conflict occurred due to duplicate key error.");
         }
-        catch (ConflictExeption e)
+        catch (ConflictException e)
         {
             return Result.Conflict(e.Message);
         }

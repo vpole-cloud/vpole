@@ -27,6 +27,8 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Pole.Feature.DomainNames\Pole.Feature.DomainNames.csproj" />
+      <ProjectReference Include="..\Pole.Features.Events\Pole.Features.Events.csproj" />
+      <ProjectReference Include="..\Pole.Features.Events.FSharp\Pole.Features.Events.FSharp.fsproj" />
       <ProjectReference Include="..\Pole.Features.Outbox\Pole.Features.Outbox.csproj" />
       <ProjectReference Include="..\Pole.Features.Postgres\Pole.Features.Postgres.fsproj" />
       <ProjectReference Include="..\Pole.Features.RedisServices\Pole.Features.RedisServices.csproj" />

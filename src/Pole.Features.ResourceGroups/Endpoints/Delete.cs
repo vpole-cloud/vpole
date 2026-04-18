@@ -60,7 +60,7 @@ public sealed class DeleteResourceGroupHandler(
 
             await dbContext.StoreEventAsync(new DeleteEvent(
                 ResourceGroupId: request.Id,
-                NamespaceName: resourceGroup.NamespaceName
+                NamespaceName: resourceGroup.KubernetesNamespace
             ), sh, ct);
 
             return new DeleteResourceGroupResponse(Deleted: true);

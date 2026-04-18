@@ -39,7 +39,7 @@ public sealed record UpdateResourceGroupRequest(
 
 public sealed record UpdateResourceGroupRequestBody(
     string Description,
-    ImmutableList<string> Tags
+    ImmutableHashSet<string> Tags
 );
 
 public sealed class UpdateResourceGroupHandler(

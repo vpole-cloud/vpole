@@ -1,4 +1,5 @@
-﻿using System.Collections.Immutable;
+﻿using System.Collections.Frozen;
+using System.Collections.Immutable;
 using System.Reflection;
 using System.Text.Json;
 using MassTransit;
@@ -15,11 +16,12 @@ namespace Pole.Features.Outbox;
 public partial class OutboxProcessorJob(
     MongoDbContext dbContext,
     IPublishEndpoint publishEndpoint,
+    OutboxEventAssemblyCatalog eventAssemblyCatalog,
     IOptions<OutboxSettings> outboxSettings,
     ILogger<OutboxProcessorJob> logger)
 {
     private readonly OutboxSettings _settings = outboxSettings.Value;
-    private static readonly ImmutableDictionary<string, Type> EventTypeCache = BuildEventTypeCache();
+    private readonly FrozenDictionary<string, Type> _eventTypeCache = BuildEventTypeCache(eventAssemblyCatalog.Assemblies);
 
     public async Task ProcessOutboxMessagesAsync()
     {
@@ -79,10 +81,9 @@ public partial class OutboxProcessorJob(
         }
     }
 
-    private static ImmutableDictionary<string, Type> BuildEventTypeCache()
+    private static FrozenDictionary<string, Type> BuildEventTypeCache(IEnumerable<Assembly> assemblies)
     {
-        var eventTypes = AppDomain.CurrentDomain.GetAssemblies()
-            .Where(assembly => !assembly.IsDynamic && assembly.GetName().Name?.StartsWith("Pole.", StringComparison.Ordinal) == true)
+        var eventTypes = assemblies
             .SelectMany(GetLoadableTypes)
             .Where(t =>
                 t is { IsClass: true, IsAbstract: false }
@@ -99,7 +100,7 @@ public partial class OutboxProcessorJob(
             }
         }
 
-        return cache.ToImmutableDictionary();
+        return cache.ToFrozenDictionary();
     }
 
     private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
@@ -116,10 +117,10 @@ public partial class OutboxProcessorJob(
     
     private object? DeserializeEvent(string eventType, string payloadJson)
     {
-        if (!EventTypeCache.TryGetValue(eventType, out var type))
+        if (!_eventTypeCache.TryGetValue(eventType, out var type))
         {
             logger.LogWarning("Unknown event type: {EventType}. Available types: {AvailableTypes}", 
-                eventType, string.Join(", ", EventTypeCache.Keys));
+                eventType, string.Join(", ", _eventTypeCache.Keys));
             return null;
         }
 

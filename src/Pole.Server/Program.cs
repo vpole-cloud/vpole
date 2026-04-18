@@ -22,6 +22,10 @@ Assembly[] assemblies = [
     typeof(RedisServiceEndpoints).Assembly,
     typeof(SearchEndpoints).Assembly,
 ];
+Assembly[] outboxEventAssemblies = [
+    typeof(Pole.Features.Events.WebServices.CreateEvent).Assembly,
+    typeof(Pole.Features.Events.FSharp.Postgres.CreateEvent).Assembly
+];
 
 builder.AddServiceDefaults();
 builder.AddMongoDBClient("pole-database");
@@ -29,6 +33,7 @@ builder.AddSecurity();
 
 builder.Services.AddKubernetes(configuration)
     .AddEventBus(configuration, assemblies)
+    .AddOutboxEventAssemblies(outboxEventAssemblies)
     .AddDatabase()
     .AddMigrations(assemblies)
     .AddSearchFeature()

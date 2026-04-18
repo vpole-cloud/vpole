@@ -7,7 +7,7 @@ namespace Pole.Features.RedisServices.Kubernetes;
 public readonly record struct RedisInKubernetes(Redis Redis)
 {
     public string StatefulSetName => Redis.Name;
-    public string Namespace => Redis.Namespace;
+    public string Namespace => Redis.Spec.KubernetesNamespace;
     public string ServiceName => BuildServiceName(Redis.Name);
     public static string BuildServiceName(string redisName) => $"{redisName}-svc";
     

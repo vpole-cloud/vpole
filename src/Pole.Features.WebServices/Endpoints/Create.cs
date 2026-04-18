@@ -1,4 +1,5 @@
-﻿using FluentValidation;
+﻿using System.Collections.Immutable;
+using FluentValidation;
 using k8s;
 using MassTransit;
 using Microsoft.AspNetCore.Builder;
@@ -9,7 +10,6 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Domain.Models;
-using Pole.Features.Core.Kubernetes;
 using Pole.Features.Core.Models;
 using Pole.Features.Events.WebServices;
 using Pole.Features.WebServices.Common;
@@ -56,33 +56,43 @@ public sealed class CreateWebServiceHandler(
         if (dnsRecord is not null)
             return Result.Conflict($"Domain name '{dnsRecord.Name}' is already in use.");
 
-        var webId = dbContext.GenerateNewId();
-        dnsRecord = new DnsRecord(
-            Name: request.Body.DomainName,
-            ResourceType: ResourceType.WebService,
-            ResourceId: webId,
-            ResourceName: request.Body.Name,
-            GroupId: request.Body.ResourceGroupId
-        );
-            
-        var newWebService = new WebService(
-            Name: request.Body.Name,
-            ResourceGroupId: request.Body.ResourceGroupId,
-            Namespace: group.NamespaceName,
-            Spec: request.Body.Spec.ToDomain(),
-            DnsRecord: new DnsRecordShortInfo(Id: dnsRecord.Id, Domain: dnsRecord.Name)
-        ) { Id = webId };
+        var (newWebService, newDnsRecord) = BuildWebServiceWithDnsRecord(request, group);
         
         return await dbContext.RunInTransactionAsync<CreateWebServiceResponse>(async (sh, ct) =>
         {
             await dbContext.WebServices.InsertOneAsync(sh, newWebService, cancellationToken: ct);
 
-            await dbContext.DnsRecords.InsertOneAsync(sh, dnsRecord, cancellationToken: ct);
+            await dbContext.DnsRecords.InsertOneAsync(sh, newDnsRecord, cancellationToken: ct);
             
             await dbContext.StoreEventAsync(new CreateEvent(newWebService.Id), sh, ct);
 
             return new CreateWebServiceResponse(newWebService.Id);
         }, cancellationToken: cancellationToken);
+    }
+
+    
+    private (WebService, DnsRecord) BuildWebServiceWithDnsRecord(CreateWebServiceRequest request, ResourceGroup group)
+    {
+        var createWebServiceOptions = WebServiceFactory.DefaultOptions with
+        {
+            Tags = request.Body.Tags,
+        };
+        var dnsRecord = new DnsRecord(
+            Name: request.Body.DomainName,
+            ResourceType: ResourceType.WebService,
+            ResourceId: createWebServiceOptions.Id,
+            ResourceName: request.Body.Name,
+            GroupId: request.Body.ResourceGroupId
+        );
+            
+        var newWebService = WebServiceFactory.Create(
+            name: request.Body.Name,
+            resourceGroupId: request.Body.ResourceGroupId,
+            spec: request.Body.Spec.ToDomain(group.KubernetesNamespace),
+            dnsRecord: new DnsRecordShortInfo(Id: dnsRecord.Id, Domain: dnsRecord.Name),
+            options: createWebServiceOptions
+        );
+        return (newWebService, dnsRecord);
     }
 }
 
@@ -100,34 +110,7 @@ public class CreateWebServiceEventConsumer(
             .FirstOrDefaultAsync(ct);
         if (webApp is null) return;
 
-        var inKuber = webApp.ToKubernetes();
-
-        var configMap = inKuber.ToConfigMap();
-        var deployment = inKuber.ToDeployment();
-        var service = inKuber.ToService();
-        var ingress = inKuber.ToIngress();
-        var serviceMonitor = inKuber.ToServiceMonitor();
-
-        await KubernetesExtensions.CreateIfNotExistAsync(() =>
-            kubernetes.CoreV1.CreateNamespacedConfigMapAsync(configMap, webApp.Namespace, cancellationToken: ct));
-
-        await KubernetesExtensions.CreateIfNotExistAsync(() =>
-            kubernetes.AppsV1.CreateNamespacedDeploymentAsync(deployment, webApp.Namespace, cancellationToken: ct));
-
-        await KubernetesExtensions.CreateIfNotExistAsync(() =>
-            kubernetes.CoreV1.CreateNamespacedServiceAsync(service, webApp.Namespace, cancellationToken: ct));
-
-        await KubernetesExtensions.CreateIfNotExistAsync(() =>
-            kubernetes.NetworkingV1.CreateNamespacedIngressAsync(ingress, webApp.Namespace, cancellationToken: ct));
-        
-        await KubernetesExtensions.CreateIfNotExistAsync(() =>
-            kubernetes.CustomObjects.CreateNamespacedCustomObjectAsync(
-                serviceMonitor,
-                group: "monitoring.coreos.com",
-                version: "v1",
-                namespaceParameter: webApp.Namespace,
-                plural: "servicemonitors",
-                cancellationToken: ct));
+        await WebServiceKubernetesResourceManager.CreateAsync(kubernetes, webApp.ToKubernetes(), ct);
     }
 }
 
@@ -139,11 +122,10 @@ public sealed record CreateWebServiceRequestBody(
     string Name,
     string ResourceGroupId,
     WebServiceSpecDto Spec,
-    string DomainName
-);
+    string DomainName,
+    ImmutableHashSet<string> Tags);
 public sealed record CreateWebServiceResponse(
-    string WebServiceId
-);
+    string WebServiceId);
 
 
 public sealed class CreateWebServiceRequestValidator : AbstractValidator<CreateWebServiceRequest>

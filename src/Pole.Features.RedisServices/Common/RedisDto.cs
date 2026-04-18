@@ -39,7 +39,8 @@ public static class RedisDtoExtensions
         storage.StorageClassName
     );
     
-    public static RedisSpec ToDomain(this RedisSpecDto dto) => new(
+    public static RedisSpec ToDomain(this RedisSpecDto dto, string @namespace) => new(
+        @namespace,
         dto.Storage.ToDomain(),
         dto.Resources.ToDomain()
     );

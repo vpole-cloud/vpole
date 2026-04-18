@@ -12,7 +12,7 @@ open Pole.ASP.Helpers
 open Pole.Database
 open Pole.Domain.Models.FSharp
 open Pole.Features.Core.Kubernetes
-open Pole.Features.Postgres.Events
+open Pole.Features.Events.FSharp.Postgres
 open Pole.Features.Postgres.Common
 open Pole.Features.Postgres.Kubernetes
 open Pole.Mediator

@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Outbox;
+using Pole.Features.ResourceGroups.Services;
 using Pole.Mediator;
 
 namespace Pole.Server.Extensions;
@@ -101,6 +102,13 @@ public static class DependencyInjection
         public IServiceCollection AddSettings(IConfiguration configuration)
         {
             services.AddSettingsSection<OutboxSettings>(OutboxSettings.SectionName, configuration);
+            services.AddSettingsSection<KubernetesOptions>(KubernetesOptions.SectionName, configuration);
+            return services;
+        }
+
+        public IServiceCollection AddOutboxEventAssemblies(params Assembly[] assemblies)
+        {
+            services.AddSingleton(new OutboxEventAssemblyCatalog(assemblies));
             return services;
         }
         
