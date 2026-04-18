@@ -18,6 +18,10 @@
         </PackageReference>
     </ItemGroup>
 
+    <ItemGroup Condition="Exists('testsettings.local.json')">
+        <None Include="testsettings.local.json" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
     <ItemGroup>
         <ProjectReference Include="..\..\src\Pole.ASP.Helpers\Pole.ASP.Helpers.csproj" />
         <ProjectReference Include="..\..\src\Pole.Database\Pole.Database.csproj" />

@@ -11,3 +11,4 @@ riderModule.iml
 !.vscode/launch.json
 !.vscode/tasks.json
 !.vscode/extensions.json
+tests/Pole.Tests.Integration/testsettings.local.json

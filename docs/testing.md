@@ -58,6 +58,7 @@ Before running cluster-backed tests:
 - make sure your kubeconfig points to a ready cluster
 - make sure required ingress/controllers/CRDs already exist
 - optionally set `POLE_K8S_INGRESS_BASE_URI` if ingress is reachable through a stable URI that is not discoverable from resource status
+- as an alternative, you can create `tests/Pole.Tests.Integration/testsettings.local.json` with a local ingress base URI; this file is gitignored and not required for running tests
 
 ## Running tests
 
@@ -79,6 +80,14 @@ If ingress discovery needs an explicit base address:
 
 ```bash
 POLE_K8S_INGRESS_BASE_URI=http://<reachable-ingress-address> dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter WebServiceKubernetesTests
+```
+
+You can also use an optional local config file:
+
+```json
+{
+  "POLE_K8S_INGRESS_BASE_URI": "http://<reachable-ingress-address>"
+}
 ```
 
 ## Entity construction

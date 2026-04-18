@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text.Json;
 using k8s;
 using k8s.Autorest;
 using k8s.Models;
@@ -136,7 +137,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
         Exception? lastError = null;
 
-        using var httpClient = new HttpClient
+        using var httpClient = new HttpClient(CreateIngressHttpHandler())
         {
             BaseAddress = baseUri,
             Timeout = TimeSpan.FromSeconds(10)
@@ -180,6 +181,12 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
             return new Uri(configuredBaseUri, UriKind.Absolute);
         }
 
+        configuredBaseUri = TryReadIngressBaseUriFromLocalConfig();
+        if (!string.IsNullOrWhiteSpace(configuredBaseUri))
+        {
+            return new Uri(configuredBaseUri, UriKind.Absolute);
+        }
+
         var loadBalancerIngress = ingress.Status?.LoadBalancer?.Ingress?.FirstOrDefault();
         var hostOrIp = loadBalancerIngress?.Ip ?? loadBalancerIngress?.Hostname;
         if (!string.IsNullOrWhiteSpace(hostOrIp))
@@ -196,8 +203,47 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         }
 
         throw new InvalidOperationException(
-            "Ingress base URI is not configured. Set POLE_K8S_INGRESS_BASE_URI or expose a reachable Traefik load balancer or node port.");
+            "Ingress base URI is not configured. Set POLE_K8S_INGRESS_BASE_URI, add tests/Pole.Tests.Integration/testsettings.local.json, or expose a reachable Traefik load balancer or node port.");
     }
+
+    private static string? TryReadIngressBaseUriFromLocalConfig()
+    {
+        var configPath = Path.Combine(AppContext.BaseDirectory, "testsettings.local.json");
+        if (!File.Exists(configPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(configPath));
+            if (document.RootElement.TryGetProperty("POLE_K8S_INGRESS_BASE_URI", out var directValue) &&
+                directValue.ValueKind == JsonValueKind.String)
+            {
+                return directValue.GetString();
+            }
+
+            if (document.RootElement.TryGetProperty("Kubernetes", out var kubernetesSection) &&
+                kubernetesSection.ValueKind == JsonValueKind.Object &&
+                kubernetesSection.TryGetProperty("IngressBaseUri", out var nestedValue) &&
+                nestedValue.ValueKind == JsonValueKind.String)
+            {
+                return nestedValue.GetString();
+            }
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    private static HttpMessageHandler CreateIngressHttpHandler() =>
+        new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+        };
 
     private async Task<V1Service> FindTraefikServiceAsync(string? ingressClassName)
     {
