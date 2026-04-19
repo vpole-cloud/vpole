@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Outbox;
+using Pole.Features.Postgres.Kubernetes;
 using Pole.Features.ResourceGroups.Services;
 using Pole.Mediator;
 
@@ -74,6 +75,7 @@ public static class DependencyInjection
                 var config = KubernetesClientConfiguration.BuildConfigFromConfigFile();
                 return new Kubernetes(config);
             });
+            services.AddSingleton<IPostgresClusterSecretStore, KubernetesPostgresClusterSecretStore>();
             return services;
         }
         public IServiceCollection AddEventBus(IConfiguration configuration, Assembly[] assemblies)

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Pole.Database;
 using Pole.Feature.DomainNames.Common;
+using Pole.Features.Postgres.Kubernetes;
 using Pole.Features.Postgres.Endpoints;
 using Pole.Features.RedisServices.Common;
 using Pole.Features.ResourceGroups.Common;
@@ -35,6 +36,8 @@ public static class TestServiceProviderFactory
         services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
         services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         services.AddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
+        services.AddSingleton<InMemoryPostgresClusterSecretStore>();
+        services.AddSingleton<IPostgresClusterSecretStore>(sp => sp.GetRequiredService<InMemoryPostgresClusterSecretStore>());
         services.AddMigrations(Assemblies);
         services.AddSearchFeature();
         services.AddValidatorsFromAssemblies(Assemblies);

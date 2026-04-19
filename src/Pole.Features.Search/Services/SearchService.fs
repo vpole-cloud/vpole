@@ -12,10 +12,23 @@ open Pole.Features.Search.Common
 open Pole.Features.Search.Projection
 
 type ISearchService =
-    abstract member Create : SearchDocumentSet -> CancellationToken -> Task
-    abstract member Get : SearchQuery -> CancellationToken -> Task<PaginatedResponse<SearchHitDto>>
-    abstract member Update : SearchDocumentSet -> CancellationToken -> Task
-    abstract member Delete : SearchDocumentType * string -> CancellationToken -> Task
+    abstract member Create :
+        documentSet : SearchDocumentSet ->
+        cancellationToken : CancellationToken ->
+            Task
+    abstract member Get :
+        query : SearchQuery ->
+        cancellationToken : CancellationToken ->
+            Task<PaginatedResponse<SearchHitDto>>
+    abstract member Update :
+        documentSet : SearchDocumentSet ->
+        cancellationToken : CancellationToken ->
+            Task
+    abstract member Delete :
+        sourceType : SearchDocumentType *
+        sourceId : string ->
+            cancellationToken : CancellationToken ->
+                Task
 
 type SearchService(database : IMongoDatabase) =
     let collection = database.GetCollection<SearchDocument>("SearchDocuments")

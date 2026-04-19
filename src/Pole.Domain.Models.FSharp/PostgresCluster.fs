@@ -5,7 +5,8 @@ open MongoDB.Bson.Serialization.Attributes
 
 type PostgresClusterSpec =
     { Instances : int
-      Storage : int }
+      Storage : int
+      KubernetesNamespace : string }
     
 type PostgresCluster =
     { [<BsonId>]
@@ -13,24 +14,23 @@ type PostgresCluster =
       Id : string
       Name : string
       GroupId : string
-      Username : string
       Spec : PostgresClusterSpec }
     
 type CreatePostgresClusterOptions =
     { Id : string option
-      Instances : int option
-      Storage : int option }
+      Instances : int
+      Storage : int }
 
 module PostgresCluster =
     let emptyOptions =
-        { Instances = None
-          Storage = None
+        { Instances = 1
+          Storage = 1
           Id = None }
         
-    let create name groupId username options=
+    let create name groupId kubernetesNamespace options=
         { Id = defaultArg options.Id (ObjectId.GenerateNewId().ToString())
           Name = name
-          Username = username
-          Spec = { Instances = defaultArg options.Instances 1
-                   Storage = defaultArg options.Storage 10 }
+          Spec = { Instances = options.Instances
+                   Storage = options.Storage
+                   KubernetesNamespace = kubernetesNamespace }
           GroupId = groupId }

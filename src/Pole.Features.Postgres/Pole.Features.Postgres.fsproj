@@ -10,9 +10,13 @@
         <Compile Include="Common\MongoExtensions.fs" />
         <Compile Include="Common\ResultF.fs" />
         <Compile Include="Kubernetes\PostgresClusterKubernetesBuilder.fs" />
+        <Compile Include="Kubernetes\PostgresClusterSecretStore.fs" />
+        <Compile Include="Kubernetes\PostgresClusterKubernetesResourceManager.fs" />
         <Compile Include="Endpoints\Create.fs" />
         <Compile Include="Endpoints\Delete.fs" />
         <Compile Include="Endpoints\Update.fs" />
+        <Compile Include="Endpoints\UpdatePassword.fs" />
+        <Compile Include="Endpoints\GetConnectionString.fs" />
         <Compile Include="Endpoints\GetById.fs" />
         <Compile Include="Endpoints\Get.fs" />
         <Compile Include="Endpoints\AllPostgresEndpoints.fs" />

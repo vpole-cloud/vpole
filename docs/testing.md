@@ -44,6 +44,8 @@ The current suite intentionally mixes a few different test layers inside one pro
 
 The default choice should still be the cheapest useful boundary. Most behavior should be covered without needing a live cluster.
 
+For infrastructure-aware features, normal handler and mediator tests should prefer small fakes or in-memory adapters for external systems. The real infrastructure path should then be covered separately by manifest tests and a small number of live cluster tests.
+
 ## Requirements
 
 Before running the integration suite:
@@ -74,6 +76,12 @@ To run only the cluster-backed webservice tests:
 
 ```bash
 dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter WebServiceKubernetesTests
+```
+
+To run only the cluster-backed Postgres tests:
+
+```bash
+dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter PostgresKubernetesTests
 ```
 
 If ingress discovery needs an explicit base address:

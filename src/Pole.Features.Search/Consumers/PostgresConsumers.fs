@@ -28,7 +28,7 @@ type PostgresProjectionConsumer(dbContext : MongoDbContext, searchService : ISea
             let! cluster =
                 dbContext.Postgres
                     .Find(Builders<PostgresCluster>.Filter.Eq("Id", clusterId))
-                    .FirstOrDefaultAsyncF(cancellationToken)
+                    .FirstOrNoneAsync(cancellationToken)
 
             match cluster with
             | None -> ()
