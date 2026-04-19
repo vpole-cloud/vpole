@@ -25,7 +25,7 @@ type GetPostgresClusterHandler(dbContext : MongoDbContext) =
                 let! postgresCluster =
                     dbContext.Postgres
                         .Find(fun x -> x.Id = request.ClusterId)
-                        .FirstOrDefaultAsyncF(cancellationToken)
+                        .FirstOrNoneAsync(cancellationToken)
 
                 match postgresCluster with
                 | None ->

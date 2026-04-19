@@ -216,7 +216,7 @@ internal sealed class BlogSeedClient(HttpClient httpClient)
 
     private sealed record WebServiceResponse(string Id, string Name, string ResourceGroupId);
 
-    private sealed record PostgresClusterResponse(string Id, string Name, string GroupId, string Username);
+    private sealed record PostgresClusterResponse(string Id, string Name, string GroupId);
 
     private sealed record PaginatedResponse<T>(IReadOnlyCollection<T> Items, long TotalCount, int PageNumber, int PageSize);
 }

@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Microsoft.FSharp.Core;
+using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Postgres.Endpoints;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
@@ -10,6 +11,8 @@ namespace Pole.Tests.Integration.Postgres;
 public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
+    private InMemoryPostgresClusterSecretStore SecretStore => Services.GetRequiredService<InMemoryPostgresClusterSecretStore>();
+
     [Fact]
     public async Task Create_Succeeds_WithValidRequest()
     {
@@ -24,7 +27,11 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         var savedCluster = await DbContext.Postgres.Find(cluster => cluster.Id == response.Id).FirstOrDefaultAsync();
         Assert.NotNull(savedCluster);
         Assert.Equal(resourceGroup.Id, savedCluster.GroupId);
-        Assert.Equal("postgres", savedCluster.Username);
+        Assert.Equal(resourceGroup.KubernetesNamespace, savedCluster.Spec.KubernetesNamespace);
+        var storedCredentials = SecretStore.GetStored(resourceGroup.KubernetesNamespace, savedCluster.Id);
+        Assert.NotNull(storedCredentials);
+        Assert.Equal("postgres", storedCredentials!.Username);
+        Assert.Equal("postgres-secret", storedCredentials.Password);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("create-postgres-cluster-requested"));
     }
 
@@ -39,11 +46,8 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             created!.Id,
             new UpdatePostgresClusterRequestBody(
                 FSharpOption<string>.Some("postgres-updated"),
-                FSharpOption<string>.Some(resourceGroup.Id),
                 FSharpOption<int>.Some(3),
-                FSharpOption<int>.Some(25),
-                FSharpOption<string>.Some("app-user"),
-                FSharpOption<string>.Some("updated-secret")));
+                FSharpOption<int>.Some(25)));
 
         var updateResult = await Mediator.Send(updateRequest);
 
@@ -57,8 +61,45 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal("postgres-updated", updatedCluster.Name);
         Assert.Equal(3, updatedCluster.Spec.Instances);
         Assert.Equal(25, updatedCluster.Spec.Storage);
-        Assert.Equal("app-user", updatedCluster.Username);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("update-postgres-cluster-requested"));
+    }
+
+    [Fact]
+    public async Task UpdatePassword_RewritesStoredCredentials()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var createResult = await Mediator.Send(TestData.CreatePostgresClusterRequest(resourceGroup.Id));
+        Assert.True(createResult.TryGetValue(out var created, out _));
+
+        var updateResult = await Mediator.Send(new UpdatePostgresClusterPasswordRequest(
+            created!.Id,
+            new UpdatePostgresClusterPasswordRequestBody("rotated-secret")));
+
+        Assert.True(updateResult.TryGetValue(out var response, out var error));
+        Assert.Null(error);
+        Assert.NotNull(response);
+
+        var storedCredentials = SecretStore.GetStored(resourceGroup.KubernetesNamespace, created.Id);
+        Assert.NotNull(storedCredentials);
+        Assert.Equal("postgres", storedCredentials!.Username);
+        Assert.Equal("rotated-secret", storedCredentials.Password);
+    }
+
+    [Fact]
+    public async Task GetConnectionString_ReturnsValueBuiltFromStoredCredentials()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var createResult = await Mediator.Send(TestData.CreatePostgresClusterRequest(resourceGroup.Id, name: "postgres-reporting", username: "report_user", password: "report-secret"));
+        Assert.True(createResult.TryGetValue(out var created, out _));
+
+        var result = await Mediator.Send(new GetPostgresClusterConnectionStringRequest(created!.Id));
+
+        Assert.True(result.TryGetValue(out var response, out var error));
+        Assert.Null(error);
+        Assert.NotNull(response);
+        Assert.Equal(
+            $"Host={created.Id}-rw.{resourceGroup.KubernetesNamespace}.svc.cluster.local;Port=5432;Database={created.Id};Username=report_user;Password=report-secret;SSL Mode=Disable",
+            response.ConnectionString);
     }
 
     [Fact]

@@ -17,11 +17,8 @@ open Pole.ResultType
 
 type UpdatePostgresClusterRequestBody =
     { Name : string option
-      GroupId : string option
       Instances : int option
-      Storage : int option
-      Username : string option
-      Password : string option }
+      Storage : int option }
 
 type UpdatePostgresClusterResponse =
     { Id : string }
@@ -42,7 +39,7 @@ type UpdatePostgresClusterHandler(dbContext : MongoDbContext) =
                 let! postgresCluster =
                     dbContext.Postgres
                         .Find(filter)
-                        .FirstOrDefaultAsyncF(cancellationToken)
+                        .FirstOrNoneAsync(cancellationToken)
 
                 match postgresCluster with
                 | None ->
@@ -52,11 +49,11 @@ type UpdatePostgresClusterHandler(dbContext : MongoDbContext) =
                     let updatedCluster =
                         { cluster with
                             Name = defaultArg request.Body.Name cluster.Name
-                            GroupId = defaultArg request.Body.GroupId cluster.GroupId
-                            Username = defaultArg request.Body.Username cluster.Username
+                            GroupId = cluster.GroupId
                             Spec =
                                 { Instances = defaultArg request.Body.Instances cluster.Spec.Instances
-                                  Storage = defaultArg request.Body.Storage cluster.Spec.Storage } }
+                                  Storage = defaultArg request.Body.Storage cluster.Spec.Storage
+                                  KubernetesNamespace = cluster.Spec.KubernetesNamespace } }
 
                     return!
                         dbContext.RunInTransactionAsync<UpdatePostgresClusterResponse>(
@@ -70,7 +67,7 @@ type UpdatePostgresClusterHandler(dbContext : MongoDbContext) =
                                             cancellationToken = ct
                                         )
 
-                                    let event = UpdateEvent.create cluster.Id request.Body.Password
+                                    let event = UpdateEvent.create cluster.Id
                                     do! dbContext.StoreEventAsync(event, session, ct)
 
                                     return { Id = request.ClusterId } |> ResultF.ofValue

@@ -16,6 +16,8 @@ type PostgresClusterEndpoints =
             .MapGetPostgresClustersEndpoint()
             .MapGetByIdPostgresClusterEndpoint()
             .MapUpdatePostgresClusterEndpoint()
+            .MapUpdatePostgresClusterPasswordEndpoint()
+            .MapGetPostgresClusterConnectionStringEndpoint()
             .MapDeletePostgresClusterEndpoint()
             |> ignore
         endpoints

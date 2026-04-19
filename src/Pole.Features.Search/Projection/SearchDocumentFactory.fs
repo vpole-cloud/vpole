@@ -38,10 +38,6 @@ module SearchDocumentFactory =
     [<Literal>]
     let ResourceNameTokenWeight = 3500
     [<Literal>]
-    let UsernameWeight = 7000
-    [<Literal>]
-    let UsernameTokenWeight = 3500
-    [<Literal>]
     let GroupIdWeight = 6000
     [<Literal>]
     let GroupIdTokenWeight = 3000
@@ -206,11 +202,7 @@ module SearchDocumentFactory =
                   { KeyType = SearchKeyType.Name
                     Value = cluster.Name
                     FullWeight = NameWeight
-                    TokenWeight = Some NameTokenWeight }
-                  { KeyType = SearchKeyType.Username
-                    Value = cluster.Username
-                    FullWeight = UsernameWeight
-                    TokenWeight = Some UsernameTokenWeight } ] }
+                    TokenWeight = Some NameTokenWeight } ] }
 
     let toSourceDocument (documentSet : SearchDocumentSet) =
         let title =

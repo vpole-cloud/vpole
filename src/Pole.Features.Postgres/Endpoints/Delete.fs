@@ -27,33 +27,23 @@ type DeletePostgresClusterHandler(dbContext : MongoDbContext) =
     interface IMediatorHandler<DeletePostgresClusterRequest, DeletePostgresClusterResponse> with
         member _.HandleAsync(request, cancellationToken) =
             task {
-                let filter = Builders<PostgresCluster>.Filter.Eq("Id", request.ClusterId)
-
-                let! postgresCluster =
-                    dbContext.Postgres
-                        .Find(filter)
-                        .FirstOrDefaultAsyncF(cancellationToken)
-
-                match postgresCluster with
-                | None ->
-                    return Result.NotFound($"Postgres cluster with ID '{request.ClusterId}' not found.")
-                           |> ResultF.ofFailure
-                | Some cluster ->
-                    return!
+                return!
                         dbContext.RunInTransactionAsync<DeletePostgresClusterResponse>(
                             (fun session ct ->
                                 task {
-                                    let! _ =
+                                    let! deleteResult =
                                         dbContext.Postgres.DeleteOneAsync(
                                             session,
-                                            filter,
+                                            (fun c -> c.Id = request.ClusterId),
                                             cancellationToken = ct
                                         )
-
-                                    let event = DeleteEvent.create cluster.Id
-                                    do! dbContext.StoreEventAsync(event, session, ct)
-
-                                    return { Id = request.ClusterId } |> ResultF.ofValue
+                                    if deleteResult.DeletedCount = 0L then
+                                        return Result.NotFound($"PostgreSQL cluster with ID '{request.ClusterId}' not found.")
+                                               |> ResultF.ofFailure
+                                    else
+                                        let event = DeleteEvent.create request.ClusterId
+                                        do! dbContext.StoreEventAsync(event, session, ct)
+                                        return { Id = request.ClusterId } |> ResultF.ofValue
                                 }
                             ),
                             cancellationToken = cancellationToken

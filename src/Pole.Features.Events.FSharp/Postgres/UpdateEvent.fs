@@ -5,11 +5,9 @@ open Pole.Features.Events.Abstractions
 
 [<EntityName("update-postgres-cluster-requested")>]
 type UpdateEvent =
-    { ClusterId : string
-      NewPassword : string option }
+    { ClusterId : string }
     interface IPoleEvent
 
 module UpdateEvent =
-    let create clusterId newPassword : UpdateEvent =
-        { ClusterId = clusterId
-          NewPassword = newPassword }
+    let create clusterId : UpdateEvent =
+        { ClusterId = clusterId }
