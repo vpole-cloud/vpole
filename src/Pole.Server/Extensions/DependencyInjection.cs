@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Outbox;
+using Pole.Features.Postgres.Common;
 using Pole.Features.Postgres.Kubernetes;
 using Pole.Features.ResourceGroups.Services;
 using Pole.Mediator;
@@ -76,6 +77,9 @@ public static class DependencyInjection
                 return new Kubernetes(config);
             });
             services.AddSingleton<IPostgresClusterSecretStore, KubernetesPostgresClusterSecretStore>();
+            services.AddSingleton<IPostgresClusterDeploymentBackend, OperatorPostgresClusterDeploymentBackend>();
+            services.AddSingleton<IPostgresClusterDeploymentBackend, StatefulSetPostgresClusterDeploymentBackend>();
+            services.AddSingleton<IPostgresClusterDeploymentManager, PostgresClusterDeploymentManager>();
             return services;
         }
         public IServiceCollection AddEventBus(IConfiguration configuration, Assembly[] assemblies)
@@ -105,6 +109,7 @@ public static class DependencyInjection
         {
             services.AddSettingsSection<OutboxSettings>(OutboxSettings.SectionName, configuration);
             services.AddSettingsSection<KubernetesOptions>(KubernetesOptions.SectionName, configuration);
+            services.AddSettingsSection<PostgresSettings>(PostgresSettings.SectionName, configuration);
             return services;
         }
 

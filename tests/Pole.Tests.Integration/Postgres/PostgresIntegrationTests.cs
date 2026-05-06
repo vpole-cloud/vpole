@@ -1,6 +1,7 @@
 using MongoDB.Driver;
 using Microsoft.FSharp.Core;
 using Microsoft.Extensions.DependencyInjection;
+using Pole.Domain.Models.FSharp;
 using Pole.Features.Postgres.Endpoints;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
@@ -28,6 +29,8 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.NotNull(savedCluster);
         Assert.Equal(resourceGroup.Id, savedCluster.GroupId);
         Assert.Equal(resourceGroup.KubernetesNamespace, savedCluster.Spec.KubernetesNamespace);
+        Assert.Equal(17, savedCluster.Spec.Version);
+        Assert.Equal(PostgresDeploymentMode.Operator, savedCluster.Spec.DeploymentMode);
         var storedCredentials = SecretStore.GetStored(resourceGroup.KubernetesNamespace, savedCluster.Id);
         Assert.NotNull(storedCredentials);
         Assert.Equal("postgres", storedCredentials!.Username);
@@ -61,6 +64,8 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal("postgres-updated", updatedCluster.Name);
         Assert.Equal(3, updatedCluster.Spec.Instances);
         Assert.Equal(25, updatedCluster.Spec.Storage);
+        Assert.Equal(17, updatedCluster.Spec.Version);
+        Assert.Equal(PostgresDeploymentMode.Operator, updatedCluster.Spec.DeploymentMode);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("update-postgres-cluster-requested"));
     }
 

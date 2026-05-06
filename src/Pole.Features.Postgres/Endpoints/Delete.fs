@@ -12,6 +12,7 @@ open Pole.Database
 open Pole.Domain.Models.FSharp
 open Pole.Features.Postgres.Common
 open Pole.Features.Events.FSharp.Postgres
+open Pole.Features.Postgres.Kubernetes
 open Pole.Mediator
 open Pole.ResultType
 
@@ -27,7 +28,17 @@ type DeletePostgresClusterHandler(dbContext : MongoDbContext) =
     interface IMediatorHandler<DeletePostgresClusterRequest, DeletePostgresClusterResponse> with
         member _.HandleAsync(request, cancellationToken) =
             task {
-                return!
+                let! postgresCluster =
+                    dbContext.Postgres
+                        .Find(fun c -> c.Id = request.ClusterId)
+                        .FirstOrNoneAsync(cancellationToken)
+
+                match postgresCluster with
+                | None ->
+                    return Result.NotFound($"PostgreSQL cluster with ID '{request.ClusterId}' not found.")
+                           |> ResultF.ofFailure
+                | Some cluster ->
+                    return!
                         dbContext.RunInTransactionAsync<DeletePostgresClusterResponse>(
                             (fun session ct ->
                                 task {
@@ -41,7 +52,7 @@ type DeletePostgresClusterHandler(dbContext : MongoDbContext) =
                                         return Result.NotFound($"PostgreSQL cluster with ID '{request.ClusterId}' not found.")
                                                |> ResultF.ofFailure
                                     else
-                                        let event = DeleteEvent.create request.ClusterId
+                                        let event = DeleteEvent.create request.ClusterId cluster.Spec.KubernetesNamespace cluster.Spec.DeploymentMode
                                         do! dbContext.StoreEventAsync(event, session, ct)
                                         return { Id = request.ClusterId } |> ResultF.ofValue
                                 }
@@ -69,3 +80,12 @@ type PostgresClusterDeleteEndpoints =
             let! result = mediator.Send request
             return result.ToHttpResult(fun value -> Results.Ok(value))
         }
+
+type PostgresClusterDeletedConsumer(deploymentManager : IPostgresClusterDeploymentManager) =
+    interface MassTransit.IConsumer<DeleteEvent> with
+        member _.Consume(context) =
+            deploymentManager.DeleteAsync(
+                context.Message.ClusterId,
+                context.Message.NamespaceName,
+                context.Message.DeploymentMode,
+                context.CancellationToken)

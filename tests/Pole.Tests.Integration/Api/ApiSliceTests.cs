@@ -60,5 +60,19 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
+    [Fact]
+    public async Task GetSupportedPostgresVersions_ReturnsConfiguredRange()
+    {
+        var response = await Client.GetAsync("/api/v1/postgres/supported-versions");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var payload = await response.Content.ReadFromJsonAsync<SupportedPostgresVersionsResponse>();
+        Assert.NotNull(payload);
+        Assert.Equal(16, payload.From);
+        Assert.Equal(17, payload.To);
+    }
+
     private sealed record ResourceGroupCreatedResponse(string Id, string Name, string Description, IReadOnlyCollection<string> Tags);
+    private sealed record SupportedPostgresVersionsResponse(int From, int To);
 }

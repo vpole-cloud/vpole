@@ -47,11 +47,13 @@ public static class TestData
     public static CreatePostgresClusterRequest CreatePostgresClusterRequest(
         string resourceGroupId,
         string name = "postgres-main",
+        int version = 17,
         string username = "postgres",
         string password = "postgres-secret")
         => new(new CreatePostgresClusterRequestBody(
             name,
             resourceGroupId,
+            version,
             FSharpOption<int>.Some(1),
             FSharpOption<int>.Some(10),
             username,

@@ -12,6 +12,7 @@ open Pole.Database
 open Pole.Domain.Models.FSharp
 open Pole.Features.Postgres.Common
 open Pole.Features.Events.FSharp.Postgres
+open Pole.Features.Postgres.Kubernetes
 open Pole.Mediator
 open Pole.ResultType
 
@@ -46,35 +47,44 @@ type UpdatePostgresClusterHandler(dbContext : MongoDbContext) =
                     return Result.NotFound($"Postgres cluster with ID '{request.ClusterId}' not found.")
                            |> ResultF.ofFailure
                 | Some cluster ->
-                    let updatedCluster =
-                        { cluster with
-                            Name = defaultArg request.Body.Name cluster.Name
-                            GroupId = cluster.GroupId
-                            Spec =
-                                { Instances = defaultArg request.Body.Instances cluster.Spec.Instances
-                                  Storage = defaultArg request.Body.Storage cluster.Spec.Storage
-                                  KubernetesNamespace = cluster.Spec.KubernetesNamespace } }
+                    let updatedInstances = defaultArg request.Body.Instances cluster.Spec.Instances
 
-                    return!
-                        dbContext.RunInTransactionAsync<UpdatePostgresClusterResponse>(
-                            (fun session ct ->
-                                task {
-                                    let! _ =
-                                        dbContext.Postgres.ReplaceOneAsync(
-                                            session,
-                                            filter,
-                                            updatedCluster,
-                                            cancellationToken = ct
-                                        )
+                    if cluster.Spec.DeploymentMode = PostgresDeploymentMode.StatefulSet && updatedInstances <> 1 then
+                        let validationErrors = System.Collections.Generic.Dictionary<string, string[]>()
+                        validationErrors["Body.Instances"] <- [| "StatefulSet PostgreSQL supports exactly one instance." |]
+                        return Result.ValidationFailure(validationErrors) |> ResultF.ofFailure
+                    else
+                        let updatedCluster =
+                            { cluster with
+                                Name = defaultArg request.Body.Name cluster.Name
+                                GroupId = cluster.GroupId
+                                Spec =
+                                    { Instances = updatedInstances
+                                      Storage = defaultArg request.Body.Storage cluster.Spec.Storage
+                                      KubernetesNamespace = cluster.Spec.KubernetesNamespace
+                                      Version = cluster.Spec.Version
+                                      DeploymentMode = cluster.Spec.DeploymentMode } }
 
-                                    let event = UpdateEvent.create cluster.Id
-                                    do! dbContext.StoreEventAsync(event, session, ct)
+                        return!
+                            dbContext.RunInTransactionAsync<UpdatePostgresClusterResponse>(
+                                (fun session ct ->
+                                    task {
+                                        let! _ =
+                                            dbContext.Postgres.ReplaceOneAsync(
+                                                session,
+                                                filter,
+                                                updatedCluster,
+                                                cancellationToken = ct
+                                            )
 
-                                    return { Id = request.ClusterId } |> ResultF.ofValue
-                                }
-                            ),
-                            cancellationToken = cancellationToken
-                        )
+                                        let event = UpdateEvent.create cluster.Id
+                                        do! dbContext.StoreEventAsync(event, session, ct)
+
+                                        return { Id = request.ClusterId } |> ResultF.ofValue
+                                    }
+                                ),
+                                cancellationToken = cancellationToken
+                            )
             }
 
 type UpdatePostgresClusterRequestValidator() as this =
@@ -98,3 +108,26 @@ type UpdatePostgresClusterEndpoint =
             let! result = mediator.Send request
             return result.ToHttpResult(fun value -> Results.Ok(value))
         }
+
+type PostgresClusterUpdatedConsumer(
+    database : MongoDbContext,
+    secretStore : IPostgresClusterSecretStore,
+    deploymentManager : IPostgresClusterDeploymentManager) =
+    interface MassTransit.IConsumer<UpdateEvent> with
+        member _.Consume(context) =
+            task {
+                let! postgresCluster =
+                    database.Postgres
+                        .Find(fun c -> c.Id = context.Message.ClusterId)
+                        .FirstOrNoneAsync(context.CancellationToken)
+
+                match postgresCluster with
+                | None -> ()
+                | Some cluster ->
+                    let! credentials = secretStore.GetAsync(cluster.Spec.KubernetesNamespace, cluster.Id, context.CancellationToken)
+
+                    match credentials with
+                    | None -> ()
+                    | Some credentials ->
+                        do! deploymentManager.UpdateAsync(cluster, credentials.Username, context.CancellationToken)
+            }

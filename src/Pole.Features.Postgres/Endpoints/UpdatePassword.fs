@@ -44,8 +44,16 @@ type UpdatePostgresClusterPasswordHandler(
                     return Result.NotFound($"Postgres cluster with ID '{request.ClusterId}' not found.")
                            |> ResultF.ofFailure
                 | Some cluster ->
-                    do! secretStore.UpdatePasswordAsync(cluster.Spec.KubernetesNamespace, cluster.Id, request.Body.Password, cancellationToken)
-                    return { Id = cluster.Id } |> ResultF.ofValue
+                    match cluster.Spec.DeploymentMode with
+                    | PostgresDeploymentMode.Operator ->
+                        do! secretStore.UpdatePasswordAsync(cluster.Spec.KubernetesNamespace, cluster.Id, request.Body.Password, cancellationToken)
+                        return { Id = cluster.Id } |> ResultF.ofValue
+                    | PostgresDeploymentMode.StatefulSet ->
+                        return Result.Conflict("Password rotation is not supported for StatefulSet PostgreSQL deployments.")
+                               |> ResultF.ofFailure
+                    | _ ->
+                        return Result.Conflict($"Unsupported PostgreSQL deployment mode '{cluster.Spec.DeploymentMode}'.")
+                               |> ResultF.ofFailure
             }
 
 type UpdatePostgresClusterPasswordRequestValidator() as this =

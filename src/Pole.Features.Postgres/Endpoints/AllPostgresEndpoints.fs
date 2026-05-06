@@ -13,6 +13,7 @@ type PostgresClusterEndpoints =
             .WithDisplayName("Postgres Cluster Endpoints")
             .WithTags("postgres")
             .MapCreatePostgresClusterEndpoint()
+            .MapGetSupportedPostgresVersionsEndpoint()
             .MapGetPostgresClustersEndpoint()
             .MapGetByIdPostgresClusterEndpoint()
             .MapUpdatePostgresClusterEndpoint()

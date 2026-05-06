@@ -47,7 +47,7 @@ type GetPostgresClusterConnectionStringHandler(
                                |> ResultF.ofFailure
                     | Some credentials ->
                         let connectionString =
-                            $"Host={PostgresClusterKubernetesBuilder.BuildReadWriteServiceName(cluster.Id)}.{cluster.Spec.KubernetesNamespace}.svc.cluster.local;Port=5432;Database={PostgresClusterKubernetesBuilder.BuildDatabaseName(cluster.Id)};Username={credentials.Username};Password={credentials.Password};SSL Mode=Disable"
+                            $"Host={PostgresClusterKubernetesBuilder.buildReadWriteServiceName cluster.Id}.{cluster.Spec.KubernetesNamespace}.svc.cluster.local;Port=5432;Database={PostgresClusterKubernetesBuilder.buildDatabaseName cluster.Id};Username={credentials.Username};Password={credentials.Password};SSL Mode=Disable"
 
                         return { ConnectionString = connectionString } |> ResultF.ofValue
             }
