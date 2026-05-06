@@ -11,18 +11,16 @@ open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
 open Pole.Domain.Models.FSharp
-open Pole.Features.Core.Kubernetes
 open Pole.Features.Events.FSharp.Postgres
 open Pole.Features.Postgres.Common
 open Pole.Features.Postgres.Kubernetes
 open Pole.Mediator
 open Pole.ResultType
-open k8s
-open Pole.Domain.Models
 
 type CreatePostgresClusterRequestBody =
     { Name : string
       GroupId : string
+      Version : int
       Instances : int option
       Storage : int option
       Username : string
@@ -31,43 +29,69 @@ type CreatePostgresClusterRequestBody =
 type CreatePostgresClusterRequest =
     { [<FromBody>] Body : CreatePostgresClusterRequestBody }
         interface IMediatorRequest<PostgresClusterDto>
-    
-type CreatePostgresClusterHandler(dbContext : MongoDbContext, secretStore : IPostgresClusterSecretStore) =
+
+type CreatePostgresClusterHandler(
+    dbContext : MongoDbContext,
+    secretStore : IPostgresClusterSecretStore,
+    settings : PostgresSettings) =
+    let validate settings request =
+        let validationErrors = System.Collections.Generic.Dictionary<string, string[]>()
+
+        if not (PostgresSettings.isSupportedVersion settings request.Body.Version) then
+            validationErrors["Body.Version"] <- [| $"Supported PostgreSQL versions are from {settings.SupportedVersions.From} to {settings.SupportedVersions.``To``}." |]
+
+        let requestedInstances = defaultArg request.Body.Instances PostgresCluster.emptyOptions.Instances
+        if settings.DefaultDeploymentMode = PostgresDeploymentMode.StatefulSet && requestedInstances <> 1 then
+            validationErrors["Body.Instances"] <- [| "StatefulSet PostgreSQL supports exactly one instance." |]
+
+        validationErrors
+
     interface IMediatorHandler<CreatePostgresClusterRequest, PostgresClusterDto> with
         member this.HandleAsync(request, cancellationToken) =
             task {
-                let! resourceGroup =
-                    dbContext.ResourceGroups
-                        .Find(fun c -> c.Id = request.Body.GroupId)
-                        .FirstOrNoneAsync(cancellationToken)
+                let validationErrors = validate settings request
 
-                match resourceGroup with
-                | None ->
-                    return Result.NotFound($"Resource group with ID '{request.Body.GroupId}' not found.")
-                           |> ResultF.ofFailure
-                | Some group ->
-                    let cluster = PostgresCluster.create request.Body.Name request.Body.GroupId group.KubernetesNamespace
-                                   { PostgresCluster.emptyOptions with
-                                        Instances = defaultArg request.Body.Instances PostgresCluster.emptyOptions.Instances
-                                        Storage = defaultArg request.Body.Storage PostgresCluster.emptyOptions.Storage }
+                if validationErrors.Count > 0 then
+                    return Result.ValidationFailure(validationErrors) |> ResultF.ofFailure
+                else
+                    let! resourceGroup =
+                        dbContext.ResourceGroups
+                            .Find(fun c -> c.Id = request.Body.GroupId)
+                            .FirstOrNoneAsync(cancellationToken)
 
-                    return!
-                        dbContext.RunInTransactionAsync<PostgresClusterDto>(
-                            (fun session ct ->
-                                task {
-                                    do! dbContext.Postgres.InsertOneAsync(session, cluster, cancellationToken = ct)
-                                    do! secretStore.CreateAsync(group.KubernetesNamespace, cluster.Id, request.Body.Username, request.Body.Password, ct)
-                                    let event = CreateEvent.create cluster.Id
-                                    
-                                    do! dbContext.StoreEventAsync(event, session, ct)
+                    match resourceGroup with
+                    | None ->
+                        return Result.NotFound($"Resource group with ID '{request.Body.GroupId}' not found.")
+                               |> ResultF.ofFailure
+                    | Some group ->
+                        let cluster =
+                            PostgresCluster.create
+                                request.Body.Name
+                                request.Body.GroupId
+                                group.KubernetesNamespace
+                                request.Body.Version
+                                settings.DefaultDeploymentMode
+                                { PostgresCluster.emptyOptions with
+                                    Instances = defaultArg request.Body.Instances PostgresCluster.emptyOptions.Instances
+                                    Storage = defaultArg request.Body.Storage PostgresCluster.emptyOptions.Storage }
 
-                                    let response = PostgresCluster.toDto cluster
-                                    
-                                    return Result.Success(response) :> Result<PostgresClusterDto>
-                                }
-                            ),
-                            cancellationToken = cancellationToken
-                        )
+                        return!
+                            dbContext.RunInTransactionAsync<PostgresClusterDto>(
+                                (fun session ct ->
+                                    task {
+                                        do! dbContext.Postgres.InsertOneAsync(session, cluster, cancellationToken = ct)
+                                        do! secretStore.CreateAsync(group.KubernetesNamespace, cluster.Id, request.Body.Username, request.Body.Password, ct)
+                                        let event = CreateEvent.create cluster.Id
+                                        
+                                        do! dbContext.StoreEventAsync(event, session, ct)
+
+                                        let response = PostgresCluster.toDto cluster
+                                        
+                                        return Result.Success(response) :> Result<PostgresClusterDto>
+                                    }
+                                ),
+                                cancellationToken = cancellationToken
+                            )
             }
             
 type CreatePostgresClusterValidator() as this =
@@ -75,6 +99,7 @@ type CreatePostgresClusterValidator() as this =
     do
         this.RuleFor(_.Body.Name).NotEmpty().WithMessage("Name is required.") |> ignore
         this.RuleFor(_.Body.GroupId).NotEmpty().WithMessage("GroupId is required.") |> ignore
+        this.RuleFor(_.Body.Version).GreaterThan(0).WithMessage("Version is required.") |> ignore
         this.RuleFor(_.Body.Username).NotEmpty().WithMessage("Username is required.") |> ignore
         this.RuleFor(_.Body.Password).NotEmpty().WithMessage("Password is required.") |> ignore
 
@@ -95,8 +120,8 @@ type PostgresClusterCreateEndpoints =
 
 type PostgresClusterCreatedConsumer(
     database : MongoDbContext,
-    kubernetes : IKubernetes,
-    secretStore : IPostgresClusterSecretStore) =
+    secretStore : IPostgresClusterSecretStore,
+    deploymentManager : IPostgresClusterDeploymentManager) =
     interface IConsumer<CreateEvent> with
         member this.Consume(context) =
             task {
@@ -114,6 +139,5 @@ type PostgresClusterCreatedConsumer(
                     match credentials with
                     | None -> ()
                     | Some credentials ->
-                        let builder = PostgresClusterKubernetesBuilder(cluster, credentials.Username)
-                        do! PostgresClusterKubernetesResourceManager.CreateAsync(kubernetes, builder, context.CancellationToken)
+                        do! deploymentManager.CreateAsync(cluster, credentials.Username, context.CancellationToken)
             }

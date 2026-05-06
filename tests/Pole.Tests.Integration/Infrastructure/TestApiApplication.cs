@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Pole.Database;
 using Pole.Feature.DomainNames.Common;
+using Pole.Features.Postgres.Common;
 using Pole.Features.Postgres.Kubernetes;
 using Pole.Features.Postgres.Endpoints;
 using Pole.Features.RedisServices.Common;
@@ -51,6 +52,11 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton(fixture.Database);
         builder.Services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
         builder.Services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
+        builder.Services.AddSingleton(new PostgresSettings
+        {
+            DefaultDeploymentMode = Pole.Domain.Models.FSharp.PostgresDeploymentMode.Operator,
+            SupportedVersions = new PostgresSupportedVersionsSettings { From = 16, To = 17 }
+        });
         builder.Services.AddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
         builder.Services.AddSingleton<InMemoryPostgresClusterSecretStore>();
         builder.Services.AddSingleton<IPostgresClusterSecretStore>(sp => sp.GetRequiredService<InMemoryPostgresClusterSecretStore>());

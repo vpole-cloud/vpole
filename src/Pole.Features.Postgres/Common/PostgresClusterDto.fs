@@ -4,7 +4,9 @@ open Pole.Domain.Models.FSharp
 
 type PostgresClusterSpecDto =
     { Instances : int
-      Storage : int }
+      Storage : int
+      Version : int
+      DeploymentMode : string }
     
 type PostgresClusterDto =
     { Id : string
@@ -17,4 +19,8 @@ module PostgresCluster =
         { Id = cluster.Id
           Name = cluster.Name
           GroupId = cluster.GroupId
-          Spec = { Instances = cluster.Spec.Instances; Storage = cluster.Spec.Storage } }
+          Spec =
+            { Instances = cluster.Spec.Instances
+              Storage = cluster.Spec.Storage
+              Version = cluster.Spec.Version
+              DeploymentMode = cluster.Spec.DeploymentMode.ToString() } }

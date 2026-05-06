@@ -12,6 +12,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Pole.Domain.Models.FSharp\Pole.Domain.Models.FSharp.fsproj" />
       <ProjectReference Include="..\Pole.Features.Events\Pole.Features.Events.csproj" />
     </ItemGroup>
 

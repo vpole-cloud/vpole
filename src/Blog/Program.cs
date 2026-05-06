@@ -155,6 +155,7 @@ internal sealed class BlogSeedClient(HttpClient httpClient)
             {
                 Name = name,
                 GroupId = resourceGroupId,
+                Version = 17,
                 Instances = 1,
                 Storage = 10,
                 Username = username,
