@@ -2,7 +2,7 @@ using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Pole.Database;
-using Pole.Feature.DomainNames.Common;
+using Pole.Feature.DnsRecords.Core.Common;
 using Pole.Features.Postgres.Common;
 using Pole.Features.Postgres.Kubernetes;
 using Pole.Features.Postgres.Endpoints;

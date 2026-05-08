@@ -24,21 +24,21 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\src\Pole.ASP.Helpers\Pole.ASP.Helpers.csproj" />
-        <ProjectReference Include="..\..\src\Pole.Database\Pole.Database.csproj" />
-        <ProjectReference Include="..\..\src\Pole.Domain.Models\Pole.Domain.Models.csproj" />
-        <ProjectReference Include="..\..\src\Pole.Feature.DomainNames\Pole.Feature.DomainNames.csproj" />
-        <ProjectReference Include="..\..\src\Pole.Features.Core\Pole.Features.Core.csproj" />
-        <ProjectReference Include="..\..\src\Pole.Features.Events\Pole.Features.Events.csproj" />
-        <ProjectReference Include="..\..\src\Pole.Features.Postgres\Pole.Features.Postgres.fsproj" />
-        <ProjectReference Include="..\..\src\Pole.Features.RedisServices\Pole.Features.RedisServices.csproj" />
-        <ProjectReference Include="..\..\src\Pole.Features.Request\Pole.Features.Request.csproj" />
-        <ProjectReference Include="..\..\src\Pole.Features.ResourceGroups\Pole.Features.ResourceGroups.csproj" />
-        <ProjectReference Include="..\..\src\Pole.Features.Search\Pole.Features.Search.fsproj" />
-        <ProjectReference Include="..\..\src\Pole.Features.WebServices\Pole.Features.WebServices.csproj" />
-        <ProjectReference Include="..\..\src\Pole.Mediator\Pole.Mediator.csproj" />
-        <ProjectReference Include="..\..\src\Pole.ResultType\Pole.ResultType.csproj" />
-        <ProjectReference Include="..\..\src\Pole.Server\Pole.Server.csproj" />
+        <ProjectReference Include="..\..\src\helpers\ASP\ASP.csproj" />
+        <ProjectReference Include="..\..\src\shared\Database\Database.csproj" />
+        <ProjectReference Include="..\..\src\domain\Models\Core\Core.csproj" />
+        <ProjectReference Include="..\..\src\features\DnsRecords\Core\Core.csproj" />
+        <ProjectReference Include="..\..\src\shared\Features\Features.csproj" />
+        <ProjectReference Include="..\..\src\shared\Events\Events.csproj" />
+        <ProjectReference Include="..\..\src\features\Postgres\Core\Core.fsproj" />
+        <ProjectReference Include="..\..\src\features\RedisServices\Core\Core.csproj" />
+        <ProjectReference Include="..\..\src\shared\Request\Request.csproj" />
+        <ProjectReference Include="..\..\src\features\ResourceGroups\Core\Core.csproj" />
+        <ProjectReference Include="..\..\src\features\Search\Core\Core.fsproj" />
+        <ProjectReference Include="..\..\src\features\WebServices\Core\Core.csproj" />
+        <ProjectReference Include="..\..\src\helpers\Mediator\Mediator.csproj" />
+        <ProjectReference Include="..\..\src\helpers\ResultType\ResultType.csproj" />
+        <ProjectReference Include="..\..\src\api\Pole.Server\Pole.Server.csproj" />
     </ItemGroup>
 
 </Project>

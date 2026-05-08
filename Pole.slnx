@@ -1,36 +1,54 @@
 <Solution>
   <Folder Name="/api/">
-    <Project Path="src/Pole.AppHost/Pole.AppHost.csproj" />
-    <Project Path="src/Pole.Server/Pole.Server.csproj" />
+    <Project Path="src/api/Pole.AppHost/Pole.AppHost.csproj" />
+    <Project Path="src/api/Pole.Server/Pole.Server.csproj" />
   </Folder>
-  <Folder Name="/domain/">
-    <Project Path="src/Pole.Domain.Models.FSharp/Pole.Domain.Models.FSharp.fsproj" />
-    <Project Path="src/Pole.Domain.Models/Pole.Domain.Models.csproj" />
+  <Folder Name="/domain/Models.FSharp/">
+    <Project Path="src/domain/Models.FSharp/Core/Core.fsproj" />
+  </Folder>
+  <Folder Name="/domain/Models/">
+    <Project Path="src/domain/Models/Core/Core.csproj" />
   </Folder>
   <Folder Name="/examples/">
-    <Project Path="src/Blog/Blog.csproj" />
+    <Project Path="src/examples/Blog/Blog.csproj" />
   </Folder>
-  <Folder Name="/features/">
-    <Project Path="src/Pole.Database/Pole.Database.csproj" />
-    <Project Path="src/Pole.Feature.DomainNames/Pole.Feature.DomainNames.csproj" />
-    <Project Path="src/Pole.Features.Core/Pole.Features.Core.csproj" />
-    <Project Path="src/Pole.Features.Events/Pole.Features.Events.csproj" />
-    <Project Path="src/Pole.Features.Outbox/Pole.Features.Outbox.csproj" />
-    <Project Path="src/Pole.Features.Postgres/Pole.Features.Postgres.fsproj" />
-    <Project Path="src/Pole.Features.RedisServices/Pole.Features.RedisServices.csproj" />
-    <Project Path="src/Pole.Features.Request/Pole.Features.Request.csproj" />
-    <Project Path="src/Pole.Features.ResourceGroups/Pole.Features.ResourceGroups.csproj" />
-    <Project Path="src/Pole.Features.Search/Pole.Features.Search.fsproj" />
-    <Project Path="src/Pole.Features.WebServices/Pole.Features.WebServices.csproj" />
+  <Folder Name="/shared/">
+    <Project Path="src/shared/Database/Database.csproj" />
+    <Project Path="src/shared/Features/Features.csproj" />
+    <Project Path="src/shared/Events/Events.csproj" />
+    <Project Path="src/shared/Request/Request.csproj" />
   </Folder>
   <Folder Name="/features/DnsRecords/">
     <Project Path="src/features/DnsRecords/Events/Events.csproj" />
+    <Project Path="src/features/DnsRecords/Core/Core.csproj" />
+  </Folder>
+  <Folder Name="/features/RedisServices/">
+    <Project Path="src/features/RedisServices/Core/Core.csproj" />
+    <Project Path="src/features/RedisServices/Events/Events.csproj" />
+  </Folder>
+  <Folder Name="/features/Postgres/">
+    <Project Path="src/features/Postgres/Core/Core.fsproj" />
+    <Project Path="src/features/Postgres/Events/Events.fsproj" />
+  </Folder>
+  <Folder Name="/features/ResourceGroups/">
+    <Project Path="src/features/ResourceGroups/Core/Core.csproj" />
+    <Project Path="src/features/ResourceGroups/Events/Events.csproj" />
+  </Folder>
+  <Folder Name="/features/WebServices/">
+    <Project Path="src/features/WebServices/Core/Core.csproj" />
+    <Project Path="src/features/WebServices/Events/Events.csproj" />
+  </Folder>
+  <Folder Name="/features/Outbox/">
+    <Project Path="src/features/Outbox/Core/Core.csproj" />
+  </Folder>
+  <Folder Name="/features/Search/">
+    <Project Path="src/features/Search/Core/Core.fsproj" />
   </Folder>
   <Folder Name="/helpers/">
-    <Project Path="src/Pole.ASP.Helpers/Pole.ASP.Helpers.csproj" />
-    <Project Path="src/Pole.Mediator/Pole.Mediator.csproj" />
-    <Project Path="src/Pole.ResultType/Pole.ResultType.csproj" />
-    <Project Path="src/Pole.ServiceDefaults/Pole.ServiceDefaults.csproj" />
+    <Project Path="src/helpers/ASP/ASP.csproj" />
+    <Project Path="src/helpers/Mediator/Mediator.csproj" />
+    <Project Path="src/helpers/ResultType/ResultType.csproj" />
+    <Project Path="src/helpers/ServiceDefaults/ServiceDefaults.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj" />

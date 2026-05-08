@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <AssemblyName>Pole.Features.Search</AssemblyName>
+        <RootNamespace>Pole.Features.Search</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="Common\SearchDocument.fs" />
+        <Compile Include="Common\SearchDto.fs" />
+        <Compile Include="Migrations\SearchDocumentIndexesMigration.fs" />
+        <Compile Include="Projection\SearchDocumentFactory.fs" />
+        <Compile Include="Services\SearchService.fs" />
+        <Compile Include="DependencyInjection.fs" />
+        <Compile Include="Consumers\ResourceGroupConsumers.fs" />
+        <Compile Include="Consumers\WebServiceConsumers.fs" />
+        <Compile Include="Consumers\RedisConsumers.fs" />
+        <Compile Include="Consumers\PostgresConsumers.fs" />
+        <Compile Include="Endpoints\Get.fs" />
+        <Compile Include="Endpoints\AllSearchEndpoints.fs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="FluentValidation" Version="12.1.1" />
+        <PackageReference Include="MassTransit.Abstractions" Version="8.5.9" />
+        <PackageReference Include="MongoDB.Driver" Version="3.8.0" />
+        <PackageReference Update="FSharp.Core" Version="10.1.203" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\..\helpers\ASP\ASP.csproj" />
+      <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
+      <ProjectReference Include="..\..\..\domain\Models\Core\Core.csproj" />
+      <ProjectReference Include="..\..\..\domain\Models.FSharp\Core\Core.fsproj" />
+      <ProjectReference Include="..\..\DnsRecords\Core\Core.csproj" />
+      <ProjectReference Include="..\..\Postgres\Core\Core.fsproj" />
+      <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
+      <ProjectReference Include="..\..\RedisServices\Core\Core.csproj" />
+      <ProjectReference Include="..\..\ResourceGroups\Core\Core.csproj" />
+      <ProjectReference Include="..\..\WebServices\Core\Core.csproj" />
+      <ProjectReference Include="..\..\..\helpers\Mediator\Mediator.csproj" />
+      <ProjectReference Include="..\..\..\helpers\ResultType\ResultType.csproj" />
+    </ItemGroup>
+</Project>

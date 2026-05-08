@@ -4,6 +4,7 @@
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Feature.DnsRecords.Events</AssemblyName>
         <RootNamespace>Pole.Feature.DnsRecords.Events</RootNamespace>
     </PropertyGroup>
 
