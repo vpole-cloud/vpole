@@ -7,13 +7,16 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="MassTransit.Abstractions" Version="8.5.7" />
+      <PackageReference Include="MassTransit.Abstractions" Version="8.5.9" />
     </ItemGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\Pole.ASP.Helpers\Pole.ASP.Helpers.csproj" />
       <ProjectReference Include="..\Pole.Database\Pole.Database.csproj" />
+      <ProjectReference Include="..\Pole.Domain.Models\Pole.Domain.Models.csproj" />
+      <ProjectReference Include="..\Pole.Features.Events\Pole.Features.Events.csproj" />
       <ProjectReference Include="..\Pole.Features.Request\Pole.Features.Request.csproj" />
+      <ProjectReference Include="..\Pole.Features.WebServices\Pole.Features.WebServices.csproj" />
       <ProjectReference Include="..\Pole.Mediator\Pole.Mediator.csproj" />
     </ItemGroup>
 

@@ -11,7 +11,7 @@ open Pole.ASP.Helpers
 open Pole.Database
 open Pole.Domain.Models.FSharp
 open Pole.Features.Postgres.Common
-open Pole.Features.Events.FSharp.Postgres
+open Pole.Features.Postgres.Events
 open Pole.Features.Postgres.Kubernetes
 open Pole.Mediator
 open Pole.ResultType
@@ -52,7 +52,7 @@ type DeletePostgresClusterHandler(dbContext : MongoDbContext) =
                                         return Result.NotFound($"PostgreSQL cluster with ID '{request.ClusterId}' not found.")
                                                |> ResultF.ofFailure
                                     else
-                                        let event = DeleteEvent.create request.ClusterId cluster.Spec.KubernetesNamespace cluster.Spec.DeploymentMode
+                                        let event = DeleteEvent.create cluster
                                         do! dbContext.StoreEventAsync(event, session, ct)
                                         return { Id = request.ClusterId } |> ResultF.ofValue
                                 }
@@ -86,6 +86,6 @@ type PostgresClusterDeletedConsumer(deploymentManager : IPostgresClusterDeployme
         member _.Consume(context) =
             deploymentManager.DeleteAsync(
                 context.Message.ClusterId,
-                context.Message.NamespaceName,
-                context.Message.DeploymentMode,
+                context.Message.Spec.KubernetesNamespace,
+                context.Message.Spec.DeploymentMode,
                 context.CancellationToken)

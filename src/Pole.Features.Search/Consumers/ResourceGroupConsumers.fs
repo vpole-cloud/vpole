@@ -5,7 +5,7 @@ open System.Threading.Tasks
 open MassTransit
 open MongoDB.Driver
 open Pole.Database
-open Pole.Features.Events.ResourceGroups
+open Pole.Features.ResourceGroups.Events
 open Pole.Features.Search.Common
 open Pole.Features.Search.Projection
 open Pole.Features.Search.Services

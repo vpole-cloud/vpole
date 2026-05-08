@@ -7,7 +7,8 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Features.Events.RedisServices;
+using Pole.Features.RedisServices.Common;
+using Pole.Features.RedisServices.Events;
 using Pole.Features.RedisServices.Kubernetes;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -48,7 +49,7 @@ public sealed class DeleteRedisServiceHandler(
             await dbContext.RedisServices
                 .DeleteOneAsync(r => r.Id == request.Id, cancellationToken: ct);
         
-            await dbContext.StoreEventAsync(new DeleteEvent(redis.Id, redis.Name, redis.Spec.KubernetesNamespace), sh, ct);
+            await dbContext.StoreEventAsync(redis.ToDeleteEvent(), sh, ct);
             return new DeleteRedisServiceResponse(
                 Id: request.Id
             );
@@ -66,13 +67,13 @@ public class DeleteRedisServiceRequestedEventConsumer(
         var ct = context.CancellationToken;
 
         await kubernetes.AppsV1.DeleteNamespacedStatefulSetAsync(
-            name: message.RedisName,
-            namespaceParameter: message.Namespace,
+            name: message.Name,
+            namespaceParameter: message.Spec.KubernetesNamespace,
             cancellationToken: ct);
         
         await kubernetes.CoreV1.DeleteNamespacedServiceAsync(
-            name: RedisInKubernetes.BuildServiceName(message.RedisName),
-            namespaceParameter: message.Namespace,
+            name: RedisInKubernetes.BuildServiceName(message.Name),
+            namespaceParameter: message.Spec.KubernetesNamespace,
             cancellationToken: ct);
     }
 }

@@ -48,7 +48,6 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         var updateRequest = new UpdatePostgresClusterRequest(
             created!.Id,
             new UpdatePostgresClusterRequestBody(
-                FSharpOption<string>.Some("postgres-updated"),
                 FSharpOption<int>.Some(3),
                 FSharpOption<int>.Some(25)));
 
@@ -61,7 +60,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
 
         var updatedCluster = await DbContext.Postgres.Find(cluster => cluster.Id == created.Id).FirstOrDefaultAsync();
         Assert.NotNull(updatedCluster);
-        Assert.Equal("postgres-updated", updatedCluster.Name);
+        Assert.Equal("postgres-main", updatedCluster.Name);
         Assert.Equal(3, updatedCluster.Spec.Instances);
         Assert.Equal(25, updatedCluster.Spec.Storage);
         Assert.Equal(17, updatedCluster.Spec.Version);

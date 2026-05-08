@@ -10,12 +10,12 @@
 
     <ItemGroup>
         <PackageReference Include="Aspire.Keycloak.Authentication" Version="13.1.0-preview.1.25616.3" />
-        <PackageReference Include="Aspire.MongoDB.Driver" Version="13.1.3" />
-        <PackageReference Include="Aspire.RabbitMQ.Client" Version="13.1.3" />
+        <PackageReference Include="Aspire.MongoDB.Driver" Version="13.3.0" />
+        <PackageReference Include="Aspire.RabbitMQ.Client" Version="13.3.0" />
         <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
         <PackageReference Include="Hangfire" Version="1.8.23" />
-        <PackageReference Include="Hangfire.Mongo" Version="1.13.1" />
-        <PackageReference Include="MassTransit.RabbitMQ" Version="8.5.7" />
+        <PackageReference Include="Hangfire.Mongo" Version="1.15.0" />
+        <PackageReference Include="MassTransit.RabbitMQ" Version="9.1.0" />
         <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     </ItemGroup>
 
@@ -28,7 +28,6 @@
     <ItemGroup>
       <ProjectReference Include="..\Pole.Feature.DomainNames\Pole.Feature.DomainNames.csproj" />
       <ProjectReference Include="..\Pole.Features.Events\Pole.Features.Events.csproj" />
-      <ProjectReference Include="..\Pole.Features.Events.FSharp\Pole.Features.Events.FSharp.fsproj" />
       <ProjectReference Include="..\Pole.Features.Outbox\Pole.Features.Outbox.csproj" />
       <ProjectReference Include="..\Pole.Features.Postgres\Pole.Features.Postgres.fsproj" />
       <ProjectReference Include="..\Pole.Features.RedisServices\Pole.Features.RedisServices.csproj" />

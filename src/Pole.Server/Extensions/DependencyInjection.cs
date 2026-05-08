@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Feature.DomainNames.Filters;
 using Pole.Features.Outbox;
 using Pole.Features.Postgres.Common;
 using Pole.Features.Postgres.Kubernetes;
@@ -84,14 +85,15 @@ public static class DependencyInjection
         }
         public IServiceCollection AddEventBus(IConfiguration configuration, Assembly[] assemblies)
         {
-            services.AddMassTransit(x =>
+            services.AddMassTransit(configurator =>
             {
-                x.UsingRabbitMq((context, cfg) =>
+                configurator.UsingRabbitMq((context, cfg) =>
                 {
                     cfg.Host(configuration.GetConnectionString("pole-rabbitmq"));
                     cfg.ConfigureEndpoints(context);
+                    cfg.UseConsumeFilter(typeof(DeleteDnsRecordFilter<>), context);
                 });
-                x.AddConsumers(assemblies);
+                configurator.AddConsumers(assemblies);
             });
             return services;
         }

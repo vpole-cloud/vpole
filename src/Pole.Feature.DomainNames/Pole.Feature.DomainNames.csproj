@@ -7,6 +7,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\features\DnsRecords\Events\Events.csproj" />
       <ProjectReference Include="..\Pole.ASP.Helpers\Pole.ASP.Helpers.csproj" />
       <ProjectReference Include="..\Pole.Database\Pole.Database.csproj" />
       <ProjectReference Include="..\Pole.Domain.Models\Pole.Domain.Models.csproj" />

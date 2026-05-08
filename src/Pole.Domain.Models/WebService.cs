@@ -14,13 +14,7 @@ public record WebService(
     DnsRecordShortInfo DnsRecord,
     ServiceStatus Status,
     ImmutableHashSet<string> Tags,
-    ImmutableList<ServiceEvent> Events,
-    string Version
-);
-
-public record DnsRecordShortInfo (
-    string Id,
-    string Domain
+    ImmutableList<ServiceEvent> Events
 );
 
 public record WebServiceSpec(
@@ -67,8 +61,8 @@ public record ProbeConfig(
     int SuccessThreshold = 1);
 
 public record WebServiceConfig( 
-    Dictionary<string, string> EnvironmentVariables,
-    List<PortMapping> PortMappings
+    ImmutableDictionary<string, string> EnvironmentVariables,
+    ImmutableList<PortMapping> PortMappings
 );
 
 /// <summary>
@@ -100,8 +94,7 @@ public static class WebServiceFactory
         string Id,
         ServiceStatus Status,
         ImmutableHashSet<string> Tags,
-        ImmutableList<ServiceEvent> Events,
-        string Version
+        ImmutableList<ServiceEvent> Events
     );
     
     public static CreateWebServiceOptions DefaultOptions =>
@@ -109,8 +102,7 @@ public static class WebServiceFactory
             Id: ObjectId.GenerateNewId().ToString(),
             Status: new Provisioning(),
             Tags: ImmutableHashSet<string>.Empty,
-            Events: ImmutableList<ServiceEvent>.Empty,
-            Version: Guid.NewGuid().ToString()
+            Events: ImmutableList<ServiceEvent>.Empty
         );
     
     public static WebService Create(
@@ -127,7 +119,6 @@ public static class WebServiceFactory
             DnsRecord: dnsRecord,
             Status: options.Status,
             Tags: options.Tags,
-            Events: options.Events,
-            Version: options.Version
+            Events: options.Events
         );
 }

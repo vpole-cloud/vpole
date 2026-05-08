@@ -14,6 +14,9 @@
         <Compile Include="Kubernetes\PostgresStatefulSetKubernetesBuilder.fs" />
         <Compile Include="Kubernetes\PostgresClusterSecretStore.fs" />
         <Compile Include="Kubernetes\PostgresClusterKubernetesResourceManager.fs" />
+        <Compile Include="Events\CreateEvent.fs" />
+        <Compile Include="Events\UpdateEvent.fs" />
+        <Compile Include="Events\DeleteEvent.fs" />
         <Compile Include="Endpoints\Create.fs" />
         <Compile Include="Endpoints\Delete.fs" />
         <Compile Include="Endpoints\Update.fs" />
@@ -29,14 +32,15 @@
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
     </ItemGroup>
     <ItemGroup>
-        <PackageReference Include="MassTransit.Abstractions" Version="8.5.7" />
+        <PackageReference Include="MassTransit.Abstractions" Version="8.5.9" />
         <PackageReference Include="FluentValidation" Version="12.1.1" />
         <PackageReference Include="KubernetesClient" Version="19.0.2" />
+        <PackageReference Update="FSharp.Core" Version="10.1.203" />
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\Pole.ASP.Helpers\Pole.ASP.Helpers.csproj" />
       <ProjectReference Include="..\Pole.Database\Pole.Database.csproj" />
-      <ProjectReference Include="..\Pole.Features.Events.FSharp\Pole.Features.Events.FSharp.fsproj" />
+      <ProjectReference Include="..\Pole.Features.Events\Pole.Features.Events.csproj" />
       <ProjectReference Include="..\Pole.Features.Request\Pole.Features.Request.csproj" />
       <ProjectReference Include="..\Pole.Mediator\Pole.Mediator.csproj" />
     </ItemGroup>

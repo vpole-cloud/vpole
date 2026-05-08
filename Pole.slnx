@@ -14,7 +14,6 @@
     <Project Path="src/Pole.Database/Pole.Database.csproj" />
     <Project Path="src/Pole.Feature.DomainNames/Pole.Feature.DomainNames.csproj" />
     <Project Path="src/Pole.Features.Core/Pole.Features.Core.csproj" />
-    <Project Path="src/Pole.Features.Events.FSharp/Pole.Features.Events.FSharp.fsproj" />
     <Project Path="src/Pole.Features.Events/Pole.Features.Events.csproj" />
     <Project Path="src/Pole.Features.Outbox/Pole.Features.Outbox.csproj" />
     <Project Path="src/Pole.Features.Postgres/Pole.Features.Postgres.fsproj" />
@@ -23,6 +22,9 @@
     <Project Path="src/Pole.Features.ResourceGroups/Pole.Features.ResourceGroups.csproj" />
     <Project Path="src/Pole.Features.Search/Pole.Features.Search.fsproj" />
     <Project Path="src/Pole.Features.WebServices/Pole.Features.WebServices.csproj" />
+  </Folder>
+  <Folder Name="/features/DnsRecords/">
+    <Project Path="src/features/DnsRecords/Events/Events.csproj" />
   </Folder>
   <Folder Name="/helpers/">
     <Project Path="src/Pole.ASP.Helpers/Pole.ASP.Helpers.csproj" />

@@ -1,5 +1,6 @@
 using System.Reflection;
 using Pole.Features.Outbox;
+using Pole.Features.WebServices.Events;
 using Xunit;
 
 namespace Pole.Tests.Integration.Database;
@@ -13,8 +14,8 @@ public sealed class OutboxProcessorJobTests
         Assert.NotNull(buildMethod);
         var eventAssemblies = new[]
         {
-            typeof(Pole.Features.Events.WebServices.CreateEvent).Assembly,
-            typeof(Pole.Features.Events.FSharp.Postgres.CreateEvent).Assembly
+            typeof(CreateEvent).Assembly,
+            typeof(Pole.Features.Postgres.Events.CreateEvent).Assembly
         };
         var cache = buildMethod!.Invoke(null, [eventAssemblies]);
         Assert.NotNull(cache);

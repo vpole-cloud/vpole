@@ -26,8 +26,9 @@
 
     <ItemGroup>
         <PackageReference Include="FluentValidation" Version="12.1.1" />
-        <PackageReference Include="MassTransit.Abstractions" Version="8.5.7" />
-        <PackageReference Include="MongoDB.Driver" Version="3.7.1" />
+        <PackageReference Include="MassTransit.Abstractions" Version="8.5.9" />
+        <PackageReference Include="MongoDB.Driver" Version="3.8.0" />
+        <PackageReference Update="FSharp.Core" Version="10.1.203" />
     </ItemGroup>
 
     <ItemGroup>
@@ -36,9 +37,11 @@
       <ProjectReference Include="..\Pole.Domain.Models\Pole.Domain.Models.csproj" />
       <ProjectReference Include="..\Pole.Domain.Models.FSharp\Pole.Domain.Models.FSharp.fsproj" />
       <ProjectReference Include="..\Pole.Feature.DomainNames\Pole.Feature.DomainNames.csproj" />
-      <ProjectReference Include="..\Pole.Features.Events\Pole.Features.Events.csproj" />
       <ProjectReference Include="..\Pole.Features.Postgres\Pole.Features.Postgres.fsproj" />
       <ProjectReference Include="..\Pole.Features.Request\Pole.Features.Request.csproj" />
+      <ProjectReference Include="..\Pole.Features.RedisServices\Pole.Features.RedisServices.csproj" />
+      <ProjectReference Include="..\Pole.Features.ResourceGroups\Pole.Features.ResourceGroups.csproj" />
+      <ProjectReference Include="..\Pole.Features.WebServices\Pole.Features.WebServices.csproj" />
       <ProjectReference Include="..\Pole.Mediator\Pole.Mediator.csproj" />
       <ProjectReference Include="..\Pole.ResultType\Pole.ResultType.csproj" />
     </ItemGroup>

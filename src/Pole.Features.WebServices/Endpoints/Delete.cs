@@ -2,11 +2,13 @@
 using MassTransit;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Features.Events.WebServices;
+using Pole.Features.WebServices.Common;
+using Pole.Features.WebServices.Events;
 using Pole.Features.WebServices.Kubernetes;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -37,28 +39,18 @@ public sealed class DeleteWebServiceHandler(
     public async Task<Result<DeleteWebServiceResponse>> HandleAsync(DeleteWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var webService = await dbContext.WebServices
-            .Find(ws => ws.Id == request.Id)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (webService is null)
-            return Result.NotFound($"Web service with ID '{request.Id}' not found.");
-        
         return await dbContext.RunInTransactionAsync<DeleteWebServiceResponse>(async (sh, ct) =>
         {
-            await dbContext.WebServices
-                .DeleteOneAsync(sh, ws => ws.Id == request.Id, cancellationToken: ct);
+            var webService = await dbContext.WebServices
+                .FindOneAndDeleteAsync(sh, ws => ws.Id == request.Id, cancellationToken: ct);
 
-            var dnsRecord = await dbContext.DnsRecords
-                .Find(record => record.ResourceId == request.Id)
-                .FirstOrDefaultAsync(ct);
-
-            await dbContext.DnsRecords
-                .DeleteOneAsync(sh, record => record.ResourceId == request.Id, cancellationToken: ct);
+            if (webService is null)
+                return Result.NotFound($"Web service with ID '{request.Id}' not found.");
             
-            await dbContext.StoreEventAsync(
-                new DeleteEvent(webService.Id, webService.Name, webService.ResourceGroupId, dnsRecord?.Id),
-                sh,
-                ct);
+            await dbContext.DnsRecords
+                .DeleteOneAsync(sh, record => record.Id == webService.DnsRecord.Id, cancellationToken: ct);
+            
+            await dbContext.StoreEventAsync(webService.ToDeleteEvent(), sh, ct);
             return new DeleteWebServiceResponse(
                 Id: request.Id
             );
@@ -67,7 +59,6 @@ public sealed class DeleteWebServiceHandler(
 }
 
 public class DeleteWebServiceRequestedEventConsumer(
-    MongoDbContext dbContext,
     IKubernetes kubernetes
     ) : IConsumer<DeleteEvent>
 {
@@ -76,23 +67,16 @@ public class DeleteWebServiceRequestedEventConsumer(
         var message = context.Message;
         var ct = context.CancellationToken;
         
-        var resourceGroup = await dbContext.ResourceGroups
-            .Find(rg => rg.Id == message.ResourceGroupId)
-            .FirstOrDefaultAsync(ct);
-        if (resourceGroup is null)
-            return;
-        var ns = resourceGroup.KubernetesNamespace;
-        
         await WebServiceKubernetesResourceManager.DeleteAsync(
             kubernetes,
-            message.WebServiceName,
-            ns,
+            message.Name,
+            message.Spec.KubernetesNamespace,
             ct);
     }
 }
 
 public sealed record DeleteWebServiceRequest(
-    [Microsoft.AspNetCore.Mvc.FromRoute] string Id
+    [FromRoute] string Id
 ) : IMediatorRequest<DeleteWebServiceResponse>;
 
 public sealed record DeleteWebServiceResponse(

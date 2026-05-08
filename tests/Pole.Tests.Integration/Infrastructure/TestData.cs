@@ -42,7 +42,8 @@ public static class TestData
         => new(new CreateRedisServiceRequestBody(
             Name: name,
             ResourceGroupId: resourceGroupId,
-            Spec: ValidRedisSpec()));
+            Spec: ValidRedisSpec(),
+            Tags: ImmutableHashSet<string>.Empty));
 
     public static CreatePostgresClusterRequest CreatePostgresClusterRequest(
         string resourceGroupId,
@@ -66,7 +67,8 @@ public static class TestData
             Requests: new ResourceDto(1, 256),
             Limits: new ResourceDto(2, 512)),
         Config: new WebServiceConfigDto(
-            EnvironmentVariables: new Dictionary<string, string> { ["ASPNETCORE_ENVIRONMENT"] = "Development" },
+            EnvironmentVariables: ImmutableDictionary<string, string>.Empty
+                .Add("ASPNETCORE_ENVIRONMENT", "Development"),
             PortMappings:
             [
                 new PortMappingDto(80, "8080", "TCP", "http")

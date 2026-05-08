@@ -29,7 +29,7 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         var resourceGroup = await resourceGroupResponse.Content.ReadFromJsonAsync<ResourceGroupCreatedResponse>();
         Assert.NotNull(resourceGroup);
 
-        var invalidRequest = new CreateRedisServiceRequestBody("Bad Name", resourceGroup.Id, TestData.ValidRedisSpec());
+        var invalidRequest = new CreateRedisServiceRequestBody("Bad Name", resourceGroup.Id, TestData.ValidRedisSpec(), []);
 
         var response = await Client.PostAsJsonAsync("/api/v1/redis-services/", invalidRequest);
 

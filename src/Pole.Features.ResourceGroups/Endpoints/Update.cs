@@ -7,8 +7,10 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Features.Events.ResourceGroups;
+using Pole.Domain.Models;
+using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Common;
+using Pole.Features.ResourceGroups.Events;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -59,15 +61,17 @@ public sealed class UpdateResourceGroupHandler(
 
         return await dbContext.RunInTransactionAsync<ResourceGroupDto>(async (sh, ct) =>
         {
-            await dbContext.ResourceGroups.UpdateOneAsync(
-                session: sh,
-                filter: rg => rg.Id == request.Id,
-                update: Builders<Pole.Domain.Models.ResourceGroup>.Update
-                    .Set(rg => rg.Description, request.Body.Description)
-                    .Set(rg => rg.Tags, request.Body.Tags),
-                cancellationToken: ct);
+            var changes = GetChanges(resourceGroup, request.Body);
+            if (HasChanges(changes))
+            {
+                await dbContext.ResourceGroups.UpdateOneAsync(
+                    session: sh,
+                    filter: rg => rg.Id == request.Id,
+                    update: GetUpdateDefinition(changes),
+                    cancellationToken: ct);
+            }
 
-            await dbContext.StoreEventAsync(new UpdateEvent(request.Id), sh, ct);
+            await dbContext.StoreEventAsync(new UpdateEvent(request.Id, changes), sh, ct);
 
             return new ResourceGroupDto(
                 Id: resourceGroup.Id,
@@ -78,6 +82,25 @@ public sealed class UpdateResourceGroupHandler(
             );
         }, cancellationToken: cancellationToken);
     }
+
+    private static UpdateEventChanges GetChanges(ResourceGroup resourceGroup, UpdateResourceGroupRequestBody body) =>
+        new(UpdateLog<string>.Of(resourceGroup.Description, body.Description),
+            UpdateLog<ImmutableHashSet<string>>.Of(
+                resourceGroup.Tags,
+                body.Tags));
+
+    private static UpdateDefinition<ResourceGroup> GetUpdateDefinition(UpdateEventChanges changes)
+    {
+        var updates = new Queue<UpdateDefinition<ResourceGroup>>();
+        if (!changes.Description.AreEqual)
+            updates.Enqueue(Builders<ResourceGroup>.Update.Set(rg => rg.Description, changes.Description.New));
+        if (!changes.Tags.AreEqual)
+            updates.Enqueue(Builders<ResourceGroup>.Update.Set(rg => rg.Tags, changes.Tags.New));
+        return Builders<ResourceGroup>.Update.Combine(updates);
+    }
+
+    private static bool HasChanges(UpdateEventChanges changes) =>
+        !changes.Description.AreEqual || !changes.Tags.AreEqual;
 }
 
 public sealed class UpdateResourceGroupValidator : AbstractValidator<UpdateResourceGroupRequest>

@@ -2,35 +2,39 @@ using MassTransit;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Domain.Models;
-using Pole.Features.Events.WebServices;
+using Pole.Features.WebServices.Events;
 
 namespace Pole.Features.ResourceGroups.Consumers;
 
-public class WebServiceCreatedEventConsumer(
-    MongoDbContext dbContext
-    ) : IConsumer<CreateEvent>
+public class WebServiceCreatedEventConsumer(MongoDbContext dbContext)
+    : IConsumer<CreateEvent>
 {
     public async Task Consume(ConsumeContext<CreateEvent> context)
     {
-        var webService = await dbContext.WebServices
-            .Find(ws => ws.Id == context.Message.WebServiceId)
-            .FirstOrDefaultAsync(context.CancellationToken);
+        var resourceInfo = new ShortResourceInfo(
+            Id: context.Message.WebServiceId,
+            Name: context.Message.Name,
+            Type: ResourceType.WebService
+        );
 
-        if (webService is null)
-            return;
+        var filter = Builders<ResourceGroup>.Filter.And(
+            Builders<ResourceGroup>.Filter.Eq(rg => rg.Id, context.Message.ResourceGroupId),
+            Builders<ResourceGroup>.Filter.Not(
+                Builders<ResourceGroup>.Filter.ElemMatch(
+                    rg => rg.Resources,
+                    r => r.Id == resourceInfo.Id
+                )
+            )
+        );
+
+        var update = Builders<ResourceGroup>.Update.Push(
+            rg => rg.Resources,
+            resourceInfo
+        );
 
         await dbContext.ResourceGroups.UpdateOneAsync(
-            rg => rg.Id == webService.ResourceGroupId,
-            Builders<ResourceGroup>.Update.Push(rg => rg.Resources, new ShortResourceInfo(
-                Id: webService.Id,
-                Name: webService.Name,
-                Type: ResourceType.WebService
-            )),
+            filter,
+            update,
             cancellationToken: context.CancellationToken);
     }
-}
-
-public static class ResourceType
-{
-    public const string WebService = "WebService";
 }

@@ -1,4 +1,5 @@
-﻿using FluentValidation;
+﻿using System.Collections.Immutable;
+using FluentValidation;
 using k8s;
 using MassTransit;
 using Microsoft.AspNetCore.Builder;
@@ -9,8 +10,9 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Domain.Models;
-using Pole.Features.Events.WebServices;
+using Pole.Features.Events.Abstractions;
 using Pole.Features.WebServices.Common;
+using Pole.Features.WebServices.Events;
 using Pole.Features.WebServices.Kubernetes;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -43,7 +45,8 @@ public sealed record UpdateWebServiceRequest(
 
 public sealed record UpdateWebServiceRequestBody(
     string ResourceGroupId,
-    WebServiceSpecDto Spec
+    WebServiceSpecDto Spec,
+    ImmutableHashSet<string> Tags
 );
 
 public sealed record UpdateWebServiceResponse(string Id);
@@ -65,23 +68,46 @@ public sealed class UpdateWebServiceHandler(
 
         return await dbContext.RunInTransactionAsync<UpdateWebServiceResponse>(async (sh, ct) =>
         {
-            await dbContext.WebServices.UpdateOneAsync(
-                session: sh,
-                ws => ws.Id == request.Id,
-                Builders<WebService>.Update
-                    .Set(ws => ws.Spec, request.Body.Spec.ToDomain(webService.Spec.KubernetesNamespace)),
-                cancellationToken: ct);
-
-            await dbContext.StoreEventAsync(new UpdateEvent
+            var changes = GetChanges(webService, request.Body);
+            if (HasChanges(changes))
             {
-                WebServiceId = request.Id
-            }, sh, ct);
+                await dbContext.WebServices.UpdateOneAsync(
+                    session: sh,
+                    ws => ws.Id == request.Id,
+                    GetUpdateDefinition(changes),
+                    cancellationToken: ct);
+            }
+
+            await dbContext.StoreEventAsync(new UpdateEvent(
+                    request.Id,
+                    changes)
+                , sh, ct);
             
             return new UpdateWebServiceResponse(
                 Id: webService.Id
             );
         }, cancellationToken: cancellationToken);
     }
+
+    private static UpdateEventChanges GetChanges(WebService webService, UpdateWebServiceRequestBody body) =>
+        new(UpdateLog<WebServiceSpec>.Of(webService.Spec,
+                body.Spec.ToDomain(webService.Spec.KubernetesNamespace)),
+            UpdateLog<ImmutableHashSet<string>>.Of(webService.Tags,
+                body.Tags));
+
+    private static UpdateDefinition<WebService> GetUpdateDefinition(
+        UpdateEventChanges changes)
+    {
+        var updates = new Queue<UpdateDefinition<WebService>>();
+        if (!changes.Tags.AreEqual)
+            updates.Enqueue(Builders<WebService>.Update.Set(ws => ws.Tags, changes.Tags.New));
+        if (!changes.WebServiceSpec.AreEqual)
+            updates.Enqueue(Builders<WebService>.Update.Set(ws => ws.Spec, changes.WebServiceSpec.New));
+        return Builders<WebService>.Update.Combine(updates);
+    }
+
+    private static bool HasChanges(UpdateEventChanges changes) =>
+        !changes.WebServiceSpec.AreEqual || !changes.Tags.AreEqual;
 }
 
 public class UpdateWebServiceEventConsumer(
@@ -98,8 +124,6 @@ public class UpdateWebServiceEventConsumer(
         if (webApp is null) return;
 
         await WebServiceKubernetesResourceManager.ReplaceAsync(kubernetes, webApp.ToKubernetes(), ct);
-        
-        await context.Publish(new UpdatedEvent(WebServiceId: webApp.Id), ct);
     }
 }
 

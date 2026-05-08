@@ -7,7 +7,8 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Features.Events.ResourceGroups;
+using Pole.Features.ResourceGroups.Common;
+using Pole.Features.ResourceGroups.Events;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -58,10 +59,7 @@ public sealed class DeleteResourceGroupHandler(
                 filter: rg => rg.Id == request.Id,
                 cancellationToken: ct);
 
-            await dbContext.StoreEventAsync(new DeleteEvent(
-                ResourceGroupId: request.Id,
-                NamespaceName: resourceGroup.KubernetesNamespace
-            ), sh, ct);
+            await dbContext.StoreEventAsync(resourceGroup.ToDeleteEvent(), sh, ct);
 
             return new DeleteResourceGroupResponse(Deleted: true);
         }, cancellationToken: cancellationToken);
@@ -78,8 +76,7 @@ public class DeleteResourceGroupEventConsumer(
         var ct = context.CancellationToken;
 
         await kubernetes.CoreV1.DeleteNamespaceAsync(
-            name: message.NamespaceName,
+            name: message.KubernetesNamespace,
             cancellationToken: ct);
     }
 }
-

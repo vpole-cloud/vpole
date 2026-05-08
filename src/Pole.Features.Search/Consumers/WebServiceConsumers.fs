@@ -5,7 +5,7 @@ open System.Threading.Tasks
 open MassTransit
 open MongoDB.Driver
 open Pole.Database
-open Pole.Features.Events.WebServices
+open Pole.Features.WebServices.Events
 open Pole.Features.Search.Common
 open Pole.Features.Search.Projection
 open Pole.Features.Search.Services
@@ -35,7 +35,7 @@ type WebServiceProjectionConsumer(dbContext : MongoDbContext, searchService : IS
 
                 let! dnsRecord =
                     dbContext.DnsRecords
-                        .Find(fun record -> record.ResourceId = webServiceId)
+                        .Find(fun record -> record.Resource.Id = webServiceId)
                         .FirstOrDefaultAsync(cancellationToken)
 
                 if not (isNull dnsRecord) then
