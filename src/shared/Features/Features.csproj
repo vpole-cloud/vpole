@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.Core</AssemblyName>
+        <RootNamespace>Pole.Features.Core</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="KubernetesClient" Version="19.0.2" />
+        <PackageReference Include="MassTransit.Abstractions" Version="8.5.9" />
+        <PackageReference Include="MongoDB.Driver" Version="3.8.0" />
+    </ItemGroup>
+    <ItemGroup>
+      <ProjectReference Include="..\..\domain\Models\Core\Core.csproj" />
+    </ItemGroup>
+</Project>

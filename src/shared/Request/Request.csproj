@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.Request</AssemblyName>
+        <RootNamespace>Pole.Features.Request</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Features\Features.csproj" />
+      <ProjectReference Include="..\..\helpers\Mediator\Mediator.csproj" />
+    </ItemGroup>
+
+</Project>

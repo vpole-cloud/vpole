@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Database</AssemblyName>
+        <RootNamespace>Pole.Database</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\domain\Models.FSharp\Core\Core.fsproj" />
+      <ProjectReference Include="..\..\domain\Models\Core\Core.csproj" />
+      <ProjectReference Include="..\Features\Features.csproj" />
+      <ProjectReference Include="..\Events\Events.csproj" />
+      <ProjectReference Include="..\..\helpers\ResultType\ResultType.csproj" />
+    </ItemGroup>
+
+</Project>

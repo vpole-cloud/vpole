@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Feature.DnsRecords.Core</AssemblyName>
+        <RootNamespace>Pole.Feature.DnsRecords.Core</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Events\Events.csproj" />
+      <ProjectReference Include="..\..\..\helpers\ASP\ASP.csproj" />
+      <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
+      <ProjectReference Include="..\..\..\domain\Models\Core\Core.csproj" />
+      <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
+      <ProjectReference Include="..\..\..\helpers\Mediator\Mediator.csproj" />
+    </ItemGroup>
+
+</Project>

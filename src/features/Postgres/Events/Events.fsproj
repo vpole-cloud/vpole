@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <AssemblyName>Pole.Features.Postgres.Events</AssemblyName>
+        <RootNamespace>Pole.Features.Postgres.Events</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="CreateEvent.fs" />
+        <Compile Include="UpdateEvent.fs" />
+        <Compile Include="DeleteEvent.fs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="MassTransit.Abstractions" Version="8.5.9" />
+        <PackageReference Update="FSharp.Core" Version="10.1.203" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\..\domain\Models.FSharp\Core\Core.fsproj" />
+      <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
+    </ItemGroup>
+
+</Project>

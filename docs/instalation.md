@@ -121,7 +121,7 @@ Prerequisites:
 Start Pole using Aspire:
 
 ```bash
-dotnet run --project src/Pole.AppHost/Pole.AppHost.csproj
+dotnet run --project src/api/Pole.AppHost/Pole.AppHost.csproj
 ```
 
 Aspire will:
@@ -144,4 +144,3 @@ Planned:
 * CI/CD integrations
 
 For now, Aspire provides the fastest and simplest way to get started.
-
