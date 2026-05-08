@@ -7,22 +7,26 @@ public record DnsRecord(
     [property: BsonId]
     [property: BsonRepresentation(BsonType.ObjectId)]
     string Id,
+    string Domain,
+    ResourceInfo Resource
+);
+
+public sealed record ResourceInfo(
+    string Id,
     string Name,
     ResourceType ResourceType,
-    string ResourceId,
-    string ResourceName,
     string GroupId
 );
 
 public static class DnsRecordFactory
 {
     public sealed record DnsRecordCreateOptions(
-        string Id
+        string? Id
     );
 
     public static DnsRecordCreateOptions DefaultCreateOptions =>
         new(
-            Id: ObjectId.GenerateNewId().ToString()
+            Id: null
         );
 
     public static DnsRecord Create(
@@ -33,16 +37,17 @@ public static class DnsRecordFactory
         string groupId,
         DnsRecordCreateOptions options) =>
         new(
-            Id: options.Id,
-            Name: name,
-            ResourceType: resourceType,
-            ResourceId: resourceId,
-            ResourceName: resourceName,
-            GroupId: groupId
+            Id: options.Id ?? ObjectId.GenerateNewId().ToString(),
+            Domain: name,
+            Resource: new ResourceInfo(
+                resourceId,
+                resourceName,
+                resourceType,
+                groupId)
         );
 }
 
-public enum ResourceType
-{
-    WebService,
-}
+public record DnsRecordShortInfo(
+    string Id,
+    string Domain
+);

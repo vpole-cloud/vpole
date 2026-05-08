@@ -11,8 +11,8 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Domain.Models;
 using Pole.Features.Core.Models;
-using Pole.Features.Events.WebServices;
 using Pole.Features.WebServices.Common;
+using Pole.Features.WebServices.Events;
 using Pole.Features.WebServices.Kubernetes;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -51,10 +51,10 @@ public sealed class CreateWebServiceHandler(
         if (group is null) return Result.NotFound($"Resource group with ID '{request.Body.ResourceGroupId}' not found.");
         
         var dnsRecord = await dbContext.DnsRecords
-            .Find(dn => dn.Name == request.Body.DomainName)
+            .Find(dn => dn.Domain == request.Body.DomainName)
             .FirstOrDefaultAsync(cancellationToken);
         if (dnsRecord is not null)
-            return Result.Conflict($"Domain name '{dnsRecord.Name}' is already in use.");
+            return Result.Conflict($"Domain name '{dnsRecord.Domain}' is already in use.");
 
         var (newWebService, newDnsRecord) = BuildWebServiceWithDnsRecord(request, group);
         
@@ -64,7 +64,7 @@ public sealed class CreateWebServiceHandler(
 
             await dbContext.DnsRecords.InsertOneAsync(sh, newDnsRecord, cancellationToken: ct);
             
-            await dbContext.StoreEventAsync(new CreateEvent(newWebService.Id), sh, ct);
+            await dbContext.StoreEventAsync(newWebService.ToCreateEvent(), sh, ct);
 
             return new CreateWebServiceResponse(newWebService.Id);
         }, cancellationToken: cancellationToken);
@@ -90,7 +90,7 @@ public sealed class CreateWebServiceHandler(
             name: request.Body.Name,
             resourceGroupId: request.Body.ResourceGroupId,
             spec: request.Body.Spec.ToDomain(group.KubernetesNamespace),
-            dnsRecord: new DnsRecordShortInfo(Id: dnsRecord.Id, Domain: dnsRecord.Name),
+            dnsRecord: new DnsRecordShortInfo(Id: dnsRecord.Id, Domain: dnsRecord.Domain),
             options: createWebServiceOptions
         );
         return (newWebService, dnsRecord);
@@ -98,20 +98,15 @@ public sealed class CreateWebServiceHandler(
 }
 
 public class CreateWebServiceEventConsumer(
-    MongoDbContext dbContext,
     IKubernetes kubernetes)
     : IConsumer<CreateEvent>
 {
     public async Task Consume(ConsumeContext<CreateEvent> context)
     {
         var ct = context.CancellationToken;
-
-        var webApp = await dbContext.WebServices
-            .Find(wa => wa.Id == context.Message.WebServiceId)
-            .FirstOrDefaultAsync(ct);
-        if (webApp is null) return;
-
-        await WebServiceKubernetesResourceManager.CreateAsync(kubernetes, webApp.ToKubernetes(), ct);
+        
+        await WebServiceKubernetesResourceManager.CreateAsync(kubernetes, 
+            context.Message.ToWebService().ToKubernetes() , ct);
     }
 }
 

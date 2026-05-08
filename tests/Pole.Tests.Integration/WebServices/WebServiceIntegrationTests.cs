@@ -24,9 +24,9 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         var savedWebService = await DbContext.WebServices.Find(service => service.Id == response.WebServiceId).FirstOrDefaultAsync();
         Assert.NotNull(savedWebService);
 
-        var savedDns = await DbContext.DnsRecords.Find(record => record.ResourceId == response.WebServiceId).FirstOrDefaultAsync();
+        var savedDns = await DbContext.DnsRecords.Find(record => record.Resource.Id == response.WebServiceId).FirstOrDefaultAsync();
         Assert.NotNull(savedDns);
-        Assert.Equal(request.Body.DomainName, savedDns.Name);
+        Assert.Equal(request.Body.DomainName, savedDns.Domain);
 
         var outboxCount = await DbContext.CountOutboxMessagesAsync("create-web-service-requested");
         Assert.Equal(1L, outboxCount);
@@ -96,7 +96,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(created.WebServiceId, response.Id);
 
         var deletedService = await DbContext.WebServices.Find(service => service.Id == created.WebServiceId).FirstOrDefaultAsync();
-        var deletedDns = await DbContext.DnsRecords.Find(record => record.ResourceId == created.WebServiceId).FirstOrDefaultAsync();
+        var deletedDns = await DbContext.DnsRecords.Find(record => record.Resource.Id == created.WebServiceId).FirstOrDefaultAsync();
 
         Assert.Null(deletedService);
         Assert.Null(deletedDns);

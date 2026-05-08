@@ -154,15 +154,15 @@ module SearchDocumentFactory =
             toDocuments
                 SearchDocumentType.DnsRecord
                 dnsRecord.Id
-                dnsRecord.Name
-                (Some dnsRecord.GroupId)
+                dnsRecord.Domain
+                (Some dnsRecord.Resource.GroupId)
                 resourceGroupName
                 [ { KeyType = SearchKeyType.Domain
-                    Value = dnsRecord.Name
+                    Value = dnsRecord.Domain
                     FullWeight = DomainWeight
                     TokenWeight = Some DomainTokenWeight }
                   { KeyType = SearchKeyType.ResourceName
-                    Value = dnsRecord.ResourceName
+                    Value = dnsRecord.Resource.Name
                     FullWeight = ResourceNameWeight
                     TokenWeight = Some ResourceNameTokenWeight } ] }
 

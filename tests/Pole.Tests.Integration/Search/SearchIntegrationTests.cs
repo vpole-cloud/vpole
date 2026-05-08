@@ -196,7 +196,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         var createdConsumer = new WebServiceCreatedConsumer(DbContext, SearchService);
         await createdConsumer.Handle(created!.WebServiceId, CancellationToken.None);
 
-        var dnsRecord = await DbContext.DnsRecords.Find(record => record.ResourceId == created.WebServiceId).FirstOrDefaultAsync();
+        var dnsRecord = await DbContext.DnsRecords.Find(record => record.Resource.Id == created.WebServiceId).FirstOrDefaultAsync();
         Assert.NotNull(dnsRecord);
 
         var deleteResult = await Mediator.Send(new DeleteWebServiceRequest(created.WebServiceId));

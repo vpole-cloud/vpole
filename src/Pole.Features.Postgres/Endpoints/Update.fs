@@ -11,14 +11,13 @@ open Pole.ASP.Helpers
 open Pole.Database
 open Pole.Domain.Models.FSharp
 open Pole.Features.Postgres.Common
-open Pole.Features.Events.FSharp.Postgres
+open Pole.Features.Postgres.Events
 open Pole.Features.Postgres.Kubernetes
 open Pole.Mediator
 open Pole.ResultType
 
 type UpdatePostgresClusterRequestBody =
-    { Name : string option
-      Instances : int option
+    { Instances : int option
       Storage : int option }
 
 type UpdatePostgresClusterResponse =
@@ -56,7 +55,6 @@ type UpdatePostgresClusterHandler(dbContext : MongoDbContext) =
                     else
                         let updatedCluster =
                             { cluster with
-                                Name = defaultArg request.Body.Name cluster.Name
                                 GroupId = cluster.GroupId
                                 Spec =
                                     { Instances = updatedInstances
@@ -77,7 +75,7 @@ type UpdatePostgresClusterHandler(dbContext : MongoDbContext) =
                                                 cancellationToken = ct
                                             )
 
-                                        let event = UpdateEvent.create cluster.Id
+                                        let event = UpdateEvent.create cluster updatedCluster
                                         do! dbContext.StoreEventAsync(event, session, ct)
 
                                         return { Id = request.ClusterId } |> ResultF.ofValue
@@ -110,24 +108,15 @@ type UpdatePostgresClusterEndpoint =
         }
 
 type PostgresClusterUpdatedConsumer(
-    database : MongoDbContext,
     secretStore : IPostgresClusterSecretStore,
     deploymentManager : IPostgresClusterDeploymentManager) =
     interface MassTransit.IConsumer<UpdateEvent> with
         member _.Consume(context) =
             task {
-                let! postgresCluster =
-                    database.Postgres
-                        .Find(fun c -> c.Id = context.Message.ClusterId)
-                        .FirstOrNoneAsync(context.CancellationToken)
-
-                match postgresCluster with
+                let cluster = UpdateEvent.toPostgresCluster context.Message
+                let! credentials = secretStore.GetAsync(cluster.Spec.KubernetesNamespace, cluster.Id, context.CancellationToken)
+                match credentials with
                 | None -> ()
-                | Some cluster ->
-                    let! credentials = secretStore.GetAsync(cluster.Spec.KubernetesNamespace, cluster.Id, context.CancellationToken)
-
-                    match credentials with
-                    | None -> ()
-                    | Some credentials ->
-                        do! deploymentManager.UpdateAsync(cluster, credentials.Username, context.CancellationToken)
+                | Some credentials ->
+                    do! deploymentManager.UpdateAsync(cluster, credentials.Username, context.CancellationToken)
             }

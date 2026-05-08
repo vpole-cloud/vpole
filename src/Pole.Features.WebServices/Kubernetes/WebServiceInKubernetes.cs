@@ -189,7 +189,7 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
             },
             Annotations = _defaultAnnotations,
         },
-        Data = WebService.Spec.Config.EnvironmentVariables,
+        Data = WebService.Spec.Config.EnvironmentVariables.ToDictionary(),
     };
 
     public V1Ingress ToIngress(string ingressClassName = "traefik") => new()
@@ -319,7 +319,6 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
     private readonly ImmutableDictionary<string, string> _defaultAnnotations =
         new Dictionary<string, string>
         {
-            { "pole.server/version", WebService.Version },
             { "app.kubernetes.io/managed-by", "pole-server" },
             { "pole.server/webServiceId", WebService.Id },
         }.ToImmutableDictionary();

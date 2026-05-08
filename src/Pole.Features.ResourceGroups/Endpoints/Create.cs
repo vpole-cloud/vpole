@@ -10,8 +10,8 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Domain.Models;
-using Pole.Features.Events.ResourceGroups;
 using Pole.Features.ResourceGroups.Common;
+using Pole.Features.ResourceGroups.Events;
 using Pole.Features.ResourceGroups.Services;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -73,10 +73,7 @@ public sealed class CreateResourceGroupHandler(
                 document: resourceGroup,
                 cancellationToken: ct);
             
-            await dbContext.StoreEventAsync(new CreateEvent(
-                ResourceGroupId: resourceGroup.Id,
-                NamespaceName: resourceGroup.KubernetesNamespace
-            ), sh, ct);
+            await dbContext.StoreEventAsync(resourceGroup.ToCreateEvent(), sh, ct);
             
             return resourceGroup.ToDto();
         }, cancellationToken: cancellationToken);
@@ -113,7 +110,7 @@ public class CreateResourceGroupEventConsumer(
             Kind = "Namespace",
             Metadata = new V1ObjectMeta()
             {
-                Name = message.NamespaceName
+                Name = message.KubernetesNamespace
             },
         }, cancellationToken: ct);
     }

@@ -46,7 +46,7 @@ public sealed class GetDomainNamesHandler(
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
             var pattern = $".*{Regex.Escape(request.Search)}.*";
-            filter = Builders<DnsRecord>.Filter.Regex(d => d.Name, new BsonRegularExpression(pattern, "i"));
+            filter = Builders<DnsRecord>.Filter.Regex(d => d.Domain, new BsonRegularExpression(pattern, "i"));
         }
 
         var totalCount = await dbContext.DnsRecords

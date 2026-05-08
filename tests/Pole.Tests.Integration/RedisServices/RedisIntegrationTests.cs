@@ -53,7 +53,8 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
                     Storage: new(10, "fast"),
                     Resources: new(
                         Requests: new(2, 512),
-                        Limits: new(4, 1024)))));
+                        Limits: new(4, 1024))),
+                Tags: ["cache", "prod"]));
 
         var updateResult = await Mediator.Send(updateRequest);
 
@@ -65,6 +66,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.NotNull(updated);
         Assert.Equal(10, updated.Spec.Storage.SizeGb);
         Assert.Equal("fast", updated.Spec.Storage.StorageClassName);
+        Assert.Equal(["cache", "prod"], updated.Tags.Order());
     }
 
     [Fact]

@@ -13,8 +13,7 @@ public record Redis(
     RedisSpec Spec,
     ServiceStatus Status,
     ImmutableHashSet<string> Tags,
-    ImmutableList<ServiceEvent> Events,
-    string Version
+    ImmutableList<ServiceEvent> Events
 );
 
 public record RedisSpec(
@@ -55,7 +54,6 @@ public static class RedisFactory
             Spec: spec,
             Status: options.Status,
             Tags: options.Tags,
-            Events: options.Events,
-            Version: options.Version
+            Events: options.Events
         );
 }

@@ -11,8 +11,8 @@ open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
 open Pole.Domain.Models.FSharp
-open Pole.Features.Events.FSharp.Postgres
 open Pole.Features.Postgres.Common
+open Pole.Features.Postgres.Events
 open Pole.Features.Postgres.Kubernetes
 open Pole.Mediator
 open Pole.ResultType
@@ -81,7 +81,7 @@ type CreatePostgresClusterHandler(
                                     task {
                                         do! dbContext.Postgres.InsertOneAsync(session, cluster, cancellationToken = ct)
                                         do! secretStore.CreateAsync(group.KubernetesNamespace, cluster.Id, request.Body.Username, request.Body.Password, ct)
-                                        let event = CreateEvent.create cluster.Id
+                                        let event = CreateEvent.create cluster
                                         
                                         do! dbContext.StoreEventAsync(event, session, ct)
 
@@ -119,25 +119,16 @@ type PostgresClusterCreateEndpoints =
         }
 
 type PostgresClusterCreatedConsumer(
-    database : MongoDbContext,
     secretStore : IPostgresClusterSecretStore,
     deploymentManager : IPostgresClusterDeploymentManager) =
     interface IConsumer<CreateEvent> with
         member this.Consume(context) =
             task {
                 let event = context.Message
-                let! postgresCluster =
-                    database.Postgres
-                        .Find(fun c -> c.Id = event.ClusterId)
-                        .FirstOrNoneAsync(context.CancellationToken)
-
-                match postgresCluster with
+                let cluster = CreateEvent.toPostgresCluster event
+                let! credentials = secretStore.GetAsync(cluster.Spec.KubernetesNamespace, cluster.Id, context.CancellationToken)
+                match credentials with
                 | None -> ()
-                | Some cluster ->
-                    let! credentials = secretStore.GetAsync(cluster.Spec.KubernetesNamespace, cluster.Id, context.CancellationToken)
-
-                    match credentials with
-                    | None -> ()
-                    | Some credentials ->
-                        do! deploymentManager.CreateAsync(cluster, credentials.Username, context.CancellationToken)
+                | Some credentials ->
+                    do! deploymentManager.CreateAsync(cluster, credentials.Username, context.CancellationToken)
             }

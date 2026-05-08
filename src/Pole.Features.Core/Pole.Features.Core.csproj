@@ -11,8 +11,8 @@
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="KubernetesClient" Version="19.0.2" />
-        <PackageReference Include="MassTransit.Abstractions" Version="8.5.7" />
-        <PackageReference Include="MongoDB.Driver" Version="3.7.1" />
+        <PackageReference Include="MassTransit.Abstractions" Version="8.5.9" />
+        <PackageReference Include="MongoDB.Driver" Version="3.8.0" />
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\Pole.Domain.Models\Pole.Domain.Models.csproj" />

@@ -5,16 +5,16 @@ using Pole.Feature.DomainNames.Endpoints;
 
 namespace Pole.Feature.DomainNames.Common;
 
-public static class DomainNameEndpoints
+public static class DnsRecordEndpoints
 {
-    public const string Route = "/domain-names";
+    public const string Route = "/dns-records";
 
     extension(IEndpointRouteBuilder app)
     {
         public IEndpointRouteBuilder MapDomainNameEndpoints()
         {
             app.MapGroup(Route)
-                .WithTags("DomainNames")
+                .WithTags("DnsRecord")
                 .MapGetDomainNamesEndpoint()
                 .MapGetDomainNameByIdEndpoint();
 

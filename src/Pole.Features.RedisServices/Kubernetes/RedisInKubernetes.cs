@@ -150,7 +150,6 @@ public readonly record struct RedisInKubernetes(Redis Redis)
     private readonly ImmutableDictionary<string, string> _defaultAnnotations =
         new Dictionary<string, string>
         {
-            { "pole.server/version", Redis.Version },
             { "app.kubernetes.io/managed-by", "pole-server" },
             { "pole.server/redisId", Redis.Id }
         }.ToImmutableDictionary();

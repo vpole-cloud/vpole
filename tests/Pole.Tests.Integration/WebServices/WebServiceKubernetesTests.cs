@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Collections.Immutable;
 using System.Text.Json;
 using k8s;
 using k8s.Autorest;
@@ -88,7 +89,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
                 EnvironmentVariables: new Dictionary<string, string>
                 {
                     ["ASPNETCORE_ENVIRONMENT"] = "Development"
-                },
+                }.ToImmutableDictionary(),
                 PortMappings:
                 [
                     new PortMapping(80, "80", "TCP", "http")

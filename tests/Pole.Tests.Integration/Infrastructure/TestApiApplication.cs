@@ -28,7 +28,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         typeof(PostgresClusterEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,
         typeof(RedisServiceEndpoints).Assembly,
-        typeof(DomainNameEndpoints).Assembly,
+        typeof(DnsRecordEndpoints).Assembly,
         typeof(SearchEndpoints).Assembly
     ];
 

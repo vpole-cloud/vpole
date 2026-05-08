@@ -1,5 +1,6 @@
 ﻿// ReSharper disable MemberCanBePrivate.Global
 
+using System.Collections.Immutable;
 using Pole.Domain.Models;
 using Pole.Features.Core.Models;
 
@@ -51,8 +52,8 @@ public record ProbeConfigDto(
 );
 
 public sealed record WebServiceConfigDto( 
-    Dictionary<string, string> EnvironmentVariables,
-    List<PortMappingDto> PortMappings
+    ImmutableDictionary<string, string> EnvironmentVariables,
+    ImmutableList<PortMappingDto> PortMappings
 );
 
 public sealed record PortMappingDto(
@@ -116,7 +117,7 @@ public static class WebServiceDtoExtensions
         config.EnvironmentVariables,
         config.PortMappings
             .Select(pm => new PortMappingDto(pm.ServicePort, pm.TargetPort, pm.Protocol, pm.Name))
-            .ToList()
+            .ToImmutableList()
     );
     public static ImageInfoDto ToDto(this ImageInfo image) => new(
         image.Server,
@@ -160,7 +161,7 @@ public static class WebServiceDtoExtensions
         dto.EnvironmentVariables,
         dto.PortMappings
             .Select(pm => new PortMapping(pm.ServicePort, pm.TargetPort, pm.Protocol, pm.Name))
-            .ToList()
+            .ToImmutableList()
     );
     public static ImageInfo ToDomain(this ImageInfoDto dto) => new(
         dto.Server,

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Collections.Immutable;
 using Pole.Domain.Models;
 using Pole.Features.WebServices.Common;
 using Pole.Features.WebServices.Kubernetes;
@@ -179,7 +180,7 @@ public sealed class WebServiceManifestTests
                 {
                     ["ASPNETCORE_ENVIRONMENT"] = "Development",
                     ["LOG_LEVEL"] = "Debug"
-                },
+                }.ToImmutableDictionary(),
                 PortMappings:
                 [
                     new PortMapping(80, "8080", "TCP", "http"),

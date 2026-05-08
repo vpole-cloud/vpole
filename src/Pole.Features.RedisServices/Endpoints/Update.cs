@@ -1,4 +1,5 @@
-﻿using FluentValidation;
+﻿using System.Collections.Immutable;
+using FluentValidation;
 using k8s;
 using MassTransit;
 using Microsoft.AspNetCore.Builder;
@@ -9,8 +10,9 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Domain.Models;
-using Pole.Features.Events.RedisServices;
+using Pole.Features.Events.Abstractions;
 using Pole.Features.RedisServices.Common;
+using Pole.Features.RedisServices.Events;
 using Pole.Features.RedisServices.Kubernetes;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -43,7 +45,8 @@ public sealed record UpdateRedisServiceRequest(
 
 public sealed record UpdateRedisServiceRequestBody(
     string ResourceGroupId,
-    RedisSpecDto Spec
+    RedisSpecDto Spec,
+    ImmutableHashSet<string> Tags
 );
 
 public sealed record UpdateRedisServiceResponse(string Id);
@@ -65,23 +68,47 @@ public sealed class UpdateRedisServiceHandler(
 
         return await dbContext.RunInTransactionAsync<UpdateRedisServiceResponse>(async (sh, ct) =>
         {
-            await dbContext.RedisServices.UpdateOneAsync(
-                session: sh,
-                r => r.Id == request.Id,
-                Builders<Redis>.Update
-                    .Set(r => r.Spec, request.Body.Spec.ToDomain(redis.Spec.KubernetesNamespace)),
-                cancellationToken: ct);
-
-            await dbContext.StoreEventAsync(new UpdateEvent
+            var changes = GetChanges(redis, request.Body);
+            if (HasChanges(changes))
             {
-                RedisId = request.Id
-            }, sh, ct);
+                await dbContext.RedisServices.UpdateOneAsync(
+                    session: sh,
+                    r => r.Id == request.Id,
+                    GetUpdateDefinition(changes),
+                    cancellationToken: ct);
+            }
+
+            await dbContext.StoreEventAsync(new UpdateEvent(
+                    request.Id,
+                    changes)
+                , sh, ct);
             
             return new UpdateRedisServiceResponse(
                 Id: redis.Id
             );
         }, cancellationToken: cancellationToken);
     }
+
+    private static UpdateEventChanges GetChanges(Redis redis, UpdateRedisServiceRequestBody body) =>
+        new(UpdateLog<RedisSpec>.Of(
+                redis.Spec,
+            body.Spec.ToDomain(redis.Spec.KubernetesNamespace)),
+            UpdateLog<ImmutableHashSet<string>>.Of(
+                redis.Tags,
+                body.Tags));
+
+    private static UpdateDefinition<Redis> GetUpdateDefinition(UpdateEventChanges changes)
+    {
+        var updates = new Queue<UpdateDefinition<Redis>>();
+        if (!changes.RedisSpec.AreEqual)
+            updates.Enqueue(Builders<Redis>.Update.Set(redis => redis.Spec, changes.RedisSpec.New));
+        if (!changes.Tags.AreEqual)
+            updates.Enqueue(Builders<Redis>.Update.Set(redis => redis.Tags, changes.Tags.New));
+        return Builders<Redis>.Update.Combine(updates);
+    }
+
+    private static bool HasChanges(UpdateEventChanges changes) =>
+        !changes.RedisSpec.AreEqual || !changes.Tags.AreEqual;
 }
 
 public class UpdateRedisServiceEventConsumer(

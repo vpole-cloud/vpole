@@ -18,8 +18,15 @@ public record ResourceGroup(
 public sealed record ShortResourceInfo(
     string Id,
     string Name,
-    string Type
+    ResourceType Type
 );
+
+public enum ResourceType
+{
+    WebService,
+    Redis,
+    Postgres,
+}
 
 public static class ResourceGroupFactory
 {

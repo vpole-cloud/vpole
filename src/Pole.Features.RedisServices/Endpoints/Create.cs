@@ -1,4 +1,5 @@
-﻿using FluentValidation;
+﻿using System.Collections.Immutable;
+using FluentValidation;
 using k8s;
 using MassTransit;
 using Microsoft.AspNetCore.Builder;
@@ -10,8 +11,8 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Domain.Models;
 using Pole.Features.Core.Kubernetes;
-using Pole.Features.Events.RedisServices;
 using Pole.Features.RedisServices.Common;
+using Pole.Features.RedisServices.Events;
 using Pole.Features.RedisServices.Kubernetes;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -53,14 +54,17 @@ public sealed class CreateRedisServiceHandler(
             name: request.Body.Name,
             resourceGroupId: request.Body.ResourceGroupId,
             spec: request.Body.Spec.ToDomain(group.KubernetesNamespace),
-            options: RedisFactory.DefaultCreateOptions
+            options: RedisFactory.DefaultCreateOptions with
+            {
+                Tags = request.Body.Tags
+            }
         );
         
         return await dbContext.RunInTransactionAsync<CreateRedisServiceResponse>(async (sh, ct) =>
         {
             await dbContext.RedisServices.InsertOneAsync(sh, newRedis, cancellationToken: ct);
             
-            await dbContext.StoreEventAsync(new CreateEvent(newRedis.Id), sh, ct);
+            await dbContext.StoreEventAsync(newRedis.ToCreateEvent(), sh, ct);
 
             return new CreateRedisServiceResponse(newRedis.Id);
         }, cancellationToken: cancellationToken);
@@ -68,18 +72,13 @@ public sealed class CreateRedisServiceHandler(
 }
 
 public class CreateRedisServiceEventConsumer(
-    MongoDbContext dbContext,
     IKubernetes kubernetes)
     : IConsumer<CreateEvent>
 {
     public async Task Consume(ConsumeContext<CreateEvent> context)
     {
         var ct = context.CancellationToken;
-
-        var redis = await dbContext.RedisServices
-            .Find(r => r.Id == context.Message.RedisId)
-            .FirstOrDefaultAsync(ct);
-        if (redis is null) return;
+        var redis = context.Message.ToRedis();
         var inKuber = redis.ToKubernetes();
 
         var statefulSet = inKuber.ToStatefulSet();
@@ -100,7 +99,8 @@ public sealed record CreateRedisServiceRequest(
 public sealed record CreateRedisServiceRequestBody(
     string Name,
     string ResourceGroupId,
-    RedisSpecDto Spec
+    RedisSpecDto Spec,
+    ImmutableHashSet<string> Tags
 );
 
 public sealed record CreateRedisServiceResponse(
@@ -130,4 +130,3 @@ public sealed class CreateRedisServiceRequestBodyValidator : AbstractValidator<C
             .SetValidator(new RedisSpecDtoValidator());
     }
 }
-

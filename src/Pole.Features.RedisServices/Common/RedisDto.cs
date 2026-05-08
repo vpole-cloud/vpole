@@ -1,4 +1,5 @@
-﻿using Pole.Domain.Models;
+﻿using System.Collections.Immutable;
+using Pole.Domain.Models;
 using Pole.Features.Core.Models;
 
 namespace Pole.Features.RedisServices.Common;
@@ -7,7 +8,8 @@ public sealed record RedisDto(
     string Id,
     string Name,
     string ResourceGroupId,
-    RedisSpecDto Spec
+    RedisSpecDto Spec,
+    ImmutableHashSet<string> Tags
 );
 
 public sealed record RedisSpecDto(
@@ -26,7 +28,8 @@ public static class RedisDtoExtensions
         redis.Id,
         redis.Name,
         redis.ResourceGroupId,
-        redis.Spec.ToDto()
+        redis.Spec.ToDto(),
+        redis.Tags
     );
 
     private static RedisSpecDto ToDto(this RedisSpec spec) => new(

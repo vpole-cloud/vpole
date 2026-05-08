@@ -57,6 +57,6 @@ public sealed class DomainNameIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Null(secondError);
         Assert.NotNull(adminResponse);
         Assert.Single(adminResponse.Items);
-        Assert.Equal("Admin.Example.com", adminResponse.Items.Single().Name);
+        Assert.Equal("Admin.Example.com", adminResponse.Items.Single().Domain);
     }
 }
