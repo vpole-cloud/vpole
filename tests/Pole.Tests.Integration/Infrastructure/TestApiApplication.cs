@@ -51,6 +51,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton(fixture.Client);
         builder.Services.AddSingleton(fixture.Database);
         builder.Services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
+        builder.Services.AddMongoDbContextInterfaces();
         builder.Services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         builder.Services.AddSingleton(new PostgresSettings
         {
