@@ -7,14 +7,20 @@ using Hangfire.Mongo.Migration.Strategies.Backup;
 using k8s;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Feature.DnsRecords.Core.Common;
 using Pole.Feature.DnsRecords.Core.Filters;
 using Pole.Features.Outbox;
 using Pole.Features.Postgres.Common;
 using Pole.Features.Postgres.Kubernetes;
+using Pole.Features.RedisServices.Common;
+using Pole.Features.ResourceGroups.Common;
 using Pole.Features.ResourceGroups.Services;
+using Pole.Features.Search.Common;
+using Pole.Features.WebServices.Common;
 using Pole.Mediator;
 using Pole.Server.Database;
 
@@ -103,8 +109,22 @@ public static class DependencyInjection
         {
             services.AddSingleton<IMongoDatabase>(sp =>
                 sp.GetRequiredService<IMongoClient>().GetDatabase("pole-database"));
-            services.AddSingleton<IMongoDbContext, MongoDbContext>();
+            services.AddMongoDbContextInterfaces();
             services.AddSingleton<MigrationRunner>();
+            return services;
+        }
+
+        public IServiceCollection AddMongoDbContextInterfaces()
+        {
+            services.TryAddSingleton<MongoDbContext>();
+            services.TryAddSingleton<IMongoDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.TryAddSingleton<IEventDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.TryAddSingleton<IWebServiceDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.TryAddSingleton<IRedisDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.TryAddSingleton<ISearchDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.TryAddSingleton<IPostgresDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.TryAddSingleton<IResourceGroupDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.TryAddSingleton<IDnsRecordDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             return services;
         }
 

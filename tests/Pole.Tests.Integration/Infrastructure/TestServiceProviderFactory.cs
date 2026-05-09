@@ -36,6 +36,7 @@ public static class TestServiceProviderFactory
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
         services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
+        services.AddMongoDbContextInterfaces();
         services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         services.AddSingleton(new PostgresSettings
         {
