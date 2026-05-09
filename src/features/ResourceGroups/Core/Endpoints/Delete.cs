@@ -39,7 +39,7 @@ public sealed record DeleteResourceGroupRequest(
 public record DeleteResourceGroupResponse(bool Deleted);
 
 public sealed class DeleteResourceGroupHandler(
-    MongoDbContext dbContext
+    IResourceGroupDbContext dbContext
     ) : IMediatorHandler<DeleteResourceGroupRequest, DeleteResourceGroupResponse>
 {
     public async Task<Result<DeleteResourceGroupResponse>> HandleAsync(

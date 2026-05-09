@@ -16,6 +16,7 @@ using Pole.Features.Postgres.Common;
 using Pole.Features.Postgres.Kubernetes;
 using Pole.Features.ResourceGroups.Services;
 using Pole.Mediator;
+using Pole.Server.Database;
 
 namespace Pole.Server.Extensions;
 
@@ -102,7 +103,7 @@ public static class DependencyInjection
         {
             services.AddSingleton<IMongoDatabase>(sp =>
                 sp.GetRequiredService<IMongoClient>().GetDatabase("pole-database"));
-            services.AddSingleton<MongoDbContext>();
+            services.AddSingleton<IMongoDbContext, MongoDbContext>();
             services.AddSingleton<MigrationRunner>();
             return services;
         }

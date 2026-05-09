@@ -8,8 +8,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Compile Include="Common\SearchDocument.fs" />
         <Compile Include="Common\SearchDto.fs" />
+        <Compile Include="Common\ISearchDbContext.fs" />
         <Compile Include="Migrations\SearchDocumentIndexesMigration.fs" />
         <Compile Include="Projection\SearchDocumentFactory.fs" />
         <Compile Include="Services\SearchService.fs" />
@@ -28,23 +28,21 @@
 
     <ItemGroup>
         <PackageReference Include="FluentValidation" Version="12.1.1" />
-        <PackageReference Include="MassTransit.Abstractions" Version="8.5.9" />
-        <PackageReference Include="MongoDB.Driver" Version="3.8.0" />
         <PackageReference Update="FSharp.Core" Version="10.1.203" />
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\..\helpers\ASP\ASP.csproj" />
+      <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
       <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
-      <ProjectReference Include="..\..\..\domain\Models\Core\Core.csproj" />
-      <ProjectReference Include="..\..\..\domain\Models.FSharp\Core\Core.fsproj" />
-      <ProjectReference Include="..\..\DnsRecords\Core\Core.csproj" />
-      <ProjectReference Include="..\..\Postgres\Core\Core.fsproj" />
       <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
-      <ProjectReference Include="..\..\RedisServices\Core\Core.csproj" />
-      <ProjectReference Include="..\..\ResourceGroups\Core\Core.csproj" />
-      <ProjectReference Include="..\..\WebServices\Core\Core.csproj" />
-      <ProjectReference Include="..\..\..\helpers\Mediator\Mediator.csproj" />
-      <ProjectReference Include="..\..\..\helpers\ResultType\ResultType.csproj" />
+      <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
+      <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
+      <ProjectReference Include="..\..\DnsRecords\Domain\Domain.csproj" />
+      <ProjectReference Include="..\..\DnsRecords\Events\Events.csproj" />
+      <ProjectReference Include="..\..\Postgres\Events\Events.fsproj" />
+      <ProjectReference Include="..\..\RedisServices\Events\Events.csproj" />
+      <ProjectReference Include="..\..\ResourceGroups\Events\Events.csproj" />
+      <ProjectReference Include="..\..\WebServices\Events\Events.csproj" />
+      <ProjectReference Include="..\Domain\Domain.fsproj" />
     </ItemGroup>
 </Project>

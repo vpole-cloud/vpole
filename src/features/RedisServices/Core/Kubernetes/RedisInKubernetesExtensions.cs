@@ -1,4 +1,4 @@
-﻿using Pole.Domain.Models;
+﻿using Pole.Features.RedisServices.Domain;
 
 namespace Pole.Features.RedisServices.Kubernetes;
 

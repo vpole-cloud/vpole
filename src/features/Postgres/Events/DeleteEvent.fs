@@ -1,7 +1,7 @@
 namespace Pole.Features.Postgres.Events
 
 open MassTransit
-open Pole.Domain.Models.FSharp
+open Pole.Features.Postgres.Domain
 open Pole.Features.Events.Abstractions
 
 [<EntityName("delete-postgres-cluster-requested")>]

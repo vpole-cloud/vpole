@@ -9,6 +9,7 @@ open MongoDB.Bson.Serialization
 open MongoDB.Driver
 open Pole.Features.Request
 open Pole.Features.Search.Common
+open Pole.Features.Search.Domain
 open Pole.Features.Search.Projection
 
 type ISearchService =

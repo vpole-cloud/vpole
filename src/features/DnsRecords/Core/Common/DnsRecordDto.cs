@@ -1,4 +1,5 @@
-﻿using Pole.Domain.Models;
+﻿using Pole.Feature.DnsRecords.Domain;
+using Pole.Features.Shared.Models;
 
 namespace Pole.Feature.DnsRecords.Core.Common;
 

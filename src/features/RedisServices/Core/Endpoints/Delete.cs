@@ -32,7 +32,7 @@ public static class Delete
 }
 
 public sealed class DeleteRedisServiceHandler(
-    MongoDbContext dbContext
+    IRedisDbContext dbContext
     ) : IMediatorHandler<DeleteRedisServiceRequest, DeleteRedisServiceResponse>
 {
     public async Task<Result<DeleteRedisServiceResponse>> HandleAsync(DeleteRedisServiceRequest request,

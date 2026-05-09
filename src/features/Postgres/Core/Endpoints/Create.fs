@@ -10,7 +10,7 @@ open Microsoft.AspNetCore.Routing
 open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
-open Pole.Domain.Models.FSharp
+open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Common
 open Pole.Features.Postgres.Events
 open Pole.Features.Postgres.Kubernetes
@@ -31,7 +31,7 @@ type CreatePostgresClusterRequest =
         interface IMediatorRequest<PostgresClusterDto>
 
 type CreatePostgresClusterHandler(
-    dbContext : MongoDbContext,
+    dbContext : IPostgresDbContext,
     secretStore : IPostgresClusterSecretStore,
     settings : PostgresSettings) =
     let validate settings request =

@@ -1,6 +1,6 @@
 ﻿using System.Collections.Immutable;
-using Pole.Domain.Models;
-using Pole.Features.Core.Models;
+using Pole.Features.RedisServices.Domain;
+using Pole.Features.Shared.Models;
 
 namespace Pole.Features.RedisServices.Common;
 
@@ -14,7 +14,7 @@ public sealed record RedisDto(
 
 public sealed record RedisSpecDto(
     StorageDto Storage,
-    ResourcesDto Resources
+    Resources Resources
 );
 
 public sealed record StorageDto(
@@ -34,7 +34,7 @@ public static class RedisDtoExtensions
 
     private static RedisSpecDto ToDto(this RedisSpec spec) => new(
         spec.Storage.ToDto(),
-        spec.Resources.ToDto()
+        spec.Resources
     );
 
     private static StorageDto ToDto(this Storage storage) => new(
@@ -45,7 +45,7 @@ public static class RedisDtoExtensions
     public static RedisSpec ToDomain(this RedisSpecDto dto, string @namespace) => new(
         @namespace,
         dto.Storage.ToDomain(),
-        dto.Resources.ToDomain()
+        dto.Resources
     );
     
     private static Storage ToDomain(this StorageDto dto) => new(

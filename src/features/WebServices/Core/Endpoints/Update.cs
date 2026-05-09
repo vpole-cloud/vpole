@@ -9,9 +9,9 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Domain.Models;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.WebServices.Common;
+using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 using Pole.Features.WebServices.Kubernetes;
 using Pole.Mediator;
@@ -52,7 +52,7 @@ public sealed record UpdateWebServiceRequestBody(
 public sealed record UpdateWebServiceResponse(string Id);
 
 public sealed class UpdateWebServiceHandler(
-    MongoDbContext dbContext)
+    IWebServiceDbContext dbContext)
     : IMediatorHandler<UpdateWebServiceRequest, UpdateWebServiceResponse>
 {
     public async Task<Result<UpdateWebServiceResponse>> HandleAsync(
@@ -80,6 +80,9 @@ public sealed class UpdateWebServiceHandler(
 
             await dbContext.StoreEventAsync(new UpdateEvent(
                     request.Id,
+                    webService.Name,
+                    webService.ResourceGroupId,
+                    webService.DnsRecord,
                     changes)
                 , sh, ct);
             
@@ -111,7 +114,7 @@ public sealed class UpdateWebServiceHandler(
 }
 
 public class UpdateWebServiceEventConsumer(
-    MongoDbContext dbContext,
+    IWebServiceDbContext dbContext,
     IKubernetes kubernetes)
     : IConsumer<UpdateEvent>
 {

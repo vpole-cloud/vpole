@@ -12,9 +12,4 @@
       <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
       <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
     </ItemGroup>
-
-    <ItemGroup>
-      <PackageReference Include="MassTransit.Abstractions" Version="8.5.9" />
-    </ItemGroup>
-
 </Project>

@@ -1,9 +1,10 @@
 using System.Collections.Immutable;
-using Pole.Domain.Models;
-using Pole.Features.Core.Models;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.RedisServices.Common;
+using Pole.Features.RedisServices.Domain;
+using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Common;
+using Pole.Features.WebServices.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

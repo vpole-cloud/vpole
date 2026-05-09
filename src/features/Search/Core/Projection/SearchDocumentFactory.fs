@@ -1,9 +1,13 @@
 namespace Pole.Features.Search.Projection
 
 open System.Text.RegularExpressions
-open Pole.Domain.Models
-open Pole.Domain.Models.FSharp
+open Pole.Feature.DnsRecords.Domain
+open Pole.Features.Postgres.Domain
+open Pole.Features.RedisServices.Domain
+open Pole.Features.ResourceGroups.Domain
 open Pole.Features.Search.Common
+open Pole.Features.Search.Domain
+open Pole.Features.WebServices.Domain
 
 [<RequireQualifiedAccess>]
 module SearchDocumentFactory =
@@ -118,6 +122,28 @@ module SearchDocumentFactory =
                            TokenWeight = Some TagTokenWeight })
                      |> Seq.toList)) }
 
+    let fromResourceGroupFields resourceGroupId name tags =
+        { SourceType = SearchDocumentType.ResourceGroup
+          SourceId = resourceGroupId
+          Documents =
+            toDocuments
+                SearchDocumentType.ResourceGroup
+                resourceGroupId
+                name
+                (Some resourceGroupId)
+                (Some name)
+                ({ KeyType = SearchKeyType.Name
+                   Value = name
+                   FullWeight = NameWeight
+                   TokenWeight = Some NameTokenWeight }
+                 :: (tags
+                     |> Seq.map (fun tag ->
+                         { KeyType = SearchKeyType.Tag
+                           Value = tag
+                           FullWeight = TagWeight
+                           TokenWeight = Some TagTokenWeight })
+                     |> Seq.toList)) }
+
     let fromWebService (resourceGroupName : string option) (webService : WebService) =
         let image = webService.Spec.Image.FullImageName
 
@@ -147,6 +173,33 @@ module SearchDocumentFactory =
                     FullWeight = ImageWeight
                     TokenWeight = Some ImageTokenWeight } ] }
 
+    let fromWebServiceFields resourceGroupName webServiceId name resourceGroupId domain image =
+        { SourceType = SearchDocumentType.WebService
+          SourceId = webServiceId
+          Documents =
+            toDocuments
+                SearchDocumentType.WebService
+                webServiceId
+                name
+                (Some resourceGroupId)
+                resourceGroupName
+                [ { KeyType = SearchKeyType.SourceId
+                    Value = webServiceId
+                    FullWeight = IdWeight
+                    TokenWeight = None }
+                  { KeyType = SearchKeyType.Name
+                    Value = name
+                    FullWeight = NameWeight
+                    TokenWeight = Some NameTokenWeight }
+                  { KeyType = SearchKeyType.Domain
+                    Value = domain
+                    FullWeight = DomainWeight
+                    TokenWeight = Some DomainTokenWeight }
+                  { KeyType = SearchKeyType.Image
+                    Value = image
+                    FullWeight = ImageWeight
+                    TokenWeight = Some ImageTokenWeight } ] }
+
     let fromDnsRecord (resourceGroupName : string option) (dnsRecord : DnsRecord) =
         { SourceType = SearchDocumentType.DnsRecord
           SourceId = dnsRecord.Id
@@ -163,6 +216,25 @@ module SearchDocumentFactory =
                     TokenWeight = Some DomainTokenWeight }
                   { KeyType = SearchKeyType.ResourceName
                     Value = dnsRecord.Resource.Name
+                    FullWeight = ResourceNameWeight
+                    TokenWeight = Some ResourceNameTokenWeight } ] }
+
+    let fromDnsRecordFields resourceGroupName dnsRecordId domain resourceGroupId resourceName =
+        { SourceType = SearchDocumentType.DnsRecord
+          SourceId = dnsRecordId
+          Documents =
+            toDocuments
+                SearchDocumentType.DnsRecord
+                dnsRecordId
+                domain
+                (Some resourceGroupId)
+                resourceGroupName
+                [ { KeyType = SearchKeyType.Domain
+                    Value = domain
+                    FullWeight = DomainWeight
+                    TokenWeight = Some DomainTokenWeight }
+                  { KeyType = SearchKeyType.ResourceName
+                    Value = resourceName
                     FullWeight = ResourceNameWeight
                     TokenWeight = Some ResourceNameTokenWeight } ] }
 
@@ -185,6 +257,25 @@ module SearchDocumentFactory =
                     FullWeight = NameWeight
                     TokenWeight = Some NameTokenWeight } ] }
 
+    let fromRedisFields resourceGroupName redisId name resourceGroupId =
+        { SourceType = SearchDocumentType.RedisService
+          SourceId = redisId
+          Documents =
+            toDocuments
+                SearchDocumentType.RedisService
+                redisId
+                name
+                (Some resourceGroupId)
+                resourceGroupName
+                [ { KeyType = SearchKeyType.SourceId
+                    Value = redisId
+                    FullWeight = IdWeight
+                    TokenWeight = None }
+                  { KeyType = SearchKeyType.Name
+                    Value = name
+                    FullWeight = NameWeight
+                    TokenWeight = Some NameTokenWeight } ] }
+
     let fromPostgresCluster (resourceGroupName : string option) (cluster : PostgresCluster) =
         { SourceType = SearchDocumentType.PostgresCluster
           SourceId = cluster.Id
@@ -201,6 +292,25 @@ module SearchDocumentFactory =
                     TokenWeight = None }
                   { KeyType = SearchKeyType.Name
                     Value = cluster.Name
+                    FullWeight = NameWeight
+                    TokenWeight = Some NameTokenWeight } ] }
+
+    let fromPostgresClusterFields resourceGroupName clusterId name groupId =
+        { SourceType = SearchDocumentType.PostgresCluster
+          SourceId = clusterId
+          Documents =
+            toDocuments
+                SearchDocumentType.PostgresCluster
+                clusterId
+                name
+                (Some groupId)
+                resourceGroupName
+                [ { KeyType = SearchKeyType.SourceId
+                    Value = clusterId
+                    FullWeight = IdWeight
+                    TokenWeight = None }
+                  { KeyType = SearchKeyType.Name
+                    Value = name
                     FullWeight = NameWeight
                     TokenWeight = Some NameTokenWeight } ] }
 

@@ -18,7 +18,7 @@ type GetByIdPostgresClusterRequest =
       ClusterId : string }
     interface IMediatorRequest<PostgresClusterDto>
     
-type GetPostgresClusterHandler(dbContext : MongoDbContext) =
+type GetPostgresClusterHandler(dbContext : IPostgresDbContext) =
     interface IMediatorHandler<GetByIdPostgresClusterRequest, PostgresClusterDto> with
         member this.HandleAsync(request, cancellationToken) =
             task {

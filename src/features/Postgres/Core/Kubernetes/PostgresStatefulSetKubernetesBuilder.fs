@@ -2,7 +2,7 @@ namespace Pole.Features.Postgres.Kubernetes
 
 open System.Collections.Generic
 open k8s.Models
-open Pole.Domain.Models.FSharp
+open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Common
 
 [<RequireQualifiedAccess>]

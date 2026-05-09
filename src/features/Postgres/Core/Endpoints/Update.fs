@@ -9,7 +9,7 @@ open Microsoft.AspNetCore.Routing
 open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
-open Pole.Domain.Models.FSharp
+open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Common
 open Pole.Features.Postgres.Events
 open Pole.Features.Postgres.Kubernetes
@@ -30,7 +30,7 @@ type UpdatePostgresClusterRequest =
       Body : UpdatePostgresClusterRequestBody }
     interface IMediatorRequest<UpdatePostgresClusterResponse>
 
-type UpdatePostgresClusterHandler(dbContext : MongoDbContext) =
+type UpdatePostgresClusterHandler(dbContext : IPostgresDbContext) =
     interface IMediatorHandler<UpdatePostgresClusterRequest, UpdatePostgresClusterResponse> with
         member _.HandleAsync(request, cancellationToken) =
             task {

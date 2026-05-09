@@ -1,4 +1,4 @@
-using Pole.Domain.Models;
+using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 
 namespace Pole.Features.ResourceGroups.Common;

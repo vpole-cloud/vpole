@@ -9,9 +9,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <Reference Include="MassTransit.Abstractions">
-        <HintPath>..\..\..\..\..\..\.nuget\packages\masstransit.abstractions\8.5.7\lib\net10.0\MassTransit.Abstractions.dll</HintPath>
-      </Reference>
+      <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
     </ItemGroup>
-
 </Project>

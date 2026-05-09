@@ -9,7 +9,7 @@ open Microsoft.AspNetCore.Routing
 open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
-open Pole.Domain.Models.FSharp
+open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Common
 open Pole.Features.Postgres.Events
 open Pole.Features.Postgres.Kubernetes
@@ -24,7 +24,7 @@ type DeletePostgresClusterRequest =
       ClusterId : string }
     interface IMediatorRequest<DeletePostgresClusterResponse>
 
-type DeletePostgresClusterHandler(dbContext : MongoDbContext) =
+type DeletePostgresClusterHandler(dbContext : IPostgresDbContext) =
     interface IMediatorHandler<DeletePostgresClusterRequest, DeletePostgresClusterResponse> with
         member _.HandleAsync(request, cancellationToken) =
             task {

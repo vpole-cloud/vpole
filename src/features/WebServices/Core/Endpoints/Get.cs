@@ -7,9 +7,9 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Domain.Models;
 using Pole.Features.Request;
 using Pole.Features.WebServices.Common;
+using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -38,7 +38,7 @@ public static class Get
 }
 
 public sealed class GetWebServicesHandler(
-    MongoDbContext dbContext)
+    IWebServiceDbContext dbContext)
     : IMediatorHandler<GetWebServicesRequest, PaginatedResponse<WebServiceDto>>
 {
     public async Task<Result<PaginatedResponse<WebServiceDto>>> HandleAsync(

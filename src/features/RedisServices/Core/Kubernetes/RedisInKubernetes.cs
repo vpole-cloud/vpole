@@ -1,6 +1,6 @@
 ﻿using System.Collections.Immutable;
 using k8s.Models;
-using Pole.Domain.Models;
+using Pole.Features.RedisServices.Domain;
 
 namespace Pole.Features.RedisServices.Kubernetes;
 

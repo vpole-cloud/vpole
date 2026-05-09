@@ -1,5 +1,4 @@
 ﻿using System.Collections.Frozen;
-using System.Collections.Immutable;
 using System.Reflection;
 using System.Text.Json;
 using MassTransit;
@@ -7,14 +6,14 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Core.Outbox;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.Shared.Models;
 using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
 
 namespace Pole.Features.Outbox;
 
 public partial class OutboxProcessorJob(
-    MongoDbContext dbContext,
+    IEventDbContext dbContext,
     IPublishEndpoint publishEndpoint,
     OutboxEventAssemblyCatalog eventAssemblyCatalog,
     IOptions<OutboxSettings> outboxSettings,

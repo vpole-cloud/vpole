@@ -1,6 +1,6 @@
 namespace Pole.Features.Postgres.Common
 
-open Pole.Domain.Models.FSharp
+open Pole.Features.Postgres.Domain
 
 type PostgresClusterSpecDto =
     { Instances : int

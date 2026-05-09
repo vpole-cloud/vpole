@@ -1,6 +1,9 @@
 using MongoDB.Driver;
-using Pole.Database;
-using Pole.Domain.Models;
+using Pole.Feature.DnsRecords.Domain;
+using Pole.Features.RedisServices.Domain;
+using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.WebServices.Domain;
+using Pole.Server.Database;
 
 namespace Pole.Tests.Integration.Infrastructure;
 

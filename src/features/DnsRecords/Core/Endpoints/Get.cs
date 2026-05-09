@@ -7,8 +7,8 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Domain.Models;
 using Pole.Feature.DnsRecords.Core.Common;
+using Pole.Feature.DnsRecords.Domain;
 using Pole.Features.Request;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -34,7 +34,7 @@ public static class Get
 }
 
 public sealed class GetDomainNamesHandler(
-    MongoDbContext dbContext)
+    IDnsRecordDbContext dbContext)
     : IMediatorHandler<GetDomainNamesRequest, PaginatedResponse<DnsRecordDto>>
 {
     public async Task<Result<PaginatedResponse<DnsRecordDto>>> HandleAsync(

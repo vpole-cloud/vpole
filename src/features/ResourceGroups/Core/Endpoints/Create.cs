@@ -9,8 +9,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Domain.Models;
 using Pole.Features.ResourceGroups.Common;
+using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Features.ResourceGroups.Services;
 using Pole.Mediator;
@@ -49,7 +49,7 @@ public sealed record CreateResourceGroupRequestBody(
 
 public sealed class CreateResourceGroupHandler(
     IKubernetesNamespaceGenerator namespaceGenerator,
-    MongoDbContext dbContext
+    IResourceGroupDbContext dbContext
     ) : IMediatorHandler<CreateResourceGroupRequest, ResourceGroupDto>
 {
     public async Task<Result<ResourceGroupDto>> HandleAsync(

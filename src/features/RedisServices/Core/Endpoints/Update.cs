@@ -9,9 +9,9 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Domain.Models;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.RedisServices.Common;
+using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Events;
 using Pole.Features.RedisServices.Kubernetes;
 using Pole.Mediator;
@@ -52,7 +52,7 @@ public sealed record UpdateRedisServiceRequestBody(
 public sealed record UpdateRedisServiceResponse(string Id);
 
 public sealed class UpdateRedisServiceHandler(
-    MongoDbContext dbContext)
+    IRedisDbContext dbContext)
     : IMediatorHandler<UpdateRedisServiceRequest, UpdateRedisServiceResponse>
 {
     public async Task<Result<UpdateRedisServiceResponse>> HandleAsync(
@@ -80,6 +80,8 @@ public sealed class UpdateRedisServiceHandler(
 
             await dbContext.StoreEventAsync(new UpdateEvent(
                     request.Id,
+                    redis.Name,
+                    redis.ResourceGroupId,
                     changes)
                 , sh, ct);
             
@@ -112,7 +114,7 @@ public sealed class UpdateRedisServiceHandler(
 }
 
 public class UpdateRedisServiceEventConsumer(
-    MongoDbContext dbContext,
+    IRedisDbContext dbContext,
     IKubernetes kubernetes)
     : IConsumer<UpdateEvent>
 {

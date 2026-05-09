@@ -3,6 +3,7 @@ namespace Pole.Features.Search.Common
 open System
 open FluentValidation
 open Microsoft.AspNetCore.Mvc
+open Pole.Features.Search.Domain
 open Pole.Mediator
 
 type SearchHitDto =

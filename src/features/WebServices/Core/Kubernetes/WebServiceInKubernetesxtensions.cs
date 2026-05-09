@@ -1,5 +1,6 @@
 ﻿using k8s.Models;
-using Pole.Domain.Models;
+using Pole.Features.Shared.Models;
+using Pole.Features.WebServices.Domain;
 
 namespace Pole.Features.WebServices.Kubernetes;
 

@@ -7,9 +7,9 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Domain.Models;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Common;
+using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -45,7 +45,7 @@ public sealed record UpdateResourceGroupRequestBody(
 );
 
 public sealed class UpdateResourceGroupHandler(
-    MongoDbContext dbContext)
+    IResourceGroupDbContext dbContext)
     : IMediatorHandler<UpdateResourceGroupRequest, ResourceGroupDto>
 {
     public async Task<Result<ResourceGroupDto>> HandleAsync(
@@ -71,7 +71,13 @@ public sealed class UpdateResourceGroupHandler(
                     cancellationToken: ct);
             }
 
-            await dbContext.StoreEventAsync(new UpdateEvent(request.Id, changes), sh, ct);
+            await dbContext.StoreEventAsync(new UpdateEvent(
+                request.Id,
+                resourceGroup.Name,
+                request.Body.Description,
+                resourceGroup.KubernetesNamespace,
+                resourceGroup.Resources,
+                changes), sh, ct);
 
             return new ResourceGroupDto(
                 Id: resourceGroup.Id,

@@ -5,12 +5,12 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
 using Npgsql;
-using Pole.Domain.Models.FSharp;
 using Pole.Features.Postgres.Common;
+using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Kubernetes;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
-using PostgresClusterModel = Pole.Domain.Models.FSharp.PostgresCluster;
+using PostgresCluster = Pole.Features.Postgres.Domain.PostgresCluster;
 
 namespace Pole.Tests.Integration.Postgres;
 
@@ -152,10 +152,10 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
         await AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedServiceAsync($"{cluster.Id}-rw", NamespaceName));
     }
 
-    private PostgresClusterModel BuildOperatorCluster() =>
+    private PostgresCluster BuildOperatorCluster() =>
         new("postgres-k8s", "postgres-k8s", "rg-k8s", new PostgresClusterSpec(1, 5, NamespaceName, 17, PostgresDeploymentMode.Operator));
 
-    private PostgresClusterModel BuildStatefulSetCluster() =>
+    private PostgresCluster BuildStatefulSetCluster() =>
         new("postgres-sts", "postgres-sts", "rg-k8s", new PostgresClusterSpec(1, 5, NamespaceName, 17, PostgresDeploymentMode.StatefulSet));
 
     private static PostgresSettings CreateSettings() =>

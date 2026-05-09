@@ -1,4 +1,4 @@
-using Pole.Domain.Models;
+using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 
 namespace Pole.Features.WebServices.Common;

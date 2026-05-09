@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.RedisServices.Common;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -31,7 +30,7 @@ public static class GetById
 }
 
 public sealed class GetRedisServiceByIdHandler(
-    MongoDbContext dbContext)
+    IRedisDbContext dbContext)
     : IMediatorHandler<GetRedisServiceByIdRequest, RedisDto>
 {
     public async Task<Result<RedisDto>> HandleAsync(

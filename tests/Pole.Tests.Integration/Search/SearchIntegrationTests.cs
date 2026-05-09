@@ -1,13 +1,22 @@
+using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
+using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Endpoints;
 using Pole.Features.Search.Common;
 using Pole.Features.Search.Consumers;
+using Pole.Features.Search.Domain;
 using Pole.Features.Search.Projection;
 using Pole.Features.Search.Services;
 using Pole.Features.WebServices.Endpoints;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
+using ResourceGroupCreateEvent = Pole.Features.ResourceGroups.Events.CreateEvent;
+using ResourceGroupUpdateEvent = Pole.Features.ResourceGroups.Events.UpdateEvent;
+using ResourceGroupUpdateEventChanges = Pole.Features.ResourceGroups.Events.UpdateEventChanges;
+using WebServiceCreateEvent = Pole.Features.WebServices.Events.CreateEvent;
+using RedisCreateEvent = Pole.Features.RedisServices.Events.CreateEvent;
+using PostgresCreateEvent = Pole.Features.Postgres.Events.CreateEvent;
 
 namespace Pole.Tests.Integration.Search;
 
@@ -23,14 +32,12 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("alpha-shared"));
 
-        var resourceGroupConsumer = new ResourceGroupCreatedConsumer(DbContext, SearchService);
-        await resourceGroupConsumer.Handle(resourceGroup.Id, CancellationToken.None);
+        await IndexResourceGroupCreatedAsync(resourceGroup.Id);
 
         var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, "web-api", "api.example.com"));
         Assert.True(createResult.TryGetValue(out var created, out _));
 
-        var webConsumer = new WebServiceCreatedConsumer(DbContext, SearchService);
-        await webConsumer.Handle(created!.WebServiceId, CancellationToken.None);
+        await IndexWebServiceCreatedAsync(created!.WebServiceId);
 
         var rows = await SearchDocuments.Find(row => row.SourceType == SearchDocumentType.WebService && row.SourceId == created.WebServiceId).ToListAsync();
         var sourceDocument = await SearchSourceDocuments.Find(row => row.SourceType == SearchDocumentType.WebService && row.SourceId == created.WebServiceId).FirstOrDefaultAsync();
@@ -53,23 +60,19 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("alpha-shared"));
 
-        var resourceGroupConsumer = new ResourceGroupCreatedConsumer(DbContext, SearchService);
-        await resourceGroupConsumer.Handle(resourceGroup.Id, CancellationToken.None);
+        await IndexResourceGroupCreatedAsync(resourceGroup.Id);
 
         var webCreate = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, "alpha-web", "api.alpha.example.com"));
         Assert.True(webCreate.TryGetValue(out var webResponse, out _));
-        var webConsumer = new WebServiceCreatedConsumer(DbContext, SearchService);
-        await webConsumer.Handle(webResponse!.WebServiceId, CancellationToken.None);
+        await IndexWebServiceCreatedAsync(webResponse!.WebServiceId);
 
         var redisCreate = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id, "alpha-redis"));
         Assert.True(redisCreate.TryGetValue(out var redisResponse, out _));
-        var redisConsumer = new RedisCreatedConsumer(DbContext, SearchService);
-        await redisConsumer.Handle(redisResponse!.RedisId, CancellationToken.None);
+        await IndexRedisCreatedAsync(redisResponse!.RedisId);
 
         var postgresCreate = await Mediator.Send(TestData.CreatePostgresClusterRequest(resourceGroup.Id, "alpha-postgres"));
         Assert.True(postgresCreate.TryGetValue(out var postgresResponse, out _));
-        var postgresConsumer = new PostgresCreatedConsumer(DbContext, SearchService);
-        await postgresConsumer.Handle(postgresResponse!.Id, CancellationToken.None);
+        await IndexPostgresCreatedAsync(postgresResponse!.Id);
 
         var result = await Mediator.Send(new GetSearchRequest
         {
@@ -122,13 +125,12 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
 
         var webCreate = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, "service-123"));
         Assert.True(webCreate.TryGetValue(out var created, out _));
-        var webConsumer = new WebServiceCreatedConsumer(DbContext, SearchService);
-        await webConsumer.Handle(created!.WebServiceId, CancellationToken.None);
+        await IndexWebServiceCreatedAsync(created!.WebServiceId);
 
         var secondResourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("beta-shared"));
         var otherCreate = await Mediator.Send(TestData.CreateWebServiceRequest(secondResourceGroup.Id, created.WebServiceId[..8], "other.example.com"));
         Assert.True(otherCreate.TryGetValue(out var otherCreated, out _));
-        await webConsumer.Handle(otherCreated!.WebServiceId, CancellationToken.None);
+        await IndexWebServiceCreatedAsync(otherCreated!.WebServiceId);
 
         var result = await Mediator.Send(new GetSearchRequest
         {
@@ -149,8 +151,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         var createResult = await Mediator.Send(TestData.CreateResourceGroupRequest("ops"));
         Assert.True(createResult.TryGetValue(out var created, out _));
 
-        var createdConsumer = new ResourceGroupCreatedConsumer(DbContext, SearchService);
-        await createdConsumer.Handle(created!.Id, CancellationToken.None);
+        await IndexResourceGroupCreatedAsync(created!.Id);
 
         var updateResult = await Mediator.Send(new UpdateResourceGroupRequest(
             created.Id,
@@ -161,8 +162,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.True(updateResult.TryGetValue(out _, out var error));
         Assert.Null(error);
 
-        var updatedConsumer = new ResourceGroupUpdatedConsumer(DbContext, SearchService);
-        await updatedConsumer.Handle(created.Id, CancellationToken.None);
+        await IndexResourceGroupUpdatedAsync(created.Id);
 
         var rows = await SearchDocuments.Find(row => row.SourceType == SearchDocumentType.ResourceGroup && row.SourceId == created.Id).ToListAsync();
         var sourceDocument = await SearchSourceDocuments.Find(row => row.SourceType == SearchDocumentType.ResourceGroup && row.SourceId == created.Id).FirstOrDefaultAsync();
@@ -193,8 +193,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, "portal", "portal.example.com"));
         Assert.True(createResult.TryGetValue(out var created, out _));
 
-        var createdConsumer = new WebServiceCreatedConsumer(DbContext, SearchService);
-        await createdConsumer.Handle(created!.WebServiceId, CancellationToken.None);
+        await IndexWebServiceCreatedAsync(created!.WebServiceId);
 
         var dnsRecord = await DbContext.DnsRecords.Find(record => record.Resource.Id == created.WebServiceId).FirstOrDefaultAsync();
         Assert.NotNull(dnsRecord);
@@ -215,5 +214,71 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(0L, dnsRows);
         Assert.Equal(0L, serviceSourceRows);
         Assert.Equal(0L, dnsSourceRows);
+    }
+
+    private async Task IndexResourceGroupCreatedAsync(string resourceGroupId)
+    {
+        var resourceGroup = await DbContext.ResourceGroups.Find(group => group.Id == resourceGroupId).FirstAsync();
+        var consumer = new ResourceGroupCreatedConsumer(SearchService);
+        await consumer.Handle(new ResourceGroupCreateEvent(
+            resourceGroup.Id,
+            resourceGroup.Name,
+            resourceGroup.Description,
+            resourceGroup.KubernetesNamespace,
+            resourceGroup.Resources,
+            resourceGroup.Tags), CancellationToken.None);
+    }
+
+    private async Task IndexResourceGroupUpdatedAsync(string resourceGroupId)
+    {
+        var resourceGroup = await DbContext.ResourceGroups.Find(group => group.Id == resourceGroupId).FirstAsync();
+        var consumer = new ResourceGroupUpdatedConsumer(SearchService);
+        await consumer.Handle(new ResourceGroupUpdateEvent(
+            resourceGroup.Id,
+            resourceGroup.Name,
+            resourceGroup.Description,
+            resourceGroup.KubernetesNamespace,
+            resourceGroup.Resources,
+            new ResourceGroupUpdateEventChanges(
+                UpdateLog<string>.Of("", resourceGroup.Description),
+                UpdateLog<ImmutableHashSet<string>>.Of([], resourceGroup.Tags))), CancellationToken.None);
+    }
+
+    private async Task IndexWebServiceCreatedAsync(string webServiceId)
+    {
+        var webService = await DbContext.WebServices.Find(service => service.Id == webServiceId).FirstAsync();
+        var consumer = new WebServiceCreatedConsumer(SearchService);
+        await consumer.Handle(new WebServiceCreateEvent(
+            webService.Id,
+            webService.Name,
+            webService.ResourceGroupId,
+            webService.Spec,
+            webService.DnsRecord,
+            webService.Status,
+            webService.Tags), CancellationToken.None);
+    }
+
+    private async Task IndexRedisCreatedAsync(string redisId)
+    {
+        var redis = await DbContext.RedisServices.Find(service => service.Id == redisId).FirstAsync();
+        var consumer = new RedisCreatedConsumer(SearchService);
+        await consumer.Handle(new RedisCreateEvent(
+            redis.Id,
+            redis.Name,
+            redis.ResourceGroupId,
+            redis.Spec,
+            redis.Status,
+            redis.Tags), CancellationToken.None);
+    }
+
+    private async Task IndexPostgresCreatedAsync(string clusterId)
+    {
+        var cluster = await DbContext.Postgres.Find(cluster => cluster.Id == clusterId).FirstAsync();
+        var consumer = new PostgresCreatedConsumer(SearchService);
+        await consumer.Handle(new PostgresCreateEvent(
+            cluster.Id,
+            cluster.Name,
+            cluster.GroupId,
+            cluster.Spec), CancellationToken.None);
     }
 }

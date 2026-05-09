@@ -1,7 +1,8 @@
 ﻿using System.Collections.Immutable;
 using MassTransit;
-using Pole.Domain.Models;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.Shared.Models;
+using Pole.Features.WebServices.Domain;
 
 namespace Pole.Features.WebServices.Events;
 

@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Microsoft.FSharp.Core;
 using Microsoft.Extensions.DependencyInjection;
-using Pole.Domain.Models.FSharp;
+using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Endpoints;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;

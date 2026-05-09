@@ -14,13 +14,12 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="MassTransit.Abstractions" Version="8.5.9" />
         <PackageReference Update="FSharp.Core" Version="10.1.203" />
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\..\domain\Models.FSharp\Core\Core.fsproj" />
       <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
+      <ProjectReference Include="..\Domain\Domain.fsproj" />
     </ItemGroup>
 
 </Project>
