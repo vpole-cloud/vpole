@@ -1,12 +1,13 @@
 using MassTransit;
 using MongoDB.Driver;
-using Pole.Database;
-using Pole.Domain.Models;
+using Pole.Features.ResourceGroups.Common;
+using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Events;
 
 namespace Pole.Features.ResourceGroups.Consumers;
 
-public class WebServiceCreatedEventConsumer(MongoDbContext dbContext)
+public class WebServiceCreatedEventConsumer(IResourceGroupDbContext dbContext)
     : IConsumer<CreateEvent>
 {
     public async Task Consume(ConsumeContext<CreateEvent> context)

@@ -1,4 +1,4 @@
-using Pole.Domain.Models;
+using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Events;
 
 namespace Pole.Features.RedisServices.Common;

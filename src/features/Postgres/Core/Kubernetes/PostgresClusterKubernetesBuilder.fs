@@ -1,6 +1,6 @@
 namespace Pole.Features.Postgres.Kubernetes
 
-open Pole.Domain.Models.FSharp
+open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Common
 open k8s.Models
 

@@ -1,10 +1,9 @@
 using System.Text.Json;
-using Pole.Domain.Models.FSharp;
 using Pole.Features.Postgres.Common;
+using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Kubernetes;
 using Xunit;
-
-using PostgresClusterModel = Pole.Domain.Models.FSharp.PostgresCluster;
+using PostgresCluster = Pole.Features.Postgres.Domain.PostgresCluster;
 
 namespace Pole.Tests.Integration.Postgres;
 
@@ -88,15 +87,15 @@ public sealed class PostgresManifestTests
         Assert.Null(readWrite.Spec.ClusterIP);
     }
 
-    private static (PostgresClusterModel cluster, PostgresSettings settings) CreateOperatorSubject()
+    private static (PostgresCluster cluster, PostgresSettings settings) CreateOperatorSubject()
     {
-        var cluster = new PostgresClusterModel("cluster-1", "analytics", "rg-1", new PostgresClusterSpec(2, 20, "pole-data", 17, PostgresDeploymentMode.Operator));
+        var cluster = new PostgresCluster("cluster-1", "analytics", "rg-1", new PostgresClusterSpec(2, 20, "pole-data", 17, PostgresDeploymentMode.Operator));
         return (cluster, CreateSettings());
     }
 
-    private static (PostgresClusterModel cluster, PostgresSettings settings) CreateStatefulSetSubject()
+    private static (PostgresCluster cluster, PostgresSettings settings) CreateStatefulSetSubject()
     {
-        var cluster = new PostgresClusterModel("cluster-1", "analytics", "rg-1", new PostgresClusterSpec(1, 20, "pole-data", 17, PostgresDeploymentMode.StatefulSet));
+        var cluster = new PostgresCluster("cluster-1", "analytics", "rg-1", new PostgresClusterSpec(1, 20, "pole-data", 17, PostgresDeploymentMode.StatefulSet));
         return (cluster, CreateSettings());
     }
 

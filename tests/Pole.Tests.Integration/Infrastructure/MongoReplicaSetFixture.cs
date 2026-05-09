@@ -2,9 +2,9 @@ using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Database;
 using System.Net;
 using System.Net.Sockets;
+using Pole.Server.Database;
 using Xunit;
 
 namespace Pole.Tests.Integration.Infrastructure;

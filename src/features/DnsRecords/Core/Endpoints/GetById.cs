@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Feature.DnsRecords.Core.Common;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -31,7 +30,7 @@ public static class GetById
 }
 
 public sealed class GetDomainNameByIdHandler(
-    MongoDbContext dbContext)
+    IDnsRecordDbContext dbContext)
     : IMediatorHandler<GetDomainNameByIdRequest, DnsRecordDto>
 {
     public async Task<Result<DnsRecordDto>> HandleAsync(

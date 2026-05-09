@@ -2,40 +2,44 @@
   <Folder Name="/api/">
     <Project Path="src/api/Pole.AppHost/Pole.AppHost.csproj" />
     <Project Path="src/api/Pole.Server/Pole.Server.csproj" />
-  </Folder>
-  <Folder Name="/domain/Models.FSharp/">
-    <Project Path="src/domain/Models.FSharp/Core/Core.fsproj" />
-  </Folder>
-  <Folder Name="/domain/Models/">
-    <Project Path="src/domain/Models/Core/Core.csproj" />
+    <Project Path="src/api/ServiceDefaults/ServiceDefaults.csproj" />
   </Folder>
   <Folder Name="/examples/">
     <Project Path="src/examples/Blog/Blog.csproj" />
   </Folder>
   <Folder Name="/shared/">
+    <Project Path="src/shared/Mediator/Mediator.csproj" />
+    <Project Path="src/shared/ResultType/ResultType.csproj" />
     <Project Path="src/shared/Database/Database.csproj" />
     <Project Path="src/shared/Features/Features.csproj" />
     <Project Path="src/shared/Events/Events.csproj" />
+    <Project Path="src/shared/Models/Models.csproj" />
     <Project Path="src/shared/Request/Request.csproj" />
   </Folder>
+  <Folder Name="/features/" />
   <Folder Name="/features/DnsRecords/">
+    <Project Path="src/features/DnsRecords/Domain/Domain.csproj" />
     <Project Path="src/features/DnsRecords/Events/Events.csproj" />
     <Project Path="src/features/DnsRecords/Core/Core.csproj" />
   </Folder>
   <Folder Name="/features/RedisServices/">
     <Project Path="src/features/RedisServices/Core/Core.csproj" />
+    <Project Path="src/features/RedisServices/Domain/Domain.csproj" />
     <Project Path="src/features/RedisServices/Events/Events.csproj" />
   </Folder>
   <Folder Name="/features/Postgres/">
     <Project Path="src/features/Postgres/Core/Core.fsproj" />
+    <Project Path="src/features/Postgres/Domain/Domain.fsproj" />
     <Project Path="src/features/Postgres/Events/Events.fsproj" />
   </Folder>
   <Folder Name="/features/ResourceGroups/">
     <Project Path="src/features/ResourceGroups/Core/Core.csproj" />
+    <Project Path="src/features/ResourceGroups/Domain/Domain.csproj" />
     <Project Path="src/features/ResourceGroups/Events/Events.csproj" />
   </Folder>
   <Folder Name="/features/WebServices/">
     <Project Path="src/features/WebServices/Core/Core.csproj" />
+    <Project Path="src/features/WebServices/Domain/Domain.csproj" />
     <Project Path="src/features/WebServices/Events/Events.csproj" />
   </Folder>
   <Folder Name="/features/Outbox/">
@@ -43,12 +47,10 @@
   </Folder>
   <Folder Name="/features/Search/">
     <Project Path="src/features/Search/Core/Core.fsproj" />
+    <Project Path="src/features/Search/Domain/Domain.fsproj" />
   </Folder>
-  <Folder Name="/helpers/">
-    <Project Path="src/helpers/ASP/ASP.csproj" />
-    <Project Path="src/helpers/Mediator/Mediator.csproj" />
-    <Project Path="src/helpers/ResultType/ResultType.csproj" />
-    <Project Path="src/helpers/ServiceDefaults/ServiceDefaults.csproj" />
+  <Folder Name="/shared/helpers/">
+    <Project Path="src/shared/helpers/ASP/ASP.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj" />

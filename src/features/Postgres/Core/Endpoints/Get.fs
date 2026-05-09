@@ -23,7 +23,7 @@ type GetPostgresClustersRequest() =
     [<FromQuery; DefaultValue(10); Description("The number of items per page.")>]
     member val PageSize = 10 with get, set
 
-type GetPostgresClustersHandler(dbContext : MongoDbContext) =
+type GetPostgresClustersHandler(dbContext : IPostgresDbContext) =
     interface IMediatorHandler<GetPostgresClustersRequest, PaginatedResponse<PostgresClusterDto>> with
         member _.HandleAsync(request, cancellationToken) =
             task {

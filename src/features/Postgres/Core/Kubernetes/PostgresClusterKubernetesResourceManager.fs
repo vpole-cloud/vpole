@@ -4,7 +4,7 @@ open System.Collections.Generic
 open System.Threading
 open System.Threading.Tasks
 open k8s
-open Pole.Domain.Models.FSharp
+open Pole.Features.Postgres.Domain
 open Pole.Features.Core.Kubernetes
 open Pole.Features.Postgres.Common
 

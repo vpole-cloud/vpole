@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.WebServices.Common;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -31,7 +30,7 @@ public static class GetById
 }
 
 public sealed class GetWebServiceByIdHandler(
-    MongoDbContext dbContext)
+    IWebServiceDbContext dbContext)
     : IMediatorHandler<GetWebServiceByIdRequest, WebServiceDto>
 {
     public async Task<Result<WebServiceDto>> HandleAsync(

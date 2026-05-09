@@ -1,7 +1,7 @@
 ﻿using System.Collections.Immutable;
 using MassTransit;
-using Pole.Domain.Models;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.RedisServices.Domain;
 
 namespace Pole.Features.RedisServices.Events;
 

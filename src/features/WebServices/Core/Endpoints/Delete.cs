@@ -33,7 +33,7 @@ public static class Delete
 }
 
 public sealed class DeleteWebServiceHandler(
-    MongoDbContext dbContext
+    IWebServiceDbContext dbContext
     ) : IMediatorHandler<DeleteWebServiceRequest, DeleteWebServiceResponse>
 {
     public async Task<Result<DeleteWebServiceResponse>> HandleAsync(DeleteWebServiceRequest request,

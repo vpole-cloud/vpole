@@ -3,60 +3,43 @@ namespace Pole.Features.Search.Consumers
 open System.Threading
 open System.Threading.Tasks
 open MassTransit
-open MongoDB.Driver
-open Pole.Database
-open Pole.Domain.Models.FSharp
-open Pole.Features.Postgres.Common
 open Pole.Features.Postgres.Events
 open Pole.Features.Search.Common
+open Pole.Features.Search.Domain
 open Pole.Features.Search.Projection
 open Pole.Features.Search.Services
 
-type PostgresProjectionConsumer(dbContext : MongoDbContext, searchService : ISearchService) =
-    member private this.GetResourceGroupName(groupId : string, cancellationToken : CancellationToken) =
+type PostgresProjectionConsumer(searchService : ISearchService) =
+    member _.HandleUpsert(
+        clusterId : string,
+        name : string,
+        groupId : string,
+        apply : SearchDocumentSet -> CancellationToken -> Task,
+        cancellationToken : CancellationToken) =
         task {
-            let! resourceGroup =
-                dbContext.ResourceGroups
-                    .Find(fun group -> group.Id = groupId)
-                    .FirstOrDefaultAsync(cancellationToken)
-
-            return if isNull resourceGroup then None else Some resourceGroup.Name
+            let documents = SearchDocumentFactory.fromPostgresClusterFields None clusterId name groupId
+            do! apply documents cancellationToken
         }
 
-    member this.HandleUpsert(clusterId : string, apply : SearchDocumentSet -> CancellationToken -> Task, cancellationToken : CancellationToken) =
-        task {
-            let! cluster =
-                dbContext.Postgres
-                    .Find(Builders<PostgresCluster>.Filter.Eq("Id", clusterId))
-                    .FirstOrNoneAsync(cancellationToken)
+type PostgresCreatedConsumer(searchService : ISearchService) =
+    inherit PostgresProjectionConsumer(searchService)
 
-            match cluster with
-            | None -> ()
-            | Some cluster ->
-                let! resourceGroupName = this.GetResourceGroupName(cluster.GroupId, cancellationToken)
-                let documents = SearchDocumentFactory.fromPostgresCluster resourceGroupName cluster
-                do! apply documents cancellationToken
-        }
-
-type PostgresCreatedConsumer(dbContext : MongoDbContext, searchService : ISearchService) =
-    inherit PostgresProjectionConsumer(dbContext, searchService)
-
-    member this.Handle(clusterId : string, cancellationToken : CancellationToken) =
-        this.HandleUpsert(clusterId, searchService.Create, cancellationToken)
+    member this.Handle(event : CreateEvent, cancellationToken : CancellationToken) =
+        this.HandleUpsert(event.ClusterId, event.Name, event.GroupId, searchService.Create, cancellationToken)
 
     interface IConsumer<CreateEvent> with
         member this.Consume(context : ConsumeContext<CreateEvent>) =
-            this.Handle(context.Message.ClusterId, context.CancellationToken)
+            this.Handle(context.Message, context.CancellationToken)
 
-type PostgresUpdatedConsumer(dbContext : MongoDbContext, searchService : ISearchService) =
-    inherit PostgresProjectionConsumer(dbContext, searchService)
+type PostgresUpdatedConsumer(searchService : ISearchService) =
+    inherit PostgresProjectionConsumer(searchService)
 
-    member this.Handle(clusterId : string, cancellationToken : CancellationToken) =
-        this.HandleUpsert(clusterId, searchService.Update, cancellationToken)
+    member this.Handle(event : UpdateEvent, cancellationToken : CancellationToken) =
+        this.HandleUpsert(event.ClusterId, event.Name, event.GroupId, searchService.Update, cancellationToken)
 
     interface IConsumer<UpdateEvent> with
         member this.Consume(context : ConsumeContext<UpdateEvent>) =
-            this.Handle(context.Message.ClusterId, context.CancellationToken)
+            this.Handle(context.Message, context.CancellationToken)
 
 type PostgresDeletedConsumer(searchService : ISearchService) =
     member _.Handle(clusterId : string, cancellationToken : CancellationToken) =

@@ -8,9 +8,9 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Domain.Models;
 using Pole.Features.Request;
 using Pole.Features.ResourceGroups.Common;
+using Pole.Features.ResourceGroups.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -41,7 +41,7 @@ public record GetResourceGroupsRequest : PaginatedRequest<ResourceGroupDto>
 
 
 public sealed class GetResourceGroupsHandler(
-    MongoDbContext dbContext)
+    IResourceGroupDbContext dbContext)
     : IMediatorHandler<GetResourceGroupsRequest, PaginatedResponse<ResourceGroupDto>>
 {
     public async Task<Result<PaginatedResponse<ResourceGroupDto>>> HandleAsync(

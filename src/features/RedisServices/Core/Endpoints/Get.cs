@@ -35,7 +35,7 @@ public static class Get
 }
 
 public sealed class GetRedisServicesHandler(
-    MongoDbContext dbContext)
+    IRedisDbContext dbContext)
     : IMediatorHandler<GetRedisServicesRequest, PaginatedResponse<RedisDto>>
 {
     public async Task<Result<PaginatedResponse<RedisDto>>> HandleAsync(

@@ -9,18 +9,13 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="MassTransit.Abstractions" Version="8.5.9" />
-    </ItemGroup>
-
-    <ItemGroup>
       <ProjectReference Include="..\Events\Events.csproj" />
-      <ProjectReference Include="..\..\..\helpers\ASP\ASP.csproj" />
+      <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
       <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
-      <ProjectReference Include="..\..\..\domain\Models\Core\Core.csproj" />
       <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
       <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
       <ProjectReference Include="..\..\WebServices\Events\Events.csproj" />
-      <ProjectReference Include="..\..\..\helpers\Mediator\Mediator.csproj" />
+      <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
     </ItemGroup>
 
 </Project>

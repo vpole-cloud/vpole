@@ -1,5 +1,6 @@
-using Pole.Domain.Models;
 using Pole.Feature.DnsRecords.Core.Endpoints;
+using Pole.Feature.DnsRecords.Domain;
+using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

@@ -9,11 +9,11 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\domain\Models.FSharp\Core\Core.fsproj" />
-      <ProjectReference Include="..\..\domain\Models\Core\Core.csproj" />
       <ProjectReference Include="..\Features\Features.csproj" />
       <ProjectReference Include="..\Events\Events.csproj" />
-      <ProjectReference Include="..\..\helpers\ResultType\ResultType.csproj" />
+      <ProjectReference Include="..\ResultType\ResultType.csproj" />
+      <ProjectReference Include="..\Models\Models.csproj" />
+      <ProjectReference Include="..\Request\Request.csproj" />
     </ItemGroup>
 
 </Project>

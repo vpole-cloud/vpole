@@ -9,9 +9,11 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Domain.Models;
-using Pole.Features.Core.Models;
+using Pole.Feature.DnsRecords.Domain;
+using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Common;
+using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 using Pole.Features.WebServices.Kubernetes;
 using Pole.Mediator;
@@ -39,7 +41,7 @@ public static class Create
 }
 
 public sealed class CreateWebServiceHandler(
-    MongoDbContext dbContext)
+    IWebServiceDbContext dbContext)
     : IMediatorHandler<CreateWebServiceRequest, CreateWebServiceResponse>
 {
     public async Task<Result<CreateWebServiceResponse>> HandleAsync(CreateWebServiceRequest request,
@@ -168,7 +170,7 @@ public sealed class WebServiceSpecDtoValidator : AbstractValidator<WebServiceSpe
         RuleFor(x => x.Replicas)
             .GreaterThan(0);
         RuleFor(x => x.Resources)
-            .SetValidator(new ResourcesDtoValidator());
+            .SetValidator(new ResourcesValidator());
         RuleFor(x => x.Probes)
             .SetValidator(new ProbeSpecDtoValidator());
         RuleFor(x => x.Config)
@@ -218,20 +220,20 @@ public class ProbeConfigDtoValidator : AbstractValidator<ProbeConfigDto>
     }
 }
 
-public class ResourcesDtoValidator : AbstractValidator<ResourcesDto>
+public class ResourcesValidator : AbstractValidator<Resources>
 {
-    public ResourcesDtoValidator()
+    public ResourcesValidator()
     {
         RuleFor(x => x.Requests)
-            .SetValidator(new ResourceDtoValidator());
+            .SetValidator(new ResourceValidator());
         RuleFor(x => x.Limits)
-            .SetValidator(new ResourceDtoValidator());
+            .SetValidator(new ResourceValidator());
     }
 }
 
-public class ResourceDtoValidator : AbstractValidator<ResourceDto>
+public class ResourceValidator : AbstractValidator<Resource>
 {
-    public ResourceDtoValidator()
+    public ResourceValidator()
     {
         RuleFor(x => x.CpuCores)
             .GreaterThan(0);

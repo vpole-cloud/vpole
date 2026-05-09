@@ -1,5 +1,5 @@
 ﻿using FluentValidation;
-using Pole.Features.Core.Models;
+using Pole.Features.Shared.Models;
 
 namespace Pole.Features.RedisServices.Common;
 
@@ -10,7 +10,7 @@ public sealed class RedisSpecDtoValidator : AbstractValidator<RedisSpecDto>
         RuleFor(x => x.Storage)
             .SetValidator(new StorageDtoValidator());
         RuleFor(x => x.Resources)
-            .SetValidator(new ResourcesDtoValidator());
+            .SetValidator(new ResourcesValidator());
     }
 }
 
@@ -27,20 +27,20 @@ public sealed class StorageDtoValidator : AbstractValidator<StorageDto>
     }
 }
 
-public class ResourcesDtoValidator : AbstractValidator<ResourcesDto>
+public class ResourcesValidator : AbstractValidator<Resources>
 {
-    public ResourcesDtoValidator()
+    public ResourcesValidator()
     {
         RuleFor(x => x.Requests)
-            .SetValidator(new ResourceDtoValidator());
+            .SetValidator(new ResourceValidator());
         RuleFor(x => x.Limits)
-            .SetValidator(new ResourceDtoValidator());
+            .SetValidator(new ResourceValidator());
     }
 }
 
-public class ResourceDtoValidator : AbstractValidator<ResourceDto>
+public class ResourceValidator : AbstractValidator<Resource>
 {
-    public ResourceDtoValidator()
+    public ResourceValidator()
     {
         RuleFor(x => x.CpuCores)
             .GreaterThan(0);

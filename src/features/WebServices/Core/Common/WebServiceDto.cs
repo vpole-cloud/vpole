@@ -1,8 +1,8 @@
 ﻿// ReSharper disable MemberCanBePrivate.Global
 
 using System.Collections.Immutable;
-using Pole.Domain.Models;
-using Pole.Features.Core.Models;
+using Pole.Features.Shared.Models;
+using Pole.Features.WebServices.Domain;
 
 namespace Pole.Features.WebServices.Common;
 
@@ -21,7 +21,7 @@ public sealed record DnsRecordShortInfoDto(
 public sealed record WebServiceSpecDto(
     ImageInfoDto Image,
     int Replicas,
-    ResourcesDto Resources,
+    Resources Resources,
     WebServiceConfigDto Config,
     AutoscalingSpecDto? Autoscaling,
     ProbeSpecDto Probes
@@ -84,7 +84,7 @@ public static class WebServiceDtoExtensions
     public static WebServiceSpecDto ToDto(this WebServiceSpec spec) => new(
         spec.Image.ToDto(),
         spec.Replicas,
-        spec.Resources.ToDto(),
+        spec.Resources,
         spec.Config.ToDto(),
         spec.Autoscaling?.ToDto(),
         spec.Probes.ToDto()
@@ -129,7 +129,7 @@ public static class WebServiceDtoExtensions
         kubernetesNamespace,
         dto.Image.ToDomain(),
         dto.Replicas,
-        dto.Resources.ToDomain(),
+        dto.Resources,
         dto.Config.ToDomain(),
         dto.Autoscaling?.ToDomain(),
         dto.Probes.ToDomain()

@@ -12,6 +12,7 @@
         <Compile Include="Common\PostgresClusterDto.fs" />
         <Compile Include="Common\MongoExtensions.fs" />
         <Compile Include="Common\ResultF.fs" />
+        <Compile Include="Common\IPostgresDbContext.fs" />
         <Compile Include="Kubernetes\PostgresClusterKubernetesBuilder.fs" />
         <Compile Include="Kubernetes\PostgresStatefulSetKubernetesBuilder.fs" />
         <Compile Include="Kubernetes\PostgresClusterSecretStore.fs" />
@@ -36,12 +37,13 @@
         <PackageReference Update="FSharp.Core" Version="10.1.203" />
     </ItemGroup>
     <ItemGroup>
+      <ProjectReference Include="..\..\ResourceGroups\Domain\Domain.csproj" />
+      <ProjectReference Include="..\Domain\Domain.fsproj" />
       <ProjectReference Include="..\Events\Events.fsproj" />
-      <ProjectReference Include="..\..\..\helpers\ASP\ASP.csproj" />
+      <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
       <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
-      <ProjectReference Include="..\..\..\domain\Models.FSharp\Core\Core.fsproj" />
       <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
       <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
-      <ProjectReference Include="..\..\..\helpers\Mediator\Mediator.csproj" />
+      <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
     </ItemGroup>
 </Project>

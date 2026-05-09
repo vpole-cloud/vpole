@@ -10,7 +10,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Features\Features.csproj" />
-      <ProjectReference Include="..\..\helpers\Mediator\Mediator.csproj" />
+      <ProjectReference Include="..\Mediator\Mediator.csproj" />
     </ItemGroup>
 
 </Project>

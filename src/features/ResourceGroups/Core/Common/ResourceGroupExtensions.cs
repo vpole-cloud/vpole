@@ -1,4 +1,4 @@
-using Pole.Domain.Models;
+using Pole.Features.ResourceGroups.Domain;
 
 namespace Pole.Features.ResourceGroups.Common;
 

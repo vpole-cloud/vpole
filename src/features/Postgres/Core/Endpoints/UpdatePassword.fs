@@ -9,7 +9,7 @@ open Microsoft.AspNetCore.Routing
 open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
-open Pole.Domain.Models.FSharp
+open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Common
 open Pole.Features.Postgres.Kubernetes
 open Pole.Mediator
@@ -29,7 +29,7 @@ type UpdatePostgresClusterPasswordRequest =
     interface IMediatorRequest<UpdatePostgresClusterPasswordResponse>
 
 type UpdatePostgresClusterPasswordHandler(
-    dbContext : MongoDbContext,
+    dbContext : IPostgresDbContext,
     secretStore : IPostgresClusterSecretStore) =
     interface IMediatorHandler<UpdatePostgresClusterPasswordRequest, UpdatePostgresClusterPasswordResponse> with
         member _.HandleAsync(request, cancellationToken) =

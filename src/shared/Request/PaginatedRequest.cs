@@ -1,6 +1,5 @@
 ﻿using System.ComponentModel;
 using Microsoft.AspNetCore.Mvc;
-using MongoDB.Driver;
 using Pole.Mediator;
 
 namespace Pole.Features.Request;
@@ -16,24 +15,7 @@ public abstract record PaginatedRequest<T> : IMediatorRequest<PaginatedResponse<
     public int PageNumber { get; init; } = 1;
     [FromQuery, DefaultValue(10), Description("The number of items per page.")]
     public int PageSize { get; init; } = 10;
-    internal int Skip => (PageNumber - 1) * PageSize;
-}
-
-public static class PaginatedRequestExtensions
-{
-    public static IQueryable<TEntity> ApplyPagination<TEntity, TRequest>(this IQueryable<TEntity> query, PaginatedRequest<TRequest> request)
-    {
-        return query
-            .Skip(request.Skip)
-            .Take(request.PageSize);
-    }
-    
-    public static IFindFluent<T, T> ApplyPagination<T, TRequest>(this IFindFluent<T, T> findFluent, PaginatedRequest<TRequest> request)
-    {
-        return findFluent
-            .Skip(request.Skip)
-            .Limit(request.PageSize);
-    }
+    public int Skip => (PageNumber - 1) * PageSize;
 }
 
 public sealed record PaginatedResponse<T>(IEnumerable<T> Items, long TotalCount, int PageNumber, int PageSize)

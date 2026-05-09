@@ -9,9 +9,9 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Domain.Models;
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.RedisServices.Common;
+using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Events;
 using Pole.Features.RedisServices.Kubernetes;
 using Pole.Mediator;
@@ -39,7 +39,7 @@ public static class Create
 }
 
 public sealed class CreateRedisServiceHandler(
-    MongoDbContext dbContext)
+    IRedisDbContext dbContext)
     : IMediatorHandler<CreateRedisServiceRequest, CreateRedisServiceResponse>
 {
     public async Task<Result<CreateRedisServiceResponse>> HandleAsync(CreateRedisServiceRequest request,

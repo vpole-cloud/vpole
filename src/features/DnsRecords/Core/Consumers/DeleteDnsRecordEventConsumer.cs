@@ -1,12 +1,12 @@
 using MassTransit;
 using MongoDB.Driver;
-using Pole.Database;
+using Pole.Feature.DnsRecords.Core.Common;
 using Pole.Feature.DnsRecords.Events;
 
 namespace Pole.Feature.DnsRecords.Core.Consumers;
 
 public class DeleteDnsRecordEventConsumer(
-    MongoDbContext dbContext
+    IDnsRecordDbContext dbContext
 ) : IConsumer<DeleteDnsRecordEvent>
 {
     public async Task Consume(ConsumeContext<DeleteDnsRecordEvent> context)

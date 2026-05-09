@@ -1,5 +1,4 @@
 ﻿using MongoDB.Driver;
-using Pole.Features.Core.Exceptions;
 using Pole.ResultType;
 
 namespace Pole.Database;
@@ -7,7 +6,7 @@ namespace Pole.Database;
 public static class ClientSessionHandleExtensions
 {
     public static async Task<Result> RunInTransactionAsync(
-        this MongoDbContext dbContext,
+        this IMongoDbContext dbContext,
         Func<IClientSessionHandle, CancellationToken, Task<Result>> callbackAsync,
         TransactionOptions? transactionOptions = null,
         CancellationToken cancellationToken = default)
@@ -28,13 +27,9 @@ public static class ClientSessionHandleExtensions
         {
             return Result.Conflict("A conflict occurred due to duplicate key error.");
         }
-        catch (ConflictException e)
-        {
-            return Result.Conflict(e.Message);
-        }
     }
     public static async Task<Result<T>> RunInTransactionAsync<T>(
-        this MongoDbContext dbContext,
+        this IMongoDbContext dbContext,
         Func<IClientSessionHandle, CancellationToken, Task<Result<T>>> callbackAsync,
         TransactionOptions? transactionOptions = null,
         CancellationToken cancellationToken = default) where T : notnull
@@ -54,10 +49,6 @@ public static class ClientSessionHandleExtensions
         catch (MongoBulkWriteException e) when (e.WriteErrors.Any(x => x.Category == ServerErrorCategory.DuplicateKey))
         {
             return Result.Conflict("A conflict occurred due to duplicate key error.");
-        }
-        catch (ConflictException e)
-        {
-            return Result.Conflict(e.Message);
         }
     }
     

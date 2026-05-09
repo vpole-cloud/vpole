@@ -1,9 +1,9 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Pole.Database;
 using Pole.Feature.DnsRecords.Core.Common;
 using Pole.Features.Postgres.Common;
+using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Kubernetes;
 using Pole.Features.Postgres.Endpoints;
 using Pole.Features.RedisServices.Common;
@@ -12,6 +12,7 @@ using Pole.Features.ResourceGroups.Services;
 using Pole.Features.Search.Common;
 using Pole.Features.Search.Services;
 using Pole.Features.WebServices.Common;
+using Pole.Server.Database;
 using Pole.Server.Extensions;
 
 namespace Pole.Tests.Integration.Infrastructure;
@@ -38,7 +39,7 @@ public static class TestServiceProviderFactory
         services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         services.AddSingleton(new PostgresSettings
         {
-            DefaultDeploymentMode = Pole.Domain.Models.FSharp.PostgresDeploymentMode.Operator,
+            DefaultDeploymentMode = PostgresDeploymentMode.Operator,
             SupportedVersions = new PostgresSupportedVersionsSettings { From = 16, To = 17 }
         });
         services.AddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();

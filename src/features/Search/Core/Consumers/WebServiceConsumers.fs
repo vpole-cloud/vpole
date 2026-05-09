@@ -3,65 +3,69 @@ namespace Pole.Features.Search.Consumers
 open System.Threading
 open System.Threading.Tasks
 open MassTransit
-open MongoDB.Driver
-open Pole.Database
 open Pole.Features.WebServices.Events
 open Pole.Features.Search.Common
+open Pole.Features.Search.Domain
 open Pole.Features.Search.Projection
 open Pole.Features.Search.Services
 
-type WebServiceProjectionConsumer(dbContext : MongoDbContext, searchService : ISearchService) =
-    member private this.GetResourceGroupName(resourceGroupId : string, cancellationToken : CancellationToken) =
+type WebServiceProjectionConsumer(searchService : ISearchService) =
+    member _.HandleUpsert(
+        webServiceId : string,
+        name : string,
+        resourceGroupId : string,
+        dnsRecordId : string,
+        domain : string,
+        image : string,
+        apply : SearchDocumentSet -> CancellationToken -> Task,
+        cancellationToken : CancellationToken) =
         task {
-            let! resourceGroup =
-                dbContext.ResourceGroups
-                    .Find(fun group -> group.Id = resourceGroupId)
-                    .FirstOrDefaultAsync(cancellationToken)
+            let resourceGroupName = None
+            let webDocuments =
+                SearchDocumentFactory.fromWebServiceFields resourceGroupName webServiceId name resourceGroupId domain image
+            do! apply webDocuments cancellationToken
 
-            return if isNull resourceGroup then None else Some resourceGroup.Name
+            if not (System.String.IsNullOrWhiteSpace(dnsRecordId)) then
+                let dnsDocuments =
+                    SearchDocumentFactory.fromDnsRecordFields resourceGroupName dnsRecordId domain resourceGroupId name
+                do! apply dnsDocuments cancellationToken
         }
 
-    member this.HandleUpsert(webServiceId : string, apply : SearchDocumentSet -> CancellationToken -> Task, cancellationToken : CancellationToken) =
-        task {
-            let! webService =
-                dbContext.WebServices
-                    .Find(fun service -> service.Id = webServiceId)
-                    .FirstOrDefaultAsync(cancellationToken)
+type WebServiceCreatedConsumer(searchService : ISearchService) =
+    inherit WebServiceProjectionConsumer(searchService)
 
-            if not (isNull webService) then
-                let! resourceGroupName = this.GetResourceGroupName(webService.ResourceGroupId, cancellationToken)
-                let webDocuments = SearchDocumentFactory.fromWebService resourceGroupName webService
-                do! apply webDocuments cancellationToken
-
-                let! dnsRecord =
-                    dbContext.DnsRecords
-                        .Find(fun record -> record.Resource.Id = webServiceId)
-                        .FirstOrDefaultAsync(cancellationToken)
-
-                if not (isNull dnsRecord) then
-                    let dnsDocuments = SearchDocumentFactory.fromDnsRecord resourceGroupName dnsRecord
-                    do! apply dnsDocuments cancellationToken
-        }
-
-type WebServiceCreatedConsumer(dbContext : MongoDbContext, searchService : ISearchService) =
-    inherit WebServiceProjectionConsumer(dbContext, searchService)
-
-    member this.Handle(webServiceId : string, cancellationToken : CancellationToken) =
-        this.HandleUpsert(webServiceId, searchService.Create, cancellationToken)
+    member this.Handle(event : CreateEvent, cancellationToken : CancellationToken) =
+        this.HandleUpsert(
+            event.WebServiceId,
+            event.Name,
+            event.ResourceGroupId,
+            event.DnsRecord.Id,
+            event.DnsRecord.Domain,
+            event.Spec.Image.FullImageName,
+            searchService.Create,
+            cancellationToken)
 
     interface IConsumer<CreateEvent> with
         member this.Consume(context : ConsumeContext<CreateEvent>) =
-            this.Handle(context.Message.WebServiceId, context.CancellationToken)
+            this.Handle(context.Message, context.CancellationToken)
 
-type WebServiceUpdatedConsumer(dbContext : MongoDbContext, searchService : ISearchService) =
-    inherit WebServiceProjectionConsumer(dbContext, searchService)
+type WebServiceUpdatedConsumer(searchService : ISearchService) =
+    inherit WebServiceProjectionConsumer(searchService)
 
-    member this.Handle(webServiceId : string, cancellationToken : CancellationToken) =
-        this.HandleUpsert(webServiceId, searchService.Update, cancellationToken)
+    member this.Handle(event : UpdateEvent, cancellationToken : CancellationToken) =
+        this.HandleUpsert(
+            event.WebServiceId,
+            event.Name,
+            event.ResourceGroupId,
+            event.DnsRecord.Id,
+            event.DnsRecord.Domain,
+            event.Changes.WebServiceSpec.New.Image.FullImageName,
+            searchService.Update,
+            cancellationToken)
 
     interface IConsumer<UpdateEvent> with
         member this.Consume(context : ConsumeContext<UpdateEvent>) =
-            this.Handle(context.Message.WebServiceId, context.CancellationToken)
+            this.Handle(context.Message, context.CancellationToken)
 
 type WebServiceDeletedConsumer(searchService : ISearchService) =
     member _.Handle(webServiceId : string, dnsRecordId : string option, cancellationToken : CancellationToken) =

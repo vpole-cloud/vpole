@@ -3,15 +3,11 @@ using Pole.Database;
 using Pole.Feature.DnsRecords.Core.Common;
 using Pole.Features.Outbox;
 using Pole.Features.Postgres.Endpoints;
-using Pole.Features.Postgres.Events;
 using Pole.Features.RedisServices.Common;
-using Pole.Features.RedisServices.Events;
 using Pole.Features.ResourceGroups.Common;
-using Pole.Features.ResourceGroups.Events;
 using Pole.Features.Search.Common;
 using Pole.Features.Search.Services;
 using Pole.Features.WebServices.Common;
-using Pole.Features.WebServices.Events;
 using Pole.Server.Extensions;
 using Pole.ServiceDefaults;
 
