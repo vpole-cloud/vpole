@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
+using Pole.Observability;
 using Scalar.AspNetCore;
 
 namespace Pole.ServiceDefaults;
@@ -28,9 +29,12 @@ public static class Extensions
             builder.AddDefaultHealthChecks();
 
             builder.Services.AddServiceDiscovery();
+            builder.Services.AddTransient<TraceContextPropagationHandler>();
 
             builder.Services.ConfigureHttpClientDefaults(http =>
             {
+                http.AddHttpMessageHandler<TraceContextPropagationHandler>();
+
                 // Turn on resilience by default
                 http.AddStandardResilienceHandler();
 

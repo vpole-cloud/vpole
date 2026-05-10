@@ -9,6 +9,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Observability\Observability.csproj" />
       <PackageReference Include="MassTransit.Abstractions" Version="8.5.9" />
     </ItemGroup>
 

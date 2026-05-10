@@ -13,6 +13,7 @@ using Pole.Features.ResourceGroups.Services;
 using Pole.Features.Search.Common;
 using Pole.Features.Search.Services;
 using Pole.Features.WebServices.Common;
+using Pole.Observability;
 using Pole.Server.Database;
 using Pole.Server.Extensions;
 
@@ -65,8 +66,18 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSearchFeature();
         builder.Services.AddValidatorsFromAssemblies(Assemblies);
         builder.Services.AddPoleMediator(Assemblies);
+        builder.Services.AddCors(options =>
+        {
+            options.AddPolicy("frontend-dev", policy =>
+                policy.WithOrigins("http://localhost:5173")
+                    .AllowAnyHeader()
+                    .AllowAnyMethod()
+                    .WithExposedHeaders(TraceHeaders.CorrelationId, TraceHeaders.TraceId));
+        });
 
         var app = builder.Build();
+        app.UseTraceContext();
+        app.UseCors("frontend-dev");
         app.MapGroup("/api/v1")
             .MapResourceGroupEndpoints()
             .MapWebServiceEndpoints()

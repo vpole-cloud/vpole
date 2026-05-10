@@ -8,6 +8,7 @@ using Pole.Features.ResourceGroups.Common;
 using Pole.Features.Search.Common;
 using Pole.Features.Search.Services;
 using Pole.Features.WebServices.Common;
+using Pole.Observability;
 using Pole.Server.Extensions;
 using Pole.ServiceDefaults;
 
@@ -49,7 +50,8 @@ builder.Services.AddCors(options =>
     options.AddPolicy("frontend-dev", policy =>
         policy.WithOrigins("http://localhost:5173")
             .AllowAnyHeader()
-            .AllowAnyMethod());
+            .AllowAnyMethod()
+            .WithExposedHeaders(TraceHeaders.CorrelationId, TraceHeaders.TraceId));
 });
 
 var app = builder.Build();
@@ -57,6 +59,7 @@ var app = builder.Build();
 await app.Services.GetRequiredService<MigrationRunner>().RunMigrations();
 
 app.MapDefaultEndpoints();
+app.UseTraceContext();
 
 if (!app.Environment.IsDevelopment())
 {

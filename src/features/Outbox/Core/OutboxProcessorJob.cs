@@ -8,10 +8,14 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Shared.Models;
+using Pole.Observability;
 using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
 
 namespace Pole.Features.Outbox;
 
+/// <summary>
+/// Publishes durable outbox messages and restores their trace context before handing them to MassTransit.
+/// </summary>
 public partial class OutboxProcessorJob(
     IEventDbContext dbContext,
     IPublishEndpoint publishEndpoint,
@@ -37,6 +41,18 @@ public partial class OutboxProcessorJob(
                 var @event = DeserializeEvent(message.EventType, message.PayloadJson);
 
                 if (@event == null) continue;
+                var carrier = @event as ITraceContextCarrier;
+                var traceContext = TraceContext.Create(
+                    message.TraceId ?? carrier?.TraceId,
+                    message.CorrelationId ?? carrier?.CorrelationId);
+
+                using var contextScope = TraceContext.Push(traceContext);
+                using var loggerScope = logger.BeginScope(new Dictionary<string, object>
+                {
+                    ["TraceId"] = traceContext.TraceId,
+                    ["CorrelationId"] = traceContext.CorrelationId
+                });
+
                 await publishEndpoint.Publish(@event, @event.GetType());
                     
                 var filter = Builders<OutboxMessage>.Filter.Eq(m => m.Id, message.Id);
