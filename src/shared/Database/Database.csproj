@@ -11,6 +11,7 @@
     <ItemGroup>
       <ProjectReference Include="..\Features\Features.csproj" />
       <ProjectReference Include="..\Events\Events.csproj" />
+      <ProjectReference Include="..\Observability\Observability.csproj" />
       <ProjectReference Include="..\ResultType\ResultType.csproj" />
       <ProjectReference Include="..\Models\Models.csproj" />
       <ProjectReference Include="..\Request\Request.csproj" />

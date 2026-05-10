@@ -14,6 +14,7 @@
     <Project Path="src/shared/Features/Features.csproj" />
     <Project Path="src/shared/Events/Events.csproj" />
     <Project Path="src/shared/Models/Models.csproj" />
+    <Project Path="src/shared/Observability/Observability.csproj" />
     <Project Path="src/shared/Request/Request.csproj" />
   </Folder>
   <Folder Name="/features/" />

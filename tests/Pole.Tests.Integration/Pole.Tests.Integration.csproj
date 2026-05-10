@@ -25,6 +25,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\src\api\Pole.Server\Pole.Server.csproj" />
+        <ProjectReference Include="..\..\src\shared\Observability\Observability.csproj" />
     </ItemGroup>
 
 </Project>

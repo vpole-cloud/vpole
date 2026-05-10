@@ -1,13 +1,16 @@
 ﻿using System.Text.Json;
 
+using Pole.Observability;
+
 namespace Pole.Features.Events.Abstractions;
 
-public interface IPoleEvent;
+public interface IPoleEvent : ITraceContextCarrier;
 
 public abstract record BaseEvent : IPoleEvent
 {
     public DateTime OccurredOn { get; init; } = DateTime.UtcNow;
-    public string TraceId { get; init; } = Guid.NewGuid().ToString();
+    public string TraceId { get; init; } = TraceContext.CurrentTraceId;
+    public string CorrelationId { get; init; } = TraceContext.CurrentCorrelationId;
 }
 
 public static class EventExtensions

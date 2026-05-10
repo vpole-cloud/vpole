@@ -12,6 +12,10 @@ public record OutboxMessage
     public required string EventType { get; init; }
     
     public required string PayloadJson { get; init; }
+
+    public string? TraceId { get; init; }
+
+    public string? CorrelationId { get; init; }
     
     public DateTime OccurredOn { get; init; } = DateTime.UtcNow;
     

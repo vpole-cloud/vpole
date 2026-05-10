@@ -9,6 +9,7 @@
 * **MongoDB**
 * **RabbitMQ** (events, outbox patterns)
 * **Hangfire + background hosted services**
+* OpenTelemetry-based tracing with Pole-level correlation IDs
 * Strong focus on:
 
     * Transactions
@@ -27,3 +28,7 @@
 * Vite-based SPA
 * Talks only to Pole API
 * Clean separation from auth provider
+
+### Observability
+
+Pole carries `TraceId` and `CorrelationId` through HTTP, logs, outbox records, RabbitMQ headers, and consumers. See [observability](observability.md) for the full flow.

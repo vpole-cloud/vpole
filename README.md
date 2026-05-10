@@ -134,6 +134,11 @@ See the [architecture overview](docs/architecture_overview.md) for details about
 
 ---
 
+## Observability
+See the [observability notes](docs/observability.md) for how Pole carries `TraceId` and `CorrelationId` through HTTP, logs, outbox records, and RabbitMQ.
+
+---
+
 ## Testing
 See the [testing notes](docs/testing.md) for information about the current backend test setup, requirements, and how to run the integration suite.
 

@@ -12,6 +12,8 @@
     <ItemGroup>
         <FrameworkReference Include="Microsoft.AspNetCore.App"/>
 
+        <ProjectReference Include="..\..\shared\Observability\Observability.csproj" />
+
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.7" />
         <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.5.0" />
         <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="10.5.0" />

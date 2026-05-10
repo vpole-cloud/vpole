@@ -279,6 +279,8 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             cluster.Id,
             cluster.Name,
             cluster.GroupId,
-            cluster.Spec), CancellationToken.None);
+            cluster.Spec,
+            "0123456789abcdef0123456789abcdef",
+            "search-index-test"), CancellationToken.None);
     }
 }

@@ -22,6 +22,7 @@ using Pole.Features.ResourceGroups.Services;
 using Pole.Features.Search.Common;
 using Pole.Features.WebServices.Common;
 using Pole.Mediator;
+using Pole.Observability;
 using Pole.Server.Database;
 
 namespace Pole.Server.Extensions;
@@ -97,8 +98,10 @@ public static class DependencyInjection
                 configurator.UsingRabbitMq((context, cfg) =>
                 {
                     cfg.Host(configuration.GetConnectionString("pole-rabbitmq"));
-                    cfg.ConfigureEndpoints(context);
+                    cfg.UsePublishFilter(typeof(TraceContextPublishFilter<>), context);
+                    cfg.UseConsumeFilter(typeof(TraceContextConsumeFilter<>), context);
                     cfg.UseConsumeFilter(typeof(DeleteDnsRecordFilter<>), context);
+                    cfg.ConfigureEndpoints(context);
                 });
                 configurator.AddConsumers(assemblies);
             });
