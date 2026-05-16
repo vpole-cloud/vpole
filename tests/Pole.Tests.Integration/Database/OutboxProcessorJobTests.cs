@@ -17,13 +17,13 @@ public sealed class OutboxProcessorJobTests
             typeof(CreateEvent).Assembly,
             typeof(Pole.Features.Postgres.Events.CreateEvent).Assembly
         };
-        var cache = buildMethod!.Invoke(null, [eventAssemblies]);
+        var cache = buildMethod.Invoke(null, [eventAssemblies]);
         Assert.NotNull(cache);
 
-        var containsKeyMethod = cache!.GetType().GetMethod("ContainsKey");
+        var containsKeyMethod = cache.GetType().GetMethod("ContainsKey");
         Assert.NotNull(containsKeyMethod);
 
-        var containsCreateEvent = (bool)containsKeyMethod!.Invoke(cache, ["create-postgres-cluster-requested"])!;
+        var containsCreateEvent = (bool)containsKeyMethod.Invoke(cache, ["create-postgres-cluster-requested"])!;
         var containsUpdateEvent = (bool)containsKeyMethod.Invoke(cache, ["update-postgres-cluster-requested"])!;
         var containsDeleteEvent = (bool)containsKeyMethod.Invoke(cache, ["delete-postgres-cluster-requested"])!;
 

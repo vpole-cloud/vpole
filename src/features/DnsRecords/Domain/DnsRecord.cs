@@ -8,6 +8,7 @@ public record DnsRecord(
     [property: BsonId]
     [property: BsonRepresentation(BsonType.ObjectId)]
     string Id,
+    string TenantId,
     string Domain,
     ResourceInfo Resource
 );
@@ -32,6 +33,7 @@ public static class DnsRecordFactory
 
     public static DnsRecord Create(
         string name,
+        string tenantId,
         ResourceType resourceType,
         string resourceId,
         string resourceName,
@@ -39,6 +41,7 @@ public static class DnsRecordFactory
         DnsRecordCreateOptions options) =>
         new(
             Id: options.Id ?? ObjectId.GenerateNewId().ToString(),
+            TenantId: tenantId,
             Domain: name,
             Resource: new ResourceInfo(
                 resourceId,

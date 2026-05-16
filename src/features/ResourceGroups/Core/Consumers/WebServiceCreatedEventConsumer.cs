@@ -19,6 +19,7 @@ public class WebServiceCreatedEventConsumer(IResourceGroupDbContext dbContext)
         );
 
         var filter = Builders<ResourceGroup>.Filter.And(
+            Builders<ResourceGroup>.Filter.Eq(rg => rg.TenantId, context.Message.EventCore.TenantId),
             Builders<ResourceGroup>.Filter.Eq(rg => rg.Id, context.Message.ResourceGroupId),
             Builders<ResourceGroup>.Filter.Not(
                 Builders<ResourceGroup>.Filter.ElemMatch(

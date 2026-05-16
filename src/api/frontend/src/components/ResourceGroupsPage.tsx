@@ -13,6 +13,7 @@ interface ResourceGroupsPageProps {
   onCreate: (input: ResourceGroupInput) => Promise<void>
   onUpdate: (id: string, input: ResourceGroupInput) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  canManage?: boolean
 }
 
 export function ResourceGroupsPage({
@@ -26,6 +27,7 @@ export function ResourceGroupsPage({
   onCreate,
   onUpdate,
   onDelete,
+  canManage = true,
 }: ResourceGroupsPageProps) {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -83,6 +85,7 @@ export function ResourceGroupsPage({
               </button>
               <button
                 className="button"
+                disabled={!canManage}
                 onClick={() => setSelectedId(null)}
                 type="button"
               >
@@ -175,7 +178,7 @@ export function ResourceGroupsPage({
                       </button>
                       <button
                         className="button button--danger"
-                        disabled={isDeleting}
+                        disabled={isDeleting || !canManage}
                         onClick={() => void handleDelete(item)}
                         type="button"
                       >
@@ -189,22 +192,28 @@ export function ResourceGroupsPage({
           )}
         </section>
 
-        <ResourceGroupForm
-          key={selectedGroup?.id ?? 'create'}
-          mode={selectedGroup ? 'edit' : 'create'}
-          initialValue={selectedGroup}
-          submitStatus={submitStatus}
-          submitError={submitError}
-          onSubmit={async (input) => {
-            if (selectedGroup) {
-              await onUpdate(selectedGroup.id, input)
-              return
-            }
+        {canManage ? (
+          <ResourceGroupForm
+            key={selectedGroup?.id ?? 'create'}
+            mode={selectedGroup ? 'edit' : 'create'}
+            initialValue={selectedGroup}
+            submitStatus={submitStatus}
+            submitError={submitError}
+            onSubmit={async (input) => {
+              if (selectedGroup) {
+                await onUpdate(selectedGroup.id, input)
+                return
+              }
 
-            await onCreate(input)
-          }}
-          onCancelEdit={selectedGroup ? () => setSelectedId(null) : undefined}
-        />
+              await onCreate(input)
+            }}
+            onCancelEdit={selectedGroup ? () => setSelectedId(null) : undefined}
+          />
+        ) : (
+          <section className="panel">
+            <div className="empty-state">Tenant viewer access is read-only.</div>
+          </section>
+        )}
       </div>
     </div>
   )

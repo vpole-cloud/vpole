@@ -9,6 +9,7 @@ open Microsoft.AspNetCore.Routing
 open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
+open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Common
 open Pole.Features.Postgres.Kubernetes
@@ -20,8 +21,12 @@ type GetPostgresClusterConnectionStringResponse =
 
 type GetPostgresClusterConnectionStringRequest =
     { [<FromRoute>]
-      ClusterId : string }
+      ClusterId : string
+      [<FromHeader(Name = TenantHeaders.TenantId)>]
+      TenantId : string }
     interface IMediatorRequest<GetPostgresClusterConnectionStringResponse>
+    interface ITenantReadOperation with
+        member this.TenantId = this.TenantId
 
 type GetPostgresClusterConnectionStringHandler(
     dbContext : IPostgresDbContext,
@@ -29,9 +34,13 @@ type GetPostgresClusterConnectionStringHandler(
     interface IMediatorHandler<GetPostgresClusterConnectionStringRequest, GetPostgresClusterConnectionStringResponse> with
         member _.HandleAsync(request, cancellationToken) =
             task {
+                let filter =
+                    Builders<PostgresCluster>.Filter.And(
+                        Builders<PostgresCluster>.Filter.ForTenant(request.TenantId),
+                        Builders<PostgresCluster>.Filter.Eq(_.Id, request.ClusterId))
                 let! postgresCluster =
                     dbContext.Postgres
-                        .Find(fun c -> c.Id = request.ClusterId)
+                        .Find(filter)
                         .FirstOrNoneAsync(cancellationToken)
 
                 match postgresCluster with

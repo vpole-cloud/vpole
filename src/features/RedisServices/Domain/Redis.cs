@@ -9,6 +9,7 @@ public record Redis(
     [property: BsonId]
     [property: BsonRepresentation(BsonType.ObjectId)]
     string Id,
+    string TenantId,
     string Name,
     string ResourceGroupId,
     RedisSpec Spec,
@@ -47,9 +48,10 @@ public static class RedisFactory
             Version: Guid.NewGuid().ToString()
         );
     
-    public static Redis Create(string name, string resourceGroupId, RedisSpec spec, RedisCreateOptions options) =>
+    public static Redis Create(string tenantId, string name, string resourceGroupId, RedisSpec spec, RedisCreateOptions options) =>
         new(
             Id: options.Id,
+            TenantId: tenantId,
             Name: name,
             ResourceGroupId: resourceGroupId,
             Spec: spec,

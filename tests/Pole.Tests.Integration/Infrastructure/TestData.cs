@@ -15,6 +15,10 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 public static class TestData
 {
+    public const string TenantId = "507f1f77bcf86cd799439011";
+    public const string UserId = "test-user";
+    public const string UserEmail = "test-user@example.test";
+
     private static readonly IKubernetesNamespaceGenerator NamespaceGenerator =
         new KubernetesNamespaceGenerator(new KubernetesOptions { NamespaceNamePrefix = "test" });
 
@@ -24,7 +28,8 @@ public static class TestData
         => new(new CreateResourceGroupRequestBody(
             Name: name,
             Description: description,
-            Tags: ImmutableHashSet.Create("home", "lab")));
+            Tags: ImmutableHashSet.Create("home", "lab")),
+            TenantId);
 
     public static CreateWebServiceRequest CreateWebServiceRequest(
         string resourceGroupId,
@@ -35,7 +40,8 @@ public static class TestData
             ResourceGroupId: resourceGroupId,
             Spec: ValidWebServiceSpec(),
             DomainName: domainName,
-            Tags: ImmutableHashSet<string>.Empty));
+            Tags: ImmutableHashSet<string>.Empty),
+            TenantId);
 
     public static CreateRedisServiceRequest CreateRedisServiceRequest(
         string resourceGroupId,
@@ -44,7 +50,8 @@ public static class TestData
             Name: name,
             ResourceGroupId: resourceGroupId,
             Spec: ValidRedisSpec(),
-            Tags: ImmutableHashSet<string>.Empty));
+            Tags: ImmutableHashSet<string>.Empty),
+            TenantId);
 
     public static CreatePostgresClusterRequest CreatePostgresClusterRequest(
         string resourceGroupId,
@@ -59,7 +66,8 @@ public static class TestData
             FSharpOption<int>.Some(1),
             FSharpOption<int>.Some(10),
             username,
-            password));
+            password),
+            TenantId);
 
     public static WebServiceSpecDto ValidWebServiceSpec() => new(
         Image: new ImageInfoDto("docker.io", "nginx", "1.27"),
@@ -104,14 +112,16 @@ public static class TestData
 
         return ResourceGroupFactory.Create(
             name: name,
+            tenantId: TenantId,
             description: $"{name} description",
-            kubernetesNamespace: kubernetesNamespace ?? NamespaceGenerator.GenerateNamespaceName(options.Id),
+            kubernetesNamespace: kubernetesNamespace ?? NamespaceGenerator.GenerateNamespaceName(TenantId, options.Id),
             options: options);
     }
 
     public static DnsRecord SeedDnsRecord(string groupId, string resourceId, string name = "existing.example.com") =>
         DnsRecordFactory.Create(
             name: name,
+            tenantId: TenantId,
             resourceType: ResourceType.WebService,
             resourceId: resourceId,
             resourceName: "existing-web",

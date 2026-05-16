@@ -46,6 +46,14 @@
   <Folder Name="/features/Outbox/">
     <Project Path="src/features/Outbox/Core/Core.csproj" />
   </Folder>
+  <Folder Name="/features/Tenants/">
+    <Project Path="src/features/Tenants/Core/Core.csproj" />
+    <Project Path="src/features/Tenants/Domain/Domain.csproj" />
+  </Folder>
+  <Folder Name="/features/Users/">
+    <Project Path="src/features/Users/Core/Core.csproj" />
+    <Project Path="src/features/Users/Domain/Domain.csproj" />
+  </Folder>
   <Folder Name="/features/Search/">
     <Project Path="src/features/Search/Core/Core.fsproj" />
     <Project Path="src/features/Search/Domain/Domain.fsproj" />

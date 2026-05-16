@@ -43,7 +43,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             PageSize = 10
         });
 
-        Assert.True(result.TryGetValue(out var response, out var error));
+        result.TryGetValue(out var response, out var error);
         Assert.Null(error);
         Assert.NotNull(response);
         Assert.Single(response.Items);
@@ -57,7 +57,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
 
         var result = await Mediator.Send(new DeleteResourceGroupRequest(resourceGroup.Id));
 
-        Assert.True(result.TryGetValue(out var response, out var error));
+        result.TryGetValue(out var response, out var error);
         Assert.Null(error);
         Assert.NotNull(response);
         Assert.True(response.Deleted);

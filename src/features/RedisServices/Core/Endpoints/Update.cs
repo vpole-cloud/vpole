@@ -10,6 +10,7 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.RedisServices.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Events;
@@ -40,8 +41,9 @@ public static class Update
 
 public sealed record UpdateRedisServiceRequest(
     [FromRoute] string Id,
-    [FromBody] UpdateRedisServiceRequestBody Body
-) : IMediatorRequest<UpdateRedisServiceResponse>;
+    [FromBody] UpdateRedisServiceRequestBody Body,
+    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+) : IMediatorRequest<UpdateRedisServiceResponse>, ITenantWriteOperation;
 
 public sealed record UpdateRedisServiceRequestBody(
     string ResourceGroupId,
@@ -59,8 +61,12 @@ public sealed class UpdateRedisServiceHandler(
         UpdateRedisServiceRequest request,
         CancellationToken cancellationToken = default)
     {
+        var filter = Builders<Redis>.Filter.And(
+            Builders<Redis>.Filter.ForTenant(request.TenantId),
+            Builders<Redis>.Filter.Eq(r => r.Id, request.Id));
+
         var redis = await dbContext.RedisServices
-            .Find(r => r.Id == request.Id)
+            .Find(filter)
             .FirstOrDefaultAsync(cancellationToken: cancellationToken);
 
         if (redis is null)
@@ -73,7 +79,7 @@ public sealed class UpdateRedisServiceHandler(
             {
                 await dbContext.RedisServices.UpdateOneAsync(
                     session: sh,
-                    r => r.Id == request.Id,
+                    filter,
                     GetUpdateDefinition(changes),
                     cancellationToken: ct);
             }
@@ -83,6 +89,9 @@ public sealed class UpdateRedisServiceHandler(
                     redis.Name,
                     redis.ResourceGroupId,
                     changes)
+                {
+                    EventCore = EventCore.Create(redis.TenantId)
+                }
                 , sh, ct);
             
             return new UpdateRedisServiceResponse(
@@ -122,12 +131,12 @@ public class UpdateRedisServiceEventConsumer(
     {
         var ct = context.CancellationToken;
         var redis = await dbContext.RedisServices
-            .Find(r => r.Id == context.Message.RedisId)
+            .Find(r => r.Id == context.Message.RedisId && r.TenantId == context.Message.EventCore.TenantId)
             .FirstOrDefaultAsync(ct);
         if (redis is null) return;
 
         var resourceGroup = await dbContext.ResourceGroups
-            .Find(rg => rg.Id == redis.ResourceGroupId)
+            .Find(rg => rg.Id == redis.ResourceGroupId && rg.TenantId == context.Message.EventCore.TenantId)
             .FirstOrDefaultAsync(ct);
         if (resourceGroup is null) return;
 

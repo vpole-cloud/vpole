@@ -1,7 +1,3 @@
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace Pole.Observability;
 
 public sealed class TraceContextPropagationHandler : DelegatingHandler

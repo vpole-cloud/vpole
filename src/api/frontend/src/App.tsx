@@ -9,28 +9,41 @@ import { TopBandPlaceholder } from './components/TopBandPlaceholder'
 import { WebServicesPage } from './components/WebServicesPage'
 import { useOverviewData } from './hooks/useOverviewData'
 import { useResourceGroupsManager } from './hooks/useResourceGroupsManager'
+import { useTenants } from './hooks/useTenants'
 import { useWebServicesManager } from './hooks/useWebServicesManager'
 import type { AppView } from './types'
 
 function App() {
   const { keycloak, initialized } = useKeycloak()
   const [currentView, setCurrentView] = useState<AppView>('overview')
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string
+  const token = keycloak.authenticated ? keycloak.token : undefined
+  const tenants = useTenants(apiBaseUrl, token, initialized && Boolean(keycloak.authenticated))
+  const tenantReady = Boolean(tenants.activeTenantId)
+  const canManageTenantResources =
+    tenants.activeTenant?.role === 'Owner' ||
+    tenants.activeTenant?.role === 'Admin' ||
+    tenants.activeTenant?.role === 'Member'
   const overview = useOverviewData({
-    apiBaseUrl: import.meta.env.VITE_API_BASE_URL as string,
-    token: keycloak.authenticated ? keycloak.token : undefined,
-    enabled: initialized && currentView === 'overview',
+    apiBaseUrl,
+    token,
+    tenantId: tenants.activeTenantId,
+    enabled: initialized && currentView === 'overview' && tenantReady,
   })
   const resourceGroups = useResourceGroupsManager({
-    apiBaseUrl: import.meta.env.VITE_API_BASE_URL as string,
-    token: keycloak.authenticated ? keycloak.token : undefined,
+    apiBaseUrl,
+    token,
+    tenantId: tenants.activeTenantId,
     enabled:
       initialized &&
+      tenantReady &&
       (currentView === 'resource-groups' || currentView === 'web-services'),
   })
   const webServices = useWebServicesManager({
-    apiBaseUrl: import.meta.env.VITE_API_BASE_URL as string,
-    token: keycloak.authenticated ? keycloak.token : undefined,
-    enabled: initialized && currentView === 'web-services',
+    apiBaseUrl,
+    token,
+    tenantId: tenants.activeTenantId,
+    enabled: initialized && currentView === 'web-services' && tenantReady,
   })
 
   const handleLogin = () => {
@@ -55,7 +68,15 @@ function App() {
           userName={keycloak.tokenParsed?.preferred_username}
         />
       }
-      topBand={<TopBandPlaceholder />}
+      topBand={
+        <TopBandPlaceholder
+          tenants={tenants.items}
+          activeTenantId={tenants.activeTenantId}
+          status={tenants.status}
+          error={tenants.error}
+          onSelectTenant={tenants.selectTenant}
+        />
+      }
     >
       {currentView === 'overview' ? (
         <OverviewPage
@@ -81,6 +102,7 @@ function App() {
           onCreate={resourceGroups.create}
           onUpdate={resourceGroups.update}
           onDelete={resourceGroups.remove}
+          canManage={canManageTenantResources}
         />
       ) : (
         <WebServicesPage
@@ -95,6 +117,7 @@ function App() {
           onCreate={webServices.create}
           onUpdate={webServices.update}
           onDelete={webServices.remove}
+          canManage={canManageTenantResources}
         />
       )}
     </AppShell>

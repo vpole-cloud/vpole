@@ -4,6 +4,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
+using Pole.Database;
+using Pole.Features.Core.Multitenancy;
+using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Common;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -37,8 +40,12 @@ public sealed class GetRedisServiceByIdHandler(
         GetRedisServiceByIdRequest request,
         CancellationToken cancellationToken = default)
     {
+        var filter = Builders<Redis>.Filter.And(
+            Builders<Redis>.Filter.ForTenant(request.TenantId),
+            Builders<Redis>.Filter.Eq(r => r.Id, request.Id));
+
         var redis = await dbContext.RedisServices
-            .Find(r => r.Id == request.Id)
+            .Find(filter)
             .FirstOrDefaultAsync(cancellationToken: cancellationToken);
 
         if (redis is null)
@@ -49,5 +56,6 @@ public sealed class GetRedisServiceByIdHandler(
 }
 
 public record GetRedisServiceByIdRequest(
-    [FromRoute] string Id
-) : IMediatorRequest<RedisDto>;
+    [FromRoute] string Id,
+    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+) : IMediatorRequest<RedisDto>, ITenantReadOperation;

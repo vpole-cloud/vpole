@@ -10,12 +10,14 @@ import type { LoadStatus, ResourceGroup, ResourceGroupInput } from '../types'
 interface UseResourceGroupsManagerOptions {
   apiBaseUrl: string
   token?: string
+  tenantId?: string
   enabled: boolean
 }
 
 export function useResourceGroupsManager({
   apiBaseUrl,
   token,
+  tenantId,
   enabled,
 }: UseResourceGroupsManagerOptions) {
   const [items, setItems] = useState<ResourceGroup[]>([])
@@ -37,7 +39,7 @@ export function useResourceGroupsManager({
       setError('')
 
       try {
-        const response = await fetchResourceGroups(apiBaseUrl, token, controller.signal)
+        const response = await fetchResourceGroups(apiBaseUrl, token, tenantId, controller.signal)
         setItems(response.items)
         setStatus('success')
       } catch (loadError) {
@@ -60,14 +62,14 @@ export function useResourceGroupsManager({
     return () => {
       controller.abort()
     }
-  }, [apiBaseUrl, enabled, token])
+  }, [apiBaseUrl, enabled, tenantId, token])
 
   const refresh = async () => {
     setStatus('loading')
     setError('')
 
     try {
-      const response = await fetchResourceGroups(apiBaseUrl, token)
+      const response = await fetchResourceGroups(apiBaseUrl, token, tenantId)
       setItems(response.items)
       setStatus('success')
     } catch (loadError) {
@@ -86,7 +88,7 @@ export function useResourceGroupsManager({
     setSubmitError('')
 
     try {
-      const created = await createResourceGroup(apiBaseUrl, input, token)
+      const created = await createResourceGroup(apiBaseUrl, input, token, tenantId)
       setItems((current) => [created, ...current])
       setSubmitStatus('success')
     } catch (submitErrorValue) {
@@ -105,7 +107,7 @@ export function useResourceGroupsManager({
     setSubmitError('')
 
     try {
-      const updated = await updateResourceGroup(apiBaseUrl, id, input, token)
+      const updated = await updateResourceGroup(apiBaseUrl, id, input, token, tenantId)
       setItems((current) =>
         current.map((item) => (item.id === id ? updated : item)),
       )
@@ -126,7 +128,7 @@ export function useResourceGroupsManager({
     setSubmitError('')
 
     try {
-      await deleteResourceGroup(apiBaseUrl, id, token)
+      await deleteResourceGroup(apiBaseUrl, id, token, tenantId)
       setItems((current) => current.filter((item) => item.id !== id))
     } catch (submitErrorValue) {
       setSubmitError(

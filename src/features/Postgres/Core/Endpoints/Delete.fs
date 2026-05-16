@@ -9,6 +9,7 @@ open Microsoft.AspNetCore.Routing
 open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
+open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Common
 open Pole.Features.Postgres.Events
@@ -21,16 +22,25 @@ type DeletePostgresClusterResponse =
 
 type DeletePostgresClusterRequest =
     { [<FromRoute>]
-      ClusterId : string }
+      ClusterId : string
+      [<FromHeader(Name = TenantHeaders.TenantId)>]
+      TenantId : string }
     interface IMediatorRequest<DeletePostgresClusterResponse>
+    interface ITenantWriteOperation with
+        member this.TenantId = this.TenantId
 
 type DeletePostgresClusterHandler(dbContext : IPostgresDbContext) =
     interface IMediatorHandler<DeletePostgresClusterRequest, DeletePostgresClusterResponse> with
         member _.HandleAsync(request, cancellationToken) =
             task {
+                let filter =
+                    Builders<PostgresCluster>.Filter.And(
+                        Builders<PostgresCluster>.Filter.ForTenant(request.TenantId),
+                        Builders<PostgresCluster>.Filter.Eq(_.Id, request.ClusterId))
+
                 let! postgresCluster =
                     dbContext.Postgres
-                        .Find(fun c -> c.Id = request.ClusterId)
+                        .Find(filter)
                         .FirstOrNoneAsync(cancellationToken)
 
                 match postgresCluster with
@@ -45,7 +55,7 @@ type DeletePostgresClusterHandler(dbContext : IPostgresDbContext) =
                                     let! deleteResult =
                                         dbContext.Postgres.DeleteOneAsync(
                                             session,
-                                            (fun c -> c.Id = request.ClusterId),
+                                            filter,
                                             cancellationToken = ct
                                         )
                                     if deleteResult.DeletedCount = 0L then

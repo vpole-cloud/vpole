@@ -3,35 +3,32 @@ namespace Pole.Features.Postgres.Events
 open MassTransit
 open Pole.Features.Postgres.Domain
 open Pole.Features.Events.Abstractions
-open Pole.Observability
 
 type UpdateEventChanges =
     { Spec : UpdateLog<PostgresClusterSpec> }
 
 [<EntityName("update-postgres-cluster-requested")>]
 type UpdateEvent =
-    { ClusterId : string
+    { EventCore : EventCore
+      ClusterId : string
       Name : string
       GroupId : string
-      Changes : UpdateEventChanges
-      TraceId : string
-      CorrelationId : string }
+      Changes : UpdateEventChanges }
     interface IPoleEvent with
-        member this.TraceId = this.TraceId
-        member this.CorrelationId = this.CorrelationId
+        member this.EventCore = this.EventCore
 
 module UpdateEvent =
     let create (previous : PostgresCluster) (next : PostgresCluster) : UpdateEvent =
-        { ClusterId = next.Id
+        { EventCore = EventCore.Create(next.TenantId)
+          ClusterId = next.Id
           Name = next.Name
           GroupId = next.GroupId
           Changes =
-            { Spec = UpdateLog<PostgresClusterSpec>.Of(previous.Spec, next.Spec) }
-          TraceId = TraceContext.CurrentTraceId
-          CorrelationId = TraceContext.CurrentCorrelationId }
+            { Spec = UpdateLog<PostgresClusterSpec>.Of(previous.Spec, next.Spec) } }
 
     let toPostgresCluster (event : UpdateEvent) : PostgresCluster =
         { Id = event.ClusterId
+          TenantId = event.EventCore.TenantId
           Name = event.Name
           GroupId = event.GroupId
           Spec = event.Changes.Spec.New }

@@ -33,6 +33,8 @@
       <ProjectReference Include="..\..\features\RedisServices\Core\Core.csproj" />
       <ProjectReference Include="..\..\features\ResourceGroups\Core\Core.csproj" />
       <ProjectReference Include="..\..\features\Search\Core\Core.fsproj" />
+      <ProjectReference Include="..\..\features\Tenants\Core\Core.csproj" />
+      <ProjectReference Include="..\..\features\Users\Core\Core.csproj" />
       <ProjectReference Include="..\..\features\WebServices\Core\Core.csproj" />
       <ProjectReference Include="..\..\shared\Observability\Observability.csproj" />
       <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />

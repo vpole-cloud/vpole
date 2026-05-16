@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Common;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
@@ -38,8 +39,9 @@ public static class Create
 }
 
 public sealed record CreateResourceGroupRequest(
-    [FromBody] CreateResourceGroupRequestBody Body
-) : IMediatorRequest<ResourceGroupDto>;
+    [FromBody] CreateResourceGroupRequestBody Body,
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
+) : IMediatorRequest<ResourceGroupDto>, ITenantCreateOperation;
 
 public sealed record CreateResourceGroupRequestBody(
     string Name,
@@ -61,9 +63,10 @@ public sealed class CreateResourceGroupHandler(
             Tags = request.Body.Tags
         };
         var resourceGroup = ResourceGroupFactory.Create(
+            tenantId: request.TenantId,
             name: request.Body.Name,
             description: request.Body.Description,
-            kubernetesNamespace: namespaceGenerator.GenerateNamespaceName(createOptions.Id),
+            kubernetesNamespace: namespaceGenerator.GenerateNamespaceName(request.TenantId, createOptions.Id),
             options: createOptions
         );
         return await dbContext.RunInTransactionAsync<ResourceGroupDto>(async (sh, ct) =>
@@ -110,7 +113,12 @@ public class CreateResourceGroupEventConsumer(
             Kind = "Namespace",
             Metadata = new V1ObjectMeta()
             {
-                Name = message.KubernetesNamespace
+                Name = message.KubernetesNamespace,
+                Labels = new Dictionary<string, string>
+                {
+                    ["pole.io/tenant-id"] = message.EventCore.TenantId,
+                    ["pole.io/resource-group-id"] = message.ResourceGroupId
+                }
             },
         }, cancellationToken: ct);
     }

@@ -10,12 +10,14 @@ import type { LoadStatus, WebService, WebServiceInput } from '../types'
 interface UseWebServicesManagerOptions {
   apiBaseUrl: string
   token?: string
+  tenantId?: string
   enabled: boolean
 }
 
 export function useWebServicesManager({
   apiBaseUrl,
   token,
+  tenantId,
   enabled,
 }: UseWebServicesManagerOptions) {
   const [items, setItems] = useState<WebService[]>([])
@@ -35,7 +37,7 @@ export function useWebServicesManager({
       setError('')
 
       try {
-        const response = await fetchWebServices(apiBaseUrl, token)
+        const response = await fetchWebServices(apiBaseUrl, token, tenantId)
         setItems(response.items)
         setStatus('success')
       } catch (loadError) {
@@ -50,14 +52,14 @@ export function useWebServicesManager({
     }
 
     void load()
-  }, [apiBaseUrl, enabled, token])
+  }, [apiBaseUrl, enabled, tenantId, token])
 
   const refresh = async () => {
     setStatus('loading')
     setError('')
 
     try {
-      const response = await fetchWebServices(apiBaseUrl, token)
+      const response = await fetchWebServices(apiBaseUrl, token, tenantId)
       setItems(response.items)
       setStatus('success')
     } catch (loadError) {
@@ -76,7 +78,7 @@ export function useWebServicesManager({
     setSubmitError('')
 
     try {
-      await createWebService(apiBaseUrl, input, token)
+      await createWebService(apiBaseUrl, input, token, tenantId)
       await refresh()
       setSubmitStatus('success')
     } catch (submitErrorValue) {
@@ -95,7 +97,7 @@ export function useWebServicesManager({
     setSubmitError('')
 
     try {
-      await updateWebService(apiBaseUrl, id, input, token)
+      await updateWebService(apiBaseUrl, id, input, token, tenantId)
       await refresh()
       setSubmitStatus('success')
     } catch (submitErrorValue) {
@@ -114,7 +116,7 @@ export function useWebServicesManager({
     setSubmitError('')
 
     try {
-      await deleteWebService(apiBaseUrl, id, token)
+      await deleteWebService(apiBaseUrl, id, token, tenantId)
       setItems((current) => current.filter((item) => item.id !== id))
     } catch (submitErrorValue) {
       setSubmitError(

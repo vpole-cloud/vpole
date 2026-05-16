@@ -8,6 +8,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.Request;
 using Pole.Features.ResourceGroups.Common;
 using Pole.Features.ResourceGroups.Domain;
@@ -34,8 +35,9 @@ public static class Get
     }
 }
 
-public record GetResourceGroupsRequest : PaginatedRequest<ResourceGroupDto>
+public record GetResourceGroupsRequest : PaginatedRequest<ResourceGroupDto>, ITenantReadOperation
 {
+    [FromHeader(Name = TenantHeaders.TenantId)] public string? TenantId { get; init; }
     [FromQuery] public string? Search { get; init; }
 }
 
@@ -48,11 +50,11 @@ public sealed class GetResourceGroupsHandler(
         GetResourceGroupsRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<ResourceGroup>.Filter.Empty;
+        var filter = Builders<ResourceGroup>.Filter.ForTenant(request.TenantId);
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
             var pattern = $".*{Regex.Escape(request.Search)}.*";
-            filter = Builders<ResourceGroup>.Filter.Regex(rg => rg.Name, new BsonRegularExpression(pattern, "i"));
+            filter &= Builders<ResourceGroup>.Filter.Regex(rg => rg.Name, new BsonRegularExpression(pattern, "i"));
         }
 
         var totalCount = await dbContext.ResourceGroups.CountDocumentsAsync(filter, cancellationToken: cancellationToken);

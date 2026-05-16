@@ -27,6 +27,7 @@ type SearchDocument =
       [<BsonRepresentation(BsonType.ObjectId)>]
       Id : string
       SourceType : SearchDocumentType
+      TenantId : string
       SourceId : string
       KeyType : SearchKeyType
       SearchValue : string
@@ -45,6 +46,7 @@ type SearchSourceDocument =
       [<BsonRepresentation(BsonType.ObjectId)>]
       Id : string
       SourceType : SearchDocumentType
+      TenantId : string
       SourceId : string
       Title : string
       ResourceGroupId : string option

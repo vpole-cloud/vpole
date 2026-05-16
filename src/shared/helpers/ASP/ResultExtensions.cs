@@ -17,6 +17,7 @@ public static class ResultExtensions
             NotFoundFailure => Results.NotFound(error),
             ValidationFailure validationFailure => Results.ValidationProblem(validationFailure.ValidationErrors, error.Message),
             UnauthorizedFailure => Results.Unauthorized(),
+            ForbiddenFailure => Results.Forbid(),
             ConflictFailure => Results.Conflict(error),
             InternalFailure => Results.InternalServerError(error),
             ExternalServiceFailure => Results.Problem(error.ToString()),

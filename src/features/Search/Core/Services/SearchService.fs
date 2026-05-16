@@ -27,6 +27,7 @@ type ISearchService =
             Task
     abstract member Delete :
         sourceType : SearchDocumentType *
+        tenantId : string *
         sourceId : string ->
             cancellationToken : CancellationToken ->
                 Task
@@ -41,32 +42,34 @@ type SearchService(database : IMongoDatabase) =
     let bsonArray (values : BsonValue list) =
         BsonArray(values)
 
-    let sourceFilter (sourceType : SearchDocumentType) (sourceId : string) =
+    let sourceFilter (sourceType : SearchDocumentType) (tenantId : string) (sourceId : string) =
         Builders<SearchSourceDocument>.Filter.And(
-            Builders<SearchSourceDocument>.Filter.Eq("SourceType", sourceType),
-            Builders<SearchSourceDocument>.Filter.Eq("SourceId", sourceId)
+            Builders<SearchSourceDocument>.Filter.Eq(_.TenantId, tenantId),
+            Builders<SearchSourceDocument>.Filter.Eq(_.SourceType, sourceType),
+            Builders<SearchSourceDocument>.Filter.Eq(_.SourceId, sourceId)
         )
 
-    let rowFilter (sourceType : SearchDocumentType) (sourceId : string) =
+    let rowFilter (sourceType : SearchDocumentType) (tenantId : string) (sourceId : string) =
         Builders<SearchDocument>.Filter.And(
-            Builders<SearchDocument>.Filter.Eq("SourceType", sourceType),
-            Builders<SearchDocument>.Filter.Eq("SourceId", sourceId)
+            Builders<SearchDocument>.Filter.Eq(_.TenantId, tenantId),
+            Builders<SearchDocument>.Filter.Eq(_.SourceType, sourceType),
+            Builders<SearchDocument>.Filter.Eq(_.SourceId, sourceId)
         )
 
-    let deleteBySource (sourceType : SearchDocumentType) (sourceId : string) (cancellationToken : CancellationToken) =
+    let deleteBySource (sourceType : SearchDocumentType) (tenantId : string) (sourceId : string) (cancellationToken : CancellationToken) =
         task {
-            do! collection.DeleteManyAsync(rowFilter sourceType sourceId, cancellationToken = cancellationToken) :> Task
-            do! sourceCollection.DeleteManyAsync(sourceFilter sourceType sourceId, cancellationToken = cancellationToken) :> Task
+            do! collection.DeleteManyAsync(rowFilter sourceType tenantId sourceId, cancellationToken = cancellationToken) :> Task
+            do! sourceCollection.DeleteManyAsync(sourceFilter sourceType tenantId sourceId, cancellationToken = cancellationToken) :> Task
         }
 
     let replaceSet (documentSet : SearchDocumentSet) (cancellationToken : CancellationToken) =
         task {
             let! existingSource =
                 sourceCollection
-                    .Find(sourceFilter documentSet.SourceType documentSet.SourceId)
+                    .Find(sourceFilter documentSet.SourceType documentSet.TenantId documentSet.SourceId)
                     .FirstOrDefaultAsync(cancellationToken)
 
-            do! collection.DeleteManyAsync(rowFilter documentSet.SourceType documentSet.SourceId, cancellationToken = cancellationToken) :> Task
+            do! collection.DeleteManyAsync(rowFilter documentSet.SourceType documentSet.TenantId documentSet.SourceId, cancellationToken = cancellationToken) :> Task
 
             if not (List.isEmpty documentSet.Documents) then
                 do! collection.InsertManyAsync(documentSet.Documents, cancellationToken = cancellationToken)
@@ -79,7 +82,7 @@ type SearchService(database : IMongoDatabase) =
 
                 let! _ =
                     sourceCollection.ReplaceOneAsync(
-                        sourceFilter documentSet.SourceType documentSet.SourceId,
+                        sourceFilter documentSet.SourceType documentSet.TenantId documentSet.SourceId,
                         sourceDocument,
                         ReplaceOptions(IsUpsert = true),
                         cancellationToken)
@@ -107,6 +110,11 @@ type SearchService(database : IMongoDatabase) =
                     "SearchKeys.Value",
                     bsonDoc [ BsonElement("$regex", regex) ])
               ] :> BsonValue ]
+
+        match query.TenantId with
+        | Some tenantId ->
+            conditions <- conditions @ [ bsonDoc [ BsonElement("TenantId", BsonString(tenantId)) ] :> BsonValue ]
+        | None -> ()
 
         match query.Types with
         | Some types when not (List.isEmpty types) ->
@@ -140,8 +148,8 @@ type SearchService(database : IMongoDatabase) =
         member _.Update documentSet cancellationToken =
             replaceSet documentSet cancellationToken
 
-        member _.Delete(sourceType, sourceId) cancellationToken =
-            deleteBySource sourceType sourceId cancellationToken
+        member _.Delete(sourceType, tenantId, sourceId) cancellationToken =
+            deleteBySource sourceType tenantId sourceId cancellationToken
 
         member _.Get query cancellationToken =
             task {

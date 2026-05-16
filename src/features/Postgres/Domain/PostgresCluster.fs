@@ -18,6 +18,7 @@ type PostgresCluster =
     { [<BsonId>]
       [<BsonRepresentation(BsonType.ObjectId)>]
       Id : string
+      TenantId : string
       Name : string
       GroupId : string
       Spec : PostgresClusterSpec }
@@ -33,8 +34,9 @@ module PostgresCluster =
           Storage = 1
           Id = None }
         
-    let create name groupId kubernetesNamespace version deploymentMode options=
+    let create tenantId name groupId kubernetesNamespace version deploymentMode options=
         { Id = defaultArg options.Id (ObjectId.GenerateNewId().ToString())
+          TenantId = tenantId
           Name = name
           Spec = { Instances = options.Instances
                    Storage = options.Storage

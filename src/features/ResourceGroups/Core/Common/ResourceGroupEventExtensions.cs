@@ -1,3 +1,4 @@
+using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 
@@ -14,7 +15,10 @@ internal static class ResourceGroupEventExtensions
                 resourceGroup.Description,
                 resourceGroup.KubernetesNamespace,
                 resourceGroup.Resources,
-                resourceGroup.Tags);
+                resourceGroup.Tags)
+            {
+                EventCore = EventCore.Create(resourceGroup.TenantId)
+            };
 
         internal DeleteEvent ToDeleteEvent()
             => new(
@@ -23,6 +27,9 @@ internal static class ResourceGroupEventExtensions
                 resourceGroup.Description,
                 resourceGroup.KubernetesNamespace,
                 resourceGroup.Resources,
-                resourceGroup.Tags);
+                resourceGroup.Tags)
+            {
+                EventCore = EventCore.Create(resourceGroup.TenantId)
+            };
     }
 }

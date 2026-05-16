@@ -28,11 +28,12 @@ public static class IMongoDbContextExtensions
         var eventTypeName = entityNameAttribute?.EntityName ?? eventType.FullName ?? eventType.Name;
 
         var payloadJson = JsonSerializer.Serialize(@event, EventExtensions.SerializerOptions);
-        var traceContext = TraceContext.Create(@event.TraceId, @event.CorrelationId);
+        var traceContext = TraceContext.Create(@event.EventCore.TraceId, @event.EventCore.CorrelationId);
 
         var outboxMessage = new OutboxMessage
         {
             EventType = eventTypeName,
+            TenantId = @event.EventCore.TenantId,
             PayloadJson = payloadJson,
             TraceId = traceContext.TraceId,
             CorrelationId = traceContext.CorrelationId,

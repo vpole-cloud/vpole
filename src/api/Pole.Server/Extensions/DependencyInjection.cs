@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
+using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Feature.DnsRecords.Core.Common;
 using Pole.Feature.DnsRecords.Core.Filters;
@@ -20,6 +21,10 @@ using Pole.Features.RedisServices.Common;
 using Pole.Features.ResourceGroups.Common;
 using Pole.Features.ResourceGroups.Services;
 using Pole.Features.Search.Common;
+using Pole.Features.Core.Multitenancy;
+using Pole.Features.Tenants.Common;
+using Pole.Features.Users.Common;
+using Pole.Features.Users.Identity;
 using Pole.Features.WebServices.Common;
 using Pole.Mediator;
 using Pole.Observability;
@@ -36,6 +41,7 @@ public static class DependencyInjection
             services.AddScoped<IMediator, Pole.Mediator.Mediator>();
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+            services.AddScoped(typeof(IPipelineBehavior<,>), typeof(TenantAuthorizationBehavior<,>));
 
             foreach (var assembly in assemblies)
             {
@@ -128,6 +134,18 @@ public static class DependencyInjection
             services.TryAddSingleton<IPostgresDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IResourceGroupDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IDnsRecordDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.TryAddSingleton<ITenantDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.TryAddSingleton<IUserDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.AddHttpContextAccessor();
+            services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
+            services.TryAddSingleton<ITenantOperationScopeAccessor, TenantOperationScopeAccessor>();
+            return services;
+        }
+
+        public IServiceCollection AddUsersFeature(IConfiguration configuration)
+        {
+            services.Configure<KeycloakOptions>(configuration.GetSection(KeycloakOptions.SectionName));
+            services.AddHttpClient<IIdentityProvider, KeycloakIdentityProvider>();
             return services;
         }
 
@@ -136,6 +154,7 @@ public static class DependencyInjection
             services.AddSettingsSection<OutboxSettings>(OutboxSettings.SectionName, configuration);
             services.AddSettingsSection<KubernetesOptions>(KubernetesOptions.SectionName, configuration);
             services.AddSettingsSection<PostgresSettings>(PostgresSettings.SectionName, configuration);
+            services.AddSettingsSection<KeycloakOptions>(KeycloakOptions.SectionName, configuration);
             return services;
         }
 
@@ -213,7 +232,11 @@ public static class DependencyInjection
                                 "http://localhost:8080/realms/pole.control-plane/.well-known/openid-configuration";
                         }
                     });
-            builder.Services.AddAuthorization();
+            builder.Services.AddAuthorization(options =>
+            {
+                options.AddPolicy(Policy.Admin, policy =>
+                    policy.RequireClaim(Claims.Roles, Roles.Admin));
+            });
 
             return builder;
         }

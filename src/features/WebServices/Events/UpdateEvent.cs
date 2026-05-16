@@ -13,7 +13,10 @@ public sealed record UpdateEvent(
     string ResourceGroupId,
     DnsRecordShortInfo DnsRecord,
     UpdateEventChanges Changes
-    ) : BaseEvent;
+    ) : IPoleEvent
+{
+    public EventCore EventCore { get; init; } = EventCore.Create();
+}
 
 public sealed record UpdateEventChanges(
     UpdateLog<WebServiceSpec> WebServiceSpec,

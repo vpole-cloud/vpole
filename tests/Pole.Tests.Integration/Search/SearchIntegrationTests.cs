@@ -34,22 +34,22 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
 
         await IndexResourceGroupCreatedAsync(resourceGroup.Id);
 
-        var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, "web-api", "api.example.com"));
+        var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id));
         Assert.True(createResult.TryGetValue(out var created, out _));
 
-        await IndexWebServiceCreatedAsync(created!.WebServiceId);
+        await IndexWebServiceCreatedAsync(created.WebServiceId);
 
         var rows = await SearchDocuments.Find(row => row.SourceType == SearchDocumentType.WebService && row.SourceId == created.WebServiceId).ToListAsync();
         var sourceDocument = await SearchSourceDocuments.Find(row => row.SourceType == SearchDocumentType.WebService && row.SourceId == created.WebServiceId).FirstOrDefaultAsync();
 
-        Assert.Contains(rows, row => row.KeyType == SearchKeyType.Name && row.SearchValue == "web-api" && row.Weight == SearchDocumentFactory.NameWeight);
-        Assert.Contains(rows, row => row.KeyType == SearchKeyType.Name && row.SearchValue == "web" && row.Weight == SearchDocumentFactory.NameTokenWeight);
-        Assert.Contains(rows, row => row.KeyType == SearchKeyType.Name && row.SearchValue == "api" && row.Weight == SearchDocumentFactory.NameTokenWeight);
-        Assert.Contains(rows, row => row.KeyType == SearchKeyType.Domain && row.SearchValue == "api.example.com" && row.Weight == SearchDocumentFactory.DomainWeight);
-        Assert.Contains(rows, row => row.KeyType == SearchKeyType.Domain && row.SearchValue == "example" && row.Weight == SearchDocumentFactory.DomainTokenWeight);
+        Assert.Contains(rows, row => row.KeyType == SearchKeyType.Name && row is { SearchValue: "web-api", Weight: SearchDocumentFactory.NameWeight });
+        Assert.Contains(rows, row => row.KeyType == SearchKeyType.Name && row is { SearchValue: "web", Weight: SearchDocumentFactory.NameTokenWeight });
+        Assert.Contains(rows, row => row.KeyType == SearchKeyType.Name && row is { SearchValue: "api", Weight: SearchDocumentFactory.NameTokenWeight });
+        Assert.Contains(rows, row => row.KeyType == SearchKeyType.Domain && row is { SearchValue: "api.example.com", Weight: SearchDocumentFactory.DomainWeight });
+        Assert.Contains(rows, row => row.KeyType == SearchKeyType.Domain && row is { SearchValue: "example", Weight: SearchDocumentFactory.DomainTokenWeight });
         Assert.DoesNotContain(rows, row => row.SearchValue == "description");
         Assert.NotNull(sourceDocument);
-        Assert.Equal("web-api", sourceDocument!.Title);
+        Assert.Equal("web-api", sourceDocument.Title);
         Assert.Contains(sourceDocument.SearchKeys, key => key.Value == "web-api" && key.Weight == SearchDocumentFactory.NameWeight);
         Assert.Contains(sourceDocument.SearchKeys, key => key.Value == "api" && key.Weight == SearchDocumentFactory.NameTokenWeight);
         Assert.Contains(sourceDocument.SearchKeys, key => key.Value == "api.example.com" && key.Weight == SearchDocumentFactory.DomainWeight);
@@ -64,11 +64,11 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
 
         var webCreate = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, "alpha-web", "api.alpha.example.com"));
         Assert.True(webCreate.TryGetValue(out var webResponse, out _));
-        await IndexWebServiceCreatedAsync(webResponse!.WebServiceId);
+        await IndexWebServiceCreatedAsync(webResponse.WebServiceId);
 
         var redisCreate = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id, "alpha-redis"));
         Assert.True(redisCreate.TryGetValue(out var redisResponse, out _));
-        await IndexRedisCreatedAsync(redisResponse!.RedisId);
+        await IndexRedisCreatedAsync(redisResponse.RedisId);
 
         var postgresCreate = await Mediator.Send(TestData.CreatePostgresClusterRequest(resourceGroup.Id, "alpha-postgres"));
         Assert.True(postgresCreate.TryGetValue(out var postgresResponse, out _));
@@ -81,7 +81,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             PageSize = 20
         });
 
-        Assert.True(result.TryGetValue(out var response, out var error));
+        result.TryGetValue(out var response, out var error);
         Assert.Null(error);
         Assert.NotNull(response);
         Assert.Contains(response.Items, item => item.SourceType == "ResourceGroup");
@@ -125,12 +125,12 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
 
         var webCreate = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, "service-123"));
         Assert.True(webCreate.TryGetValue(out var created, out _));
-        await IndexWebServiceCreatedAsync(created!.WebServiceId);
+        await IndexWebServiceCreatedAsync(created.WebServiceId);
 
         var secondResourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("beta-shared"));
         var otherCreate = await Mediator.Send(TestData.CreateWebServiceRequest(secondResourceGroup.Id, created.WebServiceId[..8], "other.example.com"));
         Assert.True(otherCreate.TryGetValue(out var otherCreated, out _));
-        await IndexWebServiceCreatedAsync(otherCreated!.WebServiceId);
+        await IndexWebServiceCreatedAsync(otherCreated.WebServiceId);
 
         var result = await Mediator.Send(new GetSearchRequest
         {
@@ -139,7 +139,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             PageSize = 10
         });
 
-        Assert.True(result.TryGetValue(out var response, out var error));
+        result.TryGetValue(out var response, out var error);
         Assert.Null(error);
         Assert.NotNull(response);
         Assert.Equal(created.WebServiceId, response.Items.First().SourceId);
@@ -151,7 +151,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         var createResult = await Mediator.Send(TestData.CreateResourceGroupRequest("ops"));
         Assert.True(createResult.TryGetValue(out var created, out _));
 
-        await IndexResourceGroupCreatedAsync(created!.Id);
+        await IndexResourceGroupCreatedAsync(created.Id);
 
         var updateResult = await Mediator.Send(new UpdateResourceGroupRequest(
             created.Id,
@@ -169,7 +169,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Contains(rows, row => row.KeyType == SearchKeyType.Tag && row.SearchValue == "team-blue");
         Assert.DoesNotContain(rows, row => row.SearchValue == "updated");
         Assert.NotNull(sourceDocument);
-        Assert.Contains(sourceDocument!.SearchKeys, key => key.Value == "team-blue" && key.Weight == SearchDocumentFactory.TagWeight);
+        Assert.Contains(sourceDocument.SearchKeys, key => key.Value == "team-blue" && key.Weight == SearchDocumentFactory.TagWeight);
         Assert.DoesNotContain(sourceDocument.SearchKeys, key => key.Value == "updated");
 
         var searchResult = await Mediator.Send(new GetSearchRequest
@@ -193,7 +193,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, "portal", "portal.example.com"));
         Assert.True(createResult.TryGetValue(out var created, out _));
 
-        await IndexWebServiceCreatedAsync(created!.WebServiceId);
+        await IndexWebServiceCreatedAsync(created.WebServiceId);
 
         var dnsRecord = await DbContext.DnsRecords.Find(record => record.Resource.Id == created.WebServiceId).FirstOrDefaultAsync();
         Assert.NotNull(dnsRecord);
@@ -203,7 +203,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Null(deleteError);
 
         var deletedConsumer = new WebServiceDeletedConsumer(SearchService);
-        await deletedConsumer.Handle(created.WebServiceId, dnsRecord!.Id, CancellationToken.None);
+        await deletedConsumer.Handle(TestData.TenantId, created.WebServiceId, dnsRecord.Id, CancellationToken.None);
 
         var serviceRows = await SearchDocuments.CountDocumentsAsync(row => row.SourceType == SearchDocumentType.WebService && row.SourceId == created.WebServiceId);
         var dnsRows = await SearchDocuments.CountDocumentsAsync(row => row.SourceType == SearchDocumentType.DnsRecord && row.SourceId == dnsRecord.Id);
@@ -226,7 +226,10 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             resourceGroup.Description,
             resourceGroup.KubernetesNamespace,
             resourceGroup.Resources,
-            resourceGroup.Tags), CancellationToken.None);
+            resourceGroup.Tags)
+        {
+            EventCore = EventCore.Create(resourceGroup.TenantId)
+        }, CancellationToken.None);
     }
 
     private async Task IndexResourceGroupUpdatedAsync(string resourceGroupId)
@@ -238,10 +241,13 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             resourceGroup.Name,
             resourceGroup.Description,
             resourceGroup.KubernetesNamespace,
-            resourceGroup.Resources,
-            new ResourceGroupUpdateEventChanges(
-                UpdateLog<string>.Of("", resourceGroup.Description),
-                UpdateLog<ImmutableHashSet<string>>.Of([], resourceGroup.Tags))), CancellationToken.None);
+                resourceGroup.Resources,
+                new ResourceGroupUpdateEventChanges(
+                    UpdateLog<string>.Of("", resourceGroup.Description),
+                    UpdateLog<ImmutableHashSet<string>>.Of([], resourceGroup.Tags)))
+        {
+            EventCore = EventCore.Create(resourceGroup.TenantId)
+        }, CancellationToken.None);
     }
 
     private async Task IndexWebServiceCreatedAsync(string webServiceId)
@@ -255,7 +261,10 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             webService.Spec,
             webService.DnsRecord,
             webService.Status,
-            webService.Tags), CancellationToken.None);
+            webService.Tags)
+        {
+            EventCore = EventCore.Create(webService.TenantId)
+        }, CancellationToken.None);
     }
 
     private async Task IndexRedisCreatedAsync(string redisId)
@@ -268,7 +277,10 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             redis.ResourceGroupId,
             redis.Spec,
             redis.Status,
-            redis.Tags), CancellationToken.None);
+            redis.Tags)
+        {
+            EventCore = EventCore.Create(redis.TenantId)
+        }, CancellationToken.None);
     }
 
     private async Task IndexPostgresCreatedAsync(string clusterId)
@@ -276,11 +288,10 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         var cluster = await DbContext.Postgres.Find(cluster => cluster.Id == clusterId).FirstAsync();
         var consumer = new PostgresCreatedConsumer(SearchService);
         await consumer.Handle(new PostgresCreateEvent(
+            EventCore.Create(cluster.TenantId),
             cluster.Id,
             cluster.Name,
             cluster.GroupId,
-            cluster.Spec,
-            "0123456789abcdef0123456789abcdef",
-            "search-index-test"), CancellationToken.None);
+            cluster.Spec), CancellationToken.None);
     }
 }

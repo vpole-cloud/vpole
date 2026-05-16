@@ -108,6 +108,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
 
         return WebServiceFactory.Create(
             name: "web-integration",
+            tenantId: TestData.TenantId,
             resourceGroupId: "rg-k8s",
             spec: spec,
             dnsRecord: new DnsRecordShortInfo("dns-k8s", "web.example.test"),

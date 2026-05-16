@@ -15,4 +15,7 @@ public record CreateEvent(
     DnsRecordShortInfo DnsRecord,
     ServiceStatus Status,
     ImmutableHashSet<string> Tags
-) : BaseEvent;
+) : IPoleEvent
+{
+    public EventCore EventCore { get; init; } = EventCore.Create();
+}

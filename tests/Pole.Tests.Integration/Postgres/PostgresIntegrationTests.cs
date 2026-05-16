@@ -21,7 +21,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(TestData.CreatePostgresClusterRequest(resourceGroup.Id));
 
-        Assert.True(result.TryGetValue(out var response, out var error));
+        result.TryGetValue(out var response, out var error);
         Assert.Null(error);
         Assert.NotNull(response);
 
@@ -33,7 +33,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(PostgresDeploymentMode.Operator, savedCluster.Spec.DeploymentMode);
         var storedCredentials = SecretStore.GetStored(resourceGroup.KubernetesNamespace, savedCluster.Id);
         Assert.NotNull(storedCredentials);
-        Assert.Equal("postgres", storedCredentials!.Username);
+        Assert.Equal("postgres", storedCredentials.Username);
         Assert.Equal("postgres-secret", storedCredentials.Password);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("create-postgres-cluster-requested"));
     }
@@ -49,7 +49,8 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             created!.Id,
             new UpdatePostgresClusterRequestBody(
                 FSharpOption<int>.Some(3),
-                FSharpOption<int>.Some(25)));
+                FSharpOption<int>.Some(25)),
+            TestData.TenantId);
 
         var updateResult = await Mediator.Send(updateRequest);
 
@@ -77,7 +78,8 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
 
         var updateResult = await Mediator.Send(new UpdatePostgresClusterPasswordRequest(
             created!.Id,
-            new UpdatePostgresClusterPasswordRequestBody("rotated-secret")));
+            new UpdatePostgresClusterPasswordRequestBody("rotated-secret"),
+            TestData.TenantId));
 
         Assert.True(updateResult.TryGetValue(out var response, out var error));
         Assert.Null(error);
@@ -85,7 +87,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
 
         var storedCredentials = SecretStore.GetStored(resourceGroup.KubernetesNamespace, created.Id);
         Assert.NotNull(storedCredentials);
-        Assert.Equal("postgres", storedCredentials!.Username);
+        Assert.Equal("postgres", storedCredentials.Username);
         Assert.Equal("rotated-secret", storedCredentials.Password);
     }
 
@@ -96,9 +98,9 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         var createResult = await Mediator.Send(TestData.CreatePostgresClusterRequest(resourceGroup.Id, name: "postgres-reporting", username: "report_user", password: "report-secret"));
         Assert.True(createResult.TryGetValue(out var created, out _));
 
-        var result = await Mediator.Send(new GetPostgresClusterConnectionStringRequest(created!.Id));
+        var result = await Mediator.Send(new GetPostgresClusterConnectionStringRequest(created!.Id, TestData.TenantId));
 
-        Assert.True(result.TryGetValue(out var response, out var error));
+        result.TryGetValue(out var response, out var error);
         Assert.Null(error);
         Assert.NotNull(response);
         Assert.Equal(
@@ -120,7 +122,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             PageSize = 1
         });
 
-        Assert.True(result.TryGetValue(out var response, out var error));
+        result.TryGetValue(out var response, out var error);
         Assert.Null(error);
         Assert.NotNull(response);
         Assert.Single(response.Items);
@@ -132,7 +134,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task Delete_ReturnsNotFound_WhenClusterDoesNotExist()
     {
-        var result = await Mediator.Send(new DeletePostgresClusterRequest("507f1f77bcf86cd799439012"));
+        var result = await Mediator.Send(new DeletePostgresClusterRequest("507f1f77bcf86cd799439012", TestData.TenantId));
 
         Assert.False(result.TryGetValue(out _, out var error));
         Assert.IsType<NotFoundFailure>(error);

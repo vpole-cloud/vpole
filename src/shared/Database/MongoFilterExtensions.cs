@@ -1,5 +1,6 @@
 ﻿using System.Linq.Expressions;
 using MongoDB.Driver;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Database;
 
@@ -25,5 +26,38 @@ public static class MongoFilterExtensions
             builder.Eq($"{fieldName}._t", typeName),
             builder.AnyEq($"{fieldName}._t", typeName)
         );
+    }
+
+    public static FilterDefinition<TDocument> ForTenant<TDocument>(
+        this FilterDefinitionBuilder<TDocument> builder,
+        TenantContext tenantContext)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(tenantContext);
+
+        return builder.Eq("TenantId", tenantContext.TenantId);
+    }
+
+    public static FilterDefinition<TDocument> ForTenant<TDocument>(
+        this FilterDefinitionBuilder<TDocument> builder,
+        TenantOperationScope operationScope)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(operationScope);
+
+        return operationScope.TenantId is null
+            ? builder.Empty
+            : builder.Eq("TenantId", operationScope.TenantId);
+    }
+
+    public static FilterDefinition<TDocument> ForTenant<TDocument>(
+        this FilterDefinitionBuilder<TDocument> builder,
+        string? tenantId)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return tenantId is null
+            ? builder.Empty
+            : builder.Eq("TenantId", tenantId);
     }
 }

@@ -1,6 +1,6 @@
 namespace Pole.Features.Events.Abstractions;
 
-public interface IDeleteDnsRecordEvent
+public interface IDeleteDnsRecordEvent : IPoleEvent
 {
     string DnsRecordId { get; }
 }

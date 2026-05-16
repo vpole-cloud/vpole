@@ -17,7 +17,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(request);
 
-        Assert.True(result.TryGetValue(out var response, out var error));
+        result.TryGetValue(out var response, out var error);
         Assert.Null(error);
         Assert.NotNull(response);
 
@@ -73,7 +73,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             PageSize = 1
         });
 
-        Assert.True(result.TryGetValue(out var response, out var error));
+        result.TryGetValue(out var response, out var error);
         Assert.Null(error);
         Assert.NotNull(response);
         Assert.Single(response.Items);
@@ -88,7 +88,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id));
         Assert.True(createResult.TryGetValue(out var created, out _));
 
-        var deleteResult = await Mediator.Send(new DeleteWebServiceRequest(created!.WebServiceId));
+        var deleteResult = await Mediator.Send(new DeleteWebServiceRequest(created.WebServiceId));
 
         Assert.True(deleteResult.TryGetValue(out var response, out var error));
         Assert.Null(error);

@@ -19,6 +19,7 @@ interface WebServicesPageProps {
   onCreate: (input: WebServiceInput) => Promise<void>
   onUpdate: (id: string, input: WebServiceInput) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  canManage?: boolean
 }
 
 export function WebServicesPage({
@@ -33,6 +34,7 @@ export function WebServicesPage({
   onCreate,
   onUpdate,
   onDelete,
+  canManage = true,
 }: WebServicesPageProps) {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -92,7 +94,7 @@ export function WebServicesPage({
               <button className="button" onClick={() => void onRefresh()} type="button">
                 Refresh
               </button>
-              <button className="button" onClick={() => setSelectedId(null)} type="button">
+              <button className="button" disabled={!canManage} onClick={() => setSelectedId(null)} type="button">
                 New service
               </button>
             </div>
@@ -177,7 +179,7 @@ export function WebServicesPage({
                       </button>
                       <button
                         className="button button--danger"
-                        disabled={isDeleting}
+                        disabled={isDeleting || !canManage}
                         onClick={() => void handleDelete(item)}
                         type="button"
                       >
@@ -191,23 +193,29 @@ export function WebServicesPage({
           )}
         </section>
 
-        <WebServiceForm
-          key={selectedService?.id ?? 'create'}
-          mode={selectedService ? 'edit' : 'create'}
-          resourceGroups={resourceGroups}
-          initialValue={selectedService}
-          submitStatus={submitStatus}
-          submitError={submitError}
-          onSubmit={async (input) => {
-            if (selectedService) {
-              await onUpdate(selectedService.id, input)
-              return
-            }
+        {canManage ? (
+          <WebServiceForm
+            key={selectedService?.id ?? 'create'}
+            mode={selectedService ? 'edit' : 'create'}
+            resourceGroups={resourceGroups}
+            initialValue={selectedService}
+            submitStatus={submitStatus}
+            submitError={submitError}
+            onSubmit={async (input) => {
+              if (selectedService) {
+                await onUpdate(selectedService.id, input)
+                return
+              }
 
-            await onCreate(input)
-          }}
-          onCancelEdit={selectedService ? () => setSelectedId(null) : undefined}
-        />
+              await onCreate(input)
+            }}
+            onCancelEdit={selectedService ? () => setSelectedId(null) : undefined}
+          />
+        ) : (
+          <section className="panel">
+            <div className="empty-state">Tenant viewer access is read-only.</div>
+          </section>
+        )}
       </div>
     </div>
   )

@@ -1,0 +1,43 @@
+using System.Collections.Immutable;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
+
+namespace Pole.Features.Tenants.Domain;
+
+public sealed record Tenant(
+    [property: BsonId]
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string Id,
+    string Name,
+    DateTime CreatedAtUtc,
+    ImmutableList<TenantMember> Members);
+
+public sealed record TenantMember(
+    [property: BsonId]
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string Id,
+    string TenantId,
+    string UserId,
+    string Email,
+    TenantRole Role,
+    DateTime CreatedAtUtc);
+
+public static class TenantFactory
+{
+    public static Tenant Create(string name) =>
+        new(
+            Id: ObjectId.GenerateNewId().ToString(),
+            Name: name,
+            CreatedAtUtc: DateTime.UtcNow,
+            Members: []);
+
+    public static TenantMember CreateMember(string tenantId, string userId, string email, TenantRole role) =>
+        new(
+            Id: ObjectId.GenerateNewId().ToString(),
+            TenantId: tenantId,
+            UserId: userId,
+            Email: email,
+            Role: role,
+            CreatedAtUtc: DateTime.UtcNow);
+}

@@ -201,6 +201,7 @@ public sealed class WebServiceManifestTests
 
         return new WebServiceInKubernetes(WebServiceFactory.Create(
             name: "api-gateway",
+            tenantId: TestData.TenantId,
             resourceGroupId: "rg-1",
             spec: spec,
             dnsRecord: new DnsRecordShortInfo("dns-1", "api.example.com"),

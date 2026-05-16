@@ -9,6 +9,7 @@ import type { LoadStatus, OverviewData } from '../types'
 interface UseOverviewDataOptions {
   apiBaseUrl: string
   token?: string
+  tenantId?: string
   enabled: boolean
 }
 
@@ -20,6 +21,7 @@ const emptyOverview: OverviewData = {
 export function useOverviewData({
   apiBaseUrl,
   token,
+  tenantId,
   enabled,
 }: UseOverviewDataOptions) {
   const [status, setStatus] = useState<LoadStatus>('idle')
@@ -41,8 +43,8 @@ export function useOverviewData({
 
       try {
         const [resourceGroups, webServices] = await Promise.all([
-          fetchResourceGroups(apiBaseUrl, token, controller.signal),
-          fetchWebServices(apiBaseUrl, token, controller.signal),
+          fetchResourceGroups(apiBaseUrl, token, tenantId, controller.signal),
+          fetchWebServices(apiBaseUrl, token, tenantId, controller.signal),
         ])
 
         setData({
@@ -71,7 +73,7 @@ export function useOverviewData({
     return () => {
       controller.abort()
     }
-  }, [apiBaseUrl, enabled, token])
+  }, [apiBaseUrl, enabled, tenantId, token])
 
   const runIdentityCheck = async () => {
     setIdentityStatus('loading')

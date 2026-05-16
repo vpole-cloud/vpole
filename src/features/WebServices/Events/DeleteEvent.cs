@@ -13,4 +13,7 @@ public record DeleteEvent(
     string DnsRecordId,
     WebServiceSpec Spec,
     ImmutableHashSet<string> Tags
-) : BaseEvent, IDeleteDnsRecordEvent;
+) : IDeleteDnsRecordEvent
+{
+    public EventCore EventCore { get; init; } = EventCore.Create();
+}

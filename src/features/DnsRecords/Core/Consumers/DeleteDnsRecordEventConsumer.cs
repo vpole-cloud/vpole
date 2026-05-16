@@ -11,6 +11,6 @@ public class DeleteDnsRecordEventConsumer(
 {
     public async Task Consume(ConsumeContext<DeleteDnsRecordEvent> context)
     {
-        await dbContext.DnsRecords.DeleteOneAsync(x => x.Id == context.Message.Id);
+        await dbContext.DnsRecords.DeleteOneAsync(x => x.Id == context.Message.Id && x.TenantId == context.Message.EventCore.TenantId);
     }
 }
