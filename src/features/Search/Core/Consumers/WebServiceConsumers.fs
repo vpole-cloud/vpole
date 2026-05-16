@@ -11,6 +11,7 @@ open Pole.Features.Search.Services
 
 type WebServiceProjectionConsumer(searchService : ISearchService) =
     member _.HandleUpsert(
+        tenantId : string,
         webServiceId : string,
         name : string,
         resourceGroupId : string,
@@ -22,12 +23,12 @@ type WebServiceProjectionConsumer(searchService : ISearchService) =
         task {
             let resourceGroupName = None
             let webDocuments =
-                SearchDocumentFactory.fromWebServiceFields resourceGroupName webServiceId name resourceGroupId domain image
+                SearchDocumentFactory.fromWebServiceFields tenantId resourceGroupName webServiceId name resourceGroupId domain image
             do! apply webDocuments cancellationToken
 
             if not (System.String.IsNullOrWhiteSpace(dnsRecordId)) then
                 let dnsDocuments =
-                    SearchDocumentFactory.fromDnsRecordFields resourceGroupName dnsRecordId domain resourceGroupId name
+                    SearchDocumentFactory.fromDnsRecordFields tenantId resourceGroupName dnsRecordId domain resourceGroupId name
                 do! apply dnsDocuments cancellationToken
         }
 
@@ -36,6 +37,7 @@ type WebServiceCreatedConsumer(searchService : ISearchService) =
 
     member this.Handle(event : CreateEvent, cancellationToken : CancellationToken) =
         this.HandleUpsert(
+            event.EventCore.TenantId,
             event.WebServiceId,
             event.Name,
             event.ResourceGroupId,
@@ -54,6 +56,7 @@ type WebServiceUpdatedConsumer(searchService : ISearchService) =
 
     member this.Handle(event : UpdateEvent, cancellationToken : CancellationToken) =
         this.HandleUpsert(
+            event.EventCore.TenantId,
             event.WebServiceId,
             event.Name,
             event.ResourceGroupId,
@@ -68,16 +71,16 @@ type WebServiceUpdatedConsumer(searchService : ISearchService) =
             this.Handle(context.Message, context.CancellationToken)
 
 type WebServiceDeletedConsumer(searchService : ISearchService) =
-    member _.Handle(webServiceId : string, dnsRecordId : string option, cancellationToken : CancellationToken) =
+    member _.Handle(tenantId : string, webServiceId : string, dnsRecordId : string option, cancellationToken : CancellationToken) =
         task {
-            do! searchService.Delete(SearchDocumentType.WebService, webServiceId) cancellationToken
+            do! searchService.Delete(SearchDocumentType.WebService, tenantId, webServiceId) cancellationToken
 
             match dnsRecordId with
             | Some value when not (System.String.IsNullOrWhiteSpace(value)) ->
-                do! searchService.Delete(SearchDocumentType.DnsRecord, value) cancellationToken
+                do! searchService.Delete(SearchDocumentType.DnsRecord, tenantId, value) cancellationToken
             | _ -> ()
         }
 
     interface IConsumer<DeleteEvent> with
         member this.Consume(context : ConsumeContext<DeleteEvent>) =
-            this.Handle(context.Message.WebServiceId, Option.ofObj context.Message.DnsRecordId, context.CancellationToken)
+            this.Handle(context.Message.EventCore.TenantId, context.Message.WebServiceId, Option.ofObj context.Message.DnsRecordId, context.CancellationToken)

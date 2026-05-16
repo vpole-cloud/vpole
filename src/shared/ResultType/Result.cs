@@ -53,6 +53,18 @@ public abstract record Result
         CallerFile = callerFile,
         CallerLine = callerLine
     };
+
+    public static ForbiddenFailure Forbidden(string message,
+        string action,
+        [CallerMemberName] string callerName = "",
+        [CallerFilePath] string callerFile = "",
+        [CallerLineNumber] int callerLine = 0) => new(action)
+    {
+        Message = message,
+        CallerName = callerName,
+        CallerFile = callerFile,
+        CallerLine = callerLine
+    };
     
     public static ConflictFailure Conflict(string message,
         [CallerMemberName] string callerName = "",
@@ -118,6 +130,7 @@ public record Result<T> : Result where T : notnull
         FailureType = failure.GetType(),
         ValidationErrors = failure is ValidationFailure validationFailure ? validationFailure.ValidationErrors : null,
         UnauthorizedAction = failure is UnauthorizedFailure unauthorizedFailure ? unauthorizedFailure.Action : null,
+        ForbiddenAction = failure is ForbiddenFailure forbiddenFailure ? forbiddenFailure.Action : null,
         InternalDetails = failure is InternalFailure internalFailure ? internalFailure.Details : null,
         ExternalServiceName = failure is ExternalServiceFailure externalServiceFailure1 ? externalServiceFailure1.ServiceName : null,
         ExternalServiceDetails = failure is ExternalServiceFailure externalServiceFailure2 ? externalServiceFailure2.Details : null
@@ -151,6 +164,7 @@ public record Failure<T> : Result<T>, IFailure where T : notnull
     public Type FailureType { get; init; } = typeof(Failure);
     public IDictionary<string, string[]>? ValidationErrors { get; init; }
     public string? UnauthorizedAction { get; init; }
+    public string? ForbiddenAction { get; init; }
     public string? InternalDetails { get; init; }
     public string? ExternalServiceName { get; init; }
     public string? ExternalServiceDetails { get; init; }
@@ -164,6 +178,7 @@ public record Failure<T> : Result<T>, IFailure where T : notnull
         FailureType = failure.GetType(),
         ValidationErrors = failure is ValidationFailure validationFailure ? validationFailure.ValidationErrors : null,
         UnauthorizedAction = failure is UnauthorizedFailure unauthorizedFailure ? unauthorizedFailure.Action : null,
+        ForbiddenAction = failure is ForbiddenFailure forbiddenFailure ? forbiddenFailure.Action : null,
         InternalDetails = failure is InternalFailure internalFailure ? internalFailure.Details : null,
         ExternalServiceName = failure is ExternalServiceFailure externalServiceFailure1 ? externalServiceFailure1.ServiceName : null,
         ExternalServiceDetails = failure is ExternalServiceFailure externalServiceFailure2 ? externalServiceFailure2.Details : null
@@ -185,6 +200,13 @@ public record Failure<T> : Result<T>, IFailure where T : notnull
             CallerLine = failure.CallerLine
         },
         nameof(UnauthorizedFailure) => new UnauthorizedFailure(failure.UnauthorizedAction ?? "Action")
+        {
+            Message = failure.Message,
+            CallerName = failure.CallerName,
+            CallerFile = failure.CallerFile,
+            CallerLine = failure.CallerLine
+        },
+        nameof(ForbiddenFailure) => new ForbiddenFailure(failure.ForbiddenAction ?? "Action")
         {
             Message = failure.Message,
             CallerName = failure.CallerName,
@@ -249,6 +271,13 @@ public record UnauthorizedFailure(string Action) : Failure
     public UnauthorizedFailure() : this("Action") { }
 
     public override string ToString() => $"Unauthorized to perform action: {Action}. Message: {Message}";
+}
+
+public record ForbiddenFailure(string Action) : Failure
+{
+    public ForbiddenFailure() : this("Action") { }
+
+    public override string ToString() => $"Forbidden to perform action: {Action}. Message: {Message}";
 }
 
 public record ConflictFailure() : Failure;

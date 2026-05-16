@@ -66,9 +66,10 @@ module SearchDocumentFactory =
         |> Array.distinct
         |> Array.toList
 
-    let private createDocument sourceType sourceId title resourceGroupId resourceGroupName keyType weight searchValue =
+    let private createDocument sourceType tenantId sourceId title resourceGroupId resourceGroupName keyType weight searchValue =
         { Id = SearchDocument.createId()
           SourceType = sourceType
+          TenantId = tenantId
           SourceId = sourceId
           KeyType = keyType
           SearchValue = searchValue
@@ -77,7 +78,7 @@ module SearchDocumentFactory =
           ResourceGroupId = resourceGroupId
           ResourceGroupName = resourceGroupName }
 
-    let private toDocuments sourceType sourceId title resourceGroupId resourceGroupName specs =
+    let private toDocuments sourceType tenantId sourceId title resourceGroupId resourceGroupName specs =
         specs
         |> List.collect (fun spec ->
             let normalizedValue = normalize spec.Value
@@ -86,7 +87,7 @@ module SearchDocumentFactory =
                 []
             else
                 let fullDocument =
-                    createDocument sourceType sourceId title resourceGroupId resourceGroupName spec.KeyType spec.FullWeight normalizedValue
+                    createDocument sourceType tenantId sourceId title resourceGroupId resourceGroupName spec.KeyType spec.FullWeight normalizedValue
 
                 let tokenDocuments =
                     match spec.TokenWeight with
@@ -94,7 +95,7 @@ module SearchDocumentFactory =
                     | Some tokenWeight ->
                         tokenize spec.Value
                         |> List.filter ((<>) normalizedValue)
-                        |> List.map (createDocument sourceType sourceId title resourceGroupId resourceGroupName spec.KeyType tokenWeight)
+                        |> List.map (createDocument sourceType tenantId sourceId title resourceGroupId resourceGroupName spec.KeyType tokenWeight)
 
                 fullDocument :: tokenDocuments)
         |> List.groupBy (fun doc -> doc.KeyType, doc.SearchValue)
@@ -102,10 +103,12 @@ module SearchDocumentFactory =
 
     let fromResourceGroup (resourceGroup : ResourceGroup) =
         { SourceType = SearchDocumentType.ResourceGroup
+          TenantId = resourceGroup.TenantId
           SourceId = resourceGroup.Id
           Documents =
             toDocuments
                 SearchDocumentType.ResourceGroup
+                resourceGroup.TenantId
                 resourceGroup.Id
                 resourceGroup.Name
                 (Some resourceGroup.Id)
@@ -122,12 +125,14 @@ module SearchDocumentFactory =
                            TokenWeight = Some TagTokenWeight })
                      |> Seq.toList)) }
 
-    let fromResourceGroupFields resourceGroupId name tags =
+    let fromResourceGroupFields tenantId resourceGroupId name tags =
         { SourceType = SearchDocumentType.ResourceGroup
+          TenantId = tenantId
           SourceId = resourceGroupId
           Documents =
             toDocuments
                 SearchDocumentType.ResourceGroup
+                tenantId
                 resourceGroupId
                 name
                 (Some resourceGroupId)
@@ -148,10 +153,12 @@ module SearchDocumentFactory =
         let image = webService.Spec.Image.FullImageName
 
         { SourceType = SearchDocumentType.WebService
+          TenantId = webService.TenantId
           SourceId = webService.Id
           Documents =
             toDocuments
                 SearchDocumentType.WebService
+                webService.TenantId
                 webService.Id
                 webService.Name
                 (Some webService.ResourceGroupId)
@@ -173,12 +180,14 @@ module SearchDocumentFactory =
                     FullWeight = ImageWeight
                     TokenWeight = Some ImageTokenWeight } ] }
 
-    let fromWebServiceFields resourceGroupName webServiceId name resourceGroupId domain image =
+    let fromWebServiceFields tenantId resourceGroupName webServiceId name resourceGroupId domain image =
         { SourceType = SearchDocumentType.WebService
+          TenantId = tenantId
           SourceId = webServiceId
           Documents =
             toDocuments
                 SearchDocumentType.WebService
+                tenantId
                 webServiceId
                 name
                 (Some resourceGroupId)
@@ -202,10 +211,12 @@ module SearchDocumentFactory =
 
     let fromDnsRecord (resourceGroupName : string option) (dnsRecord : DnsRecord) =
         { SourceType = SearchDocumentType.DnsRecord
+          TenantId = dnsRecord.TenantId
           SourceId = dnsRecord.Id
           Documents =
             toDocuments
                 SearchDocumentType.DnsRecord
+                dnsRecord.TenantId
                 dnsRecord.Id
                 dnsRecord.Domain
                 (Some dnsRecord.Resource.GroupId)
@@ -219,12 +230,14 @@ module SearchDocumentFactory =
                     FullWeight = ResourceNameWeight
                     TokenWeight = Some ResourceNameTokenWeight } ] }
 
-    let fromDnsRecordFields resourceGroupName dnsRecordId domain resourceGroupId resourceName =
+    let fromDnsRecordFields tenantId resourceGroupName dnsRecordId domain resourceGroupId resourceName =
         { SourceType = SearchDocumentType.DnsRecord
+          TenantId = tenantId
           SourceId = dnsRecordId
           Documents =
             toDocuments
                 SearchDocumentType.DnsRecord
+                tenantId
                 dnsRecordId
                 domain
                 (Some resourceGroupId)
@@ -240,10 +253,12 @@ module SearchDocumentFactory =
 
     let fromRedis (resourceGroupName : string option) (redis : Redis) =
         { SourceType = SearchDocumentType.RedisService
+          TenantId = redis.TenantId
           SourceId = redis.Id
           Documents =
             toDocuments
                 SearchDocumentType.RedisService
+                redis.TenantId
                 redis.Id
                 redis.Name
                 (Some redis.ResourceGroupId)
@@ -257,12 +272,14 @@ module SearchDocumentFactory =
                     FullWeight = NameWeight
                     TokenWeight = Some NameTokenWeight } ] }
 
-    let fromRedisFields resourceGroupName redisId name resourceGroupId =
+    let fromRedisFields tenantId resourceGroupName redisId name resourceGroupId =
         { SourceType = SearchDocumentType.RedisService
+          TenantId = tenantId
           SourceId = redisId
           Documents =
             toDocuments
                 SearchDocumentType.RedisService
+                tenantId
                 redisId
                 name
                 (Some resourceGroupId)
@@ -278,10 +295,12 @@ module SearchDocumentFactory =
 
     let fromPostgresCluster (resourceGroupName : string option) (cluster : PostgresCluster) =
         { SourceType = SearchDocumentType.PostgresCluster
+          TenantId = cluster.TenantId
           SourceId = cluster.Id
           Documents =
             toDocuments
                 SearchDocumentType.PostgresCluster
+                cluster.TenantId
                 cluster.Id
                 cluster.Name
                 (Some cluster.GroupId)
@@ -295,12 +314,14 @@ module SearchDocumentFactory =
                     FullWeight = NameWeight
                     TokenWeight = Some NameTokenWeight } ] }
 
-    let fromPostgresClusterFields resourceGroupName clusterId name groupId =
+    let fromPostgresClusterFields tenantId resourceGroupName clusterId name groupId =
         { SourceType = SearchDocumentType.PostgresCluster
+          TenantId = tenantId
           SourceId = clusterId
           Documents =
             toDocuments
                 SearchDocumentType.PostgresCluster
+                tenantId
                 clusterId
                 name
                 (Some groupId)
@@ -339,6 +360,7 @@ module SearchDocumentFactory =
 
         { Id = SearchSourceDocument.createId()
           SourceType = documentSet.SourceType
+          TenantId = documentSet.TenantId
           SourceId = documentSet.SourceId
           Title = title
           ResourceGroupId = resourceGroupId

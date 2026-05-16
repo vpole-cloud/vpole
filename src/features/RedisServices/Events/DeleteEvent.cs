@@ -12,4 +12,7 @@ public record DeleteEvent(
     string ResourceGroupId,
     RedisSpec Spec,
     ImmutableHashSet<string> Tags
-) : BaseEvent;
+) : IPoleEvent
+{
+    public EventCore EventCore { get; init; } = EventCore.Create();
+}

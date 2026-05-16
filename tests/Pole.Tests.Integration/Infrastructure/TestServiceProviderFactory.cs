@@ -12,6 +12,7 @@ using Pole.Features.ResourceGroups.Services;
 using Pole.Features.Search.Common;
 using Pole.Features.Search.Services;
 using Pole.Features.WebServices.Common;
+using Pole.Mediator;
 using Pole.Server.Database;
 using Pole.Server.Extensions;
 
@@ -50,7 +51,22 @@ public static class TestServiceProviderFactory
         services.AddSearchFeature();
         services.AddValidatorsFromAssemblies(Assemblies);
         services.AddPoleMediator(Assemblies);
+        services.ReplaceTenantAuthorizationWithFake();
 
         return services.BuildServiceProvider(validateScopes: true);
+    }
+
+    public static void ReplaceTenantAuthorizationWithFake(this IServiceCollection services)
+    {
+        var descriptor = services.SingleOrDefault(d =>
+            d.ServiceType == typeof(IPipelineBehavior<,>) &&
+            d.ImplementationType == typeof(TenantAuthorizationBehavior<,>));
+
+        if (descriptor is not null)
+        {
+            services.Remove(descriptor);
+        }
+
+        services.AddScoped(typeof(IPipelineBehavior<,>), typeof(FakeAuthBehaviour<,>));
     }
 }

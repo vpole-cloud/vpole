@@ -7,6 +7,9 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Feature.DnsRecords.Domain;
+using Pole.Features.Core.Multitenancy;
+using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Common;
 using Pole.Features.WebServices.Events;
 using Pole.Features.WebServices.Kubernetes;
@@ -41,14 +44,22 @@ public sealed class DeleteWebServiceHandler(
     {
         return await dbContext.RunInTransactionAsync<DeleteWebServiceResponse>(async (sh, ct) =>
         {
+            var filter = Builders<WebService>.Filter.And(
+                Builders<WebService>.Filter.ForTenant(request.TenantId),
+                Builders<WebService>.Filter.Eq(ws => ws.Id, request.Id));
+
             var webService = await dbContext.WebServices
-                .FindOneAndDeleteAsync(sh, ws => ws.Id == request.Id, cancellationToken: ct);
+                .FindOneAndDeleteAsync(sh, filter, cancellationToken: ct);
 
             if (webService is null)
                 return Result.NotFound($"Web service with ID '{request.Id}' not found.");
             
             await dbContext.DnsRecords
-                .DeleteOneAsync(sh, record => record.Id == webService.DnsRecord.Id, cancellationToken: ct);
+                .DeleteOneAsync(sh,
+                    Builders<DnsRecord>.Filter.And(
+                        Builders<DnsRecord>.Filter.ForTenant(request.TenantId),
+                        Builders<DnsRecord>.Filter.Eq(record => record.Id, webService.DnsRecord.Id)),
+                    cancellationToken: ct);
             
             await dbContext.StoreEventAsync(webService.ToDeleteEvent(), sh, ct);
             return new DeleteWebServiceResponse(
@@ -76,8 +87,9 @@ public class DeleteWebServiceRequestedEventConsumer(
 }
 
 public sealed record DeleteWebServiceRequest(
-    [FromRoute] string Id
-) : IMediatorRequest<DeleteWebServiceResponse>;
+    [FromRoute] string Id,
+    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+) : IMediatorRequest<DeleteWebServiceResponse>, ITenantWriteOperation;
 
 public sealed record DeleteWebServiceResponse(
     string Id

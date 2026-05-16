@@ -9,6 +9,7 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Feature.DnsRecords.Core.Common;
 using Pole.Feature.DnsRecords.Domain;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.Request;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -41,12 +42,12 @@ public sealed class GetDomainNamesHandler(
         GetDomainNamesRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<DnsRecord>.Filter.Empty;
+        var filter = Builders<DnsRecord>.Filter.ForTenant(request.TenantId);
 
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
             var pattern = $".*{Regex.Escape(request.Search)}.*";
-            filter = Builders<DnsRecord>.Filter.Regex(d => d.Domain, new BsonRegularExpression(pattern, "i"));
+            filter &= Builders<DnsRecord>.Filter.Regex(d => d.Domain, new BsonRegularExpression(pattern, "i"));
         }
 
         var totalCount = await dbContext.DnsRecords
@@ -65,7 +66,8 @@ public sealed class GetDomainNamesHandler(
     }
 }
 
-public record GetDomainNamesRequest : PaginatedRequest<DnsRecordDto>
+public record GetDomainNamesRequest : PaginatedRequest<DnsRecordDto>, ITenantReadOperation
 {
+    [FromHeader(Name = TenantHeaders.TenantId)] public string? TenantId { get; init; }
     [FromQuery] public string? Search { get; init; }
 }

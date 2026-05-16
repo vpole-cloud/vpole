@@ -9,6 +9,10 @@ using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Search.Common;
 using Pole.Features.Search.Domain;
 using Pole.Features.Shared.Models;
+using Pole.Features.Tenants.Common;
+using Pole.Features.Tenants.Domain;
+using Pole.Features.Users.Common;
+using Pole.Features.Users.Domain;
 using Pole.Features.WebServices.Common;
 using Pole.Features.WebServices.Domain;
 using PostgresCluster = Pole.Features.Postgres.Domain.PostgresCluster;
@@ -24,7 +28,9 @@ public class MongoDbContext(
     IRedisDbContext,
     ISearchDbContext,
     IPostgresDbContext,
-    IDnsRecordDbContext
+    IDnsRecordDbContext,
+    ITenantDbContext,
+    IUserDbContext
 {
     public IMongoDatabase Database { get; } = database;
     public IMongoClient Client { get; } = client;
@@ -35,4 +41,6 @@ public class MongoDbContext(
     public IMongoCollection<DnsRecord> DnsRecords { get; } = database.GetCollection<DnsRecord>("DnsRecords");
     public IMongoCollection<PostgresCluster>  Postgres { get; } = database.GetCollection<PostgresCluster>("Postgres");
     public IMongoCollection<OutboxMessage> OutboxMessages { get; } = database.GetCollection<OutboxMessage>("OutboxMessages");
+    public IMongoCollection<Tenant> Tenants { get; } = database.GetCollection<Tenant>("Tenants");
+    public IMongoCollection<PoleUser> Users { get; } = database.GetCollection<PoleUser>("Users");
 }

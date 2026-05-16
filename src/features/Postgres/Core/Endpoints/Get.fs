@@ -10,12 +10,19 @@ open Microsoft.AspNetCore.Routing
 open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
+open Pole.Features.Core.Multitenancy
+open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Common
 open Pole.Features.Request
 open Pole.Mediator
 
 type GetPostgresClustersRequest() =
     interface IMediatorRequest<PaginatedResponse<PostgresClusterDto>>
+    interface ITenantReadOperation with
+        member this.TenantId = this.TenantId
+
+    [<FromHeader(Name = TenantHeaders.TenantId)>]
+    member val TenantId : string = null with get, set
 
     [<FromQuery; DefaultValue(1); Description("The page number to retrieve (1-based).")>]
     member val PageNumber = 1 with get, set
@@ -27,7 +34,7 @@ type GetPostgresClustersHandler(dbContext : IPostgresDbContext) =
     interface IMediatorHandler<GetPostgresClustersRequest, PaginatedResponse<PostgresClusterDto>> with
         member _.HandleAsync(request, cancellationToken) =
             task {
-                let filter = FilterDefinition<_>.Empty
+                let filter = Builders<PostgresCluster>.Filter.ForTenant(request.TenantId)
                 let skip = (request.PageNumber - 1) * request.PageSize
 
                 let! totalCount =

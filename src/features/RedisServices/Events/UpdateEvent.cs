@@ -11,7 +11,10 @@ public sealed record UpdateEvent(
     string Name,
     string ResourceGroupId,
     UpdateEventChanges Changes
-) : BaseEvent;
+) : IPoleEvent
+{
+    public EventCore EventCore { get; init; } = EventCore.Create();
+}
 
 public sealed record UpdateEventChanges(
     UpdateLog<RedisSpec> RedisSpec,

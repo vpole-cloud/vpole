@@ -1,4 +1,5 @@
 using System.Reflection;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,6 +14,8 @@ using Pole.Features.ResourceGroups.Services;
 using Pole.Features.Search.Common;
 using Pole.Features.Search.Services;
 using Pole.Features.WebServices.Common;
+using Pole.Features.Core.Multitenancy;
+using Pole.Features.Tenants.Middleware;
 using Pole.Observability;
 using Pole.Server.Database;
 using Pole.Server.Extensions;
@@ -37,6 +40,7 @@ public sealed class TestApiApplication : IAsyncDisposable
     {
         _app = app;
         Client = app.GetTestClient();
+        Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, TestData.TenantId);
     }
 
     public HttpClient Client { get; }
@@ -66,6 +70,12 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSearchFeature();
         builder.Services.AddValidatorsFromAssemblies(Assemblies);
         builder.Services.AddPoleMediator(Assemblies);
+        builder.Services
+            .AddAuthentication(TestAuthenticationHandler.SchemeName)
+            .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(
+                TestAuthenticationHandler.SchemeName,
+                _ => { });
+        builder.Services.AddAuthorization();
         builder.Services.AddCors(options =>
         {
             options.AddPolicy("frontend-dev", policy =>
@@ -78,7 +88,11 @@ public sealed class TestApiApplication : IAsyncDisposable
         var app = builder.Build();
         app.UseTraceContext();
         app.UseCors("frontend-dev");
+        app.UseAuthentication();
+        app.UseAuthorization();
+        app.UseMiddleware<TenantContextMiddleware>();
         app.MapGroup("/api/v1")
+            .RequireAuthorization()
             .MapResourceGroupEndpoints()
             .MapWebServiceEndpoints()
             .MapRedisServiceEndpoints()

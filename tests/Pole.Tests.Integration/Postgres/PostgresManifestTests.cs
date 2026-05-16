@@ -2,6 +2,7 @@ using System.Text.Json;
 using Pole.Features.Postgres.Common;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Kubernetes;
+using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 using PostgresCluster = Pole.Features.Postgres.Domain.PostgresCluster;
 
@@ -89,13 +90,13 @@ public sealed class PostgresManifestTests
 
     private static (PostgresCluster cluster, PostgresSettings settings) CreateOperatorSubject()
     {
-        var cluster = new PostgresCluster("cluster-1", "analytics", "rg-1", new PostgresClusterSpec(2, 20, "pole-data", 17, PostgresDeploymentMode.Operator));
+        var cluster = new PostgresCluster("cluster-1", TestData.TenantId, "analytics", "rg-1", new PostgresClusterSpec(2, 20, "pole-data", 17, PostgresDeploymentMode.Operator));
         return (cluster, CreateSettings());
     }
 
     private static (PostgresCluster cluster, PostgresSettings settings) CreateStatefulSetSubject()
     {
-        var cluster = new PostgresCluster("cluster-1", "analytics", "rg-1", new PostgresClusterSpec(1, 20, "pole-data", 17, PostgresDeploymentMode.StatefulSet));
+        var cluster = new PostgresCluster("cluster-1", TestData.TenantId, "analytics", "rg-1", new PostgresClusterSpec(1, 20, "pole-data", 17, PostgresDeploymentMode.StatefulSet));
         return (cluster, CreateSettings());
     }
 

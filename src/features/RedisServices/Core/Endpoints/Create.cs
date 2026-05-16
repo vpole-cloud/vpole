@@ -10,6 +10,7 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Kubernetes;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.RedisServices.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Events;
@@ -45,12 +46,15 @@ public sealed class CreateRedisServiceHandler(
     public async Task<Result<CreateRedisServiceResponse>> HandleAsync(CreateRedisServiceRequest request,
         CancellationToken cancellationToken = default)
     {
+        var tenantId = request.TenantId ?? throw new InvalidOperationException("A tenant id is required for this operation.");
+
         var group = await dbContext.ResourceGroups
-            .Find(rg => rg.Id == request.Body.ResourceGroupId)
+            .Find(rg => rg.Id == request.Body.ResourceGroupId && rg.TenantId == tenantId)
             .FirstOrDefaultAsync(cancellationToken);
         if (group is null) return Result.NotFound($"Resource group with ID '{request.Body.ResourceGroupId}' not found.");
 
         var newRedis = RedisFactory.Create(
+            tenantId: tenantId,
             name: request.Body.Name,
             resourceGroupId: request.Body.ResourceGroupId,
             spec: request.Body.Spec.ToDomain(group.KubernetesNamespace),
@@ -93,8 +97,9 @@ public class CreateRedisServiceEventConsumer(
 }
 
 public sealed record CreateRedisServiceRequest(
-    [FromBody] CreateRedisServiceRequestBody Body
-) : IMediatorRequest<CreateRedisServiceResponse>;
+    [FromBody] CreateRedisServiceRequestBody Body,
+    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+) : IMediatorRequest<CreateRedisServiceResponse>, ITenantCreateOperation;
 
 public sealed record CreateRedisServiceRequestBody(
     string Name,

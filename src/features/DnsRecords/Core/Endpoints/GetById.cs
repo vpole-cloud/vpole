@@ -4,7 +4,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
+using Pole.Database;
 using Pole.Feature.DnsRecords.Core.Common;
+using Pole.Feature.DnsRecords.Domain;
+using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -37,8 +40,12 @@ public sealed class GetDomainNameByIdHandler(
         GetDomainNameByIdRequest request,
         CancellationToken cancellationToken = default)
     {
+        var filter = Builders<DnsRecord>.Filter.And(
+            Builders<DnsRecord>.Filter.ForTenant(request.TenantId),
+            Builders<DnsRecord>.Filter.Eq(d => d.Id, request.Id));
+
         var dn = await dbContext.DnsRecords
-            .Find(d => d.Id == request.Id)
+            .Find(filter)
             .FirstOrDefaultAsync(cancellationToken: cancellationToken);
 
         if (dn is null)
@@ -49,5 +56,6 @@ public sealed class GetDomainNameByIdHandler(
 }
 
 public record GetDomainNameByIdRequest(
-    [FromRoute] string Id
-) : IMediatorRequest<DnsRecordDto>;
+    [FromRoute] string Id,
+    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+) : IMediatorRequest<DnsRecordDto>, ITenantReadOperation;

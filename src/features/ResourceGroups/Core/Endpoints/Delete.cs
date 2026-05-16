@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Features.Core.Multitenancy;
+using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Common;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Mediator;
@@ -33,8 +35,9 @@ public static class Delete
 }
 
 public sealed record DeleteResourceGroupRequest(
-    [FromRoute] string Id
-) : IMediatorRequest<DeleteResourceGroupResponse>;
+    [FromRoute] string Id,
+    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+) : IMediatorRequest<DeleteResourceGroupResponse>, ITenantWriteOperation;
 
 public record DeleteResourceGroupResponse(bool Deleted);
 
@@ -45,8 +48,12 @@ public sealed class DeleteResourceGroupHandler(
     public async Task<Result<DeleteResourceGroupResponse>> HandleAsync(
         DeleteResourceGroupRequest request, CancellationToken cancellationToken = default)
     {
+        var filter = Builders<ResourceGroup>.Filter.And(
+            Builders<ResourceGroup>.Filter.ForTenant(request.TenantId),
+            Builders<ResourceGroup>.Filter.Eq(rg => rg.Id, request.Id));
+
         var resourceGroup = await dbContext.ResourceGroups
-            .Find(rg => rg.Id == request.Id)
+            .Find(filter)
             .FirstOrDefaultAsync(cancellationToken: cancellationToken);
 
         if (resourceGroup is null)
@@ -56,7 +63,7 @@ public sealed class DeleteResourceGroupHandler(
         {
             await dbContext.ResourceGroups.DeleteOneAsync(
                 session: sh,
-                filter: rg => rg.Id == request.Id,
+                filter: filter,
                 cancellationToken: ct);
 
             await dbContext.StoreEventAsync(resourceGroup.ToDeleteEvent(), sh, ct);

@@ -17,15 +17,16 @@ public class DeleteDnsRecordFilter<T>(
     {
         await next.Send(context);
 
+        var poleEvent = context.Message as IPoleEvent;
         var carrier = context.Message as ITraceContextCarrier;
         var traceContext = TraceContext.Create(
-            GetHeaderValue(context.Headers, TraceHeaders.TraceId) ?? carrier?.TraceId ?? TraceContext.Current?.TraceId,
-            GetHeaderValue(context.Headers, TraceHeaders.CorrelationId) ?? carrier?.CorrelationId ?? TraceContext.Current?.CorrelationId);
+            GetHeaderValue(context.Headers, TraceHeaders.TraceId) ?? poleEvent?.EventCore.TraceId ?? carrier?.TraceId ?? TraceContext.Current?.TraceId,
+            GetHeaderValue(context.Headers, TraceHeaders.CorrelationId) ?? poleEvent?.EventCore.CorrelationId ?? carrier?.CorrelationId ?? TraceContext.Current?.CorrelationId);
 
         using var contextScope = TraceContext.Push(traceContext);
 
         await context.Publish(
-            new DeleteDnsRecordEvent(context.Message.DnsRecordId));
+            new DeleteDnsRecordEvent(context.Message.DnsRecordId, context.Message.EventCore));
     }
 
     public void Probe(ProbeContext context)

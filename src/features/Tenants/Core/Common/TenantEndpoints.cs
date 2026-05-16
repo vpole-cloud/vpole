@@ -1,0 +1,24 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Pole.ASP.Helpers;
+using Pole.Features.Tenants.Endpoints;
+
+namespace Pole.Features.Tenants.Common;
+
+public static class TenantEndpoints
+{
+    public const string Route = "/tenants";
+
+    public static IEndpointRouteBuilder MapTenantEndpoints(this IEndpointRouteBuilder app)
+    {
+        app.MapGroup(Route)
+            .WithTags("Tenants")
+            .RequireAuthorization()
+            .MapGetTenantsEndpoint()
+            .MapCreateTenantEndpoint()
+            .MapTenantMemberEndpoints();
+
+        return app;
+    }
+}

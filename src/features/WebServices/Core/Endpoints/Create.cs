@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Features.Core.Multitenancy;
 using Pole.Feature.DnsRecords.Domain;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Shared.Models;
@@ -47,8 +48,10 @@ public sealed class CreateWebServiceHandler(
     public async Task<Result<CreateWebServiceResponse>> HandleAsync(CreateWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
+        var tenantId = request.TenantId ?? throw new InvalidOperationException("A tenant id is required for this operation.");
+
         var group = await dbContext.ResourceGroups
-            .Find(rg => rg.Id == request.Body.ResourceGroupId)
+            .Find(rg => rg.Id == request.Body.ResourceGroupId && rg.TenantId == tenantId)
             .FirstOrDefaultAsync(cancellationToken);
         if (group is null) return Result.NotFound($"Resource group with ID '{request.Body.ResourceGroupId}' not found.");
         
@@ -58,7 +61,7 @@ public sealed class CreateWebServiceHandler(
         if (dnsRecord is not null)
             return Result.Conflict($"Domain name '{dnsRecord.Domain}' is already in use.");
 
-        var (newWebService, newDnsRecord) = BuildWebServiceWithDnsRecord(request, group);
+        var (newWebService, newDnsRecord) = BuildWebServiceWithDnsRecord(request, group, tenantId);
         
         return await dbContext.RunInTransactionAsync<CreateWebServiceResponse>(async (sh, ct) =>
         {
@@ -73,7 +76,7 @@ public sealed class CreateWebServiceHandler(
     }
 
     
-    private (WebService, DnsRecord) BuildWebServiceWithDnsRecord(CreateWebServiceRequest request, ResourceGroup group)
+    private (WebService, DnsRecord) BuildWebServiceWithDnsRecord(CreateWebServiceRequest request, ResourceGroup group, string tenantId)
     {
         var createWebServiceOptions = WebServiceFactory.DefaultOptions with
         {
@@ -81,6 +84,7 @@ public sealed class CreateWebServiceHandler(
         };
         var dnsRecord = DnsRecordFactory.Create(
             name: request.Body.DomainName,
+            tenantId: tenantId,
             resourceType: ResourceType.WebService,
             resourceId: createWebServiceOptions.Id,
             resourceName: request.Body.Name,
@@ -90,6 +94,7 @@ public sealed class CreateWebServiceHandler(
             
         var newWebService = WebServiceFactory.Create(
             name: request.Body.Name,
+            tenantId: tenantId,
             resourceGroupId: request.Body.ResourceGroupId,
             spec: request.Body.Spec.ToDomain(group.KubernetesNamespace),
             dnsRecord: new DnsRecordShortInfo(Id: dnsRecord.Id, Domain: dnsRecord.Domain),
@@ -113,8 +118,9 @@ public class CreateWebServiceEventConsumer(
 }
 
 public sealed record CreateWebServiceRequest(
-    [FromBody] CreateWebServiceRequestBody Body
-) : IMediatorRequest<CreateWebServiceResponse>;
+    [FromBody] CreateWebServiceRequestBody Body,
+    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+) : IMediatorRequest<CreateWebServiceResponse>, ITenantCreateOperation;
 
 public sealed record CreateWebServiceRequestBody(
     string Name,

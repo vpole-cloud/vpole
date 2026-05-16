@@ -1,3 +1,4 @@
+using Pole.Features.Events.Abstractions;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 
@@ -16,7 +17,10 @@ internal static class WebServicesEventExtensions
                 webService.DnsRecord,
                 webService.Status,
                 webService.Tags
-            );
+            )
+            {
+                EventCore = EventCore.Create(webService.TenantId)
+            };
 
         internal DeleteEvent ToDeleteEvent()
             => new DeleteEvent(
@@ -25,7 +29,10 @@ internal static class WebServicesEventExtensions
                 webService.ResourceGroupId,
                 webService.DnsRecord.Id,
                 webService.Spec,
-                webService.Tags);
+                webService.Tags)
+            {
+                EventCore = EventCore.Create(webService.TenantId)
+            };
     }
 
     extension(CreateEvent createEvent)
@@ -33,6 +40,7 @@ internal static class WebServicesEventExtensions
         internal WebService ToWebService()
             => WebServiceFactory.Create(
                 createEvent.Name,
+                createEvent.EventCore.TenantId,
                 createEvent.ResourceGroupId,
                 createEvent.Spec,
                 createEvent.DnsRecord,

@@ -41,10 +41,11 @@ public partial class OutboxProcessorJob(
                 var @event = DeserializeEvent(message.EventType, message.PayloadJson);
 
                 if (@event == null) continue;
+                var poleEvent = @event as IPoleEvent;
                 var carrier = @event as ITraceContextCarrier;
                 var traceContext = TraceContext.Create(
-                    message.TraceId ?? carrier?.TraceId,
-                    message.CorrelationId ?? carrier?.CorrelationId);
+                    message.TraceId ?? poleEvent?.EventCore.TraceId ?? carrier?.TraceId,
+                    message.CorrelationId ?? poleEvent?.EventCore.CorrelationId ?? carrier?.CorrelationId);
 
                 using var contextScope = TraceContext.Push(traceContext);
                 using var loggerScope = logger.BeginScope(new Dictionary<string, object>

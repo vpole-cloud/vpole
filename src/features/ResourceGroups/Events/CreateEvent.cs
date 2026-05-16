@@ -13,4 +13,7 @@ public record CreateEvent(
     string KubernetesNamespace,
     ImmutableList<ShortResourceInfo> Resources,
     ImmutableHashSet<string> Tags
-) : BaseEvent;
+) : IPoleEvent
+{
+    public EventCore EventCore { get; init; } = EventCore.Create();
+}

@@ -9,6 +9,7 @@ public record ResourceGroup(
     [property: BsonId]
     [property: BsonRepresentation(BsonType.ObjectId)]
     string Id,
+    string TenantId,
     string Name,
     string Description,
     string KubernetesNamespace,
@@ -37,9 +38,10 @@ public static class ResourceGroupFactory
             Tags: ImmutableHashSet<string>.Empty
         );
     
-    public static ResourceGroup Create(string name, string description, string kubernetesNamespace, ResourceGroupCreateOptions options) =>
+    public static ResourceGroup Create(string tenantId, string name, string description, string kubernetesNamespace, ResourceGroupCreateOptions options) =>
         new(
             Id: options.Id,
+            TenantId: tenantId,
             Name: name,
             Description: description,
             KubernetesNamespace: kubernetesNamespace,

@@ -1,3 +1,7 @@
+using System.Collections.Immutable;
+using Pole.Features.Core.Multitenancy;
+using Pole.Features.Tenants.Domain;
+using Pole.Features.Users.Domain;
 using Xunit;
 
 namespace Pole.Tests.Integration.Infrastructure;
@@ -18,6 +22,7 @@ public abstract class ApiIntegrationTestBase : IAsyncLifetime
     public virtual async Task InitializeAsync()
     {
         await Fixture.ResetDatabaseAsync();
+        await SeedDefaultTenantAsync();
         _application = await TestApiApplication.StartAsync(Fixture);
     }
 
@@ -27,5 +32,27 @@ public abstract class ApiIntegrationTestBase : IAsyncLifetime
         {
             await _application.DisposeAsync();
         }
+    }
+
+    private async Task SeedDefaultTenantAsync()
+    {
+        var tenant = new Tenant(
+            TestData.TenantId,
+            "Test tenant",
+            DateTime.UtcNow,
+            ImmutableList.Create(TenantFactory.CreateMember(
+                TestData.TenantId,
+                TestData.UserId,
+                TestData.UserEmail,
+                TenantRole.Owner)));
+
+        await Fixture.DbContext.Tenants.InsertOneAsync(tenant);
+        await Fixture.DbContext.Users.InsertOneAsync(new PoleUser(
+            TestData.UserId,
+            TestData.UserEmail,
+            null,
+            null,
+            TestData.TenantId,
+            DateTime.UtcNow));
     }
 }

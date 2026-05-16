@@ -7,6 +7,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.Request;
 using Pole.Features.WebServices.Common;
 using Pole.Features.WebServices.Domain;
@@ -45,7 +46,7 @@ public sealed class GetWebServicesHandler(
         GetWebServicesRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<WebService>.Filter.Empty;
+        var filter = Builders<WebService>.Filter.ForTenant(request.TenantId);
         
         if (request.ResourceGroupId is not null)
         {
@@ -73,8 +74,9 @@ public sealed class GetWebServicesHandler(
     }
 }
 
-public record GetWebServicesRequest : PaginatedRequest<WebServiceDto>
+public record GetWebServicesRequest : PaginatedRequest<WebServiceDto>, ITenantReadOperation
 {
+    [FromHeader(Name = TenantHeaders.TenantId)] public string? TenantId { get; init; }
     [FromQuery] public string? ResourceGroupId { get; init; }
     [FromQuery] public string? Search { get; init; }
 }

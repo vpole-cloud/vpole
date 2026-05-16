@@ -9,6 +9,7 @@ open Microsoft.AspNetCore.Routing
 open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
+open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Common
 open Pole.Features.Postgres.Kubernetes
@@ -25,8 +26,12 @@ type UpdatePostgresClusterPasswordRequest =
     { [<FromRoute>]
       ClusterId : string
       [<FromBody>]
-      Body : UpdatePostgresClusterPasswordRequestBody }
+      Body : UpdatePostgresClusterPasswordRequestBody
+      [<FromHeader(Name = TenantHeaders.TenantId)>]
+      TenantId : string }
     interface IMediatorRequest<UpdatePostgresClusterPasswordResponse>
+    interface ITenantWriteOperation with
+        member this.TenantId = this.TenantId
 
 type UpdatePostgresClusterPasswordHandler(
     dbContext : IPostgresDbContext,
@@ -34,9 +39,14 @@ type UpdatePostgresClusterPasswordHandler(
     interface IMediatorHandler<UpdatePostgresClusterPasswordRequest, UpdatePostgresClusterPasswordResponse> with
         member _.HandleAsync(request, cancellationToken) =
             task {
+                let filter =
+                    Builders<PostgresCluster>.Filter.And(
+                        Builders<PostgresCluster>.Filter.ForTenant(request.TenantId),
+                        Builders<PostgresCluster>.Filter.Eq(_.Id, request.ClusterId))
+
                 let! postgresCluster =
                     dbContext.Postgres
-                        .Find(Builders<PostgresCluster>.Filter.Eq("Id", request.ClusterId))
+                        .Find(filter)
                         .FirstOrNoneAsync(cancellationToken)
 
                 match postgresCluster with

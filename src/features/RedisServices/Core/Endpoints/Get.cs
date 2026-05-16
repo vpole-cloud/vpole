@@ -6,6 +6,7 @@ using MongoDB.Driver;
 using MongoDB.Driver.Linq;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.RedisServices.Common;
 using Pole.Features.Request;
 using Pole.Mediator;
@@ -43,6 +44,8 @@ public sealed class GetRedisServicesHandler(
         CancellationToken cancellationToken = default)
     {
         var query = dbContext.RedisServices.AsQueryable();
+        if (request.TenantId is not null)
+            query = query.Where(rs => rs.TenantId == request.TenantId);
         if (!string.IsNullOrWhiteSpace(request.Search))
             query = query.Where(rs => rs.Name.Contains(request.Search, StringComparison.OrdinalIgnoreCase));
         if (!string.IsNullOrWhiteSpace(request.ResourceGroupId))
@@ -62,8 +65,9 @@ public sealed class GetRedisServicesHandler(
     }
 }
 
-public record GetRedisServicesRequest : PaginatedRequest<RedisDto>
+public record GetRedisServicesRequest : PaginatedRequest<RedisDto>, ITenantReadOperation
 {
+    [FromHeader(Name = TenantHeaders.TenantId)] public string? TenantId { get; init; }
     [FromQuery] public string? Search { get; init; }
     [FromQuery] public string? ResourceGroupId { get; init; }
 }

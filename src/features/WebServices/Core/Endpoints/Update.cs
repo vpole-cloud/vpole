@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.WebServices.Common;
 using Pole.Features.WebServices.Domain;
@@ -40,8 +41,9 @@ public static class Update
 
 public sealed record UpdateWebServiceRequest(
     [FromRoute] string Id,
-    [FromBody] UpdateWebServiceRequestBody Body
-) : IMediatorRequest<UpdateWebServiceResponse>;
+    [FromBody] UpdateWebServiceRequestBody Body,
+    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+) : IMediatorRequest<UpdateWebServiceResponse>, ITenantWriteOperation;
 
 public sealed record UpdateWebServiceRequestBody(
     string ResourceGroupId,
@@ -59,8 +61,12 @@ public sealed class UpdateWebServiceHandler(
         UpdateWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
+        var filter = Builders<WebService>.Filter.And(
+            Builders<WebService>.Filter.ForTenant(request.TenantId),
+            Builders<WebService>.Filter.Eq(ws => ws.Id, request.Id));
+
         var webService = await dbContext.WebServices
-            .Find(ws => ws.Id == request.Id)
+            .Find(filter)
             .FirstOrDefaultAsync(cancellationToken: cancellationToken);
 
         if (webService is null)
@@ -73,7 +79,7 @@ public sealed class UpdateWebServiceHandler(
             {
                 await dbContext.WebServices.UpdateOneAsync(
                     session: sh,
-                    ws => ws.Id == request.Id,
+                    filter,
                     GetUpdateDefinition(changes),
                     cancellationToken: ct);
             }
@@ -84,6 +90,9 @@ public sealed class UpdateWebServiceHandler(
                     webService.ResourceGroupId,
                     webService.DnsRecord,
                     changes)
+                {
+                    EventCore = EventCore.Create(webService.TenantId)
+                }
                 , sh, ct);
             
             return new UpdateWebServiceResponse(
@@ -122,7 +131,7 @@ public class UpdateWebServiceEventConsumer(
     {
         var ct = context.CancellationToken;
         var webApp = await dbContext.WebServices
-            .Find(wa => wa.Id == context.Message.WebServiceId)
+            .Find(wa => wa.Id == context.Message.WebServiceId && wa.TenantId == context.Message.EventCore.TenantId)
             .FirstOrDefaultAsync(ct);
         if (webApp is null) return;
 

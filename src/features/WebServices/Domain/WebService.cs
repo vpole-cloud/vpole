@@ -9,6 +9,7 @@ public record WebService(
     [property: BsonId]
     [property: BsonRepresentation(BsonType.ObjectId)]
     string Id,
+    string TenantId,
     string Name,
     string ResourceGroupId,
     WebServiceSpec Spec,
@@ -86,12 +87,14 @@ public static class WebServiceFactory
     
     public static WebService Create(
         string name,
+        string tenantId,
         string resourceGroupId,
         WebServiceSpec spec,
         DnsRecordShortInfo dnsRecord,
         CreateWebServiceOptions options) =>
         new(
             options.Id,
+            TenantId: tenantId,
             Name: name,
             ResourceGroupId: resourceGroupId,
             Spec: spec,

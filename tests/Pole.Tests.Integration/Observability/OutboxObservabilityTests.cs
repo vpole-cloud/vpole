@@ -30,8 +30,9 @@ public sealed class OutboxObservabilityTests(MongoReplicaSetFixture fixture)
         Assert.Equal(CorrelationId, outboxMessage.CorrelationId);
 
         using var payload = JsonDocument.Parse(outboxMessage.PayloadJson);
-        Assert.Equal(TraceId, payload.RootElement.GetProperty("traceId").GetString());
-        Assert.Equal(CorrelationId, payload.RootElement.GetProperty("correlationId").GetString());
+        var eventCore = payload.RootElement.GetProperty("eventCore");
+        Assert.Equal(TraceId, eventCore.GetProperty("traceId").GetString());
+        Assert.Equal(CorrelationId, eventCore.GetProperty("correlationId").GetString());
     }
 
     [Fact]
@@ -53,7 +54,8 @@ public sealed class OutboxObservabilityTests(MongoReplicaSetFixture fixture)
         Assert.Equal(CorrelationId, outboxMessage.CorrelationId);
 
         using var payload = JsonDocument.Parse(outboxMessage.PayloadJson);
-        Assert.Equal(TraceId, payload.RootElement.GetProperty("traceId").GetString());
-        Assert.Equal(CorrelationId, payload.RootElement.GetProperty("correlationId").GetString());
+        var eventCore = payload.RootElement.GetProperty("eventCore");
+        Assert.Equal(TraceId, eventCore.GetProperty("traceId").GetString());
+        Assert.Equal(CorrelationId, eventCore.GetProperty("correlationId").GetString());
     }
 }

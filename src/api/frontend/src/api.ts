@@ -4,9 +4,10 @@ import type {
   ResourceGroupInput,
   WebServiceInput,
   WebService,
+  Tenant,
 } from './types'
 
-const buildHeaders = (token?: string) => {
+const buildHeaders = (token?: string, tenantId?: string) => {
   const headers: Record<string, string> = {
     Accept: 'application/json',
   }
@@ -15,7 +16,22 @@ const buildHeaders = (token?: string) => {
     headers.Authorization = `Bearer ${token}`
   }
 
+  if (tenantId) {
+    headers['X-Pole-Tenant-ID'] = tenantId
+  }
+
   return headers
+}
+
+export async function fetchTenants(
+  apiBaseUrl: string,
+  token?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<Tenant[]>(`${apiBaseUrl}/api/v1/tenants`, {
+    headers: buildHeaders(token),
+    signal,
+  })
 }
 
 async function fetchJson<T>(
@@ -48,12 +64,13 @@ async function sendJson<T>(
 export async function fetchResourceGroups(
   apiBaseUrl: string,
   token?: string,
+  tenantId?: string,
   signal?: AbortSignal,
 ) {
   return fetchJson<PaginatedResponse<ResourceGroup>>(
     `${apiBaseUrl}/api/v1/resource-groups?pageNumber=1&pageSize=6`,
     {
-      headers: buildHeaders(token),
+      headers: buildHeaders(token, tenantId),
       signal,
     },
   )
@@ -62,12 +79,13 @@ export async function fetchResourceGroups(
 export async function fetchWebServices(
   apiBaseUrl: string,
   token?: string,
+  tenantId?: string,
   signal?: AbortSignal,
 ) {
   return fetchJson<PaginatedResponse<WebService>>(
     `${apiBaseUrl}/api/v1/web-services?pageNumber=1&pageSize=8`,
     {
-      headers: buildHeaders(token),
+      headers: buildHeaders(token, tenantId),
       signal,
     },
   )
@@ -95,10 +113,11 @@ export async function createResourceGroup(
   apiBaseUrl: string,
   input: ResourceGroupInput,
   token?: string,
+  tenantId?: string,
 ) {
   return sendJson<ResourceGroup>(`${apiBaseUrl}/api/v1/resource-groups`, {
     method: 'POST',
-    headers: buildHeaders(token),
+    headers: buildHeaders(token, tenantId),
     body: JSON.stringify(input),
   })
 }
@@ -108,10 +127,11 @@ export async function updateResourceGroup(
   id: string,
   input: ResourceGroupInput,
   token?: string,
+  tenantId?: string,
 ) {
   return sendJson<ResourceGroup>(`${apiBaseUrl}/api/v1/resource-groups/${id}`, {
     method: 'PUT',
-    headers: buildHeaders(token),
+    headers: buildHeaders(token, tenantId),
     body: JSON.stringify(input),
   })
 }
@@ -120,10 +140,11 @@ export async function deleteResourceGroup(
   apiBaseUrl: string,
   id: string,
   token?: string,
+  tenantId?: string,
 ) {
   const response = await fetch(`${apiBaseUrl}/api/v1/resource-groups/${id}`, {
     method: 'DELETE',
-    headers: buildHeaders(token),
+    headers: buildHeaders(token, tenantId),
   })
 
   if (!response.ok) {
@@ -198,10 +219,11 @@ export async function createWebService(
   apiBaseUrl: string,
   input: WebServiceInput,
   token?: string,
+  tenantId?: string,
 ) {
   return sendJson<{ webServiceId: string }>(`${apiBaseUrl}/api/v1/web-services`, {
     method: 'POST',
-    headers: buildHeaders(token),
+    headers: buildHeaders(token, tenantId),
     body: JSON.stringify({
       name: input.name,
       resourceGroupId: input.resourceGroupId,
@@ -216,10 +238,11 @@ export async function updateWebService(
   id: string,
   input: WebServiceInput,
   token?: string,
+  tenantId?: string,
 ) {
   return sendJson<{ id: string }>(`${apiBaseUrl}/api/v1/web-services/${id}`, {
     method: 'PUT',
-    headers: buildHeaders(token),
+    headers: buildHeaders(token, tenantId),
     body: JSON.stringify({
       resourceGroupId: input.resourceGroupId,
       spec: buildWebServiceSpec(input),
@@ -231,10 +254,11 @@ export async function deleteWebService(
   apiBaseUrl: string,
   id: string,
   token?: string,
+  tenantId?: string,
 ) {
   const response = await fetch(`${apiBaseUrl}/api/v1/web-services/${id}`, {
     method: 'DELETE',
-    headers: buildHeaders(token),
+    headers: buildHeaders(token, tenantId),
   })
 
   if (!response.ok) {

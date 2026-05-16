@@ -7,6 +7,15 @@ export interface AuthViewState {
   userName?: string
 }
 
+export type TenantRole = 'Owner' | 'Admin' | 'Member' | 'Viewer'
+
+export interface Tenant {
+  id: string
+  name: string
+  role: TenantRole
+  isDefault: boolean
+}
+
 export interface ShortResourceInfo {
   id: string
   name: string

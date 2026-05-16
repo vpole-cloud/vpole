@@ -10,6 +10,8 @@ public record OutboxMessage
     public string Id { get; init; } = ObjectId.GenerateNewId().ToString();
     
     public required string EventType { get; init; }
+
+    public string? TenantId { get; init; }
     
     public required string PayloadJson { get; init; }
 

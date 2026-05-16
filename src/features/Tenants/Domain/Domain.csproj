@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.Tenants.Domain</AssemblyName>
+        <RootNamespace>Pole.Features.Tenants.Domain</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
+      <ProjectReference Include="..\..\..\shared\Features\Features.csproj" />
+    </ItemGroup>
+
+</Project>

@@ -1,3 +1,4 @@
+using Pole.Features.Events.Abstractions;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Events;
 
@@ -14,7 +15,10 @@ internal static class RedisServicesEventExtensions
                 redis.ResourceGroupId,
                 redis.Spec,
                 redis.Status,
-                redis.Tags);
+                redis.Tags)
+            {
+                EventCore = EventCore.Create(redis.TenantId)
+            };
 
         internal DeleteEvent ToDeleteEvent()
             => new(
@@ -22,13 +26,17 @@ internal static class RedisServicesEventExtensions
                 redis.Name,
                 redis.ResourceGroupId,
                 redis.Spec,
-                redis.Tags);
+                redis.Tags)
+            {
+                EventCore = EventCore.Create(redis.TenantId)
+            };
     }
 
     extension(CreateEvent createEvent)
     {
         internal Redis ToRedis()
             => RedisFactory.Create(
+                createEvent.EventCore.TenantId,
                 createEvent.Name,
                 createEvent.ResourceGroupId,
                 createEvent.Spec,

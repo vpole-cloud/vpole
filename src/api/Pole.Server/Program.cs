@@ -7,6 +7,9 @@ using Pole.Features.RedisServices.Common;
 using Pole.Features.ResourceGroups.Common;
 using Pole.Features.Search.Common;
 using Pole.Features.Search.Services;
+using Pole.Features.Tenants.Common;
+using Pole.Features.Tenants.Middleware;
+using Pole.Features.Users.Common;
 using Pole.Features.WebServices.Common;
 using Pole.Observability;
 using Pole.Server.Extensions;
@@ -22,6 +25,8 @@ Assembly[] assemblies = [
     typeof(ResourceGroupEndpoints).Assembly,
     typeof(RedisServiceEndpoints).Assembly,
     typeof(SearchEndpoints).Assembly,
+    typeof(TenantEndpoints).Assembly,
+    typeof(UserEndpoints).Assembly,
 ];
 Assembly[] outboxEventAssemblies = [
     typeof(Pole.Features.WebServices.Events.CreateEvent).Assembly,
@@ -40,6 +45,7 @@ builder.Services.AddKubernetes(configuration)
     .AddDatabase()
     .AddMigrations(assemblies)
     .AddSearchFeature()
+    .AddUsersFeature(configuration)
     .AddSettings(configuration)
     .AddHangfireWithMongo(configuration)
     .AddValidatorsFromAssemblies(assemblies)
@@ -69,6 +75,7 @@ if (!app.Environment.IsDevelopment())
 app.UseCors("frontend-dev");
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<TenantContextMiddleware>();
 
 app.UseHangfire();
 

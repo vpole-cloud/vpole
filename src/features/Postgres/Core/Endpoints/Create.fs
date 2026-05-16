@@ -10,6 +10,7 @@ open Microsoft.AspNetCore.Routing
 open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
+open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Common
 open Pole.Features.Postgres.Events
@@ -27,8 +28,12 @@ type CreatePostgresClusterRequestBody =
       Password : string }
 
 type CreatePostgresClusterRequest =
-    { [<FromBody>] Body : CreatePostgresClusterRequestBody }
+    { [<FromBody>] Body : CreatePostgresClusterRequestBody
+      [<FromHeader(Name = TenantHeaders.TenantId)>]
+      TenantId : string }
         interface IMediatorRequest<PostgresClusterDto>
+        interface ITenantCreateOperation with
+            member this.TenantId = this.TenantId
 
 type CreatePostgresClusterHandler(
     dbContext : IPostgresDbContext,
@@ -54,9 +59,10 @@ type CreatePostgresClusterHandler(
                 if validationErrors.Count > 0 then
                     return Result.ValidationFailure(validationErrors) |> ResultF.ofFailure
                 else
+                    let tenantId = request.TenantId
                     let! resourceGroup =
                         dbContext.ResourceGroups
-                            .Find(fun c -> c.Id = request.Body.GroupId)
+                            .Find(fun c -> c.Id = request.Body.GroupId && c.TenantId = tenantId)
                             .FirstOrNoneAsync(cancellationToken)
 
                     match resourceGroup with
@@ -66,6 +72,7 @@ type CreatePostgresClusterHandler(
                     | Some group ->
                         let cluster =
                             PostgresCluster.create
+                                tenantId
                                 request.Body.Name
                                 request.Body.GroupId
                                 group.KubernetesNamespace

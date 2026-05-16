@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Common;
 using Pole.Features.ResourceGroups.Domain;
@@ -36,8 +37,9 @@ public static class Update
 
 public sealed record UpdateResourceGroupRequest(
     [FromRoute] string Id,
-    [FromBody] UpdateResourceGroupRequestBody Body
-) : IMediatorRequest<ResourceGroupDto>;
+    [FromBody] UpdateResourceGroupRequestBody Body,
+    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+) : IMediatorRequest<ResourceGroupDto>, ITenantWriteOperation;
 
 public sealed record UpdateResourceGroupRequestBody(
     string Description,
@@ -52,8 +54,12 @@ public sealed class UpdateResourceGroupHandler(
         UpdateResourceGroupRequest request,
         CancellationToken cancellationToken = default)
     {
+        var filter = Builders<ResourceGroup>.Filter.And(
+            Builders<ResourceGroup>.Filter.ForTenant(request.TenantId),
+            Builders<ResourceGroup>.Filter.Eq(rg => rg.Id, request.Id));
+
         var resourceGroup = await dbContext.ResourceGroups
-            .Find(rg => rg.Id == request.Id)
+            .Find(filter)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (resourceGroup is null)
@@ -66,7 +72,7 @@ public sealed class UpdateResourceGroupHandler(
             {
                 await dbContext.ResourceGroups.UpdateOneAsync(
                     session: sh,
-                    filter: rg => rg.Id == request.Id,
+                    filter: filter,
                     update: GetUpdateDefinition(changes),
                     cancellationToken: ct);
             }
@@ -77,7 +83,10 @@ public sealed class UpdateResourceGroupHandler(
                 request.Body.Description,
                 resourceGroup.KubernetesNamespace,
                 resourceGroup.Resources,
-                changes), sh, ct);
+                changes)
+            {
+                EventCore = EventCore.Create(resourceGroup.TenantId)
+            }, sh, ct);
 
             return new ResourceGroupDto(
                 Id: resourceGroup.Id,

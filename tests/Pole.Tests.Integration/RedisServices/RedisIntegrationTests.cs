@@ -16,7 +16,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id));
 
-        Assert.True(result.TryGetValue(out var response, out var error));
+        result.TryGetValue(out var response, out var error);
         Assert.Null(error);
         Assert.NotNull(response);
 
@@ -46,7 +46,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.True(createResult.TryGetValue(out var created, out _));
 
         var updateRequest = new UpdateRedisServiceRequest(
-            Id: created!.RedisId,
+            Id: created.RedisId,
             Body: new UpdateRedisServiceRequestBody(
                 ResourceGroupId: resourceGroup.Id,
                 Spec: new(

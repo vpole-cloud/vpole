@@ -9,6 +9,7 @@ open Microsoft.AspNetCore.Routing
 open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
+open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Common
 open Pole.Features.Postgres.Events
@@ -27,14 +28,21 @@ type UpdatePostgresClusterRequest =
     { [<FromRoute>]
       ClusterId : string
       [<FromBody>]
-      Body : UpdatePostgresClusterRequestBody }
+      Body : UpdatePostgresClusterRequestBody
+      [<FromHeader(Name = TenantHeaders.TenantId)>]
+      TenantId : string }
     interface IMediatorRequest<UpdatePostgresClusterResponse>
+    interface ITenantWriteOperation with
+        member this.TenantId = this.TenantId
 
 type UpdatePostgresClusterHandler(dbContext : IPostgresDbContext) =
     interface IMediatorHandler<UpdatePostgresClusterRequest, UpdatePostgresClusterResponse> with
         member _.HandleAsync(request, cancellationToken) =
             task {
-                let filter = Builders<PostgresCluster>.Filter.Eq("Id", request.ClusterId)
+                let filter =
+                    Builders<PostgresCluster>.Filter.And(
+                        Builders<PostgresCluster>.Filter.ForTenant(request.TenantId),
+                        Builders<PostgresCluster>.Filter.Eq(_.Id, request.ClusterId))
 
                 let! postgresCluster =
                     dbContext.Postgres
