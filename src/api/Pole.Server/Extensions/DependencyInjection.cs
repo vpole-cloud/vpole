@@ -22,6 +22,7 @@ using Pole.Features.ResourceGroups.Common;
 using Pole.Features.ResourceGroups.Services;
 using Pole.Features.Search.Common;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Tenants;
 using Pole.Features.Tenants.Common;
 using Pole.Features.Users.Common;
 using Pole.Features.Users.Identity;
@@ -42,6 +43,7 @@ public static class DependencyInjection
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(TenantAuthorizationBehavior<,>));
+            services.AddScoped(typeof(IPipelineBehavior<,>), typeof(TenantMemberAuthorizationBehavior<,>));
 
             foreach (var assembly in assemblies)
             {

@@ -22,12 +22,17 @@
 * **Keycloak**
 * OIDC / JWT
 * Invite-only user model
+* Pole-managed tenant and membership records for multitenant authorization
 
 ### Frontend
 
 * Vite-based SPA
 * Talks only to Pole API
 * Clean separation from auth provider
+
+### Multitenancy
+
+Pole uses tenant-scoped shared Mongo collections. Resource APIs select the active tenant with `X-Pole-Tenant-ID`, and tenant-owned documents carry `TenantId`. See [multitenancy](multitenancy.md) for the full model, request flow, and implementation rules.
 
 ### Observability
 

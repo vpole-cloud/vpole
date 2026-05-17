@@ -16,6 +16,26 @@ public interface ITenantWriteOperation : ITenantOperation;
 
 public interface ITenantCreateOperation : ITenantWriteOperation;
 
+public interface ITenantMemberOperation
+{
+    string TenantId { get; }
+}
+
+public interface ITenantMemberReadOperation : ITenantMemberOperation;
+
+public interface ITenantMemberManageOperation : ITenantMemberOperation;
+
+public interface ITenantMemberRoleOperation : ITenantMemberManageOperation
+{
+    string? MemberId { get; }
+    TenantRole Role { get; }
+}
+
+public interface ITenantMemberTargetOperation : ITenantMemberManageOperation
+{
+    string MemberId { get; }
+}
+
 public sealed record TenantOperationScope(
     string? TenantId);
 

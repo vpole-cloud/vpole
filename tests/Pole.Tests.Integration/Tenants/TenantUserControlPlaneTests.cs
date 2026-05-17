@@ -9,11 +9,14 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Tenants;
+using Pole.Features.Tenants.Common;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.Tenants.Endpoints;
 using Pole.Features.Users.Domain;
 using Pole.Features.Users.Endpoints;
 using Pole.Features.Users.Identity;
+using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -143,6 +146,153 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         Assert.Equal(["keycloak-user-1"], identityAdmin.DeletedUserIds);
         Assert.Equal(1, await fixture.DbContext.Users.CountDocumentsAsync(Builders<PoleUser>.Filter.Empty));
         Assert.Equal(0, await fixture.DbContext.Tenants.CountDocumentsAsync(Builders<Tenant>.Filter.Empty));
+    }
+
+    [Fact]
+    public async Task TenantMemberAuthorization_MemberCannotAddMembers()
+    {
+        var tenant = await InsertTenantAsync(TenantRole.Member);
+        var request = new AddTenantMemberRequest(
+            tenant.Id,
+            new AddTenantMemberRequestBody("user-2", "other@example.com", TenantRole.Member),
+            "user-1",
+            []);
+        var behavior = CreateTenantMemberAuthorizationBehavior<AddTenantMemberRequest, TenantMemberDto>("user-1");
+        var nextCalled = false;
+
+        var result = await behavior.Handle(request, () =>
+        {
+            nextCalled = true;
+            return Task.FromResult<Result<TenantMemberDto>>(
+                new TenantMemberDto("member-2", tenant.Id, "user-2", "other@example.com", TenantRole.Member));
+        }, CancellationToken.None);
+
+        Assert.False(result.TryGetValue(out _, out var failure));
+        Assert.IsType<ForbiddenFailure>(failure);
+        Assert.False(nextCalled);
+    }
+
+    [Fact]
+    public async Task TenantMemberAuthorization_AdminCanAddMembers()
+    {
+        var tenant = await InsertTenantAsync(TenantRole.Admin);
+        var request = new AddTenantMemberRequest(
+            tenant.Id,
+            new AddTenantMemberRequestBody("user-2", "other@example.com", TenantRole.Member),
+            "user-1",
+            []);
+        var behavior = CreateTenantMemberAuthorizationBehavior<AddTenantMemberRequest, TenantMemberDto>("user-1");
+        var nextCalled = false;
+
+        var result = await behavior.Handle(request, () =>
+        {
+            nextCalled = true;
+            return Task.FromResult<Result<TenantMemberDto>>(
+                new TenantMemberDto("member-2", tenant.Id, "user-2", "other@example.com", TenantRole.Member));
+        }, CancellationToken.None);
+
+        Assert.True(result.TryGetValue(out var member, out var failure));
+        Assert.Null(failure);
+        Assert.NotNull(member);
+        Assert.True(nextCalled);
+    }
+
+    [Fact]
+    public async Task TenantMemberAuthorization_AdminCannotGrantOwner()
+    {
+        var tenant = await InsertTenantAsync(TenantRole.Admin);
+        var request = new AddTenantMemberRequest(
+            tenant.Id,
+            new AddTenantMemberRequestBody("user-2", "other@example.com", TenantRole.Owner),
+            "user-1",
+            []);
+        var behavior = CreateTenantMemberAuthorizationBehavior<AddTenantMemberRequest, TenantMemberDto>("user-1");
+
+        var result = await behavior.Handle(request, () =>
+            Task.FromResult<Result<TenantMemberDto>>(
+                new TenantMemberDto("member-2", tenant.Id, "user-2", "other@example.com", TenantRole.Owner)),
+            CancellationToken.None);
+
+        Assert.False(result.TryGetValue(out _, out var failure));
+        Assert.IsType<ForbiddenFailure>(failure);
+    }
+
+    [Fact]
+    public async Task UpdateTenantMember_DoesNotDemoteLastOwner()
+    {
+        var tenant = await InsertTenantAsync(TenantRole.Owner);
+        var owner = tenant.Members.Single();
+        var handler = new UpdateTenantMemberHandler(fixture.DbContext);
+
+        var result = await handler.HandleAsync(new UpdateTenantMemberRequest(
+            tenant.Id,
+            owner.Id,
+            new UpdateTenantMemberRequestBody(TenantRole.Admin),
+            "user-1",
+            []));
+
+        Assert.False(result.TryGetValue(out _, out var failure));
+        Assert.IsType<ConflictFailure>(failure);
+    }
+
+    [Fact]
+    public async Task DeleteTenantMember_DoesNotRemoveLastOwner()
+    {
+        var tenant = await InsertTenantAsync(TenantRole.Owner);
+        var owner = tenant.Members.Single();
+        var handler = new DeleteTenantMemberHandler(fixture.DbContext);
+
+        var result = await handler.HandleAsync(new DeleteTenantMemberRequest(
+            tenant.Id,
+            owner.Id,
+            "user-1",
+            []));
+
+        Assert.False(result.TryGetValue(out _, out var failure));
+        Assert.IsType<ConflictFailure>(failure);
+    }
+
+    private async Task<Tenant> InsertTenantAsync(TenantRole currentUserRole)
+    {
+        var tenant = TenantFactory.Create("team") with
+        {
+            Members = ImmutableList.Create(
+                TenantFactory.CreateMember("placeholder", "user-1", "user@example.com", currentUserRole))
+        };
+
+        tenant = tenant with
+        {
+            Members = tenant.Members
+                .Select(member => member with { TenantId = tenant.Id })
+                .ToImmutableList()
+        };
+
+        await fixture.DbContext.Tenants.InsertOneAsync(tenant);
+        return tenant;
+    }
+
+    private TenantMemberAuthorizationBehavior<TRequest, TResponse> CreateTenantMemberAuthorizationBehavior<TRequest, TResponse>(
+        string userId,
+        params string[] roles)
+        where TRequest : IMediatorRequest<TResponse>
+        where TResponse : notnull
+    {
+        var claims = new List<Claim>
+        {
+            new(Claims.UserId, userId),
+            new(Claims.Email, "user@example.com")
+        };
+        claims.AddRange(roles.Select(role => new Claim(Claims.Roles, role)));
+
+        var accessor = new HttpContextAccessor
+        {
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity(claims, "test"))
+            }
+        };
+
+        return new TenantMemberAuthorizationBehavior<TRequest, TResponse>(fixture.DbContext, accessor);
     }
 
     private static async Task<WebApplication> StartClaimBindingApp(params Claim[] claims)
