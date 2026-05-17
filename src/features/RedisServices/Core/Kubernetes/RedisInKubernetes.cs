@@ -120,6 +120,7 @@ public readonly record struct RedisInKubernetes(Redis Redis)
         Metadata = new V1ObjectMeta
         {
             Name = ServiceName,
+            NamespaceProperty = Namespace,
             Labels = new Dictionary<string, string>
             {
                 { "app", Redis.Name }

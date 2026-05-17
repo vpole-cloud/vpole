@@ -72,15 +72,7 @@ public class DeleteRedisServiceRequestedEventConsumer(
         var message = context.Message;
         var ct = context.CancellationToken;
 
-        await kubernetes.AppsV1.DeleteNamespacedStatefulSetAsync(
-            name: message.Name,
-            namespaceParameter: message.Spec.KubernetesNamespace,
-            cancellationToken: ct);
-        
-        await kubernetes.CoreV1.DeleteNamespacedServiceAsync(
-            name: RedisInKubernetes.BuildServiceName(message.Name),
-            namespaceParameter: message.Spec.KubernetesNamespace,
-            cancellationToken: ct);
+        await RedisKubernetesResourceManager.DeleteAsync(kubernetes, message.Name, message.Spec.KubernetesNamespace, ct);
     }
 }
 

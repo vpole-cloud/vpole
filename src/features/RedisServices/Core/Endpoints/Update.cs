@@ -142,11 +142,7 @@ public class UpdateRedisServiceEventConsumer(
 
         var inKuber = redis.ToKubernetes();
 
-        var statefulSet = inKuber.ToStatefulSet();
-        var service = inKuber.ToService();
-        
-        await kubernetes.AppsV1.ReplaceNamespacedStatefulSetAsync(statefulSet, statefulSet.Metadata.Name, redis.Spec.KubernetesNamespace, cancellationToken: ct);
-        await kubernetes.CoreV1.ReplaceNamespacedServiceAsync(service, service.Metadata.Name, redis.Spec.KubernetesNamespace, cancellationToken: ct);
+        await RedisKubernetesResourceManager.ReplaceAsync(kubernetes, inKuber, ct);
     }
 }
 

@@ -9,7 +9,6 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Features.Core.Kubernetes;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.RedisServices.Common;
 using Pole.Features.RedisServices.Domain;
@@ -85,14 +84,7 @@ public class CreateRedisServiceEventConsumer(
         var redis = context.Message.ToRedis();
         var inKuber = redis.ToKubernetes();
 
-        var statefulSet = inKuber.ToStatefulSet();
-        var service = inKuber.ToService();
-
-        await KubernetesExtensions.CreateIfNotExistAsync(() =>
-            kubernetes.AppsV1.CreateNamespacedStatefulSetAsync(statefulSet, redis.Spec.KubernetesNamespace, cancellationToken: ct));
-
-        await KubernetesExtensions.CreateIfNotExistAsync(() =>
-            kubernetes.CoreV1.CreateNamespacedServiceAsync(service, redis.Spec.KubernetesNamespace, cancellationToken: ct));
+        await RedisKubernetesResourceManager.CreateAsync(kubernetes, inKuber, ct);
     }
 }
 
