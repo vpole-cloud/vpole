@@ -58,14 +58,18 @@ public sealed record GetTenantMembersRequest(
     [FromRoute] string TenantId,
     [FromClaim(Claims.UserId)] string CurrentUserId,
     [FromClaim(Claims.Roles)] ImmutableArray<string> Roles
-) : IMediatorRequest<IReadOnlyCollection<TenantMemberDto>>;
+) : IMediatorRequest<IReadOnlyCollection<TenantMemberDto>>, ITenantMemberReadOperation;
 
 public sealed record AddTenantMemberRequest(
     [FromRoute] string TenantId,
     [FromBody] AddTenantMemberRequestBody Body,
     [FromClaim(Claims.UserId)] string CurrentUserId,
     [FromClaim(Claims.Roles)] ImmutableArray<string> Roles
-) : IMediatorRequest<TenantMemberDto>;
+) : IMediatorRequest<TenantMemberDto>, ITenantMemberRoleOperation
+{
+    public string? MemberId => null;
+    public TenantRole Role => Body.Role;
+}
 
 public sealed record AddTenantMemberRequestBody(string UserId, string Email, TenantRole Role);
 
@@ -75,7 +79,10 @@ public sealed record UpdateTenantMemberRequest(
     [FromBody] UpdateTenantMemberRequestBody Body,
     [FromClaim(Claims.UserId)] string CurrentUserId,
     [FromClaim(Claims.Roles)] ImmutableArray<string> Roles
-) : IMediatorRequest<TenantMemberDto>;
+) : IMediatorRequest<TenantMemberDto>, ITenantMemberRoleOperation
+{
+    public TenantRole Role => Body.Role;
+}
 
 public sealed record UpdateTenantMemberRequestBody(TenantRole Role);
 
@@ -84,7 +91,7 @@ public sealed record DeleteTenantMemberRequest(
     [FromRoute] string MemberId,
     [FromClaim(Claims.UserId)] string CurrentUserId,
     [FromClaim(Claims.Roles)] ImmutableArray<string> Roles
-) : IMediatorRequest<string>;
+) : IMediatorRequest<string>, ITenantMemberTargetOperation;
 
 public sealed class GetTenantMembersHandler(ITenantDbContext dbContext)
     : IMediatorHandler<GetTenantMembersRequest, IReadOnlyCollection<TenantMemberDto>>
@@ -134,6 +141,15 @@ public sealed class UpdateTenantMemberHandler(ITenantDbContext dbContext)
 {
     public async Task<Result<TenantMemberDto>> HandleAsync(UpdateTenantMemberRequest request, CancellationToken cancellationToken = default)
     {
+        var ownerValidation = await TenantMemberMutationGuard.ValidateAsync(
+            dbContext,
+            request.TenantId,
+            request.MemberId,
+            nextRole: request.Body.Role,
+            cancellationToken);
+        if (ownerValidation is not null)
+            return ownerValidation;
+
         var updated = await dbContext.Tenants.FindOneAndUpdateAsync(
             t => t.Id == request.TenantId && t.Members.Any(m => m.Id == request.MemberId),
             Builders<Tenant>.Update.Set("Members.$.Role", request.Body.Role),
@@ -152,6 +168,15 @@ public sealed class DeleteTenantMemberHandler(ITenantDbContext dbContext)
 {
     public async Task<Result<string>> HandleAsync(DeleteTenantMemberRequest request, CancellationToken cancellationToken = default)
     {
+        var ownerValidation = await TenantMemberMutationGuard.ValidateAsync(
+            dbContext,
+            request.TenantId,
+            request.MemberId,
+            nextRole: null,
+            cancellationToken);
+        if (ownerValidation is not null)
+            return ownerValidation;
+
         var result = await dbContext.Tenants.UpdateOneAsync(
             t => t.Id == request.TenantId && t.Members.Any(m => m.Id == request.MemberId),
             Builders<Tenant>.Update.PullFilter(t => t.Members, m => m.Id == request.MemberId),
@@ -174,23 +199,34 @@ public sealed class AddTenantMemberValidator : AbstractValidator<AddTenantMember
     }
 }
 
-internal static class TenantMemberAuthorization
+internal static class TenantMemberMutationGuard
 {
-    public static async Task<Failure?> AuthorizeManageMembers(string? userId, ImmutableArray<string> roles, ITenantDbContext dbContext, string tenantId, CancellationToken cancellationToken)
+    public static async Task<Failure?> ValidateAsync(
+        ITenantDbContext dbContext,
+        string tenantId,
+        string memberId,
+        TenantRole? nextRole,
+        CancellationToken cancellationToken)
     {
-        if (roles.Contains(Roles.Admin))
-            return null;
-
-        if (string.IsNullOrWhiteSpace(userId))
-            return Result.Unauthorized("Authenticated user id is required.", "Manage tenant members");
-
         var tenant = await dbContext.Tenants
             .Find(t => t.Id == tenantId)
             .FirstOrDefaultAsync(cancellationToken);
-        var member = tenant?.Members.FirstOrDefault(m => m.UserId == userId);
 
-        return member is not null && member.Role.CanManageMembers()
-            ? null
-            : Result.Unauthorized("Tenant admin role is required.", "Manage tenant members");
+        if (tenant is null)
+            return Result.NotFound($"Tenant '{tenantId}' was not found.");
+
+        var existingMember = tenant.Members.FirstOrDefault(m => m.Id == memberId);
+        if (existingMember is null)
+            return Result.NotFound($"Tenant member '{memberId}' was not found.");
+
+        var removesOwner = nextRole is null || nextRole != TenantRole.Owner;
+        if (existingMember.Role == TenantRole.Owner &&
+            removesOwner &&
+            tenant.Members.Count(m => m.Role == TenantRole.Owner) == 1)
+        {
+            return Result.Conflict("Tenant must keep at least one owner.");
+        }
+
+        return null;
     }
 }

@@ -139,6 +139,11 @@ See the [observability notes](docs/observability.md) for how Pole carries `Trace
 
 ---
 
+## Multitenancy
+See the [multitenancy notes](docs/multitenancy.md) for the tenant model, `X-Pole-Tenant-ID` request flow, and rules for tenant-scoped resources.
+
+---
+
 ## Testing
 See the [testing notes](docs/testing.md) for information about the current backend test setup, requirements, and how to run the integration suite.
 
