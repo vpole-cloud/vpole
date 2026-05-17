@@ -60,6 +60,7 @@ Before running cluster-backed tests:
 - make sure your kubeconfig points to a ready cluster
 - make sure required ingress/controllers/CRDs already exist
 - optionally set `POLE_K8S_INGRESS_BASE_URI` if ingress is reachable through a stable URI that is not discoverable from resource status
+- optionally set `POLE_K8S_REDIS_STORAGE_CLASS` if the cluster does not have a default StorageClass and you want to run Redis Kubernetes tests
 - as an alternative, you can create `tests/Pole.Tests.Integration/testsettings.local.json` with a local ingress base URI; this file is gitignored and not required for running tests
 
 ## Running tests
@@ -82,6 +83,12 @@ To run only the cluster-backed Postgres tests:
 
 ```bash
 dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter PostgresKubernetesTests
+```
+
+To run only the cluster-backed Redis tests:
+
+```bash
+dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter RedisKubernetesTests
 ```
 
 If ingress discovery needs an explicit base address:

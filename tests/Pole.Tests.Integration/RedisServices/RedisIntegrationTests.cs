@@ -67,6 +67,48 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(10, updated.Spec.Storage.SizeGb);
         Assert.Equal("fast", updated.Spec.Storage.StorageClassName);
         Assert.Equal(["cache", "prod"], updated.Tags.Order());
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("update-redis-service"));
+    }
+
+    [Fact]
+    public async Task GetList_AppliesPagination()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+
+        await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id, "redis-alpha"));
+        await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id, "redis-beta"));
+
+        var result = await Mediator.Send(new GetRedisServicesRequest
+        {
+            PageNumber = 2,
+            PageSize = 1
+        });
+
+        result.TryGetValue(out var response, out var error);
+        Assert.Null(error);
+        Assert.NotNull(response);
+        Assert.Single(response.Items);
+        Assert.Equal(2L, response.TotalCount);
+        Assert.Equal(2, response.PageNumber);
+        Assert.Equal(1, response.PageSize);
+    }
+
+    [Fact]
+    public async Task Delete_RemovesRedisAndStoresOutboxEvent()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var createResult = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id));
+        Assert.True(createResult.TryGetValue(out var created, out _));
+
+        var deleteResult = await Mediator.Send(new DeleteRedisServiceRequest(created.RedisId));
+
+        Assert.True(deleteResult.TryGetValue(out var response, out var error));
+        Assert.Null(error);
+        Assert.Equal(created.RedisId, response.Id);
+
+        var deleted = await DbContext.RedisServices.Find(redis => redis.Id == created.RedisId).FirstOrDefaultAsync();
+        Assert.Null(deleted);
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("delete-redis-service"));
     }
 
     [Fact]
