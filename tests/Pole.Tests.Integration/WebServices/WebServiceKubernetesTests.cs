@@ -48,7 +48,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         Assert.Equal(1, deployment.Spec.Replicas);
         Assert.Equal("docker.io/nginx:1.27", deployment.Spec.Template.Spec.Containers.Single().Image);
         Assert.Equal(80, service.Spec.Ports.Single().Port);
-        Assert.Equal("web.example.test", ingress.Spec.Rules.Single().Host);
+        Assert.Equal(BuildIngressHost(), ingress.Spec.Rules.Single().Host);
         Assert.NotNull(serviceMonitor);
         Assert.Equal(HttpStatusCode.OK, httpResponse.StatusCode);
         Assert.Contains("nginx", await httpResponse.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
@@ -111,9 +111,11 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
             tenantId: TestData.TenantId,
             resourceGroupId: "rg-k8s",
             spec: spec,
-            dnsRecord: new DnsRecordShortInfo("dns-k8s", "web.example.test"),
+            dnsRecord: new DnsRecordShortInfo("dns-k8s", BuildIngressHost()),
             options: options);
     }
+
+    private string BuildIngressHost() => $"web-{NamespaceName}.example.test";
 
     private async Task WaitForDeploymentAvailableAsync(string deploymentName, int timeoutSeconds = 60)
     {
