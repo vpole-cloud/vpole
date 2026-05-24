@@ -26,3 +26,6 @@ approval_mode = "approve"
 
 [mcp_servers.aspire.tools.get_doc]
 approval_mode = "approve"
+
+[features]
+multi_agent = true
