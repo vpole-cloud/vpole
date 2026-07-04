@@ -15,6 +15,7 @@ public sealed class OutboxProcessorJobTests
         var eventAssemblies = new[]
         {
             typeof(CreateEvent).Assembly,
+            typeof(Pole.Feature.DnsRecords.Events.CommitDomainNameEvent).Assembly,
             typeof(Pole.Features.Postgres.Events.CreateEvent).Assembly,
             typeof(Pole.Features.RedisServices.Events.CreateEvent).Assembly
         };
@@ -30,6 +31,7 @@ public sealed class OutboxProcessorJobTests
         var containsRedisCreateEvent = (bool)containsKeyMethod.Invoke(cache, ["create-redis-service-requested"])!;
         var containsRedisUpdateEvent = (bool)containsKeyMethod.Invoke(cache, ["update-redis-service"])!;
         var containsRedisDeleteEvent = (bool)containsKeyMethod.Invoke(cache, ["delete-redis-service"])!;
+        var containsDnsCommitEvent = (bool)containsKeyMethod.Invoke(cache, ["commit-domain-name"])!;
 
         Assert.True(containsCreateEvent);
         Assert.True(containsUpdateEvent);
@@ -37,5 +39,6 @@ public sealed class OutboxProcessorJobTests
         Assert.True(containsRedisCreateEvent);
         Assert.True(containsRedisUpdateEvent);
         Assert.True(containsRedisDeleteEvent);
+        Assert.True(containsDnsCommitEvent);
     }
 }

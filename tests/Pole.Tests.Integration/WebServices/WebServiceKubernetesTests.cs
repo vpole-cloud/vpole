@@ -17,7 +17,7 @@ namespace Pole.Tests.Integration.WebServices;
 public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     : KubernetesIntegrationTestBase(fixture)
 {
-    [Fact]
+    [KubernetesFact]
     public async Task CreateAsync_CreatesWebServiceResourcesInCluster()
     {
         var webService = BuildTestWebService();
@@ -54,7 +54,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         Assert.Contains("nginx", await httpResponse.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact]
+    [KubernetesFact]
     public async Task DeleteAsync_RemovesWebServiceResourcesFromCluster()
     {
         var webService = BuildTestWebService();

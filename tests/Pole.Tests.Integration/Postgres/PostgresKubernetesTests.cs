@@ -17,7 +17,7 @@ namespace Pole.Tests.Integration.Postgres;
 public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
     : KubernetesIntegrationTestBase(fixture)
 {
-    [Fact]
+    [KubernetesFact]
     public async Task OperatorCreateAsync_CreatesSecretAndClusterCustomResource()
     {
         var cluster = BuildOperatorCluster();
@@ -42,7 +42,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
         Assert.NotNull(clusterResource);
     }
 
-    [Fact]
+    [KubernetesFact]
     public async Task OperatorCreateAsync_WaitsForClusterReadiness_AndExecutesSimpleSql()
     {
         var cluster = BuildOperatorCluster();
@@ -68,7 +68,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
         Assert.Equal(1, result);
     }
 
-    [Fact]
+    [KubernetesFact]
     public async Task UpdatePasswordAsync_RewritesSecret()
     {
         var cluster = BuildOperatorCluster();
@@ -85,7 +85,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
         Assert.Equal("rotated-secret", System.Text.Encoding.UTF8.GetString(secret.Data["password"]));
     }
 
-    [Fact]
+    [KubernetesFact]
     public async Task OperatorDeleteAsync_RemovesSecretAndCluster()
     {
         var cluster = BuildOperatorCluster();
@@ -107,7 +107,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
             name: cluster.Id));
     }
 
-    [Fact]
+    [KubernetesFact]
     public async Task StatefulSetCreateAsync_WaitsForPodReadiness_AndExecutesSimpleSql()
     {
         var cluster = BuildStatefulSetCluster();
@@ -133,7 +133,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
         Assert.Equal(1, result);
     }
 
-    [Fact]
+    [KubernetesFact]
     public async Task StatefulSetDeleteAsync_RemovesResources()
     {
         var cluster = BuildStatefulSetCluster();

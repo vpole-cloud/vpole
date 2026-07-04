@@ -1,4 +1,4 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -42,7 +42,9 @@ public sealed class GetDomainNamesHandler(
         GetDomainNamesRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<DnsRecord>.Filter.ForTenant(request.TenantId);
+        var filter = Builders<DnsRecord>.Filter.And(
+            Builders<DnsRecord>.Filter.ForTenant(request.TenantId),
+            Builders<DnsRecord>.Filter.OfType<DnsRecordStatus, Committed>(record => record.Status));
 
         if (!string.IsNullOrWhiteSpace(request.Search))
         {

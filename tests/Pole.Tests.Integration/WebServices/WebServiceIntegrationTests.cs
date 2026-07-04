@@ -1,4 +1,10 @@
 using MongoDB.Driver;
+using Microsoft.Extensions.DependencyInjection;
+using Pole.Feature.DnsRecords.Core.Common;
+using Pole.Feature.DnsRecords.Core.Consumers;
+using Pole.Feature.DnsRecords.Domain;
+using Pole.Feature.DnsRecords.Events;
+using Pole.Features.Events.Abstractions;
 using Pole.Features.WebServices.Endpoints;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
@@ -27,9 +33,22 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         var savedDns = await DbContext.DnsRecords.Find(record => record.Resource.Id == response.WebServiceId).FirstOrDefaultAsync();
         Assert.NotNull(savedDns);
         Assert.Equal(request.Body.DomainName, savedDns.Domain);
+        Assert.IsType<Pending>(savedDns.Status);
 
         var outboxCount = await DbContext.CountOutboxMessagesAsync("create-web-service-requested");
         Assert.Equal(1L, outboxCount);
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("commit-domain-name"));
+
+        var reservationService = Services.GetRequiredService<IDomainNameReservationService>();
+        var commitConsumer = new CommitDomainNameEventConsumer(reservationService);
+        await commitConsumer.Handle(new CommitDomainNameEvent(
+            savedDns.Id,
+            response.WebServiceId,
+            EventCore.Create(TestData.TenantId)));
+
+        var committedDns = await DbContext.DnsRecords.Find(record => record.Id == savedDns.Id).FirstOrDefaultAsync();
+        Assert.NotNull(committedDns);
+        Assert.IsType<Committed>(committedDns.Status);
     }
 
     [Fact]
@@ -87,6 +106,8 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id));
         Assert.True(createResult.TryGetValue(out var created, out _));
+        var savedDns = await DbContext.DnsRecords.Find(record => record.Resource.Id == created.WebServiceId).FirstOrDefaultAsync();
+        Assert.NotNull(savedDns);
 
         var deleteResult = await Mediator.Send(new DeleteWebServiceRequest(created.WebServiceId));
 
@@ -96,10 +117,19 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(created.WebServiceId, response.Id);
 
         var deletedService = await DbContext.WebServices.Find(service => service.Id == created.WebServiceId).FirstOrDefaultAsync();
-        var deletedDns = await DbContext.DnsRecords.Find(record => record.Resource.Id == created.WebServiceId).FirstOrDefaultAsync();
+        var retainedDns = await DbContext.DnsRecords.Find(record => record.Resource.Id == created.WebServiceId).FirstOrDefaultAsync();
 
         Assert.Null(deletedService);
-        Assert.Null(deletedDns);
+        Assert.NotNull(retainedDns);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("delete-web-service"));
+
+        var reservationService = Services.GetRequiredService<IDomainNameReservationService>();
+        var deleteDnsConsumer = new DeleteDnsRecordEventConsumer(reservationService);
+        await deleteDnsConsumer.Handle(new DeleteDnsRecordEvent(
+            savedDns.Id,
+            EventCore.Create(TestData.TenantId)));
+
+        var deletedDns = await DbContext.DnsRecords.Find(record => record.Resource.Id == created.WebServiceId).FirstOrDefaultAsync();
+        Assert.Null(deletedDns);
     }
 }

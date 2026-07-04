@@ -17,7 +17,7 @@ namespace Pole.Tests.Integration.RedisServices;
 public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
     : KubernetesIntegrationTestBase(fixture)
 {
-    [Fact]
+    [KubernetesFact]
     public async Task CreateAsync_WaitsForPodReadiness_AndRespondsToPing()
     {
         var redis = await BuildTestRedisAsync("redis-k8s");
@@ -47,7 +47,7 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
         Assert.True(pong > TimeSpan.Zero);
     }
 
-    [Fact]
+    [KubernetesFact]
     public async Task ReplaceAsync_UpdatesStatefulSetAndService()
     {
         var redis = await BuildTestRedisAsync("redis-k8s-replace");
@@ -78,7 +78,7 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
         Assert.Equal(NamespaceName, service.Metadata.NamespaceProperty);
     }
 
-    [Fact]
+    [KubernetesFact]
     public async Task DeleteAsync_RemovesResources()
     {
         var redis = await BuildTestRedisAsync("redis-k8s-delete");

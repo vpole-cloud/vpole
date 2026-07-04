@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using FluentValidation;
 using k8s;
 using MassTransit;
@@ -9,9 +9,10 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Feature.DnsRecords.Core.Common;
+using Pole.Feature.DnsRecords.Events;
 using Pole.Features.Core.Multitenancy;
-using Pole.Feature.DnsRecords.Domain;
-using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.Events.Abstractions;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Common;
 using Pole.Features.WebServices.Domain;
@@ -42,7 +43,8 @@ public static class Create
 }
 
 public sealed class CreateWebServiceHandler(
-    IWebServiceDbContext dbContext)
+    IWebServiceDbContext dbContext,
+    IDomainNameReservationService domainNameReservationService)
     : IMediatorHandler<CreateWebServiceRequest, CreateWebServiceResponse>
 {
     public async Task<Result<CreateWebServiceResponse>> HandleAsync(CreateWebServiceRequest request,
@@ -54,53 +56,49 @@ public sealed class CreateWebServiceHandler(
             .Find(rg => rg.Id == request.Body.ResourceGroupId && rg.TenantId == tenantId)
             .FirstOrDefaultAsync(cancellationToken);
         if (group is null) return Result.NotFound($"Resource group with ID '{request.Body.ResourceGroupId}' not found.");
-        
-        var dnsRecord = await dbContext.DnsRecords
-            .Find(dn => dn.Domain == request.Body.DomainName)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (dnsRecord is not null)
-            return Result.Conflict($"Domain name '{dnsRecord.Domain}' is already in use.");
 
-        var (newWebService, newDnsRecord) = BuildWebServiceWithDnsRecord(request, group, tenantId);
-        
-        return await dbContext.RunInTransactionAsync<CreateWebServiceResponse>(async (sh, ct) =>
-        {
-            await dbContext.WebServices.InsertOneAsync(sh, newWebService, cancellationToken: ct);
-
-            await dbContext.DnsRecords.InsertOneAsync(sh, newDnsRecord, cancellationToken: ct);
-            
-            await dbContext.StoreEventAsync(newWebService.ToCreateEvent(), sh, ct);
-
-            return new CreateWebServiceResponse(newWebService.Id);
-        }, cancellationToken: cancellationToken);
-    }
-
-    
-    private (WebService, DnsRecord) BuildWebServiceWithDnsRecord(CreateWebServiceRequest request, ResourceGroup group, string tenantId)
-    {
         var createWebServiceOptions = WebServiceFactory.DefaultOptions with
         {
             Tags = request.Body.Tags,
         };
-        var dnsRecord = DnsRecordFactory.Create(
-            name: request.Body.DomainName,
-            tenantId: tenantId,
-            resourceType: ResourceType.WebService,
-            resourceId: createWebServiceOptions.Id,
-            resourceName: request.Body.Name,
-            groupId: request.Body.ResourceGroupId,
-            options: DnsRecordFactory.DefaultCreateOptions
-        );
-            
+        var dnsRecordReservation = await domainNameReservationService.ReserveAsync(
+            new ReserveDomainNameRequest(
+                TenantId: tenantId,
+                DomainName: request.Body.DomainName,
+                ResourceType: ResourceType.WebService,
+                ResourceId: createWebServiceOptions.Id,
+                ResourceName: request.Body.Name,
+                ResourceGroupId: request.Body.ResourceGroupId),
+            cancellationToken);
+
+        if (!dnsRecordReservation.TryGetValue(out var dnsRecord, out var reservationFailure))
+            return reservationFailure;
+
         var newWebService = WebServiceFactory.Create(
             name: request.Body.Name,
             tenantId: tenantId,
             resourceGroupId: request.Body.ResourceGroupId,
             spec: request.Body.Spec.ToDomain(group.KubernetesNamespace),
-            dnsRecord: new DnsRecordShortInfo(Id: dnsRecord.Id, Domain: dnsRecord.Domain),
-            options: createWebServiceOptions
-        );
-        return (newWebService, dnsRecord);
+            dnsRecord: dnsRecord,
+            options: createWebServiceOptions);
+        
+        return await dbContext.RunInTransactionAsync<CreateWebServiceResponse>(async (sh, ct) =>
+        {
+            await dbContext.WebServices.InsertOneAsync(sh, newWebService, cancellationToken: ct);
+
+            await dbContext.StoreEventAsync(
+                [
+                    newWebService.ToCreateEvent(),
+                    new CommitDomainNameEvent(
+                        DnsRecordId: dnsRecord.Id,
+                        ResourceId: newWebService.Id,
+                        EventCore: EventCore.Create(tenantId))
+                ],
+                sh,
+                ct);
+
+            return new CreateWebServiceResponse(newWebService.Id);
+        }, cancellationToken: cancellationToken);
     }
 }
 
