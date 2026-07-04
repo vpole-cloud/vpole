@@ -30,6 +30,44 @@ public sealed class DomainNameIntegrationTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task GetList_ReturnsOnlyCommittedDnsRecords()
+    {
+        var now = DateTime.UtcNow;
+        await DbContext.InsertDnsRecordAsync(DnsRecordFactory.Create(
+            "pending.example.com",
+            TestData.TenantId,
+            ResourceType.WebService,
+            "web-pending",
+            "pending",
+            "rg-1",
+            DnsRecordFactory.DefaultCreateOptions with
+            {
+                Status = new Pending(now, now.AddDays(1))
+            }));
+        await DbContext.InsertDnsRecordAsync(DnsRecordFactory.Create(
+            "committed.example.com",
+            TestData.TenantId,
+            ResourceType.WebService,
+            "web-committed",
+            "committed",
+            "rg-1",
+            DnsRecordFactory.DefaultCreateOptions));
+
+        var result = await Mediator.Send(new GetDomainNamesRequest
+        {
+            PageNumber = 1,
+            PageSize = 10
+        });
+
+        Assert.True(result.TryGetValue(out var response, out var error));
+        Assert.Null(error);
+        Assert.NotNull(response);
+        Assert.Single(response.Items);
+        Assert.Equal("committed.example.com", response.Items.Single().Domain);
+        Assert.Equal(1L, response.TotalCount);
+    }
+
+    [Fact]
     public async Task Search_IsCaseInsensitive_AndMatchesSubstrings()
     {
         await DbContext.InsertDnsRecordAsync(DnsRecordFactory.Create("Admin.Example.com", TestData.TenantId, ResourceType.WebService, "web-1", "admin", "rg-1", DnsRecordFactory.DefaultCreateOptions));

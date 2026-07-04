@@ -10,8 +10,17 @@ public record DnsRecord(
     string Id,
     string TenantId,
     string Domain,
-    ResourceInfo Resource
+    ResourceInfo Resource,
+    DnsRecordStatus Status
 );
+
+[BsonDiscriminator(RootClass = true)]
+[BsonKnownTypes(typeof(Pending), typeof(Committed))]
+public abstract record DnsRecordStatus;
+
+public sealed record Pending(DateTime ReservedAtUtc, DateTime ExpiresAtUtc) : DnsRecordStatus;
+
+public sealed record Committed(DateTime CommittedAtUtc) : DnsRecordStatus;
 
 public sealed record ResourceInfo(
     string Id,
@@ -23,12 +32,14 @@ public sealed record ResourceInfo(
 public static class DnsRecordFactory
 {
     public sealed record DnsRecordCreateOptions(
-        string? Id
+        string? Id,
+        DnsRecordStatus? Status
     );
 
     public static DnsRecordCreateOptions DefaultCreateOptions =>
         new(
-            Id: null
+            Id: null,
+            Status: null
         );
 
     public static DnsRecord Create(
@@ -38,8 +49,11 @@ public static class DnsRecordFactory
         string resourceId,
         string resourceName,
         string groupId,
-        DnsRecordCreateOptions options) =>
-        new(
+        DnsRecordCreateOptions options)
+    {
+        var status = options.Status ?? new Committed(DateTime.UtcNow);
+
+        return new(
             Id: options.Id ?? ObjectId.GenerateNewId().ToString(),
             TenantId: tenantId,
             Domain: name,
@@ -47,6 +61,8 @@ public static class DnsRecordFactory
                 resourceId,
                 resourceName,
                 resourceType,
-                groupId)
+                groupId),
+            Status: status
         );
+    }
 }

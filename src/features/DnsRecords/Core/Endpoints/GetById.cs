@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
@@ -42,6 +42,7 @@ public sealed class GetDomainNameByIdHandler(
     {
         var filter = Builders<DnsRecord>.Filter.And(
             Builders<DnsRecord>.Filter.ForTenant(request.TenantId),
+            Builders<DnsRecord>.Filter.OfType<DnsRecordStatus, Committed>(record => record.Status),
             Builders<DnsRecord>.Filter.Eq(d => d.Id, request.Id));
 
         var dn = await dbContext.DnsRecords

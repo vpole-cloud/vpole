@@ -30,6 +30,7 @@ Assembly[] assemblies = [
 ];
 Assembly[] outboxEventAssemblies = [
     typeof(Pole.Features.WebServices.Events.CreateEvent).Assembly,
+    typeof(Pole.Feature.DnsRecords.Events.CommitDomainNameEvent).Assembly,
     typeof(Pole.Features.Postgres.Events.CreateEvent).Assembly,
     typeof(Pole.Features.RedisServices.Events.CreateEvent).Assembly,
     typeof(Pole.Features.ResourceGroups.Events.CreateEvent).Assembly

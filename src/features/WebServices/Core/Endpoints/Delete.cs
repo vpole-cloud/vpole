@@ -1,4 +1,4 @@
-﻿using k8s;
+using k8s;
 using MassTransit;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Feature.DnsRecords.Domain;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Common;
@@ -53,14 +52,7 @@ public sealed class DeleteWebServiceHandler(
 
             if (webService is null)
                 return Result.NotFound($"Web service with ID '{request.Id}' not found.");
-            
-            await dbContext.DnsRecords
-                .DeleteOneAsync(sh,
-                    Builders<DnsRecord>.Filter.And(
-                        Builders<DnsRecord>.Filter.ForTenant(request.TenantId),
-                        Builders<DnsRecord>.Filter.Eq(record => record.Id, webService.DnsRecord.Id)),
-                    cancellationToken: ct);
-            
+
             await dbContext.StoreEventAsync(webService.ToDeleteEvent(), sh, ct);
             return new DeleteWebServiceResponse(
                 Id: request.Id

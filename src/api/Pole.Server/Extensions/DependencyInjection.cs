@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using FluentValidation;
 using Hangfire;
 using Hangfire.Mongo;
@@ -139,6 +139,7 @@ public static class DependencyInjection
             services.TryAddSingleton<ITenantDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IUserDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.AddHttpContextAccessor();
+            services.TryAddScoped<IDomainNameReservationService, DomainNameReservationService>();
             services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
             services.TryAddSingleton<ITenantOperationScopeAccessor, TenantOperationScopeAccessor>();
             return services;
