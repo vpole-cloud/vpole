@@ -6,9 +6,9 @@ using k8s;
 using k8s.Autorest;
 using k8s.Models;
 using Pole.Features.Shared.Models;
-using Pole.Features.WebServices.Common;
+using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
-using Pole.Features.WebServices.Kubernetes;
+using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -349,3 +349,4 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         throw new TimeoutException("Resource was not deleted before the timeout elapsed.");
     }
 }
+

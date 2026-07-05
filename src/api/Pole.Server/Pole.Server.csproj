@@ -26,18 +26,25 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\features\DnsRecords\Core\Core.csproj" />
+      <ProjectReference Include="..\..\features\DnsRecords\DnsRecords.Application\DnsRecords.Application.csproj" />
       <ProjectReference Include="..\..\shared\Events\Events.csproj" />
-      <ProjectReference Include="..\..\features\Outbox\Core\Core.csproj" />
-      <ProjectReference Include="..\..\features\Postgres\Core\Core.fsproj" />
-      <ProjectReference Include="..\..\features\RedisServices\Core\Core.csproj" />
-      <ProjectReference Include="..\..\features\ResourceGroups\Core\Core.csproj" />
-      <ProjectReference Include="..\..\features\Search\Core\Core.fsproj" />
-      <ProjectReference Include="..\..\features\Tenants\Core\Core.csproj" />
-      <ProjectReference Include="..\..\features\Users\Core\Core.csproj" />
-      <ProjectReference Include="..\..\features\WebServices\Core\Core.csproj" />
+      <ProjectReference Include="..\..\features\Outbox\Outbox.Application\Outbox.Application.csproj" />
+      <ProjectReference Include="..\..\features\Postgres\Postgres.Application\Postgres.Application.fsproj" />
+      <ProjectReference Include="..\..\features\RedisServices\RedisServices.Application\RedisServices.Application.csproj" />
+      <ProjectReference Include="..\..\features\ResourceGroups\ResourceGroups.Application\ResourceGroups.Application.csproj" />
+      <ProjectReference Include="..\..\features\Search\Search.Application\Search.Application.fsproj" />
+      <ProjectReference Include="..\..\features\Users\Users.Application\Users.Application.csproj" />
+      <ProjectReference Include="..\..\features\WebServices\WebServices.Application\WebServices.Application.csproj" />
+      <ProjectReference Include="..\..\features\Tenants\Tenants.Application\Tenants.Application.csproj" />
       <ProjectReference Include="..\..\shared\Observability\Observability.csproj" />
       <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />
     </ItemGroup>
 
 </Project>
+
+
+
+
+
+
+

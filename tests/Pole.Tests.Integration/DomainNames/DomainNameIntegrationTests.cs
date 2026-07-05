@@ -1,5 +1,5 @@
-using Pole.Feature.DnsRecords.Core.Endpoints;
-using Pole.Feature.DnsRecords.Domain;
+using Pole.Features.DnsRecords.Application.Endpoints;
+using Pole.Features.DnsRecords.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -99,3 +99,4 @@ public sealed class DomainNameIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal("Admin.Example.com", adminResponse.Items.Single().Domain);
     }
 }
+

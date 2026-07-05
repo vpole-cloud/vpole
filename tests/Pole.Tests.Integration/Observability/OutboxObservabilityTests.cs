@@ -23,7 +23,7 @@ public sealed class OutboxObservabilityTests(MongoReplicaSetFixture fixture)
         Assert.Null(error);
 
         var outboxMessage = await DbContext.OutboxMessages
-            .Find(message => message.EventType == "create-resource-group")
+            .Find(message => message.EventType == "resource-group-created")
             .SingleAsync();
 
         Assert.Equal(TraceId, outboxMessage.TraceId);
@@ -47,7 +47,7 @@ public sealed class OutboxObservabilityTests(MongoReplicaSetFixture fixture)
         Assert.Null(error);
 
         var outboxMessage = await DbContext.OutboxMessages
-            .Find(message => message.EventType == "create-postgres-cluster-requested")
+            .Find(message => message.EventType == "postgres-cluster-created")
             .SingleAsync();
 
         Assert.Equal(TraceId, outboxMessage.TraceId);

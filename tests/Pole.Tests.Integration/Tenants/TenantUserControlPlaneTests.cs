@@ -10,12 +10,12 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants;
-using Pole.Features.Tenants.Common;
+using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Domain;
-using Pole.Features.Tenants.Endpoints;
+using Pole.Features.Tenants.Application.Endpoints;
 using Pole.Features.Users.Domain;
-using Pole.Features.Users.Endpoints;
-using Pole.Features.Users.Identity;
+using Pole.Features.Users.Application.Endpoints;
+using Pole.Features.Users.Application.Identity;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
@@ -337,3 +337,4 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         }
     }
 }
+

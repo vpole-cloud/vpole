@@ -1,19 +1,19 @@
 using MongoDB.Driver;
-using Pole.Feature.DnsRecords.Core.Common;
-using Pole.Feature.DnsRecords.Domain;
-using Pole.Features.Postgres.Common;
-using Pole.Features.RedisServices.Common;
+using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.DnsRecords.Domain;
+using Pole.Features.Postgres.Application.Common;
+using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
-using Pole.Features.ResourceGroups.Common;
+using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.Features.Search.Common;
+using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Domain;
 using Pole.Features.Shared.Models;
-using Pole.Features.Tenants.Common;
+using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Domain;
-using Pole.Features.Users.Common;
+using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Domain;
-using Pole.Features.WebServices.Common;
+using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using PostgresCluster = Pole.Features.Postgres.Domain.PostgresCluster;
 
@@ -44,3 +44,4 @@ public class MongoDbContext(
     public IMongoCollection<Tenant> Tenants { get; } = database.GetCollection<Tenant>("Tenants");
     public IMongoCollection<PoleUser> Users { get; } = database.GetCollection<PoleUser>("Users");
 }
+

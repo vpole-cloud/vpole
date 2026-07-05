@@ -1,5 +1,5 @@
 using MongoDB.Driver;
-using Pole.Features.RedisServices.Endpoints;
+using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -22,7 +22,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
 
         var savedRedis = await DbContext.RedisServices.Find(redis => redis.Id == response.RedisId).FirstOrDefaultAsync();
         Assert.NotNull(savedRedis);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("create-redis-service-requested"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("redis-service-created"));
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(10, updated.Spec.Storage.SizeGb);
         Assert.Equal("fast", updated.Spec.Storage.StorageClassName);
         Assert.Equal(["cache", "prod"], updated.Tags.Order());
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("update-redis-service"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("redis-service-updated"));
     }
 
     [Fact]
@@ -108,7 +108,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
 
         var deleted = await DbContext.RedisServices.Find(redis => redis.Id == created.RedisId).FirstOrDefaultAsync();
         Assert.Null(deleted);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("delete-redis-service"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("redis-service-deleted"));
     }
 
     [Fact]
@@ -120,3 +120,4 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.IsType<NotFoundFailure>(error);
     }
 }
+

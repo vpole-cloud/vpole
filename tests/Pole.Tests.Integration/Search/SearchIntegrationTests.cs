@@ -2,21 +2,21 @@ using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.ResourceGroups.Endpoints;
-using Pole.Features.Search.Common;
-using Pole.Features.Search.Consumers;
+using Pole.Features.ResourceGroups.Application.Endpoints;
+using Pole.Features.Search.Application.Common;
+using Pole.Features.Search.Application.Consumers;
 using Pole.Features.Search.Domain;
-using Pole.Features.Search.Projection;
-using Pole.Features.Search.Services;
-using Pole.Features.WebServices.Endpoints;
+using Pole.Features.Search.Application.Projection;
+using Pole.Features.Search.Application.Services;
+using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
-using ResourceGroupCreateEvent = Pole.Features.ResourceGroups.Events.CreateEvent;
-using ResourceGroupUpdateEvent = Pole.Features.ResourceGroups.Events.UpdateEvent;
-using ResourceGroupUpdateEventChanges = Pole.Features.ResourceGroups.Events.UpdateEventChanges;
-using WebServiceCreateEvent = Pole.Features.WebServices.Events.CreateEvent;
-using RedisCreateEvent = Pole.Features.RedisServices.Events.CreateEvent;
-using PostgresCreateEvent = Pole.Features.Postgres.Events.CreateEvent;
+using ResourceGroupCreateEvent = Pole.Features.ResourceGroups.Events.ResourceGroupCreatedEvent;
+using ResourceGroupUpdateEvent = Pole.Features.ResourceGroups.Events.ResourceGroupUpdatedEvent;
+using ResourceGroupUpdateEventChanges = Pole.Features.ResourceGroups.Events.ResourceGroupUpdatedEventChanges;
+using WebServiceCreateEvent = Pole.Features.WebServices.Events.WebServiceCreatedEvent;
+using RedisCreateEvent = Pole.Features.RedisServices.Events.RedisServiceCreatedEvent;
+using PostgresCreateEvent = Pole.Features.Postgres.Events.PostgresClusterCreatedEvent;
 
 namespace Pole.Tests.Integration.Search;
 
@@ -295,3 +295,4 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             cluster.Spec), CancellationToken.None);
     }
 }
+

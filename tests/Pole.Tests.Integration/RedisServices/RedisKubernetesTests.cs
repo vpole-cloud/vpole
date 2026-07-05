@@ -5,7 +5,7 @@ using System.Net.Sockets;
 using k8s;
 using k8s.Autorest;
 using Pole.Features.RedisServices.Domain;
-using Pole.Features.RedisServices.Kubernetes;
+using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
 using StackExchange.Redis;
@@ -274,3 +274,4 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
         }
     }
 }
+

@@ -1,7 +1,7 @@
 using System.Text.Json;
-using Pole.Features.Postgres.Common;
+using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Domain;
-using Pole.Features.Postgres.Kubernetes;
+using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 using PostgresCluster = Pole.Features.Postgres.Domain.PostgresCluster;
@@ -107,3 +107,4 @@ public sealed class PostgresManifestTests
             StatefulSetImage = new PostgresImageSettings { Server = "docker.io", Name = "postgres" }
         };
 }
+

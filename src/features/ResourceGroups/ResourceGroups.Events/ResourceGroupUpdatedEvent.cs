@@ -1,0 +1,23 @@
+﻿using System.Collections.Immutable;
+using MassTransit;
+using Pole.Features.Events.Abstractions;
+using Pole.Features.ResourceGroups.Domain;
+
+namespace Pole.Features.ResourceGroups.Events;
+
+ [EntityName("resource-group-updated")]
+public sealed record ResourceGroupUpdatedEvent(
+    string ResourceGroupId,
+    string Name,
+    string Description,
+    string KubernetesNamespace,
+    ImmutableList<ShortResourceInfo> Resources,
+    ResourceGroupUpdatedEventChanges Changes
+) : IPoleEvent
+{
+    public EventCore EventCore { get; init; } = EventCore.Create();
+}
+
+public sealed record ResourceGroupUpdatedEventChanges(
+    UpdateLog<string> Description,
+    UpdateLog<ImmutableHashSet<string>> Tags);

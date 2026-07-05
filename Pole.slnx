@@ -19,44 +19,44 @@
   </Folder>
   <Folder Name="/features/" />
   <Folder Name="/features/DnsRecords/">
-    <Project Path="src/features/DnsRecords/Domain/Domain.csproj" />
-    <Project Path="src/features/DnsRecords/Events/Events.csproj" />
-    <Project Path="src/features/DnsRecords/Core/Core.csproj" />
+    <Project Path="src/features/DnsRecords/DnsRecords.Domain/DnsRecords.Domain.csproj" />
+    <Project Path="src/features/DnsRecords/DnsRecords.Events/DnsRecords.Events.csproj" />
+    <Project Path="src/features/DnsRecords/DnsRecords.Application/DnsRecords.Application.csproj" />
   </Folder>
   <Folder Name="/features/RedisServices/">
-    <Project Path="src/features/RedisServices/Core/Core.csproj" />
-    <Project Path="src/features/RedisServices/Domain/Domain.csproj" />
-    <Project Path="src/features/RedisServices/Events/Events.csproj" />
+    <Project Path="src/features/RedisServices/RedisServices.Application/RedisServices.Application.csproj" />
+    <Project Path="src/features/RedisServices/RedisServices.Domain/RedisServices.Domain.csproj" />
+    <Project Path="src/features/RedisServices/RedisServices.Events/RedisServices.Events.csproj" />
   </Folder>
   <Folder Name="/features/Postgres/">
-    <Project Path="src/features/Postgres/Core/Core.fsproj" />
-    <Project Path="src/features/Postgres/Domain/Domain.fsproj" />
-    <Project Path="src/features/Postgres/Events/Events.fsproj" />
+    <Project Path="src/features/Postgres/Postgres.Application/Postgres.Application.fsproj" />
+    <Project Path="src/features/Postgres/Postgres.Domain/Postgres.Domain.fsproj" />
+    <Project Path="src/features/Postgres/Postgres.Events/Postgres.Events.fsproj" />
   </Folder>
   <Folder Name="/features/ResourceGroups/">
-    <Project Path="src/features/ResourceGroups/Core/Core.csproj" />
-    <Project Path="src/features/ResourceGroups/Domain/Domain.csproj" />
-    <Project Path="src/features/ResourceGroups/Events/Events.csproj" />
+    <Project Path="src/features/ResourceGroups/ResourceGroups.Application/ResourceGroups.Application.csproj" />
+    <Project Path="src/features/ResourceGroups/ResourceGroups.Domain/ResourceGroups.Domain.csproj" />
+    <Project Path="src/features/ResourceGroups/ResourceGroups.Events/ResourceGroups.Events.csproj" />
   </Folder>
   <Folder Name="/features/WebServices/">
-    <Project Path="src/features/WebServices/Core/Core.csproj" />
-    <Project Path="src/features/WebServices/Domain/Domain.csproj" />
-    <Project Path="src/features/WebServices/Events/Events.csproj" />
+    <Project Path="src/features/WebServices/WebServices.Application/WebServices.Application.csproj" />
+    <Project Path="src/features/WebServices/WebServices.Domain/WebServices.Domain.csproj" />
+    <Project Path="src/features/WebServices/WebServices.Events/WebServices.Events.csproj" />
   </Folder>
   <Folder Name="/features/Outbox/">
-    <Project Path="src/features/Outbox/Core/Core.csproj" />
+    <Project Path="src/features/Outbox/Outbox.Application/Outbox.Application.csproj" />
   </Folder>
   <Folder Name="/features/Tenants/">
-    <Project Path="src/features/Tenants/Core/Core.csproj" />
-    <Project Path="src/features/Tenants/Domain/Domain.csproj" />
+    <Project Path="src/features/Tenants/Tenants.Application/Tenants.Application.csproj" />
+    <Project Path="src/features/Tenants/Tenants.Domain/Tenants.Domain.csproj" />
   </Folder>
   <Folder Name="/features/Users/">
-    <Project Path="src/features/Users/Core/Core.csproj" />
-    <Project Path="src/features/Users/Domain/Domain.csproj" />
+    <Project Path="src/features/Users/Users.Domain/Users.Domain.csproj" />
+    <Project Path="src/features/Users/Users.Application/Users.Application.csproj" />
   </Folder>
   <Folder Name="/features/Search/">
-    <Project Path="src/features/Search/Core/Core.fsproj" />
-    <Project Path="src/features/Search/Domain/Domain.fsproj" />
+    <Project Path="src/features/Search/Search.Application/Search.Application.fsproj" />
+    <Project Path="src/features/Search/Search.Domain/Search.Domain.fsproj" />
   </Folder>
   <Folder Name="/shared/helpers/">
     <Project Path="src/shared/helpers/ASP/ASP.csproj" />
@@ -65,3 +65,12 @@
     <Project Path="tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj" />
   </Folder>
 </Solution>
+
+
+
+
+
+
+
+
+

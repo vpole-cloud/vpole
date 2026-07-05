@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.Users.Application</AssemblyName>
+        <RootNamespace>Pole.Features.Users.Application</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="FluentValidation" Version="12.1.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Users.Domain\Users.Domain.csproj" />
+      <ProjectReference Include="..\..\Tenants\Tenants.Application\Tenants.Application.csproj" />
+      <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
+      <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
+      <ProjectReference Include="..\..\..\shared\Features\Features.csproj" />
+      <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
+    </ItemGroup>
+
+</Project>
+
+

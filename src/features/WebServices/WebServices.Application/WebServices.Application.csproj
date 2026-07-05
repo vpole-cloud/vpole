@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.WebServices.Application</AssemblyName>
+        <RootNamespace>Pole.Features.WebServices.Application</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
+      <ProjectReference Include="..\..\DnsRecords\DnsRecords.Application\DnsRecords.Application.csproj" />
+      <ProjectReference Include="..\..\DnsRecords\DnsRecords.Events\DnsRecords.Events.csproj" />
+      <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Domain\ResourceGroups.Domain.csproj" />
+      <ProjectReference Include="..\WebServices.Events\WebServices.Events.csproj" />
+      <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
+      <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
+      <ProjectReference Include="..\..\..\shared\Features\Features.csproj" />
+      <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
+      <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
+      <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="KubernetesClient" Version="19.0.2" />
+    </ItemGroup>
+</Project>
+
+

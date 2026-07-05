@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Pole.Features.RedisServices.Endpoints;
+using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -76,3 +76,4 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
     private sealed record ResourceGroupCreatedResponse(string Id, string Name, string Description, IReadOnlyCollection<string> Tags);
     private sealed record SupportedPostgresVersionsResponse(int From, int To);
 }
+

@@ -1,4 +1,4 @@
-using Pole.Features.Users.Identity;
+using Pole.Features.Users.Application.Identity;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -110,3 +110,4 @@ public sealed class KeycloakIdentityProviderTests(KeycloakContainerFixture fixtu
 
     private static string CreateEmail() => $"pole-it-{Guid.NewGuid():N}@example.test";
 }
+

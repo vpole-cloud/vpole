@@ -1,6 +1,6 @@
 using MongoDB.Driver;
-using Pole.Features.ResourceGroups.Common;
-using Pole.Features.ResourceGroups.Endpoints;
+using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -26,7 +26,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
         Assert.Equal(request.Body.Name, saved.Name);
         Assert.StartsWith("test-", saved.KubernetesNamespace);
 
-        var outboxCount = await DbContext.CountOutboxMessagesAsync("create-resource-group");
+        var outboxCount = await DbContext.CountOutboxMessagesAsync("resource-group-created");
         Assert.Equal(1L, outboxCount);
     }
 
@@ -65,7 +65,8 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
         var deleted = await DbContext.ResourceGroups.Find(group => group.Id == resourceGroup.Id).FirstOrDefaultAsync();
         Assert.Null(deleted);
 
-        var outboxCount = await DbContext.CountOutboxMessagesAsync("delete-resource-group");
+        var outboxCount = await DbContext.CountOutboxMessagesAsync("resource-group-deleted");
         Assert.Equal(1L, outboxCount);
     }
 }
+
