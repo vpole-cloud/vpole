@@ -2,7 +2,7 @@ using MongoDB.Driver;
 using Microsoft.FSharp.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Postgres.Domain;
-using Pole.Features.Postgres.Endpoints;
+using Pole.Features.Postgres.Application.Endpoints;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -35,7 +35,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.NotNull(storedCredentials);
         Assert.Equal("postgres", storedCredentials.Username);
         Assert.Equal("postgres-secret", storedCredentials.Password);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("create-postgres-cluster-requested"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("postgres-cluster-created"));
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(25, updatedCluster.Spec.Storage);
         Assert.Equal(17, updatedCluster.Spec.Version);
         Assert.Equal(PostgresDeploymentMode.Operator, updatedCluster.Spec.DeploymentMode);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("update-postgres-cluster-requested"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("postgres-cluster-updated"));
     }
 
     [Fact]
@@ -140,3 +140,4 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.IsType<NotFoundFailure>(error);
     }
 }
+

@@ -12,21 +12,21 @@ using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Feature.DnsRecords.Core.Common;
-using Pole.Feature.DnsRecords.Core.Filters;
-using Pole.Features.Outbox;
-using Pole.Features.Postgres.Common;
-using Pole.Features.Postgres.Kubernetes;
-using Pole.Features.RedisServices.Common;
-using Pole.Features.ResourceGroups.Common;
-using Pole.Features.ResourceGroups.Services;
-using Pole.Features.Search.Common;
+using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.DnsRecords.Application.Filters;
+using Pole.Features.Outbox.Application;
+using Pole.Features.Postgres.Application.Common;
+using Pole.Features.Postgres.Application.Kubernetes;
+using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Application.Services;
+using Pole.Features.Search.Application.Common;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants;
-using Pole.Features.Tenants.Common;
-using Pole.Features.Users.Common;
-using Pole.Features.Users.Identity;
-using Pole.Features.WebServices.Common;
+using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Users.Application.Common;
+using Pole.Features.Users.Application.Identity;
+using Pole.Features.WebServices.Application.Common;
 using Pole.Mediator;
 using Pole.Observability;
 using Pole.Server.Database;
@@ -276,3 +276,4 @@ public static class DependencyInjection
         }
     }
 }
+

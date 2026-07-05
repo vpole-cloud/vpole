@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.ResourceGroups.Events</AssemblyName>
+        <RootNamespace>Pole.Features.ResourceGroups.Events</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
+      <ProjectReference Include="..\ResourceGroups.Domain\ResourceGroups.Domain.csproj" />
+    </ItemGroup>
+
+</Project>

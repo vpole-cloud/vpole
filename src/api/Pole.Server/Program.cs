@@ -1,16 +1,16 @@
 using System.Reflection;
 using Pole.Database;
-using Pole.Feature.DnsRecords.Core.Common;
-using Pole.Features.Outbox;
-using Pole.Features.Postgres.Endpoints;
-using Pole.Features.RedisServices.Common;
-using Pole.Features.ResourceGroups.Common;
-using Pole.Features.Search.Common;
-using Pole.Features.Search.Services;
-using Pole.Features.Tenants.Common;
-using Pole.Features.Tenants.Middleware;
-using Pole.Features.Users.Common;
-using Pole.Features.WebServices.Common;
+using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.Outbox.Application;
+using Pole.Features.Postgres.Application.Endpoints;
+using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.Search.Application.Common;
+using Pole.Features.Search.Application.Services;
+using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Tenants.Application.Middleware;
+using Pole.Features.Users.Application.Common;
+using Pole.Features.WebServices.Application.Common;
 using Pole.Observability;
 using Pole.Server.Extensions;
 using Pole.ServiceDefaults;
@@ -29,11 +29,11 @@ Assembly[] assemblies = [
     typeof(UserEndpoints).Assembly,
 ];
 Assembly[] outboxEventAssemblies = [
-    typeof(Pole.Features.WebServices.Events.CreateEvent).Assembly,
-    typeof(Pole.Feature.DnsRecords.Events.CommitDomainNameEvent).Assembly,
-    typeof(Pole.Features.Postgres.Events.CreateEvent).Assembly,
-    typeof(Pole.Features.RedisServices.Events.CreateEvent).Assembly,
-    typeof(Pole.Features.ResourceGroups.Events.CreateEvent).Assembly
+    typeof(Pole.Features.WebServices.Events.WebServiceCreatedEvent).Assembly,
+    typeof(Pole.Features.DnsRecords.Events.CommitDomainNameEvent).Assembly,
+    typeof(Pole.Features.Postgres.Events.PostgresClusterCreatedEvent).Assembly,
+    typeof(Pole.Features.RedisServices.Events.RedisServiceCreatedEvent).Assembly,
+    typeof(Pole.Features.ResourceGroups.Events.ResourceGroupCreatedEvent).Assembly
 ];
 
 builder.AddServiceDefaults();
@@ -86,3 +86,4 @@ app.MapGet("/test-keycloak", () => "Hello World!")
 app.MapApiEndpoints();
 
 app.Run();
+

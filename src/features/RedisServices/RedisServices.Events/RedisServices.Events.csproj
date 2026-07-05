@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.RedisServices.Events</AssemblyName>
+        <RootNamespace>Pole.Features.RedisServices.Events</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
+      <ProjectReference Include="..\RedisServices.Domain\RedisServices.Domain.csproj" />
+    </ItemGroup>
+
+</Project>

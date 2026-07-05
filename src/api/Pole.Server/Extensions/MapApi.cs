@@ -1,11 +1,11 @@
-﻿using Pole.Feature.DnsRecords.Core.Common;
-using Pole.Features.Postgres.Endpoints;
-using Pole.Features.RedisServices.Common;
-using Pole.Features.ResourceGroups.Common;
-using Pole.Features.Search.Common;
-using Pole.Features.Tenants.Common;
-using Pole.Features.Users.Common;
-using Pole.Features.WebServices.Common;
+using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.Postgres.Application.Endpoints;
+using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.Search.Application.Common;
+using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Users.Application.Common;
+using Pole.Features.WebServices.Application.Common;
 
 namespace Pole.Server.Extensions;
 
@@ -29,3 +29,4 @@ public static class MapApi
     }
     
 }
+

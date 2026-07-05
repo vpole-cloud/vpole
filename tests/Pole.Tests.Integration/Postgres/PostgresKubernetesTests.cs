@@ -5,9 +5,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
 using Npgsql;
-using Pole.Features.Postgres.Common;
+using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Domain;
-using Pole.Features.Postgres.Kubernetes;
+using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 using PostgresCluster = Pole.Features.Postgres.Domain.PostgresCluster;
@@ -333,3 +333,4 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
         }
     }
 }
+

@@ -1,5 +1,5 @@
 using MongoDB.Driver;
-using Pole.Feature.DnsRecords.Domain;
+using Pole.Features.DnsRecords.Domain;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.WebServices.Domain;
@@ -38,3 +38,4 @@ public static class TestSeedExtensions
         return await dbContext.OutboxMessages.CountDocumentsAsync(message => message.EventType == eventType);
     }
 }
+

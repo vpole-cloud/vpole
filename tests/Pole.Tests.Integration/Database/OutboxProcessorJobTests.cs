@@ -1,5 +1,5 @@
 using System.Reflection;
-using Pole.Features.Outbox;
+using Pole.Features.Outbox.Application;
 using Pole.Features.WebServices.Events;
 using Xunit;
 
@@ -14,10 +14,10 @@ public sealed class OutboxProcessorJobTests
         Assert.NotNull(buildMethod);
         var eventAssemblies = new[]
         {
-            typeof(CreateEvent).Assembly,
-            typeof(Pole.Feature.DnsRecords.Events.CommitDomainNameEvent).Assembly,
-            typeof(Pole.Features.Postgres.Events.CreateEvent).Assembly,
-            typeof(Pole.Features.RedisServices.Events.CreateEvent).Assembly
+            typeof(WebServiceCreatedEvent).Assembly,
+            typeof(Pole.Features.DnsRecords.Events.CommitDomainNameEvent).Assembly,
+            typeof(Pole.Features.Postgres.Events.PostgresClusterCreatedEvent).Assembly,
+            typeof(Pole.Features.RedisServices.Events.RedisServiceCreatedEvent).Assembly
         };
         var cache = buildMethod.Invoke(null, [eventAssemblies]);
         Assert.NotNull(cache);
@@ -25,12 +25,12 @@ public sealed class OutboxProcessorJobTests
         var containsKeyMethod = cache.GetType().GetMethod("ContainsKey");
         Assert.NotNull(containsKeyMethod);
 
-        var containsCreateEvent = (bool)containsKeyMethod.Invoke(cache, ["create-postgres-cluster-requested"])!;
-        var containsUpdateEvent = (bool)containsKeyMethod.Invoke(cache, ["update-postgres-cluster-requested"])!;
-        var containsDeleteEvent = (bool)containsKeyMethod.Invoke(cache, ["delete-postgres-cluster-requested"])!;
-        var containsRedisCreateEvent = (bool)containsKeyMethod.Invoke(cache, ["create-redis-service-requested"])!;
-        var containsRedisUpdateEvent = (bool)containsKeyMethod.Invoke(cache, ["update-redis-service"])!;
-        var containsRedisDeleteEvent = (bool)containsKeyMethod.Invoke(cache, ["delete-redis-service"])!;
+        var containsCreateEvent = (bool)containsKeyMethod.Invoke(cache, ["postgres-cluster-created"])!;
+        var containsUpdateEvent = (bool)containsKeyMethod.Invoke(cache, ["postgres-cluster-updated"])!;
+        var containsDeleteEvent = (bool)containsKeyMethod.Invoke(cache, ["postgres-cluster-deleted"])!;
+        var containsRedisCreateEvent = (bool)containsKeyMethod.Invoke(cache, ["redis-service-created"])!;
+        var containsRedisUpdateEvent = (bool)containsKeyMethod.Invoke(cache, ["redis-service-updated"])!;
+        var containsRedisDeleteEvent = (bool)containsKeyMethod.Invoke(cache, ["redis-service-deleted"])!;
         var containsDnsCommitEvent = (bool)containsKeyMethod.Invoke(cache, ["commit-domain-name"])!;
 
         Assert.True(containsCreateEvent);
@@ -42,3 +42,4 @@ public sealed class OutboxProcessorJobTests
         Assert.True(containsDnsCommitEvent);
     }
 }
+

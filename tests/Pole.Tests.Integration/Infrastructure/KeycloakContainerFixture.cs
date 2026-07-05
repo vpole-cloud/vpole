@@ -5,7 +5,7 @@ using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.Options;
-using Pole.Features.Users.Identity;
+using Pole.Features.Users.Application.Identity;
 using Xunit;
 
 namespace Pole.Tests.Integration.Infrastructure;
@@ -191,3 +191,4 @@ public sealed record KeycloakAdminUser(
     [property: JsonPropertyName("lastName")] string? LastName,
     [property: JsonPropertyName("enabled")] bool Enabled,
     [property: JsonPropertyName("requiredActions")] IReadOnlyCollection<string>? RequiredActions);
+

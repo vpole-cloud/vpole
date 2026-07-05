@@ -1,15 +1,15 @@
 using System.Collections.Immutable;
 using Microsoft.FSharp.Core;
-using Pole.Feature.DnsRecords.Domain;
-using Pole.Features.Postgres.Endpoints;
-using Pole.Features.RedisServices.Common;
-using Pole.Features.RedisServices.Endpoints;
+using Pole.Features.DnsRecords.Domain;
+using Pole.Features.Postgres.Application.Endpoints;
+using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.Features.ResourceGroups.Endpoints;
-using Pole.Features.ResourceGroups.Services;
+using Pole.Features.ResourceGroups.Application.Endpoints;
+using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.Shared.Models;
-using Pole.Features.WebServices.Common;
-using Pole.Features.WebServices.Endpoints;
+using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Endpoints;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
@@ -128,3 +128,4 @@ public static class TestData
             groupId: groupId,
             options: DnsRecordFactory.DefaultCreateOptions);
 }
+

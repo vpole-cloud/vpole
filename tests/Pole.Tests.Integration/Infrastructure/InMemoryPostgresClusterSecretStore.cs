@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.FSharp.Core;
-using Pole.Features.Postgres.Kubernetes;
+using Pole.Features.Postgres.Application.Kubernetes;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
@@ -40,3 +40,4 @@ public sealed class InMemoryPostgresClusterSecretStore : IPostgresClusterSecretS
         return credentials;
     }
 }
+

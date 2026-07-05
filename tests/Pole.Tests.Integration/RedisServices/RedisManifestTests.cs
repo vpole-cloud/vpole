@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 using Pole.Features.RedisServices.Domain;
-using Pole.Features.RedisServices.Kubernetes;
+using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -86,3 +86,4 @@ public sealed class RedisManifestTests
                 Tags = ImmutableHashSet.Create("cache")
             });
 }
+

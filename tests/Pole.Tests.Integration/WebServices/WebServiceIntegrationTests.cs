@@ -1,11 +1,11 @@
 using MongoDB.Driver;
 using Microsoft.Extensions.DependencyInjection;
-using Pole.Feature.DnsRecords.Core.Common;
-using Pole.Feature.DnsRecords.Core.Consumers;
-using Pole.Feature.DnsRecords.Domain;
-using Pole.Feature.DnsRecords.Events;
+using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.DnsRecords.Application.Consumers;
+using Pole.Features.DnsRecords.Domain;
+using Pole.Features.DnsRecords.Events;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.WebServices.Endpoints;
+using Pole.Features.WebServices.Application.Endpoints;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -35,7 +35,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(request.Body.DomainName, savedDns.Domain);
         Assert.IsType<Pending>(savedDns.Status);
 
-        var outboxCount = await DbContext.CountOutboxMessagesAsync("create-web-service-requested");
+        var outboxCount = await DbContext.CountOutboxMessagesAsync("web-service-created");
         Assert.Equal(1L, outboxCount);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("commit-domain-name"));
 
@@ -121,7 +121,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
 
         Assert.Null(deletedService);
         Assert.NotNull(retainedDns);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("delete-web-service"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("web-service-deleted"));
 
         var reservationService = Services.GetRequiredService<IDomainNameReservationService>();
         var deleteDnsConsumer = new DeleteDnsRecordEventConsumer(reservationService);
@@ -133,3 +133,5 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Null(deletedDns);
     }
 }
+
+
