@@ -9,7 +9,7 @@ open Pole.Features.Search.Domain
 open Pole.Features.Search.Application.Projection
 open Pole.Features.Search.Application.Services
 
-type RedisProjectionConsumer(searchService : ISearchService) =
+type RedisServiceSearchProjectionConsumer(searchService : ISearchService) =
     member _.HandleUpsert(
         tenantId : string,
         redisId : string,
@@ -22,8 +22,8 @@ type RedisProjectionConsumer(searchService : ISearchService) =
             do! apply documents cancellationToken
         }
 
-type RedisCreatedConsumer(searchService : ISearchService) =
-    inherit RedisProjectionConsumer(searchService)
+type AddRedisServiceToSearchOnRedisServiceCreatedConsumer(searchService : ISearchService) =
+    inherit RedisServiceSearchProjectionConsumer(searchService)
 
     member this.Handle(event : RedisServiceCreatedEvent, cancellationToken : CancellationToken) =
         this.HandleUpsert(event.EventCore.TenantId, event.RedisId, event.Name, event.ResourceGroupId, searchService.Create, cancellationToken)
@@ -32,8 +32,8 @@ type RedisCreatedConsumer(searchService : ISearchService) =
         member this.Consume(context : ConsumeContext<RedisServiceCreatedEvent>) =
             this.Handle(context.Message, context.CancellationToken)
 
-type RedisUpdatedConsumer(searchService : ISearchService) =
-    inherit RedisProjectionConsumer(searchService)
+type UpdateRedisServiceInSearchOnRedisServiceUpdatedConsumer(searchService : ISearchService) =
+    inherit RedisServiceSearchProjectionConsumer(searchService)
 
     member this.Handle(event : RedisServiceUpdatedEvent, cancellationToken : CancellationToken) =
         this.HandleUpsert(event.EventCore.TenantId, event.RedisId, event.Name, event.ResourceGroupId, searchService.Update, cancellationToken)
@@ -42,7 +42,7 @@ type RedisUpdatedConsumer(searchService : ISearchService) =
         member this.Consume(context : ConsumeContext<RedisServiceUpdatedEvent>) =
             this.Handle(context.Message, context.CancellationToken)
 
-type RedisDeletedConsumer(searchService : ISearchService) =
+type RemoveRedisServiceFromSearchOnRedisServiceDeletedConsumer(searchService : ISearchService) =
     member _.Handle(tenantId : string, redisId : string, cancellationToken : CancellationToken) =
         searchService.Delete(SearchDocumentType.RedisService, tenantId, redisId) cancellationToken
 

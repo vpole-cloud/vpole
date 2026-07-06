@@ -5,7 +5,7 @@ using Pole.ResultType;
 
 namespace Pole.Features.DnsRecords.Application.Consumers;
 
-public class CommitDomainNameEventConsumer(
+public class CommitDomainNameReservationOnCommitDomainNameEventConsumer(
     IDomainNameReservationService reservationService)
     : IConsumer<CommitDomainNameEvent>
 {

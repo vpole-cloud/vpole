@@ -73,10 +73,10 @@ type UpdatePostgresClusterPasswordRequestValidator() as this =
         this.RuleFor(_.Body.Password).NotEmpty() |> ignore
 
 [<AbstractClass; Sealed>]
-type UpdatePostgresClusterPasswordEndpoint =
+type UpdatePostgresClusterPassword =
     [<Extension>]
     static member MapUpdatePostgresClusterPasswordEndpoint(endpoints: IEndpointRouteBuilder) =
-        endpoints.MapMethod<UpdatePostgresClusterPasswordEndpoint>("/{ClusterId}/password", nameof UpdatePostgresClusterPasswordEndpoint.Handle, EndpointHttpMethod.Patch)
+        endpoints.MapMethod<UpdatePostgresClusterPassword>("/{ClusterId}/password", nameof UpdatePostgresClusterPassword.Handle, EndpointHttpMethod.Patch)
             .WithName("UpdatePostgresClusterPassword")
             |> ignore
         endpoints

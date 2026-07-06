@@ -18,7 +18,7 @@
         <Compile Include="Consumers\WebServiceConsumers.fs" />
         <Compile Include="Consumers\RedisConsumers.fs" />
         <Compile Include="Consumers\PostgresConsumers.fs" />
-        <Compile Include="Endpoints\Get.fs" />
+        <Compile Include="Endpoints\GetSearchResults.fs" />
         <Compile Include="Endpoints\AllSearchEndpoints.fs" />
     </ItemGroup>
 

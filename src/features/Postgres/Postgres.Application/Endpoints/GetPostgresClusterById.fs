@@ -15,7 +15,7 @@ open Pole.Features.Postgres.Application.Common
 open Pole.Mediator
 open Pole.ResultType
 
-type GetByIdPostgresClusterRequest =
+type GetPostgresClusterByIdRequest =
     { [<FromRoute>]
       ClusterId : string
       [<FromHeader(Name = TenantHeaders.TenantId)>]
@@ -25,7 +25,7 @@ type GetByIdPostgresClusterRequest =
         member this.TenantId = this.TenantId
     
 type GetPostgresClusterHandler(dbContext : IPostgresDbContext) =
-    interface IMediatorHandler<GetByIdPostgresClusterRequest, PostgresClusterDto> with
+    interface IMediatorHandler<GetPostgresClusterByIdRequest, PostgresClusterDto> with
         member this.HandleAsync(request, cancellationToken) =
             task {
                 let filter =
@@ -46,21 +46,21 @@ type GetPostgresClusterHandler(dbContext : IPostgresDbContext) =
                     return PostgresCluster.toDto cluster |> ResultF.ofValue
             }
             
-type GetByIdPostgresClusterRequestValidator() as this =
-    inherit AbstractValidator<GetByIdPostgresClusterRequest>()
+type GetPostgresClusterByIdRequestValidator() as this =
+    inherit AbstractValidator<GetPostgresClusterByIdRequest>()
     do
         this.RuleFor(_.ClusterId).NotEmpty().WithMessage("Cluster ID must not be empty.") |> ignore
 
 [<AbstractClass; Sealed>]
-type PostgresClusterGetByIdEndpoints =
+type GetPostgresClusterById =
     [<Extension>]
     static member MapGetByIdPostgresClusterEndpoint(endpoints: IEndpointRouteBuilder) =
-        endpoints.MapMethod<PostgresClusterGetByIdEndpoints>("/{ClusterId}", nameof PostgresClusterGetByIdEndpoints.Handle, EndpointHttpMethod.Get)
+        endpoints.MapMethod<GetPostgresClusterById>("/{ClusterId}", nameof GetPostgresClusterById.Handle, EndpointHttpMethod.Get)
             .WithName("GetPostgresClusterById")
             |> ignore
         endpoints
 
-    static member Handle([<AsParameters>] request: GetByIdPostgresClusterRequest, [<FromServices>] mediator: IMediator) =
+    static member Handle([<AsParameters>] request: GetPostgresClusterByIdRequest, [<FromServices>] mediator: IMediator) =
         task {
             let! result = mediator.Send request
             return result.ToHttpResult(fun value -> Results.Ok(value))

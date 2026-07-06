@@ -61,10 +61,10 @@ type GetPostgresClustersRequestValidator() =
     inherit AbstractValidator<GetPostgresClustersRequest>()
 
 [<AbstractClass; Sealed>]
-type PostgresClusterGetEndpoints =
+type GetPostgresClusters =
     [<Extension>]
     static member MapGetPostgresClustersEndpoint(endpoints: IEndpointRouteBuilder) =
-        endpoints.MapMethod<PostgresClusterGetEndpoints>("/", nameof PostgresClusterGetEndpoints.Handle, EndpointHttpMethod.Get)
+        endpoints.MapMethod<GetPostgresClusters>("/", nameof GetPostgresClusters.Handle, EndpointHttpMethod.Get)
             .WithName("GetPostgresClusters")
             |> ignore
         endpoints

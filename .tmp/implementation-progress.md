@@ -19,6 +19,8 @@
 - [x] Event and change record renames
 - [x] Consumer renames
 - [x] Endpoint file/class renames
+- [x] Follow-up cleanup for remaining generic F# endpoint files (`Create.fs`, `Update.fs`, `Get.fs`, etc.)
+- [x] Follow-up cleanup for event-only consumer type names in Postgres, Search, RedisServices, WebServices, ResourceGroups, and DnsRecords
 - [x] References cleanup in API/tests
 - [x] Update assembly/event names in outbox consumers/integration wiring
 - [x] Build: `dotnet build Pole.slnx`

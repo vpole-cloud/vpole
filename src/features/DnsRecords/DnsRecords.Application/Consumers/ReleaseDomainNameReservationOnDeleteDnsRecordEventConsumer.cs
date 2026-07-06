@@ -4,7 +4,7 @@ using Pole.Features.DnsRecords.Events;
 
 namespace Pole.Features.DnsRecords.Application.Consumers;
 
-public class DeleteDnsRecordEventConsumer(
+public class ReleaseDomainNameReservationOnDeleteDnsRecordEventConsumer(
     IDomainNameReservationService reservationService
 ) : IConsumer<DeleteDnsRecordEvent>
 {

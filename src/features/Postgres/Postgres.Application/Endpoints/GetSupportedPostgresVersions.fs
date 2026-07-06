@@ -27,10 +27,10 @@ type GetSupportedPostgresVersionsHandler(settings : PostgresSettings) =
             }
 
 [<AbstractClass; Sealed>]
-type GetSupportedPostgresVersionsEndpoint =
+type GetSupportedPostgresVersions =
     [<Extension>]
     static member MapGetSupportedPostgresVersionsEndpoint(endpoints: IEndpointRouteBuilder) =
-        endpoints.MapMethod<GetSupportedPostgresVersionsEndpoint>("/supported-versions", nameof GetSupportedPostgresVersionsEndpoint.Handle, EndpointHttpMethod.Get)
+        endpoints.MapMethod<GetSupportedPostgresVersions>("/supported-versions", nameof GetSupportedPostgresVersions.Handle, EndpointHttpMethod.Get)
             .WithName("GetSupportedPostgresVersions")
             |> ignore
         endpoints

@@ -9,7 +9,7 @@ open Pole.Features.Search.Domain
 open Pole.Features.Search.Application.Projection
 open Pole.Features.Search.Application.Services
 
-type PostgresProjectionConsumer(searchService : ISearchService) =
+type PostgresSearchProjectionConsumer(searchService : ISearchService) =
     member _.HandleUpsert(
         tenantId : string,
         clusterId : string,
@@ -22,8 +22,8 @@ type PostgresProjectionConsumer(searchService : ISearchService) =
             do! apply documents cancellationToken
         }
 
-type PostgresCreatedConsumer(searchService : ISearchService) =
-    inherit PostgresProjectionConsumer(searchService)
+type AddPostgresClusterToSearchOnPostgresClusterCreatedConsumer(searchService : ISearchService) =
+    inherit PostgresSearchProjectionConsumer(searchService)
 
     member this.Handle(event : PostgresClusterCreatedEvent, cancellationToken : CancellationToken) =
         this.HandleUpsert(event.EventCore.TenantId, event.ClusterId, event.Name, event.GroupId, searchService.Create, cancellationToken)
@@ -32,8 +32,8 @@ type PostgresCreatedConsumer(searchService : ISearchService) =
         member this.Consume(context : ConsumeContext<PostgresClusterCreatedEvent>) =
             this.Handle(context.Message, context.CancellationToken)
 
-type PostgresUpdatedConsumer(searchService : ISearchService) =
-    inherit PostgresProjectionConsumer(searchService)
+type UpdatePostgresClusterInSearchOnPostgresClusterUpdatedConsumer(searchService : ISearchService) =
+    inherit PostgresSearchProjectionConsumer(searchService)
 
     member this.Handle(event : PostgresClusterUpdatedEvent, cancellationToken : CancellationToken) =
         this.HandleUpsert(event.EventCore.TenantId, event.ClusterId, event.Name, event.GroupId, searchService.Update, cancellationToken)
@@ -42,7 +42,7 @@ type PostgresUpdatedConsumer(searchService : ISearchService) =
         member this.Consume(context : ConsumeContext<PostgresClusterUpdatedEvent>) =
             this.Handle(context.Message, context.CancellationToken)
 
-type PostgresDeletedConsumer(searchService : ISearchService) =
+type RemovePostgresClusterFromSearchOnPostgresClusterDeletedConsumer(searchService : ISearchService) =
     member _.Handle(tenantId : string, clusterId : string, cancellationToken : CancellationToken) =
         searchService.Delete(SearchDocumentType.PostgresCluster, tenantId, clusterId) cancellationToken
 

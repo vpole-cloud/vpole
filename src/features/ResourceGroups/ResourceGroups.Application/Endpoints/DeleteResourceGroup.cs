@@ -73,7 +73,7 @@ public sealed class DeleteResourceGroupHandler(
     }
 }
 
-public class DeleteResourceGroupEventConsumer(
+public class DeleteKubernetesNamespaceOnResourceGroupDeletedConsumer(
     IKubernetes kubernetes
     ) : IConsumer<ResourceGroupDeletedEvent>
 {

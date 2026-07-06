@@ -61,7 +61,7 @@ public sealed class DeleteWebServiceHandler(
     }
 }
 
-public class DeleteWebServiceRequestedEventConsumer(
+public class DeleteWebServiceFromKubernetesOnWebServiceDeletedConsumer(
     IKubernetes kubernetes
     ) : IConsumer<WebServiceDeletedEvent>
 {

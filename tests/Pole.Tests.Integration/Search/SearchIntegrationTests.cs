@@ -208,7 +208,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.True(deleteResult.TryGetValue(out _, out var deleteError));
         Assert.Null(deleteError);
 
-        var deletedConsumer = new WebServiceDeletedConsumer(SearchService);
+        var deletedConsumer = new RemoveWebServiceFromSearchOnWebServiceDeletedConsumer(SearchService);
         await deletedConsumer.Handle(TestData.TenantId, created.WebServiceId, dnsRecord.Id, CancellationToken.None);
 
         var serviceRows = await SearchDocuments.CountDocumentsAsync(row => row.SourceType == SearchDocumentType.WebService && row.SourceId == created.WebServiceId);
@@ -225,7 +225,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     private async Task IndexResourceGroupCreatedAsync(string resourceGroupId)
     {
         var resourceGroup = await DbContext.ResourceGroups.Find(group => group.Id == resourceGroupId).FirstAsync();
-        var consumer = new ResourceGroupCreatedConsumer(SearchService);
+        var consumer = new AddResourceGroupToSearchOnResourceGroupCreatedConsumer(SearchService);
         await consumer.Handle(new ResourceGroupCreateEvent(
             resourceGroup.Id,
             resourceGroup.Name,
@@ -241,7 +241,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     private async Task IndexResourceGroupUpdatedAsync(string resourceGroupId)
     {
         var resourceGroup = await DbContext.ResourceGroups.Find(group => group.Id == resourceGroupId).FirstAsync();
-        var consumer = new ResourceGroupUpdatedConsumer(SearchService);
+        var consumer = new UpdateResourceGroupInSearchOnResourceGroupUpdatedConsumer(SearchService);
         await consumer.Handle(new ResourceGroupUpdateEvent(
             resourceGroup.Id,
             resourceGroup.Name,
@@ -259,7 +259,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     private async Task IndexWebServiceCreatedAsync(string webServiceId)
     {
         var webService = await DbContext.WebServices.Find(service => service.Id == webServiceId).FirstAsync();
-        var consumer = new WebServiceCreatedConsumer(SearchService);
+        var consumer = new AddWebServiceToSearchOnWebServiceCreatedConsumer(SearchService);
         await consumer.Handle(new WebServiceCreateEvent(
             webService.Id,
             webService.Name,
@@ -276,7 +276,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     private async Task IndexRedisCreatedAsync(string redisId)
     {
         var redis = await DbContext.RedisServices.Find(service => service.Id == redisId).FirstAsync();
-        var consumer = new RedisCreatedConsumer(SearchService);
+        var consumer = new AddRedisServiceToSearchOnRedisServiceCreatedConsumer(SearchService);
         await consumer.Handle(new RedisCreateEvent(
             redis.Id,
             redis.Name,
@@ -292,7 +292,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     private async Task IndexPostgresCreatedAsync(string clusterId)
     {
         var cluster = await DbContext.Postgres.Find(cluster => cluster.Id == clusterId).FirstAsync();
-        var consumer = new PostgresCreatedConsumer(SearchService);
+        var consumer = new AddPostgresClusterToSearchOnPostgresClusterCreatedConsumer(SearchService);
         await consumer.Handle(new PostgresCreateEvent(
             EventCore.Create(cluster.TenantId),
             cluster.Id,
