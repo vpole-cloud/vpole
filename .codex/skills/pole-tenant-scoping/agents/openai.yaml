@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pole Tenant Scoping"
+  short_description: "Guard tenant-owned API changes"
+  default_prompt: "Use $pole-tenant-scoping to add or review tenant-scoped resource behavior in Pole."
