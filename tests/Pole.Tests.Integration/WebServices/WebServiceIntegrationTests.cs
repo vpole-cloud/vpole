@@ -40,7 +40,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("commit-domain-name"));
 
         var reservationService = Services.GetRequiredService<IDomainNameReservationService>();
-        var commitConsumer = new CommitDomainNameEventConsumer(reservationService);
+        var commitConsumer = new CommitDomainNameReservationOnCommitDomainNameEventConsumer(reservationService);
         await commitConsumer.Handle(new CommitDomainNameEvent(
             savedDns.Id,
             response.WebServiceId,
@@ -124,7 +124,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("web-service-deleted"));
 
         var reservationService = Services.GetRequiredService<IDomainNameReservationService>();
-        var deleteDnsConsumer = new DeleteDnsRecordEventConsumer(reservationService);
+        var deleteDnsConsumer = new ReleaseDomainNameReservationOnDeleteDnsRecordEventConsumer(reservationService);
         await deleteDnsConsumer.Handle(new DeleteDnsRecordEvent(
             savedDns.Id,
             EventCore.Create(TestData.TenantId)));

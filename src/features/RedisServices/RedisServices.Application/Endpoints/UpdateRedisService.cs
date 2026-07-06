@@ -122,7 +122,7 @@ public sealed class UpdateRedisServiceHandler(
         !changes.RedisSpec.AreEqual || !changes.Tags.AreEqual;
 }
 
-public class UpdateRedisServiceEventConsumer(
+public class UpdateRedisServiceInKubernetesOnRedisServiceUpdatedConsumer(
     IRedisDbContext dbContext,
     IKubernetes kubernetes)
     : IConsumer<RedisServiceUpdatedEvent>

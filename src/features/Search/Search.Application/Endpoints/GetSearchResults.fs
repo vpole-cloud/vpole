@@ -22,10 +22,10 @@ type GetSearchHandler(searchService : ISearchService) =
             }
 
 [<AbstractClass; Sealed>]
-type SearchGetEndpoint =
+type GetSearchResults =
     [<Extension>]
     static member MapGetSearchEndpoint(endpoints : IEndpointRouteBuilder) =
-        endpoints.MapMethod<SearchGetEndpoint>("/", nameof SearchGetEndpoint.Handle, EndpointHttpMethod.Get)
+        endpoints.MapMethod<GetSearchResults>("/", nameof GetSearchResults.Handle, EndpointHttpMethod.Get)
             .WithName("GetSearch")
             .WithSummary("Searches across all indexed entities.")
             .Produces<PaginatedResponse<SearchHitDto>>(StatusCodes.Status200OK)

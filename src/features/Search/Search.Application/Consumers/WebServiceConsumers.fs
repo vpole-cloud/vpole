@@ -9,7 +9,7 @@ open Pole.Features.Search.Domain
 open Pole.Features.Search.Application.Projection
 open Pole.Features.Search.Application.Services
 
-type WebServiceProjectionConsumer(searchService : ISearchService) =
+type WebServiceSearchProjectionConsumer(searchService : ISearchService) =
     member _.HandleUpsert(
         tenantId : string,
         webServiceId : string,
@@ -32,8 +32,8 @@ type WebServiceProjectionConsumer(searchService : ISearchService) =
                 do! apply dnsDocuments cancellationToken
         }
 
-type WebServiceCreatedConsumer(searchService : ISearchService) =
-    inherit WebServiceProjectionConsumer(searchService)
+type AddWebServiceToSearchOnWebServiceCreatedConsumer(searchService : ISearchService) =
+    inherit WebServiceSearchProjectionConsumer(searchService)
 
     member this.Handle(event : WebServiceCreatedEvent, cancellationToken : CancellationToken) =
         this.HandleUpsert(
@@ -51,8 +51,8 @@ type WebServiceCreatedConsumer(searchService : ISearchService) =
         member this.Consume(context : ConsumeContext<WebServiceCreatedEvent>) =
             this.Handle(context.Message, context.CancellationToken)
 
-type WebServiceUpdatedConsumer(searchService : ISearchService) =
-    inherit WebServiceProjectionConsumer(searchService)
+type UpdateWebServiceInSearchOnWebServiceUpdatedConsumer(searchService : ISearchService) =
+    inherit WebServiceSearchProjectionConsumer(searchService)
 
     member this.Handle(event : WebServiceUpdatedEvent, cancellationToken : CancellationToken) =
         this.HandleUpsert(
@@ -70,7 +70,7 @@ type WebServiceUpdatedConsumer(searchService : ISearchService) =
         member this.Consume(context : ConsumeContext<WebServiceUpdatedEvent>) =
             this.Handle(context.Message, context.CancellationToken)
 
-type WebServiceDeletedConsumer(searchService : ISearchService) =
+type RemoveWebServiceFromSearchOnWebServiceDeletedConsumer(searchService : ISearchService) =
     member _.Handle(tenantId : string, webServiceId : string, dnsRecordId : string option, cancellationToken : CancellationToken) =
         task {
             do! searchService.Delete(SearchDocumentType.WebService, tenantId, webServiceId) cancellationToken

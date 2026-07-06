@@ -67,10 +67,10 @@ type GetPostgresClusterConnectionStringRequestValidator() as this =
         this.RuleFor(_.ClusterId).NotEmpty() |> ignore
 
 [<AbstractClass; Sealed>]
-type GetPostgresClusterConnectionStringEndpoint =
+type GetPostgresClusterConnectionString =
     [<Extension>]
     static member MapGetPostgresClusterConnectionStringEndpoint(endpoints: IEndpointRouteBuilder) =
-        endpoints.MapMethod<GetPostgresClusterConnectionStringEndpoint>("/{ClusterId}/connection-string", nameof GetPostgresClusterConnectionStringEndpoint.Handle, EndpointHttpMethod.Get)
+        endpoints.MapMethod<GetPostgresClusterConnectionString>("/{ClusterId}/connection-string", nameof GetPostgresClusterConnectionString.Handle, EndpointHttpMethod.Get)
             .WithName("GetPostgresClusterConnectionString")
             |> ignore
         endpoints

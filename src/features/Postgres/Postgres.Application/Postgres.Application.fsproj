@@ -18,14 +18,14 @@
         <Compile Include="Kubernetes\PostgresStatefulSetKubernetesBuilder.fs" />
         <Compile Include="Kubernetes\PostgresClusterSecretStore.fs" />
         <Compile Include="Kubernetes\PostgresClusterKubernetesResourceManager.fs" />
-        <Compile Include="Endpoints\Create.fs" />
-        <Compile Include="Endpoints\Delete.fs" />
-        <Compile Include="Endpoints\Update.fs" />
-        <Compile Include="Endpoints\UpdatePassword.fs" />
-        <Compile Include="Endpoints\GetConnectionString.fs" />
-        <Compile Include="Endpoints\GetSupportedVersions.fs" />
-        <Compile Include="Endpoints\GetById.fs" />
-        <Compile Include="Endpoints\Get.fs" />
+        <Compile Include="Endpoints\CreatePostgresCluster.fs" />
+        <Compile Include="Endpoints\DeletePostgresCluster.fs" />
+        <Compile Include="Endpoints\UpdatePostgresCluster.fs" />
+        <Compile Include="Endpoints\UpdatePostgresClusterPassword.fs" />
+        <Compile Include="Endpoints\GetPostgresClusterConnectionString.fs" />
+        <Compile Include="Endpoints\GetSupportedPostgresVersions.fs" />
+        <Compile Include="Endpoints\GetPostgresClusterById.fs" />
+        <Compile Include="Endpoints\GetPostgresClusters.fs" />
         <Compile Include="Endpoints\AllPostgresEndpoints.fs" />
     </ItemGroup>
 

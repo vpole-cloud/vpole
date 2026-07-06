@@ -113,10 +113,10 @@ type CreatePostgresClusterValidator() as this =
         this.RuleFor(_.Body.Password).NotEmpty().WithMessage("Password is required.") |> ignore
 
 [<AbstractClass; Sealed>]
-type PostgresClusterCreateEndpoints =
+type CreatePostgresCluster =
     [<Extension>]
     static member MapCreatePostgresClusterEndpoint(endpoints: IEndpointRouteBuilder) =
-        endpoints.MapMethod<PostgresClusterCreateEndpoints>("/", nameof PostgresClusterCreateEndpoints.Handle, EndpointHttpMethod.Post)
+        endpoints.MapMethod<CreatePostgresCluster>("/", nameof CreatePostgresCluster.Handle, EndpointHttpMethod.Post)
             .WithName("CreatePostgresCluster")
         |> ignore
         endpoints
@@ -127,7 +127,7 @@ type PostgresClusterCreateEndpoints =
             return result.ToHttpResult(fun value -> Results.Ok(value))
         }
 
-type PostgresClusterCreatedConsumer(
+type ProvisionPostgresClusterOnPostgresClusterCreatedConsumer(
     secretStore : IPostgresClusterSecretStore,
     deploymentManager : IPostgresClusterDeploymentManager) =
     interface IConsumer<PostgresClusterCreatedEvent> with

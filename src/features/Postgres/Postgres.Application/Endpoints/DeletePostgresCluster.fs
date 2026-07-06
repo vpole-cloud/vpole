@@ -77,10 +77,10 @@ type DeletePostgresClusterRequestValidator() as this =
         this.RuleFor(_.ClusterId).NotEmpty().WithMessage("Cluster ID must not be empty.") |> ignore
 
 [<AbstractClass; Sealed>]
-type PostgresClusterDeleteEndpoints =
+type DeletePostgresCluster =
     [<Extension>]
     static member MapDeletePostgresClusterEndpoint(endpoints: IEndpointRouteBuilder) =
-        endpoints.MapMethod<PostgresClusterDeleteEndpoints>("/{ClusterId}", nameof PostgresClusterDeleteEndpoints.Handle, EndpointHttpMethod.Delete)
+        endpoints.MapMethod<DeletePostgresCluster>("/{ClusterId}", nameof DeletePostgresCluster.Handle, EndpointHttpMethod.Delete)
             .WithName("DeletePostgresCluster")
             |> ignore
         endpoints
@@ -91,7 +91,7 @@ type PostgresClusterDeleteEndpoints =
             return result.ToHttpResult(fun value -> Results.Ok(value))
         }
 
-type PostgresClusterDeletedConsumer(deploymentManager : IPostgresClusterDeploymentManager) =
+type DeletePostgresClusterDeploymentOnPostgresClusterDeletedConsumer(deploymentManager : IPostgresClusterDeploymentManager) =
     interface MassTransit.IConsumer<PostgresClusterDeletedEvent> with
         member _.Consume(context) =
             deploymentManager.DeleteAsync(

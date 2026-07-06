@@ -8,7 +8,7 @@ open Pole.Features.Search.Domain
 open Pole.Features.Search.Application.Projection
 open Pole.Features.Search.Application.Services
 
-type ResourceGroupCreatedConsumer(searchService : ISearchService) =
+type AddResourceGroupToSearchOnResourceGroupCreatedConsumer(searchService : ISearchService) =
     member _.Handle(event : ResourceGroupCreatedEvent, cancellationToken : CancellationToken) =
         let documents = SearchDocumentFactory.fromResourceGroupFields event.EventCore.TenantId event.ResourceGroupId event.Name event.Tags
         searchService.Create documents cancellationToken
@@ -17,7 +17,7 @@ type ResourceGroupCreatedConsumer(searchService : ISearchService) =
         member this.Consume(context : ConsumeContext<ResourceGroupCreatedEvent>) =
             this.Handle(context.Message, context.CancellationToken)
 
-type ResourceGroupUpdatedConsumer(searchService : ISearchService) =
+type UpdateResourceGroupInSearchOnResourceGroupUpdatedConsumer(searchService : ISearchService) =
     member _.Handle(event : ResourceGroupUpdatedEvent, cancellationToken : CancellationToken) =
         let documents = SearchDocumentFactory.fromResourceGroupFields event.EventCore.TenantId event.ResourceGroupId event.Name event.Changes.Tags.New
         searchService.Update documents cancellationToken
@@ -26,7 +26,7 @@ type ResourceGroupUpdatedConsumer(searchService : ISearchService) =
         member this.Consume(context : ConsumeContext<ResourceGroupUpdatedEvent>) =
             this.Handle(context.Message, context.CancellationToken)
 
-type ResourceGroupDeletedConsumer(searchService : ISearchService) =
+type RemoveResourceGroupFromSearchOnResourceGroupDeletedConsumer(searchService : ISearchService) =
     member _.Handle(tenantId : string, resourceGroupId : string, cancellationToken : CancellationToken) =
         searchService.Delete(SearchDocumentType.ResourceGroup, tenantId, resourceGroupId) cancellationToken
 

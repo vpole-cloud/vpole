@@ -123,7 +123,7 @@ public sealed class UpdateWebServiceHandler(
         !changes.WebServiceSpec.AreEqual || !changes.Tags.AreEqual;
 }
 
-public class UpdateWebServiceEventConsumer(
+public class UpdateWebServiceInKubernetesOnWebServiceUpdatedConsumer(
     IWebServiceDbContext dbContext,
     IKubernetes kubernetes)
     : IConsumer<WebServiceUpdatedEvent>

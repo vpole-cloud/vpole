@@ -63,7 +63,7 @@ public sealed class DeleteRedisServiceHandler(
     }
 }
 
-public class DeleteRedisServiceRequestedEventConsumer(
+public class DeleteRedisServiceFromKubernetesOnRedisServiceDeletedConsumer(
     IKubernetes kubernetes
     ) : IConsumer<RedisServiceDeletedEvent>
 {

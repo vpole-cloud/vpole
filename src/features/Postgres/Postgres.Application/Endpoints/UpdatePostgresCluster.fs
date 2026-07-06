@@ -101,10 +101,10 @@ type UpdatePostgresClusterRequestValidator() as this =
         |> ignore
 
 [<AbstractClass; Sealed>]
-type UpdatePostgresClusterEndpoint =
+type UpdatePostgresCluster =
     [<Extension>]
     static member MapUpdatePostgresClusterEndpoint(endpoints: IEndpointRouteBuilder) =
-        endpoints.MapMethod<UpdatePostgresClusterEndpoint>("/{ClusterId}", nameof UpdatePostgresClusterEndpoint.Handle, EndpointHttpMethod.Put)
+        endpoints.MapMethod<UpdatePostgresCluster>("/{ClusterId}", nameof UpdatePostgresCluster.Handle, EndpointHttpMethod.Put)
             .WithName("UpdatePostgresCluster")
             |> ignore
         endpoints
@@ -115,7 +115,7 @@ type UpdatePostgresClusterEndpoint =
             return result.ToHttpResult(fun value -> Results.Ok(value))
         }
 
-type PostgresClusterUpdatedConsumer(
+type UpdatePostgresClusterDeploymentOnPostgresClusterUpdatedConsumer(
     secretStore : IPostgresClusterSecretStore,
     deploymentManager : IPostgresClusterDeploymentManager) =
     interface MassTransit.IConsumer<PostgresClusterUpdatedEvent> with
