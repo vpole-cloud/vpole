@@ -15,6 +15,7 @@ open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Events
 open Pole.Features.Postgres.Application.Kubernetes
+open Pole.Features.ResourceGroups.Contracts
 open Pole.Mediator
 open Pole.ResultType
 
@@ -37,6 +38,7 @@ type CreatePostgresClusterRequest =
 
 type CreatePostgresClusterHandler(
     dbContext : IPostgresDbContext,
+    resourceGroupLookup : IResourceGroupLookup,
     secretStore : IPostgresClusterSecretStore,
     settings : PostgresSettings) =
     let validate settings request =
@@ -60,22 +62,22 @@ type CreatePostgresClusterHandler(
                     return Result.ValidationFailure(validationErrors) |> ResultF.ofFailure
                 else
                     let tenantId = request.TenantId
-                    let! resourceGroup =
-                        dbContext.ResourceGroups
-                            .Find(fun c -> c.Id = request.Body.GroupId && c.TenantId = tenantId)
-                            .FirstOrNoneAsync(cancellationToken)
+                    let! placementResult =
+                        resourceGroupLookup.GetPlacementAsync(
+                            tenantId,
+                            request.Body.GroupId,
+                            cancellationToken)
 
-                    match resourceGroup with
-                    | None ->
-                        return Result.NotFound($"Resource group with ID '{request.Body.GroupId}' not found.")
-                               |> ResultF.ofFailure
-                    | Some group ->
+                    match placementResult.TryGetValue() with
+                    | struct (false, _, placementFailure) ->
+                        return placementFailure |> ResultF.ofFailure
+                    | struct (true, placement, _) ->
                         let cluster =
                             PostgresCluster.create
                                 tenantId
                                 request.Body.Name
                                 request.Body.GroupId
-                                group.KubernetesNamespace
+                                placement.KubernetesNamespace
                                 request.Body.Version
                                 settings.DefaultDeploymentMode
                                 { PostgresCluster.emptyOptions with
@@ -87,8 +89,8 @@ type CreatePostgresClusterHandler(
                                 (fun session ct ->
                                     task {
                                         do! dbContext.Postgres.InsertOneAsync(session, cluster, cancellationToken = ct)
-                                        do! secretStore.CreateAsync(group.KubernetesNamespace, cluster.Id, request.Body.Username, request.Body.Password, ct)
-                                        let event = PostgresClusterCreatedEvent.create cluster
+                                        do! secretStore.CreateAsync(placement.KubernetesNamespace, cluster.Id, request.Body.Username, request.Body.Password, ct)
+                                        let event = PostgresClusterEvents.created cluster
                                         
                                         do! dbContext.StoreEventAsync(event, session, ct)
 
@@ -132,7 +134,7 @@ type PostgresClusterCreatedConsumer(
         member this.Consume(context) =
             task {
                 let event = context.Message
-                let cluster = PostgresClusterCreatedEvent.toPostgresCluster event
+                let cluster = PostgresClusterEvents.fromCreated event
                 let! credentials = secretStore.GetAsync(cluster.Spec.KubernetesNamespace, cluster.Id, context.CancellationToken)
                 match credentials with
                 | None -> ()

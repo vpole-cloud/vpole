@@ -34,11 +34,10 @@
     <ItemGroup>
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
       <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
-      <ProjectReference Include="..\..\..\shared\Features\Features.csproj" />
+      <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
       <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
       <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
-      <ProjectReference Include="..\..\DnsRecords\DnsRecords.Domain\DnsRecords.Domain.csproj" />
       <ProjectReference Include="..\..\DnsRecords\DnsRecords.Events\DnsRecords.Events.csproj" />
       <ProjectReference Include="..\..\Postgres\Postgres.Events\Postgres.Events.fsproj" />
       <ProjectReference Include="..\..\RedisServices\RedisServices.Events\RedisServices.Events.csproj" />

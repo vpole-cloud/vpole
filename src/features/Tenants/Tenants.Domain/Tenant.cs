@@ -21,23 +21,30 @@ public sealed record TenantMember(
     string UserId,
     string Email,
     TenantRole Role,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    bool IsDefault);
 
 public static class TenantFactory
 {
-    public static Tenant Create(string name) =>
+    public static Tenant Create(string name, string? id = null) =>
         new(
-            Id: ObjectId.GenerateNewId().ToString(),
+            Id: id ?? ObjectId.GenerateNewId().ToString(),
             Name: name,
             CreatedAtUtc: DateTime.UtcNow,
             Members: []);
 
-    public static TenantMember CreateMember(string tenantId, string userId, string email, TenantRole role) =>
+    public static TenantMember CreateMember(
+        string tenantId,
+        string userId,
+        string email,
+        TenantRole role,
+        bool isDefault = false) =>
         new(
             Id: ObjectId.GenerateNewId().ToString(),
             TenantId: tenantId,
             UserId: userId,
             Email: email,
             Role: role,
-            CreatedAtUtc: DateTime.UtcNow);
+            CreatedAtUtc: DateTime.UtcNow,
+            IsDefault: isDefault);
 }

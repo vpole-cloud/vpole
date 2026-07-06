@@ -62,7 +62,7 @@ type DeletePostgresClusterHandler(dbContext : IPostgresDbContext) =
                                         return Result.NotFound($"PostgreSQL cluster with ID '{request.ClusterId}' not found.")
                                                |> ResultF.ofFailure
                                     else
-                                        let event = PostgresClusterDeletedEvent.create cluster
+                                        let event = PostgresClusterEvents.deleted cluster
                                         do! dbContext.StoreEventAsync(event, session, ct)
                                         return { Id = request.ClusterId } |> ResultF.ofValue
                                 }
@@ -97,6 +97,6 @@ type PostgresClusterDeletedConsumer(deploymentManager : IPostgresClusterDeployme
             deploymentManager.DeleteAsync(
                 context.Message.ClusterId,
                 context.Message.Spec.KubernetesNamespace,
-                context.Message.Spec.DeploymentMode,
+                PostgresClusterEvents.deploymentModeFromSnapshot context.Message.Spec.DeploymentMode,
                 context.CancellationToken)
 

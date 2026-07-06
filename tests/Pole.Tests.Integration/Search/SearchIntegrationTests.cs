@@ -9,6 +9,12 @@ using Pole.Features.Search.Domain;
 using Pole.Features.Search.Application.Projection;
 using Pole.Features.Search.Application.Services;
 using Pole.Features.WebServices.Application.Endpoints;
+using Pole.Features.WebServices.Domain;
+using Pole.Features.WebServices.Events;
+using Pole.Features.RedisServices.Domain;
+using Pole.Features.RedisServices.Events;
+using Pole.Features.Postgres.Domain;
+using Pole.Features.Postgres.Events;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 using ResourceGroupCreateEvent = Pole.Features.ResourceGroups.Events.ResourceGroupCreatedEvent;
@@ -258,7 +264,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             webService.Id,
             webService.Name,
             webService.ResourceGroupId,
-            webService.Spec,
+            ToSnapshot(webService.Spec),
             webService.DnsRecord,
             webService.Status,
             webService.Tags)
@@ -275,7 +281,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             redis.Id,
             redis.Name,
             redis.ResourceGroupId,
-            redis.Spec,
+            ToSnapshot(redis.Spec),
             redis.Status,
             redis.Tags)
         {
@@ -292,7 +298,54 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             cluster.Id,
             cluster.Name,
             cluster.GroupId,
-            cluster.Spec), CancellationToken.None);
+            ToSnapshot(cluster.Spec)), CancellationToken.None);
     }
+
+    private static WebServiceSpecSnapshot ToSnapshot(WebServiceSpec spec) =>
+        new(
+            spec.KubernetesNamespace,
+            new WebServiceImageInfoSnapshot(
+                spec.Image.Server,
+                spec.Image.Name,
+                spec.Image.Tag,
+                spec.Image.SecretName),
+            spec.Replicas,
+            spec.Resources,
+            new WebServiceConfigSnapshot(
+                spec.Config.EnvironmentVariables,
+                spec.Config.PortMappings
+                    .Select(mapping => new PortMappingSnapshot(
+                        mapping.ServicePort,
+                        mapping.TargetPort,
+                        mapping.Protocol,
+                        mapping.Name))
+                    .ToImmutableList()),
+            spec.Autoscaling is null
+                ? null
+                : new AutoscalingSpecSnapshot(
+                    spec.Autoscaling.MinReplicas,
+                    spec.Autoscaling.MaxReplicas,
+                    new AutoscalingMetricSnapshot(
+                        spec.Autoscaling.Metric.Type,
+                        spec.Autoscaling.Metric.TargetAverageUtilization)),
+            spec.Probes);
+
+    private static RedisServiceSpecSnapshot ToSnapshot(RedisSpec spec) =>
+        new(
+            spec.KubernetesNamespace,
+            new RedisServiceStorageSnapshot(spec.Storage.SizeGb, spec.Storage.StorageClassName),
+            spec.Resources);
+
+    private static PostgresClusterSpecSnapshot ToSnapshot(PostgresClusterSpec spec) =>
+        new(
+            spec.Instances,
+            spec.Storage,
+            spec.KubernetesNamespace,
+            spec.Version,
+            spec.DeploymentMode switch
+            {
+                PostgresDeploymentMode.StatefulSet => PostgresDeploymentModeSnapshot.StatefulSet,
+                _ => PostgresDeploymentModeSnapshot.Operator
+            });
 }
 

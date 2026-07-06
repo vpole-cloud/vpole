@@ -5,12 +5,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Features.Core.Multitenancy;
-using Pole.Features.Tenants.Application.Common;
-using Pole.Features.Tenants.Domain;
+using Pole.Features.Events.Abstractions;
+using Pole.Features.Users.Contracts;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Domain;
 using Pole.Features.Users.Application.Identity;
@@ -46,7 +46,6 @@ public sealed record CreateUserRequestBody(
 
 public sealed class CreateUserHandler(
     IUserDbContext userDbContext,
-    ITenantDbContext tenantDbContext,
     IIdentityProvider identityProvider,
     ILogger<CreateUserHandler> logger)
     : IMediatorHandler<CreateUserRequest, UserDto>
@@ -64,21 +63,33 @@ public sealed class CreateUserHandler(
         if (!keycloakUserIdResult.TryGetValue(out var keycloakUserId, out var keycloakFailure))
             return keycloakFailure;
 
-        var tenant = TenantFactory.Create(CreateDefaultTenantName(email));
-        var owner = TenantFactory.CreateMember(tenant.Id, keycloakUserId, email, TenantRole.Owner);
-        tenant = tenant with { Members = [owner] };
+        var defaultTenantId = ObjectId.GenerateNewId().ToString();
+        var defaultTenantName = CreateDefaultTenantName(email);
         var user = new PoleUser(
             Id: keycloakUserId,
             Email: email,
             FirstName: request.Body.FirstName,
             LastName: request.Body.LastName,
-            DefaultTenantId: tenant.Id,
+            DefaultTenantId: defaultTenantId,
             CreatedAtUtc: DateTime.UtcNow);
 
         var result = await userDbContext.RunInTransactionAsync<UserDto>(async (session, ct) =>
         {
             await userDbContext.Users.InsertOneAsync(session, user, cancellationToken: ct);
-            await tenantDbContext.Tenants.InsertOneAsync(session, tenant, cancellationToken: ct);
+            await userDbContext.StoreEventAsync(
+                new UserCreatedEvent(
+                    user.Id,
+                    user.Email,
+                    user.FirstName,
+                    user.LastName,
+                    user.DefaultTenantId,
+                    defaultTenantName)
+                {
+                    EventCore = EventCore.Create()
+                },
+                session,
+                ct);
+
             return user.ToDto();
         }, cancellationToken: cancellationToken);
 

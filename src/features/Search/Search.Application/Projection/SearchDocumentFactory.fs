@@ -1,13 +1,8 @@
 namespace Pole.Features.Search.Application.Projection
 
 open System.Text.RegularExpressions
-open Pole.Features.DnsRecords.Domain
-open Pole.Features.Postgres.Domain
-open Pole.Features.RedisServices.Domain
-open Pole.Features.ResourceGroups.Domain
 open Pole.Features.Search.Application.Common
 open Pole.Features.Search.Domain
-open Pole.Features.WebServices.Domain
 
 [<RequireQualifiedAccess>]
 module SearchDocumentFactory =
@@ -101,30 +96,6 @@ module SearchDocumentFactory =
         |> List.groupBy (fun doc -> doc.KeyType, doc.SearchValue)
         |> List.map (fun (_, documents) -> documents |> List.maxBy _.Weight)
 
-    let fromResourceGroup (resourceGroup : ResourceGroup) =
-        { SourceType = SearchDocumentType.ResourceGroup
-          TenantId = resourceGroup.TenantId
-          SourceId = resourceGroup.Id
-          Documents =
-            toDocuments
-                SearchDocumentType.ResourceGroup
-                resourceGroup.TenantId
-                resourceGroup.Id
-                resourceGroup.Name
-                (Some resourceGroup.Id)
-                (Some resourceGroup.Name)
-                ({ KeyType = SearchKeyType.Name
-                   Value = resourceGroup.Name
-                   FullWeight = NameWeight
-                   TokenWeight = Some NameTokenWeight }
-                 :: (resourceGroup.Tags
-                     |> Seq.map (fun tag ->
-                         { KeyType = SearchKeyType.Tag
-                           Value = tag
-                           FullWeight = TagWeight
-                           TokenWeight = Some TagTokenWeight })
-                     |> Seq.toList)) }
-
     let fromResourceGroupFields tenantId resourceGroupId name tags =
         { SourceType = SearchDocumentType.ResourceGroup
           TenantId = tenantId
@@ -148,37 +119,6 @@ module SearchDocumentFactory =
                            FullWeight = TagWeight
                            TokenWeight = Some TagTokenWeight })
                      |> Seq.toList)) }
-
-    let fromWebService (resourceGroupName : string option) (webService : WebService) =
-        let image = webService.Spec.Image.FullImageName
-
-        { SourceType = SearchDocumentType.WebService
-          TenantId = webService.TenantId
-          SourceId = webService.Id
-          Documents =
-            toDocuments
-                SearchDocumentType.WebService
-                webService.TenantId
-                webService.Id
-                webService.Name
-                (Some webService.ResourceGroupId)
-                resourceGroupName
-                [ { KeyType = SearchKeyType.SourceId
-                    Value = webService.Id
-                    FullWeight = IdWeight
-                    TokenWeight = None }
-                  { KeyType = SearchKeyType.Name
-                    Value = webService.Name
-                    FullWeight = NameWeight
-                    TokenWeight = Some NameTokenWeight }
-                  { KeyType = SearchKeyType.Domain
-                    Value = webService.DnsRecord.Domain
-                    FullWeight = DomainWeight
-                    TokenWeight = Some DomainTokenWeight }
-                  { KeyType = SearchKeyType.Image
-                    Value = image
-                    FullWeight = ImageWeight
-                    TokenWeight = Some ImageTokenWeight } ] }
 
     let fromWebServiceFields tenantId resourceGroupName webServiceId name resourceGroupId domain image =
         { SourceType = SearchDocumentType.WebService
@@ -209,27 +149,6 @@ module SearchDocumentFactory =
                     FullWeight = ImageWeight
                     TokenWeight = Some ImageTokenWeight } ] }
 
-    let fromDnsRecord (resourceGroupName : string option) (dnsRecord : DnsRecord) =
-        { SourceType = SearchDocumentType.DnsRecord
-          TenantId = dnsRecord.TenantId
-          SourceId = dnsRecord.Id
-          Documents =
-            toDocuments
-                SearchDocumentType.DnsRecord
-                dnsRecord.TenantId
-                dnsRecord.Id
-                dnsRecord.Domain
-                (Some dnsRecord.Resource.GroupId)
-                resourceGroupName
-                [ { KeyType = SearchKeyType.Domain
-                    Value = dnsRecord.Domain
-                    FullWeight = DomainWeight
-                    TokenWeight = Some DomainTokenWeight }
-                  { KeyType = SearchKeyType.ResourceName
-                    Value = dnsRecord.Resource.Name
-                    FullWeight = ResourceNameWeight
-                    TokenWeight = Some ResourceNameTokenWeight } ] }
-
     let fromDnsRecordFields tenantId resourceGroupName dnsRecordId domain resourceGroupId resourceName =
         { SourceType = SearchDocumentType.DnsRecord
           TenantId = tenantId
@@ -251,27 +170,6 @@ module SearchDocumentFactory =
                     FullWeight = ResourceNameWeight
                     TokenWeight = Some ResourceNameTokenWeight } ] }
 
-    let fromRedis (resourceGroupName : string option) (redis : Redis) =
-        { SourceType = SearchDocumentType.RedisService
-          TenantId = redis.TenantId
-          SourceId = redis.Id
-          Documents =
-            toDocuments
-                SearchDocumentType.RedisService
-                redis.TenantId
-                redis.Id
-                redis.Name
-                (Some redis.ResourceGroupId)
-                resourceGroupName
-                [ { KeyType = SearchKeyType.SourceId
-                    Value = redis.Id
-                    FullWeight = IdWeight
-                    TokenWeight = None }
-                  { KeyType = SearchKeyType.Name
-                    Value = redis.Name
-                    FullWeight = NameWeight
-                    TokenWeight = Some NameTokenWeight } ] }
-
     let fromRedisFields tenantId resourceGroupName redisId name resourceGroupId =
         { SourceType = SearchDocumentType.RedisService
           TenantId = tenantId
@@ -290,27 +188,6 @@ module SearchDocumentFactory =
                     TokenWeight = None }
                   { KeyType = SearchKeyType.Name
                     Value = name
-                    FullWeight = NameWeight
-                    TokenWeight = Some NameTokenWeight } ] }
-
-    let fromPostgresCluster (resourceGroupName : string option) (cluster : PostgresCluster) =
-        { SourceType = SearchDocumentType.PostgresCluster
-          TenantId = cluster.TenantId
-          SourceId = cluster.Id
-          Documents =
-            toDocuments
-                SearchDocumentType.PostgresCluster
-                cluster.TenantId
-                cluster.Id
-                cluster.Name
-                (Some cluster.GroupId)
-                resourceGroupName
-                [ { KeyType = SearchKeyType.SourceId
-                    Value = cluster.Id
-                    FullWeight = IdWeight
-                    TokenWeight = None }
-                  { KeyType = SearchKeyType.Name
-                    Value = cluster.Name
                     FullWeight = NameWeight
                     TokenWeight = Some NameTokenWeight } ] }
 

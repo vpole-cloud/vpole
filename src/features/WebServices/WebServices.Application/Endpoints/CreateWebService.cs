@@ -9,10 +9,11 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.DnsRecords.Contracts;
 using Pole.Features.DnsRecords.Events;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
@@ -44,7 +45,8 @@ public static class CreateWebService
 
 public sealed class CreateWebServiceHandler(
     IWebServiceDbContext dbContext,
-    IDomainNameReservationService domainNameReservationService)
+    IDomainNameReservationService domainNameReservationService,
+    IResourceGroupLookup resourceGroupLookup)
     : IMediatorHandler<CreateWebServiceRequest, CreateWebServiceResponse>
 {
     public async Task<Result<CreateWebServiceResponse>> HandleAsync(CreateWebServiceRequest request,
@@ -52,10 +54,12 @@ public sealed class CreateWebServiceHandler(
     {
         var tenantId = request.TenantId ?? throw new InvalidOperationException("A tenant id is required for this operation.");
 
-        var group = await dbContext.ResourceGroups
-            .Find(rg => rg.Id == request.Body.ResourceGroupId && rg.TenantId == tenantId)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (group is null) return Result.NotFound($"Resource group with ID '{request.Body.ResourceGroupId}' not found.");
+        var placementResult = await resourceGroupLookup.GetPlacementAsync(
+            tenantId,
+            request.Body.ResourceGroupId,
+            cancellationToken);
+        if (!placementResult.TryGetValue(out var placement, out var placementFailure))
+            return placementFailure;
 
         var createWebServiceOptions = WebServiceFactory.DefaultOptions with
         {
@@ -78,7 +82,7 @@ public sealed class CreateWebServiceHandler(
             name: request.Body.Name,
             tenantId: tenantId,
             resourceGroupId: request.Body.ResourceGroupId,
-            spec: request.Body.Spec.ToDomain(group.KubernetesNamespace),
+            spec: request.Body.Spec.ToDomain(placement.KubernetesNamespace),
             dnsRecord: dnsRecord,
             options: createWebServiceOptions);
         

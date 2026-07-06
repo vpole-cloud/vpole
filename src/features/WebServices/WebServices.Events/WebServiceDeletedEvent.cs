@@ -1,7 +1,6 @@
 using System.Collections.Immutable;
 using MassTransit;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.WebServices.Domain;
 
 namespace Pole.Features.WebServices.Events;
 
@@ -11,7 +10,7 @@ public record WebServiceDeletedEvent(
     string Name,
     string ResourceGroupId,
     string DnsRecordId,
-    WebServiceSpec Spec,
+    WebServiceSpecSnapshot Spec,
     ImmutableHashSet<string> Tags
 ) : IDeleteDnsRecordEvent
 {

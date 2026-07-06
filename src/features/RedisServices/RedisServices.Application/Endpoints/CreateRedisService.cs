@@ -10,6 +10,7 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Events;
@@ -39,7 +40,8 @@ public static class CreateRedisService
 }
 
 public sealed class CreateRedisServiceHandler(
-    IRedisDbContext dbContext)
+    IRedisDbContext dbContext,
+    IResourceGroupLookup resourceGroupLookup)
     : IMediatorHandler<CreateRedisServiceRequest, CreateRedisServiceResponse>
 {
     public async Task<Result<CreateRedisServiceResponse>> HandleAsync(CreateRedisServiceRequest request,
@@ -47,16 +49,18 @@ public sealed class CreateRedisServiceHandler(
     {
         var tenantId = request.TenantId ?? throw new InvalidOperationException("A tenant id is required for this operation.");
 
-        var group = await dbContext.ResourceGroups
-            .Find(rg => rg.Id == request.Body.ResourceGroupId && rg.TenantId == tenantId)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (group is null) return Result.NotFound($"Resource group with ID '{request.Body.ResourceGroupId}' not found.");
+        var placementResult = await resourceGroupLookup.GetPlacementAsync(
+            tenantId,
+            request.Body.ResourceGroupId,
+            cancellationToken);
+        if (!placementResult.TryGetValue(out var placement, out var placementFailure))
+            return placementFailure;
 
         var newRedis = RedisFactory.Create(
             tenantId: tenantId,
             name: request.Body.Name,
             resourceGroupId: request.Body.ResourceGroupId,
-            spec: request.Body.Spec.ToDomain(group.KubernetesNamespace),
+            spec: request.Body.Spec.ToDomain(placement.KubernetesNamespace),
             options: RedisFactory.DefaultCreateOptions with
             {
                 Tags = request.Body.Tags

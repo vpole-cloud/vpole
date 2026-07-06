@@ -10,10 +10,12 @@
 
     <ItemGroup>
       <ProjectReference Include="..\DnsRecords.Domain\DnsRecords.Domain.csproj" />
+      <ProjectReference Include="..\DnsRecords.Contracts\DnsRecords.Contracts.csproj" />
       <ProjectReference Include="..\DnsRecords.Events\DnsRecords.Events.csproj" />
       <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
       <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
+      <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
       <ProjectReference Include="..\..\..\shared\Observability\Observability.csproj" />
       <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />

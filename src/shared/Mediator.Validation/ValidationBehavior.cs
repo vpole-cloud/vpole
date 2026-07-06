@@ -1,4 +1,4 @@
-﻿using FluentValidation;
+using FluentValidation;
 using Microsoft.Extensions.Logging;
 using Pole.ResultType;
 using ValidationFailure = FluentValidation.Results.ValidationFailure;
@@ -30,7 +30,6 @@ public class ValidationBehavior<TRequest, TResponse>(
         if (failures.Length == 0)
             return await next();
 
-        // Group by property for nicer output
         var errorMap = failures
             .GroupBy(f => f.PropertyName ?? string.Empty)
             .ToDictionary(
@@ -43,7 +42,6 @@ public class ValidationBehavior<TRequest, TResponse>(
             typeof(TRequest).Name,
             errorMap);
 
-        // Convert to your Result<T> failure format in ONE place:
         return Result.ValidationFailure(errorMap);
     }
 }

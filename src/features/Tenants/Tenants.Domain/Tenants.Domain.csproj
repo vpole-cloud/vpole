@@ -10,7 +10,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
-      <ProjectReference Include="..\..\..\shared\Features\Features.csproj" />
+      <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
     </ItemGroup>
 
 </Project>

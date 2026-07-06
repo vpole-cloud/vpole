@@ -1,5 +1,5 @@
 using MassTransit;
-using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.DnsRecords.Contracts;
 using Pole.Features.DnsRecords.Events;
 using Pole.ResultType;
 

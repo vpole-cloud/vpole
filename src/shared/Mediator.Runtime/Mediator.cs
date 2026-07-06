@@ -1,11 +1,14 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Pole.ResultType;
 
 namespace Pole.Mediator;
 
 public sealed class Mediator(IServiceProvider sp) : IMediator
 {
-    public async Task<Result<TResponse>> Send<TResponse>(IMediatorRequest<TResponse> request, CancellationToken cancellationToken = default) where TResponse : notnull
+    public async Task<Result<TResponse>> Send<TResponse>(
+        IMediatorRequest<TResponse> request,
+        CancellationToken cancellationToken = default)
+        where TResponse : notnull
     {
         if (request is null) throw new ArgumentNullException(nameof(request));
 
@@ -21,11 +24,9 @@ public sealed class Mediator(IServiceProvider sp) : IMediator
                             .ToArray()
                         ?? Array.Empty<dynamic>();
 
-        // Final delegate = actual handler
         RequestHandlerDelegate<TResponse> next = () =>
             (Task<Result<TResponse>>)handleAsyncMethod.Invoke(handler, [request, cancellationToken])!;
 
-        // Wrap with behaviors (last registered runs closest to handler)
         for (var i = behaviors.Length - 1; i >= 0; i--)
         {
             dynamic behavior = behaviors[i];
@@ -35,12 +36,4 @@ public sealed class Mediator(IServiceProvider sp) : IMediator
 
         return await next();
     }
-}
-
-public interface IMediator
-{
-    Task<Result<TResponse>> Send<TResponse>(
-        IMediatorRequest<TResponse> request,
-        CancellationToken cancellationToken = default)
-        where TResponse : notnull;
 }

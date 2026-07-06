@@ -4,7 +4,7 @@ using Pole.Features.Users.Domain;
 
 namespace Pole.Features.Users.Application.Common;
 
-public interface IUserDbContext : IMongoDbContext
+public interface IUserDbContext : IEventDbContext
 {
     IMongoCollection<PoleUser> Users { get; }
 }

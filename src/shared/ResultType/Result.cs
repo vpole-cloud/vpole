@@ -104,6 +104,19 @@ public abstract record Result
 
 public record Result<T> : Result where T : notnull
 {
+    public (bool Succeeded, T? Value, Failure? Failure) TryGetValue()
+    {
+        switch (this)
+        {
+            case Success<T> success:
+                return (true, success.Value, null);
+            case Failure<T> failureResult:
+                return (false, default, failureResult);
+            default:
+                throw new InvalidOperationException("Unknown Result type");
+        }
+    }
+
     public bool TryGetValue([MaybeNullWhen(false)] out T value, [MaybeNullWhen(true)] out Failure failure)
     {
         switch (this)

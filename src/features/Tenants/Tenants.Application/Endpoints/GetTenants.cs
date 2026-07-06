@@ -41,14 +41,12 @@ public sealed class GetTenantsHandler(
             .Find(t => t.Members.Any(m => m.UserId == request.CurrentUserId))
             .ToListAsync(cancellationToken);
 
-        var user = await dbContext.Users
-            .Find(u => u.Id == request.CurrentUserId)
-            .FirstOrDefaultAsync(cancellationToken);
-
         return memberTenants
-            .Select(t => t.ToDto(
-                t.Members.First(m => m.UserId == request.CurrentUserId).Role,
-                t.Id == user?.DefaultTenantId))
+            .Select(t =>
+            {
+                var member = t.Members.First(m => m.UserId == request.CurrentUserId);
+                return t.ToDto(member.Role, member.IsDefault);
+            })
             .ToList();
     }
 }

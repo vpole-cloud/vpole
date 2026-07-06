@@ -9,14 +9,20 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\ResourceGroups.Domain\ResourceGroups.Domain.csproj" />
       <ProjectReference Include="..\ResourceGroups.Events\ResourceGroups.Events.csproj" />
+      <ProjectReference Include="..\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
       <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
-      <ProjectReference Include="..\..\..\shared\Features\Features.csproj" />
+      <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
       <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
       <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
       <ProjectReference Include="..\..\WebServices\WebServices.Events\WebServices.Events.csproj" />
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="KubernetesClient" Version="19.0.2" />
     </ItemGroup>
 
 </Project>
