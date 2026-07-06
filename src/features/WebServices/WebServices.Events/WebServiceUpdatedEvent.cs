@@ -2,7 +2,6 @@ using System.Collections.Immutable;
 using MassTransit;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Shared.Models;
-using Pole.Features.WebServices.Domain;
 
 namespace Pole.Features.WebServices.Events;
 
@@ -19,6 +18,6 @@ public sealed record WebServiceUpdatedEvent(
 }
 
 public sealed record WebServiceUpdatedEventChanges(
-    UpdateLog<WebServiceSpec> WebServiceSpec,
+    UpdateLog<WebServiceSpecSnapshot> WebServiceSpec,
     UpdateLog<ImmutableHashSet<string>> Tags);
 

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.ResourceGroups.Contracts</AssemblyName>
+        <RootNamespace>Pole.Features.ResourceGroups.Contracts</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
+    </ItemGroup>
+
+</Project>

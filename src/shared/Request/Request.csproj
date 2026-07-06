@@ -9,7 +9,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Features\Features.csproj" />
       <ProjectReference Include="..\Mediator\Mediator.csproj" />
     </ItemGroup>
 

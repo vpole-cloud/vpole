@@ -101,9 +101,9 @@ public sealed class UpdateRedisServiceHandler(
     }
 
     private static RedisServiceUpdatedEventChanges GetChanges(Redis redis, UpdateRedisServiceRequestBody body) =>
-        new(UpdateLog<RedisSpec>.Of(
-                redis.Spec,
-            body.Spec.ToDomain(redis.Spec.KubernetesNamespace)),
+        new(UpdateLog<RedisServiceSpecSnapshot>.Of(
+                redis.Spec.ToSnapshot(),
+                body.Spec.ToDomain(redis.Spec.KubernetesNamespace).ToSnapshot()),
             UpdateLog<ImmutableHashSet<string>>.Of(
                 redis.Tags,
                 body.Tags));
@@ -112,7 +112,7 @@ public sealed class UpdateRedisServiceHandler(
     {
         var updates = new Queue<UpdateDefinition<Redis>>();
         if (!changes.RedisSpec.AreEqual)
-            updates.Enqueue(Builders<Redis>.Update.Set(redis => redis.Spec, changes.RedisSpec.New));
+            updates.Enqueue(Builders<Redis>.Update.Set(redis => redis.Spec, changes.RedisSpec.New.ToDomain()));
         if (!changes.Tags.AreEqual)
             updates.Enqueue(Builders<Redis>.Update.Set(redis => redis.Tags, changes.Tags.New));
         return Builders<Redis>.Update.Combine(updates);
@@ -134,11 +134,6 @@ public class UpdateRedisServiceEventConsumer(
             .Find(r => r.Id == context.Message.RedisId && r.TenantId == context.Message.EventCore.TenantId)
             .FirstOrDefaultAsync(ct);
         if (redis is null) return;
-
-        var resourceGroup = await dbContext.ResourceGroups
-            .Find(rg => rg.Id == redis.ResourceGroupId && rg.TenantId == context.Message.EventCore.TenantId)
-            .FirstOrDefaultAsync(ct);
-        if (resourceGroup is null) return;
 
         var inKuber = redis.ToKubernetes();
 

@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Microsoft.Extensions.DependencyInjection;
-using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.DnsRecords.Application.Consumers;
+using Pole.Features.DnsRecords.Contracts;
 using Pole.Features.DnsRecords.Domain;
 using Pole.Features.DnsRecords.Events;
 using Pole.Features.Events.Abstractions;

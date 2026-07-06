@@ -9,9 +9,14 @@
   </Folder>
   <Folder Name="/shared/">
     <Project Path="src/shared/Mediator/Mediator.csproj" />
+    <Project Path="src/shared/Mediator.Runtime/Mediator.Runtime.csproj" />
+    <Project Path="src/shared/Mediator.Logging/Mediator.Logging.csproj" />
+    <Project Path="src/shared/Mediator.Validation/Mediator.Validation.csproj" />
+    <Project Path="src/shared/Mediator.Multitenancy/Mediator.Multitenancy.csproj" />
     <Project Path="src/shared/ResultType/ResultType.csproj" />
     <Project Path="src/shared/Database/Database.csproj" />
-    <Project Path="src/shared/Features/Features.csproj" />
+    <Project Path="src/shared/Multitenancy/Multitenancy.csproj" />
+    <Project Path="src/shared/Kubernetes/Kubernetes.csproj" />
     <Project Path="src/shared/Events/Events.csproj" />
     <Project Path="src/shared/Models/Models.csproj" />
     <Project Path="src/shared/Observability/Observability.csproj" />
@@ -19,6 +24,7 @@
   </Folder>
   <Folder Name="/features/" />
   <Folder Name="/features/DnsRecords/">
+    <Project Path="src/features/DnsRecords/DnsRecords.Contracts/DnsRecords.Contracts.csproj" />
     <Project Path="src/features/DnsRecords/DnsRecords.Domain/DnsRecords.Domain.csproj" />
     <Project Path="src/features/DnsRecords/DnsRecords.Events/DnsRecords.Events.csproj" />
     <Project Path="src/features/DnsRecords/DnsRecords.Application/DnsRecords.Application.csproj" />
@@ -34,6 +40,7 @@
     <Project Path="src/features/Postgres/Postgres.Events/Postgres.Events.fsproj" />
   </Folder>
   <Folder Name="/features/ResourceGroups/">
+    <Project Path="src/features/ResourceGroups/ResourceGroups.Contracts/ResourceGroups.Contracts.csproj" />
     <Project Path="src/features/ResourceGroups/ResourceGroups.Application/ResourceGroups.Application.csproj" />
     <Project Path="src/features/ResourceGroups/ResourceGroups.Domain/ResourceGroups.Domain.csproj" />
     <Project Path="src/features/ResourceGroups/ResourceGroups.Events/ResourceGroups.Events.csproj" />
@@ -51,6 +58,7 @@
     <Project Path="src/features/Tenants/Tenants.Domain/Tenants.Domain.csproj" />
   </Folder>
   <Folder Name="/features/Users/">
+    <Project Path="src/features/Users/Users.Contracts/Users.Contracts.csproj" />
     <Project Path="src/features/Users/Users.Domain/Users.Domain.csproj" />
     <Project Path="src/features/Users/Users.Application/Users.Application.csproj" />
   </Folder>

@@ -11,8 +11,10 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants;
 using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Tenants.Application.Consumers;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.Tenants.Application.Endpoints;
+using Pole.Features.Users.Contracts;
 using Pole.Features.Users.Domain;
 using Pole.Features.Users.Application.Endpoints;
 using Pole.Features.Users.Application.Identity;
@@ -56,7 +58,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var defaultTenant = TenantFactory.Create("default");
         defaultTenant = defaultTenant with
         {
-            Members = [TenantFactory.CreateMember(defaultTenant.Id, "user-1", "user@example.com", TenantRole.Owner)]
+            Members = [TenantFactory.CreateMember(defaultTenant.Id, "user-1", "user@example.com", TenantRole.Owner, isDefault: true)]
         };
         var otherTenant = TenantFactory.Create("other");
         otherTenant = otherTenant with
@@ -70,8 +72,6 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         };
 
         await fixture.DbContext.Tenants.InsertManyAsync([defaultTenant, otherTenant, hiddenTenant]);
-        await fixture.DbContext.Users.InsertOneAsync(new PoleUser("user-1", "user@example.com", null, null, defaultTenant.Id, DateTime.UtcNow));
-
         var handler = new GetTenantsHandler(fixture.DbContext);
         var result = await handler.HandleAsync(new GetTenantsRequest("user-1"));
 
@@ -88,7 +88,6 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var identityAdmin = new FakeIdentityProvider("keycloak-user-1");
         var handler = new CreateUserHandler(
             fixture.DbContext,
-            fixture.DbContext,
             identityAdmin,
             NullLogger<CreateUserHandler>.Instance);
 
@@ -99,10 +98,22 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         Assert.Equal("new.user@example.com", user.Email);
 
         var storedUser = await fixture.DbContext.Users.Find(u => u.Id == "keycloak-user-1").FirstAsync();
+        Assert.Equal(1L, await fixture.DbContext.CountOutboxMessagesAsync("user-created"));
+
+        var consumer = new CreateDefaultTenantOnUserCreatedConsumer(fixture.DbContext);
+        await consumer.Handle(new UserCreatedEvent(
+            storedUser.Id,
+            storedUser.Email,
+            storedUser.FirstName,
+            storedUser.LastName,
+            storedUser.DefaultTenantId,
+            $"{storedUser.Email} personal"));
+
         var defaultTenant = await fixture.DbContext.Tenants.Find(t => t.Id == storedUser.DefaultTenantId).FirstAsync();
         var owner = Assert.Single(defaultTenant.Members);
         Assert.Equal("keycloak-user-1", owner.UserId);
         Assert.Equal(TenantRole.Owner, owner.Role);
+        Assert.True(owner.IsDefault);
     }
 
     [Fact]
@@ -113,7 +124,6 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             CreateFailure = Result.ExternalService("failed", "Keycloak", "boom")
         };
         var handler = new CreateUserHandler(
-            fixture.DbContext,
             fixture.DbContext,
             identityAdmin,
             NullLogger<CreateUserHandler>.Instance);
@@ -133,7 +143,6 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         await fixture.DbContext.Users.InsertOneAsync(new PoleUser("keycloak-user-1", "existing@example.com", null, null, "tenant-1", DateTime.UtcNow));
         var identityAdmin = new FakeIdentityProvider("keycloak-user-1");
         var handler = new CreateUserHandler(
-            fixture.DbContext,
             fixture.DbContext,
             identityAdmin,
             NullLogger<CreateUserHandler>.Instance);

@@ -17,12 +17,6 @@ public record ResourceGroup(
     ImmutableHashSet<string> Tags
 );
 
-public sealed record ShortResourceInfo(
-    string Id,
-    string Name,
-    ResourceType Type
-);
-
 public static class ResourceGroupFactory
 {
     public sealed record ResourceGroupCreateOptions(

@@ -102,8 +102,9 @@ public sealed class UpdateWebServiceHandler(
     }
 
     private static WebServiceUpdatedEventChanges GetChanges(WebService webService, UpdateWebServiceRequestBody body) =>
-        new(UpdateLog<WebServiceSpec>.Of(webService.Spec,
-                body.Spec.ToDomain(webService.Spec.KubernetesNamespace)),
+        new(UpdateLog<WebServiceSpecSnapshot>.Of(
+                webService.Spec.ToSnapshot(),
+                body.Spec.ToDomain(webService.Spec.KubernetesNamespace).ToSnapshot()),
             UpdateLog<ImmutableHashSet<string>>.Of(webService.Tags,
                 body.Tags));
 
@@ -114,7 +115,7 @@ public sealed class UpdateWebServiceHandler(
         if (!changes.Tags.AreEqual)
             updates.Enqueue(Builders<WebService>.Update.Set(ws => ws.Tags, changes.Tags.New));
         if (!changes.WebServiceSpec.AreEqual)
-            updates.Enqueue(Builders<WebService>.Update.Set(ws => ws.Spec, changes.WebServiceSpec.New));
+            updates.Enqueue(Builders<WebService>.Update.Set(ws => ws.Spec, changes.WebServiceSpec.New.ToDomain()));
         return Builders<WebService>.Update.Combine(updates);
     }
 

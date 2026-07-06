@@ -10,13 +10,15 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
-      <ProjectReference Include="..\..\DnsRecords\DnsRecords.Application\DnsRecords.Application.csproj" />
+      <ProjectReference Include="..\WebServices.Domain\WebServices.Domain.csproj" />
+      <ProjectReference Include="..\..\DnsRecords\DnsRecords.Contracts\DnsRecords.Contracts.csproj" />
       <ProjectReference Include="..\..\DnsRecords\DnsRecords.Events\DnsRecords.Events.csproj" />
-      <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Domain\ResourceGroups.Domain.csproj" />
+      <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
       <ProjectReference Include="..\WebServices.Events\WebServices.Events.csproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
       <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
-      <ProjectReference Include="..\..\..\shared\Features\Features.csproj" />
+      <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
+      <ProjectReference Include="..\..\..\shared\Kubernetes\Kubernetes.csproj" />
       <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
       <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />

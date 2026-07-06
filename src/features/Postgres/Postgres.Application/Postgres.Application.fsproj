@@ -12,6 +12,7 @@
         <Compile Include="Common\PostgresClusterDto.fs" />
         <Compile Include="Common\MongoExtensions.fs" />
         <Compile Include="Common\ResultF.fs" />
+        <Compile Include="Common\PostgresClusterEventExtensions.fs" />
         <Compile Include="Common\IPostgresDbContext.fs" />
         <Compile Include="Kubernetes\PostgresClusterKubernetesBuilder.fs" />
         <Compile Include="Kubernetes\PostgresStatefulSetKubernetesBuilder.fs" />
@@ -37,12 +38,13 @@
         <PackageReference Update="FSharp.Core" Version="10.1.203" />
     </ItemGroup>
     <ItemGroup>
-      <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Domain\ResourceGroups.Domain.csproj" />
+      <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
       <ProjectReference Include="..\Postgres.Domain\Postgres.Domain.fsproj" />
       <ProjectReference Include="..\Postgres.Events\Postgres.Events.fsproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
       <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
-      <ProjectReference Include="..\..\..\shared\Features\Features.csproj" />
+      <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
+      <ProjectReference Include="..\..\..\shared\Kubernetes\Kubernetes.csproj" />
       <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
       <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />

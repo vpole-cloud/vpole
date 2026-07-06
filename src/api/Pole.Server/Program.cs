@@ -33,7 +33,8 @@ Assembly[] outboxEventAssemblies = [
     typeof(Pole.Features.DnsRecords.Events.CommitDomainNameEvent).Assembly,
     typeof(Pole.Features.Postgres.Events.PostgresClusterCreatedEvent).Assembly,
     typeof(Pole.Features.RedisServices.Events.RedisServiceCreatedEvent).Assembly,
-    typeof(Pole.Features.ResourceGroups.Events.ResourceGroupCreatedEvent).Assembly
+    typeof(Pole.Features.ResourceGroups.Events.ResourceGroupCreatedEvent).Assembly,
+    typeof(Pole.Features.Users.Contracts.UserCreatedEvent).Assembly
 ];
 
 builder.AddServiceDefaults();

@@ -1,7 +1,7 @@
 ﻿using System.Collections.Immutable;
 using MassTransit;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.Shared.Models;
 
 namespace Pole.Features.ResourceGroups.Events;
 

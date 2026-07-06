@@ -10,7 +10,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
-      <ProjectReference Include="..\WebServices.Domain\WebServices.Domain.csproj" />
+      <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
     </ItemGroup>
 
 </Project>

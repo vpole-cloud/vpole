@@ -83,7 +83,7 @@ type UpdatePostgresClusterHandler(dbContext : IPostgresDbContext) =
                                                 cancellationToken = ct
                                             )
 
-                                        let event = PostgresClusterUpdatedEvent.create cluster updatedCluster
+                                        let event = PostgresClusterEvents.updated cluster updatedCluster
                                         do! dbContext.StoreEventAsync(event, session, ct)
 
                                         return { Id = request.ClusterId } |> ResultF.ofValue
@@ -121,7 +121,7 @@ type PostgresClusterUpdatedConsumer(
     interface MassTransit.IConsumer<PostgresClusterUpdatedEvent> with
         member _.Consume(context) =
             task {
-                let cluster = PostgresClusterUpdatedEvent.toPostgresCluster context.Message
+                let cluster = PostgresClusterEvents.fromUpdated context.Message
                 let! credentials = secretStore.GetAsync(cluster.Spec.KubernetesNamespace, cluster.Id, context.CancellationToken)
                 match credentials with
                 | None -> ()

@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using k8s.Autorest;
 
 namespace Pole.Features.Core.Kubernetes;
