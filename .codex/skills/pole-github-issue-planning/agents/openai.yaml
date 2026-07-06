@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pole GitHub Issue Planning"
+  short_description: "Plan and publish Pole GitHub issues"
+  default_prompt: "Use $pole-github-issue-planning to draft, deduplicate, prioritize, and optionally publish Pole GitHub issues."

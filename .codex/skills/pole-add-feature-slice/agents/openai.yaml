@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pole Feature Slice"
+  short_description: "Add a complete Pole feature slice"
+  default_prompt: "Use $pole-add-feature-slice to add a new resource feature across Pole backend, tests, and UI."
