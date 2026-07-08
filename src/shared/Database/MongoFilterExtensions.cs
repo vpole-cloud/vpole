@@ -40,18 +40,6 @@ public static class MongoFilterExtensions
 
     public static FilterDefinition<TDocument> ForTenant<TDocument>(
         this FilterDefinitionBuilder<TDocument> builder,
-        TenantOperationScope operationScope)
-    {
-        ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(operationScope);
-
-        return operationScope.TenantId is null
-            ? builder.Empty
-            : builder.Eq("TenantId", operationScope.TenantId);
-    }
-
-    public static FilterDefinition<TDocument> ForTenant<TDocument>(
-        this FilterDefinitionBuilder<TDocument> builder,
         string? tenantId)
     {
         ArgumentNullException.ThrowIfNull(builder);
