@@ -36,6 +36,25 @@ internal static class WebServicesEventExtensions
             };
     }
 
+    extension(WebServiceRelease release)
+    {
+        internal WebServiceDeploymentRequestedEvent ToDeploymentRequestedEvent(
+            WebService webService,
+            EventCore eventCore)
+            => new(
+                release.Id,
+                release.Revision,
+                release.Action.ToString(),
+                webService.Id,
+                webService.Name,
+                webService.ResourceGroupId,
+                webService.DnsRecord,
+                release.Spec)
+            {
+                EventCore = eventCore
+            };
+    }
+
     extension(WebServiceCreatedEvent createEvent)
     {
         internal WebService ToWebService()
@@ -50,6 +69,22 @@ internal static class WebServicesEventExtensions
                     Id = createEvent.WebServiceId,
                     Status = createEvent.Status,
                     Tags = createEvent.Tags
+                });
+    }
+
+    extension(WebServiceDeploymentRequestedEvent deploymentEvent)
+    {
+        internal WebService ToWebService()
+            => WebServiceFactory.Create(
+                deploymentEvent.Name,
+                deploymentEvent.EventCore.TenantId,
+                deploymentEvent.ResourceGroupId,
+                deploymentEvent.Spec.ToDomain(),
+                deploymentEvent.DnsRecord,
+                WebServiceFactory.DefaultOptions with
+                {
+                    Id = deploymentEvent.WebServiceId,
+                    ActiveRevision = deploymentEvent.Revision
                 });
     }
 

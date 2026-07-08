@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Microsoft.FSharp.Core;
+using Pole.ASP.Helpers;
 using Pole.Features.DnsRecords.Domain;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.RedisServices.Application.Common;
@@ -10,6 +11,8 @@ using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
+using Pole.Features.WebServices.Domain;
+using Pole.Features.WebServices.Events;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
@@ -34,14 +37,17 @@ public static class TestData
     public static CreateWebServiceRequest CreateWebServiceRequest(
         string resourceGroupId,
         string name = "web-api",
-        string domainName = "api.example.com")
+        string domainName = "api.example.com",
+        string tenantId = TenantId)
         => new(new CreateWebServiceRequestBody(
             Name: name,
             ResourceGroupId: resourceGroupId,
             Spec: ValidWebServiceSpec(),
             DomainName: domainName,
             Tags: ImmutableHashSet<string>.Empty),
-            TenantId);
+            tenantId,
+            new ClaimValue<string>(UserId),
+            new ClaimValue<string>(UserEmail));
 
     public static CreateRedisServiceRequest CreateRedisServiceRequest(
         string resourceGroupId,
@@ -103,7 +109,7 @@ public static class TestData
         FailureThreshold: 3,
         SuccessThreshold: 1);
 
-    public static ResourceGroup SeedResourceGroup(string name = "alpha", string? kubernetesNamespace = null)
+    public static ResourceGroup SeedResourceGroup(string name = "alpha", string? kubernetesNamespace = null, string tenantId = TenantId)
     {
         var options = ResourceGroupFactory.DefaultCreateOptions with
         {
@@ -112,10 +118,62 @@ public static class TestData
 
         return ResourceGroupFactory.Create(
             name: name,
-            tenantId: TenantId,
+            tenantId: tenantId,
             description: $"{name} description",
-            kubernetesNamespace: kubernetesNamespace ?? NamespaceGenerator.GenerateNamespaceName(TenantId, options.Id),
+            kubernetesNamespace: kubernetesNamespace ?? NamespaceGenerator.GenerateNamespaceName(tenantId, options.Id),
             options: options);
+    }
+
+    public static WebService SeedWebService(
+        string resourceGroupId,
+        string tenantId = TenantId,
+        string name = "web-api",
+        string domain = "api.example.com",
+        string? id = null,
+        int activeRevision = 1)
+    {
+        var defaultOptions = WebServiceFactory.DefaultOptions;
+        var options = defaultOptions with
+        {
+            Id = id ?? defaultOptions.Id,
+            ActiveRevision = activeRevision
+        };
+
+        return WebServiceFactory.Create(
+            name,
+            tenantId,
+            resourceGroupId,
+            ValidWebServiceSpec().ToDomain("test-apps"),
+            new DnsRecordShortInfo("dns-1", domain),
+            options);
+    }
+
+    public static WebServiceSpecSnapshot ValidWebServiceSpecSnapshot(string kubernetesNamespace = "test-apps")
+    {
+        var spec = ValidWebServiceSpec();
+        return new WebServiceSpecSnapshot(
+            kubernetesNamespace,
+            new WebServiceImageInfoSnapshot(spec.Image.Server, spec.Image.Name, spec.Image.Tag),
+            spec.Replicas,
+            spec.Resources,
+            new WebServiceConfigSnapshot(
+                spec.Config.EnvironmentVariables,
+                spec.Config.PortMappings
+                    .Select(mapping => new PortMappingSnapshot(
+                        mapping.ServicePort,
+                        mapping.TargetPort,
+                        mapping.Protocol,
+                        mapping.Name))
+                    .ToImmutableList()),
+            spec.Autoscaling is null
+                ? null
+                : new AutoscalingSpecSnapshot(
+                    spec.Autoscaling.MinReplicas,
+                    spec.Autoscaling.MaxReplicas,
+                    new AutoscalingMetricSnapshot(
+                        spec.Autoscaling.Metric.Type,
+                        spec.Autoscaling.Metric.TargetAverageUtilization)),
+            spec.Probes.ToDomain());
     }
 
     public static DnsRecord SeedDnsRecord(string groupId, string resourceId, string name = "existing.example.com") =>
