@@ -8,7 +8,6 @@ namespace Pole.Mediator;
 
 public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
     ITenantContextAccessor tenantContextAccessor,
-    ITenantOperationScopeAccessor operationScopeAccessor,
     IHttpContextAccessor httpContextAccessor)
     : IPipelineBehavior<TRequest, TResponse>
     where TRequest : IMediatorRequest<TResponse>
@@ -25,23 +24,14 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
         if (!isRead && !isWrite)
             return await next();
 
-        var previousScope = operationScopeAccessor.Current;
-        try
-        {
-            var authorization = BuildScope(request);
-            if (authorization.Failure is not null)
-                return authorization.Failure;
+        var failure = Authorize(request);
+        if (failure is not null)
+            return failure;
 
-            operationScopeAccessor.Current = authorization.Scope;
-            return await next();
-        }
-        finally
-        {
-            operationScopeAccessor.Current = previousScope;
-        }
+        return await next();
     }
 
-    private TenantAuthorizationResult BuildScope(TRequest request)
+    private Failure? Authorize(TRequest request)
     {
         var tenantContext = tenantContextAccessor.Current;
         var httpContext = httpContextAccessor.HttpContext;
@@ -50,12 +40,12 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
         if (tenantContext is null)
         {
             if (!isPlatformAdmin)
-                return TenantAuthorizationResult.Forbidden("Platform admin role is required for tenant-wide operations.");
+                return Forbidden("Platform admin role is required for tenant-wide operations.");
 
             if (request is ITenantCreateOperation)
-                return TenantAuthorizationResult.Forbidden($"Tenant-scoped create operations require {TenantHeaders.TenantId}.");
+                return Forbidden($"Tenant-scoped create operations require {TenantHeaders.TenantId}.");
 
-            return TenantAuthorizationResult.Success(new TenantOperationScope(null));
+            return null;
         }
 
         if (!tenantContext.IsPlatformAdmin)
@@ -63,20 +53,16 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
             switch (request)
             {
                 case ITenantWriteOperation when !tenantContext.Role.CanWrite():
-                    return TenantAuthorizationResult.Forbidden("Tenant member role is required.");
+                    return Forbidden("Tenant member role is required.");
                 case ITenantReadOperation when !tenantContext.Role.CanRead():
-                    return TenantAuthorizationResult.Forbidden("Tenant viewer role is required.");
+                    return Forbidden("Tenant viewer role is required.");
             }
         }
 
-        return TenantAuthorizationResult.Success(new TenantOperationScope(tenantContext.TenantId));
+        return null;
     }
 
-    private sealed record TenantAuthorizationResult(TenantOperationScope? Scope, Failure? Failure)
-    {
-        public static TenantAuthorizationResult Success(TenantOperationScope scope) => new(scope, null);
-        public static TenantAuthorizationResult Forbidden(string message) => new(null, Result.Forbidden(message, "Tenant authorization"));
-    }
+    private static Failure Forbidden(string message) => Result.Forbidden(message, "Tenant authorization");
 }
 
 public static class ClaimPrincipalExtensions

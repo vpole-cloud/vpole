@@ -35,22 +35,3 @@ public interface ITenantMemberTargetOperation : ITenantMemberManageOperation
 {
     string MemberId { get; }
 }
-
-public sealed record TenantOperationScope(
-    string? TenantId);
-
-public interface ITenantOperationScopeAccessor
-{
-    TenantOperationScope? Current { get; set; }
-}
-
-public sealed class TenantOperationScopeAccessor : ITenantOperationScopeAccessor
-{
-    private static readonly AsyncLocal<TenantOperationScope?> CurrentScope = new();
-
-    public TenantOperationScope? Current
-    {
-        get => CurrentScope.Value;
-        set => CurrentScope.Value = value;
-    }
-}

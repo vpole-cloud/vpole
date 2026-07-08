@@ -146,7 +146,6 @@ public static class DependencyInjection
             services.TryAddScoped<IDomainNameReservationService, DomainNameReservationService>();
             services.TryAddScoped<IResourceGroupLookup, ResourceGroupLookup>();
             services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
-            services.TryAddSingleton<ITenantOperationScopeAccessor, TenantOperationScopeAccessor>();
             return services;
         }
 

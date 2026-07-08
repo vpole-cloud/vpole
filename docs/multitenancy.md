@@ -83,7 +83,7 @@ Handlers mark tenant-scoped requests with one of:
 * `ITenantWriteOperation`
 * `ITenantCreateOperation`
 
-`TenantAuthorizationBehavior` uses these marker interfaces to enforce role checks and to set the current `TenantOperationScope`. Handlers should still take tenant id from the request and must combine resource identity filters with tenant filters. Prefer `Builders<T>.Filter.ForTenant(request.TenantId)` or explicit `TenantId` predicates.
+`TenantAuthorizationBehavior` uses these marker interfaces to enforce role checks. Handlers should still take tenant id from the request and must combine resource identity filters with tenant filters. Prefer `Builders<T>.Filter.ForTenant(request.TenantId)` or explicit `TenantId` predicates.
 
 When creating a resource that references another resource, the referenced resource must be loaded from the same tenant. For example, web service, Redis, and Postgres creation must validate that the target resource group has the same `TenantId` as the active tenant.
 
