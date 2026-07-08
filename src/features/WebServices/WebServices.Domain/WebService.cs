@@ -15,6 +15,7 @@ public record WebService(
     WebServiceSpec Spec,
     DnsRecordShortInfo DnsRecord,
     ServiceStatus Status,
+    int ActiveRevision,
     ImmutableHashSet<string> Tags,
     ImmutableList<ServiceEvent> Events
 );
@@ -73,6 +74,7 @@ public static class WebServiceFactory
     public sealed record CreateWebServiceOptions(
         string Id,
         ServiceStatus Status,
+        int ActiveRevision,
         ImmutableHashSet<string> Tags,
         ImmutableList<ServiceEvent> Events
     );
@@ -81,6 +83,7 @@ public static class WebServiceFactory
         new CreateWebServiceOptions(
             Id: ObjectId.GenerateNewId().ToString(),
             Status: new Provisioning(),
+            ActiveRevision: 1,
             Tags: ImmutableHashSet<string>.Empty,
             Events: ImmutableList<ServiceEvent>.Empty
         );
@@ -100,6 +103,7 @@ public static class WebServiceFactory
             Spec: spec,
             DnsRecord: dnsRecord,
             Status: options.Status,
+            ActiveRevision: options.ActiveRevision,
             Tags: options.Tags,
             Events: options.Events
         );

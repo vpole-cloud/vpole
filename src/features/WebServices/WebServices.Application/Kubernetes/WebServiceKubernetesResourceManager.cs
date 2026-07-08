@@ -1,5 +1,11 @@
+using System.Net;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using k8s;
+using k8s.Autorest;
+using k8s.Models;
 using Pole.Features.Core.Kubernetes;
+using Pole.ResultType;
 
 namespace Pole.Features.WebServices.Application.Kubernetes;
 
@@ -73,6 +79,162 @@ public static class WebServiceKubernetesResourceManager
             cancellationToken: cancellationToken);
     }
 
+    public static async Task<Result> ApplyAsync(
+        IKubernetes kubernetes,
+        WebServiceInKubernetes webService,
+        WebServiceDeploymentMetadata deploymentMetadata,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var configMap = webService.ToConfigMap();
+            var deployment = webService.ToDeployment(deploymentMetadata);
+            var service = webService.ToService();
+            var ingress = webService.ToIngress();
+            var serviceMonitor = webService.ToServiceMonitor();
+
+            var applyResult = await CreateOrReplaceAsync(
+                () => kubernetes.CoreV1.CreateNamespacedConfigMapAsync(
+                    configMap,
+                    webService.Namespace,
+                    cancellationToken: cancellationToken),
+                async () =>
+                {
+                    var existing = await kubernetes.CoreV1.ReadNamespacedConfigMapAsync(
+                        configMap.Metadata.Name,
+                        webService.Namespace,
+                        cancellationToken: cancellationToken);
+                    configMap.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
+                    await kubernetes.CoreV1.ReplaceNamespacedConfigMapAsync(
+                        configMap,
+                        configMap.Metadata.Name,
+                        webService.Namespace,
+                        cancellationToken: cancellationToken);
+                });
+            if (applyResult is Failure)
+                return applyResult;
+
+            applyResult = await CreateOrReplaceAsync(
+                () => kubernetes.AppsV1.CreateNamespacedDeploymentAsync(
+                    deployment,
+                    webService.Namespace,
+                    cancellationToken: cancellationToken),
+                async () =>
+                {
+                    var existing = await kubernetes.AppsV1.ReadNamespacedDeploymentAsync(
+                        deployment.Metadata.Name,
+                        webService.Namespace,
+                        cancellationToken: cancellationToken);
+                    deployment.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
+                    await kubernetes.AppsV1.ReplaceNamespacedDeploymentAsync(
+                        deployment,
+                        deployment.Metadata.Name,
+                        webService.Namespace,
+                        cancellationToken: cancellationToken);
+                });
+            if (applyResult is Failure)
+                return applyResult;
+
+            applyResult = await CreateOrReplaceAsync(
+                () => kubernetes.CoreV1.CreateNamespacedServiceAsync(
+                    service,
+                    webService.Namespace,
+                    cancellationToken: cancellationToken),
+                async () =>
+                {
+                    var existing = await kubernetes.CoreV1.ReadNamespacedServiceAsync(
+                        service.Metadata.Name,
+                        webService.Namespace,
+                        cancellationToken: cancellationToken);
+                    PreserveServiceOwnedFields(service, existing);
+                    await kubernetes.CoreV1.ReplaceNamespacedServiceAsync(
+                        service,
+                        service.Metadata.Name,
+                        webService.Namespace,
+                        cancellationToken: cancellationToken);
+                });
+            if (applyResult is Failure)
+                return applyResult;
+
+            applyResult = await CreateOrReplaceAsync(
+                () => kubernetes.NetworkingV1.CreateNamespacedIngressAsync(
+                    ingress,
+                    webService.Namespace,
+                    cancellationToken: cancellationToken),
+                async () =>
+                {
+                    var existing = await kubernetes.NetworkingV1.ReadNamespacedIngressAsync(
+                        ingress.Metadata.Name,
+                        webService.Namespace,
+                        cancellationToken: cancellationToken);
+                    ingress.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
+                    await kubernetes.NetworkingV1.ReplaceNamespacedIngressAsync(
+                        ingress,
+                        ingress.Metadata.Name,
+                        webService.Namespace,
+                        cancellationToken: cancellationToken);
+                });
+            if (applyResult is Failure)
+                return applyResult;
+
+            var serviceMonitorObjectResult = ToJsonObject(serviceMonitor);
+            if (!serviceMonitorObjectResult.TryGetValue(out var serviceMonitorObject, out var serviceMonitorFailure))
+                return serviceMonitorFailure;
+
+            applyResult = await CreateOrReplaceAsync(
+                () => kubernetes.CustomObjects.CreateNamespacedCustomObjectAsync(
+                    serviceMonitorObject,
+                    group: "monitoring.coreos.com",
+                    version: "v1",
+                    namespaceParameter: webService.Namespace,
+                    plural: "servicemonitors",
+                    cancellationToken: cancellationToken),
+                async () =>
+                {
+                    var existing = await kubernetes.CustomObjects.GetNamespacedCustomObjectAsync(
+                        group: "monitoring.coreos.com",
+                        version: "v1",
+                        namespaceParameter: webService.Namespace,
+                        plural: "servicemonitors",
+                        name: webService.ServiceMonitorName,
+                        cancellationToken: cancellationToken);
+                    var desiredResult = ToJsonObject(serviceMonitor);
+                    if (!desiredResult.TryGetValue(out var desired, out var desiredFailure))
+                        return desiredFailure;
+
+                    var copyResourceVersionResult = CopyResourceVersion(existing, desired);
+                    if (copyResourceVersionResult is Failure)
+                        return copyResourceVersionResult;
+
+                    await kubernetes.CustomObjects.ReplaceNamespacedCustomObjectAsync(
+                        desired,
+                        group: "monitoring.coreos.com",
+                        version: "v1",
+                        namespaceParameter: webService.Namespace,
+                        plural: "servicemonitors",
+                        name: webService.ServiceMonitorName,
+                        cancellationToken: cancellationToken);
+
+                    return Result.Success();
+                });
+            if (applyResult is Failure)
+                return applyResult;
+
+            return Result.Success();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return Result.ExternalService(
+                "Unable to apply web service deployment in Kubernetes.",
+                "Kubernetes",
+                ex.Message);
+        }
+    }
+
     public static async Task DeleteAsync(
         IKubernetes kubernetes,
         string webServiceName,
@@ -117,6 +279,68 @@ public static class WebServiceKubernetesResourceManager
                 name: WebServiceInKubernetes.BuildTlsSecretName(webServiceName),
                 namespaceParameter: @namespace,
                 cancellationToken: cancellationToken));
+    }
+
+    private static async Task<Result> CreateOrReplaceAsync(Func<Task> createCall, Func<Task> replaceCall) =>
+        await CreateOrReplaceAsync(
+            createCall,
+            async () =>
+            {
+                await replaceCall();
+                return Result.Success();
+            });
+
+    private static async Task<Result> CreateOrReplaceAsync(Func<Task> createCall, Func<Task<Result>> replaceCall)
+    {
+        try
+        {
+            await createCall();
+            return Result.Success();
+        }
+        catch (HttpOperationException ex) when (ex.Response?.StatusCode == HttpStatusCode.Conflict)
+        {
+            return await replaceCall();
+        }
+    }
+
+    private static void PreserveServiceOwnedFields(V1Service desired, V1Service existing)
+    {
+        desired.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
+        desired.Spec.ClusterIP = existing.Spec.ClusterIP;
+        desired.Spec.ClusterIPs = existing.Spec.ClusterIPs;
+        desired.Spec.HealthCheckNodePort = existing.Spec.HealthCheckNodePort;
+    }
+
+    private static Result<JsonObject> ToJsonObject(object value)
+    {
+        var node = JsonSerializer.SerializeToNode(value);
+        return node is JsonObject jsonObject
+            ? Result.Success(jsonObject)
+            : Result.Internal("Kubernetes custom object serialization produced an empty object.");
+    }
+
+    private static Result CopyResourceVersion(object existing, JsonObject desired)
+    {
+        var existingResult = ToJsonObject(existing);
+        if (!existingResult.TryGetValue(out var existingJson, out var existingFailure))
+            return existingFailure;
+
+        var existingMetadata = existingJson["metadata"]?.AsObject();
+        var resourceVersion = existingMetadata?["resourceVersion"]?.GetValue<string>();
+        if (string.IsNullOrWhiteSpace(resourceVersion))
+        {
+            return Result.Internal("Existing Kubernetes custom object does not include metadata.resourceVersion.");
+        }
+
+        var desiredMetadata = desired["metadata"]?.AsObject();
+        if (desiredMetadata is null)
+        {
+            desiredMetadata = [];
+            desired["metadata"] = desiredMetadata;
+        }
+
+        desiredMetadata["resourceVersion"] = resourceVersion;
+        return Result.Success();
     }
 }
 

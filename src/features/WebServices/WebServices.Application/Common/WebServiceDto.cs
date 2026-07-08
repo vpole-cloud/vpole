@@ -1,6 +1,7 @@
 // ReSharper disable MemberCanBePrivate.Global
 
 using System.Collections.Immutable;
+using Pole.Features.Request;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Domain;
 
@@ -10,9 +11,31 @@ public sealed record WebServiceDto(
     string Id,
     string Name,
     string ResourceGroupId,
+    int ActiveRevision,
     WebServiceSpecDto Spec,
     DnsRecordShortInfoDto DnsRecordShortInfo
 );
+
+public sealed record WebServiceReleaseDto(
+    string Id,
+    int Revision,
+    string Action,
+    string Outcome,
+    string? ActorUserId,
+    string? ActorEmail,
+    DateTime RequestedAtUtc,
+    DateTime? CompletedAtUtc,
+    string? FailureMessage,
+    string? TraceId,
+    string? CorrelationId,
+    WebServiceSpecDto Spec
+);
+
+public sealed record WebServiceReleaseHistoryDto(
+    int ActiveRevision,
+    PaginatedResponse<WebServiceReleaseDto> Releases
+);
+
 public sealed record DnsRecordShortInfoDto(
     string Id,
     string Domain
@@ -74,8 +97,23 @@ public static class WebServiceDtoExtensions
         webService.Id,
         webService.Name,
         webService.ResourceGroupId,
+        webService.ActiveRevision,
         webService.Spec.ToDto(),
         webService.DnsRecord.ToDto()
+    );
+    public static WebServiceReleaseDto ToDto(this WebServiceRelease release) => new(
+        release.Id,
+        release.Revision,
+        release.Action.ToString(),
+        release.Outcome.ToString(),
+        release.ActorUserId,
+        release.ActorEmail,
+        release.RequestedAtUtc,
+        release.CompletedAtUtc,
+        release.FailureMessage,
+        release.TraceId,
+        release.CorrelationId,
+        release.Spec.ToDomain().ToDto()
     );
     public static DnsRecordShortInfoDto ToDto(this DnsRecordShortInfo dnsRecord) => new(
         dnsRecord.Id,

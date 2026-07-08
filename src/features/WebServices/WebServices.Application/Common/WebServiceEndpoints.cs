@@ -19,7 +19,10 @@ public static class WebServiceEndpoints
                 .MapUpdateWebServiceEndpoint()
                 .MapDeleteWebServiceEndpoints()
                 .MapGetWebServiceByIdEndpoint()
-                .MapGetWebServicesEndpoint();
+                .MapGetWebServicesEndpoint()
+                .MapGetWebServiceDeploymentsEndpoint()
+                .MapRedeployWebServiceEndpoint()
+                .MapRollbackWebServiceEndpoint();
                 
             return app;
         }

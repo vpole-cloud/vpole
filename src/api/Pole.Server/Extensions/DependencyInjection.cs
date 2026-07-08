@@ -29,6 +29,7 @@ using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Application.Identity;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Mediator;
 using Pole.Observability;
 using Pole.Server.Database;
@@ -99,6 +100,7 @@ public static class DependencyInjection
             services.AddSingleton<IPostgresClusterDeploymentBackend, OperatorPostgresClusterDeploymentBackend>();
             services.AddSingleton<IPostgresClusterDeploymentBackend, StatefulSetPostgresClusterDeploymentBackend>();
             services.AddSingleton<IPostgresClusterDeploymentManager, PostgresClusterDeploymentManager>();
+            services.TryAddSingleton<IWebServiceDeploymentApplier, KubernetesWebServiceDeploymentApplier>();
             return services;
         }
         public IServiceCollection AddEventBus(IConfiguration configuration, Assembly[] assemblies)

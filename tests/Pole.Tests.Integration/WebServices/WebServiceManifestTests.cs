@@ -51,6 +51,21 @@ public sealed class WebServiceManifestTests
     }
 
     [Fact]
+    public void ToDeployment_WithDeploymentMetadata_AddsReleaseAnnotationsToPodTemplate()
+    {
+        var manifest = CreateSubject();
+        var requestedAt = new DateTime(2026, 7, 7, 12, 30, 0, DateTimeKind.Utc);
+
+        var deployment = manifest.ToDeployment(new WebServiceDeploymentMetadata("release-7", 7, requestedAt));
+
+        var annotations = deployment.Spec.Template.Metadata.Annotations;
+        Assert.Equal("web-service-1", annotations["pole.server/webServiceId"]);
+        Assert.Equal("release-7", annotations["pole.server/releaseId"]);
+        Assert.Equal("7", annotations["pole.server/revision"]);
+        Assert.Equal("2026-07-07T12:30:00.0000000Z", annotations["pole.server/deploymentRequestedAt"]);
+    }
+
+    [Fact]
     public void ToService_UsesConfiguredPorts_AndLabels()
     {
         var manifest = CreateSubject();

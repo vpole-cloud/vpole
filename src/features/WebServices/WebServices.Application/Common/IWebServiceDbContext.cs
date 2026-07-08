@@ -7,5 +7,6 @@ namespace Pole.Features.WebServices.Application.Common;
 public interface IWebServiceDbContext : IEventDbContext
 {
     IMongoCollection<WebService> WebServices { get; }
+    IMongoCollection<WebServiceRelease> WebServiceReleases { get; }
 }
 

@@ -1,7 +1,5 @@
 using System.Collections.Immutable;
 using FluentValidation;
-using k8s;
-using MassTransit;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -14,7 +12,6 @@ using Pole.Features.Events.Abstractions;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
-using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -42,7 +39,9 @@ public static class UpdateWebService
 public sealed record UpdateWebServiceRequest(
     [FromRoute] string Id,
     [FromBody] UpdateWebServiceRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null,
+    [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default,
+    [FromClaim(Claims.Email)] ClaimValue<string?> ActorEmail = default
 ) : IMediatorRequest<UpdateWebServiceResponse>, ITenantWriteOperation;
 
 public sealed record UpdateWebServiceRequestBody(
@@ -75,14 +74,27 @@ public sealed class UpdateWebServiceHandler(
         return await dbContext.RunInTransactionAsync<UpdateWebServiceResponse>(async (sh, ct) =>
         {
             var changes = GetChanges(webService, request.Body);
-            if (HasChanges(changes))
-            {
-                await dbContext.WebServices.UpdateOneAsync(
-                    session: sh,
-                    filter,
-                    GetUpdateDefinition(changes),
-                    cancellationToken: ct);
-            }
+            var nextRevision = Math.Max(webService.ActiveRevision, 1) + 1;
+            var deploymentEventCore = EventCore.Create(webService.TenantId);
+            var release = WebServiceReleaseFactory.CreatePending(
+                webService.TenantId,
+                webService.Id,
+                nextRevision,
+                WebServiceReleaseAction.Update,
+                request.ActorUserId.Value,
+                request.ActorEmail.Value,
+                changes.WebServiceSpec.New,
+                deploymentEventCore.TraceId,
+                deploymentEventCore.CorrelationId,
+                deploymentEventCore.OccurredOn);
+
+            await dbContext.WebServices.UpdateOneAsync(
+                session: sh,
+                filter,
+                GetUpdateDefinition(changes, nextRevision),
+                cancellationToken: ct);
+
+            await dbContext.WebServiceReleases.InsertOneAsync(sh, release, cancellationToken: ct);
 
             await dbContext.StoreEventAsync(new WebServiceUpdatedEvent(
                     request.Id,
@@ -94,6 +106,11 @@ public sealed class UpdateWebServiceHandler(
                     EventCore = EventCore.Create(webService.TenantId)
                 }
                 , sh, ct);
+
+            await dbContext.StoreEventAsync(
+                release.ToDeploymentRequestedEvent(webService, deploymentEventCore),
+                sh,
+                ct);
             
             return new UpdateWebServiceResponse(
                 Id: webService.Id
@@ -109,34 +126,16 @@ public sealed class UpdateWebServiceHandler(
                 body.Tags));
 
     private static UpdateDefinition<WebService> GetUpdateDefinition(
-        WebServiceUpdatedEventChanges changes)
+        WebServiceUpdatedEventChanges changes,
+        int nextRevision)
     {
         var updates = new Queue<UpdateDefinition<WebService>>();
+        updates.Enqueue(Builders<WebService>.Update.Set(ws => ws.ActiveRevision, nextRevision));
         if (!changes.Tags.AreEqual)
             updates.Enqueue(Builders<WebService>.Update.Set(ws => ws.Tags, changes.Tags.New));
         if (!changes.WebServiceSpec.AreEqual)
             updates.Enqueue(Builders<WebService>.Update.Set(ws => ws.Spec, changes.WebServiceSpec.New.ToDomain()));
         return Builders<WebService>.Update.Combine(updates);
-    }
-
-    private static bool HasChanges(WebServiceUpdatedEventChanges changes) =>
-        !changes.WebServiceSpec.AreEqual || !changes.Tags.AreEqual;
-}
-
-public class UpdateWebServiceInKubernetesOnWebServiceUpdatedConsumer(
-    IWebServiceDbContext dbContext,
-    IKubernetes kubernetes)
-    : IConsumer<WebServiceUpdatedEvent>
-{
-    public async Task Consume(ConsumeContext<WebServiceUpdatedEvent> context)
-    {
-        var ct = context.CancellationToken;
-        var webApp = await dbContext.WebServices
-            .Find(wa => wa.Id == context.Message.WebServiceId && wa.TenantId == context.Message.EventCore.TenantId)
-            .FirstOrDefaultAsync(ct);
-        if (webApp is null) return;
-
-        await WebServiceKubernetesResourceManager.ReplaceAsync(kubernetes, webApp.ToKubernetes(), ct);
     }
 }
 

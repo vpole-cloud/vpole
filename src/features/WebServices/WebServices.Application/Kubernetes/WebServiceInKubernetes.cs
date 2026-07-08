@@ -1,10 +1,16 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using k8s.Models;
 using Pole.Features.WebServices.Domain;
 
 namespace Pole.Features.WebServices.Application.Kubernetes;
+
+public sealed record WebServiceDeploymentMetadata(
+    string ReleaseId,
+    int Revision,
+    DateTime RequestedAtUtc);
 
 public readonly record struct WebServiceInKubernetes(WebService WebService)
 {
@@ -21,7 +27,7 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
     public string ServiceMonitorName => BuildServiceMonitorName(WebService.Name);
     public static string BuildServiceMonitorName(string webServiceName) => $"{webServiceName}-sm";
     public string Namespace => WebService.Spec.KubernetesNamespace;
-    public V1Deployment ToDeployment() => new ()
+    public V1Deployment ToDeployment(WebServiceDeploymentMetadata? deploymentMetadata = null) => new ()
     {
         ApiVersion = "apps/v1",
         Kind = "Deployment",
@@ -53,7 +59,7 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
                         { "app", WebService.Name }
                             
                     },
-                    Annotations = _defaultAnnotations,
+                    Annotations = BuildPodTemplateAnnotations(deploymentMetadata),
                 },
                 Spec = new V1PodSpec()
                 {
@@ -322,6 +328,17 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
             { "app.kubernetes.io/managed-by", "pole-server" },
             { "pole.server/webServiceId", WebService.Id },
         }.ToImmutableDictionary();
+
+    private ImmutableDictionary<string, string> BuildPodTemplateAnnotations(WebServiceDeploymentMetadata? deploymentMetadata)
+    {
+        if (deploymentMetadata is null)
+            return _defaultAnnotations;
+
+        return _defaultAnnotations
+            .SetItem("pole.server/releaseId", deploymentMetadata.ReleaseId)
+            .SetItem("pole.server/revision", deploymentMetadata.Revision.ToString(CultureInfo.InvariantCulture))
+            .SetItem("pole.server/deploymentRequestedAt", deploymentMetadata.RequestedAtUtc.ToString("O", CultureInfo.InvariantCulture));
+    }
         
     private static int GetIngressServicePort(WebService webService)
     {

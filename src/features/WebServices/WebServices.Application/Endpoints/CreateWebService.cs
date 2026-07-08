@@ -1,7 +1,5 @@
 using System.Collections.Immutable;
 using FluentValidation;
-using k8s;
-using MassTransit;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -18,7 +16,6 @@ using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
-using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -52,10 +49,8 @@ public sealed class CreateWebServiceHandler(
     public async Task<Result<CreateWebServiceResponse>> HandleAsync(CreateWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var tenantId = request.TenantId ?? throw new InvalidOperationException("A tenant id is required for this operation.");
-
         var placementResult = await resourceGroupLookup.GetPlacementAsync(
-            tenantId,
+            request.TenantId,
             request.Body.ResourceGroupId,
             cancellationToken);
         if (!placementResult.TryGetValue(out var placement, out var placementFailure))
@@ -67,7 +62,7 @@ public sealed class CreateWebServiceHandler(
         };
         var dnsRecordReservation = await domainNameReservationService.ReserveAsync(
             new ReserveDomainNameRequest(
-                TenantId: tenantId,
+                TenantId: request.TenantId,
                 DomainName: request.Body.DomainName,
                 ResourceType: ResourceType.WebService,
                 ResourceId: createWebServiceOptions.Id,
@@ -80,7 +75,7 @@ public sealed class CreateWebServiceHandler(
 
         var newWebService = WebServiceFactory.Create(
             name: request.Body.Name,
-            tenantId: tenantId,
+            tenantId: request.TenantId,
             resourceGroupId: request.Body.ResourceGroupId,
             spec: request.Body.Spec.ToDomain(placement.KubernetesNamespace),
             dnsRecord: dnsRecord,
@@ -88,7 +83,21 @@ public sealed class CreateWebServiceHandler(
         
         return await dbContext.RunInTransactionAsync<CreateWebServiceResponse>(async (sh, ct) =>
         {
+            var deploymentEventCore = EventCore.Create(request.TenantId);
+            var release = WebServiceReleaseFactory.CreatePending(
+                request.TenantId,
+                newWebService.Id,
+                newWebService.ActiveRevision,
+                WebServiceReleaseAction.Create,
+                request.ActorUserId.Value,
+                request.ActorEmail.Value,
+                newWebService.Spec.ToSnapshot(),
+                deploymentEventCore.TraceId,
+                deploymentEventCore.CorrelationId,
+                deploymentEventCore.OccurredOn);
+
             await dbContext.WebServices.InsertOneAsync(sh, newWebService, cancellationToken: ct);
+            await dbContext.WebServiceReleases.InsertOneAsync(sh, release, cancellationToken: ct);
 
             await dbContext.StoreEventAsync(
                 [
@@ -96,7 +105,8 @@ public sealed class CreateWebServiceHandler(
                     new CommitDomainNameEvent(
                         DnsRecordId: dnsRecord.Id,
                         ResourceId: newWebService.Id,
-                        EventCore: EventCore.Create(tenantId))
+                        EventCore: EventCore.Create(request.TenantId)),
+                    release.ToDeploymentRequestedEvent(newWebService, deploymentEventCore)
                 ],
                 sh,
                 ct);
@@ -106,22 +116,11 @@ public sealed class CreateWebServiceHandler(
     }
 }
 
-public class ProvisionWebServiceOnWebServiceCreatedConsumer(
-    IKubernetes kubernetes)
-    : IConsumer<WebServiceCreatedEvent>
-{
-    public async Task Consume(ConsumeContext<WebServiceCreatedEvent> context)
-    {
-        var ct = context.CancellationToken;
-        
-        await WebServiceKubernetesResourceManager.CreateAsync(kubernetes, 
-            context.Message.ToWebService().ToKubernetes() , ct);
-    }
-}
-
 public sealed record CreateWebServiceRequest(
     [FromBody] CreateWebServiceRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
+    [FromClaim(Claims.UserId)] ClaimValue<string> ActorUserId,
+    [FromClaim(Claims.Email)] ClaimValue<string> ActorEmail
 ) : IMediatorRequest<CreateWebServiceResponse>, ITenantCreateOperation;
 
 public sealed record CreateWebServiceRequestBody(
@@ -138,6 +137,9 @@ public sealed class CreateWebServiceRequestValidator : AbstractValidator<CreateW
 {
     public CreateWebServiceRequestValidator()
     {
+        RuleFor(x => x.TenantId).NotEmpty();
+        RuleFor(x => x.ActorUserId.Value).NotEmpty();
+        RuleFor(x => x.ActorEmail.Value).NotEmpty().EmailAddress();
         RuleFor(x => x.Body).SetValidator(new CreateWebServiceRequestBodyValidator());
     }
 }
