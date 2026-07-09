@@ -51,7 +51,7 @@ type UpdatePostgresClusterHandler(dbContext : IPostgresDbContext) =
 
                 match postgresCluster with
                 | None ->
-                    return Result.NotFound($"Postgres cluster with ID '{request.ClusterId}' not found.")
+                    return Failures.NotFound("Postgres cluster not found.", request.ClusterId)
                            |> ResultF.ofFailure
                 | Some cluster ->
                     let updatedInstances = defaultArg request.Body.Instances cluster.Spec.Instances
@@ -59,7 +59,7 @@ type UpdatePostgresClusterHandler(dbContext : IPostgresDbContext) =
                     if cluster.Spec.DeploymentMode = PostgresDeploymentMode.StatefulSet && updatedInstances <> 1 then
                         let validationErrors = System.Collections.Generic.Dictionary<string, string[]>()
                         validationErrors["Body.Instances"] <- [| "StatefulSet PostgreSQL supports exactly one instance." |]
-                        return Result.ValidationFailure(validationErrors) |> ResultF.ofFailure
+                        return Failures.ValidationFailure(validationErrors) |> ResultF.ofFailure
                     else
                         let updatedCluster =
                             { cluster with

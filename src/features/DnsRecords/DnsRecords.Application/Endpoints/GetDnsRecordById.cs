@@ -50,7 +50,7 @@ public sealed class GetDomainNameByIdHandler(
             .FirstOrDefaultAsync(cancellationToken: cancellationToken);
 
         if (dn is null)
-            return Result.NotFound($"Domain name with ID '{request.Id}' not found.");
+            return Failures.NotFound("Domain name not found.", request.Id);
 
         return dn.ToDto();
     }

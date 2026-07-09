@@ -18,7 +18,7 @@ public sealed class KeycloakIdentityProvider(
     {
         var token = await GetAccessTokenAsync(cancellationToken);
         if (token is null)
-            return Result.ExternalService("Unable to get Keycloak admin token.", "Keycloak", "Token endpoint did not return an access token.");
+            return Failures.ExternalService("Unable to get Keycloak admin token.", "Keycloak", "Token endpoint did not return an access token.");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, AdminUsersPath());
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -34,7 +34,7 @@ public sealed class KeycloakIdentityProvider(
         if (!response.IsSuccessStatusCode)
         {
             var details = await response.Content.ReadAsStringAsync(cancellationToken);
-            return Result.ExternalService("Unable to create Keycloak user.", "Keycloak", details);
+            return Failures.ExternalService("Unable to create Keycloak user.", "Keycloak", details);
         }
 
         var idFromLocation = TryReadUserIdFromLocation(response.Headers.Location);
@@ -43,7 +43,7 @@ public sealed class KeycloakIdentityProvider(
 
         var idFromLookup = await LookupUserIdByUsernameAsync(user.Email, token, cancellationToken);
         return idFromLookup is null
-            ? Result.ExternalService("Unable to resolve created Keycloak user id.", "Keycloak", "Create response had no Location header and lookup returned no user.")
+            ? Failures.ExternalService("Unable to resolve created Keycloak user id.", "Keycloak", "Create response had no Location header and lookup returned no user.")
             : idFromLookup;
     }
 

@@ -51,7 +51,7 @@ public sealed class DeleteWebServiceHandler(
                 .FindOneAndDeleteAsync(sh, filter, cancellationToken: ct);
 
             if (webService is null)
-                return Result.NotFound($"Web service with ID '{request.Id}' not found.");
+                return Failures.NotFound("Web service not found.", request.Id);
 
             await dbContext.StoreEventAsync(webService.ToDeleteEvent(), sh, ct);
             return new DeleteWebServiceResponse(

@@ -58,7 +58,7 @@ public sealed class GetWebServiceDeploymentsHandler(IWebServiceDbContext dbConte
             .FirstOrDefaultAsync(cancellationToken);
 
         if (webService is null)
-            return Result.NotFound($"Web service with ID '{request.Id}' not found.");
+            return Failures.NotFound("Web service not found.", request.Id);
 
         var releaseFilter = Builders<WebServiceRelease>.Filter.And(
             Builders<WebServiceRelease>.Filter.ForTenant(request.TenantId),

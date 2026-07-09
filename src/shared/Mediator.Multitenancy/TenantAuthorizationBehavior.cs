@@ -62,7 +62,7 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
         return null;
     }
 
-    private static Failure Forbidden(string message) => Result.Forbidden(message, "Tenant authorization");
+    private static Failure Forbidden(string message) => Failures.Forbidden(message, "Tenant authorization");
 }
 
 public static class ClaimPrincipalExtensions

@@ -121,7 +121,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
     {
         var identityAdmin = new FakeIdentityProvider("keycloak-user-1")
         {
-            CreateFailure = Result.ExternalService("failed", "Keycloak", "boom")
+            CreateFailure = Failures.ExternalService("failed", "Keycloak", "boom")
         };
         var handler = new CreateUserHandler(
             fixture.DbContext,

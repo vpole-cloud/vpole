@@ -91,7 +91,7 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
             CallCount++;
             if (failureMessage is not null)
             {
-                return Task.FromResult<Result>(Result.ExternalService(
+                return Task.FromResult<Result>(Failures.ExternalService(
                     failureMessage,
                     "Kubernetes",
                     failureMessage));

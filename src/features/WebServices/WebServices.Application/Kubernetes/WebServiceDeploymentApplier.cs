@@ -33,7 +33,7 @@ public sealed class KubernetesWebServiceDeploymentApplier(IKubernetes kubernetes
         }
         catch (Exception ex)
         {
-            return Result.ExternalService(
+            return Failures.ExternalService(
                 "Unable to prepare web service deployment for Kubernetes.",
                 "Kubernetes",
                 ex.Message);

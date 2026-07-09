@@ -45,7 +45,7 @@ type DeletePostgresClusterHandler(dbContext : IPostgresDbContext) =
 
                 match postgresCluster with
                 | None ->
-                    return Result.NotFound($"PostgreSQL cluster with ID '{request.ClusterId}' not found.")
+                    return Failures.NotFound("PostgreSQL cluster not found.", request.ClusterId)
                            |> ResultF.ofFailure
                 | Some cluster ->
                     return!
@@ -59,7 +59,7 @@ type DeletePostgresClusterHandler(dbContext : IPostgresDbContext) =
                                             cancellationToken = ct
                                         )
                                     if deleteResult.DeletedCount = 0L then
-                                        return Result.NotFound($"PostgreSQL cluster with ID '{request.ClusterId}' not found.")
+                                        return Failures.NotFound("PostgreSQL cluster not found.", request.ClusterId)
                                                |> ResultF.ofFailure
                                     else
                                         let event = PostgresClusterEvents.deleted cluster

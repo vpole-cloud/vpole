@@ -69,7 +69,7 @@ public sealed class UpdateWebServiceHandler(
             .FirstOrDefaultAsync(cancellationToken: cancellationToken);
 
         if (webService is null)
-            return Result.NotFound($"Web service with ID '{request.Id}' not found.");
+            return Failures.NotFound("Web service not found.", request.Id);
 
         return await dbContext.RunInTransactionAsync<UpdateWebServiceResponse>(async (sh, ct) =>
         {

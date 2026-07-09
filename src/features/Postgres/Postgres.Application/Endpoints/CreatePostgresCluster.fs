@@ -59,7 +59,7 @@ type CreatePostgresClusterHandler(
                 let validationErrors = validate settings request
 
                 if validationErrors.Count > 0 then
-                    return Result.ValidationFailure(validationErrors) |> ResultF.ofFailure
+                    return Failures.ValidationFailure(validationErrors) |> ResultF.ofFailure
                 else
                     let tenantId = request.TenantId
                     let! placementResult =

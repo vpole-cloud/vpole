@@ -21,7 +21,7 @@ public sealed class DomainNameReservationService(
             .FirstOrDefaultAsync(cancellationToken);
 
         if (existing is not null)
-            return Result.Conflict($"Domain name '{request.DomainName}' is already in use.");
+            return Failures.Conflict($"Domain name '{request.DomainName}' is already in use.");
 
         var now = DateTime.UtcNow;
         var dnsRecord = DnsRecordFactory.Create(
@@ -42,7 +42,7 @@ public sealed class DomainNameReservationService(
         }
         catch (MongoWriteException ex) when (ex.WriteError?.Category == ServerErrorCategory.DuplicateKey)
         {
-            return Result.Conflict($"Domain name '{request.DomainName}' is already in use.");
+            return Failures.Conflict($"Domain name '{request.DomainName}' is already in use.");
         }
 
         return new DnsRecordShortInfo(dnsRecord.Id, dnsRecord.Domain);
@@ -62,7 +62,7 @@ public sealed class DomainNameReservationService(
             .FirstOrDefaultAsync(cancellationToken);
 
         if (dnsRecord is null)
-            return Result.NotFound($"Domain name reservation with ID '{request.DnsRecordId}' not found.");
+            return Failures.NotFound("Domain name reservation not found.", request.DnsRecordId);
 
         if (dnsRecord.Status is Committed)
             return Result.Success();

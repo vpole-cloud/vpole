@@ -56,7 +56,7 @@ public sealed class RedeployWebServiceHandler(IWebServiceDbContext dbContext)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (webService is null)
-            return Result.NotFound($"Web service with ID '{request.Id}' not found.");
+            return Failures.NotFound("Web service not found.", request.Id);
 
         return await dbContext.RunInTransactionAsync<RedeployWebServiceResponse>(async (session, ct) =>
         {

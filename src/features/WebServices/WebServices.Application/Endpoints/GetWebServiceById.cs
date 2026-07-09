@@ -49,7 +49,7 @@ public sealed class GetWebServiceByIdHandler(
             .FirstOrDefaultAsync(cancellationToken: cancellationToken);
 
         if (webService is null)
-            return Result.NotFound($"Web service with ID '{request.Id}' not found.");
+            return Failures.NotFound("Web service not found.", request.Id);
 
         return webService.ToDto();
     }

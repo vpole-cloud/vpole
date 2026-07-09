@@ -55,7 +55,7 @@ public sealed class CreateUserHandler(
         var email = NormalizeEmail(request.Body.Email);
         var existing = await userDbContext.Users.Find(u => u.Email == email).AnyAsync(cancellationToken);
         if (existing)
-            return Result.Conflict($"User '{email}' already exists.");
+            return Failures.Conflict($"User '{email}' already exists.");
 
         var keycloakUserIdResult = await identityProvider.CreateUserAsync(
             new CreateIdentityUser(email, request.Body.FirstName, request.Body.LastName),

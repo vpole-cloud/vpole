@@ -61,7 +61,7 @@ public sealed class RollbackWebServiceHandler(IWebServiceDbContext dbContext)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (webService is null)
-            return Result.NotFound($"Web service with ID '{request.Id}' not found.");
+            return Failures.NotFound("Web service not found.", request.Id);
 
         var targetReleaseFilter = Builders<WebServiceRelease>.Filter.And(
             Builders<WebServiceRelease>.Filter.ForTenant(request.TenantId),
@@ -74,7 +74,7 @@ public sealed class RollbackWebServiceHandler(IWebServiceDbContext dbContext)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (targetRelease is null)
-            return Result.NotFound($"Succeeded release revision '{request.Body.TargetRevision}' was not found for web service '{request.Id}'.");
+            return Failures.NotFound("Succeeded release revision was not found for web service.", request.Body.TargetRevision);
 
         return await dbContext.RunInTransactionAsync<RollbackWebServiceResponse>(async (session, ct) =>
         {

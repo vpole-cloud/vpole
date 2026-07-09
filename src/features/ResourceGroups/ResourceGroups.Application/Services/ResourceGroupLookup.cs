@@ -17,7 +17,7 @@ public sealed class ResourceGroupLookup(IResourceGroupDbContext dbContext) : IRe
             .FirstOrDefaultAsync(cancellationToken);
 
         return resourceGroup is null
-            ? Result.NotFound($"Resource group with ID '{resourceGroupId}' not found.")
+            ? Failures.NotFound("Resource group not found.", resourceGroupId)
             : new ResourceGroupPlacement(
                 resourceGroup.Id,
                 resourceGroup.TenantId,

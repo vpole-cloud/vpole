@@ -42,6 +42,6 @@ public class ValidationBehavior<TRequest, TResponse>(
             typeof(TRequest).Name,
             errorMap);
 
-        return Result.ValidationFailure(errorMap);
+        return Failures.ValidationFailure(errorMap);
     }
 }

@@ -103,7 +103,7 @@ public sealed class GetTenantMembersHandler(ITenantDbContext dbContext)
             .FirstOrDefaultAsync(cancellationToken);
 
         return tenant is null
-            ? Result.NotFound($"Tenant '{request.TenantId}' was not found.")
+            ? Failures.NotFound("Tenant not found.", request.TenantId)
             : tenant.Members.Select(m => m.ToDto()).ToList();
     }
 }
@@ -128,11 +128,11 @@ public sealed class AddTenantMemberHandler(ITenantDbContext dbContext)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (tenant is null)
-            return Result.NotFound($"Tenant '{request.TenantId}' was not found.");
+            return Failures.NotFound("Tenant not found.", request.TenantId);
 
         return tenant.Members.Any(m => m.UserId == request.Body.UserId)
-            ? Result.Conflict($"User '{request.Body.UserId}' is already a member of tenant '{request.TenantId}'.")
-            : Result.NotFound($"Tenant '{request.TenantId}' was not found.");
+            ? Failures.Conflict($"User '{request.Body.UserId}' is already a member of tenant '{request.TenantId}'.")
+            : Failures.NotFound("Tenant not found.", request.TenantId);
     }
 }
 
@@ -158,7 +158,7 @@ public sealed class UpdateTenantMemberHandler(ITenantDbContext dbContext)
 
         var member = updated?.Members.FirstOrDefault(m => m.Id == request.MemberId);
         return member is null
-            ? Result.NotFound($"Tenant member '{request.MemberId}' was not found.")
+            ? Failures.NotFound("Tenant member not found.", request.MemberId)
             : member.ToDto();
     }
 }
@@ -183,7 +183,7 @@ public sealed class DeleteTenantMemberHandler(ITenantDbContext dbContext)
             cancellationToken: cancellationToken);
 
         return result.ModifiedCount == 0
-            ? Result.NotFound($"Tenant member '{request.MemberId}' was not found.")
+            ? Failures.NotFound("Tenant member not found.", request.MemberId)
             : request.MemberId;
     }
 }
@@ -213,18 +213,18 @@ internal static class TenantMemberMutationGuard
             .FirstOrDefaultAsync(cancellationToken);
 
         if (tenant is null)
-            return Result.NotFound($"Tenant '{tenantId}' was not found.");
+            return Failures.NotFound("Tenant not found.", tenantId);
 
         var existingMember = tenant.Members.FirstOrDefault(m => m.Id == memberId);
         if (existingMember is null)
-            return Result.NotFound($"Tenant member '{memberId}' was not found.");
+            return Failures.NotFound("Tenant member not found.", memberId);
 
         var removesOwner = nextRole is null || nextRole != TenantRole.Owner;
         if (existingMember.Role == TenantRole.Owner &&
             removesOwner &&
             tenant.Members.Count(m => m.Role == TenantRole.Owner) == 1)
         {
-            return Result.Conflict("Tenant must keep at least one owner.");
+            return Failures.Conflict("Tenant must keep at least one owner.");
         }
 
         return null;
