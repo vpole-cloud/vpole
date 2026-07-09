@@ -153,10 +153,10 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
     }
 
     private PostgresCluster BuildOperatorCluster() =>
-        new("postgres-k8s", TestData.TenantId, "postgres-k8s", "rg-k8s", new PostgresClusterSpec(1, 5, NamespaceName, 17, PostgresDeploymentMode.Operator));
+        new("postgres-k8s", TestData.TenantId, "postgres-k8s", "rg-k8s", new PostgresClusterSpec(1, 5, TestData.DefaultResolvedStorageProfile(), NamespaceName, 17, PostgresDeploymentMode.Operator));
 
     private PostgresCluster BuildStatefulSetCluster() =>
-        new("postgres-sts", TestData.TenantId, "postgres-sts", "rg-k8s", new PostgresClusterSpec(1, 5, NamespaceName, 17, PostgresDeploymentMode.StatefulSet));
+        new("postgres-sts", TestData.TenantId, "postgres-sts", "rg-k8s", new PostgresClusterSpec(1, 5, TestData.DefaultResolvedStorageProfile(), NamespaceName, 17, PostgresDeploymentMode.StatefulSet));
 
     private static PostgresSettings CreateSettings() =>
         new()

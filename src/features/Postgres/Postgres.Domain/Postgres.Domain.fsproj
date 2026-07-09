@@ -13,5 +13,6 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
+      <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
     </ItemGroup>
 </Project>

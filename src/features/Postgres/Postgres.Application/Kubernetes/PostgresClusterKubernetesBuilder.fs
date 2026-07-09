@@ -1,5 +1,7 @@
 namespace Pole.Features.Postgres.Application.Kubernetes
 
+open Pole.Features.Shared.Models
+open Pole.Features.StorageProfiles.Contracts
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
 open k8s.Models
@@ -9,6 +11,17 @@ module PostgresClusterKubernetesBuilder =
     let buildSecretName (clusterId : string) = $"{clusterId}-secret"
     let buildReadWriteServiceName (clusterId : string) = $"{clusterId}-rw"
     let buildDatabaseName (clusterId : string) = clusterId
+
+    let buildLabels (cluster : PostgresCluster) =
+        dict [
+            "app", cluster.Id
+            "component", "postgres"
+            PoleStorageLabels.TenantId, cluster.TenantId
+            PoleStorageLabels.ResourceGroupId, cluster.GroupId
+            PoleStorageLabels.ResourceType, ResourceType.Postgres.ToString()
+            PoleStorageLabels.ResourceId, cluster.Id
+            PoleStorageLabels.ResourceName, cluster.Name
+        ]
 
     let buildCluster (cluster : PostgresCluster) (username : string) (settings : PostgresSettings) =
         let clusterSecretName = buildSecretName cluster.Id
@@ -21,6 +34,7 @@ module PostgresClusterKubernetesBuilder =
                 {|
                     name = cluster.Id
                     ``namespace`` = cluster.Spec.KubernetesNamespace
+                    labels = buildLabels cluster
                 |}
             spec =
                 {|
@@ -28,6 +42,7 @@ module PostgresClusterKubernetesBuilder =
                     storage =
                         {|
                             size = $"{cluster.Spec.Storage}Gi"
+                            storageClass = cluster.Spec.StorageProfile.StorageClassName
                         |}
                     secret =
                         {|
@@ -53,7 +68,7 @@ module PostgresClusterKubernetesBuilder =
         let secret = V1Secret()
         secret.ApiVersion <- "v1"
         secret.Kind <- "Secret"
-        secret.Metadata <- V1ObjectMeta(Name = buildSecretName cluster.Id, NamespaceProperty = cluster.Spec.KubernetesNamespace)
+        secret.Metadata <- V1ObjectMeta(Name = buildSecretName cluster.Id, NamespaceProperty = cluster.Spec.KubernetesNamespace, Labels = buildLabels cluster)
         secret.Type <- "kubernetes.io/basic-auth"
         secret.StringData <- dict [ "username", username; "password", password ]
         secret

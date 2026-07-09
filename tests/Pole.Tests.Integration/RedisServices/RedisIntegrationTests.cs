@@ -1,3 +1,4 @@
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.ResultType;
@@ -50,7 +51,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             Body: new UpdateRedisServiceRequestBody(
                 ResourceGroupId: resourceGroup.Id,
                 Spec: new(
-                    Storage: new(10, "fast"),
+                    Storage: new(10, TestData.DefaultStorageProfileId),
                     Resources: new(
                         Requests: new(2, 512),
                         Limits: new(4, 1024))),
@@ -65,9 +66,40 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
         var updated = await DbContext.RedisServices.Find(redis => redis.Id == created.RedisId).FirstOrDefaultAsync();
         Assert.NotNull(updated);
         Assert.Equal(10, updated.Spec.Storage.SizeGb);
-        Assert.Equal("fast", updated.Spec.Storage.StorageClassName);
+        Assert.Equal(TestData.DefaultStorageProfileId, updated.Spec.Storage.StorageProfile.ProfileId);
+        Assert.Equal("standard", updated.Spec.Storage.StorageProfile.StorageClassName);
         Assert.Equal(["cache", "prod"], updated.Tags.Order());
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("redis-service-updated"));
+    }
+
+    [Fact]
+    public async Task Update_ReturnsValidationFailure_WhenStorageProfileChanges()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var createResult = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id));
+        Assert.True(createResult.TryGetValue(out var created, out _));
+        var otherProfileId = ObjectId.GenerateNewId().ToString();
+        await DbContext.StorageProfiles.InsertOneAsync(TestData.SeedStorageProfile(
+            id: otherProfileId,
+            storageClassName: "fast",
+            isDefault: false));
+
+        var updateRequest = new UpdateRedisServiceRequest(
+            Id: created.RedisId,
+            Body: new UpdateRedisServiceRequestBody(
+                ResourceGroupId: resourceGroup.Id,
+                Spec: new(
+                    Storage: new(5, otherProfileId),
+                    Resources: new(
+                        Requests: new(1, 128),
+                        Limits: new(2, 256))),
+                Tags: []));
+
+        var updateResult = await Mediator.Send(updateRequest);
+
+        Assert.False(updateResult.TryGetValue(out _, out var error));
+        var validation = Assert.IsType<ValidationFailure>(error);
+        Assert.Contains("Body.Spec.Storage.StorageProfileId", validation.ValidationErrors.Keys);
     }
 
     [Fact]

@@ -28,6 +28,7 @@ public sealed class PostgresManifestTests
         var bootstrapSecret = bootstrap["secret"]!.AsObject();
 
         Assert.Equal("20Gi", storage["size"]!.GetValue<string>());
+        Assert.Equal("fast-db", storage["storageClass"]!.GetValue<string>());
         Assert.Equal("cluster-1-secret", secret["name"]!.GetValue<string>());
         Assert.Equal("ghcr.io/cloudnative-pg/postgresql:17", spec["imageName"]!.GetValue<string>());
         Assert.Equal("cluster-1", bootstrap["database"]!.GetValue<string>());
@@ -71,7 +72,10 @@ public sealed class PostgresManifestTests
         Assert.Equal("cluster-1-secret", env["POSTGRES_PASSWORD"].ValueFrom.SecretKeyRef.Name);
         Assert.Equal("password", env["POSTGRES_PASSWORD"].ValueFrom.SecretKeyRef.Key);
         Assert.Equal("cluster-1", env["POSTGRES_DB"].Value);
-        Assert.Equal("20Gi", statefulSet.Spec.VolumeClaimTemplates.Single().Spec.Resources.Requests["storage"].ToString());
+        var volumeClaim = statefulSet.Spec.VolumeClaimTemplates.Single();
+        Assert.Equal("20Gi", volumeClaim.Spec.Resources.Requests["storage"].ToString());
+        Assert.Equal("fast-db", volumeClaim.Spec.StorageClassName);
+        Assert.Equal(TestData.TenantId, volumeClaim.Metadata.Labels["pole.io/tenant-id"]);
     }
 
     [Fact]
@@ -90,13 +94,13 @@ public sealed class PostgresManifestTests
 
     private static (PostgresCluster cluster, PostgresSettings settings) CreateOperatorSubject()
     {
-        var cluster = new PostgresCluster("cluster-1", TestData.TenantId, "analytics", "rg-1", new PostgresClusterSpec(2, 20, "pole-data", 17, PostgresDeploymentMode.Operator));
+        var cluster = new PostgresCluster("cluster-1", TestData.TenantId, "analytics", "rg-1", new PostgresClusterSpec(2, 20, TestData.DefaultResolvedStorageProfile("fast-db"), "pole-data", 17, PostgresDeploymentMode.Operator));
         return (cluster, CreateSettings());
     }
 
     private static (PostgresCluster cluster, PostgresSettings settings) CreateStatefulSetSubject()
     {
-        var cluster = new PostgresCluster("cluster-1", TestData.TenantId, "analytics", "rg-1", new PostgresClusterSpec(1, 20, "pole-data", 17, PostgresDeploymentMode.StatefulSet));
+        var cluster = new PostgresCluster("cluster-1", TestData.TenantId, "analytics", "rg-1", new PostgresClusterSpec(1, 20, TestData.DefaultResolvedStorageProfile("fast-db"), "pole-data", 17, PostgresDeploymentMode.StatefulSet));
         return (cluster, CreateSettings());
     }
 

@@ -15,6 +15,8 @@ using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Events;
 using Pole.Features.RedisServices.Application.Kubernetes;
+using Pole.Features.Shared.Models;
+using Pole.Features.StorageProfiles.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -41,7 +43,8 @@ public static class CreateRedisService
 
 public sealed class CreateRedisServiceHandler(
     IRedisDbContext dbContext,
-    IResourceGroupLookup resourceGroupLookup)
+    IResourceGroupLookup resourceGroupLookup,
+    IStorageProfileResolver storageProfileResolver)
     : IMediatorHandler<CreateRedisServiceRequest, CreateRedisServiceResponse>
 {
     public async Task<Result<CreateRedisServiceResponse>> HandleAsync(CreateRedisServiceRequest request,
@@ -56,11 +59,21 @@ public sealed class CreateRedisServiceHandler(
         if (!placementResult.TryGetValue(out var placement, out var placementFailure))
             return placementFailure;
 
+        var storageProfileResult = await storageProfileResolver.ResolveAsync(
+            new StorageProfileResolutionRequest(
+                request.Body.Spec.Storage.StorageProfileId,
+                tenantId,
+                ResourceType.Redis,
+                request.Body.Spec.Storage.SizeGb),
+            cancellationToken);
+        if (!storageProfileResult.TryGetValue(out var storageProfile, out var storageProfileFailure))
+            return storageProfileFailure;
+
         var newRedis = RedisFactory.Create(
             tenantId: tenantId,
             name: request.Body.Name,
             resourceGroupId: request.Body.ResourceGroupId,
-            spec: request.Body.Spec.ToDomain(placement.KubernetesNamespace),
+            spec: request.Body.Spec.ToDomain(placement.KubernetesNamespace, storageProfile),
             options: RedisFactory.DefaultCreateOptions with
             {
                 Tags = request.Body.Tags

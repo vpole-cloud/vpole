@@ -2,6 +2,7 @@ namespace Pole.Features.Postgres.Domain
 
 open MongoDB.Bson
 open MongoDB.Bson.Serialization.Attributes
+open Pole.Features.StorageProfiles.Contracts
 
 type PostgresDeploymentMode =
     | Operator = 0
@@ -10,6 +11,7 @@ type PostgresDeploymentMode =
 type PostgresClusterSpec =
     { Instances : int
       Storage : int
+      StorageProfile : ResolvedStorageProfile
       KubernetesNamespace : string
       Version : int
       DeploymentMode : PostgresDeploymentMode }
@@ -34,12 +36,13 @@ module PostgresCluster =
           Storage = 1
           Id = None }
         
-    let create tenantId name groupId kubernetesNamespace version deploymentMode options=
+    let create tenantId name groupId kubernetesNamespace version deploymentMode storageProfile options =
         { Id = defaultArg options.Id (ObjectId.GenerateNewId().ToString())
           TenantId = tenantId
           Name = name
           Spec = { Instances = options.Instances
                    Storage = options.Storage
+                   StorageProfile = storageProfile
                    KubernetesNamespace = kubernetesNamespace
                    Version = version
                    DeploymentMode = deploymentMode }

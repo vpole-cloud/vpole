@@ -9,6 +9,8 @@ using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.Shared.Models;
+using Pole.Features.StorageProfiles.Contracts;
+using Pole.Features.StorageProfiles.Domain;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Domain;
@@ -19,6 +21,7 @@ namespace Pole.Tests.Integration.Infrastructure;
 public static class TestData
 {
     public const string TenantId = "507f1f77bcf86cd799439011";
+    public const string DefaultStorageProfileId = "507f1f77bcf86cd799439099";
     public const string UserId = "test-user";
     public const string UserEmail = "test-user@example.test";
 
@@ -71,6 +74,7 @@ public static class TestData
             version,
             FSharpOption<int>.Some(1),
             FSharpOption<int>.Some(10),
+            DefaultStorageProfileId,
             username,
             password),
             TenantId);
@@ -95,10 +99,44 @@ public static class TestData
             Readiness: ValidProbe()));
 
     public static RedisSpecDto ValidRedisSpec() => new(
-        Storage: new StorageDto(5, "standard"),
+        Storage: new StorageDto(5, DefaultStorageProfileId),
         Resources: new Resources(
             Requests: new Resource(1, 128),
             Limits: new Resource(2, 256)));
+
+    public static ResolvedStorageProfile DefaultResolvedStorageProfile(string storageClassName = "standard") =>
+        new(
+            DefaultStorageProfileId,
+            "Standard",
+            storageClassName,
+            StorageMediaType.SSD,
+            StoragePerformanceTier.Standard);
+
+    public static StorageProfile SeedStorageProfile(
+        string id = DefaultStorageProfileId,
+        string storageClassName = "standard",
+        bool isEnabled = true,
+        bool isDefault = true,
+        StorageProfileTenantAccess? tenantAccess = null)
+    {
+        return StorageProfileFactory.Create(
+            displayName: "Standard",
+            description: "Default test storage",
+            mediaType: StorageMediaType.SSD,
+            performanceTier: StoragePerformanceTier.Standard,
+            isEnabled: isEnabled,
+            isDefault: isDefault,
+            storageClassNames: ImmutableList.Create(storageClassName),
+            allowedResourceTypes: ImmutableHashSet.Create(ResourceType.Redis, ResourceType.Postgres),
+            tenantAccess: tenantAccess ?? new StorageProfileTenantAccess(
+                StorageProfileTenantAccessMode.AllTenants,
+                ImmutableHashSet<string>.Empty),
+            sizeLimits: new StorageProfileSizeLimits(1, 100),
+            options: StorageProfileFactory.DefaultCreateOptions with
+            {
+                Id = id
+            });
+    }
 
     public static ProbeConfigDto ValidProbe() => new(
         Path: "/health",

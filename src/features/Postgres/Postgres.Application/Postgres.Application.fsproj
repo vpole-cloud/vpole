@@ -39,6 +39,7 @@
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
+      <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
       <ProjectReference Include="..\Postgres.Domain\Postgres.Domain.fsproj" />
       <ProjectReference Include="..\Postgres.Events\Postgres.Events.fsproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />

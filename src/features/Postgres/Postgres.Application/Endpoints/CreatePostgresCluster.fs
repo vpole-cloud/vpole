@@ -16,6 +16,8 @@ open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Events
 open Pole.Features.Postgres.Application.Kubernetes
 open Pole.Features.ResourceGroups.Contracts
+open Pole.Features.Shared.Models
+open Pole.Features.StorageProfiles.Contracts
 open Pole.Mediator
 open Pole.ResultType
 
@@ -25,6 +27,7 @@ type CreatePostgresClusterRequestBody =
       Version : int
       Instances : int option
       Storage : int option
+      StorageProfileId : string
       Username : string
       Password : string }
 
@@ -39,6 +42,7 @@ type CreatePostgresClusterRequest =
 type CreatePostgresClusterHandler(
     dbContext : IPostgresDbContext,
     resourceGroupLookup : IResourceGroupLookup,
+    storageProfileResolver : IStorageProfileResolver,
     secretStore : IPostgresClusterSecretStore,
     settings : PostgresSettings) =
     let validate settings request =
@@ -50,6 +54,9 @@ type CreatePostgresClusterHandler(
         let requestedInstances = defaultArg request.Body.Instances PostgresCluster.emptyOptions.Instances
         if settings.DefaultDeploymentMode = PostgresDeploymentMode.StatefulSet && requestedInstances <> 1 then
             validationErrors["Body.Instances"] <- [| "StatefulSet PostgreSQL supports exactly one instance." |]
+
+        if System.String.IsNullOrWhiteSpace request.Body.StorageProfileId then
+            validationErrors["Body.StorageProfileId"] <- [| "StorageProfileId is required." |]
 
         validationErrors
 
@@ -72,35 +79,50 @@ type CreatePostgresClusterHandler(
                     | struct (false, _, placementFailure) ->
                         return placementFailure |> ResultF.ofFailure
                     | struct (true, placement, _) ->
-                        let cluster =
-                            PostgresCluster.create
-                                tenantId
-                                request.Body.Name
-                                request.Body.GroupId
-                                placement.KubernetesNamespace
-                                request.Body.Version
-                                settings.DefaultDeploymentMode
-                                { PostgresCluster.emptyOptions with
-                                    Instances = defaultArg request.Body.Instances PostgresCluster.emptyOptions.Instances
-                                    Storage = defaultArg request.Body.Storage PostgresCluster.emptyOptions.Storage }
+                        let requestedStorage = defaultArg request.Body.Storage PostgresCluster.emptyOptions.Storage
+                        let! storageProfileResult =
+                            storageProfileResolver.ResolveAsync(
+                                StorageProfileResolutionRequest(
+                                    request.Body.StorageProfileId,
+                                    tenantId,
+                                    ResourceType.Postgres,
+                                    requestedStorage),
+                                cancellationToken)
 
-                        return!
-                            dbContext.RunInTransactionAsync<PostgresClusterDto>(
-                                (fun session ct ->
-                                    task {
-                                        do! dbContext.Postgres.InsertOneAsync(session, cluster, cancellationToken = ct)
-                                        do! secretStore.CreateAsync(placement.KubernetesNamespace, cluster.Id, request.Body.Username, request.Body.Password, ct)
-                                        let event = PostgresClusterEvents.created cluster
-                                        
-                                        do! dbContext.StoreEventAsync(event, session, ct)
+                        match storageProfileResult.TryGetValue() with
+                        | struct (false, _, storageProfileFailure) ->
+                            return storageProfileFailure |> ResultF.ofFailure
+                        | struct (true, storageProfile, _) ->
+                            let cluster =
+                                PostgresCluster.create
+                                    tenantId
+                                    request.Body.Name
+                                    request.Body.GroupId
+                                    placement.KubernetesNamespace
+                                    request.Body.Version
+                                    settings.DefaultDeploymentMode
+                                    storageProfile
+                                    { PostgresCluster.emptyOptions with
+                                        Instances = defaultArg request.Body.Instances PostgresCluster.emptyOptions.Instances
+                                        Storage = requestedStorage }
 
-                                        let response = PostgresCluster.toDto cluster
-                                        
-                                        return Result.Success(response) :> Result<PostgresClusterDto>
-                                    }
-                                ),
-                                cancellationToken = cancellationToken
-                            )
+                            return!
+                                dbContext.RunInTransactionAsync<PostgresClusterDto>(
+                                    (fun session ct ->
+                                        task {
+                                            do! dbContext.Postgres.InsertOneAsync(session, cluster, cancellationToken = ct)
+                                            do! secretStore.CreateAsync(placement.KubernetesNamespace, cluster.Id, request.Body.Username, request.Body.Password, ct)
+                                            let event = PostgresClusterEvents.created cluster
+
+                                            do! dbContext.StoreEventAsync(event, session, ct)
+
+                                            let response = PostgresCluster.toDto cluster
+
+                                            return Result.Success(response) :> Result<PostgresClusterDto>
+                                        }
+                                    ),
+                                    cancellationToken = cancellationToken
+                                )
             }
             
 type CreatePostgresClusterValidator() as this =

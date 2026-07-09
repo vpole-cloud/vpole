@@ -1,4 +1,5 @@
 using Pole.Features.Shared.Models;
+using Pole.Features.StorageProfiles.Contracts;
 
 namespace Pole.Features.RedisServices.Events;
 
@@ -9,4 +10,4 @@ public sealed record RedisServiceSpecSnapshot(
 
 public sealed record RedisServiceStorageSnapshot(
     int SizeGb,
-    string StorageClassName);
+    ResolvedStorageProfile StorageProfile);

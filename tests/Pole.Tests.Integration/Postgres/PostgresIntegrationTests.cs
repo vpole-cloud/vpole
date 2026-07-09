@@ -31,6 +31,8 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(resourceGroup.KubernetesNamespace, savedCluster.Spec.KubernetesNamespace);
         Assert.Equal(17, savedCluster.Spec.Version);
         Assert.Equal(PostgresDeploymentMode.Operator, savedCluster.Spec.DeploymentMode);
+        Assert.Equal(TestData.DefaultStorageProfileId, savedCluster.Spec.StorageProfile.ProfileId);
+        Assert.Equal("standard", savedCluster.Spec.StorageProfile.StorageClassName);
         var storedCredentials = SecretStore.GetStored(resourceGroup.KubernetesNamespace, savedCluster.Id);
         Assert.NotNull(storedCredentials);
         Assert.Equal("postgres", storedCredentials.Username);

@@ -2,6 +2,7 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using Pole.Features.Shared.Models;
+using Pole.Features.StorageProfiles.Contracts;
 
 namespace Pole.Features.RedisServices.Domain;
 
@@ -26,7 +27,7 @@ public record RedisSpec(
 
 public record Storage(
     int SizeGb,
-    string StorageClassName
+    ResolvedStorageProfile StorageProfile
 );
 
 public static class RedisFactory

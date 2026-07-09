@@ -35,6 +35,8 @@
       <ProjectReference Include="..\..\features\ResourceGroups\ResourceGroups.Application\ResourceGroups.Application.csproj" />
       <ProjectReference Include="..\..\features\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
       <ProjectReference Include="..\..\features\Search\Search.Application\Search.Application.fsproj" />
+      <ProjectReference Include="..\..\features\StorageProfiles\StorageProfiles.Application\StorageProfiles.Application.csproj" />
+      <ProjectReference Include="..\..\features\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
       <ProjectReference Include="..\..\features\Users\Users.Application\Users.Application.csproj" />
       <ProjectReference Include="..\..\features\Users\Users.Contracts\Users.Contracts.csproj" />
       <ProjectReference Include="..\..\features\WebServices\WebServices.Application\WebServices.Application.csproj" />

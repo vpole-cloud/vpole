@@ -333,13 +333,14 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     private static RedisServiceSpecSnapshot ToSnapshot(RedisSpec spec) =>
         new(
             spec.KubernetesNamespace,
-            new RedisServiceStorageSnapshot(spec.Storage.SizeGb, spec.Storage.StorageClassName),
+            new RedisServiceStorageSnapshot(spec.Storage.SizeGb, spec.Storage.StorageProfile),
             spec.Resources);
 
     private static PostgresClusterSpecSnapshot ToSnapshot(PostgresClusterSpec spec) =>
         new(
             spec.Instances,
             spec.Storage,
+            spec.StorageProfile,
             spec.KubernetesNamespace,
             spec.Version,
             spec.DeploymentMode switch

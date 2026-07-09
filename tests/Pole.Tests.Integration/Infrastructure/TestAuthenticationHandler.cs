@@ -17,11 +17,20 @@ public sealed class TestAuthenticationHandler(
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        var claims = new List<Claim>
+        {
+            new(Claims.UserId, TestData.UserId),
+            new(Claims.Email, TestData.UserEmail)
+        };
+
+        if (Request.Headers.TryGetValue("X-Test-Platform-Admin", out var isPlatformAdmin) &&
+            string.Equals(isPlatformAdmin.FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase))
+        {
+            claims.Add(new Claim(Claims.Roles, Roles.Admin));
+        }
+
         var identity = new ClaimsIdentity(
-            [
-                new Claim(Claims.UserId, TestData.UserId),
-                new Claim(Claims.Email, TestData.UserEmail)
-            ],
+            claims,
             SchemeName,
             Claims.Email,
             Claims.Roles);

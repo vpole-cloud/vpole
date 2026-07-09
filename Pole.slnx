@@ -66,6 +66,11 @@
     <Project Path="src/features/Search/Search.Application/Search.Application.fsproj" />
     <Project Path="src/features/Search/Search.Domain/Search.Domain.fsproj" />
   </Folder>
+  <Folder Name="/features/StorageProfiles/">
+    <Project Path="src/features/StorageProfiles/StorageProfiles.Contracts/StorageProfiles.Contracts.csproj" />
+    <Project Path="src/features/StorageProfiles/StorageProfiles.Domain/StorageProfiles.Domain.csproj" />
+    <Project Path="src/features/StorageProfiles/StorageProfiles.Application/StorageProfiles.Application.csproj" />
+  </Folder>
   <Folder Name="/shared/helpers/">
     <Project Path="src/shared/helpers/ASP/ASP.csproj" />
   </Folder>
