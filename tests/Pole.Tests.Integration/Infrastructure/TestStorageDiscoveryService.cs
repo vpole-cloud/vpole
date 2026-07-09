@@ -27,11 +27,38 @@ public sealed class TestStorageDiscoveryService(params string[] storageClassName
 
     public Task<IReadOnlyCollection<KubernetesPersistentVolumeDto>> GetPersistentVolumesAsync(
         CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyCollection<KubernetesPersistentVolumeDto>>([]);
+        Task.FromResult<IReadOnlyCollection<KubernetesPersistentVolumeDto>>(
+        [
+            new(
+                "pv-standard-1",
+                "20Gi",
+                "Available",
+                "standard",
+                null,
+                null,
+                "Retain",
+                new KubernetesStorageOwnerDto(null, null, null, null, null))
+        ]);
 
     public Task<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>> GetPersistentVolumeClaimsAsync(
         CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>([]);
+        Task.FromResult<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>(
+        [
+            new(
+                "redis-data-redis-main-0",
+                "test-alpha",
+                "5Gi",
+                "5Gi",
+                "Bound",
+                "standard",
+                "pv-standard-1",
+                new KubernetesStorageOwnerDto(
+                    TestData.TenantId,
+                    "rg-1",
+                    "Redis",
+                    "redis-1",
+                    "redis-main"))
+        ]);
 
     public Task<IReadOnlySet<string>> GetStorageClassNamesAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(_storageClassNames);
