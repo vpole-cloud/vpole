@@ -10,7 +10,8 @@ public enum WebServiceReleaseAction
     Create,
     Update,
     Redeploy,
-    Rollback
+    Rollback,
+    ImageTagUpdate
 }
 
 public enum WebServiceReleaseOutcome
@@ -38,8 +39,20 @@ public sealed record WebServiceRelease(
     string? FailureMessage,
     string? TraceId,
     string? CorrelationId,
+    WebServiceReleaseProvenance? Provenance,
     WebServiceSpecSnapshot Spec
 );
+
+public sealed record WebServiceReleaseProvenance(
+    string Source,
+    string? CommitSha,
+    string? BuildUrl,
+    string? ImageDigest,
+    string PreviousImageTag,
+    string NewImageTag,
+    string ActorType,
+    string? DeploymentTokenId,
+    string? DeploymentTokenName);
 
 public static class WebServiceReleaseFactory
 {
@@ -53,7 +66,8 @@ public static class WebServiceReleaseFactory
         WebServiceSpecSnapshot spec,
         string? traceId,
         string? correlationId,
-        DateTime? requestedAtUtc = null) =>
+        DateTime? requestedAtUtc = null,
+        WebServiceReleaseProvenance? provenance = null) =>
         new(
             Id: ObjectId.GenerateNewId().ToString(),
             TenantId: tenantId,
@@ -68,5 +82,6 @@ public static class WebServiceReleaseFactory
             FailureMessage: null,
             TraceId: traceId,
             CorrelationId: correlationId,
+            Provenance: provenance,
             Spec: spec);
 }
