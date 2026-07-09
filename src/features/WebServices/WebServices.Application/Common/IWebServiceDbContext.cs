@@ -8,5 +8,6 @@ public interface IWebServiceDbContext : IEventDbContext
 {
     IMongoCollection<WebService> WebServices { get; }
     IMongoCollection<WebServiceRelease> WebServiceReleases { get; }
+    IMongoCollection<WebServiceDeploymentToken> WebServiceDeploymentTokens { get; }
 }
 

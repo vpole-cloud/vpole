@@ -1,6 +1,9 @@
 using System.Collections.Immutable;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
+using Pole.ASP.Helpers;
 using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Domain;
@@ -13,6 +16,11 @@ namespace Pole.Tests.Integration.WebServices;
 public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     [Fact]
     public async Task Viewer_CanReadHistory_ButCannotRedeployOrRollback()
     {
@@ -52,6 +60,150 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(TestData.UserEmail, release.ActorEmail);
     }
 
+    [Fact]
+    public async Task Member_CanCreateDeploymentToken_AndTokenCanUpdateImageTag()
+    {
+        var webService = await InsertWebServiceAsync();
+        await SetCurrentUserRoleAsync(TenantRole.Member);
+
+        var tokenResponse = await Client.PostAsJsonAsync(
+            $"/api/v1/web-services/{webService.Id}/deployment-tokens",
+            new { name = "github-actions" });
+
+        Assert.Equal(HttpStatusCode.Created, tokenResponse.StatusCode);
+        var createdToken = await tokenResponse.Content.ReadFromJsonAsync<CreateDeploymentTokenResponse>(JsonOptions);
+        Assert.NotNull(createdToken);
+        Assert.StartsWith(WebServiceDeploymentTokenFactory.RawTokenPrefix, createdToken.RawToken);
+        Assert.Equal("github-actions", createdToken.Token.Name);
+        Assert.Contains(WebServiceDeploymentTokenOperations.UpdateImageTag, createdToken.Token.AllowedOperations);
+
+        var savedToken = await Fixture.DbContext.WebServiceDeploymentTokens
+            .Find(token => token.Id == createdToken.Token.Id)
+            .SingleAsync();
+        Assert.Equal(WebServiceDeploymentTokenFactory.Hash(createdToken.RawToken), savedToken.TokenHash);
+        Assert.NotEqual(createdToken.RawToken, savedToken.TokenHash);
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Patch,
+            $"/api/v1/web-services/{webService.Id}/image-tag")
+        {
+            Content = JsonContent.Create(new
+            {
+                tag = "2026.07.09-abc1234",
+                source = "github-actions",
+                commitSha = "abc1234",
+                buildUrl = "https://github.com/lsbV/pole-dotnet-sample/actions/runs/1"
+            })
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", createdToken.RawToken);
+
+        var updateResponse = await Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Accepted, updateResponse.StatusCode);
+        var response = await updateResponse.Content.ReadFromJsonAsync<UpdateImageTagResponse>(JsonOptions);
+        Assert.NotNull(response);
+        Assert.Equal(2, response.Revision);
+        Assert.Equal("2026.07.09-abc1234", response.Tag);
+
+        var saved = await Fixture.DbContext.WebServices
+            .Find(service => service.Id == webService.Id)
+            .SingleAsync();
+        Assert.Equal(2, saved.ActiveRevision);
+        Assert.Equal("2026.07.09-abc1234", saved.Spec.Image.Tag);
+
+        var release = await Fixture.DbContext.WebServiceReleases
+            .Find(r => r.WebServiceId == webService.Id && r.Revision == 2)
+            .SingleAsync();
+        Assert.Equal(WebServiceReleaseAction.ImageTagUpdate, release.Action);
+        Assert.Equal(WebServiceReleaseOutcome.Pending, release.Outcome);
+        Assert.Null(release.ActorUserId);
+        Assert.Null(release.ActorEmail);
+        Assert.NotNull(release.Provenance);
+        Assert.Equal("github-actions", release.Provenance.Source);
+        Assert.Equal("abc1234", release.Provenance.CommitSha);
+        Assert.Equal("1.27", release.Provenance.PreviousImageTag);
+        Assert.Equal("2026.07.09-abc1234", release.Provenance.NewImageTag);
+        Assert.Equal("DeploymentToken", release.Provenance.ActorType);
+        Assert.Equal(createdToken.Token.Id, release.Provenance.DeploymentTokenId);
+        Assert.Equal("github-actions", release.Provenance.DeploymentTokenName);
+
+        var usedToken = await Fixture.DbContext.WebServiceDeploymentTokens
+            .Find(token => token.Id == createdToken.Token.Id)
+            .SingleAsync();
+        Assert.NotNull(usedToken.LastUsedAtUtc);
+        Assert.Equal("github-actions", usedToken.LastUsedSource);
+        Assert.Equal(1L, await Fixture.DbContext.CountOutboxMessagesAsync("web-service-updated"));
+        Assert.Equal(1L, await Fixture.DbContext.CountOutboxMessagesAsync("web-service-deployment-requested"));
+    }
+
+    [Fact]
+    public async Task Viewer_CannotCreateDeploymentToken_OrUpdateImageTagWithUserToken()
+    {
+        var webService = await InsertWebServiceAsync();
+        await SetCurrentUserRoleAsync(TenantRole.Viewer);
+
+        var tokenResponse = await Client.PostAsJsonAsync(
+            $"/api/v1/web-services/{webService.Id}/deployment-tokens",
+            new { name = "viewer-token" });
+        var updateResponse = await Client.PatchAsJsonAsync(
+            $"/api/v1/web-services/{webService.Id}/image-tag",
+            new { tag = "2026.07.09-viewer", source = "manual" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, tokenResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, updateResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeploymentTokenRejectsTenantHeaderMismatch()
+    {
+        var webService = await InsertWebServiceAsync();
+        var tokenResponse = await Client.PostAsJsonAsync(
+            $"/api/v1/web-services/{webService.Id}/deployment-tokens",
+            new { name = "github-actions" });
+        var createdToken = await tokenResponse.Content.ReadFromJsonAsync<CreateDeploymentTokenResponse>(JsonOptions);
+        Assert.NotNull(createdToken);
+
+        Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Patch,
+            $"/api/v1/web-services/{webService.Id}/image-tag")
+        {
+            Content = JsonContent.Create(new { tag = "2026.07.09-mismatch", source = "github-actions" })
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", createdToken.RawToken);
+        request.Headers.Add(TenantHeaders.TenantId, "507f1f77bcf86cd799439022");
+
+        var response = await Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task RevokedDeploymentTokenCannotUpdateImageTag()
+    {
+        var webService = await InsertWebServiceAsync();
+        var tokenResponse = await Client.PostAsJsonAsync(
+            $"/api/v1/web-services/{webService.Id}/deployment-tokens",
+            new { name = "github-actions" });
+        var createdToken = await tokenResponse.Content.ReadFromJsonAsync<CreateDeploymentTokenResponse>(JsonOptions);
+        Assert.NotNull(createdToken);
+
+        var revokeResponse = await Client.DeleteAsync(
+            $"/api/v1/web-services/{webService.Id}/deployment-tokens/{createdToken.Token.Id}");
+        using var request = new HttpRequestMessage(
+            HttpMethod.Patch,
+            $"/api/v1/web-services/{webService.Id}/image-tag")
+        {
+            Content = JsonContent.Create(new { tag = "2026.07.09-revoked", source = "github-actions" })
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", createdToken.RawToken);
+
+        var updateResponse = await Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NoContent, revokeResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, updateResponse.StatusCode);
+    }
+
     private async Task<WebService> InsertWebServiceAsync()
     {
         var webService = TestData.SeedWebService("resource-group-api");
@@ -76,4 +228,20 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             t => t.Id == TestData.TenantId,
             updatedTenant);
     }
+
+    private sealed record CreateDeploymentTokenResponse(
+        DeploymentTokenDto Token,
+        string RawToken);
+
+    private sealed record DeploymentTokenDto(
+        string Id,
+        string Name,
+        string TokenPrefix,
+        string[] AllowedOperations);
+
+    private sealed record UpdateImageTagResponse(
+        string Id,
+        int Revision,
+        string ReleaseId,
+        string Tag);
 }

@@ -39,6 +39,7 @@ public class MongoDbContext(
     public IMongoClient Client { get; } = client;
     public IMongoCollection<WebService> WebServices { get; } = database.GetCollection<WebService>("WebServices");
     public IMongoCollection<WebServiceRelease> WebServiceReleases { get; } = database.GetCollection<WebServiceRelease>("WebServiceReleases");
+    public IMongoCollection<WebServiceDeploymentToken> WebServiceDeploymentTokens { get; } = database.GetCollection<WebServiceDeploymentToken>("WebServiceDeploymentTokens");
     public IMongoCollection<Redis> RedisServices { get; } = database.GetCollection<Redis>("RedisServices");
     public IMongoCollection<SearchDocument> SearchDocuments { get; } = database.GetCollection<SearchDocument>("SearchDocuments");
     public IMongoCollection<ResourceGroup> ResourceGroups { get; } = database.GetCollection<ResourceGroup>("ResourceGroups");

@@ -28,6 +28,7 @@ public sealed record WebServiceReleaseDto(
     string? FailureMessage,
     string? TraceId,
     string? CorrelationId,
+    WebServiceReleaseProvenanceDto? Provenance,
     WebServiceSpecDto Spec
 );
 
@@ -35,6 +36,34 @@ public sealed record WebServiceReleaseHistoryDto(
     int ActiveRevision,
     PaginatedResponse<WebServiceReleaseDto> Releases
 );
+
+public sealed record WebServiceReleaseProvenanceDto(
+    string Source,
+    string? CommitSha,
+    string? BuildUrl,
+    string? ImageDigest,
+    string PreviousImageTag,
+    string NewImageTag,
+    string ActorType,
+    string? DeploymentTokenId,
+    string? DeploymentTokenName);
+
+public sealed record WebServiceDeploymentTokenDto(
+    string Id,
+    string Name,
+    string TokenPrefix,
+    ImmutableHashSet<string> AllowedOperations,
+    DateTime CreatedAtUtc,
+    string? CreatedByUserId,
+    string? CreatedByEmail,
+    DateTime? RevokedAtUtc,
+    string? RevokedByUserId,
+    DateTime? LastUsedAtUtc,
+    string? LastUsedSource);
+
+public sealed record CreateWebServiceDeploymentTokenResponse(
+    WebServiceDeploymentTokenDto Token,
+    string RawToken);
 
 public sealed record DnsRecordShortInfoDto(
     string Id,
@@ -113,7 +142,32 @@ public static class WebServiceDtoExtensions
         release.FailureMessage,
         release.TraceId,
         release.CorrelationId,
+        release.Provenance?.ToDto(),
         release.Spec.ToDomain().ToDto()
+    );
+    public static WebServiceReleaseProvenanceDto ToDto(this WebServiceReleaseProvenance provenance) => new(
+        provenance.Source,
+        provenance.CommitSha,
+        provenance.BuildUrl,
+        provenance.ImageDigest,
+        provenance.PreviousImageTag,
+        provenance.NewImageTag,
+        provenance.ActorType,
+        provenance.DeploymentTokenId,
+        provenance.DeploymentTokenName
+    );
+    public static WebServiceDeploymentTokenDto ToDto(this WebServiceDeploymentToken token) => new(
+        token.Id,
+        token.Name,
+        token.TokenPrefix,
+        token.AllowedOperations,
+        token.CreatedAtUtc,
+        token.CreatedByUserId,
+        token.CreatedByEmail,
+        token.RevokedAtUtc,
+        token.RevokedByUserId,
+        token.LastUsedAtUtc,
+        token.LastUsedSource
     );
     public static DnsRecordShortInfoDto ToDto(this DnsRecordShortInfo dnsRecord) => new(
         dnsRecord.Id,
