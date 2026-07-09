@@ -48,7 +48,7 @@ public sealed class DeleteRedisServiceHandler(
             .Find(filter)
             .FirstOrDefaultAsync(cancellationToken);
         if (redis is null)
-            return Result.NotFound($"Redis service with ID '{request.Id}' not found.");
+            return Failures.NotFound("Redis service not found.", request.Id);
         
         return await dbContext.RunInTransactionAsync<DeleteRedisServiceResponse>(async (sh, ct) =>
         {

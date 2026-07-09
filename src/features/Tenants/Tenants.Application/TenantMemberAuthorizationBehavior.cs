@@ -26,37 +26,37 @@ public sealed class TenantMemberAuthorizationBehavior<TRequest, TResponse>(
 
         var user = httpContextAccessor.HttpContext?.User;
         if (user is null || user.Identity?.IsAuthenticated != true)
-            return Result.Unauthorized("Authenticated user is required.", "Tenant member authorization");
+            return Failures.Unauthorized("Authenticated user is required.", "Tenant member authorization");
 
         if (user.Claims.Any(c => c.Type == Claims.Roles && c.Value == Roles.Admin))
             return await next();
 
         var userId = user.FindFirstValue(Claims.UserId);
         if (string.IsNullOrWhiteSpace(userId))
-            return Result.Unauthorized("Authenticated user id is required.", "Tenant member authorization");
+            return Failures.Unauthorized("Authenticated user id is required.", "Tenant member authorization");
 
         var tenant = await dbContext.Tenants
             .Find(t => t.Id == tenantOperation.TenantId)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (tenant is null)
-            return Result.NotFound($"Tenant '{tenantOperation.TenantId}' was not found.");
+            return Failures.NotFound("Tenant not found.", tenantOperation.TenantId);
 
         var currentMember = tenant.Members.FirstOrDefault(m => m.UserId == userId);
         if (currentMember is null)
-            return Result.Forbidden("Tenant membership is required.", "Tenant member authorization");
+            return Failures.Forbidden("Tenant membership is required.", "Tenant member authorization");
 
         if (request is ITenantMemberReadOperation && !currentMember.Role.CanRead())
-            return Result.Forbidden("Tenant viewer role is required.", "Tenant member authorization");
+            return Failures.Forbidden("Tenant viewer role is required.", "Tenant member authorization");
 
         if (request is ITenantMemberManageOperation && !currentMember.Role.CanManageMembers())
-            return Result.Forbidden("Tenant admin role is required.", "Tenant member authorization");
+            return Failures.Forbidden("Tenant admin role is required.", "Tenant member authorization");
 
         if (request is ITenantMemberRoleOperation roleOperation &&
             roleOperation.Role == TenantRole.Owner &&
             !currentMember.Role.CanManageTenant())
         {
-            return Result.Forbidden("Tenant owner role is required to grant owner role.", "Tenant member authorization");
+            return Failures.Forbidden("Tenant owner role is required to grant owner role.", "Tenant member authorization");
         }
 
         var targetMemberId = request switch
@@ -70,10 +70,10 @@ public sealed class TenantMemberAuthorizationBehavior<TRequest, TResponse>(
         {
             var targetMember = tenant.Members.FirstOrDefault(m => m.Id == targetMemberId);
             if (targetMember is null)
-                return Result.NotFound($"Tenant member '{targetMemberId}' was not found.");
+                return Failures.NotFound("Tenant member not found.", targetMemberId);
 
             if (targetMember.Role == TenantRole.Owner && !currentMember.Role.CanManageTenant())
-                return Result.Forbidden("Tenant owner role is required to manage owners.", "Tenant member authorization");
+                return Failures.Forbidden("Tenant owner role is required to manage owners.", "Tenant member authorization");
         }
 
         return await next();

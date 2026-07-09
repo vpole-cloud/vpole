@@ -40,11 +40,17 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
-    public async Task GetWebServiceById_ReturnsNotFound_ForMissingEntity()
+    public async Task GetWebServiceById_ReturnsNotFound_ForMissingResource()
     {
-        var response = await Client.GetAsync("/api/v1/web-services/507f1f77bcf86cd799439013");
+        const string missingId = "507f1f77bcf86cd799439013";
+
+        var response = await Client.GetAsync($"/api/v1/web-services/{missingId}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("Web service not found.", payload.RootElement.GetProperty("message").GetString());
+        Assert.Equal(missingId, payload.RootElement.GetProperty("id").GetString());
+        Assert.False(payload.RootElement.TryGetProperty("entity", out _));
     }
 
     [Fact]

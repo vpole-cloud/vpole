@@ -45,14 +45,14 @@ type GetPostgresClusterConnectionStringHandler(
 
                 match postgresCluster with
                 | None ->
-                    return Result.NotFound($"Postgres cluster with ID '{request.ClusterId}' not found.")
+                    return Failures.NotFound("Postgres cluster not found.", request.ClusterId)
                            |> ResultF.ofFailure
                 | Some cluster ->
                     let! credentials = secretStore.GetAsync(cluster.Spec.KubernetesNamespace, cluster.Id, cancellationToken)
 
                     match credentials with
                     | None ->
-                        return Result.NotFound($"Credentials secret for Postgres cluster '{cluster.Id}' was not found.")
+                        return Failures.NotFound("Credentials secret for Postgres cluster was not found.", cluster.Id)
                                |> ResultF.ofFailure
                     | Some credentials ->
                         let connectionString =

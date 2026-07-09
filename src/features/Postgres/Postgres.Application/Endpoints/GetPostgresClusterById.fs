@@ -40,7 +40,7 @@ type GetPostgresClusterHandler(dbContext : IPostgresDbContext) =
 
                 match postgresCluster with
                 | None ->
-                    return Result.NotFound($"Postgres cluster with ID '{request.ClusterId}' not found.")
+                    return Failures.NotFound("Postgres cluster not found.", request.ClusterId)
                            |> ResultF.ofFailure
                 | Some cluster ->
                     return PostgresCluster.toDto cluster |> ResultF.ofValue

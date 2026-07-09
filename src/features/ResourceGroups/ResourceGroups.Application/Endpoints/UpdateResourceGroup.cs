@@ -63,7 +63,7 @@ public sealed class UpdateResourceGroupHandler(
             .FirstOrDefaultAsync(cancellationToken);
 
         if (resourceGroup is null)
-            return Result.NotFound($"Resource group with ID '{request.Id}' not found.");
+            return Failures.NotFound("Resource group not found.", request.Id);
 
         return await dbContext.RunInTransactionAsync<ResourceGroupDto>(async (sh, ct) =>
         {

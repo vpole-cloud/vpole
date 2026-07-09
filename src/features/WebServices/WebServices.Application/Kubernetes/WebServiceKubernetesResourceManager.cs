@@ -228,7 +228,7 @@ public static class WebServiceKubernetesResourceManager
         }
         catch (Exception ex)
         {
-            return Result.ExternalService(
+            return Failures.ExternalService(
                 "Unable to apply web service deployment in Kubernetes.",
                 "Kubernetes",
                 ex.Message);
@@ -316,7 +316,7 @@ public static class WebServiceKubernetesResourceManager
         var node = JsonSerializer.SerializeToNode(value);
         return node is JsonObject jsonObject
             ? Result.Success(jsonObject)
-            : Result.Internal("Kubernetes custom object serialization produced an empty object.");
+            : Failures.Internal("Kubernetes custom object serialization produced an empty object.");
     }
 
     private static Result CopyResourceVersion(object existing, JsonObject desired)
@@ -329,7 +329,7 @@ public static class WebServiceKubernetesResourceManager
         var resourceVersion = existingMetadata?["resourceVersion"]?.GetValue<string>();
         if (string.IsNullOrWhiteSpace(resourceVersion))
         {
-            return Result.Internal("Existing Kubernetes custom object does not include metadata.resourceVersion.");
+            return Failures.Internal("Existing Kubernetes custom object does not include metadata.resourceVersion.");
         }
 
         var desiredMetadata = desired["metadata"]?.AsObject();

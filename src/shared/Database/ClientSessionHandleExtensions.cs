@@ -1,4 +1,4 @@
-﻿using MongoDB.Driver;
+using MongoDB.Driver;
 using Pole.ResultType;
 
 namespace Pole.Database;
@@ -21,11 +21,11 @@ public static class ClientSessionHandleExtensions
         }
         catch (MongoWriteException e) when (e.WriteError?.Category == ServerErrorCategory.DuplicateKey)
         {
-            return Result.Conflict("A conflict occurred due to duplicate key error.");
+            return Failures.Conflict("A conflict occurred due to duplicate key error.");
         }
         catch (MongoBulkWriteException e) when (e.WriteErrors.Any(x => x.Category == ServerErrorCategory.DuplicateKey))
         {
-            return Result.Conflict("A conflict occurred due to duplicate key error.");
+            return Failures.Conflict("A conflict occurred due to duplicate key error.");
         }
     }
     public static async Task<Result<T>> RunInTransactionAsync<T>(
@@ -44,11 +44,11 @@ public static class ClientSessionHandleExtensions
         }
         catch (MongoWriteException e) when (e.WriteError?.Category == ServerErrorCategory.DuplicateKey)
         {
-            return Result.Conflict("A conflict occurred due to duplicate key error.");
+            return Failures.Conflict("A conflict occurred due to duplicate key error.");
         }
         catch (MongoBulkWriteException e) when (e.WriteErrors.Any(x => x.Category == ServerErrorCategory.DuplicateKey))
         {
-            return Result.Conflict("A conflict occurred due to duplicate key error.");
+            return Failures.Conflict("A conflict occurred due to duplicate key error.");
         }
     }
     
