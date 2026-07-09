@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Pole.Features.RedisServices.Application.Endpoints;
+using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -77,6 +78,40 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         Assert.NotNull(payload);
         Assert.Equal(16, payload.From);
         Assert.Equal(17, payload.To);
+    }
+
+    [Fact]
+    public async Task GetStorageProfiles_ReturnsForbidden_WithoutPlatformAdminRole()
+    {
+        var response = await Client.GetAsync("/api/v1/platform/storage/profiles");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateStorageProfile_ReturnsCreated_ForPlatformAdmin()
+    {
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+
+        var response = await Client.PostAsJsonAsync(
+            "/api/v1/platform/storage/profiles",
+            new UpsertStorageProfileRequestBody(
+                DisplayName: "Fast SSD",
+                Description: "Fast tenant storage",
+                MediaType: "SSD",
+                PerformanceTier: "Fast",
+                IsEnabled: true,
+                IsDefault: false,
+                StorageClassNames: ["fast"],
+                AllowedResourceTypes: ["Redis", "Postgres"],
+                TenantAccess: new StorageProfileTenantAccessDto("AllTenants", []),
+                SizeLimits: new StorageProfileSizeLimitsDto(1, 100)));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<StorageProfileDto>();
+        Assert.NotNull(payload);
+        Assert.Equal("Fast SSD", payload.DisplayName);
+        Assert.Contains("fast", payload.StorageClassNames);
     }
 
     private sealed record ResourceGroupCreatedResponse(string Id, string Name, string Description, IReadOnlyCollection<string> Tags);

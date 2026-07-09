@@ -7,19 +7,20 @@ interface SideNavProps {
   onSelectView: (view: AppView) => void
 }
 
-const navigationItems = [
-  { label: 'Overview', view: 'overview' as const, disabled: false },
-  { label: 'Resource groups', view: 'resource-groups' as const, disabled: false },
-  { label: 'Web services', view: 'web-services' as const, disabled: false },
-  { label: 'Databases', view: null, disabled: true },
-]
-
 export function SideNav({
   authenticated,
   userName,
   currentView,
   onSelectView,
 }: SideNavProps) {
+  const navigationItems = [
+    { label: 'Overview', view: 'overview' as const, disabled: false },
+    { label: 'Resource groups', view: 'resource-groups' as const, disabled: false },
+    { label: 'Web services', view: 'web-services' as const, disabled: false },
+    { label: 'Storage', view: 'storage' as const, disabled: !authenticated },
+    { label: 'Databases', view: null, disabled: true },
+  ]
+
   return (
     <div className="side-nav">
       <div className="side-nav__brand">

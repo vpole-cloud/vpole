@@ -97,7 +97,7 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
         var storageClassName = await ResolveStorageClassNameAsync();
         var spec = new RedisSpec(
             NamespaceName,
-            new Storage(1, storageClassName),
+            new Storage(1, TestData.DefaultResolvedStorageProfile(storageClassName)),
             new Resources(
                 Requests: new Resource(1, 128),
                 Limits: new Resource(2, 256)));

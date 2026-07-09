@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.Users.Domain;
@@ -23,6 +24,7 @@ public abstract class ApiIntegrationTestBase : IAsyncLifetime
     {
         await Fixture.ResetDatabaseAsync();
         await SeedDefaultTenantAsync();
+        await Fixture.DbContext.StorageProfiles.InsertOneAsync(TestData.SeedStorageProfile());
         _application = await TestApiApplication.StartAsync(Fixture);
     }
 

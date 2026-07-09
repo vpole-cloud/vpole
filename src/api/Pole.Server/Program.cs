@@ -7,6 +7,7 @@ using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
+using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Middleware;
 using Pole.Features.Users.Application.Common;
@@ -25,6 +26,7 @@ Assembly[] assemblies = [
     typeof(ResourceGroupEndpoints).Assembly,
     typeof(RedisServiceEndpoints).Assembly,
     typeof(SearchEndpoints).Assembly,
+    typeof(StorageProfileEndpoints).Assembly,
     typeof(TenantEndpoints).Assembly,
     typeof(UserEndpoints).Assembly,
 ];

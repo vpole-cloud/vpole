@@ -87,10 +87,11 @@ public sealed class UpdateLogTests
     [Fact]
     public void Of_ReturnsEqual_ForEquivalentRedisSpecs()
     {
-        var previous = TestData.ValidRedisSpec().ToDomain("test-ns");
+        var storageProfile = TestData.DefaultResolvedStorageProfile();
+        var previous = TestData.ValidRedisSpec().ToDomain("test-ns", storageProfile);
         var next = new RedisSpec(
             KubernetesNamespace: "test-ns",
-            Storage: new Storage(5, "standard"),
+            Storage: new Storage(5, storageProfile),
             Resources: new Resources(
                 Requests: new Resource(1, 128),
                 Limits: new Resource(2, 256)));

@@ -1,7 +1,13 @@
 import type {
+  KubernetesPersistentVolume,
+  KubernetesPersistentVolumeClaim,
+  KubernetesStorageClass,
   PaginatedResponse,
   ResourceGroup,
   ResourceGroupInput,
+  PoleResourceType,
+  StorageProfile,
+  StorageProfileInput,
   WebServiceInput,
   WebService,
   Tenant,
@@ -32,6 +38,80 @@ export async function fetchTenants(
     headers: buildHeaders(token),
     signal,
   })
+}
+
+export async function fetchStorageProfiles(
+  apiBaseUrl: string,
+  token?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<StorageProfile[]>(
+    `${apiBaseUrl}/api/v1/platform/storage/profiles`,
+    {
+      headers: buildHeaders(token),
+      signal,
+    },
+  )
+}
+
+export async function fetchAvailableStorageProfiles(
+  apiBaseUrl: string,
+  resourceType: PoleResourceType,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  const query = new URLSearchParams({ resourceType })
+
+  return fetchJson<StorageProfile[]>(
+    `${apiBaseUrl}/api/v1/storage-profiles?${query.toString()}`,
+    {
+      headers: buildHeaders(token, tenantId),
+      signal,
+    },
+  )
+}
+
+export async function fetchKubernetesStorageClasses(
+  apiBaseUrl: string,
+  token?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<KubernetesStorageClass[]>(
+    `${apiBaseUrl}/api/v1/platform/storage/storage-classes`,
+    {
+      headers: buildHeaders(token),
+      signal,
+    },
+  )
+}
+
+export async function fetchKubernetesPersistentVolumes(
+  apiBaseUrl: string,
+  token?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<KubernetesPersistentVolume[]>(
+    `${apiBaseUrl}/api/v1/platform/storage/persistent-volumes`,
+    {
+      headers: buildHeaders(token),
+      signal,
+    },
+  )
+}
+
+export async function fetchKubernetesPersistentVolumeClaims(
+  apiBaseUrl: string,
+  token?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<KubernetesPersistentVolumeClaim[]>(
+    `${apiBaseUrl}/api/v1/platform/storage/persistent-volume-claims`,
+    {
+      headers: buildHeaders(token),
+      signal,
+    },
+  )
 }
 
 async function fetchJson<T>(
@@ -134,6 +214,37 @@ export async function updateResourceGroup(
     headers: buildHeaders(token, tenantId),
     body: JSON.stringify(input),
   })
+}
+
+export async function createStorageProfile(
+  apiBaseUrl: string,
+  input: StorageProfileInput,
+  token?: string,
+) {
+  return sendJson<StorageProfile>(
+    `${apiBaseUrl}/api/v1/platform/storage/profiles`,
+    {
+      method: 'POST',
+      headers: buildHeaders(token),
+      body: JSON.stringify(input),
+    },
+  )
+}
+
+export async function updateStorageProfile(
+  apiBaseUrl: string,
+  id: string,
+  input: StorageProfileInput,
+  token?: string,
+) {
+  return sendJson<StorageProfile>(
+    `${apiBaseUrl}/api/v1/platform/storage/profiles/${id}`,
+    {
+      method: 'PUT',
+      headers: buildHeaders(token),
+      body: JSON.stringify(input),
+    },
+  )
 }
 
 export async function deleteResourceGroup(

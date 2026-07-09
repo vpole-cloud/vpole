@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Pole.ASP.Helpers;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
@@ -13,6 +14,8 @@ using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
+using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Middleware;
@@ -33,7 +36,8 @@ public sealed class TestApiApplication : IAsyncDisposable
         typeof(ResourceGroupEndpoints).Assembly,
         typeof(RedisServiceEndpoints).Assembly,
         typeof(DnsRecordEndpoints).Assembly,
-        typeof(SearchEndpoints).Assembly
+        typeof(SearchEndpoints).Assembly,
+        typeof(StorageProfileEndpoints).Assembly
     ];
 
     private TestApiApplication(WebApplication app)
@@ -56,6 +60,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton(fixture.Client);
         builder.Services.AddSingleton(fixture.Database);
         builder.Services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
+        builder.Services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
         builder.Services.AddMongoDbContextInterfaces();
         builder.Services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         builder.Services.AddSingleton(new PostgresSettings
@@ -75,7 +80,11 @@ public sealed class TestApiApplication : IAsyncDisposable
             .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(
                 TestAuthenticationHandler.SchemeName,
                 _ => { });
-        builder.Services.AddAuthorization();
+        builder.Services.AddAuthorization(options =>
+        {
+            options.AddPolicy(Policy.Admin, policy =>
+                policy.RequireClaim(Claims.Roles, Roles.Admin));
+        });
         builder.Services.AddCors(options =>
         {
             options.AddPolicy("frontend-dev", policy =>
@@ -98,7 +107,8 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapRedisServiceEndpoints()
             .MapPostgresClusterEndpoints()
             .MapSearchEndpoints()
-            .MapDomainNameEndpoints();
+            .MapDomainNameEndpoints()
+            .MapStorageProfileEndpoints();
 
         await app.StartAsync();
 

@@ -12,6 +12,7 @@
       <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
       <ProjectReference Include="..\RedisServices.Domain\RedisServices.Domain.csproj" />
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
+      <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
       <ProjectReference Include="..\RedisServices.Events\RedisServices.Events.csproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
       <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />

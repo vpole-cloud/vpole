@@ -2,6 +2,8 @@ namespace Pole.Features.Postgres.Application.Kubernetes
 
 open System.Collections.Generic
 open k8s.Models
+open Pole.Features.Shared.Models
+open Pole.Features.StorageProfiles.Contracts
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
 
@@ -13,6 +15,11 @@ module PostgresStatefulSetKubernetesBuilder =
         dict [
             "app", cluster.Id
             "component", "postgres"
+            PoleStorageLabels.TenantId, cluster.TenantId
+            PoleStorageLabels.ResourceGroupId, cluster.GroupId
+            PoleStorageLabels.ResourceType, ResourceType.Postgres.ToString()
+            PoleStorageLabels.ResourceId, cluster.Id
+            PoleStorageLabels.ResourceName, cluster.Name
         ]
 
     let private buildSecretKeyReference secretName key =
@@ -59,10 +66,11 @@ module PostgresStatefulSetKubernetesBuilder =
                     VolumeClaimTemplates =
                         ResizeArray(
                             [ V1PersistentVolumeClaim(
-                                  Metadata = V1ObjectMeta(Name = "postgres-data"),
+                                  Metadata = V1ObjectMeta(Name = "postgres-data", Labels = labels),
                                   Spec =
                                       V1PersistentVolumeClaimSpec(
                                           AccessModes = ResizeArray([ "ReadWriteOnce" ]),
+                                          StorageClassName = cluster.Spec.StorageProfile.StorageClassName,
                                           Resources =
                                               V1VolumeResourceRequirements(Requests = buildStorageRequests cluster))) ])))
 

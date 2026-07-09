@@ -31,6 +31,9 @@ public sealed class RedisManifestTests
         Assert.Equal("/data", Assert.Single(container.VolumeMounts).MountPath);
         Assert.Equal("redis-data", volumeClaim.Metadata.Name);
         Assert.Equal("fast-cache", volumeClaim.Spec.StorageClassName);
+        Assert.Equal(TestData.TenantId, volumeClaim.Metadata.Labels["pole.io/tenant-id"]);
+        Assert.Equal("rg-1", volumeClaim.Metadata.Labels["pole.io/resource-group-id"]);
+        Assert.Equal("Redis", volumeClaim.Metadata.Labels["pole.io/resource-type"]);
         Assert.Equal("12Gi", volumeClaim.Spec.Resources.Requests["storage"].ToString());
         Assert.Equal("1", container.Resources.Requests["cpu"].ToString());
         Assert.Equal("256Mi", container.Resources.Requests["memory"].ToString());
@@ -69,7 +72,7 @@ public sealed class RedisManifestTests
             "redis-cache",
             new RedisSpec(
                 "pole-cache",
-                new Storage(12, "fast-cache"),
+                new Storage(12, TestData.DefaultResolvedStorageProfile("fast-cache")),
                 new Resources(
                     Requests: new Resource(1, 256),
                     Limits: new Resource(2, 512)))));

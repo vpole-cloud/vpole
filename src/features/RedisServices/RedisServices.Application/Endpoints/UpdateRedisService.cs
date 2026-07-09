@@ -15,6 +15,8 @@ using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Events;
 using Pole.Features.RedisServices.Application.Kubernetes;
+using Pole.Features.Shared.Models;
+using Pole.Features.StorageProfiles.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -54,7 +56,8 @@ public sealed record UpdateRedisServiceRequestBody(
 public sealed record UpdateRedisServiceResponse(string Id);
 
 public sealed class UpdateRedisServiceHandler(
-    IRedisDbContext dbContext)
+    IRedisDbContext dbContext,
+    IStorageProfileResolver storageProfileResolver)
     : IMediatorHandler<UpdateRedisServiceRequest, UpdateRedisServiceResponse>
 {
     public async Task<Result<UpdateRedisServiceResponse>> HandleAsync(
@@ -72,9 +75,30 @@ public sealed class UpdateRedisServiceHandler(
         if (redis is null)
             return Failures.NotFound("Redis service not found.", request.Id);
 
+        if (!string.Equals(
+                request.Body.Spec.Storage.StorageProfileId,
+                redis.Spec.Storage.StorageProfile.ProfileId,
+                StringComparison.Ordinal))
+        {
+            return Failures.ValidationFailure(new Dictionary<string, string[]>
+            {
+                ["Body.Spec.Storage.StorageProfileId"] = ["Storage profile cannot be changed for an existing Redis service."]
+            });
+        }
+
+        var storageProfileResult = await storageProfileResolver.ResolveAsync(
+            new StorageProfileResolutionRequest(
+                redis.Spec.Storage.StorageProfile.ProfileId,
+                redis.TenantId,
+                ResourceType.Redis,
+                request.Body.Spec.Storage.SizeGb),
+            cancellationToken);
+        if (!storageProfileResult.TryGetValue(out var storageProfile, out var storageProfileFailure))
+            return storageProfileFailure;
+
         return await dbContext.RunInTransactionAsync<UpdateRedisServiceResponse>(async (sh, ct) =>
         {
-            var changes = GetChanges(redis, request.Body);
+            var changes = GetChanges(redis, request.Body, storageProfile);
             if (HasChanges(changes))
             {
                 await dbContext.RedisServices.UpdateOneAsync(
@@ -100,10 +124,13 @@ public sealed class UpdateRedisServiceHandler(
         }, cancellationToken: cancellationToken);
     }
 
-    private static RedisServiceUpdatedEventChanges GetChanges(Redis redis, UpdateRedisServiceRequestBody body) =>
+    private static RedisServiceUpdatedEventChanges GetChanges(
+        Redis redis,
+        UpdateRedisServiceRequestBody body,
+        ResolvedStorageProfile storageProfile) =>
         new(UpdateLog<RedisServiceSpecSnapshot>.Of(
                 redis.Spec.ToSnapshot(),
-                body.Spec.ToDomain(redis.Spec.KubernetesNamespace).ToSnapshot()),
+                body.Spec.ToDomain(redis.Spec.KubernetesNamespace, storageProfile).ToSnapshot()),
             UpdateLog<ImmutableHashSet<string>>.Of(
                 redis.Tags,
                 body.Tags));

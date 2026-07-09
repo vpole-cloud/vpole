@@ -1,6 +1,8 @@
 using System.Collections.Immutable;
 using k8s.Models;
 using Pole.Features.RedisServices.Domain;
+using Pole.Features.Shared.Models;
+using Pole.Features.StorageProfiles.Contracts;
 
 namespace Pole.Features.RedisServices.Application.Kubernetes;
 
@@ -20,10 +22,7 @@ public readonly record struct RedisInKubernetes(Redis Redis)
             Name = StatefulSetName,
             NamespaceProperty = Namespace,
             Labels = new Dictionary<string, string>
-            {
-                { "app", Redis.Name },
-                { "component", "redis" }
-            }
+                (BuildLabels())
         },
         Spec = new V1StatefulSetSpec
         {
@@ -41,10 +40,7 @@ public readonly record struct RedisInKubernetes(Redis Redis)
                 Metadata = new V1ObjectMeta
                 {
                     Labels = new Dictionary<string, string>
-                    {
-                        { "app", Redis.Name },
-                        { "component", "redis" }
-                    },
+                        (BuildLabels()),
                     Annotations = _defaultAnnotations
                 },
                 Spec = new V1PodSpec
@@ -94,12 +90,13 @@ public readonly record struct RedisInKubernetes(Redis Redis)
                 {
                     Metadata = new V1ObjectMeta
                     {
-                        Name = "redis-data"
+                        Name = "redis-data",
+                        Labels = new Dictionary<string, string>(BuildLabels())
                     },
                     Spec = new V1PersistentVolumeClaimSpec
                     {
                         AccessModes = new List<string> { "ReadWriteOnce" },
-                        StorageClassName = Redis.Spec.Storage.StorageClassName,
+                        StorageClassName = Redis.Spec.Storage.StorageProfile.StorageClassName,
                         Resources = new V1VolumeResourceRequirements
                         {
                             Requests = new Dictionary<string, ResourceQuantity>
@@ -122,9 +119,7 @@ public readonly record struct RedisInKubernetes(Redis Redis)
             Name = ServiceName,
             NamespaceProperty = Namespace,
             Labels = new Dictionary<string, string>
-            {
-                { "app", Redis.Name }
-            },
+                (BuildLabels()),
             Annotations = _defaultAnnotations
         },
         Spec = new V1ServiceSpec
@@ -154,5 +149,16 @@ public readonly record struct RedisInKubernetes(Redis Redis)
             { "app.kubernetes.io/managed-by", "pole-server" },
             { "pole.server/redisId", Redis.Id }
         }.ToImmutableDictionary();
+
+    private Dictionary<string, string> BuildLabels() => new()
+    {
+        { "app", Redis.Name },
+        { "component", "redis" },
+        { PoleStorageLabels.TenantId, Redis.TenantId },
+        { PoleStorageLabels.ResourceGroupId, Redis.ResourceGroupId },
+        { PoleStorageLabels.ResourceType, ResourceType.Redis.ToString() },
+        { PoleStorageLabels.ResourceId, Redis.Id },
+        { PoleStorageLabels.ResourceName, Redis.Name }
+    };
 }
 

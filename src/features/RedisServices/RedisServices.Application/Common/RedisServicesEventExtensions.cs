@@ -53,7 +53,7 @@ internal static class RedisServicesEventExtensions
         internal RedisServiceSpecSnapshot ToSnapshot()
             => new(
                 spec.KubernetesNamespace,
-                new RedisServiceStorageSnapshot(spec.Storage.SizeGb, spec.Storage.StorageClassName),
+                new RedisServiceStorageSnapshot(spec.Storage.SizeGb, spec.Storage.StorageProfile),
                 spec.Resources);
     }
 
@@ -62,7 +62,7 @@ internal static class RedisServicesEventExtensions
         internal RedisSpec ToDomain()
             => new(
                 spec.KubernetesNamespace,
-                new Storage(spec.Storage.SizeGb, spec.Storage.StorageClassName),
+                new Storage(spec.Storage.SizeGb, spec.Storage.StorageProfile),
                 spec.Resources);
     }
 }

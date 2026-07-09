@@ -24,6 +24,9 @@ using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application.Discovery;
+using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.Tenants;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Users.Application.Common;
@@ -142,9 +145,12 @@ public static class DependencyInjection
             services.TryAddSingleton<IDnsRecordDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ITenantDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IUserDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.TryAddSingleton<IStorageProfileDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.AddHttpContextAccessor();
             services.TryAddScoped<IDomainNameReservationService, DomainNameReservationService>();
             services.TryAddScoped<IResourceGroupLookup, ResourceGroupLookup>();
+            services.TryAddScoped<IStorageProfileResolver, StorageProfileResolver>();
+            services.TryAddScoped<IStorageDiscoveryService, KubernetesStorageDiscoveryService>();
             services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
             return services;
         }

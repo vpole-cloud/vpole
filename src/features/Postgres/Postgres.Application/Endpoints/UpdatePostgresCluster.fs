@@ -14,6 +14,8 @@ open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Events
 open Pole.Features.Postgres.Application.Kubernetes
+open Pole.Features.Shared.Models
+open Pole.Features.StorageProfiles.Contracts
 open Pole.Mediator
 open Pole.ResultType
 
@@ -35,7 +37,9 @@ type UpdatePostgresClusterRequest =
     interface ITenantWriteOperation with
         member this.TenantId = this.TenantId
 
-type UpdatePostgresClusterHandler(dbContext : IPostgresDbContext) =
+type UpdatePostgresClusterHandler(
+    dbContext : IPostgresDbContext,
+    storageProfileResolver : IStorageProfileResolver) =
     interface IMediatorHandler<UpdatePostgresClusterRequest, UpdatePostgresClusterResponse> with
         member _.HandleAsync(request, cancellationToken) =
             task {
@@ -55,42 +59,57 @@ type UpdatePostgresClusterHandler(dbContext : IPostgresDbContext) =
                            |> ResultF.ofFailure
                 | Some cluster ->
                     let updatedInstances = defaultArg request.Body.Instances cluster.Spec.Instances
+                    let updatedStorage = defaultArg request.Body.Storage cluster.Spec.Storage
 
                     if cluster.Spec.DeploymentMode = PostgresDeploymentMode.StatefulSet && updatedInstances <> 1 then
                         let validationErrors = System.Collections.Generic.Dictionary<string, string[]>()
                         validationErrors["Body.Instances"] <- [| "StatefulSet PostgreSQL supports exactly one instance." |]
                         return Failures.ValidationFailure(validationErrors) |> ResultF.ofFailure
                     else
-                        let updatedCluster =
-                            { cluster with
-                                GroupId = cluster.GroupId
-                                Spec =
-                                    { Instances = updatedInstances
-                                      Storage = defaultArg request.Body.Storage cluster.Spec.Storage
-                                      KubernetesNamespace = cluster.Spec.KubernetesNamespace
-                                      Version = cluster.Spec.Version
-                                      DeploymentMode = cluster.Spec.DeploymentMode } }
+                        let! storageProfileResult =
+                            storageProfileResolver.ResolveAsync(
+                                StorageProfileResolutionRequest(
+                                    cluster.Spec.StorageProfile.ProfileId,
+                                    cluster.TenantId,
+                                    ResourceType.Postgres,
+                                    updatedStorage),
+                                cancellationToken)
 
-                        return!
-                            dbContext.RunInTransactionAsync<UpdatePostgresClusterResponse>(
-                                (fun session ct ->
-                                    task {
-                                        let! _ =
-                                            dbContext.Postgres.ReplaceOneAsync(
-                                                session,
-                                                filter,
-                                                updatedCluster,
-                                                cancellationToken = ct
-                                            )
+                        match storageProfileResult.TryGetValue() with
+                        | struct (false, _, storageProfileFailure) ->
+                            return storageProfileFailure |> ResultF.ofFailure
+                        | struct (true, _, _) ->
+                            let updatedCluster =
+                                { cluster with
+                                    GroupId = cluster.GroupId
+                                    Spec =
+                                        { Instances = updatedInstances
+                                          Storage = updatedStorage
+                                          StorageProfile = cluster.Spec.StorageProfile
+                                          KubernetesNamespace = cluster.Spec.KubernetesNamespace
+                                          Version = cluster.Spec.Version
+                                          DeploymentMode = cluster.Spec.DeploymentMode } }
 
-                                        let event = PostgresClusterEvents.updated cluster updatedCluster
-                                        do! dbContext.StoreEventAsync(event, session, ct)
+                            return!
+                                dbContext.RunInTransactionAsync<UpdatePostgresClusterResponse>(
+                                    (fun session ct ->
+                                        task {
+                                            let! _ =
+                                                dbContext.Postgres.ReplaceOneAsync(
+                                                    session,
+                                                    filter,
+                                                    updatedCluster,
+                                                    cancellationToken = ct
+                                                )
 
-                                        return { Id = request.ClusterId } |> ResultF.ofValue
-                                    }
-                                ),
-                                cancellationToken = cancellationToken
-                            )
+                                            let event = PostgresClusterEvents.updated cluster updatedCluster
+                                            do! dbContext.StoreEventAsync(event, session, ct)
+
+                                            return { Id = request.ClusterId } |> ResultF.ofValue
+                                        }
+                                    ),
+                                    cancellationToken = cancellationToken
+                                )
             }
 
 type UpdatePostgresClusterRequestValidator() as this =

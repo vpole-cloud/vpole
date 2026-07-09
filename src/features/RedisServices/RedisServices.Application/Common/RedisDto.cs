@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.Shared.Models;
+using Pole.Features.StorageProfiles.Contracts;
 
 namespace Pole.Features.RedisServices.Application.Common;
 
@@ -19,7 +20,8 @@ public sealed record RedisSpecDto(
 
 public sealed record StorageDto(
     int SizeGb,
-    string StorageClassName
+    string StorageProfileId,
+    ResolvedStorageProfileDto? Profile = null
 );
 
 public static class RedisDtoExtensions
@@ -39,18 +41,19 @@ public static class RedisDtoExtensions
 
     private static StorageDto ToDto(this Storage storage) => new(
         storage.SizeGb,
-        storage.StorageClassName
+        storage.StorageProfile.ProfileId,
+        storage.StorageProfile.ToDto()
     );
     
-    public static RedisSpec ToDomain(this RedisSpecDto dto, string @namespace) => new(
+    public static RedisSpec ToDomain(this RedisSpecDto dto, string @namespace, ResolvedStorageProfile storageProfile) => new(
         @namespace,
-        dto.Storage.ToDomain(),
+        dto.Storage.ToDomain(storageProfile),
         dto.Resources
     );
     
-    private static Storage ToDomain(this StorageDto dto) => new(
+    private static Storage ToDomain(this StorageDto dto, ResolvedStorageProfile storageProfile) => new(
         dto.SizeGb,
-        dto.StorageClassName
+        storageProfile
     );
 }
 

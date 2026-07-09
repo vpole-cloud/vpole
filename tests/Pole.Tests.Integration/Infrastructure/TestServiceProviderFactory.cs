@@ -11,6 +11,8 @@ using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
+using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Mediator;
 using Pole.Server.Database;
@@ -27,7 +29,8 @@ public static class TestServiceProviderFactory
         typeof(ResourceGroupEndpoints).Assembly,
         typeof(RedisServiceEndpoints).Assembly,
         typeof(DnsRecordEndpoints).Assembly,
-        typeof(SearchEndpoints).Assembly
+        typeof(SearchEndpoints).Assembly,
+        typeof(StorageProfileEndpoints).Assembly
     ];
 
     public static ServiceProvider Create(MongoReplicaSetFixture fixture)
@@ -37,6 +40,7 @@ public static class TestServiceProviderFactory
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
         services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
+        services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
         services.AddMongoDbContextInterfaces();
         services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         services.AddSingleton(new PostgresSettings

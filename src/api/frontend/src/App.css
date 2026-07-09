@@ -565,3 +565,84 @@
   color: #8f2335;
   background: rgba(255, 244, 246, 0.94);
 }
+
+.storage-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.storage-inventory-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 22px;
+}
+
+.storage-table {
+  display: grid;
+  gap: 10px;
+}
+
+.storage-table__row {
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface-raised);
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) repeat(3, minmax(120px, 0.7fr));
+  gap: 12px;
+  align-items: center;
+  color: var(--color-text-soft);
+  font-size: 0.9rem;
+}
+
+.storage-table__row > div {
+  display: grid;
+  gap: 3px;
+}
+
+.storage-table__row strong {
+  color: var(--color-text-strong);
+}
+
+.storage-table__row span {
+  overflow-wrap: anywhere;
+}
+
+.toggle-grid,
+.checkbox-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.toggle-row,
+.checkbox-card {
+  min-height: 44px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.86);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-text-strong);
+  cursor: pointer;
+}
+
+.toggle-row {
+  padding: 0 12px;
+}
+
+.checkbox-card {
+  min-width: 168px;
+  padding: 10px 12px;
+}
+
+.checkbox-card span {
+  display: grid;
+  gap: 2px;
+}
+
+.checkbox-card small {
+  color: var(--color-text-muted);
+}

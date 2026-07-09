@@ -21,7 +21,7 @@ public sealed class StorageDtoValidator : AbstractValidator<StorageDto>
         RuleFor(x => x.SizeGb)
             .GreaterThan(0)
             .LessThanOrEqualTo(1000);
-        RuleFor(x => x.StorageClassName)
+        RuleFor(x => x.StorageProfileId)
             .NotEmpty()
             .MaximumLength(100);
     }

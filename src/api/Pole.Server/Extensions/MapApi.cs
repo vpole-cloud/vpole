@@ -3,6 +3,7 @@ using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.Search.Application.Common;
+using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.WebServices.Application.Common;
@@ -22,6 +23,7 @@ public static class MapApi
             .MapWebServiceEndpoints()
             .MapRedisServiceEndpoints()
             .MapPostgresClusterEndpoints()
+            .MapStorageProfileEndpoints()
             .MapSearchEndpoints()
             .MapDomainNameEndpoints();
 
