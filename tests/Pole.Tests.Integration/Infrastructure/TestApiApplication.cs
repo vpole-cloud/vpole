@@ -1,11 +1,14 @@
 using System.Reflection;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Pole.ASP.Helpers;
 using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.GitProviders.Application.Common;
+using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.Postgres.Application.Endpoints;
@@ -36,18 +39,21 @@ public sealed class TestApiApplication : IAsyncDisposable
         typeof(ResourceGroupEndpoints).Assembly,
         typeof(RedisServiceEndpoints).Assembly,
         typeof(DnsRecordEndpoints).Assembly,
+        typeof(GitProviderEndpoints).Assembly,
         typeof(SearchEndpoints).Assembly,
         typeof(StorageProfileEndpoints).Assembly
     ];
 
-    private TestApiApplication(WebApplication app)
+    private TestApiApplication(WebApplication app, FakeGitHubAppClient gitHubClient)
     {
         _app = app;
+        GitHubClient = gitHubClient;
         Client = app.GetTestClient();
         Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, TestData.TenantId);
     }
 
     public HttpClient Client { get; }
+    public FakeGitHubAppClient GitHubClient { get; }
 
     public static async Task<TestApiApplication> StartAsync(MongoReplicaSetFixture fixture)
     {
@@ -73,6 +79,20 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton<IPostgresClusterSecretStore>(sp => sp.GetRequiredService<InMemoryPostgresClusterSecretStore>());
         builder.Services.AddMigrations(Assemblies);
         builder.Services.AddSearchFeature();
+        builder.Services.AddGitProvidersFeature();
+        var gitHubClient = new FakeGitHubAppClient();
+        builder.Services.RemoveAll<IGitHubAppClient>();
+        builder.Services.AddSingleton<IGitHubAppClient>(gitHubClient);
+        builder.Services.AddSingleton(new GitHubAppOptions
+        {
+            Enabled = true,
+            ClientId = "test-client-id",
+            ClientSecret = "test-client-secret",
+            AppSlug = "pole-test",
+            PrivateKeyPath = "not-used-by-fake.pem",
+            PublicBaseUrl = "https://pole.test",
+            FrontendBaseUrl = "http://localhost:5173"
+        });
         builder.Services.AddValidatorsFromAssemblies(Assemblies);
         builder.Services.AddPoleMediator(Assemblies);
         builder.Services
@@ -100,6 +120,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseMiddleware<TenantContextMiddleware>();
+        app.MapGitHubCallbackEndpoints();
         app.MapGroup("/api/v1")
             .RequireAuthorization()
             .MapResourceGroupEndpoints()
@@ -108,11 +129,12 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapPostgresClusterEndpoints()
             .MapSearchEndpoints()
             .MapDomainNameEndpoints()
-            .MapStorageProfileEndpoints();
+            .MapStorageProfileEndpoints()
+            .MapGitProviderEndpoints();
 
         await app.StartAsync();
 
-        return new TestApiApplication(app);
+        return new TestApiApplication(app, gitHubClient);
     }
 
     public async ValueTask DisposeAsync()

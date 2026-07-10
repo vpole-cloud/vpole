@@ -1,18 +1,24 @@
 import './App.css'
 import { useKeycloak } from '@react-keycloak/web'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AppShell } from './components/AppShell'
 import { OverviewPage } from './components/OverviewPage'
+import { IntegrationsPage } from './components/IntegrationsPage'
 import { ResourceGroupsPage } from './components/ResourceGroupsPage'
 import { SideNav } from './components/SideNav'
 import { StorageSettingsPage } from './components/StorageSettingsPage'
 import { TopBandPlaceholder } from './components/TopBandPlaceholder'
 import { WebServicesPage } from './components/WebServicesPage'
 import { useOverviewData } from './hooks/useOverviewData'
+import { useGitIntegrationsManager } from './hooks/useGitIntegrationsManager'
 import { useResourceGroupsManager } from './hooks/useResourceGroupsManager'
 import { useStorageSettingsManager } from './hooks/useStorageSettingsManager'
 import { useTenants } from './hooks/useTenants'
 import { useWebServicesManager } from './hooks/useWebServicesManager'
+import {
+  clearTransientIntegrationParams,
+  readIntegrationNavigation,
+} from './integrationsState'
 import type { AppView } from './types'
 
 type KeycloakRoleClaims = {
@@ -40,9 +46,14 @@ const hasPlatformAdminRole = (claims?: KeycloakRoleClaims) => {
   return roles.has('pole-platform-admin')
 }
 
+const initialNavigation = readIntegrationNavigation(window.location.search)
+
 function App() {
   const { keycloak, initialized } = useKeycloak()
-  const [currentView, setCurrentView] = useState<AppView>('overview')
+  const [currentView, setCurrentView] = useState<AppView>(initialNavigation.view)
+  const [integrationNotice, setIntegrationNotice] = useState(
+    initialNavigation.githubNotice,
+  )
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string
   const token = keycloak.authenticated ? keycloak.token : undefined
   const isPlatformAdmin = hasPlatformAdminRole(
@@ -80,6 +91,30 @@ function App() {
     token,
     enabled: initialized && currentView === 'storage' && Boolean(keycloak.authenticated),
   })
+  const integrations = useGitIntegrationsManager({
+    apiBaseUrl,
+    token,
+    tenantId: tenants.activeTenantId,
+    enabled:
+      initialized &&
+      currentView === 'integrations' &&
+      tenantReady &&
+      Boolean(keycloak.authenticated),
+    preferredConnectionId:
+      integrationNotice?.status === 'connected'
+        ? integrationNotice.connectionId
+        : undefined,
+  })
+
+  useEffect(() => {
+    if (initialNavigation.githubNotice) {
+      window.history.replaceState(
+        {},
+        '',
+        clearTransientIntegrationParams(window.location.href),
+      )
+    }
+  }, [])
 
   const handleLogin = () => {
     void keycloak.login()
@@ -93,13 +128,24 @@ function App() {
     void overview.runIdentityCheck()
   }
 
+  const handleSelectView = (view: AppView) => {
+    setCurrentView(view)
+    const url = new URL(window.location.href)
+    if (view === 'overview') {
+      url.searchParams.delete('view')
+    } else {
+      url.searchParams.set('view', view)
+    }
+    window.history.replaceState({}, '', clearTransientIntegrationParams(url.toString()))
+  }
+
   return (
     <AppShell
       sideNav={
         <SideNav
           authenticated={Boolean(keycloak.authenticated)}
           currentView={currentView}
-          onSelectView={setCurrentView}
+          onSelectView={handleSelectView}
           userName={keycloak.tokenParsed?.preferred_username}
         />
       }
@@ -152,6 +198,13 @@ function App() {
           onCreate={webServices.create}
           onUpdate={webServices.update}
           onDelete={webServices.remove}
+          canManage={canManageTenantResources}
+        />
+      ) : currentView === 'integrations' ? (
+        <IntegrationsPage
+          manager={integrations}
+          notice={integrationNotice}
+          onDismissNotice={() => setIntegrationNotice(null)}
           canManage={canManageTenantResources}
         />
       ) : (

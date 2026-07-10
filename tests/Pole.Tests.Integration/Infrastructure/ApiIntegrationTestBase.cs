@@ -19,6 +19,7 @@ public abstract class ApiIntegrationTestBase : IAsyncLifetime
 
     protected MongoReplicaSetFixture Fixture { get; }
     protected HttpClient Client => _application!.Client;
+    protected FakeGitHubAppClient GitHubClient => _application!.GitHubClient;
 
     public virtual async Task InitializeAsync()
     {

@@ -1,6 +1,8 @@
 using MongoDB.Driver;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.DnsRecords.Domain;
+using Pole.Features.GitProviders.Application.Common;
+using Pole.Features.GitProviders.Domain;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
@@ -33,7 +35,8 @@ public class MongoDbContext(
     IStorageProfileDbContext,
     IDnsRecordDbContext,
     ITenantDbContext,
-    IUserDbContext
+    IUserDbContext,
+    IGitProviderDbContext
 {
     public IMongoDatabase Database { get; } = database;
     public IMongoClient Client { get; } = client;
@@ -49,5 +52,8 @@ public class MongoDbContext(
     public IMongoCollection<OutboxMessage> OutboxMessages { get; } = database.GetCollection<OutboxMessage>("OutboxMessages");
     public IMongoCollection<Tenant> Tenants { get; } = database.GetCollection<Tenant>("Tenants");
     public IMongoCollection<PoleUser> Users { get; } = database.GetCollection<PoleUser>("Users");
+    public IMongoCollection<GitProviderConnection> GitProviderConnections { get; } = database.GetCollection<GitProviderConnection>("GitProviderConnections");
+    public IMongoCollection<GitHubSetupAttempt> GitHubSetupAttempts { get; } = database.GetCollection<GitHubSetupAttempt>("GitHubSetupAttempts");
+    public IMongoCollection<SourceRepository> SourceRepositories { get; } = database.GetCollection<SourceRepository>("SourceRepositories");
 }
 

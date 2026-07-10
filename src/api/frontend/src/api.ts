@@ -1,4 +1,7 @@
 import type {
+  BeginGitHubInstallationResponse,
+  GitProviderConnection,
+  GitProviderPage,
   KubernetesPersistentVolume,
   KubernetesPersistentVolumeClaim,
   KubernetesStorageClass,
@@ -8,6 +11,10 @@ import type {
   PoleResourceType,
   StorageProfile,
   StorageProfileInput,
+  ProviderBranch,
+  ProviderRepository,
+  RepositoryAnalysis,
+  SourceRepository,
   WebServiceInput,
   WebService,
   Tenant,
@@ -372,6 +379,170 @@ export async function deleteWebService(
     headers: buildHeaders(token, tenantId),
   })
 
+  if (!response.ok) {
+    const message = await response.text()
+    throw new Error(message || `Request failed with status ${response.status}`)
+  }
+}
+
+export async function fetchGitProviderConnections(
+  apiBaseUrl: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<GitProviderConnection[]>(
+    `${apiBaseUrl}/api/v1/git-provider-connections`,
+    {
+      headers: buildHeaders(token, tenantId),
+      signal,
+    },
+  )
+}
+
+export async function beginGitHubInstallation(
+  apiBaseUrl: string,
+  token?: string,
+  tenantId?: string,
+) {
+  return sendJson<BeginGitHubInstallationResponse>(
+    `${apiBaseUrl}/api/v1/git-provider-connections/github/install`,
+    {
+      method: 'POST',
+      headers: buildHeaders(token, tenantId),
+    },
+  )
+}
+
+export async function disconnectGitProviderConnection(
+  apiBaseUrl: string,
+  connectionId: string,
+  token?: string,
+  tenantId?: string,
+) {
+  return sendWithoutResponse(
+    `${apiBaseUrl}/api/v1/git-provider-connections/${encodeURIComponent(connectionId)}`,
+    {
+      method: 'DELETE',
+      headers: buildHeaders(token, tenantId),
+    },
+  )
+}
+
+export async function fetchProviderRepositories(
+  apiBaseUrl: string,
+  connectionId: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<GitProviderPage<ProviderRepository>>(
+    `${apiBaseUrl}/api/v1/git-provider-connections/${encodeURIComponent(connectionId)}/repositories?page=1&pageSize=100`,
+    {
+      headers: buildHeaders(token, tenantId),
+      signal,
+    },
+  )
+}
+
+export async function fetchProviderBranches(
+  apiBaseUrl: string,
+  connectionId: string,
+  repositoryId: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<GitProviderPage<ProviderBranch>>(
+    `${apiBaseUrl}/api/v1/git-provider-connections/${encodeURIComponent(connectionId)}/repositories/${encodeURIComponent(repositoryId)}/branches?page=1&pageSize=100`,
+    {
+      headers: buildHeaders(token, tenantId),
+      signal,
+    },
+  )
+}
+
+export async function analyzeProviderRepository(
+  apiBaseUrl: string,
+  connectionId: string,
+  repositoryId: string,
+  branch: string,
+  token?: string,
+  tenantId?: string,
+) {
+  return sendJson<RepositoryAnalysis>(
+    `${apiBaseUrl}/api/v1/git-provider-connections/${encodeURIComponent(connectionId)}/repositories/${encodeURIComponent(repositoryId)}/analysis`,
+    {
+      method: 'POST',
+      headers: buildHeaders(token, tenantId),
+      body: JSON.stringify({ branch }),
+    },
+  )
+}
+
+export async function linkProviderRepository(
+  apiBaseUrl: string,
+  connectionId: string,
+  repositoryId: string,
+  branch: string,
+  candidateKey: string,
+  token?: string,
+  tenantId?: string,
+) {
+  return sendJson<SourceRepository>(
+    `${apiBaseUrl}/api/v1/git-provider-connections/${encodeURIComponent(connectionId)}/repositories/${encodeURIComponent(repositoryId)}/links`,
+    {
+      method: 'POST',
+      headers: buildHeaders(token, tenantId),
+      body: JSON.stringify({ branch, candidateKey }),
+    },
+  )
+}
+
+export async function fetchSourceRepositories(
+  apiBaseUrl: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<SourceRepository[]>(`${apiBaseUrl}/api/v1/source-repositories`, {
+    headers: buildHeaders(token, tenantId),
+    signal,
+  })
+}
+
+export async function reanalyzeSourceRepository(
+  apiBaseUrl: string,
+  sourceRepositoryId: string,
+  token?: string,
+  tenantId?: string,
+) {
+  return sendJson<SourceRepository>(
+    `${apiBaseUrl}/api/v1/source-repositories/${encodeURIComponent(sourceRepositoryId)}/reanalyze`,
+    {
+      method: 'POST',
+      headers: buildHeaders(token, tenantId),
+    },
+  )
+}
+
+export async function unlinkSourceRepository(
+  apiBaseUrl: string,
+  sourceRepositoryId: string,
+  token?: string,
+  tenantId?: string,
+) {
+  return sendWithoutResponse(
+    `${apiBaseUrl}/api/v1/source-repositories/${encodeURIComponent(sourceRepositoryId)}`,
+    {
+      method: 'DELETE',
+      headers: buildHeaders(token, tenantId),
+    },
+  )
+}
+
+async function sendWithoutResponse(input: RequestInfo | URL, init: RequestInit) {
+  const response = await fetch(input, init)
   if (!response.ok) {
     const message = await response.text()
     throw new Error(message || `Request failed with status ${response.status}`)

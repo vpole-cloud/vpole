@@ -6,6 +6,7 @@ using Hangfire.Mongo.Migration.Strategies;
 using Hangfire.Mongo.Migration.Strategies.Backup;
 using k8s;
 using MassTransit;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -15,6 +16,9 @@ using Pole.Database;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.DnsRecords.Contracts;
 using Pole.Features.DnsRecords.Application.Filters;
+using Pole.Features.GitProviders.Application.Analysis;
+using Pole.Features.GitProviders.Application.Common;
+using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
@@ -147,12 +151,30 @@ public static class DependencyInjection
             services.TryAddSingleton<ITenantDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IUserDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IStorageProfileDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.TryAddSingleton<IGitProviderDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.AddHttpContextAccessor();
             services.TryAddScoped<IDomainNameReservationService, DomainNameReservationService>();
             services.TryAddScoped<IResourceGroupLookup, ResourceGroupLookup>();
             services.TryAddScoped<IStorageProfileResolver, StorageProfileResolver>();
             services.TryAddScoped<IStorageDiscoveryService, KubernetesStorageDiscoveryService>();
             services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
+            return services;
+        }
+
+        public IServiceCollection AddGitProvidersFeature()
+        {
+            services.AddMemoryCache();
+            services.AddDataProtection().SetApplicationName("Pole");
+            services.TryAddSingleton(TimeProvider.System);
+            services.TryAddSingleton<IGitHubSetupTokenService, GitHubSetupTokenService>();
+            services.TryAddSingleton<IGitHubAppJwtFactory, GitHubAppJwtFactory>();
+            services.TryAddSingleton<IRepositorySourceAnalyzer, RepositorySourceAnalyzer>();
+            services.TryAddScoped<IGitHubSetupService, GitHubSetupService>();
+            services.TryAddScoped<IGitProviderRepositoryService, GitProviderRepositoryService>();
+            services.AddHttpClient<IGitHubAppClient, GitHubAppClient>(client =>
+            {
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("Pole/1.0");
+            });
             return services;
         }
 
@@ -169,6 +191,7 @@ public static class DependencyInjection
             services.AddSettingsSection<KubernetesOptions>(KubernetesOptions.SectionName, configuration);
             services.AddSettingsSection<PostgresSettings>(PostgresSettings.SectionName, configuration);
             services.AddSettingsSection<KeycloakOptions>(KeycloakOptions.SectionName, configuration);
+            services.AddSettingsSection<GitHubAppOptions>(GitHubAppOptions.SectionName, configuration);
             return services;
         }
 
