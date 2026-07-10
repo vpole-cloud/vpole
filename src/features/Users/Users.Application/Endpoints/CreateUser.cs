@@ -23,7 +23,7 @@ public static class CreateUser
 {
     public static IEndpointRouteBuilder MapCreateUserEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/", async (IMediator mediator, CreateUserRequest request, CancellationToken cancellationToken) =>
+        app.MapPost("/", async (IMediator mediator, [AsParameters] CreateUserRequest request, CancellationToken cancellationToken) =>
         {
             var result = await mediator.Send(request, cancellationToken);
             return result.ToHttpResult(u => Results.Created($"/api/v1/users/{u.Id}", u));

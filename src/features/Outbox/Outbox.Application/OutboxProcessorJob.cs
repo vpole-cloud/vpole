@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using System.Reflection;
 using System.Text.Json;
+using Hangfire;
 using MassTransit;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -26,6 +27,7 @@ public partial class OutboxProcessorJob(
     private readonly OutboxSettings _settings = outboxSettings.Value;
     private readonly FrozenDictionary<string, Type> _eventTypeCache = BuildEventTypeCache(eventAssemblyCatalog.Assemblies);
 
+    [DisableConcurrentExecution(timeoutInSeconds: 300)]
     public async Task ProcessOutboxMessagesAsync()
     {
         var unprocessedMessages = await dbContext.OutboxMessages

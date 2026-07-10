@@ -20,9 +20,8 @@ var mongoServer = builder.AddMongoDB("pole-mongo", userName: mongoUsername, pass
     .WithDataVolume("pole-mongo-data")
     .WithLifetime(ContainerLifetime.Persistent)
     .WithReplicaSet();
-var database = mongoServer.AddDatabase("pole-database-base");
 var mongoReplicaSet = builder
-    .AddMongoReplicaSet("pole-database", database.Resource);
+    .AddMongoReplicaSet("pole-database", mongoServer.Resource);
 
 var keycloakUsername = builder.AddParameter("keycloak-username");
 var keycloakPassword = builder.AddParameter("keycloak-password", secret: true);
@@ -41,13 +40,11 @@ var rabbitMq = builder.AddRabbitMQ("pole-rabbitmq", rabbitMqUsername, rabbitMqPa
 var api = builder.AddProject<Projects.Pole_Server>("pole-server")
     .WithReference(keycloak)
     .WithReference(mongoServer)
-    .WithReference(database)
     .WithReference(mongoReplicaSet)
     .WithReference(rabbitMq)
     .WaitFor(keycloak)
     .WaitFor(mongoServer)
     .WaitFor(mongoReplicaSet)
-    .WaitFor(database)
     .WaitFor(rabbitMq);
 
 var blog = builder.AddProject<Projects.Blog>("blog")

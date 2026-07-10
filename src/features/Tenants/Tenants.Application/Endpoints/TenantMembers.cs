@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -18,7 +17,7 @@ public static class TenantMembers
 {
     public static IEndpointRouteBuilder MapTenantMemberEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{TenantId}/members", async (IMediator mediator, GetTenantMembersRequest request, CancellationToken cancellationToken) =>
+        app.MapGet("/{TenantId}/members", async (IMediator mediator, [AsParameters] GetTenantMembersRequest request, CancellationToken cancellationToken) =>
         {
             var result = await mediator.Send(request, cancellationToken);
             return result.ToHttpResult(Results.Ok);
@@ -26,7 +25,7 @@ public static class TenantMembers
         .WithName("GetTenantMembers")
         .Produces<IReadOnlyCollection<TenantMemberDto>>();
 
-        app.MapPost("/{TenantId}/members", async (IMediator mediator, AddTenantMemberRequest request, CancellationToken cancellationToken) =>
+        app.MapPost("/{TenantId}/members", async (IMediator mediator, [AsParameters] AddTenantMemberRequest request, CancellationToken cancellationToken) =>
         {
             var result = await mediator.Send(request, cancellationToken);
             return result.ToHttpResult(m => Results.Created($"/api/v1/tenants/{m.TenantId}/members/{m.Id}", m));
@@ -34,7 +33,7 @@ public static class TenantMembers
         .WithName("AddTenantMember")
         .Produces<TenantMemberDto>(StatusCodes.Status201Created);
 
-        app.MapPut("/{TenantId}/members/{MemberId}", async (IMediator mediator, UpdateTenantMemberRequest request, CancellationToken cancellationToken) =>
+        app.MapPut("/{TenantId}/members/{MemberId}", async (IMediator mediator, [AsParameters] UpdateTenantMemberRequest request, CancellationToken cancellationToken) =>
         {
             var result = await mediator.Send(request, cancellationToken);
             return result.ToHttpResult(Results.Ok);
@@ -42,7 +41,7 @@ public static class TenantMembers
         .WithName("UpdateTenantMember")
         .Produces<TenantMemberDto>();
 
-        app.MapDelete("/{TenantId}/members/{MemberId}", async (IMediator mediator, DeleteTenantMemberRequest request, CancellationToken cancellationToken) =>
+        app.MapDelete("/{TenantId}/members/{MemberId}", async (IMediator mediator, [AsParameters] DeleteTenantMemberRequest request, CancellationToken cancellationToken) =>
         {
             var result = await mediator.Send(request, cancellationToken);
             return result.ToHttpResult(_ => Results.NoContent());
@@ -55,16 +54,12 @@ public static class TenantMembers
 }
 
 public sealed record GetTenantMembersRequest(
-    [FromRoute] string TenantId,
-    [FromClaim(Claims.UserId)] string CurrentUserId,
-    [FromClaim(Claims.Roles)] ImmutableArray<string> Roles
+    [FromRoute] string TenantId
 ) : IMediatorRequest<IReadOnlyCollection<TenantMemberDto>>, ITenantMemberReadOperation;
 
 public sealed record AddTenantMemberRequest(
     [FromRoute] string TenantId,
-    [FromBody] AddTenantMemberRequestBody Body,
-    [FromClaim(Claims.UserId)] string CurrentUserId,
-    [FromClaim(Claims.Roles)] ImmutableArray<string> Roles
+    [FromBody] AddTenantMemberRequestBody Body
 ) : IMediatorRequest<TenantMemberDto>, ITenantMemberRoleOperation
 {
     public string? MemberId => null;
@@ -76,9 +71,7 @@ public sealed record AddTenantMemberRequestBody(string UserId, string Email, Ten
 public sealed record UpdateTenantMemberRequest(
     [FromRoute] string TenantId,
     [FromRoute] string MemberId,
-    [FromBody] UpdateTenantMemberRequestBody Body,
-    [FromClaim(Claims.UserId)] string CurrentUserId,
-    [FromClaim(Claims.Roles)] ImmutableArray<string> Roles
+    [FromBody] UpdateTenantMemberRequestBody Body
 ) : IMediatorRequest<TenantMemberDto>, ITenantMemberRoleOperation
 {
     public TenantRole Role => Body.Role;
@@ -88,9 +81,7 @@ public sealed record UpdateTenantMemberRequestBody(TenantRole Role);
 
 public sealed record DeleteTenantMemberRequest(
     [FromRoute] string TenantId,
-    [FromRoute] string MemberId,
-    [FromClaim(Claims.UserId)] string CurrentUserId,
-    [FromClaim(Claims.Roles)] ImmutableArray<string> Roles
+    [FromRoute] string MemberId
 ) : IMediatorRequest<string>, ITenantMemberTargetOperation;
 
 public sealed class GetTenantMembersHandler(ITenantDbContext dbContext)

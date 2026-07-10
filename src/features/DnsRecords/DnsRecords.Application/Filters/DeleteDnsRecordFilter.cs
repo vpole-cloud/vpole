@@ -9,13 +9,18 @@ namespace Pole.Features.DnsRecords.Application.Filters;
 /// Publishes a follow-up DNS record delete event after a resource delete event has been consumed.
 /// </summary>
 public class DeleteDnsRecordFilter<T>(
-) : IFilter<ConsumeContext<T>> where T : class, IDeleteDnsRecordEvent
+) : IFilter<ConsumeContext<T>> where T : class
 {
     public async Task Send(
         ConsumeContext<T> context,
         IPipe<ConsumeContext<T>> next)
     {
         await next.Send(context);
+
+        if (context.Message is not IDeleteDnsRecordEvent deleteDnsRecordEvent)
+        {
+            return;
+        }
 
         var poleEvent = context.Message as IPoleEvent;
         var carrier = context.Message as ITraceContextCarrier;
@@ -26,7 +31,7 @@ public class DeleteDnsRecordFilter<T>(
         using var contextScope = TraceContext.Push(traceContext);
 
         await context.Publish(
-            new DeleteDnsRecordEvent(context.Message.DnsRecordId, context.Message.EventCore));
+            new DeleteDnsRecordEvent(deleteDnsRecordEvent.DnsRecordId, deleteDnsRecordEvent.EventCore));
     }
 
     public void Probe(ProbeContext context)

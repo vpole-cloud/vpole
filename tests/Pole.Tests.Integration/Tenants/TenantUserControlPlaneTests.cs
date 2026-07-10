@@ -37,8 +37,8 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var handler = new CreateTenantHandler(fixture.DbContext);
         var request = new CreateTenantRequest(
             new CreateTenantRequestBody("personal"),
-            "user-1",
-            "user@example.com");
+            new ClaimValue("user-1"),
+            new ClaimValue("user@example.com"));
 
         var result = await handler.HandleAsync(request);
 
@@ -73,7 +73,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
 
         await fixture.DbContext.Tenants.InsertManyAsync([defaultTenant, otherTenant, hiddenTenant]);
         var handler = new GetTenantsHandler(fixture.DbContext);
-        var result = await handler.HandleAsync(new GetTenantsRequest("user-1"));
+        var result = await handler.HandleAsync(new GetTenantsRequest(new ClaimValue("user-1")));
 
         Assert.True(result.TryGetValue(out var tenants, out _));
         Assert.Equal(2, tenants.Count);
@@ -163,9 +163,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var tenant = await InsertTenantAsync(TenantRole.Member);
         var request = new AddTenantMemberRequest(
             tenant.Id,
-            new AddTenantMemberRequestBody("user-2", "other@example.com", TenantRole.Member),
-            "user-1",
-            []);
+            new AddTenantMemberRequestBody("user-2", "other@example.com", TenantRole.Member));
         var behavior = CreateTenantMemberAuthorizationBehavior<AddTenantMemberRequest, TenantMemberDto>("user-1");
         var nextCalled = false;
 
@@ -187,9 +185,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var tenant = await InsertTenantAsync(TenantRole.Admin);
         var request = new AddTenantMemberRequest(
             tenant.Id,
-            new AddTenantMemberRequestBody("user-2", "other@example.com", TenantRole.Member),
-            "user-1",
-            []);
+            new AddTenantMemberRequestBody("user-2", "other@example.com", TenantRole.Member));
         var behavior = CreateTenantMemberAuthorizationBehavior<AddTenantMemberRequest, TenantMemberDto>("user-1");
         var nextCalled = false;
 
@@ -212,9 +208,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var tenant = await InsertTenantAsync(TenantRole.Admin);
         var request = new AddTenantMemberRequest(
             tenant.Id,
-            new AddTenantMemberRequestBody("user-2", "other@example.com", TenantRole.Owner),
-            "user-1",
-            []);
+            new AddTenantMemberRequestBody("user-2", "other@example.com", TenantRole.Owner));
         var behavior = CreateTenantMemberAuthorizationBehavior<AddTenantMemberRequest, TenantMemberDto>("user-1");
 
         var result = await behavior.Handle(request, () =>
@@ -236,9 +230,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var result = await handler.HandleAsync(new UpdateTenantMemberRequest(
             tenant.Id,
             owner.Id,
-            new UpdateTenantMemberRequestBody(TenantRole.Admin),
-            "user-1",
-            []));
+            new UpdateTenantMemberRequestBody(TenantRole.Admin)));
 
         Assert.False(result.TryGetValue(out _, out var failure));
         Assert.IsType<ConflictFailure>(failure);
@@ -253,9 +245,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
 
         var result = await handler.HandleAsync(new DeleteTenantMemberRequest(
             tenant.Id,
-            owner.Id,
-            "user-1",
-            []));
+            owner.Id));
 
         Assert.False(result.TryGetValue(out _, out var failure));
         Assert.IsType<ConflictFailure>(failure);

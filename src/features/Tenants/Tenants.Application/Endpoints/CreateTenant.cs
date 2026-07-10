@@ -16,7 +16,7 @@ public static class CreateTenant
 {
     public static IEndpointRouteBuilder MapCreateTenantEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/", async (IMediator mediator, CreateTenantRequest request, CancellationToken cancellationToken) =>
+        app.MapPost("/", async (IMediator mediator, [AsParameters] CreateTenantRequest request, CancellationToken cancellationToken) =>
         {
             var result = await mediator.Send(request, cancellationToken);
             return result.ToHttpResult(t => Results.Created($"/api/v1/tenants/{t.Id}", t));
@@ -31,8 +31,8 @@ public static class CreateTenant
 
 public sealed record CreateTenantRequest(
     [FromBody] CreateTenantRequestBody Body,
-    [FromClaim(Claims.UserId)] string CurrentUserId,
-    [FromClaim(Claims.Email)] string CurrentUserEmail
+    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId,
+    [FromClaim(Claims.Email)] ClaimValue CurrentUserEmail
     ) : IMediatorRequest<TenantDto>;
 
 public sealed record CreateTenantRequestBody(
@@ -65,8 +65,8 @@ public sealed class CreateTenantValidator : AbstractValidator<CreateTenantReques
     public CreateTenantValidator()
     {
         RuleFor(x => x.Body.Name).NotEmpty().MaximumLength(80);
-        RuleFor(x => x.CurrentUserId).NotEmpty().MaximumLength(120);
-        RuleFor(x => x.CurrentUserEmail).NotEmpty().MaximumLength(254);
+        RuleFor(x => x.CurrentUserId.Value).NotEmpty().MaximumLength(120);
+        RuleFor(x => x.CurrentUserEmail.Value).NotEmpty().MaximumLength(254);
     }
 }
 

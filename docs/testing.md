@@ -124,3 +124,4 @@ For generated infrastructure identifiers, prefer shared generators and helpers o
 - The default test boundary is integration testing around real Mongo-backed handlers.
 - Full browser e2e coverage is planned to stay small and focused on key user journeys.
 - External infrastructure such as Kubernetes is not started by the suite itself; cluster-backed tests assume it already exists.
+- Use the full Aspire stack only for production startup wiring and workflows that cross real local services. See [Aspire local development](aspire-local-development.md).

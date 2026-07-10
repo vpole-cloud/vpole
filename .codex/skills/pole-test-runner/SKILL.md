@@ -12,6 +12,7 @@ Use this skill to choose the cheapest useful validation boundary and run the rig
 1. Inspect the relevant feature and nearby implementation before editing.
 2. Read `docs/testing.md` before changing test strategy.
 3. Inspect nearby tests in `tests/Pole.Tests.Integration` before adding new fixtures or helpers.
+4. Use `$pole-aspire-local` and read `docs/aspire-local-development.md` only when production startup or a real cross-service workflow must be verified.
 
 ## Test Boundary
 
@@ -20,6 +21,7 @@ Use this skill to choose the cheapest useful validation boundary and run the rig
 - Use manifest tests for Kubernetes object shape without requiring a live cluster.
 - Use live Kubernetes tests only for behavior that cannot be proven through generated manifests or fakes.
 - Use focused browser or frontend tests sparingly for key user journeys; do not expand them just to test backend contracts.
+- Keep the Testcontainers suite disposable and isolated from the long-running Aspire stack. Do not use production Hangfire or outbox workers to drive ordinary integration tests.
 
 ## Commands
 

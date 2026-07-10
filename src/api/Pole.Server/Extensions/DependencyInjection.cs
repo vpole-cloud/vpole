@@ -94,6 +94,7 @@ public static class DependencyInjection
 
         public IServiceCollection AddKubernetes(IConfiguration configuration)
         {
+            services.TryAddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
             services.AddSingleton<IKubernetes>(_ =>
             {
                 var config = KubernetesClientConfiguration.BuildConfigFromConfigFile();
@@ -237,6 +238,7 @@ public static class DependencyInjection
                     realm: "pole.control-plane",
                     options =>
                     {
+                        options.MapInboundClaims = false;
                         options.Audience = "pole.control-plane.api";
                         if (builder.Environment.IsDevelopment())
                         {
