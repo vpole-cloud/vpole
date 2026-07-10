@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pole Aspire Local"
+  short_description: "Run and verify the full Pole stack"
+  default_prompt: "Use $pole-aspire-local to start Pole with Aspire and validate a full-stack workflow."

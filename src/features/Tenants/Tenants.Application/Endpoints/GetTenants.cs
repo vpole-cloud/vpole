@@ -13,7 +13,7 @@ public static class GetTenants
 {
     public static IEndpointRouteBuilder MapGetTenantsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/", async (IMediator mediator, GetTenantsRequest request, CancellationToken cancellationToken) =>
+        app.MapGet("/", async (IMediator mediator, [AsParameters] GetTenantsRequest request, CancellationToken cancellationToken) =>
         {
             var result = await mediator.Send(request, cancellationToken);
             return result.ToHttpResult(Results.Ok);
@@ -26,7 +26,7 @@ public static class GetTenants
 }
 
 public sealed record GetTenantsRequest(
-    [FromClaim(Claims.UserId)] string CurrentUserId
+    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId
 ) : IMediatorRequest<IReadOnlyCollection<TenantDto>>;
 
 public sealed class GetTenantsHandler(

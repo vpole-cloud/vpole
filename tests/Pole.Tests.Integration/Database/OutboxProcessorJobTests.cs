@@ -8,6 +8,17 @@ namespace Pole.Tests.Integration.Database;
 public sealed class OutboxProcessorJobTests
 {
     [Fact]
+    public void ProcessOutboxMessages_PreventsConcurrentHangfireRuns()
+    {
+        var processMethod = typeof(OutboxProcessorJob).GetMethod(nameof(OutboxProcessorJob.ProcessOutboxMessagesAsync));
+
+        Assert.NotNull(processMethod);
+        Assert.Contains(
+            processMethod.GetCustomAttributes(),
+            attribute => attribute.GetType().Name == "DisableConcurrentExecutionAttribute");
+    }
+
+    [Fact]
     public void EventTypeCache_Includes_FSharpPostgresEvents()
     {
         var buildMethod = typeof(OutboxProcessorJob).GetMethod("BuildEventTypeCache", BindingFlags.Static | BindingFlags.NonPublic);
