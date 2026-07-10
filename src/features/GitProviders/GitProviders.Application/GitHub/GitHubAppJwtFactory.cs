@@ -1,0 +1,39 @@
+using System.Security.Cryptography;
+using Microsoft.IdentityModel.JsonWebTokens;
+using Microsoft.IdentityModel.Tokens;
+using Pole.Features.GitProviders.Application.Common;
+
+namespace Pole.Features.GitProviders.Application.GitHub;
+
+public interface IGitHubAppJwtFactory
+{
+    string Create();
+}
+
+public sealed class GitHubAppJwtFactory(GitHubAppOptions options, TimeProvider timeProvider) : IGitHubAppJwtFactory
+{
+    public string Create()
+    {
+        if (!options.IsConfigured)
+            throw new InvalidOperationException("GitHub App integration is not configured.");
+
+        var now = timeProvider.GetUtcNow();
+        using var rsa = RSA.Create();
+        rsa.ImportFromPem(File.ReadAllText(options.PrivateKeyPath));
+
+        var handler = new JsonWebTokenHandler
+        {
+            SetDefaultTimesOnTokenCreation = false
+        };
+        return handler.CreateToken(new SecurityTokenDescriptor
+        {
+            Issuer = options.ClientId,
+            IssuedAt = now.AddSeconds(-60).UtcDateTime,
+            Expires = now.AddMinutes(8).UtcDateTime,
+            TokenType = "JWT",
+            SigningCredentials = new SigningCredentials(
+                new RsaSecurityKey(rsa),
+                SecurityAlgorithms.RsaSha256)
+        });
+    }
+}

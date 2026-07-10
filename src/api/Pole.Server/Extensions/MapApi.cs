@@ -1,4 +1,5 @@
 using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.ResourceGroups.Application.Common;
@@ -18,6 +19,7 @@ public static class MapApi
             .RequireAuthorization();
 
         group.MapResourceGroupEndpoints()
+            .MapGitProviderEndpoints()
             .MapTenantEndpoints()
             .MapUserEndpoints()
             .MapWebServiceEndpoints()

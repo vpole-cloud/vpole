@@ -17,6 +17,7 @@ export function SideNav({
     { label: 'Overview', view: 'overview' as const, disabled: false },
     { label: 'Resource groups', view: 'resource-groups' as const, disabled: false },
     { label: 'Web services', view: 'web-services' as const, disabled: false },
+    { label: 'Integrations', view: 'integrations' as const, disabled: !authenticated },
     { label: 'Storage', view: 'storage' as const, disabled: !authenticated },
     { label: 'Databases', view: null, disabled: true },
   ]

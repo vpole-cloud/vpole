@@ -1,6 +1,7 @@
 using System.Reflection;
 using Pole.Database;
 using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.RedisServices.Application.Common;
@@ -22,6 +23,7 @@ Assembly[] assemblies = [
     typeof(WebServiceEndpoints).Assembly,
     typeof(PostgresClusterEndpoints).Assembly,
     typeof(DnsRecordEndpoints).Assembly,
+    typeof(GitProviderEndpoints).Assembly,
     typeof(OutboxProcessorJob).Assembly,
     typeof(ResourceGroupEndpoints).Assembly,
     typeof(RedisServiceEndpoints).Assembly,
@@ -49,6 +51,7 @@ builder.Services.AddKubernetes(configuration)
     .AddDatabase()
     .AddMigrations(assemblies)
     .AddSearchFeature()
+    .AddGitProvidersFeature()
     .AddUsersFeature(configuration)
     .AddSettings(configuration)
     .AddHangfireWithMongo(configuration)
@@ -82,6 +85,8 @@ app.UseAuthorization();
 app.UseMiddleware<TenantContextMiddleware>();
 
 app.UseHangfire();
+
+app.MapGitHubCallbackEndpoints();
 
 app.MapGet("/test-keycloak", () => "Hello World!")
     .RequireAuthorization();

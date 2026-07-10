@@ -23,6 +23,10 @@
     <Project Path="src/shared/Request/Request.csproj" />
   </Folder>
   <Folder Name="/features/" />
+  <Folder Name="/features/GitProviders/">
+    <Project Path="src/features/GitProviders/GitProviders.Application/GitProviders.Application.csproj" />
+    <Project Path="src/features/GitProviders/GitProviders.Domain/GitProviders.Domain.csproj" />
+  </Folder>
   <Folder Name="/features/DnsRecords/">
     <Project Path="src/features/DnsRecords/DnsRecords.Contracts/DnsRecords.Contracts.csproj" />
     <Project Path="src/features/DnsRecords/DnsRecords.Domain/DnsRecords.Domain.csproj" />

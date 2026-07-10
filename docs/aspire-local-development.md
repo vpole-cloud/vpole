@@ -11,6 +11,8 @@ Use the Aspire AppHost when a change must be verified against Pole's real local 
 
 The AppHost is `src/api/Pole.AppHost/Pole.AppHost.csproj`. It starts MongoDB, Keycloak, RabbitMQ, the Pole API, and the Vite frontend. The sample `blog` project requires an explicit start.
 
+Keycloak's management interface uses HTTP locally for Aspire readiness checks. The browser-facing Keycloak endpoint still supports HTTPS; keeping management health on HTTP avoids Windows SChannel failures against the generated development certificate.
+
 ## Start And Inspect
 
 1. Run Aspire's environment diagnostics before the first start.
