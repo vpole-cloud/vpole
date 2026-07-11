@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Pole.Features.ContainerRegistries.Application</AssemblyName>
+    <RootNamespace>Pole.Features.ContainerRegistries.Application</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ContainerRegistries.Contracts\ContainerRegistries.Contracts.csproj" />
+    <ProjectReference Include="..\ContainerRegistries.Domain\ContainerRegistries.Domain.csproj" />
+    <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,5 +1,6 @@
 using System.Reflection;
 using Pole.Database;
+using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.Outbox.Application;
@@ -9,6 +10,7 @@ using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
 using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Middleware;
 using Pole.Features.Users.Application.Common;
@@ -24,6 +26,8 @@ Assembly[] assemblies = [
     typeof(PostgresClusterEndpoints).Assembly,
     typeof(DnsRecordEndpoints).Assembly,
     typeof(GitProviderEndpoints).Assembly,
+    typeof(ContainerRegistryFeature).Assembly,
+    typeof(SourceBuildFeature).Assembly,
     typeof(OutboxProcessorJob).Assembly,
     typeof(ResourceGroupEndpoints).Assembly,
     typeof(RedisServiceEndpoints).Assembly,

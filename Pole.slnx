@@ -27,6 +27,15 @@
     <Project Path="src/features/GitProviders/GitProviders.Application/GitProviders.Application.csproj" />
     <Project Path="src/features/GitProviders/GitProviders.Domain/GitProviders.Domain.csproj" />
   </Folder>
+  <Folder Name="/features/ContainerRegistries/">
+    <Project Path="src/features/ContainerRegistries/ContainerRegistries.Application/ContainerRegistries.Application.csproj" />
+    <Project Path="src/features/ContainerRegistries/ContainerRegistries.Contracts/ContainerRegistries.Contracts.csproj" />
+    <Project Path="src/features/ContainerRegistries/ContainerRegistries.Domain/ContainerRegistries.Domain.csproj" />
+  </Folder>
+  <Folder Name="/features/SourceBuilds/">
+    <Project Path="src/features/SourceBuilds/SourceBuilds.Application/SourceBuilds.Application.csproj" />
+    <Project Path="src/features/SourceBuilds/SourceBuilds.Domain/SourceBuilds.Domain.csproj" />
+  </Folder>
   <Folder Name="/features/DnsRecords/">
     <Project Path="src/features/DnsRecords/DnsRecords.Contracts/DnsRecords.Contracts.csproj" />
     <Project Path="src/features/DnsRecords/DnsRecords.Domain/DnsRecords.Domain.csproj" />
