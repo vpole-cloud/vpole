@@ -134,6 +134,11 @@ See the [architecture overview](docs/architecture_overview.md) for details about
 
 ---
 
+## Engineering guidelines
+See the [engineering guidelines](docs/engineering-guidelines.md) for validation boundaries, expected failures, state modelling, collection ownership, typed APIs, and dependency behavior tests.
+
+---
+
 ## Observability
 See the [observability notes](docs/observability.md) for how Pole carries `TraceId` and `CorrelationId` through HTTP, logs, outbox records, and RabbitMQ.
 

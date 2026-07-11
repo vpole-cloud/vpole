@@ -10,7 +10,7 @@ Use this skill when a change crosses more than one layer of a Pole feature.
 ## First Steps
 
 1. Inspect the relevant feature and nearby implementation before editing.
-2. Read `docs/architecture_overview.md` and the relevant focused docs: `docs/multitenancy.md`, `docs/observability.md`, `docs/search.md`, or `docs/testing.md`.
+2. Read `docs/engineering-guidelines.md`, `docs/architecture_overview.md`, and the relevant focused docs: `docs/multitenancy.md`, `docs/observability.md`, `docs/search.md`, or `docs/testing.md`.
 3. Inspect the closest existing feature before adding new structure.
 
 ## Current Shape

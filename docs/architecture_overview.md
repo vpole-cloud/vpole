@@ -1,5 +1,7 @@
 ## Architecture & stack
 
+Pole's cross-cutting code design conventions are documented in [engineering guidelines](engineering-guidelines.md).
+
 ### Backend
 
 * **.NET 10 / ASP.NET Core**
