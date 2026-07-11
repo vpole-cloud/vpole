@@ -13,6 +13,8 @@ using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
+using Pole.Features.SourceBuilds.Application.Common;
+using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Mediator;
 using Pole.Server.Database;
@@ -53,6 +55,8 @@ public static class TestServiceProviderFactory
         services.AddSingleton<IPostgresClusterSecretStore>(sp => sp.GetRequiredService<InMemoryPostgresClusterSecretStore>());
         services.AddMigrations(Assemblies);
         services.AddSearchFeature();
+        services.AddSingleton<ISourceBuildJobDispatcher, TestSourceBuildJobDispatcher>();
+        services.AddSourceBuildsFeature();
         services.AddValidatorsFromAssemblies(Assemblies);
         services.AddPoleMediator(Assemblies);
         services.ReplaceTenantAuthorizationWithFake();

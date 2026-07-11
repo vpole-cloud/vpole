@@ -9,6 +9,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Analysis;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
+using Pole.Features.SourceBuilds.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -128,13 +129,24 @@ public sealed class ReanalyzeSourceRepositoryHandler(
     }
 }
 
-public sealed class DeleteSourceRepositoryHandler(IGitProviderDbContext dbContext)
+public sealed class DeleteSourceRepositoryHandler(
+    IGitProviderDbContext dbContext,
+    ISourceBuildReferenceLookup sourceBuildReferences)
     : IMediatorHandler<DeleteSourceRepositoryRequest, string>
 {
     public async Task<Result<string>> HandleAsync(
         DeleteSourceRepositoryRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (await sourceBuildReferences.HasConfigurationForSourceRepositoryAsync(
+                request.TenantId,
+                request.Id,
+                cancellationToken))
+        {
+            return Failures.Conflict(
+                "Delete the source build configuration before unlinking this repository.");
+        }
+
         var result = await dbContext.SourceRepositories.DeleteOneAsync(
             Builders<SourceRepository>.Filter.And(
                 Builders<SourceRepository>.Filter.ForTenant(request.TenantId),

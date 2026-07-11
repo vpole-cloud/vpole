@@ -37,6 +37,8 @@ using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
+using Pole.Features.SourceBuilds.Contracts;
+using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.Tenants;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Users.Application.Common;
@@ -197,6 +199,13 @@ public static class DependencyInjection
             return services;
         }
 
+        public IServiceCollection AddSourceBuildsFeature()
+        {
+            services.TryAddScoped<ISourceBuildReferenceLookup, SourceBuildReferenceLookup>();
+            services.TryAddSingleton<ISourceBuildJobDispatcher, HangfireSourceBuildJobDispatcher>();
+            return services;
+        }
+
         public IServiceCollection AddUsersFeature(IConfiguration configuration)
         {
             services.Configure<KeycloakOptions>(configuration.GetSection(KeycloakOptions.SectionName));
@@ -321,6 +330,11 @@ public static class DependencyInjection
                     "cleanup-outbox-messages",
                     job => job.CleanupProcessedMessagesAsync(),
                     Cron.Daily(3)); // Daily at 3 AM
+
+                RecurringJob.AddOrUpdate<SourceBuildQueueRecoveryJob>(
+                    "recover-source-build-queue",
+                    job => job.RecoverAsync(),
+                    Cron.Minutely);
             }
             catch (Exception ex)
             {

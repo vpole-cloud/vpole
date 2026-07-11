@@ -34,7 +34,9 @@
   </Folder>
   <Folder Name="/features/SourceBuilds/">
     <Project Path="src/features/SourceBuilds/SourceBuilds.Application/SourceBuilds.Application.csproj" />
+    <Project Path="src/features/SourceBuilds/SourceBuilds.Contracts/SourceBuilds.Contracts.csproj" />
     <Project Path="src/features/SourceBuilds/SourceBuilds.Domain/SourceBuilds.Domain.csproj" />
+    <Project Path="src/features/SourceBuilds/SourceBuilds.Events/SourceBuilds.Events.csproj" />
   </Folder>
   <Folder Name="/features/DnsRecords/">
     <Project Path="src/features/DnsRecords/DnsRecords.Contracts/DnsRecords.Contracts.csproj" />

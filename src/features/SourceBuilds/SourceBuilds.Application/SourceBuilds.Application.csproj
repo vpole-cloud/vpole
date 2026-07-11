@@ -10,7 +10,21 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\SourceBuilds.Contracts\SourceBuilds.Contracts.csproj" />
     <ProjectReference Include="..\SourceBuilds.Domain\SourceBuilds.Domain.csproj" />
+    <ProjectReference Include="..\SourceBuilds.Events\SourceBuilds.Events.csproj" />
+    <ProjectReference Include="..\..\GitProviders\GitProviders.Application\GitProviders.Application.csproj" />
+    <ProjectReference Include="..\..\WebServices\WebServices.Application\WebServices.Application.csproj" />
+    <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
     <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
+    <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
+    <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
+    <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" Version="12.1.1" />
+    <PackageReference Include="Hangfire.Core" Version="1.8.23" />
+    <PackageReference Include="MassTransit" Version="8.5.9" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
   </ItemGroup>
 </Project>

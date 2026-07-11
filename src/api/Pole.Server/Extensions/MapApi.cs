@@ -5,6 +5,7 @@ using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.WebServices.Application.Common;
@@ -20,6 +21,7 @@ public static class MapApi
 
         group.MapResourceGroupEndpoints()
             .MapGitProviderEndpoints()
+            .MapSourceBuildEndpoints()
             .MapTenantEndpoints()
             .MapUserEndpoints()
             .MapWebServiceEndpoints()

@@ -42,6 +42,7 @@ Assembly[] outboxEventAssemblies = [
     typeof(Pole.Features.Postgres.Events.PostgresClusterCreatedEvent).Assembly,
     typeof(Pole.Features.RedisServices.Events.RedisServiceCreatedEvent).Assembly,
     typeof(Pole.Features.ResourceGroups.Events.ResourceGroupCreatedEvent).Assembly,
+    typeof(Pole.Features.SourceBuilds.Events.SourceBuildRequestedEvent).Assembly,
     typeof(Pole.Features.Users.Contracts.UserCreatedEvent).Assembly
 ];
 
@@ -57,6 +58,7 @@ builder.Services.AddKubernetes(configuration)
     .AddSearchFeature()
     .AddGitProvidersFeature()
     .AddContainerRegistriesFeature()
+    .AddSourceBuildsFeature()
     .AddUsersFeature(configuration)
     .AddSettings(configuration)
     .AddHangfireWithMongo(configuration)

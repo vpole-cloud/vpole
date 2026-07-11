@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\GitProviders.Domain\GitProviders.Domain.csproj" />
+    <ProjectReference Include="..\..\SourceBuilds\SourceBuilds.Contracts\SourceBuilds.Contracts.csproj" />
     <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
     <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
     <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
