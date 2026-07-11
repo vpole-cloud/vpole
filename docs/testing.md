@@ -122,7 +122,7 @@ For generated infrastructure identifiers, prefer shared generators and helpers o
 
 - The current suite is intentionally **not Aspire-based**.
 - The default test boundary is integration testing around real Mongo-backed handlers.
-- Full browser e2e coverage is planned to stay small and focused on key user journeys.
+- The opt-in Aspire and browser test lane is documented in [Aspire E2E testing](aspire-e2e-testing.md).
 - External infrastructure such as Kubernetes is not started by the suite itself; cluster-backed tests assume it already exists.
 - Use the full Aspire stack only for production startup wiring and workflows that cross real local services. See [Aspire local development](aspire-local-development.md).
 

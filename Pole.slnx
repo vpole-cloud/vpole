@@ -92,6 +92,8 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj" />
+    <Project Path="tests/Pole.Tests.E2E.GitHubStub/Pole.Tests.E2E.GitHubStub.csproj" />
+    <Project Path="tests/Pole.Tests.E2E/Pole.Tests.E2E.csproj" />
   </Folder>
 </Solution>
 

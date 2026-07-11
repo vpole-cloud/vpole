@@ -298,18 +298,14 @@ public static class DependencyInjection
 
                 })
                 .AddKeycloakJwtBearer(
-                    serviceName: "keycloak",
+                    serviceName: "pole-keycloak",
                     realm: "pole.control-plane",
                     options =>
                     {
                         options.MapInboundClaims = false;
                         options.Audience = "pole.control-plane.api";
                         if (builder.Environment.IsDevelopment())
-                        {
                             options.RequireHttpsMetadata = false;
-                            options.MetadataAddress =
-                                "http://localhost:8080/realms/pole.control-plane/.well-known/openid-configuration";
-                        }
                     });
             builder.Services.AddAuthorization(options =>
             {

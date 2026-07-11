@@ -69,6 +69,15 @@
         "attributes": {}
       },
       {
+        "id": "311062ce-df8c-4ddb-bd7e-f21f878a0124",
+        "name": "pole-platform-admin",
+        "description": "Platform administration role",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "592bfc5d-c60e-4e06-be3e-b0ee6e019144",
+        "attributes": {}
+      },
+      {
         "id": "00212f99-97bb-4bf1-8b31-be7c0b4da5a7",
         "name": "uma_authorization",
         "description": "${role_uma_authorization}",
@@ -1590,6 +1599,20 @@
             "introspection.token.claim": "true",
             "access.token.claim": "true",
             "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        },
+        {
+          "id": "52ec3854-088e-4bce-bc1c-055c61c891d8",
+          "name": "flat realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "introspection.token.claim": "true",
+            "claim.name": "roles",
             "jsonType.label": "String",
             "multivalued": "true"
           }
