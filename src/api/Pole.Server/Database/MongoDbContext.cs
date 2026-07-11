@@ -1,4 +1,6 @@
 using MongoDB.Driver;
+using Pole.Features.ContainerRegistries.Application.Common;
+using Pole.Features.ContainerRegistries.Domain;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.DnsRecords.Domain;
 using Pole.Features.GitProviders.Application.Common;
@@ -13,6 +15,8 @@ using Pole.Features.Search.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Domain;
+using Pole.Features.SourceBuilds.Application.Common;
+using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.Users.Application.Common;
@@ -36,7 +40,9 @@ public class MongoDbContext(
     IDnsRecordDbContext,
     ITenantDbContext,
     IUserDbContext,
-    IGitProviderDbContext
+    IGitProviderDbContext,
+    IContainerRegistryDbContext,
+    ISourceBuildDbContext
 {
     public IMongoDatabase Database { get; } = database;
     public IMongoClient Client { get; } = client;
@@ -55,5 +61,9 @@ public class MongoDbContext(
     public IMongoCollection<GitProviderConnection> GitProviderConnections { get; } = database.GetCollection<GitProviderConnection>("GitProviderConnections");
     public IMongoCollection<GitHubSetupAttempt> GitHubSetupAttempts { get; } = database.GetCollection<GitHubSetupAttempt>("GitHubSetupAttempts");
     public IMongoCollection<SourceRepository> SourceRepositories { get; } = database.GetCollection<SourceRepository>("SourceRepositories");
+    public IMongoCollection<RegistryProject> RegistryProjects { get; } = database.GetCollection<RegistryProject>("RegistryProjects");
+    public IMongoCollection<RegistryCredential> RegistryCredentials { get; } = database.GetCollection<RegistryCredential>("RegistryCredentials");
+    public IMongoCollection<SourceBuildConfiguration> SourceBuildConfigurations { get; } = database.GetCollection<SourceBuildConfiguration>("SourceBuildConfigurations");
+    public IMongoCollection<SourceBuildJob> SourceBuildJobs { get; } = database.GetCollection<SourceBuildJob>("SourceBuildJobs");
 }
 
