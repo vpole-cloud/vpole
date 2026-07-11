@@ -35,7 +35,7 @@ internal sealed class KeycloakAdminClient(HttpClient httpClient, string adminUse
             ["directAccessGrantsEnabled"] = true,
             ["serviceAccountsEnabled"] = false,
             ["fullScopeAllowed"] = true,
-            ["defaultClientScopes"] = new JsonArray("profile", "email", "roles"),
+            ["defaultClientScopes"] = new JsonArray("basic", "profile", "email", "roles"),
             ["protocolMappers"] = new JsonArray(
                 new JsonObject
                 {

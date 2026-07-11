@@ -1,12 +1,15 @@
 using System.Diagnostics;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.JavaScript;
 using Aspire.Hosting.Testing;
 using Xunit;
 
@@ -19,6 +22,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     private readonly List<Func<CancellationToken, Task>> _cleanup = [];
     private readonly string _githubClientSecret = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private readonly string _keycloakAdminPassword = $"E2e-{Guid.NewGuid():N}-1!";
+    private readonly TcpListener _keycloakPortReservation = ReserveTcpPort();
     private readonly string _kubernetesNamespacePrefix = $"e2e-{Guid.NewGuid():N}"[..12];
     private readonly string _mongoPassword = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private readonly string _rabbitMqPassword = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
@@ -51,6 +55,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
                 _sourceBuildSettings,
                 _scratchDirectory,
                 _kubernetesNamespacePrefix,
+                KeycloakPort,
                 _keycloakAdminPassword,
                 _githubClientSecret,
                 _mongoPassword,
@@ -58,7 +63,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             _shutdown.Token);
 
         var api = appHost.CreateResourceBuilder<ProjectResource>("pole-server");
-        var frontend = appHost.CreateResourceBuilder<ProjectResource>("frontend");
+        var frontend = appHost.CreateResourceBuilder<ViteAppResource>("frontend");
         var githubStub = appHost
             .AddProject(
                 "github-stub",
@@ -81,8 +86,8 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             .WithEnvironment("GitHubStub__ControlKey", _stubControlKey);
 
         _application = await appHost.BuildAsync(_shutdown.Token);
+        _keycloakPortReservation.Stop();
         await _application.StartAsync(_shutdown.Token);
-        await _application.ResourceNotifications.WaitForResourceHealthyAsync("pole-keycloak", _shutdown.Token);
         await _application.ResourceNotifications.WaitForResourceHealthyAsync("pole-server", _shutdown.Token);
         await _application.ResourceNotifications.WaitForResourceHealthyAsync("frontend", _shutdown.Token);
         await _application.ResourceNotifications.WaitForResourceHealthyAsync("github-stub", _shutdown.Token);
@@ -96,6 +101,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             _application.CreateHttpClient("pole-keycloak"),
             KeycloakAdminUsername,
             _keycloakAdminPassword);
+        await WaitForKeycloakDiscoveryAsync(_application.CreateHttpClient("pole-keycloak"), _shutdown.Token);
 
         await ConfigureInteractiveClientAsync(_shutdown.Token);
         var directGrantClient = await _keycloak.CreateDirectGrantClientAsync(
@@ -118,6 +124,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
+        _keycloakPortReservation.Stop();
         var cancellationToken = new CancellationTokenSource(TimeSpan.FromMinutes(2)).Token;
         foreach (var action in _cleanup.AsEnumerable().Reverse())
         {
@@ -263,6 +270,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         SourceBuildSettings? sourceBuildSettings,
         string scratchDirectory,
         string kubernetesNamespacePrefix,
+        int keycloakPort,
         string keycloakAdminPassword,
         string githubClientSecret,
         string mongoPassword,
@@ -271,6 +279,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         var arguments = new List<string>
         {
         "E2E:Enabled=true",
+        $"E2E:KeycloakPort={keycloakPort}",
         $"E2E:KubernetesNamespacePrefix={kubernetesNamespacePrefix}",
         "Parameters:mongo-username=pole-e2e",
         $"Parameters:mongo-password={mongoPassword}",
@@ -299,6 +308,15 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         }
 
         return arguments.ToArray();
+    }
+
+    private int KeycloakPort => ((IPEndPoint)_keycloakPortReservation.LocalEndpoint).Port;
+
+    private static TcpListener ReserveTcpPort()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        return listener;
     }
 
     private async Task ConfigureInteractiveClientAsync(CancellationToken cancellationToken)
@@ -339,7 +357,15 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         };
         create.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bootstrapToken);
         using var response = await Api.SendAsync(create, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var challenge = string.Join(", ", response.Headers.WwwAuthenticate.Select(value => value.ToString()));
+            throw new HttpRequestException(
+                $"Pole rejected the bootstrap user creation with {(int)response.StatusCode} ({response.ReasonPhrase}). " +
+                $"WWW-Authenticate: {challenge}. Response body omitted to avoid reflecting credentials.",
+                null,
+                response.StatusCode);
+        }
         using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
         var keycloakUserId = document.RootElement.GetProperty("id").GetString()
                              ?? throw new InvalidOperationException("Pole did not return the created user id.");
@@ -362,25 +388,35 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     private async Task<string> WaitForDefaultTenantAsync(string accessToken, CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow.AddMinutes(2);
+        HttpStatusCode? lastStatusCode = null;
+        string? lastResponseBody = null;
         while (DateTimeOffset.UtcNow < deadline)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/tenants");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             using var response = await Api.SendAsync(request, cancellationToken);
+            lastStatusCode = response.StatusCode;
             if (response.IsSuccessStatusCode)
             {
-                using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
+                lastResponseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                using var document = JsonDocument.Parse(lastResponseBody);
                 var tenant = document.RootElement.EnumerateArray()
                     .FirstOrDefault(item => item.TryGetProperty("isDefault", out var isDefault) && isDefault.GetBoolean());
                 if (tenant.ValueKind != JsonValueKind.Undefined)
                     return tenant.GetProperty("id").GetString()
                            ?? throw new InvalidOperationException("Default tenant has no id.");
             }
+            else
+            {
+                lastResponseBody = "(response body omitted to avoid reflecting credentials)";
+            }
 
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
         }
 
-        throw new TimeoutException("The default tenant was not created from the UserCreated outbox event.");
+        throw new TimeoutException(
+            "The default tenant was not created from the UserCreated outbox event. " +
+            $"Last GET /api/v1/tenants response: {(int?)lastStatusCode} {lastStatusCode}; {lastResponseBody}");
     }
 
     private async Task WaitForHarborHealthAsync(CancellationToken cancellationToken)
@@ -404,6 +440,30 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         }
 
         throw new TimeoutException("Harbor did not report healthy within three minutes.");
+    }
+
+    private static async Task WaitForKeycloakDiscoveryAsync(HttpClient keycloak, CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddMinutes(2);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            try
+            {
+                using var response = await keycloak.GetAsync(
+                    "/realms/pole.control-plane/.well-known/openid-configuration",
+                    cancellationToken);
+                if (response.IsSuccessStatusCode)
+                    return;
+            }
+            catch (HttpRequestException)
+            {
+                // Keycloak is still importing the realm.
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+
+        throw new TimeoutException("Keycloak did not expose OpenID discovery within two minutes.");
     }
 
     private async Task StopSourceBuildInfrastructureAsync(CancellationToken cancellationToken)
