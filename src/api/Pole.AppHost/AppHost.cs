@@ -49,6 +49,64 @@ var api = builder.AddProject<Projects.Pole_Server>("pole-server")
     .WaitFor(mongoReplicaSet)
     .WaitFor(rabbitMq);
 
+if (bool.TryParse(builder.Configuration["LocalSourceBuilds:Enabled"], out var localSourceBuildsEnabled) &&
+    localSourceBuildsEnabled)
+{
+    var harborComposeDirectory = builder.Configuration["LocalSourceBuilds:HarborComposeDirectory"];
+    if (string.IsNullOrWhiteSpace(harborComposeDirectory) ||
+        !File.Exists(Path.Combine(harborComposeDirectory, "docker-compose.yml")))
+    {
+        throw new InvalidOperationException(
+            "LocalSourceBuilds:HarborComposeDirectory must contain Harbor's generated docker-compose.yml.");
+    }
+
+    builder.AddExecutable(
+            "pole-harbor",
+            "docker",
+            Path.GetFullPath(harborComposeDirectory),
+            "compose",
+            "up",
+            "--remove-orphans")
+        .WithExplicitStart();
+
+    builder.AddContainer("pole-buildkit", "moby/buildkit", "v0.30.0")
+        .WithBindMount("BuildKit/buildkitd.toml", "/etc/buildkit/buildkitd.toml", isReadOnly: true)
+        .WithArgs(
+            "--addr", "tcp://0.0.0.0:1234",
+            "--config", "/etc/buildkit/buildkitd.toml")
+        .WithContainerRuntimeArgs("--privileged")
+        .WithEndpoint("grpc", endpoint =>
+        {
+            endpoint.Port = 1234;
+            endpoint.TargetPort = 1234;
+            endpoint.IsProxied = false;
+            endpoint.UriScheme = "tcp";
+        })
+        .WithVolume("pole-buildkit-data", "/var/lib/buildkit")
+        .WithLifetime(ContainerLifetime.Persistent)
+        .WithExplicitStart();
+
+    var harborAdminPassword = builder.AddParameter("harbor-admin-password", secret: true);
+    api.WithEnvironment("Harbor__Enabled", "true")
+        .WithEnvironment(
+            "Harbor__BaseUrl",
+            builder.Configuration["LocalSourceBuilds:HarborBaseUrl"] ?? "http://localhost:5000")
+        .WithEnvironment(
+            "Harbor__RegistryHost",
+            builder.Configuration["LocalSourceBuilds:HarborRegistryHost"] ?? "host.docker.internal:5000")
+        .WithEnvironment("Harbor__Username", "admin")
+        .WithEnvironment("Harbor__Password", harborAdminPassword)
+        .WithEnvironment("Harbor__RobotDurationDays", "-1")
+        .WithEnvironment("BuildKit__Enabled", "true")
+        .WithEnvironment(
+            "BuildKit__Address",
+            builder.Configuration["LocalSourceBuilds:BuildKitAddress"] ?? "tcp://localhost:1234")
+        .WithEnvironment(
+            "BuildKit__BuildctlPath",
+            builder.Configuration["LocalSourceBuilds:BuildctlPath"] ?? "buildctl")
+        .WithEnvironment("BuildKit__TimeoutMinutes", "30");
+}
+
 var githubParameterNames = new[]
 {
     "github-app-client-id",
