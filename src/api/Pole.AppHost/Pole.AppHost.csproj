@@ -26,6 +26,9 @@
     </ItemGroup>
 
     <ItemGroup>
+      <None Update="BuildKit\buildkitd.toml">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
       <None Update="MongoDb\mongo-init.sh">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>

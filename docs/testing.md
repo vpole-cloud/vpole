@@ -125,3 +125,17 @@ For generated infrastructure identifiers, prefer shared generators and helpers o
 - Full browser e2e coverage is planned to stay small and focused on key user journeys.
 - External infrastructure such as Kubernetes is not started by the suite itself; cluster-backed tests assume it already exists.
 - Use the full Aspire stack only for production startup wiring and workflows that cross real local services. See [Aspire local development](aspire-local-development.md).
+
+## Harbor contract test
+
+`HarborContractTests` is environment-gated and performs no external I/O unless all four settings are present:
+
+```powershell
+$env:POLE_HARBOR_CONTRACT_BASE_URL = 'http://localhost:5000'
+$env:POLE_HARBOR_CONTRACT_REGISTRY_HOST = 'host.docker.internal:5000'
+$env:POLE_HARBOR_CONTRACT_USERNAME = 'admin'
+$env:POLE_HARBOR_CONTRACT_PASSWORD = '<local-admin-password>'
+dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter Category=HarborContract
+```
+
+The test creates a uniquely named private project and build/runtime robot credentials through the real Harbor API, then removes the project in `finally`. Do not place the password in tracked settings or command output.

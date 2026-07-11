@@ -11,6 +11,13 @@ Use the Aspire AppHost when a change must be verified against Pole's real local 
 
 The AppHost is `src/api/Pole.AppHost/Pole.AppHost.csproj`. It starts MongoDB, Keycloak, RabbitMQ, the Pole API, and the Vite frontend. The sample `blog` project requires an explicit start.
 
+Source builds add two optional, explicit-start resources:
+
+- `pole-harbor` runs Harbor's official generated Docker Compose deployment.
+- `pole-buildkit` runs pinned `moby/buildkit:v0.30.0` with its gRPC endpoint on port `1234`.
+
+They are excluded from the default graph because Harbor requires at least 4 GB of memory and several containers. See [GitHub source build E2E](github-source-build-e2e.md) for the one-time Harbor preparation and AppHost configuration.
+
 Keycloak's management interface uses HTTP locally for Aspire readiness checks. The browser-facing Keycloak endpoint still supports HTTPS; keeping management health on HTTP avoids Windows SChannel failures against the generated development certificate.
 
 ## Start And Inspect
@@ -26,6 +33,8 @@ Keycloak's management interface uses HTTP locally for Aspire readiness checks. T
 4. Poll the resource list until required resources report a healthy running state.
 5. Read resource console or structured logs when a resource is unhealthy. Summarize relevant errors; do not reproduce complete logs.
 6. Obtain current endpoints from the resource list instead of assuming ports, except for the frontend's configured `http://localhost:5173` endpoint.
+
+When testing source builds, explicitly start `pole-harbor` and `pole-buildkit` before queueing a build. The Pole API may start without them so ordinary development is not blocked by the heavier registry stack.
 
 On Windows, stop the `pole-server` Aspire resource before building projects that replace its loaded assemblies. Restart it after the build. A running server can lock output DLLs and cause misleading build failures.
 
