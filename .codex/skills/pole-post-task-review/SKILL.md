@@ -11,7 +11,7 @@ Use this skill after implementation and targeted verification, before final resp
 
 1. Run `git status --short` and inspect the changed file list.
 2. Run `git diff --stat` and the relevant `git diff -- <path>` slices.
-1. Inspect the relevant feature and nearby implementation before editing.
+3. Read `docs/engineering-guidelines.md` and inspect the relevant feature and nearby implementation.
 4. Identify the changed areas and load the matching focused skills only when relevant:
    - `$pole-tenant-scoping` for tenant-owned resources, auth, headers, Mongo filters, search tenant data, or frontend tenant flow.
    - `$pole-events-outbox` for events, outbox, consumers, trace/correlation, DNS reservation messages, or transaction boundaries.
@@ -31,7 +31,7 @@ Review for bugs and regressions first, not style. Focus on:
 - Kubernetes resources with wrong namespace, labels, selectors, names, ports, storage, ingress, or secret references.
 - Frontend API calls that omit token or tenant id, duplicate fetch logic, or drift from backend DTOs.
 - Tests that prove the wrong boundary, miss the changed invariant, or require live infrastructure unnecessarily.
-- Generated files, graph outputs, or unrelated edits that should not be part of the task.
+- Generated files or unrelated edits that should not be part of the task.
 
 ## Output Format
 
