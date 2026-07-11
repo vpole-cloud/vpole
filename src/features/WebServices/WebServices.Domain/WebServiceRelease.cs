@@ -11,7 +11,8 @@ public enum WebServiceReleaseAction
     Update,
     Redeploy,
     Rollback,
-    ImageTagUpdate
+    ImageTagUpdate,
+    SourceBuild
 }
 
 public enum WebServiceReleaseOutcome
@@ -43,7 +44,11 @@ public sealed record WebServiceRelease(
     WebServiceSpecSnapshot Spec
 );
 
-public sealed record WebServiceReleaseProvenance(
+[BsonDiscriminator(RootClass = true)]
+[BsonKnownTypes(typeof(ExternalImageTagUpdateProvenance), typeof(SourceBuildReleaseProvenance))]
+public abstract record WebServiceReleaseProvenance;
+
+public sealed record ExternalImageTagUpdateProvenance(
     string Source,
     string? CommitSha,
     string? BuildUrl,
@@ -52,7 +57,15 @@ public sealed record WebServiceReleaseProvenance(
     string NewImageTag,
     string ActorType,
     string? DeploymentTokenId,
-    string? DeploymentTokenName);
+    string? DeploymentTokenName) : WebServiceReleaseProvenance;
+
+public sealed record SourceBuildReleaseProvenance(
+    string BuildJobId,
+    string SourceRepositoryId,
+    string CommitSha,
+    string ImageDigest,
+    string PreviousImageReference,
+    string NewImageReference) : WebServiceReleaseProvenance;
 
 public static class WebServiceReleaseFactory
 {

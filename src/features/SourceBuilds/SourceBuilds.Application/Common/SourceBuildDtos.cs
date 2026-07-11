@@ -53,6 +53,7 @@ public sealed record SourceBuildJobDto(
     string WebServiceId,
     string Branch,
     string CommitSha,
+    SourceBuildRecipeDto Recipe,
     SourceBuildJobStateDto State,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
@@ -111,6 +112,7 @@ public static class SourceBuildDtoMappings
             job.WebServiceId,
             job.Branch,
             job.CommitSha,
+            job.Recipe.ToDto(),
             job.State.ToDto(job.CreatedAtUtc),
             job.CreatedAtUtc,
             job.UpdatedAtUtc);

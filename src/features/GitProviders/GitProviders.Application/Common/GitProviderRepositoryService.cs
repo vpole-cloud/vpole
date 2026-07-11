@@ -23,6 +23,13 @@ public interface IGitProviderRepositoryService
         string repositoryId,
         string branch,
         CancellationToken cancellationToken = default);
+
+    Task<Result> DownloadRepositoryArchiveAsync(
+        GitProviderConnection connection,
+        string repositoryId,
+        string commitSha,
+        Stream destination,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class GitProviderRepositoryService(IGitHubAppClient gitHubClient)
@@ -69,6 +76,36 @@ public sealed class GitProviderRepositoryService(IGitHubAppClient gitHubClient)
                 branch,
                 cancellationToken));
 
+    public async Task<Result> DownloadRepositoryArchiveAsync(
+        GitProviderConnection connection,
+        string repositoryId,
+        string commitSha,
+        Stream destination,
+        CancellationToken cancellationToken = default)
+    {
+        if (connection.Provider != GitProviderKind.GitHub)
+        {
+            return Failures.Internal(
+                "The git provider connection is not supported.",
+                $"Provider: {connection.Provider}");
+        }
+
+        try
+        {
+            await gitHubClient.DownloadRepositoryArchiveAsync(
+                connection.ExternalInstallationId,
+                repositoryId,
+                commitSha,
+                destination,
+                cancellationToken);
+            return Result.Success();
+        }
+        catch (GitHubApiException exception)
+        {
+            return GitHubFailure(exception);
+        }
+    }
+
     private static async Task<Result<T>> ExecuteAsync<T>(
         GitProviderConnection connection,
         Func<Task<T>> operation)
@@ -87,12 +124,15 @@ public sealed class GitProviderRepositoryService(IGitHubAppClient gitHubClient)
         }
         catch (GitHubApiException exception)
         {
-            return Failures.ExternalService(
-                "GitHub could not complete the repository request.",
-                "GitHub",
-                exception.StatusCode is null
-                    ? "Network request failed."
-                    : $"Status {(int)exception.StatusCode.Value}.");
+            return GitHubFailure(exception);
         }
     }
+
+    private static Failure GitHubFailure(GitHubApiException exception) =>
+        Failures.ExternalService(
+            "GitHub could not complete the repository request.",
+            "GitHub",
+            exception.StatusCode is null
+                ? "Network request failed."
+                : $"Status {(int)exception.StatusCode.Value}.");
 }

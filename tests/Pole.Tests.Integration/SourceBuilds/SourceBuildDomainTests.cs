@@ -20,6 +20,7 @@ public sealed class SourceBuildDomainTests
                 "service-1",
                 "main",
                 "abc1234",
+                TestRecipe(),
                 "user-1",
                 "user@example.com",
                 new SourceBuildJobFactory.CreateOptions(
@@ -52,6 +53,7 @@ public sealed class SourceBuildDomainTests
             "service-1",
             "main",
             "abc1234",
+            TestRecipe(),
             "user-1",
             null,
             new SourceBuildJobFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
@@ -111,4 +113,15 @@ public sealed class SourceBuildDomainTests
         Assert.Same(recipe, configuration.Recipe);
         Assert.False(configuration.Recipe.IsCustomized);
     }
+
+    private static SourceBuildRecipe TestRecipe() =>
+        new(
+            "DotNet:src/App/App.csproj",
+            SourceBuildRecipeKind.DotNet,
+            "src/App",
+            "src/App/App.csproj",
+            ImmutableList.Create("dotnet publish"),
+            "dotnet App.dll",
+            "FROM scratch",
+            IsCustomized: false);
 }

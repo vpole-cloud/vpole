@@ -117,6 +117,7 @@ public sealed class StartManualSourceBuildHandler(
             configuration.WebServiceId,
             sourceRepository.Branch,
             sourceRepository.CommitSha,
+            configuration.Recipe,
             request.CurrentUserId.Value,
             request.CurrentUserEmail.Value,
             new SourceBuildJobFactory.CreateOptions(

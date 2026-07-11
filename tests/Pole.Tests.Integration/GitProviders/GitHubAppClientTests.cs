@@ -119,6 +119,40 @@ public sealed class GitHubAppClientTests
         Assert.DoesNotContain("verifier", rendered, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ArchiveDownload_UsesExactCommitAndInstallationToken()
+    {
+        var handler = new DelegateHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/access_tokens", StringComparison.Ordinal))
+            {
+                return Json(HttpStatusCode.Created, """
+                    { "token": "installation-token", "expires_at": "2026-07-10T13:00:00Z" }
+                    """);
+            }
+            if (path == "/repositories/9001")
+            {
+                return Json(HttpStatusCode.OK, """
+                    { "id": 9001, "name": "sample", "full_name": "lsbV/sample", "html_url": "https://github.com/lsbV/sample", "private": true, "default_branch": "main", "updated_at": null }
+                    """);
+            }
+
+            Assert.Equal("/repos/lsbV/sample/tarball/abc123", path);
+            Assert.Equal("installation-token", request.Headers.Authorization?.Parameter);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent([1, 2, 3, 4])
+            };
+        });
+        var client = CreateClient(handler);
+        await using var destination = new MemoryStream();
+
+        await client.DownloadRepositoryArchiveAsync("42", "9001", "abc123", destination);
+
+        Assert.Equal([1, 2, 3, 4], destination.ToArray());
+    }
+
     private static GitHubAppClient CreateClient(
         HttpMessageHandler handler,
         TimeProvider? timeProvider = null)

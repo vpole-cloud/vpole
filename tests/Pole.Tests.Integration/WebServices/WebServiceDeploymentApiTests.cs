@@ -118,14 +118,14 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(WebServiceReleaseOutcome.Pending, release.Outcome);
         Assert.Null(release.ActorUserId);
         Assert.Null(release.ActorEmail);
-        Assert.NotNull(release.Provenance);
-        Assert.Equal("github-actions", release.Provenance.Source);
-        Assert.Equal("abc1234", release.Provenance.CommitSha);
-        Assert.Equal("1.27", release.Provenance.PreviousImageTag);
-        Assert.Equal("2026.07.09-abc1234", release.Provenance.NewImageTag);
-        Assert.Equal("DeploymentToken", release.Provenance.ActorType);
-        Assert.Equal(createdToken.Token.Id, release.Provenance.DeploymentTokenId);
-        Assert.Equal("github-actions", release.Provenance.DeploymentTokenName);
+        var provenance = Assert.IsType<ExternalImageTagUpdateProvenance>(release.Provenance);
+        Assert.Equal("github-actions", provenance.Source);
+        Assert.Equal("abc1234", provenance.CommitSha);
+        Assert.Equal("1.27", provenance.PreviousImageTag);
+        Assert.Equal("2026.07.09-abc1234", provenance.NewImageTag);
+        Assert.Equal("DeploymentToken", provenance.ActorType);
+        Assert.Equal(createdToken.Token.Id, provenance.DeploymentTokenId);
+        Assert.Equal("github-actions", provenance.DeploymentTokenName);
 
         var usedToken = await Fixture.DbContext.WebServiceDeploymentTokens
             .Find(token => token.Id == createdToken.Token.Id)

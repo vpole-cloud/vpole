@@ -88,6 +88,8 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton(new HarborOptions());
         builder.Services.AddContainerRegistriesFeature();
         builder.Services.AddSingleton<ISourceBuildJobDispatcher, TestSourceBuildJobDispatcher>();
+        builder.Services.AddSingleton(new SourceBuildExecutionOptions());
+        builder.Services.AddSingleton(new BuildKitOptions());
         builder.Services.AddSourceBuildsFeature();
         var gitHubClient = new FakeGitHubAppClient();
         builder.Services.RemoveAll<IGitHubAppClient>();

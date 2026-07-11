@@ -39,11 +39,13 @@ using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Application.Jobs;
+using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.Features.Tenants;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Application.Identity;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Mediator;
 using Pole.Observability;
@@ -166,6 +168,7 @@ public static class DependencyInjection
             services.TryAddScoped<IDomainNameReservationService, DomainNameReservationService>();
             services.TryAddScoped<IResourceGroupLookup, ResourceGroupLookup>();
             services.TryAddScoped<IStorageProfileResolver, StorageProfileResolver>();
+            services.TryAddScoped<IWebServiceSourceBuildDeploymentService, WebServiceSourceBuildDeploymentService>();
             services.TryAddScoped<IStorageDiscoveryService, KubernetesStorageDiscoveryService>();
             services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
             return services;
@@ -194,6 +197,7 @@ public static class DependencyInjection
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IRegistryCredentialProtector, RegistryCredentialProtector>();
             services.TryAddScoped<IRegistryCredentialResolver, RegistryCredentialResolver>();
+            services.TryAddScoped<IRuntimeRegistryAccessProvider, RuntimeRegistryAccessProvider>();
             services.TryAddScoped<IContainerRegistryProvisioningService, ContainerRegistryProvisioningService>();
             services.AddHttpClient<IContainerRegistryClient, HarborContainerRegistryClient>();
             return services;
@@ -201,8 +205,14 @@ public static class DependencyInjection
 
         public IServiceCollection AddSourceBuildsFeature()
         {
+            services.TryAddSingleton(TimeProvider.System);
             services.TryAddScoped<ISourceBuildReferenceLookup, SourceBuildReferenceLookup>();
             services.TryAddSingleton<ISourceBuildJobDispatcher, HangfireSourceBuildJobDispatcher>();
+            services.TryAddSingleton<IRepositoryArchiveExtractor, RepositoryArchiveExtractor>();
+            services.TryAddSingleton<IProcessRunner, ProcessRunner>();
+            services.TryAddSingleton<IBuildKitClient, BuildKitClient>();
+            services.TryAddScoped<ISourceBuildWorkspaceService, SourceBuildWorkspaceService>();
+            services.TryAddScoped<ISourceBuildJobExecutor, SourceBuildJobExecutor>();
             return services;
         }
 
@@ -221,6 +231,8 @@ public static class DependencyInjection
             services.AddSettingsSection<KeycloakOptions>(KeycloakOptions.SectionName, configuration);
             services.AddSettingsSection<GitHubAppOptions>(GitHubAppOptions.SectionName, configuration);
             services.AddSettingsSection<HarborOptions>(HarborOptions.SectionName, configuration);
+            services.AddSettingsSection<SourceBuildExecutionOptions>(SourceBuildExecutionOptions.SectionName, configuration);
+            services.AddSettingsSection<BuildKitOptions>(BuildKitOptions.SectionName, configuration);
             return services;
         }
 

@@ -35,6 +35,9 @@ public sealed class SourceBuildMigrationTests(MongoReplicaSetFixture fixture)
         Assert.Contains(
             buildIndexes,
             index => index["name"] == "IX_SourceBuildJobs_State_UpdatedAt");
+        Assert.Contains(
+            buildIndexes,
+            index => index["name"] == "IX_SourceBuildJobs_Tenant_State_Release");
     }
 
     private async Task<IReadOnlyList<BsonDocument>> GetIndexesAsync(string collectionName)
