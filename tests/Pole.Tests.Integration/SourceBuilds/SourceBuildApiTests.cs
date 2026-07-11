@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.GitProviders.Domain;
+using Pole.Features.Request;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Endpoints;
 using Pole.Features.SourceBuilds.Domain;
@@ -52,9 +53,13 @@ public sealed class SourceBuildApiTests(MongoReplicaSetFixture fixture)
             .SingleAsync();
         Assert.Contains(build.Id, outbox.PayloadJson, StringComparison.Ordinal);
 
-        var page = await Client.GetFromJsonAsync<SourceBuildJobPageDto>(
+        var pageResponse = await Client.GetAsync(
             $"/api/v1/source-build-jobs?configurationId={configuration.Id}");
+        var pageResponseBody = await pageResponse.Content.ReadAsStringAsync();
+        Assert.True(pageResponse.IsSuccessStatusCode, pageResponseBody);
+        var page = await pageResponse.Content.ReadFromJsonAsync<PaginatedResponse<SourceBuildJobDto>>();
         Assert.Equal(build.Id, Assert.Single(page!.Items).Id);
+        Assert.Equal(1, page.PageNumber);
 
         Assert.Equal(
             HttpStatusCode.Conflict,
@@ -109,7 +114,8 @@ public sealed class SourceBuildApiTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task RecipeAndPagingTechnicalValidation_RunBeforeHandlers()
     {
-        var invalidPage = await Client.GetAsync("/api/v1/source-build-jobs?page=0&pageSize=101");
+        var invalidPage = await Client.GetAsync(
+            "/api/v1/source-build-jobs?pageNumber=0&pageSize=101");
         Assert.Equal(HttpStatusCode.BadRequest, invalidPage.StatusCode);
 
         var invalidRecipe = new SourceBuildRecipeDto(

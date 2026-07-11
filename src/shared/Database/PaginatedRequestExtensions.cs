@@ -14,8 +14,13 @@ public static class PaginatedRequestExtensions
     
     public static IFindFluent<T, T> ApplyPagination<T, TRequest>(this IFindFluent<T, T> findFluent, PaginatedRequest<TRequest> request)
     {
+        return findFluent.ApplyPagination(request.PageNumber, request.PageSize);
+    }
+
+    public static IFindFluent<T, T> ApplyPagination<T>(this IFindFluent<T, T> findFluent, int pageNumber, int pageSize)
+    {
         return findFluent
-            .Skip(request.Skip)
-            .Limit(request.PageSize);
+            .Skip((pageNumber - 1) * pageSize)
+            .Limit(pageSize);
     }
 }

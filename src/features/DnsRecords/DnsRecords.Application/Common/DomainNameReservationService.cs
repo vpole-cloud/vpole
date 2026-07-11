@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Features.DnsRecords.Contracts;
 using Pole.Features.DnsRecords.Domain;
 using Pole.Features.Shared.Models;
@@ -36,16 +37,14 @@ public sealed class DomainNameReservationService(
                 Status = new Pending(now, now.Add(PendingReservationTtl))
             });
 
-        try
-        {
-            await dbContext.DnsRecords.InsertOneAsync(dnsRecord, cancellationToken: cancellationToken);
-        }
-        catch (MongoWriteException ex) when (ex.WriteError?.Category == ServerErrorCategory.DuplicateKey)
-        {
-            return Failures.Conflict($"Domain name '{request.DomainName}' is already in use.");
-        }
-
-        return new DnsRecordShortInfo(dnsRecord.Id, dnsRecord.Domain);
+        var inserted = await dbContext.DnsRecords.InsertOneAsResultAsync(
+            dnsRecord,
+            () => Failures.Conflict(
+                $"Domain name '{request.DomainName}' is already in use."),
+            cancellationToken);
+        return inserted.TryGetValue(out var value, out var failure)
+            ? new DnsRecordShortInfo(value.Id, value.Domain)
+            : failure;
     }
 
     public async Task<Result> CommitAsync(
