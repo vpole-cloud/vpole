@@ -69,6 +69,7 @@ public sealed record SourceBuildJob(
     string WebServiceId,
     string Branch,
     string CommitSha,
+    SourceBuildRecipe Recipe,
     SourceBuildTrigger Trigger,
     SourceBuildJobState State,
     DateTime CreatedAtUtc,
@@ -144,6 +145,7 @@ public static class SourceBuildJobFactory
         string webServiceId,
         string branch,
         string commitSha,
+        SourceBuildRecipe recipe,
         string userId,
         string? email,
         CreateOptions options) =>
@@ -155,6 +157,7 @@ public static class SourceBuildJobFactory
             webServiceId,
             branch,
             commitSha,
+            recipe,
             new ManualSourceBuildTrigger(userId, email),
             new QueuedSourceBuild(options.CreatedAtUtc),
             options.CreatedAtUtc,

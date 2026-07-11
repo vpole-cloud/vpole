@@ -11,6 +11,37 @@ namespace Pole.Features.WebServices.Application.Kubernetes;
 
 public static class WebServiceKubernetesResourceManager
 {
+    public static async Task<Result> ApplyImagePullSecretAsync(
+        IKubernetes kubernetes,
+        WebServiceInKubernetes webService,
+        string username,
+        string password,
+        CancellationToken cancellationToken = default)
+    {
+        var secret = webService.ToImagePullSecret(username, password);
+        if (secret is null)
+            return Result.Success();
+
+        return await CreateOrReplaceAsync(
+            () => kubernetes.CoreV1.CreateNamespacedSecretAsync(
+                secret,
+                webService.Namespace,
+                cancellationToken: cancellationToken),
+            async () =>
+            {
+                var existing = await kubernetes.CoreV1.ReadNamespacedSecretAsync(
+                    secret.Metadata.Name,
+                    webService.Namespace,
+                    cancellationToken: cancellationToken);
+                secret.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
+                await kubernetes.CoreV1.ReplaceNamespacedSecretAsync(
+                    secret,
+                    secret.Metadata.Name,
+                    webService.Namespace,
+                    cancellationToken: cancellationToken);
+            });
+    }
+
     public static async Task CreateAsync(
         IKubernetes kubernetes,
         WebServiceInKubernetes webService,

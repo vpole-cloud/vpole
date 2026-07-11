@@ -104,7 +104,7 @@ public sealed class UpdateWebServiceImageTagHandler(
                 deploymentEventCore.TraceId,
                 deploymentEventCore.CorrelationId,
                 deploymentEventCore.OccurredOn,
-                new WebServiceReleaseProvenance(
+                new ExternalImageTagUpdateProvenance(
                     request.Body.Source,
                     request.Body.CommitSha,
                     request.Body.BuildUrl,

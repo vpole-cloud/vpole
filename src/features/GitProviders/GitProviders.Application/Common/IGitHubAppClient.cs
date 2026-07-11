@@ -17,6 +17,12 @@ public interface IGitHubAppClient
     Task<ProviderRepository> GetRepositoryAsync(string installationId, string repositoryId, CancellationToken cancellationToken = default);
     Task<ProviderPage<ProviderBranch>> GetBranchesAsync(string installationId, string repositoryId, int page, int pageSize, CancellationToken cancellationToken = default);
     Task<RepositorySourceSnapshot> GetRepositorySnapshotAsync(string installationId, string repositoryId, string branch, CancellationToken cancellationToken = default);
+    Task DownloadRepositoryArchiveAsync(
+        string installationId,
+        string repositoryId,
+        string commitSha,
+        Stream destination,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class GitHubApiException(

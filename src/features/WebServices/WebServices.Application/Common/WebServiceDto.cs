@@ -145,17 +145,31 @@ public static class WebServiceDtoExtensions
         release.Provenance?.ToDto(),
         release.Spec.ToDomain().ToDto()
     );
-    public static WebServiceReleaseProvenanceDto ToDto(this WebServiceReleaseProvenance provenance) => new(
-        provenance.Source,
-        provenance.CommitSha,
-        provenance.BuildUrl,
-        provenance.ImageDigest,
-        provenance.PreviousImageTag,
-        provenance.NewImageTag,
-        provenance.ActorType,
-        provenance.DeploymentTokenId,
-        provenance.DeploymentTokenName
-    );
+    public static WebServiceReleaseProvenanceDto ToDto(this WebServiceReleaseProvenance provenance) =>
+        provenance switch
+        {
+            ExternalImageTagUpdateProvenance external => new(
+                external.Source,
+                external.CommitSha,
+                external.BuildUrl,
+                external.ImageDigest,
+                external.PreviousImageTag,
+                external.NewImageTag,
+                external.ActorType,
+                external.DeploymentTokenId,
+                external.DeploymentTokenName),
+            SourceBuildReleaseProvenance sourceBuild => new(
+                "PoleSourceBuild",
+                sourceBuild.CommitSha,
+                null,
+                sourceBuild.ImageDigest,
+                sourceBuild.PreviousImageReference,
+                sourceBuild.NewImageReference,
+                "SourceBuild",
+                null,
+                null),
+            _ => throw new ArgumentOutOfRangeException(nameof(provenance), provenance, null)
+        };
     public static WebServiceDeploymentTokenDto ToDto(this WebServiceDeploymentToken token) => new(
         token.Id,
         token.Name,

@@ -51,6 +51,24 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
         Assert.Equal("apply failed", saved.FailureMessage);
     }
 
+    [Fact]
+    public async Task Handle_DoesNotPublishAnotherCompletion_WhenDeliveryIsRepeated()
+    {
+        var release = await InsertPendingReleaseAsync();
+        var consumer = new ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer(
+            DbContext,
+            new FakeDeploymentApplier());
+        var deployment = CreateDeploymentEvent(release);
+
+        await consumer.Handle(deployment);
+        await consumer.Handle(deployment);
+
+        var completionEvents = await DbContext.OutboxMessages
+            .Find(message => message.EventType == "web-service-deployment-completed")
+            .ToListAsync();
+        Assert.Single(completionEvents);
+    }
+
     private async Task<WebServiceRelease> InsertPendingReleaseAsync()
     {
         var release = WebServiceReleaseFactory.CreatePending(

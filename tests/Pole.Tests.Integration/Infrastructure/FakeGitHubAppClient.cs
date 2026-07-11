@@ -113,4 +113,12 @@ public sealed class FakeGitHubAppClient : IGitHubAppClient
         string branch,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(Snapshot with { Branch = branch });
+
+    public Task DownloadRepositoryArchiveAsync(
+        string installationId,
+        string repositoryId,
+        string commitSha,
+        Stream destination,
+        CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
 }

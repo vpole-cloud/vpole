@@ -62,6 +62,7 @@
   </Folder>
   <Folder Name="/features/WebServices/">
     <Project Path="src/features/WebServices/WebServices.Application/WebServices.Application.csproj" />
+    <Project Path="src/features/WebServices/WebServices.Contracts/WebServices.Contracts.csproj" />
     <Project Path="src/features/WebServices/WebServices.Domain/WebServices.Domain.csproj" />
     <Project Path="src/features/WebServices/WebServices.Events/WebServices.Events.csproj" />
   </Folder>

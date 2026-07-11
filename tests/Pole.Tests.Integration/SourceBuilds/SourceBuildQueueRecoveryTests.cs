@@ -40,6 +40,15 @@ public sealed class SourceBuildQueueRecoveryTests(MongoReplicaSetFixture fixture
             ObjectId.GenerateNewId().ToString(),
             "main",
             "abc123",
+            new SourceBuildRecipe(
+                "candidate",
+                SourceBuildRecipeKind.DotNet,
+                ".",
+                "App.csproj",
+                System.Collections.Immutable.ImmutableList.Create("dotnet publish"),
+                "dotnet App.dll",
+                "FROM scratch",
+                false),
             TestData.UserId,
             TestData.UserEmail,
             new SourceBuildJobFactory.CreateOptions(

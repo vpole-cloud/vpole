@@ -1,6 +1,7 @@
 using MassTransit;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Events.Abstractions;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Domain;
@@ -23,22 +24,26 @@ public sealed class ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedCons
 
         if (applyResult is Failure failure)
         {
-            await MarkReleaseAsync(
+            var completion = await MarkReleaseAsync(
                 deploymentEvent,
                 WebServiceReleaseOutcome.Failed,
                 failure.Message,
                 cancellationToken);
+            if (completion is Failure completionFailure)
+                throw new InvalidOperationException(completionFailure.Message);
             throw new InvalidOperationException(failure.Message);
         }
 
-        await MarkReleaseAsync(
+        var succeeded = await MarkReleaseAsync(
             deploymentEvent,
             WebServiceReleaseOutcome.Succeeded,
             failureMessage: null,
             cancellationToken);
+        if (succeeded is Failure succeededFailure)
+            throw new InvalidOperationException(succeededFailure.Message);
     }
 
-    private Task MarkReleaseAsync(
+    private Task<Result> MarkReleaseAsync(
         WebServiceDeploymentRequestedEvent deploymentEvent,
         WebServiceReleaseOutcome outcome,
         string? failureMessage,
@@ -49,14 +54,45 @@ public sealed class ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedCons
             Builders<WebServiceRelease>.Filter.Eq(release => release.WebServiceId, deploymentEvent.WebServiceId),
             Builders<WebServiceRelease>.Filter.Eq(release => release.Id, deploymentEvent.ReleaseId));
 
-        var update = Builders<WebServiceRelease>.Update
-            .Set(release => release.Outcome, outcome)
-            .Set(release => release.CompletedAtUtc, DateTime.UtcNow)
-            .Set(release => release.FailureMessage, failureMessage);
+        return dbContext.RunInTransactionAsync(async (session, ct) =>
+        {
+            var update = Builders<WebServiceRelease>.Update
+                .Set(release => release.Outcome, outcome)
+                .Set(release => release.CompletedAtUtc, DateTime.UtcNow)
+                .Set(release => release.FailureMessage, failureMessage);
+            var updated = await dbContext.WebServiceReleases.UpdateOneAsync(
+                session,
+                Builders<WebServiceRelease>.Filter.And(
+                    filter,
+                    Builders<WebServiceRelease>.Filter.Eq(
+                        release => release.Outcome,
+                        WebServiceReleaseOutcome.Pending)),
+                update,
+                cancellationToken: ct);
+            if (updated.MatchedCount != 1)
+            {
+                var existing = await dbContext.WebServiceReleases
+                    .Find(session, filter)
+                    .FirstOrDefaultAsync(ct);
+                if (existing is null)
+                    return Failures.NotFound("Web service release not found.", deploymentEvent.ReleaseId);
+                return existing.Outcome == outcome
+                    ? Result.Success()
+                    : Failures.Conflict("The web service release already has a different outcome.");
+            }
 
-        return dbContext.WebServiceReleases.UpdateOneAsync(
-            filter,
-            update,
-            cancellationToken: cancellationToken);
+            await dbContext.StoreEventAsync(
+                new WebServiceDeploymentCompletedEvent(
+                    deploymentEvent.ReleaseId,
+                    deploymentEvent.WebServiceId,
+                    outcome == WebServiceReleaseOutcome.Succeeded,
+                    failureMessage)
+                {
+                    EventCore = deploymentEvent.EventCore
+                },
+                session,
+                ct);
+            return Result.Success();
+        }, cancellationToken: cancellationToken);
     }
 }

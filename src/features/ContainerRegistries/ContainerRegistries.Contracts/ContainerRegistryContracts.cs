@@ -47,3 +47,18 @@ public interface IContainerRegistryClient
         string externalProjectId,
         CancellationToken cancellationToken = default);
 }
+
+public sealed record RuntimeRegistryAccess(
+    string RegistryProjectId,
+    string RegistryHost,
+    string ProjectName,
+    string KubernetesSecretName,
+    string Username,
+    string Secret);
+
+public interface IRuntimeRegistryAccessProvider
+{
+    Task<Result<RuntimeRegistryAccess>> ResolveAsync(
+        string tenantId,
+        CancellationToken cancellationToken = default);
+}

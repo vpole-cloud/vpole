@@ -44,7 +44,13 @@ public sealed class SourceBuildMigration : IMigration
                 new CreateIndexOptions { Name = "IX_SourceBuildJobs_Tenant_WebService_CreatedAt" }),
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys.Ascending("State._t").Ascending("UpdatedAtUtc"),
-                new CreateIndexOptions { Name = "IX_SourceBuildJobs_State_UpdatedAt" })
+                new CreateIndexOptions { Name = "IX_SourceBuildJobs_State_UpdatedAt" }),
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys
+                    .Ascending("TenantId")
+                    .Ascending("State._t")
+                    .Ascending("State.ReleaseId"),
+                new CreateIndexOptions { Name = "IX_SourceBuildJobs_Tenant_State_Release" })
         ], cancellationToken);
     }
 }

@@ -182,6 +182,41 @@ public sealed class GitHubAppClient(
             treeResponse.Truncated);
     }
 
+    public async Task DownloadRepositoryArchiveAsync(
+        string installationId,
+        string repositoryId,
+        string commitSha,
+        Stream destination,
+        CancellationToken cancellationToken = default)
+    {
+        var repository = await GetRepositoryAsync(installationId, repositoryId, cancellationToken);
+        var token = await GetInstallationTokenAsync(installationId, cancellationToken);
+        using var request = CreateRequest(
+            HttpMethod.Get,
+            ApiUrl($"/repos/{EscapePath(repository.FullName)}/tarball/{Escape(commitSha)}"),
+            token);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await httpClient.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+        }
+        catch (HttpRequestException exception)
+        {
+            throw new GitHubApiException("GitHub could not be reached.", innerException: exception);
+        }
+
+        using (response)
+        {
+            if (!response.IsSuccessStatusCode)
+                throw CreateException(response.StatusCode);
+            await response.Content.CopyToAsync(destination, cancellationToken);
+        }
+    }
+
     private async Task<string> GetInstallationTokenAsync(string installationId, CancellationToken cancellationToken)
     {
         var cacheKey = $"github-installation-token:{installationId}";
