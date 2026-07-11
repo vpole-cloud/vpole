@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Pole.ASP.Helpers;
 using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.Postgres.Application.Common;
@@ -19,6 +20,7 @@ using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
+using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Middleware;
@@ -40,6 +42,8 @@ public sealed class TestApiApplication : IAsyncDisposable
         typeof(RedisServiceEndpoints).Assembly,
         typeof(DnsRecordEndpoints).Assembly,
         typeof(GitProviderEndpoints).Assembly,
+        typeof(ContainerRegistryFeature).Assembly,
+        typeof(SourceBuildFeature).Assembly,
         typeof(SearchEndpoints).Assembly,
         typeof(StorageProfileEndpoints).Assembly
     ];
@@ -80,6 +84,8 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddMigrations(Assemblies);
         builder.Services.AddSearchFeature();
         builder.Services.AddGitProvidersFeature();
+        builder.Services.AddSingleton(new HarborOptions());
+        builder.Services.AddContainerRegistriesFeature();
         var gitHubClient = new FakeGitHubAppClient();
         builder.Services.RemoveAll<IGitHubAppClient>();
         builder.Services.AddSingleton<IGitHubAppClient>(gitHubClient);
