@@ -13,6 +13,7 @@ import { useOverviewData } from './hooks/useOverviewData'
 import { useGitIntegrationsManager } from './hooks/useGitIntegrationsManager'
 import { useResourceGroupsManager } from './hooks/useResourceGroupsManager'
 import { useStorageSettingsManager } from './hooks/useStorageSettingsManager'
+import { useSourceBuildsManager } from './hooks/useSourceBuildsManager'
 import { useTenants } from './hooks/useTenants'
 import { useWebServicesManager } from './hooks/useWebServicesManager'
 import {
@@ -54,6 +55,7 @@ function App() {
   const [integrationNotice, setIntegrationNotice] = useState(
     initialNavigation.githubNotice,
   )
+  const [selectedWebServiceId, setSelectedWebServiceId] = useState<string | null>(null)
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string
   const token = keycloak.authenticated ? keycloak.token : undefined
   const isPlatformAdmin = hasPlatformAdminRole(
@@ -90,6 +92,13 @@ function App() {
     apiBaseUrl,
     token,
     enabled: initialized && currentView === 'storage' && Boolean(keycloak.authenticated),
+  })
+  const sourceBuilds = useSourceBuildsManager({
+    apiBaseUrl,
+    token,
+    tenantId: tenants.activeTenantId,
+    webServiceId: selectedWebServiceId,
+    enabled: initialized && currentView === 'web-services' && tenantReady,
   })
   const integrations = useGitIntegrationsManager({
     apiBaseUrl,
@@ -155,7 +164,10 @@ function App() {
           activeTenantId={tenants.activeTenantId}
           status={tenants.status}
           error={tenants.error}
-          onSelectTenant={tenants.selectTenant}
+          onSelectTenant={(tenantId) => {
+            setSelectedWebServiceId(null)
+            tenants.selectTenant(tenantId)
+          }}
         />
       }
     >
@@ -198,6 +210,9 @@ function App() {
           onCreate={webServices.create}
           onUpdate={webServices.update}
           onDelete={webServices.remove}
+          selectedId={selectedWebServiceId}
+          onSelect={setSelectedWebServiceId}
+          sourceBuilds={sourceBuilds}
           canManage={canManageTenantResources}
         />
       ) : currentView === 'integrations' ? (
