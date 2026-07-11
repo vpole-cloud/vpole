@@ -29,6 +29,7 @@ public static class CreateUser
             return result.ToHttpResult(u => Results.Created($"/api/v1/users/{u.Id}", u));
         })
         .WithName("CreateUser")
+        .RequireAuthorization(Policy.Admin)
         .Produces<UserDto>(StatusCodes.Status201Created);
 
         return app;

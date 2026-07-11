@@ -67,8 +67,9 @@ builder.Services.AddKubernetes(configuration)
     .AddPoleMediator(assemblies);
 builder.Services.AddCors(options =>
 {
+    var frontendOrigin = configuration["Cors:FrontendOrigin"] ?? "http://localhost:5173";
     options.AddPolicy("frontend-dev", policy =>
-        policy.WithOrigins("http://localhost:5173")
+        policy.WithOrigins(frontendOrigin)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .WithExposedHeaders(TraceHeaders.CorrelationId, TraceHeaders.TraceId));

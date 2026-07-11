@@ -38,6 +38,8 @@ When testing source builds, explicitly start `pole-harbor` and `pole-buildkit` b
 
 On Windows, stop the `pole-server` Aspire resource before building projects that replace its loaded assemblies. Restart it after the build. A running server can lock output DLLs and cause misleading build failures.
 
+For an isolated, disposable AppHost graph with real Keycloak authentication and a browser smoke path, see [Aspire E2E testing](aspire-e2e-testing.md). That profile deliberately uses random host ports and session-scoped containers, rather than the persistent local-development data volumes.
+
 ## Validation Boundaries
 
 Use the cheapest boundary that proves the behavior:

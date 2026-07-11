@@ -1,6 +1,8 @@
 using Pole.AppHost.MongoDb;
+using Microsoft.Extensions.Configuration;
 
 var builder = DistributedApplication.CreateBuilder(args);
+var e2eEnabled = builder.Configuration.GetValue("E2E:Enabled", false);
 
 var mongoUsername = builder.AddParameter("mongo-username");
 var mongoPassword = builder.AddParameter("mongo-password", secret: true);
@@ -9,35 +11,61 @@ var mongoServer = builder.AddMongoDB("pole-mongo", userName: mongoUsername, pass
     .WithEntrypoint("/usr/local/bin/mongo-entrypoint.sh")
     .WithMongoExpress(options =>
     {
-        options.WithLifetime(ContainerLifetime.Persistent);
+        if (!e2eEnabled)
+            options.WithLifetime(ContainerLifetime.Persistent);
     })
-    .WithEndpoint("tcp", endpoint =>
-    {
-        endpoint.Port = 27017;
-        endpoint.TargetPort = 27017;
-        endpoint.IsProxied = false;
-    }, createIfNotExists: true)
-    .WithDataVolume("pole-mongo-data")
-    .WithLifetime(ContainerLifetime.Persistent)
     .WithReplicaSet();
+if (!e2eEnabled)
+{
+    mongoServer
+        .WithEndpoint("tcp", endpoint =>
+        {
+            endpoint.Port = 27017;
+            endpoint.TargetPort = 27017;
+            endpoint.IsProxied = false;
+        }, createIfNotExists: true)
+        .WithDataVolume("pole-mongo-data")
+        .WithLifetime(ContainerLifetime.Persistent);
+}
+else
+{
+    mongoServer.WithLifetime(ContainerLifetime.Session);
+}
+
 var mongoReplicaSet = builder
     .AddMongoReplicaSet("pole-database", mongoServer.Resource);
 
 var keycloakUsername = builder.AddParameter("keycloak-username");
 var keycloakPassword = builder.AddParameter("keycloak-password", secret: true);
-var keycloak = builder.AddKeycloak("pole-keycloak",8080, keycloakUsername, keycloakPassword)
+var keycloak = builder.AddKeycloak("pole-keycloak", e2eEnabled ? null : 8080, keycloakUsername, keycloakPassword)
     .WithRealmImport("../../../infrastructure/keycloak/realms/pole.control-plane.realm.json")
     .WithEnvironment("KC_HTTP_MANAGEMENT_SCHEME", "http")
-    .WithEndpoint("management", endpoint => endpoint.UriScheme = "http")
-    .WithDataVolume("pole-keycloak-data")
-    .WithLifetime(ContainerLifetime.Persistent);
+    .WithEndpoint("management", endpoint => endpoint.UriScheme = "http");
+if (!e2eEnabled)
+{
+    keycloak
+        .WithDataVolume("pole-keycloak-data")
+        .WithLifetime(ContainerLifetime.Persistent);
+}
+else
+{
+    keycloak.WithLifetime(ContainerLifetime.Session);
+}
 
 var rabbitMqUsername = builder.AddParameter("rabbitmq-username");
 var rabbitMqPassword = builder.AddParameter("rabbitmq-password", secret: true);
 var rabbitMq = builder.AddRabbitMQ("pole-rabbitmq", rabbitMqUsername, rabbitMqPassword)
-    .WithManagementPlugin()
-    .WithDataVolume("pole-rabbitmq-data")
-    .WithLifetime(ContainerLifetime.Persistent);
+    .WithManagementPlugin();
+if (!e2eEnabled)
+{
+    rabbitMq
+        .WithDataVolume("pole-rabbitmq-data")
+        .WithLifetime(ContainerLifetime.Persistent);
+}
+else
+{
+    rabbitMq.WithLifetime(ContainerLifetime.Session);
+}
 
 var api = builder.AddProject<Projects.Pole_Server>("pole-server")
     .WithReference(keycloak)
@@ -47,7 +75,8 @@ var api = builder.AddProject<Projects.Pole_Server>("pole-server")
     .WaitFor(keycloak)
     .WaitFor(mongoServer)
     .WaitFor(mongoReplicaSet)
-    .WaitFor(rabbitMq);
+    .WaitFor(rabbitMq)
+    .WithHttpHealthCheck("/health", endpointName: "http");
 
 if (bool.TryParse(builder.Configuration["LocalSourceBuilds:Enabled"], out var localSourceBuildsEnabled) &&
     localSourceBuildsEnabled)
@@ -69,7 +98,7 @@ if (bool.TryParse(builder.Configuration["LocalSourceBuilds:Enabled"], out var lo
             "--remove-orphans")
         .WithExplicitStart();
 
-    builder.AddContainer("pole-buildkit", "moby/buildkit", "v0.30.0")
+    var buildKit = builder.AddContainer("pole-buildkit", "moby/buildkit", "v0.30.0")
         .WithBindMount("BuildKit/buildkitd.toml", "/etc/buildkit/buildkitd.toml", isReadOnly: true)
         .WithArgs(
             "--addr", "tcp://0.0.0.0:1234",
@@ -77,14 +106,23 @@ if (bool.TryParse(builder.Configuration["LocalSourceBuilds:Enabled"], out var lo
         .WithContainerRuntimeArgs("--privileged")
         .WithEndpoint("grpc", endpoint =>
         {
-            endpoint.Port = 1234;
+            if (!e2eEnabled)
+                endpoint.Port = 1234;
             endpoint.TargetPort = 1234;
-            endpoint.IsProxied = false;
+            endpoint.IsProxied = e2eEnabled;
             endpoint.UriScheme = "tcp";
-        })
-        .WithVolume("pole-buildkit-data", "/var/lib/buildkit")
-        .WithLifetime(ContainerLifetime.Persistent)
-        .WithExplicitStart();
+        });
+    if (!e2eEnabled)
+    {
+        buildKit
+            .WithVolume("pole-buildkit-data", "/var/lib/buildkit")
+            .WithLifetime(ContainerLifetime.Persistent);
+    }
+    else
+    {
+        buildKit.WithLifetime(ContainerLifetime.Session);
+    }
+    buildKit.WithExplicitStart();
 
     var harborAdminPassword = builder.AddParameter("harbor-admin-password", secret: true);
     api.WithEnvironment("Harbor__Enabled", "true")
@@ -100,7 +138,7 @@ if (bool.TryParse(builder.Configuration["LocalSourceBuilds:Enabled"], out var lo
         .WithEnvironment("BuildKit__Enabled", "true")
         .WithEnvironment(
             "BuildKit__Address",
-            builder.Configuration["LocalSourceBuilds:BuildKitAddress"] ?? "tcp://localhost:1234")
+            buildKit.GetEndpoint("grpc"))
         .WithEnvironment(
             "BuildKit__BuildctlPath",
             builder.Configuration["LocalSourceBuilds:BuildctlPath"] ?? "buildctl")
@@ -115,8 +153,9 @@ var githubParameterNames = new[]
     "github-app-private-key-path",
     "github-app-public-base-url"
 };
-if (githubParameterNames.All(name =>
-        !string.IsNullOrWhiteSpace(builder.Configuration[$"Parameters:{name}"])))
+var githubAppEnabled = githubParameterNames.All(
+    name => !string.IsNullOrWhiteSpace(builder.Configuration[$"Parameters:{name}"]));
+if (githubAppEnabled)
 {
     var githubAppClientId = builder.AddParameter("github-app-client-id");
     var githubAppClientSecret = builder.AddParameter("github-app-client-secret", secret: true);
@@ -130,8 +169,20 @@ if (githubParameterNames.All(name =>
         .WithEnvironment("GitHubApp__AppSlug", githubAppSlug)
         .WithEnvironment("GitHubApp__PrivateKeyPath", githubAppPrivateKeyPath)
         .WithEnvironment("GitHubApp__PublicBaseUrl", githubAppPublicBaseUrl)
-        .WithEnvironment("GitHubApp__FrontendBaseUrl", "http://localhost:5173");
+        .WithEnvironment(
+            "GitHubApp__ApiBaseUrl",
+            builder.Configuration["GitHubApp:ApiBaseUrl"] ?? "https://api.github.com")
+        .WithEnvironment(
+            "GitHubApp__WebBaseUrl",
+            builder.Configuration["GitHubApp:WebBaseUrl"] ?? "https://github.com");
 }
+
+var e2eWorkspaceRoot = builder.Configuration["E2E:WorkspaceRoot"];
+if (e2eEnabled && !string.IsNullOrWhiteSpace(e2eWorkspaceRoot))
+    api.WithEnvironment("SourceBuildExecution__WorkspaceRoot", e2eWorkspaceRoot);
+var e2eKubernetesNamespacePrefix = builder.Configuration["E2E:KubernetesNamespacePrefix"];
+if (e2eEnabled && !string.IsNullOrWhiteSpace(e2eKubernetesNamespacePrefix))
+    api.WithEnvironment("kubernetes__NamespaceNamePrefix", e2eKubernetesNamespacePrefix);
 
 var blog = builder.AddProject<Projects.Blog>("blog")
     .WithReference(api)
@@ -141,10 +192,24 @@ var blog = builder.AddProject<Projects.Blog>("blog")
 var frontend = builder.AddViteApp("frontend", "../frontend")
     .WithEndpoint("http", (endpointAnnotation) =>
     {
-        endpointAnnotation.Port = 5173;
+        endpointAnnotation.Port = e2eEnabled ? null : 5173;
     })
     .WithReference(api)
     .WaitFor(api)
+    .WithEnvironment("VITE_API_BASE_URL", api.GetEndpoint("http"))
+    .WithEnvironment("VITE_KEYCLOAK_URL", keycloak.GetEndpoint("http"))
+    .WithEnvironment("VITE_KEYCLOAK_REALM", "pole.control-plane")
+    .WithEnvironment("VITE_KEYCLOAK_CLIENT_ID", "pole.control-plane.ui")
+    .WithHttpHealthCheck("/", endpointName: "http")
     .WithExternalHttpEndpoints();
+
+api.WithEnvironment("Cors__FrontendOrigin", frontend.GetEndpoint("http"));
+api.WithEnvironment("KeycloakAdmin__BaseUrl", keycloak.GetEndpoint("http"));
+if (githubAppEnabled)
+{
+    api.WithEnvironment("GitHubApp__FrontendBaseUrl", frontend.GetEndpoint("http"));
+    if (e2eEnabled)
+        api.WithEnvironment("GitHubApp__PublicBaseUrl", api.GetEndpoint("http"));
+}
 
 builder.Build().Run();
