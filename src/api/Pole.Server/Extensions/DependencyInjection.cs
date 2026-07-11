@@ -14,6 +14,10 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.ContainerRegistries.Application.Common;
+using Pole.Features.ContainerRegistries.Application.Harbor;
+using Pole.Features.ContainerRegistries.Application.Provisioning;
+using Pole.Features.ContainerRegistries.Application.Security;
+using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.DnsRecords.Contracts;
 using Pole.Features.DnsRecords.Application.Filters;
@@ -182,6 +186,17 @@ public static class DependencyInjection
             return services;
         }
 
+        public IServiceCollection AddContainerRegistriesFeature()
+        {
+            services.AddDataProtection().SetApplicationName("Pole");
+            services.TryAddSingleton(TimeProvider.System);
+            services.TryAddSingleton<IRegistryCredentialProtector, RegistryCredentialProtector>();
+            services.TryAddScoped<IRegistryCredentialResolver, RegistryCredentialResolver>();
+            services.TryAddScoped<IContainerRegistryProvisioningService, ContainerRegistryProvisioningService>();
+            services.AddHttpClient<IContainerRegistryClient, HarborContainerRegistryClient>();
+            return services;
+        }
+
         public IServiceCollection AddUsersFeature(IConfiguration configuration)
         {
             services.Configure<KeycloakOptions>(configuration.GetSection(KeycloakOptions.SectionName));
@@ -196,6 +211,7 @@ public static class DependencyInjection
             services.AddSettingsSection<PostgresSettings>(PostgresSettings.SectionName, configuration);
             services.AddSettingsSection<KeycloakOptions>(KeycloakOptions.SectionName, configuration);
             services.AddSettingsSection<GitHubAppOptions>(GitHubAppOptions.SectionName, configuration);
+            services.AddSettingsSection<HarborOptions>(HarborOptions.SectionName, configuration);
             return services;
         }
 
