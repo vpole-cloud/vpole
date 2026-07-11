@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 
 var builder = DistributedApplication.CreateBuilder(args);
 var e2eEnabled = builder.Configuration.GetValue("E2E:Enabled", false);
+var e2eKeycloakPort = e2eEnabled ? builder.Configuration.GetValue<int?>("E2E:KeycloakPort") : null;
 
 var mongoUsername = builder.AddParameter("mongo-username");
 var mongoPassword = builder.AddParameter("mongo-password", secret: true);
@@ -49,6 +50,16 @@ if (!e2eEnabled)
 }
 else
 {
+    if (e2eKeycloakPort is { } e2ePort)
+    {
+        keycloak.WithEndpoint("http", endpoint =>
+        {
+            endpoint.Port = e2ePort;
+            endpoint.TargetPort = 8080;
+            endpoint.IsProxied = false;
+        }, createIfNotExists: true);
+    }
+
     keycloak.WithLifetime(ContainerLifetime.Session);
 }
 
@@ -71,12 +82,22 @@ var api = builder.AddProject<Projects.Pole_Server>("pole-server")
     .WithReference(keycloak)
     .WithReference(mongoServer)
     .WithReference(mongoReplicaSet)
-    .WithReference(rabbitMq)
-    .WaitFor(keycloak)
-    .WaitFor(mongoServer)
-    .WaitFor(mongoReplicaSet)
-    .WaitFor(rabbitMq)
-    .WithHttpHealthCheck("/health", endpointName: "http");
+    .WithReference(rabbitMq);
+if (e2eEnabled)
+{
+    api
+        .WaitFor(mongoReplicaSet)
+        .WaitFor(rabbitMq);
+}
+else
+{
+    api
+        .WaitFor(keycloak)
+        .WaitFor(mongoServer)
+        .WaitFor(mongoReplicaSet)
+        .WaitFor(rabbitMq);
+}
+api.WithHttpHealthCheck("/health", endpointName: "http");
 
 if (bool.TryParse(builder.Configuration["LocalSourceBuilds:Enabled"], out var localSourceBuildsEnabled) &&
     localSourceBuildsEnabled)
@@ -205,6 +226,11 @@ var frontend = builder.AddViteApp("frontend", "../frontend")
 
 api.WithEnvironment("Cors__FrontendOrigin", frontend.GetEndpoint("http"));
 api.WithEnvironment("KeycloakAdmin__BaseUrl", keycloak.GetEndpoint("http"));
+if (e2eKeycloakPort is { } keycloakPort)
+{
+    var keycloakIssuer = "http://localhost:" + keycloakPort + "/realms/pole.control-plane";
+    api.WithEnvironment("Authentication__ValidIssuer", keycloakIssuer);
+}
 if (githubAppEnabled)
 {
     api.WithEnvironment("GitHubApp__FrontendBaseUrl", frontend.GetEndpoint("http"));

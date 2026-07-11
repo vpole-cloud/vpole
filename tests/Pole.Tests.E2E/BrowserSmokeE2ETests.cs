@@ -31,12 +31,16 @@ public sealed class BrowserSmokeE2ETests(PoleE2EFixture fixture)
 
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in" }).ClickAsync();
             await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);
-            await page.GetByLabel("Password").FillAsync(fixture.Alpha.Password);
+            await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password" })
+                .FillAsync(fixture.Alpha.Password);
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In" }).ClickAsync();
-            await page.GetByText(fixture.Alpha.Email).WaitForAsync();
 
-            await page.GetByLabel("Tenant").SelectOptionAsync(fixture.Alpha.DefaultTenantId);
+            var tenantSelector = page.GetByLabel("Tenant");
+            await tenantSelector.WaitForAsync();
+            await tenantSelector.SelectOptionAsync(fixture.Alpha.DefaultTenantId);
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Resource groups" }).ClickAsync();
+            await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Environment boundaries" }).WaitForAsync();
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "New group" }).ClickAsync();
 
             var resourceGroupName = $"{name}-{Guid.NewGuid():N}"[..20];
             await page.GetByLabel("Name").FillAsync(resourceGroupName);

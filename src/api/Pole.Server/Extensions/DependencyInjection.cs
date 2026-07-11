@@ -118,7 +118,7 @@ public static class DependencyInjection
             services.AddSingleton<IPostgresClusterDeploymentBackend, OperatorPostgresClusterDeploymentBackend>();
             services.AddSingleton<IPostgresClusterDeploymentBackend, StatefulSetPostgresClusterDeploymentBackend>();
             services.AddSingleton<IPostgresClusterDeploymentManager, PostgresClusterDeploymentManager>();
-            services.TryAddSingleton<IWebServiceDeploymentApplier, KubernetesWebServiceDeploymentApplier>();
+            services.TryAddScoped<IWebServiceDeploymentApplier, KubernetesWebServiceDeploymentApplier>();
             return services;
         }
         public IServiceCollection AddEventBus(IConfiguration configuration, Assembly[] assemblies)
@@ -291,6 +291,7 @@ public static class DependencyInjection
     {
         public  WebApplicationBuilder AddSecurity()
         {
+            var configuredValidIssuer = builder.Configuration["Authentication:ValidIssuer"];
             builder.Services.AddAuthentication(options =>
                 {
                     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -307,6 +308,14 @@ public static class DependencyInjection
                         if (builder.Environment.IsDevelopment())
                             options.RequireHttpsMetadata = false;
                     });
+            if (!string.IsNullOrWhiteSpace(configuredValidIssuer))
+            {
+                builder.Services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+                {
+                    options.TokenValidationParameters.ValidIssuer = configuredValidIssuer;
+                    options.TokenValidationParameters.ValidIssuers = [configuredValidIssuer];
+                });
+            }
             builder.Services.AddAuthorization(options =>
             {
                 options.AddPolicy(Policy.Admin, policy =>

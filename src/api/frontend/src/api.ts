@@ -20,7 +20,28 @@ import type {
   WebServiceInput,
   WebService,
   Tenant,
+  TenantRole,
 } from './types'
+
+type TenantResponse = Omit<Tenant, 'role'> & {
+  role: TenantRole | number
+}
+
+const tenantRoles: Record<number, TenantRole> = {
+  0: 'Viewer',
+  1: 'Member',
+  2: 'Admin',
+  3: 'Owner',
+}
+
+export function normalizeTenantRole(role: TenantRole | number): TenantRole {
+  if (typeof role === 'string') return role
+
+  const normalized = tenantRoles[role]
+  if (normalized) return normalized
+
+  throw new Error(`Unknown tenant role value: ${role}`)
+}
 
 const buildHeaders = (token?: string, tenantId?: string) => {
   const headers: Record<string, string> = {
@@ -43,10 +64,15 @@ export async function fetchTenants(
   token?: string,
   signal?: AbortSignal,
 ) {
-  return fetchJson<Tenant[]>(`${apiBaseUrl}/api/v1/tenants`, {
+  const tenants = await fetchJson<TenantResponse[]>(`${apiBaseUrl}/api/v1/tenants`, {
     headers: buildHeaders(token),
     signal,
   })
+
+  return tenants.map((tenant) => ({
+    ...tenant,
+    role: normalizeTenantRole(tenant.role),
+  }))
 }
 
 export async function fetchStorageProfiles(
