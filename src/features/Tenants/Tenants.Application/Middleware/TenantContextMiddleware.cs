@@ -82,6 +82,8 @@ public sealed class TenantContextMiddleware(RequestDelegate next)
                path.StartsWithSegments("/api/v1/storage-profiles") ||
                path.StartsWithSegments("/api/v1/git-provider-connections") ||
                path.StartsWithSegments("/api/v1/source-repositories") ||
+               path.StartsWithSegments("/api/v1/source-build-configurations") ||
+               path.StartsWithSegments("/api/v1/source-build-jobs") ||
                path.StartsWithSegments("/api/v1/domain-names") ||
                path.StartsWithSegments("/api/v1/search");
     }

@@ -21,6 +21,7 @@ using Pole.Features.Search.Application.Services;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.SourceBuilds.Application.Common;
+using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Middleware;
@@ -86,6 +87,8 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddGitProvidersFeature();
         builder.Services.AddSingleton(new HarborOptions());
         builder.Services.AddContainerRegistriesFeature();
+        builder.Services.AddSingleton<ISourceBuildJobDispatcher, TestSourceBuildJobDispatcher>();
+        builder.Services.AddSourceBuildsFeature();
         var gitHubClient = new FakeGitHubAppClient();
         builder.Services.RemoveAll<IGitHubAppClient>();
         builder.Services.AddSingleton<IGitHubAppClient>(gitHubClient);
@@ -136,7 +139,8 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapSearchEndpoints()
             .MapDomainNameEndpoints()
             .MapStorageProfileEndpoints()
-            .MapGitProviderEndpoints();
+            .MapGitProviderEndpoints()
+            .MapSourceBuildEndpoints();
 
         await app.StartAsync();
 
@@ -148,5 +152,6 @@ public sealed class TestApiApplication : IAsyncDisposable
         await _app.StopAsync();
         await _app.DisposeAsync();
     }
+
 }
 

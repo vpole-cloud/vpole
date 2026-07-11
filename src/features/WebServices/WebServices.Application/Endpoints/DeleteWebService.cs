@@ -12,6 +12,7 @@ using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Events;
 using Pole.Features.WebServices.Application.Kubernetes;
+using Pole.Features.SourceBuilds.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -35,12 +36,34 @@ public static class DeleteWebService
 }
 
 public sealed class DeleteWebServiceHandler(
-    IWebServiceDbContext dbContext
+    IWebServiceDbContext dbContext,
+    ISourceBuildReferenceLookup sourceBuildReferences
     ) : IMediatorHandler<DeleteWebServiceRequest, DeleteWebServiceResponse>
 {
     public async Task<Result<DeleteWebServiceResponse>> HandleAsync(DeleteWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
+        var tenantId = request.TenantId;
+        if (tenantId is null)
+        {
+            var existing = await dbContext.WebServices
+                .Find(service => service.Id == request.Id)
+                .Project(service => service.TenantId)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (existing is null)
+                return Failures.NotFound("Web service not found.", request.Id);
+            tenantId = existing;
+        }
+
+        if (await sourceBuildReferences.HasConfigurationForWebServiceAsync(
+                tenantId,
+                request.Id,
+                cancellationToken))
+        {
+            return Failures.Conflict(
+                "Delete the source build configuration before deleting this web service.");
+        }
+
         return await dbContext.RunInTransactionAsync<DeleteWebServiceResponse>(async (sh, ct) =>
         {
             var filter = Builders<WebService>.Filter.And(
