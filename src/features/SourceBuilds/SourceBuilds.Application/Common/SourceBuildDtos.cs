@@ -58,12 +58,6 @@ public sealed record SourceBuildJobDto(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
 
-public sealed record SourceBuildJobPageDto(
-    IReadOnlyList<SourceBuildJobDto> Items,
-    int Page,
-    int PageSize,
-    long TotalCount);
-
 public static class SourceBuildDtoMappings
 {
     public static SourceBuildRecipe ToBuildRecipe(this SourceBuildPlan plan) =>

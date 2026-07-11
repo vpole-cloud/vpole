@@ -245,13 +245,6 @@ export interface SourceBuildJob {
   updatedAtUtc: string
 }
 
-export interface SourceBuildJobPage {
-  items: SourceBuildJob[]
-  page: number
-  pageSize: number
-  totalCount: number
-}
-
 export interface OverviewData {
   resourceGroups: ResourceGroup[]
   webServices: WebService[]

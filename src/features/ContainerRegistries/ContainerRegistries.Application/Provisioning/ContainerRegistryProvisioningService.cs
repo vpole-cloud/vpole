@@ -128,16 +128,11 @@ public sealed class ContainerRegistryProvisioningService(
             RegistryProjectName.ForTenant(tenantId),
             initiatedByUserId,
             new RegistryProjectFactory.CreateOptions(MongoDB.Bson.ObjectId.GenerateNewId().ToString(), now));
-        try
-        {
-            await dbContext.RegistryProjects.InsertOneAsync(project, cancellationToken: cancellationToken);
-            return project;
-        }
-        catch (MongoWriteException exception) when (
-            exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
-        {
-            return Failures.Conflict("The tenant container registry is already being provisioned.");
-        }
+        return await dbContext.RegistryProjects.InsertOneAsResultAsync(
+            project,
+            () => Failures.Conflict(
+                "The tenant container registry is already being provisioned."),
+            cancellationToken);
     }
 
     private RegistryCredential CreateCredential(

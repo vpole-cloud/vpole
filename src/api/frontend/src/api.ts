@@ -17,7 +17,6 @@ import type {
   SourceRepository,
   SourceBuildConfiguration,
   SourceBuildJob,
-  SourceBuildJobPage,
   WebServiceInput,
   WebService,
   Tenant,
@@ -615,10 +614,10 @@ export async function fetchSourceBuildJobs(
 ) {
   const query = new URLSearchParams({
     webServiceId,
-    page: '1',
+    pageNumber: '1',
     pageSize: '20',
   })
-  return fetchJson<SourceBuildJobPage>(
+  return fetchJson<PaginatedResponse<SourceBuildJob>>(
     `${apiBaseUrl}/api/v1/source-build-jobs?${query.toString()}`,
     {
       headers: buildHeaders(token, tenantId),

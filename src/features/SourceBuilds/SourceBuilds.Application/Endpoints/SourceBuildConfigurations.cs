@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
+using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
@@ -150,18 +151,14 @@ public sealed class CreateSourceBuildConfigurationHandler(
             new SourceBuildConfigurationFactory.CreateOptions(
                 MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
                 now));
-        try
-        {
-            await dbContext.SourceBuildConfigurations.InsertOneAsync(
-                configuration,
-                cancellationToken: cancellationToken);
-            return configuration.ToDto();
-        }
-        catch (MongoWriteException exception) when (
-            exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
-        {
-            return Failures.Conflict("This web service already has a source build configuration.");
-        }
+        var inserted = await dbContext.SourceBuildConfigurations.InsertOneAsResultAsync(
+            configuration,
+            () => Failures.Conflict(
+                "This web service already has a source build configuration."),
+            cancellationToken);
+        return inserted.TryGetValue(out var value, out var failure)
+            ? value.ToDto()
+            : failure;
     }
 }
 

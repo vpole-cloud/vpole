@@ -10,6 +10,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
+using Pole.Features.Request;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.SourceBuilds.Events;
@@ -43,7 +44,7 @@ public static class SourceBuildJobs
                 return result.ToHttpResult(Results.Ok);
             })
             .WithName("GetSourceBuildJobs")
-            .Produces<SourceBuildJobPageDto>();
+            .Produces<PaginatedResponse<SourceBuildJobDto>>();
 
         app.MapGet("/{BuildJobId}", async (IMediator mediator, [AsParameters] GetSourceBuildJobRequest request,
                 CancellationToken cancellationToken) =>
@@ -68,9 +69,9 @@ public sealed record GetSourceBuildJobsRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
     [FromQuery] string? ConfigurationId = null,
     [FromQuery] string? WebServiceId = null,
-    [FromQuery] int Page = 1,
+    [FromQuery] int PageNumber = 1,
     [FromQuery] int PageSize = 20)
-    : IMediatorRequest<SourceBuildJobPageDto>, ITenantReadOperation;
+    : IMediatorRequest<PaginatedResponse<SourceBuildJobDto>>, ITenantReadOperation;
 
 public sealed record GetSourceBuildJobRequest(
     [FromRoute] string BuildJobId,
@@ -140,9 +141,9 @@ public sealed class StartManualSourceBuildHandler(
 }
 
 public sealed class GetSourceBuildJobsHandler(ISourceBuildDbContext dbContext)
-    : IMediatorHandler<GetSourceBuildJobsRequest, SourceBuildJobPageDto>
+    : IMediatorHandler<GetSourceBuildJobsRequest, PaginatedResponse<SourceBuildJobDto>>
 {
-    public async Task<Result<SourceBuildJobPageDto>> HandleAsync(
+    public async Task<Result<PaginatedResponse<SourceBuildJobDto>>> HandleAsync(
         GetSourceBuildJobsRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -162,14 +163,13 @@ public sealed class GetSourceBuildJobsHandler(ISourceBuildDbContext dbContext)
         var jobs = await dbContext.SourceBuildJobs
             .Find(filter)
             .SortByDescending(item => item.CreatedAtUtc)
-            .Skip((request.Page - 1) * request.PageSize)
-            .Limit(request.PageSize)
+            .ApplyPagination(request.PageNumber, request.PageSize)
             .ToListAsync(cancellationToken);
-        return new SourceBuildJobPageDto(
+        return new PaginatedResponse<SourceBuildJobDto>(
             jobs.Select(item => item.ToDto()).ToArray(),
-            request.Page,
-            request.PageSize,
-            totalCount);
+            totalCount,
+            request.PageNumber,
+            request.PageSize);
     }
 }
 
@@ -199,7 +199,7 @@ public sealed class GetSourceBuildJobsRequestValidator : AbstractValidator<GetSo
 {
     public GetSourceBuildJobsRequestValidator()
     {
-        RuleFor(item => item.Page).GreaterThanOrEqualTo(1);
+        RuleFor(item => item.PageNumber).GreaterThanOrEqualTo(1);
         RuleFor(item => item.PageSize).InclusiveBetween(1, 100);
     }
 }

@@ -283,15 +283,14 @@ public sealed class LinkProviderRepositoryHandler(
             value.Analysis,
             selectedPlan,
             SourceRepositoryFactory.DefaultOptions);
-        try
-        {
-            await dbContext.SourceRepositories.InsertOneAsync(sourceRepository, cancellationToken: cancellationToken);
-            return sourceRepository.ToDto();
-        }
-        catch (MongoWriteException exception) when (exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
-        {
-            return Failures.Conflict("This repository branch and build-plan candidate is already linked.");
-        }
+        var inserted = await dbContext.SourceRepositories.InsertOneAsResultAsync(
+            sourceRepository,
+            () => Failures.Conflict(
+                "This repository branch and build-plan candidate is already linked."),
+            cancellationToken);
+        return inserted.TryGetValue(out var linkedRepository, out var insertFailure)
+            ? linkedRepository.ToDto()
+            : insertFailure;
     }
 }
 
