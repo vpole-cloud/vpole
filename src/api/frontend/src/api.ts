@@ -15,6 +15,9 @@ import type {
   ProviderRepository,
   RepositoryAnalysis,
   SourceRepository,
+  SourceBuildConfiguration,
+  SourceBuildJob,
+  SourceBuildJobPage,
   WebServiceInput,
   WebService,
   Tenant,
@@ -537,6 +540,89 @@ export async function unlinkSourceRepository(
     {
       method: 'DELETE',
       headers: buildHeaders(token, tenantId),
+    },
+  )
+}
+
+export async function fetchSourceBuildConfigurations(
+  apiBaseUrl: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<SourceBuildConfiguration[]>(
+    `${apiBaseUrl}/api/v1/source-build-configurations`,
+    {
+      headers: buildHeaders(token, tenantId),
+      signal,
+    },
+  )
+}
+
+export async function createSourceBuildConfiguration(
+  apiBaseUrl: string,
+  sourceRepositoryId: string,
+  webServiceId: string,
+  token?: string,
+  tenantId?: string,
+) {
+  return sendJson<SourceBuildConfiguration>(
+    `${apiBaseUrl}/api/v1/source-build-configurations`,
+    {
+      method: 'POST',
+      headers: buildHeaders(token, tenantId),
+      body: JSON.stringify({ sourceRepositoryId, webServiceId }),
+    },
+  )
+}
+
+export async function deleteSourceBuildConfiguration(
+  apiBaseUrl: string,
+  configurationId: string,
+  token?: string,
+  tenantId?: string,
+) {
+  return sendWithoutResponse(
+    `${apiBaseUrl}/api/v1/source-build-configurations/${encodeURIComponent(configurationId)}`,
+    {
+      method: 'DELETE',
+      headers: buildHeaders(token, tenantId),
+    },
+  )
+}
+
+export async function startSourceBuild(
+  apiBaseUrl: string,
+  configurationId: string,
+  token?: string,
+  tenantId?: string,
+) {
+  return sendJson<SourceBuildJob>(
+    `${apiBaseUrl}/api/v1/source-build-configurations/${encodeURIComponent(configurationId)}/builds`,
+    {
+      method: 'POST',
+      headers: buildHeaders(token, tenantId),
+    },
+  )
+}
+
+export async function fetchSourceBuildJobs(
+  apiBaseUrl: string,
+  webServiceId: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  const query = new URLSearchParams({
+    webServiceId,
+    page: '1',
+    pageSize: '20',
+  })
+  return fetchJson<SourceBuildJobPage>(
+    `${apiBaseUrl}/api/v1/source-build-jobs?${query.toString()}`,
+    {
+      headers: buildHeaders(token, tenantId),
+      signal,
     },
   )
 }

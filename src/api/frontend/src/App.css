@@ -896,6 +896,117 @@
   gap: 12px;
 }
 
+.source-build-panel {
+  display: grid;
+  gap: 18px;
+  border-radius: 8px;
+}
+
+.source-build-configuration,
+.source-build-setup {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #ffffff;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.source-build-configuration__identity {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.source-build-configuration__identity span,
+.source-build-history__header span,
+.source-build-row span,
+.source-build-row small {
+  color: var(--color-text-soft);
+  font-size: 0.84rem;
+  overflow-wrap: anywhere;
+}
+
+.source-build-configuration__identity code,
+.source-build-row code {
+  color: #33536f;
+  font-size: 0.8rem;
+}
+
+.source-build-setup {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) auto;
+}
+
+.source-build-history,
+.source-build-list {
+  display: grid;
+  gap: 8px;
+}
+
+.source-build-history__header {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.source-build-row {
+  min-width: 0;
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #ffffff;
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(180px, 1fr) minmax(220px, 1.2fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.source-build-row > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.source-build-row__result {
+  justify-items: end;
+  text-align: right;
+}
+
+.build-status {
+  min-width: 76px;
+  padding: 4px 7px;
+  border-radius: 4px;
+  color: #315675;
+  background: #eaf1f8;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.build-status--succeeded {
+  color: #24603e;
+  background: #e8f5ec;
+}
+
+.build-status--failed {
+  color: #812b39;
+  background: #fff0f2;
+}
+
+.build-status--building,
+.build-status--pushing,
+.build-status--deploying {
+  color: #765214;
+  background: #fff5dc;
+}
+
 .analysis-candidates__header span {
   color: var(--color-text-soft);
   font-size: 0.82rem;
@@ -1089,6 +1200,21 @@
     grid-template-columns: 1fr;
   }
 
+  .source-build-configuration {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .source-build-setup,
+  .source-build-row {
+    grid-template-columns: 1fr;
+  }
+
+  .source-build-row__result {
+    justify-items: start;
+    text-align: left;
+  }
+
   .summary-grid,
   .storage-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1146,7 +1272,9 @@
   }
 
   .integration-account-row .button,
-  .analysis-preview__actions .button {
+  .analysis-preview__actions .button,
+  .source-build-configuration .button,
+  .source-build-setup .button {
     width: 100%;
   }
 }

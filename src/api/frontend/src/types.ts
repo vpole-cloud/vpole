@@ -182,6 +182,76 @@ export interface SourceRepository {
   selectedPlan: SourceBuildPlan
 }
 
+export type SourceBuildRecipeKind = 'Dockerfile' | 'DotNet' | 'Node'
+export type SourceBuildPhase =
+  | 'Queued'
+  | 'Cloning'
+  | 'Analyzing'
+  | 'Building'
+  | 'Pushing'
+  | 'Deploying'
+
+export interface SourceBuildRecipe {
+  candidateKey: string
+  kind: SourceBuildRecipeKind
+  sourceRoot: string
+  manifestPath: string
+  commands: string[]
+  startCommand?: string | null
+  dockerfile: string
+  isCustomized: boolean
+}
+
+export interface SourceBuildConfiguration {
+  id: string
+  sourceRepositoryId: string
+  webServiceId: string
+  recipe: SourceBuildRecipe
+  createdByUserId: string
+  createdAtUtc: string
+  updatedAtUtc: string
+}
+
+export interface SourceBuildJobState {
+  status:
+    | 'queued'
+    | 'cloning'
+    | 'analyzing'
+    | 'building'
+    | 'pushing'
+    | 'deploying'
+    | 'succeeded'
+    | 'failed'
+  phase?: SourceBuildPhase | null
+  startedAtUtc: string
+  completedAtUtc?: string | null
+  imageReference?: string | null
+  imageDigest?: string | null
+  releaseId?: string | null
+  failureCode?: string | null
+  failureMessage?: string | null
+}
+
+export interface SourceBuildJob {
+  id: string
+  configurationId: string
+  sourceRepositoryId: string
+  webServiceId: string
+  branch: string
+  commitSha: string
+  recipe: SourceBuildRecipe
+  state: SourceBuildJobState
+  createdAtUtc: string
+  updatedAtUtc: string
+}
+
+export interface SourceBuildJobPage {
+  items: SourceBuildJob[]
+  page: number
+  pageSize: number
+  totalCount: number
+}
+
 export interface OverviewData {
   resourceGroups: ResourceGroup[]
   webServices: WebService[]

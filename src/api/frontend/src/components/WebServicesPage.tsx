@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { WebServiceForm } from './WebServiceForm'
+import { SourceBuildPanel } from './SourceBuildPanel'
+import type { SourceBuildsManager } from '../hooks/useSourceBuildsManager'
 import type {
   LoadStatus,
   ResourceGroup,
@@ -19,6 +21,9 @@ interface WebServicesPageProps {
   onCreate: (input: WebServiceInput) => Promise<void>
   onUpdate: (id: string, input: WebServiceInput) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  selectedId: string | null
+  onSelect: (id: string | null) => void
+  sourceBuilds: SourceBuildsManager
   canManage?: boolean
 }
 
@@ -34,10 +39,12 @@ export function WebServicesPage({
   onCreate,
   onUpdate,
   onDelete,
+  selectedId,
+  onSelect,
+  sourceBuilds,
   canManage = true,
 }: WebServicesPageProps) {
   const [query, setQuery] = useState('')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const filteredItems = items.filter((item) =>
     [
@@ -69,7 +76,7 @@ export function WebServicesPage({
     await onDelete(item.id)
 
     if (selectedId === item.id) {
-      setSelectedId(null)
+      onSelect(null)
     }
   }
 
@@ -94,7 +101,7 @@ export function WebServicesPage({
               <button className="button" onClick={() => void onRefresh()} type="button">
                 Refresh
               </button>
-              <button className="button" disabled={!canManage} onClick={() => setSelectedId(null)} type="button">
+              <button className="button" disabled={!canManage} onClick={() => onSelect(null)} type="button">
                 New service
               </button>
             </div>
@@ -156,7 +163,7 @@ export function WebServicesPage({
                   >
                     <button
                       className="list-row__button"
-                      onClick={() => setSelectedId(item.id)}
+                      onClick={() => onSelect(item.id)}
                       type="button"
                     >
                       <div className="list-row__primary">
@@ -174,7 +181,7 @@ export function WebServicesPage({
                     </button>
 
                     <div className="row-actions">
-                      <button className="button" onClick={() => setSelectedId(item.id)} type="button">
+                      <button className="button" onClick={() => onSelect(item.id)} type="button">
                         Edit
                       </button>
                       <button
@@ -209,7 +216,7 @@ export function WebServicesPage({
 
               await onCreate(input)
             }}
-            onCancelEdit={selectedService ? () => setSelectedId(null) : undefined}
+            onCancelEdit={selectedService ? () => onSelect(null) : undefined}
           />
         ) : (
           <section className="panel">
@@ -217,6 +224,14 @@ export function WebServicesPage({
           </section>
         )}
       </div>
+      {selectedService && (
+        <SourceBuildPanel
+          key={selectedService.id}
+          webService={selectedService}
+          manager={sourceBuilds}
+          canManage={canManage}
+        />
+      )}
     </div>
   )
 }
