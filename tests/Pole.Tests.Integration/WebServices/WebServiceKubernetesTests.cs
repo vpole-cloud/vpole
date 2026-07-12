@@ -9,6 +9,7 @@ using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Application.Kubernetes;
+using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -17,6 +18,52 @@ namespace Pole.Tests.Integration.WebServices;
 public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     : KubernetesIntegrationTestBase(fixture)
 {
+    [KubernetesFact]
+    public async Task ApplyAsync_CreatesWebServiceResourcesWithReleaseMetadata()
+    {
+        var webService = BuildSourceBuildE2eWebService();
+        var result = await WebServiceKubernetesResourceManager.ApplyAsync(
+            Kubernetes,
+            webService.ToKubernetes(),
+            new WebServiceDeploymentMetadata("release-k8s", 1, DateTime.UtcNow));
+
+        if (result is Failure failure)
+        {
+            var details = failure is ExternalServiceFailure externalFailure
+                ? externalFailure.Details
+                : failure.Message;
+            throw new Xunit.Sdk.XunitException($"Kubernetes ApplyAsync failed: {details}");
+        }
+
+        var deployment = await Kubernetes.AppsV1.ReadNamespacedDeploymentAsync(webService.Name, NamespaceName);
+        Assert.Equal("release-k8s", deployment.Spec.Template.Metadata.Annotations["pole.server/releaseId"]);
+    }
+
+    private WebService BuildSourceBuildE2eWebService()
+    {
+        var spec = new WebServiceSpec(
+            NamespaceName,
+            new ImageInfo("docker.io", "library/nginx", "1.27"),
+            Replicas: 1,
+            Resources: new Resources(new Resource(1, 64), new Resource(1, 128)),
+            Config: new WebServiceConfig(
+                ImmutableDictionary<string, string>.Empty,
+                [new PortMapping(80, "8080", "TCP", "http")]),
+            Autoscaling: null,
+            Probes: new ProbeSpec(
+                new ProbeConfig("/", "8080"),
+                new ProbeConfig("/", "8080"),
+                new ProbeConfig("/", "8080")));
+
+        return WebServiceFactory.Create(
+            name: "source-build-e2e",
+            tenantId: TestData.TenantId,
+            resourceGroupId: "rg-k8s",
+            spec: spec,
+            dnsRecord: new DnsRecordShortInfo("dns-k8s", BuildIngressHost()),
+            options: WebServiceFactory.DefaultOptions with { Id = "source-build-e2e" });
+    }
+
     [KubernetesFact]
     public async Task CreateAsync_CreatesWebServiceResourcesInCluster()
     {
