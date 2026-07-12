@@ -22,6 +22,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         try
         {
             resourceGroupId = await CreateResourceGroupAsync(cancellationToken);
+            await fixture.WaitForNamespaceCreationAsync(resourceGroupId, cancellationToken);
             webServiceId = await CreateWebServiceAsync(resourceGroupId, cancellationToken);
             await WaitForReleaseOutcomeAsync(webServiceId, "Succeeded", cancellationToken);
 
@@ -113,8 +114,8 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
                 replicas = 1,
                 resources = new
                 {
-                    requests = new { cpuCores = 0.1, memoryMi = 64 },
-                    limits = new { cpuCores = 0.25, memoryMi = 128 }
+                    requests = new { cpuCores = 1, memoryMi = 64 },
+                    limits = new { cpuCores = 1, memoryMi = 128 }
                 },
                 config = new
                 {
@@ -237,8 +238,18 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         while (true)
         {
             var releases = await GetReleasesAsync(webServiceId, cancellationToken);
-            if (releases.EnumerateArray().Any(release => release.GetProperty("outcome").GetString() == expectedOutcome))
-                return;
+            foreach (var release in releases.EnumerateArray())
+            {
+                var outcome = release.GetProperty("outcome").GetString();
+                if (outcome == expectedOutcome)
+                    return;
+                if (outcome == "Failed")
+                {
+                    var failureMessage = release.GetProperty("failureMessage").GetString();
+                    throw new Xunit.Sdk.XunitException(
+                        $"Web service release failed before it reached {expectedOutcome}: {failureMessage}");
+                }
+            }
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
     }

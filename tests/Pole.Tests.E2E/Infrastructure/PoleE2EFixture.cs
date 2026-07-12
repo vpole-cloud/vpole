@@ -250,9 +250,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         if (_sourceBuildSettings is null)
             return;
 
-        var tenantSegment = Alpha.DefaultTenantId[..Math.Min(8, Alpha.DefaultTenantId.Length)];
-        var groupSegment = resourceGroupId[..Math.Min(8, resourceGroupId.Length)];
-        var namespaceName = $"{_kubernetesNamespacePrefix}-t-{tenantSegment}-rg-{groupSegment}";
+        var namespaceName = GetNamespaceName(resourceGroupId);
         if (await RunKubectlAsync(["get", "namespace", namespaceName], cancellationToken) != 0)
             return;
 
@@ -262,6 +260,28 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         if (exitCode != 0)
             throw new TimeoutException($"Kubernetes namespace '{namespaceName}' was not deleted.");
 
+    }
+
+    public async Task WaitForNamespaceCreationAsync(string resourceGroupId, CancellationToken cancellationToken)
+    {
+        var namespaceName = GetNamespaceName(resourceGroupId);
+        var deadline = DateTimeOffset.UtcNow.AddMinutes(2);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (await RunKubectlAsync(["get", "namespace", namespaceName], cancellationToken) == 0)
+                return;
+
+            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+        }
+
+        throw new TimeoutException($"Kubernetes namespace '{namespaceName}' was not created.");
+    }
+
+    private string GetNamespaceName(string resourceGroupId)
+    {
+        var tenantSegment = Alpha.DefaultTenantId[..Math.Min(8, Alpha.DefaultTenantId.Length)];
+        var groupSegment = resourceGroupId[..Math.Min(8, resourceGroupId.Length)];
+        return $"{_kubernetesNamespacePrefix}-t-{tenantSegment}-rg-{groupSegment}";
     }
 
     private static string[] CreateAppHostArguments(
