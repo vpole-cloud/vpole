@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.StorageProfiles.Application.Common;
-using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Mediator;
 
 namespace Pole.Features.StorageProfiles.Application.Endpoints;
@@ -51,40 +50,4 @@ public static class GetKubernetesStorageInventory
 
         return app;
     }
-}
-
-public sealed record GetKubernetesStorageClassesRequest
-    : IMediatorRequest<IReadOnlyCollection<KubernetesStorageClassDto>>;
-
-public sealed record GetKubernetesPersistentVolumesRequest
-    : IMediatorRequest<IReadOnlyCollection<KubernetesPersistentVolumeDto>>;
-
-public sealed record GetKubernetesPersistentVolumeClaimsRequest
-    : IMediatorRequest<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>;
-
-public sealed class GetKubernetesStorageClassesHandler(IStorageDiscoveryService storageDiscovery)
-    : IMediatorHandler<GetKubernetesStorageClassesRequest, IReadOnlyCollection<KubernetesStorageClassDto>>
-{
-    public async Task<Pole.ResultType.Result<IReadOnlyCollection<KubernetesStorageClassDto>>> HandleAsync(
-        GetKubernetesStorageClassesRequest request,
-        CancellationToken cancellationToken = default) =>
-        (await storageDiscovery.GetStorageClassesAsync(cancellationToken)).ToArray();
-}
-
-public sealed class GetKubernetesPersistentVolumesHandler(IStorageDiscoveryService storageDiscovery)
-    : IMediatorHandler<GetKubernetesPersistentVolumesRequest, IReadOnlyCollection<KubernetesPersistentVolumeDto>>
-{
-    public async Task<Pole.ResultType.Result<IReadOnlyCollection<KubernetesPersistentVolumeDto>>> HandleAsync(
-        GetKubernetesPersistentVolumesRequest request,
-        CancellationToken cancellationToken = default) =>
-        (await storageDiscovery.GetPersistentVolumesAsync(cancellationToken)).ToArray();
-}
-
-public sealed class GetKubernetesPersistentVolumeClaimsHandler(IStorageDiscoveryService storageDiscovery)
-    : IMediatorHandler<GetKubernetesPersistentVolumeClaimsRequest, IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>
-{
-    public async Task<Pole.ResultType.Result<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>> HandleAsync(
-        GetKubernetesPersistentVolumeClaimsRequest request,
-        CancellationToken cancellationToken = default) =>
-        (await storageDiscovery.GetPersistentVolumeClaimsAsync(cancellationToken)).ToArray();
 }
