@@ -63,10 +63,10 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
         {
             EventCore = Pole.Features.Events.Abstractions.EventCore.Create(TestData.TenantId)
         };
-        var consumer = new ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer(
+        var consumer = new WebServiceDeploymentConsumer(
             Fixture.DbContext,
             new SuccessfulDeploymentApplier(),
-            NullLogger<ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer>.Instance);
+            NullLogger<WebServiceDeploymentConsumer>.Instance);
         await consumer.Handle(requested);
 
         var completedRelease = await Fixture.DbContext.WebServiceReleases
