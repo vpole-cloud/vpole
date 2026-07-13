@@ -14,7 +14,7 @@ namespace Pole.Features.WebServices.Application.Consumers;
 public sealed class ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer(
     IWebServiceDbContext dbContext,
     IWebServiceDeploymentApplier deploymentApplier,
-    ILogger<ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer>? logger = null)
+    ILogger<ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer> logger)
     : IConsumer<WebServiceDeploymentRequestedEvent>
 {
     public Task Consume(ConsumeContext<WebServiceDeploymentRequestedEvent> context) =>
@@ -28,7 +28,7 @@ public sealed class ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedCons
         {
             if (failure is ExternalServiceFailure { ServiceName: "Kubernetes" })
             {
-                logger?.LogError(
+                logger.LogError(
                     "[web-service-deployment-failed] Kubernetes could not apply release {ReleaseId} for web service {WebServiceId}: {Reason}",
                     deploymentEvent.ReleaseId,
                     deploymentEvent.WebServiceId,
