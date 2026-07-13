@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 
 var builder = DistributedApplication.CreateBuilder(args);
 var e2eEnabled = builder.Configuration.GetValue("E2E:Enabled", false);
+var e2eBuildKitPort = e2eEnabled ? builder.Configuration.GetValue<int?>("E2E:BuildKitPort") : null;
 var e2eKeycloakPort = e2eEnabled ? builder.Configuration.GetValue<int?>("E2E:KeycloakPort") : null;
 
 var mongoUsername = builder.AddParameter("mongo-username");
@@ -129,8 +130,12 @@ if (bool.TryParse(builder.Configuration["LocalSourceBuilds:Enabled"], out var lo
         {
             if (!e2eEnabled)
                 endpoint.Port = 1234;
+            else if (e2eBuildKitPort is { } buildKitPort)
+                endpoint.Port = buildKitPort;
             endpoint.TargetPort = 1234;
-            endpoint.IsProxied = e2eEnabled;
+            // buildctl uses a streaming gRPC session; exposing the container endpoint directly
+            // avoids an Aspire proxy altering that connection in the isolated E2E graph.
+            endpoint.IsProxied = false;
             endpoint.UriScheme = "tcp";
         });
     if (!e2eEnabled)
