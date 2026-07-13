@@ -139,3 +139,13 @@ dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter 
 ```
 
 The test creates a uniquely named private project and build/runtime robot credentials through the real Harbor API, then removes the project in `finally`. Do not place the password in tracked settings or command output.
+
+To also verify a real BuildKit push through the provisioned build robot, keep the Harbor settings above and add:
+
+```powershell
+$env:POLE_BUILDKIT_CONTRACT_ADDRESS = 'tcp://localhost:1234'
+$env:POLE_BUILDKIT_CONTRACT_PATH = 'C:\path\to\buildctl.exe'
+dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter Category=HarborBuildKitContract
+```
+
+This opt-in contract test builds a hermetic `FROM scratch` image, pushes it to a unique private Harbor project, verifies the digest returned by BuildKit, and removes the project afterward.

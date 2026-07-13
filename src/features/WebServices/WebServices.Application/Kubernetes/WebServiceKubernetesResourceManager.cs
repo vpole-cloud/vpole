@@ -116,14 +116,25 @@ public static class WebServiceKubernetesResourceManager
         WebServiceDeploymentMetadata deploymentMetadata,
         CancellationToken cancellationToken = default)
     {
+        var stage = "preparing the deployment manifest";
         try
         {
+            stage = "preparing the ConfigMap manifest";
             var configMap = webService.ToConfigMap();
+
+            stage = "preparing the Deployment manifest";
             var deployment = webService.ToDeployment(deploymentMetadata);
+
+            stage = "preparing the Service manifest";
             var service = webService.ToService();
+
+            stage = "preparing the Ingress manifest";
             var ingress = webService.ToIngress();
+
+            stage = "preparing the ServiceMonitor manifest";
             var serviceMonitor = webService.ToServiceMonitor();
 
+            stage = "applying the ConfigMap";
             var applyResult = await CreateOrReplaceAsync(
                 () => kubernetes.CoreV1.CreateNamespacedConfigMapAsync(
                     configMap,
@@ -145,6 +156,7 @@ public static class WebServiceKubernetesResourceManager
             if (applyResult is Failure)
                 return applyResult;
 
+            stage = "applying the Deployment";
             applyResult = await CreateOrReplaceAsync(
                 () => kubernetes.AppsV1.CreateNamespacedDeploymentAsync(
                     deployment,
@@ -166,6 +178,7 @@ public static class WebServiceKubernetesResourceManager
             if (applyResult is Failure)
                 return applyResult;
 
+            stage = "applying the Service";
             applyResult = await CreateOrReplaceAsync(
                 () => kubernetes.CoreV1.CreateNamespacedServiceAsync(
                     service,
@@ -187,6 +200,7 @@ public static class WebServiceKubernetesResourceManager
             if (applyResult is Failure)
                 return applyResult;
 
+            stage = "applying the Ingress";
             applyResult = await CreateOrReplaceAsync(
                 () => kubernetes.NetworkingV1.CreateNamespacedIngressAsync(
                     ingress,
@@ -212,6 +226,7 @@ public static class WebServiceKubernetesResourceManager
             if (!serviceMonitorObjectResult.TryGetValue(out var serviceMonitorObject, out var serviceMonitorFailure))
                 return serviceMonitorFailure;
 
+            stage = "applying the ServiceMonitor";
             applyResult = await CreateOrReplaceAsync(
                 () => kubernetes.CustomObjects.CreateNamespacedCustomObjectAsync(
                     serviceMonitorObject,
@@ -260,7 +275,7 @@ public static class WebServiceKubernetesResourceManager
         catch (Exception ex)
         {
             return Failures.ExternalService(
-                "Unable to apply web service deployment in Kubernetes.",
+                $"Unable to apply web service deployment in Kubernetes while {stage}.",
                 "Kubernetes",
                 ex.Message);
         }

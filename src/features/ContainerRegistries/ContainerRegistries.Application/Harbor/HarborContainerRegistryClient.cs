@@ -81,7 +81,7 @@ public sealed class HarborContainerRegistryClient(
 
         try
         {
-            var path = $"api/v2.0/projects/{Encode(projectName)}/repositories/{Encode(repositoryName)}/artifacts/{Encode(reference)}";
+            var path = $"api/v2.0/projects/{Encode(projectName)}/repositories/{EncodeRepositoryName(repositoryName)}/artifacts/{Encode(reference)}";
             using var response = await SendAsync(HttpMethod.Get, path, null, cancellationToken);
             if (response.StatusCode == HttpStatusCode.NotFound)
                 return Failures.NotFound("The container registry artifact was not found.", reference);
@@ -113,9 +113,32 @@ public sealed class HarborContainerRegistryClient(
 
         try
         {
+            var projectResult = await GetProjectAsync(externalProjectId, cancellationToken);
+            if (!projectResult.TryGetValue(out var lookup, out var projectFailure))
+                return projectFailure;
+            if (lookup.Project is null)
+                return Result.Success();
+
+            var repositoriesResult = await ListRepositoriesAsync(lookup.Project.Name, cancellationToken);
+            if (!repositoriesResult.TryGetValue(out var repositories, out var repositoriesFailure))
+                return repositoriesFailure;
+            foreach (var repository in repositories)
+            {
+                var repositoryName = RepositoryNameWithoutProject(lookup.Project.Name, repository.Name);
+                if (string.IsNullOrWhiteSpace(repositoryName))
+                    return HarborFailure("Harbor returned a repository without a name.");
+
+                var deleteRepositoryResult = await DeleteRepositoryAsync(
+                    lookup.Project.Name,
+                    repositoryName,
+                    cancellationToken);
+                if (deleteRepositoryResult is Failure repositoryFailure)
+                    return repositoryFailure;
+            }
+
             using var response = await SendAsync(
                 HttpMethod.Delete,
-                $"api/v2.0/projects/{Encode(externalProjectId)}",
+                $"api/v2.0/projects/{lookup.Project.Id}",
                 null,
                 cancellationToken);
             if (response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound)
@@ -125,6 +148,10 @@ public sealed class HarborContainerRegistryClient(
         catch (HttpRequestException)
         {
             return HarborFailure("Network request failed.");
+        }
+        catch (JsonException)
+        {
+            return HarborFailure("Harbor returned malformed JSON.");
         }
     }
 
@@ -169,6 +196,64 @@ public sealed class HarborContainerRegistryClient(
         var projects = await response.Content.ReadFromJsonAsync<HarborProject[]>(JsonOptions, cancellationToken) ?? [];
         return new HarborProjectLookup(projects.FirstOrDefault(item =>
             string.Equals(item.Name, projectName, StringComparison.Ordinal)));
+    }
+
+    private async Task<Result<HarborProjectLookup>> GetProjectAsync(
+        string projectNameOrId,
+        CancellationToken cancellationToken)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            $"api/v2.0/projects/{Encode(projectNameOrId)}",
+            null,
+            cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return new HarborProjectLookup(null);
+        if (!response.IsSuccessStatusCode)
+            return await HarborFailureAsync<HarborProjectLookup>(response, cancellationToken);
+
+        var project = await response.Content.ReadFromJsonAsync<HarborProject>(JsonOptions, cancellationToken);
+        return project is null || string.IsNullOrWhiteSpace(project.Name)
+            ? HarborFailure<HarborProjectLookup>("Harbor returned an incomplete project response.")
+            : new HarborProjectLookup(project);
+    }
+
+    private async Task<Result<IReadOnlyList<HarborRepository>>> ListRepositoriesAsync(
+        string projectName,
+        CancellationToken cancellationToken)
+    {
+        const int pageSize = 100;
+        var repositories = new List<HarborRepository>();
+        for (var page = 1; ; page++)
+        {
+            using var response = await SendAsync(
+                HttpMethod.Get,
+                $"api/v2.0/projects/{Encode(projectName)}/repositories?page={page}&page_size={pageSize}",
+                null,
+                cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return await HarborFailureAsync<IReadOnlyList<HarborRepository>>(response, cancellationToken);
+
+            var currentPage = await response.Content.ReadFromJsonAsync<HarborRepository[]>(JsonOptions, cancellationToken) ?? [];
+            repositories.AddRange(currentPage);
+            if (currentPage.Length < pageSize)
+                return repositories;
+        }
+    }
+
+    private async Task<Result> DeleteRepositoryAsync(
+        string projectName,
+        string repositoryName,
+        CancellationToken cancellationToken)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Delete,
+            $"api/v2.0/projects/{Encode(projectName)}/repositories/{EncodeRepositoryName(repositoryName)}",
+            null,
+            cancellationToken);
+        if (response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound)
+            return Result.Success();
+        return await HarborFailureAsync(response, cancellationToken);
     }
 
     private async Task<Result<RegistryRobotCredential>> CreateRobotAsync(
@@ -232,6 +317,18 @@ public sealed class HarborContainerRegistryClient(
 
     private static string Encode(string segment) => Uri.EscapeDataString(segment);
 
+    // Harbor treats nested repository names as one route parameter. Uri construction
+    // unescapes the first encoding before transport, so the embedded slash must be encoded twice.
+    private static string EncodeRepositoryName(string repositoryName) => Encode(Encode(repositoryName));
+
+    private static string RepositoryNameWithoutProject(string projectName, string repositoryName)
+    {
+        var prefix = $"{projectName.TrimEnd('/')}/";
+        return repositoryName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? repositoryName[prefix.Length..]
+            : repositoryName;
+    }
+
     private static Failure NotConfigured() =>
         Failures.ExternalService("The container registry is not configured.", "Harbor", "Harbor configuration is disabled or incomplete.");
 
@@ -284,4 +381,6 @@ public sealed class HarborContainerRegistryClient(
         [property: JsonPropertyName("expires_at")] long ExpiresAt);
 
     private sealed record HarborArtifact(string Digest, long Size);
+
+    private sealed record HarborRepository(string Name);
 }

@@ -1,5 +1,6 @@
 using Pole.Features.GitProviders.Domain;
 using Pole.ResultType;
+using Microsoft.Extensions.Logging;
 
 namespace Pole.Features.GitProviders.Application.Common;
 
@@ -32,7 +33,9 @@ public interface IGitProviderRepositoryService
         CancellationToken cancellationToken = default);
 }
 
-public sealed class GitProviderRepositoryService(IGitHubAppClient gitHubClient)
+public sealed class GitProviderRepositoryService(
+    IGitHubAppClient gitHubClient,
+    ILogger<GitProviderRepositoryService>? logger = null)
     : IGitProviderRepositoryService
 {
     public Task<Result<ProviderPage<ProviderRepository>>> GetRepositoriesAsync(
@@ -104,9 +107,19 @@ public sealed class GitProviderRepositoryService(IGitHubAppClient gitHubClient)
         {
             return GitHubFailure(exception);
         }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger?.LogError(
+                exception,
+                "GitHub repository operation failed before the provider request completed.");
+            return Failures.ExternalService(
+                "GitHub could not complete the repository request.",
+                "GitHub",
+                $"GitHub client initialization failed ({exception.GetType().Name}).");
+        }
     }
 
-    private static async Task<Result<T>> ExecuteAsync<T>(
+    private async Task<Result<T>> ExecuteAsync<T>(
         GitProviderConnection connection,
         Func<Task<T>> operation)
         where T : notnull
@@ -125,6 +138,16 @@ public sealed class GitProviderRepositoryService(IGitHubAppClient gitHubClient)
         catch (GitHubApiException exception)
         {
             return GitHubFailure(exception);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger?.LogError(
+                exception,
+                "GitHub repository operation failed before the provider request completed.");
+            return Failures.ExternalService(
+                "GitHub could not complete the repository request.",
+                "GitHub",
+                $"GitHub client initialization failed ({exception.GetType().Name}).");
         }
     }
 

@@ -3,6 +3,7 @@ using System.Text;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ContainerRegistries.Application.Harbor;
 using Pole.Features.ContainerRegistries.Contracts;
+using Pole.ResultType;
 using Xunit;
 
 namespace Pole.Tests.Integration.ContainerRegistries;
@@ -94,11 +95,17 @@ public sealed class HarborContainerRegistryClientTests
     }
 
     [Fact]
-    public async Task ArtifactLookup_MapsDigestAndSize()
+    public async Task ArtifactLookup_MapsDigestAndDoubleEscapesNestedRepositoryName()
     {
-        var handler = new DelegateHandler(request => Task.FromResult(Json(
-            HttpStatusCode.OK,
-            """{ "digest": "sha256:abc", "size": 1234 }""")));
+        var handler = new DelegateHandler(request =>
+        {
+            Assert.Equal(
+                "/api/v2.0/projects/pole-test/repositories/service%252Fapi/artifacts/build-42",
+                request.RequestUri!.AbsolutePath);
+            return Task.FromResult(Json(
+                HttpStatusCode.OK,
+                """{ "digest": "sha256:abc", "size": 1234 }"""));
+        });
         var client = CreateClient(handler);
 
         var result = await client.GetArtifactAsync("pole-test", "service/api", "build-42");
@@ -106,6 +113,44 @@ public sealed class HarborContainerRegistryClientTests
         Assert.True(result.TryGetValue(out var artifact, out _));
         Assert.Equal("sha256:abc", artifact.Digest);
         Assert.Equal(1234, artifact.SizeBytes);
+    }
+
+    [Fact]
+    public async Task DeletingProject_DeletesRepositoriesBeforeDeletingProject()
+    {
+        var calls = new List<string>();
+        var handler = new DelegateHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            calls.Add($"{request.Method} {path}{request.RequestUri.Query}");
+            return (request.Method, path) switch
+            {
+                ({ } method, "/api/v2.0/projects/17") when method == HttpMethod.Get =>
+                    Task.FromResult(Json(HttpStatusCode.OK, """{ "project_id": 17, "name": "pole-test" }""")),
+                ({ } method, "/api/v2.0/projects/pole-test/repositories") when method == HttpMethod.Get =>
+                    Task.FromResult(Json(HttpStatusCode.OK, """
+                        [{ "name": "pole-test/web-services/service-1" }]
+                        """)),
+                ({ } method, "/api/v2.0/projects/pole-test/repositories/web-services%252Fservice-1") when method == HttpMethod.Delete =>
+                    Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)),
+                ({ } method, "/api/v2.0/projects/17") when method == HttpMethod.Delete =>
+                    Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)),
+                _ => throw new Xunit.Sdk.XunitException($"Unexpected Harbor request: {request.Method} {path}")
+            };
+        });
+        var client = CreateClient(handler);
+
+        var result = await client.DeleteProjectAsync("17");
+
+        Assert.IsAssignableFrom<ISuccess>(result);
+        Assert.Equal(
+            [
+                "GET /api/v2.0/projects/17",
+                "GET /api/v2.0/projects/pole-test/repositories?page=1&page_size=100",
+                "DELETE /api/v2.0/projects/pole-test/repositories/web-services%252Fservice-1",
+                "DELETE /api/v2.0/projects/17"
+            ],
+            calls);
     }
 
     [Fact]

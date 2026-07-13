@@ -264,7 +264,7 @@ public static class WebServiceDtoExtensions
         dto.SuccessThreshold
     );
     public static WebServiceConfig ToDomain(this WebServiceConfigDto dto) => new(
-        dto.EnvironmentVariables,
+        dto.EnvironmentVariables ?? ImmutableDictionary<string, string>.Empty,
         dto.PortMappings
             .Select(pm => new PortMapping(pm.ServicePort, pm.TargetPort, pm.Protocol, pm.Name))
             .ToImmutableList()

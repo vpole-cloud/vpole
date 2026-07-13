@@ -49,7 +49,7 @@ public sealed class BuildKitClientTests
     {
         using var context = new TemporaryDirectory();
         var runner = new RecordingProcessRunner(_ => Task.FromResult(
-            new ProcessResult(1, "registry-secret from build", "registry-secret from stderr")));
+            new ProcessResult(1, "registry-secret from build", "failed to authorize registry-secret")));
         var client = CreateClient(runner);
 
         var result = await client.BuildAndPushAsync(new BuildKitBuildRequest(
@@ -61,6 +61,27 @@ public sealed class BuildKitClientTests
 
         Assert.False(result.TryGetValue(out _, out var failure));
         Assert.DoesNotContain("registry-secret", failure.ToString(), StringComparison.Ordinal);
+        Assert.Contains("could not authenticate", failure.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task BuildFailure_IdentifiesTheTargetRegistryWithoutReflectingItsOutput()
+    {
+        using var context = new TemporaryDirectory();
+        var runner = new RecordingProcessRunner(_ => Task.FromResult(
+            new ProcessResult(1, string.Empty, "dial tcp harbor.test:5000: registry-secret")));
+        var client = CreateClient(runner);
+
+        var result = await client.BuildAndPushAsync(new BuildKitBuildRequest(
+            context.Path,
+            "FROM scratch",
+            new RegistryPushTarget("harbor.test:5000", "pole-test", "service", "tag"),
+            "robot$build",
+            "registry-secret"));
+
+        Assert.False(result.TryGetValue(out _, out var failure));
+        Assert.DoesNotContain("registry-secret", failure.ToString(), StringComparison.Ordinal);
+        Assert.Contains("configured target registry", failure.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     private static BuildKitClient CreateClient(IProcessRunner runner) =>
