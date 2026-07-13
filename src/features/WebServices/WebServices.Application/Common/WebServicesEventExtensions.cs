@@ -155,7 +155,7 @@ internal static class WebServicesEventExtensions
     {
         private WebServiceConfig ToDomain()
             => new(
-                config.EnvironmentVariables,
+                config.EnvironmentVariables ?? ImmutableDictionary<string, string>.Empty,
                 config.PortMappings
                     .Select(mapping => new PortMapping(
                         mapping.ServicePort,

@@ -25,6 +25,13 @@ public sealed class GitHubAppJwtFactory(GitHubAppOptions options, TimeProvider t
         {
             SetDefaultTimesOnTokenCreation = false
         };
+        var signingKey = new RsaSecurityKey(rsa)
+        {
+            CryptoProviderFactory = new CryptoProviderFactory
+            {
+                CacheSignatureProviders = false
+            }
+        };
         return handler.CreateToken(new SecurityTokenDescriptor
         {
             Issuer = options.ClientId,
@@ -32,7 +39,7 @@ public sealed class GitHubAppJwtFactory(GitHubAppOptions options, TimeProvider t
             Expires = now.AddMinutes(8).UtcDateTime,
             TokenType = "JWT",
             SigningCredentials = new SigningCredentials(
-                new RsaSecurityKey(rsa),
+                signingKey,
                 SecurityAlgorithms.RsaSha256)
         });
     }

@@ -7,6 +7,7 @@ using Pole.ASP.Helpers;
 using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Domain;
+using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -20,6 +21,50 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
     {
         PropertyNameCaseInsensitive = true
     };
+
+    [Fact]
+    public async Task Create_NormalizesAnEmptyEnvironmentVariablesObject_ForTheServiceAndInitialRelease()
+    {
+        var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var spec = TestData.ValidWebServiceSpec();
+
+        using var response = await Client.PostAsJsonAsync("/api/v1/web-services", new
+        {
+            name = "empty-environment",
+            resourceGroupId = resourceGroup.Id,
+            domainName = "empty-environment.example.test",
+            tags = Array.Empty<string>(),
+            spec = new
+            {
+                image = spec.Image,
+                spec.Replicas,
+                spec.Resources,
+                config = new
+                {
+                    environmentVariables = new Dictionary<string, string>(),
+                    portMappings = spec.Config.PortMappings
+                },
+                spec.Autoscaling,
+                spec.Probes
+            }
+        });
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<CreateWebServiceResponse>(JsonOptions);
+        Assert.NotNull(created);
+
+        var webService = await Fixture.DbContext.WebServices
+            .Find(service => service.Id == created.WebServiceId)
+            .SingleAsync();
+        var release = await Fixture.DbContext.WebServiceReleases
+            .Find(item => item.WebServiceId == created.WebServiceId && item.Revision == 1)
+            .SingleAsync();
+
+        Assert.NotNull(webService.Spec.Config.EnvironmentVariables);
+        Assert.Empty(webService.Spec.Config.EnvironmentVariables);
+        Assert.NotNull(release.Spec.Config.EnvironmentVariables);
+        Assert.Empty(release.Spec.Config.EnvironmentVariables);
+    }
 
     [Fact]
     public async Task Viewer_CanReadHistory_ButCannotRedeployOrRollback()

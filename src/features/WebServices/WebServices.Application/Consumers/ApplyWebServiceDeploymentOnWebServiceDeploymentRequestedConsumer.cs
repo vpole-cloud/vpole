@@ -1,4 +1,5 @@
 using MassTransit;
+using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
@@ -12,7 +13,8 @@ namespace Pole.Features.WebServices.Application.Consumers;
 
 public sealed class ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer(
     IWebServiceDbContext dbContext,
-    IWebServiceDeploymentApplier deploymentApplier)
+    IWebServiceDeploymentApplier deploymentApplier,
+    ILogger<ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer>? logger = null)
     : IConsumer<WebServiceDeploymentRequestedEvent>
 {
     public Task Consume(ConsumeContext<WebServiceDeploymentRequestedEvent> context) =>
@@ -24,6 +26,15 @@ public sealed class ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedCons
 
         if (applyResult is Failure failure)
         {
+            if (failure is ExternalServiceFailure { ServiceName: "Kubernetes" })
+            {
+                logger?.LogError(
+                    "[web-service-deployment-failed] Kubernetes could not apply release {ReleaseId} for web service {WebServiceId}: {Reason}",
+                    deploymentEvent.ReleaseId,
+                    deploymentEvent.WebServiceId,
+                    failure.Message);
+            }
+
             var completion = await MarkReleaseAsync(
                 deploymentEvent,
                 WebServiceReleaseOutcome.Failed,

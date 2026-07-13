@@ -49,8 +49,11 @@ public sealed class GitHubSecurityTests
                 PrivateKeyPath = keyPath,
                 PublicBaseUrl = "https://pole.test"
             };
-            var token = new GitHubAppJwtFactory(options, new FixedTimeProvider(now)).Create();
+            var jwtFactory = new GitHubAppJwtFactory(options, new FixedTimeProvider(now));
+            var token = jwtFactory.Create();
+            var repeatedToken = jwtFactory.Create();
             var parts = token.Split('.');
+            var repeatedParts = repeatedToken.Split('.');
 
             Assert.Equal(3, parts.Length);
             using var header = JsonDocument.Parse(Decode(parts[0]));
@@ -65,6 +68,11 @@ public sealed class GitHubSecurityTests
             Assert.True(rsa.VerifyData(
                 Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}"),
                 Decode(parts[2]),
+                HashAlgorithmName.SHA256,
+                RSASignaturePadding.Pkcs1));
+            Assert.True(rsa.VerifyData(
+                Encoding.ASCII.GetBytes($"{repeatedParts[0]}.{repeatedParts[1]}"),
+                Decode(repeatedParts[2]),
                 HashAlgorithmName.SHA256,
                 RSASignaturePadding.Pkcs1));
         }

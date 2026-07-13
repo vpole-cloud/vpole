@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.ResultType;
@@ -25,7 +26,8 @@ public interface IBuildKitClient
 
 public sealed class BuildKitClient(
     IProcessRunner processRunner,
-    BuildKitOptions options) : IBuildKitClient
+    BuildKitOptions options,
+    ILogger<BuildKitClient>? logger = null) : IBuildKitClient
 {
     public async Task<Result<BuiltContainerImage>> BuildAndPushAsync(
         BuildKitBuildRequest request,
@@ -106,10 +108,15 @@ public sealed class BuildKitClient(
 
             if (process.ExitCode != 0)
             {
+                var classification = ClassifyFailure(request, process);
+                logger?.LogError(
+                    "[buildkit-build-failed] buildctl exited with code {ExitCode}. {Diagnostic}",
+                    process.ExitCode,
+                    classification);
                 return Failures.ExternalService(
-                    "BuildKit failed to build or push the container image.",
+                    $"BuildKit failed to build or push the container image. {classification}",
                     "BuildKit",
-                    $"buildctl exited with code {process.ExitCode}.");
+                    $"buildctl exited with code {process.ExitCode}. Classification: {classification}");
             }
 
             var digest = await ReadDigestAsync(metadataPath, cancellationToken);
@@ -184,4 +191,36 @@ public sealed class BuildKitClient(
         digest is { Length: 71 } &&
         digest.StartsWith("sha256:", StringComparison.Ordinal) &&
         digest[7..].All(Uri.IsHexDigit);
+
+    private string ClassifyFailure(BuildKitBuildRequest request, ProcessResult process)
+    {
+        var output = string.Concat(process.StandardError, "\n", process.StandardOutput);
+        if (ContainsAny(output, "unauthorized", "forbidden", "denied", "failed to authorize", "no basic auth credentials"))
+            return "BuildKit could not authenticate to a container registry.";
+        if (ContainsAny(output, "failed to resolve source metadata", "failed to pull", "pull access denied"))
+            return "BuildKit could not pull a required base image.";
+        if (ContainsAny(output, "dockerfile parse error", "failed to read dockerfile", "unknown instruction"))
+            return "BuildKit rejected the generated Dockerfile.";
+        if (ContainsAny(output, "failed to compute cache key", "failed to read build context", "context canceled"))
+            return "BuildKit could not read the build context.";
+        var buildKitAuthority = Uri.TryCreate(options.Address, UriKind.Absolute, out var buildKitEndpoint)
+            ? buildKitEndpoint.Authority
+            : options.Address;
+        if (output.Contains(buildKitAuthority, StringComparison.OrdinalIgnoreCase) &&
+            ContainsAny(output, "connection refused", "no such host", "i/o timeout", "network is unreachable", "dial tcp", "x509"))
+        {
+            return "BuildKit could not reach its configured endpoint.";
+        }
+        if (output.Contains(request.Target.RegistryHost, StringComparison.OrdinalIgnoreCase) &&
+            ContainsAny(output, "connection refused", "no such host", "i/o timeout", "network is unreachable", "dial tcp", "x509"))
+        {
+            return "BuildKit could not reach the configured target registry.";
+        }
+        if (ContainsAny(output, "connection refused", "no such host", "i/o timeout", "network is unreachable", "dial tcp", "x509"))
+            return "BuildKit could not reach a required container registry.";
+        return "BuildKit returned an unclassified build error.";
+    }
+
+    private static bool ContainsAny(string value, params string[] fragments) =>
+        fragments.Any(fragment => value.Contains(fragment, StringComparison.OrdinalIgnoreCase));
 }

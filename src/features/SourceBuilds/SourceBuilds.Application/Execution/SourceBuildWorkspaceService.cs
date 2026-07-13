@@ -87,19 +87,22 @@ public sealed class SourceBuildWorkspaceService(
                 }
             }
 
-            await using var archive = new FileStream(
-                archivePath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                bufferSize: 64 * 1024,
-                useAsync: true);
-            var extraction = await archiveExtractor.ExtractAsync(
-                archive,
-                sourcePath,
-                options.MaxExtractedBytes,
-                options.MaxExtractedFiles,
-                cancellationToken);
+            Result extraction;
+            await using (var archive = new FileStream(
+                             archivePath,
+                             FileMode.Open,
+                             FileAccess.Read,
+                             FileShare.Read,
+                             bufferSize: 64 * 1024,
+                             useAsync: true))
+            {
+                extraction = await archiveExtractor.ExtractAsync(
+                    archive,
+                    sourcePath,
+                    options.MaxExtractedBytes,
+                    options.MaxExtractedFiles,
+                    cancellationToken);
+            }
             if (extraction is Failure extractionFailure)
             {
                 await DeleteWorkspaceAsync(buildRoot);
