@@ -1,0 +1,8 @@
+{
+  "SourceBuilds": {
+    "Enabled": false,
+    "HarborBaseUrl": "http://localhost:5000",
+    "HarborRegistryHost": "host.docker.internal:5000",
+    "BuildctlPath": "buildctl"
+  }
+}

@@ -44,19 +44,17 @@ The test results need no user secrets and never call the real GitHub API.
 
 Full source-build verification remains an explicitly prepared, manual lane because Harbor owns a fixed Compose topology and BuildKit requires a privileged container. Prepare Harbor, `buildctl`, Docker registry trust, and Kubernetes using [GitHub source build E2E](github-source-build-e2e.md). Keep that lane serial and on an isolated self-hosted runner; do not add Harbor credentials or generated Harbor files to repository settings.
 
-The core Aspire E2E lane validates the source provider contract with deterministic repository revisions. Set the following process-only settings to enable `SourceBuildE2ETests`:
+The core Aspire E2E lane validates the source provider contract with deterministic repository revisions. To enable `SourceBuildE2ETests`, create the gitignored local configuration once:
 
 ```powershell
-$env:POLE_E2E_SOURCE_BUILDS = '1'
-$env:POLE_E2E_HARBOR_COMPOSE_DIR = 'C:\path\to\prepared-harbor'
-$env:POLE_E2E_HARBOR_ADMIN_PASSWORD = '<local-admin-password>'
-$env:POLE_E2E_BUILDCTL_PATH = 'C:\path\to\buildctl.exe'
-# Optional when the local topology uses the defaults:
-$env:POLE_E2E_HARBOR_BASE_URL = 'http://localhost:5000'
-$env:POLE_E2E_HARBOR_REGISTRY_HOST = 'host.docker.internal:5000'
+Copy-Item tests\Pole.Tests.E2E\testsettings.local.example.json tests\Pole.Tests.E2E\testsettings.local.json
+# Edit the copied file with the prepared Harbor directory and local Harbor admin password.
+# buildctl defaults to `buildctl`; set SourceBuilds:BuildctlPath only when it is not on PATH.
 
 dotnet test tests/Pole.Tests.E2E/Pole.Tests.E2E.csproj --filter SourceBuildE2ETests -maxcpucount:1
 ```
+
+`testsettings.local.json` is not tracked. The source-build test is skipped when `SourceBuilds:Enabled` is `false` or the local file is absent.
 
 That test starts Harbor and BuildKit through Aspire, performs a deterministic `v1` → `v2` reanalysis, verifies both immutable commit/release snapshots and Harbor artifact digests, and checks the deployed Kubernetes manifest for the exact image, release annotation, and Harbor pull secret. It also exercises a safe BuildKit failure path. The stub image is deliberately `FROM scratch`, so this verifies build, push, release, and Kubernetes reconciliation without an external base-image pull; it does not wait for an HTTP-ready application workload. The test then removes the source-build configuration, source repository, web service, resource group/namespace, Harbor project, workspace, and Compose resources. The Kubernetes context must be authorized to create and delete the temporary namespace.
 
