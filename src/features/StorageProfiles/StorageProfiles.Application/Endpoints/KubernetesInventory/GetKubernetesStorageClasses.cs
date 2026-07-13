@@ -14,5 +14,5 @@ public sealed class GetKubernetesStorageClassesHandler(IStorageDiscoveryService 
     public async Task<Result<IReadOnlyCollection<KubernetesStorageClassDto>>> HandleAsync(
         GetKubernetesStorageClassesRequest request,
         CancellationToken cancellationToken = default) =>
-        (await storageDiscovery.GetStorageClassesAsync(cancellationToken)).ToArray();
+        await storageDiscovery.GetStorageClassesAsync(cancellationToken);
 }

@@ -2,6 +2,7 @@ using k8s;
 using k8s.Models;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Contracts;
+using Pole.ResultType;
 
 namespace Pole.Features.StorageProfiles.Application.Discovery;
 
@@ -13,48 +14,89 @@ public sealed class KubernetesStorageDiscoveryService(IKubernetes kubernetes) : 
         "storageclass.beta.kubernetes.io/is-default-class"
     ];
 
-    public async Task<IReadOnlyCollection<KubernetesStorageClassDto>> GetStorageClassesAsync(
+    public async Task<Result<IReadOnlyCollection<KubernetesStorageClassDto>>> GetStorageClassesAsync(
         CancellationToken cancellationToken = default)
     {
-        var storageClasses = await kubernetes.StorageV1.ListStorageClassAsync(cancellationToken: cancellationToken);
-
-        return storageClasses.Items
-            .OrderBy(storageClass => storageClass.Metadata.Name, StringComparer.Ordinal)
-            .Select(MapStorageClass)
-            .ToArray();
+        try
+        {
+            var storageClasses = await kubernetes.StorageV1.ListStorageClassAsync(cancellationToken: cancellationToken);
+            return storageClasses.Items
+                .OrderBy(storageClass => storageClass.Metadata.Name, StringComparer.Ordinal)
+                .Select(MapStorageClass)
+                .ToArray();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return Failures.ExternalService("Unable to query Kubernetes storage classes.", "Kubernetes", exception.GetType().Name);
+        }
     }
 
-    public async Task<IReadOnlyCollection<KubernetesPersistentVolumeDto>> GetPersistentVolumesAsync(
+    public async Task<Result<IReadOnlyCollection<KubernetesPersistentVolumeDto>>> GetPersistentVolumesAsync(
         CancellationToken cancellationToken = default)
     {
-        var persistentVolumes = await kubernetes.CoreV1.ListPersistentVolumeAsync(cancellationToken: cancellationToken);
-
-        return persistentVolumes.Items
-            .OrderBy(volume => volume.Metadata.Name, StringComparer.Ordinal)
-            .Select(MapPersistentVolume)
-            .ToArray();
+        try
+        {
+            var persistentVolumes = await kubernetes.CoreV1.ListPersistentVolumeAsync(cancellationToken: cancellationToken);
+            return persistentVolumes.Items
+                .OrderBy(volume => volume.Metadata.Name, StringComparer.Ordinal)
+                .Select(MapPersistentVolume)
+                .ToArray();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return Failures.ExternalService("Unable to query Kubernetes persistent volumes.", "Kubernetes", exception.GetType().Name);
+        }
     }
 
-    public async Task<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>> GetPersistentVolumeClaimsAsync(
+    public async Task<Result<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>> GetPersistentVolumeClaimsAsync(
         CancellationToken cancellationToken = default)
     {
-        var persistentVolumeClaims = await kubernetes.CoreV1.ListPersistentVolumeClaimForAllNamespacesAsync(
-            cancellationToken: cancellationToken);
-
-        return persistentVolumeClaims.Items
-            .OrderBy(claim => claim.Metadata.NamespaceProperty, StringComparer.Ordinal)
-            .ThenBy(claim => claim.Metadata.Name, StringComparer.Ordinal)
-            .Select(MapPersistentVolumeClaim)
-            .ToArray();
+        try
+        {
+            var persistentVolumeClaims = await kubernetes.CoreV1.ListPersistentVolumeClaimForAllNamespacesAsync(
+                cancellationToken: cancellationToken);
+            return persistentVolumeClaims.Items
+                .OrderBy(claim => claim.Metadata.NamespaceProperty, StringComparer.Ordinal)
+                .ThenBy(claim => claim.Metadata.Name, StringComparer.Ordinal)
+                .Select(MapPersistentVolumeClaim)
+                .ToArray();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return Failures.ExternalService("Unable to query Kubernetes persistent volume claims.", "Kubernetes", exception.GetType().Name);
+        }
     }
 
-    public async Task<IReadOnlySet<string>> GetStorageClassNamesAsync(CancellationToken cancellationToken = default)
+    public async Task<Result<IReadOnlySet<string>>> GetStorageClassNamesAsync(CancellationToken cancellationToken = default)
     {
-        var storageClasses = await kubernetes.StorageV1.ListStorageClassAsync(cancellationToken: cancellationToken);
-        return storageClasses.Items
-            .Select(storageClass => storageClass.Metadata.Name)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .ToHashSet(StringComparer.Ordinal);
+        try
+        {
+            var storageClasses = await kubernetes.StorageV1.ListStorageClassAsync(cancellationToken: cancellationToken);
+            return storageClasses.Items
+                .Select(storageClass => storageClass.Metadata.Name)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToHashSet(StringComparer.Ordinal);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return Failures.ExternalService("Unable to query Kubernetes storage classes.", "Kubernetes", exception.GetType().Name);
+        }
     }
 
     private static KubernetesStorageClassDto MapStorageClass(V1StorageClass storageClass)

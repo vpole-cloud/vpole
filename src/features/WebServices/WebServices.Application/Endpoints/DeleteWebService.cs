@@ -55,10 +55,13 @@ public sealed class DeleteWebServiceHandler(
             tenantId = existing;
         }
 
-        if (await sourceBuildReferences.HasConfigurationForWebServiceAsync(
-                tenantId,
-                request.Id,
-                cancellationToken))
+        var hasConfiguration = await sourceBuildReferences.HasConfigurationForWebServiceAsync(
+            tenantId,
+            request.Id,
+            cancellationToken);
+        if (!hasConfiguration.TryGetValue(out var exists, out var lookupFailure))
+            return lookupFailure;
+        if (exists)
         {
             return Failures.Conflict(
                 "Delete the source build configuration before deleting this web service.");

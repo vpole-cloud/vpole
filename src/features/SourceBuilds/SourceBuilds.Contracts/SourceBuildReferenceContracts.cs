@@ -1,13 +1,15 @@
+using Pole.ResultType;
+
 namespace Pole.Features.SourceBuilds.Contracts;
 
 public interface ISourceBuildReferenceLookup
 {
-    Task<bool> HasConfigurationForSourceRepositoryAsync(
+    Task<Result<bool>> HasConfigurationForSourceRepositoryAsync(
         string tenantId,
         string sourceRepositoryId,
         CancellationToken cancellationToken = default);
 
-    Task<bool> HasConfigurationForWebServiceAsync(
+    Task<Result<bool>> HasConfigurationForWebServiceAsync(
         string tenantId,
         string webServiceId,
         CancellationToken cancellationToken = default);

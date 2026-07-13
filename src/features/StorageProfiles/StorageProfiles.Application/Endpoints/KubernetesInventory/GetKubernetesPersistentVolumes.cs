@@ -14,5 +14,5 @@ public sealed class GetKubernetesPersistentVolumesHandler(IStorageDiscoveryServi
     public async Task<Result<IReadOnlyCollection<KubernetesPersistentVolumeDto>>> HandleAsync(
         GetKubernetesPersistentVolumesRequest request,
         CancellationToken cancellationToken = default) =>
-        (await storageDiscovery.GetPersistentVolumesAsync(cancellationToken)).ToArray();
+        await storageDiscovery.GetPersistentVolumesAsync(cancellationToken);
 }

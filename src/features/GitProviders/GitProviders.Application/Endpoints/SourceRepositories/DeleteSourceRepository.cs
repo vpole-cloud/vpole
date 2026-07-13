@@ -24,10 +24,13 @@ public sealed class DeleteSourceRepositoryHandler(
         DeleteSourceRepositoryRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (await sourceBuildReferences.HasConfigurationForSourceRepositoryAsync(
-                request.TenantId,
-                request.Id,
-                cancellationToken))
+        var hasConfiguration = await sourceBuildReferences.HasConfigurationForSourceRepositoryAsync(
+            request.TenantId,
+            request.Id,
+            cancellationToken);
+        if (!hasConfiguration.TryGetValue(out var exists, out var lookupFailure))
+            return lookupFailure;
+        if (exists)
         {
             return Failures.Conflict("Delete the source build configuration before unlinking this repository.");
         }
