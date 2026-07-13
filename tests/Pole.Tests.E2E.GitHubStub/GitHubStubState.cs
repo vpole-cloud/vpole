@@ -66,6 +66,7 @@ public sealed class GitHubStubState
         using (var gzip = new GZipStream(archive, CompressionLevel.SmallestSize, leaveOpen: true))
         using (var tar = new TarWriter(gzip, leaveOpen: true))
         {
+            WriteFile(tar, $"{root}/Dockerfile", SourceDockerfile);
             WriteFile(tar, $"{root}/src/Pole.E2E.Sample.csproj", ProjectFile);
             WriteFile(tar, $"{root}/src/Program.cs", revision.ProgramSource);
         }
@@ -112,6 +113,11 @@ public sealed class GitHubStubState
             <AssemblyName>Pole.E2E.Sample</AssemblyName>
           </PropertyGroup>
         </Project>
+        """;
+
+    public const string SourceDockerfile = """
+        FROM scratch
+        COPY src/Program.cs /app/revision.txt
         """;
 }
 

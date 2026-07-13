@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.ComponentModel;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -7,10 +8,12 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.JavaScript;
 using Aspire.Hosting.Testing;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Pole.Tests.E2E.Infrastructure;
@@ -20,6 +23,8 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     private const string KeycloakAdminUsername = "pole-e2e-admin";
     private readonly CancellationTokenSource _shutdown = new(TimeSpan.FromMinutes(10));
     private readonly List<Func<CancellationToken, Task>> _cleanup = [];
+    private readonly TcpListener _buildKitPortReservation;
+    private readonly int _buildKitPort;
     private readonly string _githubClientSecret = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private readonly string _keycloakAdminPassword = $"E2e-{Guid.NewGuid():N}-1!";
     private readonly TcpListener _keycloakPortReservation = ReserveTcpPort();
@@ -31,6 +36,12 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     private DistributedApplication? _application;
     private KeycloakAdminClient? _keycloak;
     private string? _scratchDirectory;
+
+    public PoleE2EFixture()
+    {
+        _buildKitPortReservation = ReserveTcpPort();
+        _buildKitPort = ((IPEndPoint)_buildKitPortReservation.LocalEndpoint).Port;
+    }
 
     public HttpClient Api { get; private set; } = null!;
     public HttpClient Stub { get; private set; } = null!;
@@ -55,6 +66,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
                 _sourceBuildSettings,
                 _scratchDirectory,
                 _kubernetesNamespacePrefix,
+                BuildKitPort,
                 KeycloakPort,
                 _keycloakAdminPassword,
                 _githubClientSecret,
@@ -64,6 +76,13 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
         var api = appHost.CreateResourceBuilder<ProjectResource>("pole-server");
         var frontend = appHost.CreateResourceBuilder<ViteAppResource>("frontend");
+        if (_sourceBuildSettings is not null)
+        {
+            // The test server is a host process, whereas BuildKit is a proxyless container.
+            // Give buildctl the reserved host endpoint rather than container service discovery.
+            api.WithEnvironment(context =>
+                context.EnvironmentVariables["BuildKit__Address"] = $"tcp://127.0.0.1:{BuildKitPort}");
+        }
         var githubStub = appHost
             .AddProject(
                 "github-stub",
@@ -86,6 +105,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             .WithEnvironment("GitHubStub__ControlKey", _stubControlKey);
 
         _application = await appHost.BuildAsync(_shutdown.Token);
+        _buildKitPortReservation.Stop();
         _keycloakPortReservation.Stop();
         await _application.StartAsync(_shutdown.Token);
         await _application.ResourceNotifications.WaitForResourceHealthyAsync("pole-server", _shutdown.Token);
@@ -124,6 +144,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
+        _buildKitPortReservation.Stop();
         _keycloakPortReservation.Stop();
         var cancellationToken = new CancellationTokenSource(TimeSpan.FromMinutes(2)).Token;
         foreach (var action in _cleanup.AsEnumerable().Reverse())
@@ -188,6 +209,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             "pole-buildkit",
             KnownResourceStates.Running,
             cancellationToken);
+        await WaitForBuildKitReadyAsync(cancellationToken);
         await WaitForHarborHealthAsync(cancellationToken);
     }
 
@@ -211,14 +233,55 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(tenantId));
         var projectName = $"pole-{Convert.ToHexStringLower(hash.AsSpan(0, 16))}";
-        using var client = new HttpClient { BaseAddress = new Uri(_sourceBuildSettings.HarborBaseUrl) };
+        using var client = new HttpClient(new HttpClientHandler { UseCookies = false })
+        {
+            BaseAddress = new Uri(_sourceBuildSettings.HarborBaseUrl)
+        };
         var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"admin:{_sourceBuildSettings.HarborAdminPassword}"));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-        using var response = await client.DeleteAsync(
+        var repositoryNames = new List<string>();
+        for (var page = 1; ; page++)
+        {
+            using var repositoriesResponse = await client.GetAsync(
+                $"/api/v2.0/projects/{Uri.EscapeDataString(projectName)}/repositories?page={page}&page_size=100",
+                cancellationToken);
+            if (repositoriesResponse.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return;
+            repositoriesResponse.EnsureSuccessStatusCode();
+            using var repositories = JsonDocument.Parse(await repositoriesResponse.Content.ReadAsStreamAsync(cancellationToken));
+            var currentPage = repositories.RootElement.EnumerateArray().ToArray();
+            repositoryNames.AddRange(currentPage
+                .Select(item => item.GetProperty("name").GetString())
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name!));
+            if (currentPage.Length < 100)
+                break;
+        }
+
+        foreach (var repositoryName in repositoryNames)
+        {
+            var relativeRepositoryName = repositoryName.StartsWith($"{projectName}/", StringComparison.OrdinalIgnoreCase)
+                ? repositoryName[(projectName.Length + 1)..]
+                : repositoryName;
+            // Harbor treats nested repository names as one route parameter. HttpClient/Uri
+            // unescape the first level, so the embedded slash must be encoded twice.
+            var encodedRepository = Uri.EscapeDataString(Uri.EscapeDataString(relativeRepositoryName));
+            using var deleteRepositoryResponse = await client.DeleteAsync(
+                $"/api/v2.0/projects/{Uri.EscapeDataString(projectName)}/repositories/{encodedRepository}",
+                cancellationToken);
+            if (!deleteRepositoryResponse.IsSuccessStatusCode &&
+                deleteRepositoryResponse.StatusCode != System.Net.HttpStatusCode.NotFound)
+            {
+                throw new HttpRequestException(
+                    $"Harbor did not delete the E2E repository: {(int)deleteRepositoryResponse.StatusCode}.");
+            }
+        }
+
+        using var deleteProjectResponse = await client.DeleteAsync(
             $"/api/v2.0/projects/{Uri.EscapeDataString(projectName)}",
             cancellationToken);
-        if (!response.IsSuccessStatusCode && response.StatusCode != System.Net.HttpStatusCode.NotFound)
-            throw new HttpRequestException($"Harbor did not delete the E2E project: {(int)response.StatusCode}.");
+        if (!deleteProjectResponse.IsSuccessStatusCode && deleteProjectResponse.StatusCode != System.Net.HttpStatusCode.NotFound)
+            throw new HttpRequestException($"Harbor did not delete the E2E project: {(int)deleteProjectResponse.StatusCode}.");
     }
 
     public async Task<string> GetHarborArtifactDigestAsync(
@@ -232,8 +295,12 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(tenantId));
         var projectName = $"pole-{Convert.ToHexStringLower(hash.AsSpan(0, 16))}";
-        var repository = Uri.EscapeDataString($"web-services/{webServiceId}");
-        using var client = new HttpClient { BaseAddress = new Uri(_sourceBuildSettings.HarborBaseUrl) };
+        // See DeleteHarborProjectAsync: nested repository paths require double encoding.
+        var repository = Uri.EscapeDataString(Uri.EscapeDataString($"web-services/{webServiceId}"));
+        using var client = new HttpClient(new HttpClientHandler { UseCookies = false })
+        {
+            BaseAddress = new Uri(_sourceBuildSettings.HarborBaseUrl)
+        };
         var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"admin:{_sourceBuildSettings.HarborAdminPassword}"));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
         using var response = await client.GetAsync(
@@ -277,6 +344,106 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         throw new TimeoutException($"Kubernetes namespace '{namespaceName}' was not created.");
     }
 
+    public Task<JsonElement> GetWebServiceDeploymentAsync(
+        string resourceGroupId,
+        string webServiceName,
+        CancellationToken cancellationToken) =>
+        ReadKubectlJsonAsync(
+            ["get", "deployment", webServiceName, "--namespace", GetNamespaceName(resourceGroupId), "--output=json"],
+            cancellationToken);
+
+    public async Task<bool> KubernetesSecretExistsAsync(
+        string resourceGroupId,
+        string secretName,
+        CancellationToken cancellationToken) =>
+        await RunKubectlAsync(
+            ["get", "secret", secretName, "--namespace", GetNamespaceName(resourceGroupId)],
+            cancellationToken) == 0;
+
+    public async Task<string> GetWebServiceDeploymentDiagnosticsAsync(CancellationToken cancellationToken)
+    {
+        if (_application is null)
+            return string.Empty;
+
+        var resourceLogger = _application.Services.GetRequiredService<ResourceLoggerService>();
+        var diagnostics = new StringBuilder();
+        using var diagnosticTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        diagnosticTimeout.CancelAfter(TimeSpan.FromSeconds(5));
+        try
+        {
+            await foreach (var batch in resourceLogger.GetAllAsync("pole-server").WithCancellation(diagnosticTimeout.Token))
+            {
+                foreach (var line in batch)
+                {
+                    if (!line.Content.Contains("[web-service-deployment-failed]", StringComparison.Ordinal))
+                        continue;
+
+                    diagnostics.AppendLine(SanitizeDiagnosticLine(line.Content));
+                    if (diagnostics.Length >= 4_000)
+                        return diagnostics.ToString();
+                }
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Resource logs are a live stream. Diagnostics must not hide the original test failure.
+        }
+
+        return diagnostics.ToString();
+    }
+
+    public async Task<string> GetServerErrorDiagnosticsAsync(CancellationToken cancellationToken)
+    {
+        if (_application is null)
+            return string.Empty;
+
+        var resourceLogger = _application.Services.GetRequiredService<ResourceLoggerService>();
+        var diagnostics = new StringBuilder();
+        using var diagnosticTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        diagnosticTimeout.CancelAfter(TimeSpan.FromSeconds(5));
+        try
+        {
+            await foreach (var batch in resourceLogger.GetAllAsync("pole-server").WithCancellation(diagnosticTimeout.Token))
+            {
+                foreach (var line in batch)
+                {
+                    if (!line.IsErrorMessage &&
+                        !line.Content.Contains("exception", StringComparison.OrdinalIgnoreCase) &&
+                        !line.Content.Contains("fail", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    diagnostics.AppendLine(SanitizeDiagnosticLine(line.Content));
+                    if (diagnostics.Length >= 4_000)
+                        return diagnostics.ToString();
+                }
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Resource logs are a live stream. Diagnostics must not hide the original test failure.
+        }
+
+        return diagnostics.ToString();
+    }
+
+    public async Task<string> GetGitHubStubRequestDiagnosticsAsync(CancellationToken cancellationToken)
+    {
+        using var response = await Stub.GetAsync("/__e2e/requests", cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            return string.Empty;
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
+        return string.Join(
+            Environment.NewLine,
+            document.RootElement
+                .EnumerateArray()
+                .TakeLast(20)
+                .Select(request =>
+                    $"{request.GetProperty("method").GetString()} {PathWithoutQuery(request.GetProperty("path").GetString())}"));
+    }
+
     private string GetNamespaceName(string resourceGroupId)
     {
         var tenantSegment = Alpha.DefaultTenantId[..Math.Min(8, Alpha.DefaultTenantId.Length)];
@@ -290,6 +457,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         SourceBuildSettings? sourceBuildSettings,
         string scratchDirectory,
         string kubernetesNamespacePrefix,
+        int buildKitPort,
         int keycloakPort,
         string keycloakAdminPassword,
         string githubClientSecret,
@@ -299,6 +467,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         var arguments = new List<string>
         {
         "E2E:Enabled=true",
+        $"E2E:BuildKitPort={buildKitPort}",
         $"E2E:KeycloakPort={keycloakPort}",
         $"E2E:KubernetesNamespacePrefix={kubernetesNamespacePrefix}",
         "Parameters:mongo-username=pole-e2e",
@@ -330,7 +499,21 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         return arguments.ToArray();
     }
 
+    private static string SanitizeDiagnosticLine(string line) =>
+        Regex.Replace(
+            Regex.Replace(
+                Regex.Replace(line, "(?i)(authorization)\\s*[:=]\\s*(?:Basic|Bearer)\\s+\\S+", "$1=[redacted]"),
+                "(?i)Bearer\\s+\\S+",
+                "Bearer [redacted]"),
+            "(?i)(password|token|secret)(?:[\\\"']\\s*)?[:=]\\s*(?:[\\\"'])?[^\\s,}\\]\\\"']+",
+            "$1=[redacted]");
+
+    private static string PathWithoutQuery(string? path) =>
+        path?.Split('?', 2)[0] ?? string.Empty;
+
     private int KeycloakPort => ((IPEndPoint)_keycloakPortReservation.LocalEndpoint).Port;
+
+    private int BuildKitPort => _buildKitPort;
 
     private static TcpListener ReserveTcpPort()
     {
@@ -441,15 +624,27 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     private async Task WaitForHarborHealthAsync(CancellationToken cancellationToken)
     {
-        using var client = new HttpClient { BaseAddress = new Uri(_sourceBuildSettings!.HarborBaseUrl) };
+        using var client = new HttpClient(new HttpClientHandler { UseCookies = false })
+        {
+            BaseAddress = new Uri(_sourceBuildSettings!.HarborBaseUrl)
+        };
         var deadline = DateTimeOffset.UtcNow.AddMinutes(3);
         while (DateTimeOffset.UtcNow < deadline)
         {
             try
             {
                 using var response = await client.GetAsync("/api/v2.0/health", cancellationToken);
-                if (response.IsSuccessStatusCode)
+                if (!response.IsSuccessStatusCode)
+                    throw new HttpRequestException("Harbor API is not ready.");
+
+                // The API can become healthy before the registry endpoint is ready to accept
+                // BuildKit pushes. A 401 is the expected unauthenticated response from /v2/.
+                using var registryResponse = await client.GetAsync("/v2/", cancellationToken);
+                if (registryResponse.IsSuccessStatusCode ||
+                    registryResponse.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
                     return;
+                }
             }
             catch (HttpRequestException)
             {
@@ -460,6 +655,94 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         }
 
         throw new TimeoutException("Harbor did not report healthy within three minutes.");
+    }
+
+    private async Task WaitForBuildKitReadyAsync(CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddMinutes(1);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (await IsBuildKitReadyAsync(cancellationToken))
+                return;
+
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+
+        throw new TimeoutException("BuildKit did not accept a buildctl connection on its E2E endpoint.");
+    }
+
+    private async Task<bool> IsBuildKitReadyAsync(CancellationToken cancellationToken)
+    {
+        if (_sourceBuildSettings is null)
+            return false;
+
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = _sourceBuildSettings.BuildctlPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            }
+        };
+        process.StartInfo.ArgumentList.Add("--addr");
+        process.StartInfo.ArgumentList.Add($"tcp://127.0.0.1:{BuildKitPort}");
+        process.StartInfo.ArgumentList.Add("debug");
+        process.StartInfo.ArgumentList.Add("workers");
+
+        var started = false;
+        try
+        {
+            started = process.Start();
+            if (!started)
+                return false;
+
+            var standardOutput = process.StandardOutput.ReadToEndAsync();
+            var standardError = process.StandardError.ReadToEndAsync();
+            using var attemptTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            attemptTimeout.CancelAfter(TimeSpan.FromSeconds(5));
+            try
+            {
+                await process.WaitForExitAsync(attemptTimeout.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                    await process.WaitForExitAsync(CancellationToken.None);
+                }
+            }
+
+            if (!process.HasExited)
+                return false;
+
+            // Consume and discard the diagnostic output: it can contain daemon details, while
+            // only the exit status is needed to prove the E2E endpoint is usable.
+            await Task.WhenAll(standardOutput, standardError);
+            return process.ExitCode == 0;
+        }
+        catch (Exception exception) when (exception is Win32Exception or IOException or InvalidOperationException)
+        {
+            return false;
+        }
+        finally
+        {
+            if (started)
+            {
+                try
+                {
+                    if (!process.HasExited)
+                        process.Kill(entireProcessTree: true);
+                }
+                catch (InvalidOperationException)
+                {
+                    // The short-lived readiness process has already exited.
+                }
+            }
+        }
     }
 
     private static async Task WaitForKeycloakDiscoveryAsync(HttpClient keycloak, CancellationToken cancellationToken)
@@ -547,14 +830,48 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             StartInfo = new ProcessStartInfo("kubectl")
             {
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
             }
         };
         foreach (var argument in arguments)
             process.StartInfo.ArgumentList.Add(argument);
         process.Start();
+        var standardOutput = process.StandardOutput.ReadToEndAsync();
+        var standardError = process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync(cancellationToken);
+        await Task.WhenAll(standardOutput, standardError);
         return process.ExitCode;
+    }
+
+    private static async Task<JsonElement> ReadKubectlJsonAsync(
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken)
+    {
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo("kubectl")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            }
+        };
+        foreach (var argument in arguments)
+            process.StartInfo.ArgumentList.Add(argument);
+        process.Start();
+        var standardOutput = process.StandardOutput.ReadToEndAsync();
+        var standardError = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync(cancellationToken);
+        var output = await standardOutput;
+        await standardError;
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException("kubectl could not read the E2E Kubernetes resource.");
+
+        using var document = JsonDocument.Parse(output);
+        return document.RootElement.Clone();
     }
 }
 

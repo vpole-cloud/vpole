@@ -136,6 +136,7 @@ app.MapGet("/repos/pole-e2e/source-build-sample/git/trees/{treeSha}", (string tr
         {
             tree = new[]
             {
+                new { path = "Dockerfile", type = "blob" },
                 new { path = "src/Pole.E2E.Sample.csproj", type = "blob" },
                 new { path = "src/Program.cs", type = "blob" }
             },
@@ -151,6 +152,13 @@ app.MapGet("/repos/pole-e2e/source-build-sample/contents/src/Pole.E2E.Sample.csp
           <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
         </Project>
         """));
+    return Results.Ok(new { encoding = "base64", content });
+});
+
+app.MapGet("/repos/pole-e2e/source-build-sample/contents/Dockerfile", (HttpRequest request, GitHubStubState state) =>
+{
+    state.Record(request);
+    var content = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(GitHubStubState.SourceDockerfile));
     return Results.Ok(new { encoding = "base64", content });
 });
 

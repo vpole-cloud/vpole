@@ -1,6 +1,6 @@
 # GitHub Source Build E2E
 
-This procedure verifies the current issue #15 workflow against GitHub, Harbor, BuildKit, MongoDB, RabbitMQ, and Kubernetes. It remains semi-automated until the dedicated browser E2E issue is implemented.
+This procedure verifies the source-build workflow against GitHub, Harbor, BuildKit, MongoDB, RabbitMQ, and Kubernetes. The corresponding automated, deterministic lane is documented in [Aspire E2E testing](aspire-e2e-testing.md); this guide remains useful for manual validation against a real GitHub installation and a runnable application image.
 
 ## One-time local infrastructure
 

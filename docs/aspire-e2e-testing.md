@@ -58,7 +58,7 @@ $env:POLE_E2E_HARBOR_REGISTRY_HOST = 'host.docker.internal:5000'
 dotnet test tests/Pole.Tests.E2E/Pole.Tests.E2E.csproj --filter SourceBuildE2ETests -maxcpucount:1
 ```
 
-That test starts Harbor and BuildKit through Aspire, verifies the exact source commit, Harbor artifact digest, source-build release provenance, and a BuildKit failure path. It then removes the source-build configuration, source repository, web service, resource group/namespace, Harbor project, workspace, and the Compose resources. The Kubernetes context must be authorized to create and delete the temporary namespace.
+That test starts Harbor and BuildKit through Aspire, performs a deterministic `v1` → `v2` reanalysis, verifies both immutable commit/release snapshots and Harbor artifact digests, and checks the deployed Kubernetes manifest for the exact image, release annotation, and Harbor pull secret. It also exercises a safe BuildKit failure path. The stub image is deliberately `FROM scratch`, so this verifies build, push, release, and Kubernetes reconciliation without an external base-image pull; it does not wait for an HTTP-ready application workload. The test then removes the source-build configuration, source repository, web service, resource group/namespace, Harbor project, workspace, and Compose resources. The Kubernetes context must be authorized to create and delete the temporary namespace.
 
 ## CI
 

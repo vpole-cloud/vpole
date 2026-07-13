@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Pole.Tests.E2E.Infrastructure;
 using Xunit;
 
@@ -8,6 +9,9 @@ namespace Pole.Tests.E2E;
 [Collection(PoleE2ECollection.Name)]
 public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
 {
+    private const string RevisionOneCommitSha = "1111111111111111111111111111111111111111";
+    private const string RevisionTwoCommitSha = "2222222222222222222222222222222222222222";
+
     [SourceBuildFact]
     public async Task Source_build_uses_the_exact_repository_commit_pushes_an_artifact_and_records_release_provenance()
     {
@@ -16,41 +20,75 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         await fixture.StartSourceBuildInfrastructureAsync(cancellationToken);
 
         string? resourceGroupId = null;
-        string? webServiceId = null;
+        CreatedWebService? webService = null;
         string? sourceRepositoryId = null;
         string? sourceBuildConfigurationId = null;
         try
         {
             resourceGroupId = await CreateResourceGroupAsync(cancellationToken);
             await fixture.WaitForNamespaceCreationAsync(resourceGroupId, cancellationToken);
-            webServiceId = await CreateWebServiceAsync(resourceGroupId, cancellationToken);
-            await WaitForReleaseOutcomeAsync(webServiceId, "Succeeded", cancellationToken);
+            webService = await CreateWebServiceAsync(resourceGroupId, cancellationToken);
+            await WaitForReleaseOutcomeAsync(webService.Id, "Succeeded", cancellationToken);
 
             var connectionId = await EnsureGitHubConnectionAsync(cancellationToken);
             sourceRepositoryId = await LinkSourceRepositoryAsync(connectionId, cancellationToken);
-            sourceBuildConfigurationId = await CreateSourceBuildConfigurationAsync(sourceRepositoryId, webServiceId, cancellationToken);
+            sourceBuildConfigurationId = await CreateSourceBuildConfigurationAsync(sourceRepositoryId, webService.Id, cancellationToken);
 
-            var succeededBuild = await StartBuildAsync(sourceBuildConfigurationId, cancellationToken);
-            var completedBuild = await WaitForBuildAsync(succeededBuild, "succeeded", cancellationToken);
-            var commitSha = completedBuild.GetProperty("commitSha").GetString();
-            var imageDigest = completedBuild.GetProperty("state").GetProperty("imageDigest").GetString();
-            Assert.False(string.IsNullOrWhiteSpace(commitSha));
-            Assert.False(string.IsNullOrWhiteSpace(imageDigest));
+            var v1Build = await StartBuildAsync(sourceBuildConfigurationId, cancellationToken);
+            var v1CompletedBuild = await WaitForBuildAsync(v1Build, "succeeded", cancellationToken);
+            var v1State = v1CompletedBuild.GetProperty("state");
+            var v1CommitSha = RequiredString(v1CompletedBuild, "commitSha");
+            var v1ImageDigest = RequiredString(v1State, "imageDigest");
+            var v1ImageReference = RequiredString(v1State, "imageReference");
+            var v1ReleaseId = RequiredString(v1State, "releaseId");
+            Assert.Equal(RevisionOneCommitSha, v1CommitSha);
 
-            var artifactDigest = await fixture.GetHarborArtifactDigestAsync(
+            var v1ArtifactDigest = await fixture.GetHarborArtifactDigestAsync(
                 fixture.Alpha.DefaultTenantId,
-                webServiceId,
-                succeededBuild,
+                webService.Id,
+                v1Build,
                 cancellationToken);
-            Assert.Equal(imageDigest, artifactDigest);
+            Assert.Equal(v1ImageDigest, v1ArtifactDigest);
+            await WaitForReleaseOutcomeAsync(webService.Id, "Succeeded", cancellationToken, v1ReleaseId);
+            var v1Releases = await GetReleasesAsync(webService.Id, cancellationToken);
+            var v1Release = FindRelease(v1Releases, v1ReleaseId);
+            AssertSourceBuildRelease(v1Release, v1ReleaseId, v1CommitSha, v1ImageDigest, v1ImageReference);
+            await AssertSourceBuildDeploymentAsync(
+                resourceGroupId,
+                webService,
+                v1ImageReference,
+                v1ReleaseId,
+                cancellationToken);
 
-            var releases = await GetReleasesAsync(webServiceId, cancellationToken);
-            var sourceBuildRelease = releases.EnumerateArray().FirstOrDefault(release =>
-                release.GetProperty("action").GetString() == "SourceBuild" &&
-                release.GetProperty("provenance").GetProperty("source").GetString() == "PoleSourceBuild");
-            Assert.NotEqual(JsonValueKind.Undefined, sourceBuildRelease.ValueKind);
-            Assert.Equal(commitSha, sourceBuildRelease.GetProperty("provenance").GetProperty("commitSha").GetString());
-            Assert.Equal(imageDigest, sourceBuildRelease.GetProperty("provenance").GetProperty("imageDigest").GetString());
+            await SetStubRevisionAsync("v2", cancellationToken);
+            await ReanalyzeSourceRepositoryAsync(sourceRepositoryId, RevisionTwoCommitSha, cancellationToken);
+
+            var v2Build = await StartBuildAsync(sourceBuildConfigurationId, cancellationToken);
+            var v2CompletedBuild = await WaitForBuildAsync(v2Build, "succeeded", cancellationToken);
+            var v2State = v2CompletedBuild.GetProperty("state");
+            var v2CommitSha = RequiredString(v2CompletedBuild, "commitSha");
+            var v2ImageDigest = RequiredString(v2State, "imageDigest");
+            var v2ImageReference = RequiredString(v2State, "imageReference");
+            var v2ReleaseId = RequiredString(v2State, "releaseId");
+            Assert.Equal(RevisionTwoCommitSha, v2CommitSha);
+            Assert.NotEqual(v1ImageDigest, v2ImageDigest);
+
+            var v2ArtifactDigest = await fixture.GetHarborArtifactDigestAsync(
+                fixture.Alpha.DefaultTenantId,
+                webService.Id,
+                v2Build,
+                cancellationToken);
+            Assert.Equal(v2ImageDigest, v2ArtifactDigest);
+            await WaitForReleaseOutcomeAsync(webService.Id, "Succeeded", cancellationToken, v2ReleaseId);
+            var releases = await GetReleasesAsync(webService.Id, cancellationToken);
+            AssertSourceBuildRelease(FindRelease(releases, v1ReleaseId), v1ReleaseId, v1CommitSha, v1ImageDigest, v1ImageReference);
+            AssertSourceBuildRelease(FindRelease(releases, v2ReleaseId), v2ReleaseId, v2CommitSha, v2ImageDigest, v2ImageReference);
+            await AssertSourceBuildDeploymentAsync(
+                resourceGroupId,
+                webService,
+                v2ImageReference,
+                v2ReleaseId,
+                cancellationToken);
 
             await fixture.StopBuildKitAsync(cancellationToken);
             var failedBuild = await StartBuildAsync(sourceBuildConfigurationId, cancellationToken);
@@ -68,8 +106,8 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
                 await TryCleanupAsync(() => DeleteAsync($"/api/v1/source-build-configurations/{sourceBuildConfigurationId}", cleanupToken), cleanupFailures);
             if (!string.IsNullOrWhiteSpace(sourceRepositoryId))
                 await TryCleanupAsync(() => DeleteAsync($"/api/v1/source-repositories/{sourceRepositoryId}", cleanupToken), cleanupFailures);
-            if (!string.IsNullOrWhiteSpace(webServiceId))
-                await TryCleanupAsync(() => DeleteAsync($"/api/v1/web-services/{webServiceId}", cleanupToken), cleanupFailures);
+            if (webService is not null)
+                await TryCleanupAsync(() => DeleteAsync($"/api/v1/web-services/{webService.Id}", cleanupToken), cleanupFailures);
             if (!string.IsNullOrWhiteSpace(resourceGroupId))
             {
                 await TryCleanupAsync(() => DeleteAsync($"/api/v1/resource-groups/{resourceGroupId}", cleanupToken), cleanupFailures);
@@ -98,7 +136,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
                ?? throw new InvalidOperationException("Pole did not return a resource group id.");
     }
 
-    private async Task<string> CreateWebServiceAsync(string resourceGroupId, CancellationToken cancellationToken)
+    private async Task<CreatedWebService> CreateWebServiceAsync(string resourceGroupId, CancellationToken cancellationToken)
     {
         var name = $"sb-{Guid.NewGuid():N}"[..20];
         using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Post, "/api/v1/web-services", fixture.Alpha, fixture.Alpha.DefaultTenantId);
@@ -134,8 +172,9 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         using var response = await fixture.Api.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
         using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
-        return document.RootElement.GetProperty("webServiceId").GetString()
-               ?? throw new InvalidOperationException("Pole did not return a web service id.");
+        var id = document.RootElement.GetProperty("webServiceId").GetString()
+                 ?? throw new InvalidOperationException("Pole did not return a web service id.");
+        return new CreatedWebService(id, name);
     }
 
     private async Task<string> EnsureGitHubConnectionAsync(CancellationToken cancellationToken)
@@ -172,9 +211,30 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
             fixture.Alpha.DefaultTenantId);
         analyze.Content = JsonContent.Create(new { branch = "main" });
         using var analysisResponse = await fixture.Api.SendAsync(analyze, cancellationToken);
+        if (!analysisResponse.IsSuccessStatusCode)
+        {
+            var diagnostics = await fixture.GetServerErrorDiagnosticsAsync(cancellationToken);
+            var stubRequests = await fixture.GetGitHubStubRequestDiagnosticsAsync(cancellationToken);
+            var responseDetails = await ReadSafeErrorDetailsAsync(analysisResponse, cancellationToken);
+            throw new HttpRequestException(
+                $"Pole could not analyze the source repository: {(int)analysisResponse.StatusCode}." +
+                (string.IsNullOrWhiteSpace(responseDetails)
+                    ? string.Empty
+                    : $"{Environment.NewLine}API detail: {responseDetails}") +
+                (string.IsNullOrWhiteSpace(diagnostics)
+                    ? string.Empty
+                    : $"{Environment.NewLine}Server diagnostic: {diagnostics}") +
+                (string.IsNullOrWhiteSpace(stubRequests)
+                    ? string.Empty
+                    : $"{Environment.NewLine}GitHub stub requests:{Environment.NewLine}{stubRequests}"),
+                null,
+                analysisResponse.StatusCode);
+        }
         analysisResponse.EnsureSuccessStatusCode();
         using var analysis = JsonDocument.Parse(await analysisResponse.Content.ReadAsStreamAsync(cancellationToken));
-        var candidateKey = analysis.RootElement.GetProperty("candidates")[0].GetProperty("candidateKey").GetString();
+        var candidate = analysis.RootElement.GetProperty("candidates")[0];
+        Assert.Contains("FROM scratch", RequiredString(candidate, "dockerfilePreview"), StringComparison.Ordinal);
+        var candidateKey = RequiredString(candidate, "candidateKey");
 
         using var link = fixture.CreateAuthenticatedRequest(
             HttpMethod.Post,
@@ -183,10 +243,54 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
             fixture.Alpha.DefaultTenantId);
         link.Content = JsonContent.Create(new { branch = "main", candidateKey });
         using var linkResponse = await fixture.Api.SendAsync(link, cancellationToken);
+        if (!linkResponse.IsSuccessStatusCode)
+        {
+            var diagnostics = await fixture.GetServerErrorDiagnosticsAsync(cancellationToken);
+            var stubRequests = await fixture.GetGitHubStubRequestDiagnosticsAsync(cancellationToken);
+            var responseDetails = await ReadSafeErrorDetailsAsync(linkResponse, cancellationToken);
+            throw new HttpRequestException(
+                $"Pole could not link the analyzed source repository: {(int)linkResponse.StatusCode}." +
+                (string.IsNullOrWhiteSpace(responseDetails)
+                    ? string.Empty
+                    : $"{Environment.NewLine}API detail: {responseDetails}") +
+                (string.IsNullOrWhiteSpace(diagnostics)
+                    ? string.Empty
+                    : $"{Environment.NewLine}Server diagnostic: {diagnostics}") +
+                (string.IsNullOrWhiteSpace(stubRequests)
+                    ? string.Empty
+                    : $"{Environment.NewLine}GitHub stub requests:{Environment.NewLine}{stubRequests}"),
+                null,
+                linkResponse.StatusCode);
+        }
         linkResponse.EnsureSuccessStatusCode();
         using var source = JsonDocument.Parse(await linkResponse.Content.ReadAsStreamAsync(cancellationToken));
         return source.RootElement.GetProperty("id").GetString()
                ?? throw new InvalidOperationException("Pole did not return a source repository id.");
+    }
+
+    private async Task SetStubRevisionAsync(string revision, CancellationToken cancellationToken)
+    {
+        using var response = await fixture.Stub.PostAsJsonAsync(
+            "/__e2e/revision",
+            new { revision },
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
+    private async Task ReanalyzeSourceRepositoryAsync(
+        string sourceRepositoryId,
+        string expectedCommitSha,
+        CancellationToken cancellationToken)
+    {
+        using var request = fixture.CreateAuthenticatedRequest(
+            HttpMethod.Post,
+            $"/api/v1/source-repositories/{sourceRepositoryId}/reanalyze",
+            fixture.Alpha,
+            fixture.Alpha.DefaultTenantId);
+        using var response = await fixture.Api.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        using var sourceRepository = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
+        Assert.Equal(expectedCommitSha, RequiredString(sourceRepository.RootElement, "commitSha"));
     }
 
     private async Task<string> CreateSourceBuildConfigurationAsync(string sourceRepositoryId, string webServiceId, CancellationToken cancellationToken)
@@ -227,27 +331,53 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
             if (string.Equals(currentStatus, status, StringComparison.OrdinalIgnoreCase))
                 return job;
             if (string.Equals(currentStatus, "failed", StringComparison.OrdinalIgnoreCase))
-                throw new Xunit.Sdk.XunitException($"Expected build '{buildJobId}' to succeed, but it failed.");
+            {
+                var failedState = job.GetProperty("state");
+                var failureCode = failedState.GetProperty("failureCode").GetString();
+                var failureMessage = failedState.GetProperty("failureMessage").GetString();
+                var diagnostics = await fixture.GetServerErrorDiagnosticsAsync(cancellationToken);
+                throw new Xunit.Sdk.XunitException(
+                    $"Expected build '{buildJobId}' to succeed, but it failed. " +
+                    $"Code: {failureCode ?? "<none>"}. " +
+                    $"Message: {SanitizeDiagnostic(failureMessage)}" +
+                    (string.IsNullOrWhiteSpace(diagnostics)
+                        ? string.Empty
+                        : $"{Environment.NewLine}Server diagnostic: {diagnostics}"));
+            }
 
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
     }
 
-    private async Task WaitForReleaseOutcomeAsync(string webServiceId, string expectedOutcome, CancellationToken cancellationToken)
+    private async Task WaitForReleaseOutcomeAsync(
+        string webServiceId,
+        string expectedOutcome,
+        CancellationToken cancellationToken,
+        string? releaseId = null)
     {
         while (true)
         {
             var releases = await GetReleasesAsync(webServiceId, cancellationToken);
             foreach (var release in releases.EnumerateArray())
             {
+                if (releaseId is not null &&
+                    !string.Equals(release.GetProperty("id").GetString(), releaseId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
                 var outcome = release.GetProperty("outcome").GetString();
                 if (outcome == expectedOutcome)
                     return;
                 if (outcome == "Failed")
                 {
                     var failureMessage = release.GetProperty("failureMessage").GetString();
+                    var diagnostics = await fixture.GetWebServiceDeploymentDiagnosticsAsync(cancellationToken);
                     throw new Xunit.Sdk.XunitException(
-                        $"Web service release failed before it reached {expectedOutcome}: {failureMessage}");
+                        $"Web service release failed before it reached {expectedOutcome}: {SanitizeDiagnostic(failureMessage)}" +
+                        (string.IsNullOrWhiteSpace(diagnostics)
+                            ? string.Empty
+                            : $"{Environment.NewLine}Server diagnostic: {diagnostics}"));
                 }
             }
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
@@ -261,6 +391,56 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         response.EnsureSuccessStatusCode();
         using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
         return document.RootElement.GetProperty("releases").GetProperty("items").Clone();
+    }
+
+    private async Task AssertSourceBuildDeploymentAsync(
+        string resourceGroupId,
+        CreatedWebService webService,
+        string expectedImageReference,
+        string expectedReleaseId,
+        CancellationToken cancellationToken)
+    {
+        var deployment = await fixture.GetWebServiceDeploymentAsync(resourceGroupId, webService.Name, cancellationToken);
+        var podTemplate = deployment.GetProperty("spec").GetProperty("template");
+        var podSpec = podTemplate.GetProperty("spec");
+        Assert.Equal(
+            expectedImageReference,
+            RequiredString(podSpec.GetProperty("containers")[0], "image"));
+        Assert.Equal(
+            expectedReleaseId,
+            RequiredString(podTemplate.GetProperty("metadata").GetProperty("annotations"), "pole.server/releaseId"));
+
+        var pullSecrets = podSpec.GetProperty("imagePullSecrets");
+        Assert.True(pullSecrets.GetArrayLength() > 0, "The source-built Deployment should reference its Harbor pull secret.");
+        var pullSecretName = RequiredString(pullSecrets[0], "name");
+        Assert.True(
+            await fixture.KubernetesSecretExistsAsync(resourceGroupId, pullSecretName, cancellationToken),
+            "The source-built Deployment should have its Harbor pull secret in the resource-group namespace.");
+    }
+
+    private static JsonElement FindRelease(JsonElement releases, string releaseId)
+    {
+        var release = releases.EnumerateArray().SingleOrDefault(item =>
+            string.Equals(item.GetProperty("id").GetString(), releaseId, StringComparison.Ordinal));
+        Assert.NotEqual(JsonValueKind.Undefined, release.ValueKind);
+        return release;
+    }
+
+    private static void AssertSourceBuildRelease(
+        JsonElement release,
+        string expectedReleaseId,
+        string expectedCommitSha,
+        string expectedImageDigest,
+        string expectedImageReference)
+    {
+        Assert.Equal(expectedReleaseId, RequiredString(release, "id"));
+        Assert.Equal("SourceBuild", RequiredString(release, "action"));
+        Assert.Equal("Succeeded", RequiredString(release, "outcome"));
+        var provenance = release.GetProperty("provenance");
+        Assert.Equal("PoleSourceBuild", RequiredString(provenance, "source"));
+        Assert.Equal(expectedCommitSha, RequiredString(provenance, "commitSha"));
+        Assert.Equal(expectedImageDigest, RequiredString(provenance, "imageDigest"));
+        Assert.Equal(expectedImageReference, RequiredString(provenance, "newImageTag"));
     }
 
     private async Task DeleteAsync(string path, CancellationToken cancellationToken)
@@ -282,6 +462,36 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         successThreshold = 1
     };
 
+    private static string SanitizeDiagnostic(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "<none>";
+
+        var redacted = Regex.Replace(
+            Regex.Replace(
+                Regex.Replace(value, "(?i)(authorization)\\s*[:=]\\s*(?:Basic|Bearer)\\s+\\S+", "$1=[redacted]"),
+                "(?i)Bearer\\s+\\S+",
+                "Bearer [redacted]"),
+            "(?i)(password|token|secret)(?:[\\\"']\\s*)?[:=]\\s*(?:[\\\"'])?[^\\s,}\\]\\\"']+",
+            "$1=[redacted]");
+        return redacted.Length <= 1_000 ? redacted : $"{redacted[..1_000]}…";
+    }
+
+    private static async Task<string> ReadSafeErrorDetailsAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        if (response.Content.Headers.ContentType?.MediaType is not "application/json")
+            return string.Empty;
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
+        var properties = new[] { "message", "serviceName", "details" }
+            .Where(property => document.RootElement.TryGetProperty(property, out var value) &&
+                               value.ValueKind == JsonValueKind.String)
+            .Select(property => $"{property}={SanitizeDiagnostic(document.RootElement.GetProperty(property).GetString())}");
+        return string.Join(", ", properties);
+    }
+
     private static async Task TryCleanupAsync(Func<Task> action, ICollection<Exception> failures)
     {
         try
@@ -293,4 +503,10 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
             failures.Add(exception);
         }
     }
+
+    private static string RequiredString(JsonElement element, string propertyName) =>
+        element.GetProperty(propertyName).GetString()
+        ?? throw new InvalidOperationException($"Pole did not return '{propertyName}'.");
+
+    private sealed record CreatedWebService(string Id, string Name);
 }
