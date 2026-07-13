@@ -27,7 +27,7 @@ public interface IBuildKitClient
 public sealed class BuildKitClient(
     IProcessRunner processRunner,
     BuildKitOptions options,
-    ILogger<BuildKitClient>? logger = null) : IBuildKitClient
+    ILogger<BuildKitClient> logger) : IBuildKitClient
 {
     public async Task<Result<BuiltContainerImage>> BuildAndPushAsync(
         BuildKitBuildRequest request,
@@ -109,7 +109,7 @@ public sealed class BuildKitClient(
             if (process.ExitCode != 0)
             {
                 var classification = ClassifyFailure(request, process);
-                logger?.LogError(
+                logger.LogError(
                     "[buildkit-build-failed] buildctl exited with code {ExitCode}. {Diagnostic}",
                     process.ExitCode,
                     classification);

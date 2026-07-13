@@ -1,6 +1,7 @@
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Execution;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
@@ -91,7 +92,8 @@ public sealed class BuildKitClientTests
             Address = "tcp://buildkit.test:1234",
             BuildctlPath = "buildctl",
             TimeoutMinutes = 1
-        });
+        },
+        NullLogger<BuildKitClient>.Instance);
 
     private sealed class RecordingProcessRunner(
         Func<ProcessSpec, Task<ProcessResult>> callback) : IProcessRunner

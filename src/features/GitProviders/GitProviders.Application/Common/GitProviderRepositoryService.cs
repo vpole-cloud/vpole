@@ -35,7 +35,7 @@ public interface IGitProviderRepositoryService
 
 public sealed class GitProviderRepositoryService(
     IGitHubAppClient gitHubClient,
-    ILogger<GitProviderRepositoryService>? logger = null)
+    ILogger<GitProviderRepositoryService> logger)
     : IGitProviderRepositoryService
 {
     public Task<Result<ProviderPage<ProviderRepository>>> GetRepositoriesAsync(
@@ -109,7 +109,7 @@ public sealed class GitProviderRepositoryService(
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            logger?.LogError(
+            logger.LogError(
                 exception,
                 "GitHub repository operation failed before the provider request completed.");
             return Failures.ExternalService(
@@ -141,7 +141,7 @@ public sealed class GitProviderRepositoryService(
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            logger?.LogError(
+            logger.LogError(
                 exception,
                 "GitHub repository operation failed before the provider request completed.");
             return Failures.ExternalService(

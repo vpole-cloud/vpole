@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Microsoft.Extensions.Logging.Abstractions;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Consumers;
@@ -19,7 +20,10 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
     {
         var release = await InsertPendingReleaseAsync();
         var applier = new FakeDeploymentApplier();
-        var consumer = new ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer(DbContext, applier);
+        var consumer = new ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer(
+            DbContext,
+            applier,
+            NullLogger<ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer>.Instance);
 
         await consumer.Handle(CreateDeploymentEvent(release));
 
@@ -37,7 +41,10 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
     {
         var release = await InsertPendingReleaseAsync();
         var applier = new FakeDeploymentApplier("apply failed");
-        var consumer = new ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer(DbContext, applier);
+        var consumer = new ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer(
+            DbContext,
+            applier,
+            NullLogger<ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer>.Instance);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             consumer.Handle(CreateDeploymentEvent(release)));
@@ -57,7 +64,8 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
         var release = await InsertPendingReleaseAsync();
         var consumer = new ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer(
             DbContext,
-            new FakeDeploymentApplier());
+            new FakeDeploymentApplier(),
+            NullLogger<ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer>.Instance);
         var deployment = CreateDeploymentEvent(release);
 
         await consumer.Handle(deployment);

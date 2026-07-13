@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Microsoft.Extensions.Logging.Abstractions;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Consumers;
 using Pole.Features.WebServices.Application.Kubernetes;
@@ -64,7 +65,8 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
         };
         var consumer = new ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer(
             Fixture.DbContext,
-            new SuccessfulDeploymentApplier());
+            new SuccessfulDeploymentApplier(),
+            NullLogger<ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer>.Instance);
         await consumer.Handle(requested);
 
         var completedRelease = await Fixture.DbContext.WebServiceReleases

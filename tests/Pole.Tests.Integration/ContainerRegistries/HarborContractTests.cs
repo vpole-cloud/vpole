@@ -4,6 +4,7 @@ using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.ResultType;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Pole.Tests.Integration.ContainerRegistries;
@@ -73,7 +74,8 @@ public sealed class HarborContractTests
                     Address = Environment.GetEnvironmentVariable("POLE_BUILDKIT_CONTRACT_ADDRESS")!,
                     BuildctlPath = Environment.GetEnvironmentVariable("POLE_BUILDKIT_CONTRACT_PATH")!,
                     TimeoutMinutes = 5
-                });
+                },
+                NullLogger<BuildKitClient>.Instance);
             var target = new RegistryPushTarget(
                 options.RegistryHost,
                 provisioned.ProjectName,
