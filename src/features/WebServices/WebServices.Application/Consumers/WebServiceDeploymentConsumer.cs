@@ -11,10 +11,10 @@ using Pole.ResultType;
 
 namespace Pole.Features.WebServices.Application.Consumers;
 
-public sealed class ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer(
+public sealed class WebServiceDeploymentConsumer(
     IWebServiceDbContext dbContext,
     IWebServiceDeploymentApplier deploymentApplier,
-    ILogger<ApplyWebServiceDeploymentOnWebServiceDeploymentRequestedConsumer> logger)
+    ILogger<WebServiceDeploymentConsumer> logger)
     : IConsumer<WebServiceDeploymentRequestedEvent>
 {
     public Task Consume(ConsumeContext<WebServiceDeploymentRequestedEvent> context) =>
