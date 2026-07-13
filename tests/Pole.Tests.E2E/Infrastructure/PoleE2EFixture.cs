@@ -13,6 +13,7 @@ using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.JavaScript;
 using Aspire.Hosting.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -31,7 +32,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     private readonly string _kubernetesNamespacePrefix = $"e2e-{Guid.NewGuid():N}"[..12];
     private readonly string _mongoPassword = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private readonly string _rabbitMqPassword = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-    private readonly SourceBuildSettings? _sourceBuildSettings = SourceBuildSettings.TryLoad();
+    private readonly SourceBuildSettings? _sourceBuildSettings;
     private readonly string _stubControlKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private DistributedApplication? _application;
     private KeycloakAdminClient? _keycloak;
@@ -39,6 +40,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     public PoleE2EFixture()
     {
+        _sourceBuildSettings = E2ETestSettings.Load().SourceBuilds;
         _buildKitPortReservation = ReserveTcpPort();
         _buildKitPort = ((IPEndPoint)_buildKitPortReservation.LocalEndpoint).Port;
     }
@@ -882,28 +884,46 @@ public sealed record TestUser(
     string AccessToken,
     string DefaultTenantId);
 
+internal sealed record E2ETestSettings(SourceBuildSettings? SourceBuilds)
+{
+    public static E2ETestSettings Load()
+    {
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("testsettings.json", optional: true)
+            .AddJsonFile("testsettings.local.json", optional: true)
+            .Build();
+        return FromConfiguration(configuration);
+    }
+
+    internal static E2ETestSettings FromConfiguration(IConfiguration configuration)
+    {
+        var sourceBuilds = configuration.GetSection("SourceBuilds");
+        if (!bool.TryParse(sourceBuilds["Enabled"], out var enabled) || !enabled)
+            return new E2ETestSettings((SourceBuildSettings?)null);
+
+        return new E2ETestSettings(new SourceBuildSettings(
+            Required(sourceBuilds, "HarborComposeDirectory"),
+            Optional(sourceBuilds, "HarborBaseUrl", "http://localhost:5000"),
+            Optional(sourceBuilds, "HarborRegistryHost", "host.docker.internal:5000"),
+            Required(sourceBuilds, "HarborAdminPassword"),
+            Optional(sourceBuilds, "BuildctlPath", "buildctl")));
+    }
+
+    private static string Optional(IConfigurationSection section, string name, string defaultValue) =>
+        section[name] is { } value && !string.IsNullOrWhiteSpace(value)
+            ? value
+            : defaultValue;
+
+    private static string Required(IConfigurationSection section, string name) =>
+        section[name] is { } value && !string.IsNullOrWhiteSpace(value)
+            ? value
+            : throw new InvalidOperationException($"SourceBuilds:{name} is required when SourceBuilds:Enabled=true.");
+}
+
 internal sealed record SourceBuildSettings(
     string HarborComposeDirectory,
     string HarborBaseUrl,
     string HarborRegistryHost,
     string HarborAdminPassword,
-    string BuildctlPath)
-{
-    public static SourceBuildSettings? TryLoad()
-    {
-        if (!string.Equals(Environment.GetEnvironmentVariable("POLE_E2E_SOURCE_BUILDS"), "1", StringComparison.Ordinal))
-            return null;
-
-        return new SourceBuildSettings(
-            Required("POLE_E2E_HARBOR_COMPOSE_DIR"),
-            Environment.GetEnvironmentVariable("POLE_E2E_HARBOR_BASE_URL") ?? "http://localhost:5000",
-            Environment.GetEnvironmentVariable("POLE_E2E_HARBOR_REGISTRY_HOST") ?? "host.docker.internal:5000",
-            Required("POLE_E2E_HARBOR_ADMIN_PASSWORD"),
-            Required("POLE_E2E_BUILDCTL_PATH"));
-    }
-
-    private static string Required(string name) =>
-        Environment.GetEnvironmentVariable(name) is { Length: > 0 } value
-            ? value
-            : throw new InvalidOperationException($"{name} is required when POLE_E2E_SOURCE_BUILDS=1.");
-}
+    string BuildctlPath);

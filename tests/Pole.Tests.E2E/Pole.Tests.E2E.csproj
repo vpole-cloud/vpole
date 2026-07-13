@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.Testing" Version="13.3.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.7" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.5.1" />
     <PackageReference Include="Microsoft.Playwright" Version="1.61.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
@@ -21,6 +22,14 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\api\Pole.AppHost\Pole.AppHost.csproj" />
     <ProjectReference Include="..\Pole.Tests.E2E.GitHubStub\Pole.Tests.E2E.GitHubStub.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="testsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="testsettings.local.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
