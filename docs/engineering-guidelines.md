@@ -29,8 +29,17 @@ Use `Result` for expected failures that callers are required to handle, such as 
 
 - Define failures at the boundary that understands their meaning and map them when crossing abstraction layers.
 - Do not require every caller to catch the same exception and repeat the same mapping logic.
-- Reserve exceptions for unexpected failures, broken invariants, cancellation, and infrastructure conditions that cannot be handled meaningfully at the current boundary.
+- Reserve exceptions for unexpected failures, broken invariants, cancellation, and infrastructure conditions that cannot be handled meaningfully at the current boundary. In particular, do not convert MongoDB availability or driver failures into `Result`; let them reach the global exception handler and produce the standard 5xx response.
 - Do not catch an exception only to convert every failure into an indistinguishable generic result.
+- Use `Result<bool>` only when both `true` and `false` are meaningful successful answers and a caller must separately handle an expected failure. For a command precondition, prefer an intention-revealing `Task<Result>` method such as `EnsureNoConfigurationAsync`: return success when the condition holds and `Conflict` when it does not.
+
+## Endpoint file structure
+
+Keep each Minimal API endpoint with its application boundary in one file: the route mapping, request/response types, request validator, and Mediator handler belong together. A file may contain one endpoint-handler pair.
+
+- Organize related endpoint files in subfolders under `Endpoints` when that improves discovery.
+- Keep only narrowly shared DTOs, helpers, or mapping extensions outside the endpoint file.
+- Do not separate a route mapping into an aggregator file merely to group several handlers; use one endpoint file per route instead.
 
 ## Prefer existing solutions
 
