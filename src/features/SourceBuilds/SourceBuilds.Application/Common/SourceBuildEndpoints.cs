@@ -11,12 +11,16 @@ public static class SourceBuildEndpoints
     {
         app.MapGroup("/source-build-configurations")
             .WithTags("SourceBuildConfigurations")
-            .MapSourceBuildConfigurationEndpoints()
+            .MapGetSourceBuildConfigurationsEndpoint()
+            .MapCreateSourceBuildConfigurationEndpoint()
+            .MapUpdateSourceBuildConfigurationEndpoint()
+            .MapDeleteSourceBuildConfigurationEndpoint()
             .MapManualSourceBuildEndpoint();
 
         app.MapGroup("/source-build-jobs")
             .WithTags("SourceBuildJobs")
-            .MapSourceBuildJobEndpoints();
+            .MapGetSourceBuildJobsEndpoint()
+            .MapGetSourceBuildJobEndpoint();
 
         return app;
     }

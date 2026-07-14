@@ -59,7 +59,9 @@ public sealed class GetAvailableStorageProfilesHandler(
             });
         }
 
-        var knownStorageClassNames = await storageDiscovery.GetStorageClassNamesAsync(cancellationToken);
+        var storageClassesResult = await storageDiscovery.GetStorageClassNamesAsync(cancellationToken);
+        if (!storageClassesResult.TryGetValue(out var knownStorageClassNames, out var failure))
+            return failure;
         var profiles = await dbContext.StorageProfiles
             .Find(profile => profile.IsEnabled)
             .SortByDescending(profile => profile.IsDefault)

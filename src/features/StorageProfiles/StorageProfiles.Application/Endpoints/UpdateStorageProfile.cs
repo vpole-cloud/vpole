@@ -55,10 +55,12 @@ public sealed class UpdateStorageProfileHandler(
             return Failures.NotFound("Storage profile not found.", request.Id);
 
         var bodyErrors = StorageProfileDtoExtensions.ValidateBody(request.Body);
-        var storageClassErrors = await CreateStorageProfileHandler.ValidateKnownStorageClassesAsync(
+        var validationResult = await CreateStorageProfileHandler.ValidateKnownStorageClassesAsync(
             request.Body,
             storageDiscovery,
             cancellationToken);
+        if (!validationResult.TryGetValue(out var storageClassErrors, out var validationFailure))
+            return validationFailure;
         foreach (var (key, value) in storageClassErrors)
             bodyErrors[key] = value;
 

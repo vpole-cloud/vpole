@@ -47,7 +47,9 @@ public sealed class CreateStorageProfileHandler(
         CancellationToken cancellationToken = default)
     {
         var bodyErrors = StorageProfileDtoExtensions.ValidateBody(request.Body);
-        var storageClassErrors = await ValidateKnownStorageClassesAsync(request.Body, storageDiscovery, cancellationToken);
+        var validationResult = await ValidateKnownStorageClassesAsync(request.Body, storageDiscovery, cancellationToken);
+        if (!validationResult.TryGetValue(out var storageClassErrors, out var validationFailure))
+            return validationFailure;
         foreach (var (key, value) in storageClassErrors)
             bodyErrors[key] = value;
 
@@ -75,7 +77,7 @@ public sealed class CreateStorageProfileHandler(
         }, cancellationToken: cancellationToken);
     }
 
-    internal static async Task<Dictionary<string, string[]>> ValidateKnownStorageClassesAsync(
+    internal static async Task<Result<Dictionary<string, string[]>>> ValidateKnownStorageClassesAsync(
         UpsertStorageProfileRequestBody? body,
         IStorageDiscoveryService storageDiscovery,
         CancellationToken cancellationToken)
@@ -84,7 +86,9 @@ public sealed class CreateStorageProfileHandler(
         if (body is null)
             return errors;
 
-        var knownStorageClassNames = await storageDiscovery.GetStorageClassNamesAsync(cancellationToken);
+        var storageClassesResult = await storageDiscovery.GetStorageClassNamesAsync(cancellationToken);
+        if (!storageClassesResult.TryGetValue(out var knownStorageClassNames, out var failure))
+            return failure;
         var requestedStorageClassNames = StorageProfileFactory.NormalizeStorageClassNames(body.StorageClassNames ?? []);
         var unknownStorageClassNames = requestedStorageClassNames
             .Where(name => !knownStorageClassNames.Contains(name))

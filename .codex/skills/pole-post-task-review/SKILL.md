@@ -24,6 +24,9 @@ Use this skill after implementation and targeted verification, before final resp
 Review for bugs and regressions first, not style. Focus on:
 
 - Incorrect behavior against the user request.
+- Minimal API routes separated from their request/validator/handler, or endpoint files containing more than one endpoint-handler pair.
+- `Result<bool>` used for a command precondition where an intention-revealing `Result` guard would express the outcome directly.
+- MongoDB availability or driver exceptions caught only to become a generic `Result` failure instead of reaching the standard 5xx exception path.
 - Cross-tenant access, missing tenant headers, missing tenant filters, or unsafe platform-admin behavior.
 - Domain mutations not persisted atomically with outbox messages.
 - Events missing `EventCore.Create(tenantId)` or consumers ignoring `EventCore.TenantId`.
