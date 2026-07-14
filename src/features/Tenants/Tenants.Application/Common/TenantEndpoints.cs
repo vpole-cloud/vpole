@@ -17,7 +17,10 @@ public static class TenantEndpoints
             .RequireAuthorization()
             .MapGetTenantsEndpoint()
             .MapCreateTenantEndpoint()
-            .MapTenantMemberEndpoints();
+            .MapGetTenantMembersEndpoint()
+            .MapAddTenantMemberEndpoint()
+            .MapUpdateTenantMemberEndpoint()
+            .MapDeleteTenantMemberEndpoint();
 
         return app;
     }

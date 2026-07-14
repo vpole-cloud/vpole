@@ -1,5 +1,6 @@
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
+using Pole.ResultType;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
@@ -7,7 +8,7 @@ public sealed class TestStorageDiscoveryService(params string[] storageClassName
 {
     private readonly IReadOnlySet<string> _storageClassNames = storageClassNames.ToHashSet(StringComparer.Ordinal);
 
-    public Task<IReadOnlyCollection<KubernetesStorageClassDto>> GetStorageClassesAsync(
+    public Task<Result<IReadOnlyCollection<KubernetesStorageClassDto>>> GetStorageClassesAsync(
         CancellationToken cancellationToken = default)
     {
         IReadOnlyCollection<KubernetesStorageClassDto> storageClasses = _storageClassNames
@@ -22,12 +23,13 @@ public sealed class TestStorageDiscoveryService(params string[] storageClassName
                 new Dictionary<string, string>()))
             .ToArray();
 
-        return Task.FromResult(storageClasses);
+        return Task.FromResult<Result<IReadOnlyCollection<KubernetesStorageClassDto>>>(Result.Success(storageClasses));
     }
 
-    public Task<IReadOnlyCollection<KubernetesPersistentVolumeDto>> GetPersistentVolumesAsync(
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyCollection<KubernetesPersistentVolumeDto>>(
+    public Task<Result<IReadOnlyCollection<KubernetesPersistentVolumeDto>>> GetPersistentVolumesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        IReadOnlyCollection<KubernetesPersistentVolumeDto> persistentVolumes =
         [
             new(
                 "pv-standard-1",
@@ -38,11 +40,15 @@ public sealed class TestStorageDiscoveryService(params string[] storageClassName
                 null,
                 "Retain",
                 new KubernetesStorageOwnerDto(null, null, null, null, null))
-        ]);
+        ];
+        return Task.FromResult<Result<IReadOnlyCollection<KubernetesPersistentVolumeDto>>>(
+            Result.Success(persistentVolumes));
+    }
 
-    public Task<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>> GetPersistentVolumeClaimsAsync(
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>(
+    public Task<Result<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>> GetPersistentVolumeClaimsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        IReadOnlyCollection<KubernetesPersistentVolumeClaimDto> persistentVolumeClaims =
         [
             new(
                 "redis-data-redis-main-0",
@@ -58,8 +64,11 @@ public sealed class TestStorageDiscoveryService(params string[] storageClassName
                     "Redis",
                     "redis-1",
                     "redis-main"))
-        ]);
+        ];
+        return Task.FromResult<Result<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>>(
+            Result.Success(persistentVolumeClaims));
+    }
 
-    public Task<IReadOnlySet<string>> GetStorageClassNamesAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult(_storageClassNames);
+    public Task<Result<IReadOnlySet<string>>> GetStorageClassNamesAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<Result<IReadOnlySet<string>>>(Result.Success(_storageClassNames));
 }

@@ -21,7 +21,9 @@ public static class WebServiceEndpoints
                 .MapGetWebServiceByIdEndpoint()
                 .MapGetWebServicesEndpoint()
                 .MapGetWebServiceDeploymentsEndpoint()
-                .MapWebServiceDeploymentTokenEndpoints()
+                .MapGetWebServiceDeploymentTokensEndpoint()
+                .MapCreateWebServiceDeploymentTokenEndpoint()
+                .MapRevokeWebServiceDeploymentTokenEndpoint()
                 .MapRedeployWebServiceEndpoint()
                 .MapRollbackWebServiceEndpoint()
                 .MapUpdateWebServiceImageTagEndpoint();

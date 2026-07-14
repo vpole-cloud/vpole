@@ -25,7 +25,7 @@ Use this skill when a change crosses more than one layer of a Pole feature.
 
 1. Define or update the domain model with factory methods. Prefer existing factory patterns over direct construction.
 2. Add DTOs and mapping extensions in the feature application `Common` folder.
-3. Add endpoint request/response types, validators, and handlers. Keep command handlers transactional where they mutate state.
+3. Add one Minimal API endpoint per file, keeping its route mapping, request/response types, validator, and Mediator handler together. Group endpoint files in `Endpoints` subfolders when useful. Keep command handlers transactional where they mutate state.
 4. Add events in the feature `Events` project and extension/factory methods that create `EventCore` correctly.
 5. Store events in the outbox inside the same Mongo transaction as the mutation.
 6. Add consumers for asynchronous side effects such as Kubernetes reconciliation, search indexing, or follow-up domain workflows.
@@ -35,6 +35,8 @@ Use this skill when a change crosses more than one layer of a Pole feature.
 ## Cross-Feature Rules
 
 - Use contracts for narrow cross-feature access. Current examples include `IResourceGroupLookup` and `IDomainNameReservationService`.
+- Return `Result` for expected, meaningful business outcomes. Let MongoDB availability and driver exceptions propagate to the global exception handler; do not wrap every persistence call in a generic failure result.
+- Use `Result<bool>` only when the boolean is a meaningful successful answer. For a command guard, prefer an intention-revealing `Task<Result>` contract whose success means the guard passed and whose `Conflict` means it did not.
 - Do not expose another feature's aggregate collection through a consuming feature context just to validate placement or ownership.
 - For tenant-owned resources, load referenced resource groups through `IResourceGroupLookup.GetPlacementAsync`.
 - For DNS names, preserve the DNS-owned reservation flow and global domain uniqueness.

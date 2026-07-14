@@ -6,4 +6,7 @@
     <AssemblyName>Pole.Features.SourceBuilds.Contracts</AssemblyName>
     <RootNamespace>Pole.Features.SourceBuilds.Contracts</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
+  </ItemGroup>
 </Project>

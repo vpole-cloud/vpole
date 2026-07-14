@@ -31,11 +31,15 @@ public sealed class StorageProfileResolver(
         if (profile is null)
             return Failures.NotFound("Storage profile not found.", request.StorageProfileId);
 
-        var errors = await ValidateProfileAsync(profile, request, cancellationToken);
+        var validationResult = await ValidateProfileAsync(profile, request, cancellationToken);
+        if (!validationResult.TryGetValue(out var errors, out var validationFailure))
+            return validationFailure;
         if (errors.Count > 0)
             return Failures.ValidationFailure(errors);
 
-        var knownStorageClassNames = await storageDiscovery.GetStorageClassNamesAsync(cancellationToken);
+        var storageClassesResult = await storageDiscovery.GetStorageClassNamesAsync(cancellationToken);
+        if (!storageClassesResult.TryGetValue(out var knownStorageClassNames, out var storageClassFailure))
+            return storageClassFailure;
         var storageClassName = profile.StorageClassNames.First(knownStorageClassNames.Contains);
 
         return new ResolvedStorageProfile(
@@ -57,7 +61,7 @@ public sealed class StorageProfileResolver(
         (profile.SizeLimits?.MinSizeGb is null || sizeGb >= profile.SizeLimits.MinSizeGb) &&
         (profile.SizeLimits?.MaxSizeGb is null || sizeGb <= profile.SizeLimits.MaxSizeGb);
 
-    private async Task<Dictionary<string, string[]>> ValidateProfileAsync(
+    private async Task<Result<Dictionary<string, string[]>>> ValidateProfileAsync(
         StorageProfile profile,
         StorageProfileResolutionRequest request,
         CancellationToken cancellationToken)
@@ -76,7 +80,9 @@ public sealed class StorageProfileResolver(
         if (!AllowsSize(profile, request.SizeGb))
             errors["SizeGb"] = ["Requested storage size is outside the profile limits."];
 
-        var knownStorageClassNames = await storageDiscovery.GetStorageClassNamesAsync(cancellationToken);
+        var storageClassesResult = await storageDiscovery.GetStorageClassNamesAsync(cancellationToken);
+        if (!storageClassesResult.TryGetValue(out var knownStorageClassNames, out var failure))
+            return failure;
         if (!profile.StorageClassNames.Any(knownStorageClassNames.Contains))
             errors["StorageProfileId"] = ["Storage profile has no known backing Kubernetes storage class."];
 

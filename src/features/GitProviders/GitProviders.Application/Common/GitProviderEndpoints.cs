@@ -13,19 +13,27 @@ public static class GitProviderEndpoints
         {
             app.MapGroup("/git-provider-connections")
                 .WithTags("GitProviderConnections")
-                .MapGitProviderConnectionEndpoints()
-                .MapGitProviderRepositoryEndpoints();
+                .MapGetGitProviderConnectionsEndpoint()
+                .MapBeginGitHubInstallationEndpoint()
+                .MapDeleteGitProviderConnectionEndpoint()
+                .MapGetProviderRepositoriesEndpoint()
+                .MapGetProviderBranchesEndpoint()
+                .MapAnalyzeProviderRepositoryEndpoint()
+                .MapLinkProviderRepositoryEndpoint();
 
             app.MapGroup("/source-repositories")
                 .WithTags("SourceRepositories")
-                .MapSourceRepositoryEndpoints();
+                .MapGetSourceRepositoriesEndpoint()
+                .MapReanalyzeSourceRepositoryEndpoint()
+                .MapDeleteSourceRepositoryEndpoint();
 
             return app;
         }
 
         public IEndpointRouteBuilder MapGitHubCallbackEndpoints()
         {
-            app.MapGitHubSetupCallbackEndpoints();
+            CompleteGitHubInstallationSetup.MapEndpoint(app);
+            CompleteGitHubOAuthVerification.MapEndpoint(app);
             return app;
         }
     }
