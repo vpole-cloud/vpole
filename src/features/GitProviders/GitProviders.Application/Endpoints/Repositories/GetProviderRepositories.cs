@@ -1,5 +1,9 @@
 using FluentValidation;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
+using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Mediator;
@@ -54,5 +58,22 @@ public sealed class GetProviderRepositoriesHandler(
             page.Page,
             page.PageSize,
             page.HasMore);
+    }
+}
+
+public static class GetProviderRepositoriesEndpoint
+{
+    public static IEndpointRouteBuilder MapGetProviderRepositoriesEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/{ConnectionId}/repositories", async (IMediator mediator,
+                [AsParameters] GetProviderRepositoriesRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(Results.Ok);
+            })
+            .WithName("GetProviderRepositories")
+            .Produces<ProviderPage<ProviderRepositoryDto>>();
+        return app;
     }
 }

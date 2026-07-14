@@ -1,4 +1,8 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
+using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Analysis;
 using Pole.Features.GitProviders.Application.Common;
@@ -63,5 +67,22 @@ public sealed class AnalyzeProviderRepositoryHandler(
         if (!analysisResult.TryGetValue(out var analysis, out var analysisFailure))
             return analysisFailure;
         return new AnalyzedProviderRepository(connection, snapshot.Repository, analysis);
+    }
+}
+
+public static class AnalyzeProviderRepositoryEndpoint
+{
+    public static IEndpointRouteBuilder MapAnalyzeProviderRepositoryEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapPost("/{ConnectionId}/repositories/{RepositoryId}/analysis", async (IMediator mediator,
+                [AsParameters] AnalyzeProviderRepositoryRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(Results.Ok);
+            })
+            .WithName("AnalyzeProviderRepository")
+            .Produces<RepositoryAnalysisDto>();
+        return app;
     }
 }

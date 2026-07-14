@@ -1,5 +1,8 @@
 using FluentValidation;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
@@ -87,4 +90,21 @@ public sealed class StartManualSourceBuildRequestValidator : AbstractValidator<S
 {
     public StartManualSourceBuildRequestValidator() =>
         RuleFor(item => item.ConfigurationId).NotEmpty();
+}
+
+public static class StartManualSourceBuildEndpoint
+{
+    public static IEndpointRouteBuilder MapManualSourceBuildEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapPost("/{ConfigurationId}/builds", async (IMediator mediator,
+                [AsParameters] StartManualSourceBuildRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(value => Results.Accepted(value: value));
+            })
+            .WithName("StartManualSourceBuild")
+            .Produces<SourceBuildJobDto>(StatusCodes.Status202Accepted);
+        return app;
+    }
 }

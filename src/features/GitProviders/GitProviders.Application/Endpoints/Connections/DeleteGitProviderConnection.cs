@@ -1,5 +1,9 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
+using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
@@ -35,5 +39,22 @@ public sealed class DeleteGitProviderConnectionHandler(IGitProviderDbContext dbC
 
         await dbContext.GitProviderConnections.DeleteOneAsync(connectionFilter, cancellationToken);
         return request.ConnectionId;
+    }
+}
+
+public static class DeleteGitProviderConnectionEndpoint
+{
+    public static IEndpointRouteBuilder MapDeleteGitProviderConnectionEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapDelete("/{ConnectionId}", async (IMediator mediator,
+                [AsParameters] DeleteGitProviderConnectionRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(_ => Results.NoContent());
+            })
+            .WithName("DeleteGitProviderConnection")
+            .Produces(StatusCodes.Status204NoContent);
+        return app;
     }
 }

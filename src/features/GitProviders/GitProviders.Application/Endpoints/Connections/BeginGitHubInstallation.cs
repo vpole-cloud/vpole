@@ -1,4 +1,7 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
@@ -45,5 +48,21 @@ public sealed class BeginGitHubInstallationHandler(
             "state",
             state);
         return new BeginGitHubInstallationResponse(installUrl, attempt.ExpiresAtUtc);
+    }
+}
+
+public static class BeginGitHubInstallationEndpoint
+{
+    public static IEndpointRouteBuilder MapBeginGitHubInstallationEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapPost("/github/install", async (IMediator mediator, [AsParameters] BeginGitHubInstallationRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(Results.Ok);
+            })
+            .WithName("BeginGitHubInstallation")
+            .Produces<BeginGitHubInstallationResponse>();
+        return app;
     }
 }

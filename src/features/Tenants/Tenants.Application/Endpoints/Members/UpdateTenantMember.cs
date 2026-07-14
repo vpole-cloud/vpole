@@ -1,5 +1,9 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
+using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Domain;
@@ -45,5 +49,21 @@ public sealed class UpdateTenantMemberHandler(ITenantDbContext dbContext)
         return member is null
             ? Failures.NotFound("Tenant member not found.", request.MemberId)
             : member.ToDto();
+    }
+}
+
+public static class UpdateTenantMemberEndpoint
+{
+    public static IEndpointRouteBuilder MapUpdateTenantMemberEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapPut("/{TenantId}/members/{MemberId}", async (IMediator mediator, [AsParameters] UpdateTenantMemberRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(Results.Ok);
+            })
+            .WithName("UpdateTenantMember")
+            .Produces<TenantMemberDto>();
+        return app;
     }
 }

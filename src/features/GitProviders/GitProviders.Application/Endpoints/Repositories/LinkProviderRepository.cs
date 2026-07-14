@@ -1,4 +1,8 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
+using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Analysis;
@@ -53,5 +57,22 @@ public sealed class LinkProviderRepositoryHandler(
         return inserted.TryGetValue(out var linkedRepository, out var insertFailure)
             ? linkedRepository.ToDto()
             : insertFailure;
+    }
+}
+
+public static class LinkProviderRepositoryEndpoint
+{
+    public static IEndpointRouteBuilder MapLinkProviderRepositoryEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapPost("/{ConnectionId}/repositories/{RepositoryId}/links", async (IMediator mediator,
+                [AsParameters] LinkProviderRepositoryRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(item => Results.Created($"/api/v1/source-repositories/{item.Id}", item));
+            })
+            .WithName("LinkProviderRepository")
+            .Produces<SourceRepositoryDto>(StatusCodes.Status201Created);
+        return app;
     }
 }

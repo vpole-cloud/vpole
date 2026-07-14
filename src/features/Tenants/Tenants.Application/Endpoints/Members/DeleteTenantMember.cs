@@ -1,5 +1,9 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
+using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Domain;
@@ -37,5 +41,21 @@ public sealed class DeleteTenantMemberHandler(ITenantDbContext dbContext)
         return result.ModifiedCount == 0
             ? Failures.NotFound("Tenant member not found.", request.MemberId)
             : request.MemberId;
+    }
+}
+
+public static class DeleteTenantMemberEndpoint
+{
+    public static IEndpointRouteBuilder MapDeleteTenantMemberEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapDelete("/{TenantId}/members/{MemberId}", async (IMediator mediator, [AsParameters] DeleteTenantMemberRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(_ => Results.NoContent());
+            })
+            .WithName("DeleteTenantMember")
+            .Produces(StatusCodes.Status204NoContent);
+        return app;
     }
 }

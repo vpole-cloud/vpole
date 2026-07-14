@@ -1,5 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
+using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Domain;
@@ -38,5 +42,22 @@ public sealed class DeleteSourceBuildConfigurationHandler(ISourceBuildDbContext 
         return deleted.DeletedCount == 0
             ? Failures.NotFound("Source build configuration not found.", request.ConfigurationId)
             : request.ConfigurationId;
+    }
+}
+
+public static class DeleteSourceBuildConfigurationEndpoint
+{
+    public static IEndpointRouteBuilder MapDeleteSourceBuildConfigurationEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapDelete("/{ConfigurationId}", async (IMediator mediator,
+                [AsParameters] DeleteSourceBuildConfigurationRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(_ => Results.NoContent());
+            })
+            .WithName("DeleteSourceBuildConfiguration")
+            .Produces(StatusCodes.Status204NoContent);
+        return app;
     }
 }

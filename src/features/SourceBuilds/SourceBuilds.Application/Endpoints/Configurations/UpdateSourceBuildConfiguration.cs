@@ -1,5 +1,9 @@
 using FluentValidation;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
+using Pole.ASP.Helpers;
 using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.SourceBuilds.Application.Common;
@@ -71,4 +75,21 @@ public sealed class UpdateSourceBuildConfigurationBodyValidator
         RuleFor(item => item.Recipe)
             .NotNull()
             .SetValidator(new SourceBuildRecipeDtoValidator());
+}
+
+public static class UpdateSourceBuildConfigurationEndpoint
+{
+    public static IEndpointRouteBuilder MapUpdateSourceBuildConfigurationEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapPut("/{ConfigurationId}", async (IMediator mediator,
+                [AsParameters] UpdateSourceBuildConfigurationRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(Results.Ok);
+            })
+            .WithName("UpdateSourceBuildConfiguration")
+            .Produces<SourceBuildConfigurationDto>();
+        return app;
+    }
 }

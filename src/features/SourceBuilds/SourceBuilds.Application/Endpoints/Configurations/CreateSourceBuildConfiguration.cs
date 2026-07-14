@@ -1,5 +1,8 @@
 using FluentValidation;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
@@ -86,5 +89,22 @@ public sealed class CreateSourceBuildConfigurationBodyValidator
     {
         RuleFor(item => item.SourceRepositoryId).NotEmpty();
         RuleFor(item => item.WebServiceId).NotEmpty();
+    }
+}
+
+public static class CreateSourceBuildConfigurationEndpoint
+{
+    public static IEndpointRouteBuilder MapCreateSourceBuildConfigurationEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapPost("/", async (IMediator mediator, [AsParameters] CreateSourceBuildConfigurationRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(value => Results.Created(
+                    $"/api/v1/source-build-configurations/{value.Id}", value));
+            })
+            .WithName("CreateSourceBuildConfiguration")
+            .Produces<SourceBuildConfigurationDto>(StatusCodes.Status201Created);
+        return app;
     }
 }

@@ -1,5 +1,8 @@
 using FluentValidation;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.WebServices.Application.Common;
@@ -61,5 +64,23 @@ public sealed class CreateWebServiceDeploymentTokenValidator : AbstractValidator
         RuleFor(x => x.Body.Name)
             .NotEmpty()
             .MaximumLength(100);
+    }
+}
+
+public static class CreateWebServiceDeploymentTokenEndpoint
+{
+    public static IEndpointRouteBuilder MapCreateWebServiceDeploymentTokenEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapPost("/{Id}/deployment-tokens", async (IMediator mediator,
+                [AsParameters] CreateWebServiceDeploymentTokenRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(response => Results.Created(
+                    $"/api/v1/web-services/{request.Id}/deployment-tokens/{response.Token.Id}", response));
+            })
+            .WithName("CreateWebServiceDeploymentToken")
+            .Produces<CreateWebServiceDeploymentTokenResponse>(StatusCodes.Status201Created);
+        return app;
     }
 }

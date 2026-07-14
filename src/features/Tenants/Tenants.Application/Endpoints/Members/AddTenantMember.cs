@@ -1,6 +1,10 @@
 using FluentValidation;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
+using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Domain;
@@ -58,5 +62,22 @@ public sealed class AddTenantMemberValidator : AbstractValidator<AddTenantMember
         RuleFor(x => x.Body.UserId).NotEmpty().MaximumLength(120);
         RuleFor(x => x.Body.Email).NotEmpty().MaximumLength(254);
         RuleFor(x => x.Body.Role).IsInEnum();
+    }
+}
+
+public static class AddTenantMemberEndpoint
+{
+    public static IEndpointRouteBuilder MapAddTenantMemberEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapPost("/{TenantId}/members", async (IMediator mediator, [AsParameters] AddTenantMemberRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(member => Results.Created(
+                    $"/api/v1/tenants/{member.TenantId}/members/{member.Id}", member));
+            })
+            .WithName("AddTenantMember")
+            .Produces<TenantMemberDto>(StatusCodes.Status201Created);
+        return app;
     }
 }

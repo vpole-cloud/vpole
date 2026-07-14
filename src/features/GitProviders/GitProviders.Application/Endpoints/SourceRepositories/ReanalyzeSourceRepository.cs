@@ -1,5 +1,9 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
+using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Analysis;
@@ -58,5 +62,21 @@ public sealed class ReanalyzeSourceRepositoryHandler(
             new FindOneAndUpdateOptions<SourceRepository> { ReturnDocument = ReturnDocument.After },
             cancellationToken);
         return updated.ToDto();
+    }
+}
+
+public static class ReanalyzeSourceRepositoryEndpoint
+{
+    public static IEndpointRouteBuilder MapReanalyzeSourceRepositoryEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapPost("/{Id}/reanalyze", async (IMediator mediator, [AsParameters] ReanalyzeSourceRepositoryRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(Results.Ok);
+            })
+            .WithName("ReanalyzeSourceRepository")
+            .Produces<SourceRepositoryDto>();
+        return app;
     }
 }

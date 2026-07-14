@@ -4,12 +4,12 @@ namespace Pole.Features.SourceBuilds.Contracts;
 
 public interface ISourceBuildReferenceLookup
 {
-    Task<Result<bool>> HasConfigurationForSourceRepositoryAsync(
+    Task<Result> EnsureSourceRepositoryCanBeDeletedAsync(
         string tenantId,
         string sourceRepositoryId,
         CancellationToken cancellationToken = default);
 
-    Task<Result<bool>> HasConfigurationForWebServiceAsync(
+    Task<Result> EnsureWebServiceCanBeDeletedAsync(
         string tenantId,
         string webServiceId,
         CancellationToken cancellationToken = default);

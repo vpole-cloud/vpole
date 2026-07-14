@@ -1,5 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
+using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Mediator;
@@ -23,5 +27,21 @@ public sealed class GetSourceBuildConfigurationsHandler(ISourceBuildDbContext db
             .SortBy(item => item.CreatedAtUtc)
             .ToListAsync(cancellationToken);
         return configurations.Select(item => item.ToDto()).ToArray();
+    }
+}
+
+public static class GetSourceBuildConfigurationsEndpoint
+{
+    public static IEndpointRouteBuilder MapGetSourceBuildConfigurationsEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/", async (IMediator mediator, [AsParameters] GetSourceBuildConfigurationsRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(Results.Ok);
+            })
+            .WithName("GetSourceBuildConfigurations")
+            .Produces<IReadOnlyList<SourceBuildConfigurationDto>>();
+        return app;
     }
 }

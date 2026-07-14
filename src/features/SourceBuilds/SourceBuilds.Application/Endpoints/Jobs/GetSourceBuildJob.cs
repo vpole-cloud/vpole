@@ -1,5 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
+using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Domain;
@@ -26,5 +30,21 @@ public sealed class GetSourceBuildJobHandler(ISourceBuildDbContext dbContext)
         return job is null
             ? Failures.NotFound("Source build job not found.", request.BuildJobId)
             : job.ToDto();
+    }
+}
+
+public static class GetSourceBuildJobEndpoint
+{
+    public static IEndpointRouteBuilder MapGetSourceBuildJobEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/{BuildJobId}", async (IMediator mediator, [AsParameters] GetSourceBuildJobRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(Results.Ok);
+            })
+            .WithName("GetSourceBuildJob")
+            .Produces<SourceBuildJobDto>();
+        return app;
     }
 }

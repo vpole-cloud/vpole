@@ -1,5 +1,9 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
+using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
@@ -24,16 +28,12 @@ public sealed class DeleteSourceRepositoryHandler(
         DeleteSourceRepositoryRequest request,
         CancellationToken cancellationToken = default)
     {
-        var hasConfiguration = await sourceBuildReferences.HasConfigurationForSourceRepositoryAsync(
+        var configurationGuard = await sourceBuildReferences.EnsureSourceRepositoryCanBeDeletedAsync(
             request.TenantId,
             request.Id,
             cancellationToken);
-        if (!hasConfiguration.TryGetValue(out var exists, out var lookupFailure))
-            return lookupFailure;
-        if (exists)
-        {
-            return Failures.Conflict("Delete the source build configuration before unlinking this repository.");
-        }
+        if (configurationGuard is Failure failure)
+            return failure;
 
         var result = await dbContext.SourceRepositories.DeleteOneAsync(
             Builders<SourceRepository>.Filter.And(
@@ -43,5 +43,21 @@ public sealed class DeleteSourceRepositoryHandler(
         return result.DeletedCount == 0
             ? Failures.NotFound("Source repository not found.", request.Id)
             : request.Id;
+    }
+}
+
+public static class DeleteSourceRepositoryEndpoint
+{
+    public static IEndpointRouteBuilder MapDeleteSourceRepositoryEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapDelete("/{Id}", async (IMediator mediator, [AsParameters] DeleteSourceRepositoryRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(_ => Results.NoContent());
+            })
+            .WithName("DeleteSourceRepository")
+            .Produces(StatusCodes.Status204NoContent);
+        return app;
     }
 }

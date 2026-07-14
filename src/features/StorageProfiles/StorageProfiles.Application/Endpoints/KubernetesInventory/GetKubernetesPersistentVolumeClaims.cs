@@ -1,3 +1,7 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Pole.ASP.Helpers;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Mediator;
@@ -15,4 +19,20 @@ public sealed class GetKubernetesPersistentVolumeClaimsHandler(IStorageDiscovery
         GetKubernetesPersistentVolumeClaimsRequest request,
         CancellationToken cancellationToken = default) =>
         await storageDiscovery.GetPersistentVolumeClaimsAsync(cancellationToken);
+}
+
+public static class GetKubernetesPersistentVolumeClaimsEndpoint
+{
+    public static IEndpointRouteBuilder MapGetKubernetesPersistentVolumeClaimsEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/persistent-volume-claims", async (IMediator mediator, CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(new GetKubernetesPersistentVolumeClaimsRequest(), cancellationToken);
+                return result.ToHttpResult(Results.Ok);
+            })
+            .WithName("GetKubernetesPersistentVolumeClaims")
+            .RequireAuthorization(Policy.Admin)
+            .Produces<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>();
+        return app;
+    }
 }
