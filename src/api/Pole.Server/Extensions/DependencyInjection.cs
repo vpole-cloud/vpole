@@ -27,6 +27,10 @@ using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
+using Pole.Features.Quotas.Application;
+using Pole.Features.Quotas.Application.Common;
+using Pole.Features.Quotas.Application.Services;
+using Pole.Features.Quotas.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Services;
@@ -150,12 +154,14 @@ public static class DependencyInjection
         public IServiceCollection AddMongoDbContextInterfaces()
         {
             services.TryAddSingleton<MongoDbContext>();
+            services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IMongoDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IEventDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IWebServiceDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IRedisDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ISearchDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IPostgresDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.TryAddSingleton<IQuotaDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IResourceGroupDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IDnsRecordDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ITenantDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
@@ -234,6 +240,11 @@ public static class DependencyInjection
             services.AddSettingsSection<OutboxSettings>(OutboxSettings.SectionName, configuration);
             services.AddSettingsSection<KubernetesOptions>(KubernetesOptions.SectionName, configuration);
             services.AddSettingsSection<PostgresSettings>(PostgresSettings.SectionName, configuration);
+            services.AddOptions<QuotaSettings>()
+                .Bind(configuration.GetSection(QuotaSettings.SectionName))
+                .ValidateDataAnnotations()
+                .ValidateOnStart();
+            services.AddSingleton(sp => sp.GetRequiredService<IOptions<QuotaSettings>>().Value);
             services.AddSettingsSection<KeycloakOptions>(KeycloakOptions.SectionName, configuration);
             services.AddSettingsSection<GitHubAppOptions>(GitHubAppOptions.SectionName, configuration);
             services.AddSettingsSection<HarborOptions>(HarborOptions.SectionName, configuration);

@@ -84,3 +84,38 @@ Do not assume unclear framework or library behavior when correctness depends on 
 - Test the uncertain behavior once rather than repeating the same library test in every feature.
 - Feature tests should verify Pole behavior and only add another dependency-focused case for a distinct shape, edge case, or known upgrade regression.
 - Prefer documented contracts, but retain a focused test when translation, serialization, runtime integration, or version behavior is material and not sufficiently guaranteed by documentation.
+
+## Treat nullability as a contract
+
+Enable nullable reference types and fail the build on nullable compiler warnings.
+
+- Do not make request or domain members nullable solely because model binding, serialization, or another framework creates the object.
+- Let the owning boundary report missing required input. Do not repeat null or blank checks in every downstream layer when middleware, a pipeline behavior, or request validation already owns the rule.
+- Do not add `ThrowIfNull` for a non-nullable internal parameter unless the method is a documented runtime boundary that can still receive null from unannotated or reflection-based callers.
+- Use nullable members only for values that are genuinely optional in a valid state.
+
+## Validate configuration at startup
+
+Configuration errors should prevent the application from starting.
+
+- Bind settings through the options pipeline and use data annotations or a focused `IValidateOptions<T>` implementation.
+- Use `ValidateOnStart` for settings required by runtime services.
+- Do not validate the same settings in service methods or constructors invoked during an arbitrary request.
+
+## Bound reflection discovery
+
+Reflection-based registration is acceptable when it removes repetitive feature wiring and has a clear validation boundary.
+
+- Scan only assemblies explicitly supplied by composition-root code.
+- Reject duplicate identities and incompatible registrations during startup.
+- Keep discovered abstractions strongly typed and test that unrelated assemblies are excluded.
+- Prefer explicit registration when discovery rules would be implicit, broad, or difficult to validate.
+
+## Centralize cross-cutting orchestration
+
+Feature handlers should describe feature intent while shared infrastructure owns reusable lifecycle mechanics.
+
+- Keep feature-owned calculation in typed definitions or profiles.
+- Put repeated reserve/commit/release/compensation or similar sequences behind one shared executor or pipeline behavior.
+- Keep the resource mutation and outbox writes together in the transaction callback supplied by the feature.
+- Give stable cross-cutting identities small typed helpers instead of constructing strings throughout handlers.

@@ -14,6 +14,7 @@ open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Events
 open Pole.Features.Postgres.Application.Kubernetes
+open Pole.Features.Quotas.Contracts
 open Pole.Mediator
 open Pole.ResultType
 
@@ -29,7 +30,9 @@ type DeletePostgresClusterRequest =
     interface ITenantWriteOperation with
         member this.TenantId = this.TenantId
 
-type DeletePostgresClusterHandler(dbContext : IPostgresDbContext) =
+type DeletePostgresClusterHandler(
+    dbContext : IPostgresDbContext,
+    quotaAdmissionExecutor : IQuotaAdmissionExecutor) =
     interface IMediatorHandler<DeletePostgresClusterRequest, DeletePostgresClusterResponse> with
         member _.HandleAsync(request, cancellationToken) =
             task {
@@ -49,7 +52,10 @@ type DeletePostgresClusterHandler(dbContext : IPostgresDbContext) =
                            |> ResultF.ofFailure
                 | Some cluster ->
                     return!
-                        dbContext.RunInTransactionAsync<DeletePostgresClusterResponse>(
+                        quotaAdmissionExecutor.ExecuteAsync<PostgresClusterSpec, DeletePostgresClusterResponse>(
+                            cluster.TenantId,
+                            PostgresQuotaResourceKey.create cluster.Id,
+                            DeleteQuotaMutation<PostgresClusterSpec>(cluster.Spec),
                             (fun session ct ->
                                 task {
                                     let! deleteResult =
@@ -67,7 +73,7 @@ type DeletePostgresClusterHandler(dbContext : IPostgresDbContext) =
                                         return { Id = request.ClusterId } |> ResultF.ofValue
                                 }
                             ),
-                            cancellationToken = cancellationToken
+                            cancellationToken
                         )
             }
 

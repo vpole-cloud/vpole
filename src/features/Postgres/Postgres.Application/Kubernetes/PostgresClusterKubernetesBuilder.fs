@@ -23,6 +23,14 @@ module PostgresClusterKubernetesBuilder =
             PoleStorageLabels.ResourceName, cluster.Name
         ]
 
+    let private buildResources (cluster : PostgresCluster) =
+        {| requests =
+               {| cpu = $"{cluster.Spec.Resources.Requests.CpuCores}"
+                  memory = $"{cluster.Spec.Resources.Requests.MemoryMi}Mi" |}
+           limits =
+               {| cpu = $"{cluster.Spec.Resources.Limits.CpuCores}"
+                  memory = $"{cluster.Spec.Resources.Limits.MemoryMi}Mi" |} |}
+
     let buildCluster (cluster : PostgresCluster) (username : string) (settings : PostgresSettings) =
         let clusterSecretName = buildSecretName cluster.Id
         let image = PostgresSettings.buildImageReference settings.OperatorImage cluster.Spec.Version
@@ -44,6 +52,7 @@ module PostgresClusterKubernetesBuilder =
                             size = $"{cluster.Spec.Storage}Gi"
                             storageClass = cluster.Spec.StorageProfile.StorageClassName
                         |}
+                    resources = buildResources cluster
                     secret =
                         {|
                             name = clusterSecretName

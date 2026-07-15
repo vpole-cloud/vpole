@@ -15,6 +15,7 @@ using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Events;
 using Pole.Features.RedisServices.Application.Kubernetes;
+using Pole.Features.Quotas.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Mediator;
@@ -44,16 +45,15 @@ public static class CreateRedisService
 public sealed class CreateRedisServiceHandler(
     IRedisDbContext dbContext,
     IResourceGroupLookup resourceGroupLookup,
-    IStorageProfileResolver storageProfileResolver)
+    IStorageProfileResolver storageProfileResolver,
+    IQuotaAdmissionExecutor quotaAdmissionExecutor)
     : IMediatorHandler<CreateRedisServiceRequest, CreateRedisServiceResponse>
 {
     public async Task<Result<CreateRedisServiceResponse>> HandleAsync(CreateRedisServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var tenantId = request.TenantId ?? throw new InvalidOperationException("A tenant id is required for this operation.");
-
         var placementResult = await resourceGroupLookup.GetPlacementAsync(
-            tenantId,
+            request.TenantId,
             request.Body.ResourceGroupId,
             cancellationToken);
         if (!placementResult.TryGetValue(out var placement, out var placementFailure))
@@ -62,7 +62,7 @@ public sealed class CreateRedisServiceHandler(
         var storageProfileResult = await storageProfileResolver.ResolveAsync(
             new StorageProfileResolutionRequest(
                 request.Body.Spec.Storage.StorageProfileId,
-                tenantId,
+                request.TenantId,
                 ResourceType.Redis,
                 request.Body.Spec.Storage.SizeGb),
             cancellationToken);
@@ -70,7 +70,7 @@ public sealed class CreateRedisServiceHandler(
             return storageProfileFailure;
 
         var newRedis = RedisFactory.Create(
-            tenantId: tenantId,
+            tenantId: request.TenantId,
             name: request.Body.Name,
             resourceGroupId: request.Body.ResourceGroupId,
             spec: request.Body.Spec.ToDomain(placement.KubernetesNamespace, storageProfile),
@@ -79,15 +79,25 @@ public sealed class CreateRedisServiceHandler(
                 Tags = request.Body.Tags
             }
         );
-        
-        return await dbContext.RunInTransactionAsync<CreateRedisServiceResponse>(async (sh, ct) =>
-        {
-            await dbContext.RedisServices.InsertOneAsync(sh, newRedis, cancellationToken: ct);
-            
-            await dbContext.StoreEventAsync(newRedis.ToCreateEvent(), sh, ct);
 
-            return new CreateRedisServiceResponse(newRedis.Id);
-        }, cancellationToken: cancellationToken);
+        return await quotaAdmissionExecutor.ExecuteAsync<RedisSpec, CreateRedisServiceResponse>(
+            request.TenantId,
+            RedisQuotaResourceKey.Create(newRedis.Id),
+            new CreateQuotaMutation<RedisSpec>(newRedis.Spec),
+            async (session, transactionCancellationToken) =>
+            {
+                await dbContext.RedisServices.InsertOneAsync(
+                    session,
+                    newRedis,
+                    cancellationToken: transactionCancellationToken);
+                await dbContext.StoreEventAsync(
+                    newRedis.ToCreateEvent(),
+                    session,
+                    transactionCancellationToken);
+
+                return new CreateRedisServiceResponse(newRedis.Id);
+            },
+            cancellationToken);
     }
 }
 
@@ -107,7 +117,7 @@ public class ProvisionRedisServiceOnRedisServiceCreatedConsumer(
 
 public sealed record CreateRedisServiceRequest(
     [FromBody] CreateRedisServiceRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
 ) : IMediatorRequest<CreateRedisServiceResponse>, ITenantCreateOperation;
 
 public sealed record CreateRedisServiceRequestBody(

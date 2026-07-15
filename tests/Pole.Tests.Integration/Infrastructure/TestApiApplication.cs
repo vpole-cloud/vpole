@@ -13,6 +13,8 @@ using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.Postgres.Application.Endpoints;
+using Pole.Features.Quotas.Application;
+using Pole.Features.Quotas.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Services;
@@ -39,6 +41,7 @@ public sealed class TestApiApplication : IAsyncDisposable
     [
         typeof(WebServiceEndpoints).Assembly,
         typeof(PostgresClusterEndpoints).Assembly,
+        typeof(QuotaEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,
         typeof(RedisServiceEndpoints).Assembly,
         typeof(DnsRecordEndpoints).Assembly,
@@ -79,6 +82,11 @@ public sealed class TestApiApplication : IAsyncDisposable
             DefaultDeploymentMode = Pole.Features.Postgres.Domain.PostgresDeploymentMode.Operator,
             SupportedVersions = new PostgresSupportedVersionsSettings { From = 16, To = 17 }
         });
+        builder.Services.AddSingleton(new QuotaSettings());
+        builder.Services.AddQuotaFramework(
+            typeof(RedisQuotaProfile).Assembly,
+            typeof(WebServiceQuotaProfile).Assembly,
+            typeof(PostgresQuotaProfile).Assembly);
         builder.Services.AddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
         builder.Services.AddSingleton<InMemoryPostgresClusterSecretStore>();
         builder.Services.AddSingleton<IPostgresClusterSecretStore>(sp => sp.GetRequiredService<InMemoryPostgresClusterSecretStore>());
@@ -138,6 +146,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapWebServiceEndpoints()
             .MapRedisServiceEndpoints()
             .MapPostgresClusterEndpoints()
+            .MapQuotaEndpoints()
             .MapSearchEndpoints()
             .MapDomainNameEndpoints()
             .MapStorageProfileEndpoints()

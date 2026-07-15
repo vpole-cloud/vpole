@@ -1,6 +1,7 @@
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.Postgres.Application.Endpoints;
+using Pole.Features.Quotas.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.Search.Application.Common;
@@ -27,6 +28,7 @@ public static class MapApi
             .MapWebServiceEndpoints()
             .MapRedisServiceEndpoints()
             .MapPostgresClusterEndpoints()
+            .MapQuotaEndpoints()
             .MapStorageProfileEndpoints()
             .MapSearchEndpoints()
             .MapDomainNameEndpoints();

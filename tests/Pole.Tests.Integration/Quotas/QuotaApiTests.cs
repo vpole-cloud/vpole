@@ -1,0 +1,58 @@
+using System.Net;
+using System.Net.Http.Json;
+using Pole.Features.Core.Multitenancy;
+using Pole.Tests.Integration.Infrastructure;
+using Xunit;
+
+namespace Pole.Tests.Integration.Quotas;
+
+public sealed class QuotaApiTests(MongoReplicaSetFixture fixture)
+    : ApiIntegrationTestBase(fixture)
+{
+    [Fact]
+    public async Task PolicyRequiresPlatformAdmin_AndTenantCanReadOwnUsage()
+    {
+        var path = $"/api/v1/platform/tenants/{TestData.TenantId}/quota";
+        var body = new
+        {
+            limits = new[]
+            {
+                new { key = "RedisServiceCount", value = 1 }
+            }
+        };
+
+        var forbidden = await Client.PutAsJsonAsync(path, body);
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+        var updated = await Client.PutAsJsonAsync(path, body);
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+
+        var usage = await Client.GetAsync("/api/v1/tenant-quotas/usage");
+        Assert.Equal(HttpStatusCode.OK, usage.StatusCode);
+    }
+
+    [Fact]
+    public async Task UsageRequiresTenantHeader()
+    {
+        Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
+
+        var response = await Client.GetAsync("/api/v1/tenant-quotas/usage");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PolicyRejectsUnknownQuotaKey()
+    {
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+        var response = await Client.PutAsJsonAsync(
+            $"/api/v1/platform/tenants/{TestData.TenantId}/quota",
+            new
+            {
+                limits = new[] { new { key = "UnknownQuota", value = 1 } }
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+}

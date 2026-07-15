@@ -6,6 +6,8 @@ using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.Postgres.Application.Endpoints;
+using Pole.Features.Quotas.Application;
+using Pole.Features.Quotas.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Services;
@@ -28,6 +30,7 @@ public static class TestServiceProviderFactory
     [
         typeof(WebServiceEndpoints).Assembly,
         typeof(PostgresClusterEndpoints).Assembly,
+        typeof(QuotaEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,
         typeof(RedisServiceEndpoints).Assembly,
         typeof(DnsRecordEndpoints).Assembly,
@@ -50,6 +53,11 @@ public static class TestServiceProviderFactory
             DefaultDeploymentMode = PostgresDeploymentMode.Operator,
             SupportedVersions = new PostgresSupportedVersionsSettings { From = 16, To = 17 }
         });
+        services.AddSingleton(new QuotaSettings());
+        services.AddQuotaFramework(
+            typeof(RedisQuotaProfile).Assembly,
+            typeof(WebServiceQuotaProfile).Assembly,
+            typeof(PostgresQuotaProfile).Assembly);
         services.AddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
         services.AddSingleton<InMemoryPostgresClusterSecretStore>();
         services.AddSingleton<IPostgresClusterSecretStore>(sp => sp.GetRequiredService<InMemoryPostgresClusterSecretStore>());

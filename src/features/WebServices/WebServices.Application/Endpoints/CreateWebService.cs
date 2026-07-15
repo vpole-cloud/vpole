@@ -12,6 +12,7 @@ using Pole.Features.DnsRecords.Events;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.Quotas.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
@@ -43,7 +44,8 @@ public static class CreateWebService
 public sealed class CreateWebServiceHandler(
     IWebServiceDbContext dbContext,
     IDomainNameReservationService domainNameReservationService,
-    IResourceGroupLookup resourceGroupLookup)
+    IResourceGroupLookup resourceGroupLookup,
+    IQuotaAdmissionExecutor quotaAdmissionExecutor)
     : IMediatorHandler<CreateWebServiceRequest, CreateWebServiceResponse>
 {
     public async Task<Result<CreateWebServiceResponse>> HandleAsync(CreateWebServiceRequest request,
@@ -60,59 +62,65 @@ public sealed class CreateWebServiceHandler(
         {
             Tags = request.Body.Tags,
         };
-        var dnsRecordReservation = await domainNameReservationService.ReserveAsync(
-            new ReserveDomainNameRequest(
-                TenantId: request.TenantId,
-                DomainName: request.Body.DomainName,
-                ResourceType: ResourceType.WebService,
-                ResourceId: createWebServiceOptions.Id,
-                ResourceName: request.Body.Name,
-                ResourceGroupId: request.Body.ResourceGroupId),
+        var spec = request.Body.Spec.ToDomain(placement.KubernetesNamespace);
+        return await quotaAdmissionExecutor.ExecuteAsync<WebServiceSpec, DnsRecordShortInfo, CreateWebServiceResponse>(
+            request.TenantId,
+            WebServiceQuotaResourceKey.Create(createWebServiceOptions.Id),
+            new CreateQuotaMutation<WebServiceSpec>(spec),
+            transactionCancellationToken => domainNameReservationService.ReserveAsync(
+                new ReserveDomainNameRequest(
+                    TenantId: request.TenantId,
+                    DomainName: request.Body.DomainName,
+                    ResourceType: ResourceType.WebService,
+                    ResourceId: createWebServiceOptions.Id,
+                    ResourceName: request.Body.Name,
+                    ResourceGroupId: request.Body.ResourceGroupId),
+                transactionCancellationToken),
+            async (dnsRecord, session, transactionCancellationToken) =>
+            {
+                var newWebService = WebServiceFactory.Create(
+                    name: request.Body.Name,
+                    tenantId: request.TenantId,
+                    resourceGroupId: request.Body.ResourceGroupId,
+                    spec: spec,
+                    dnsRecord: dnsRecord,
+                    options: createWebServiceOptions);
+                var deploymentEventCore = EventCore.Create(request.TenantId);
+                var release = WebServiceReleaseFactory.CreatePending(
+                    request.TenantId,
+                    newWebService.Id,
+                    newWebService.ActiveRevision,
+                    WebServiceReleaseAction.Create,
+                    request.ActorUserId.Value,
+                    request.ActorEmail.Value,
+                    newWebService.Spec.ToSnapshot(),
+                    deploymentEventCore.TraceId,
+                    deploymentEventCore.CorrelationId,
+                    deploymentEventCore.OccurredOn);
+
+                await dbContext.WebServices.InsertOneAsync(
+                    session,
+                    newWebService,
+                    cancellationToken: transactionCancellationToken);
+                await dbContext.WebServiceReleases.InsertOneAsync(
+                    session,
+                    release,
+                    cancellationToken: transactionCancellationToken);
+                await dbContext.StoreEventAsync(
+                    [
+                        newWebService.ToCreateEvent(),
+                        new CommitDomainNameEvent(
+                            DnsRecordId: dnsRecord.Id,
+                            ResourceId: newWebService.Id,
+                            EventCore: EventCore.Create(request.TenantId)),
+                        release.ToDeploymentRequestedEvent(newWebService, deploymentEventCore)
+                    ],
+                    session,
+                    transactionCancellationToken);
+
+                return new CreateWebServiceResponse(newWebService.Id);
+            },
             cancellationToken);
-
-        if (!dnsRecordReservation.TryGetValue(out var dnsRecord, out var reservationFailure))
-            return reservationFailure;
-
-        var newWebService = WebServiceFactory.Create(
-            name: request.Body.Name,
-            tenantId: request.TenantId,
-            resourceGroupId: request.Body.ResourceGroupId,
-            spec: request.Body.Spec.ToDomain(placement.KubernetesNamespace),
-            dnsRecord: dnsRecord,
-            options: createWebServiceOptions);
-        
-        return await dbContext.RunInTransactionAsync<CreateWebServiceResponse>(async (sh, ct) =>
-        {
-            var deploymentEventCore = EventCore.Create(request.TenantId);
-            var release = WebServiceReleaseFactory.CreatePending(
-                request.TenantId,
-                newWebService.Id,
-                newWebService.ActiveRevision,
-                WebServiceReleaseAction.Create,
-                request.ActorUserId.Value,
-                request.ActorEmail.Value,
-                newWebService.Spec.ToSnapshot(),
-                deploymentEventCore.TraceId,
-                deploymentEventCore.CorrelationId,
-                deploymentEventCore.OccurredOn);
-
-            await dbContext.WebServices.InsertOneAsync(sh, newWebService, cancellationToken: ct);
-            await dbContext.WebServiceReleases.InsertOneAsync(sh, release, cancellationToken: ct);
-
-            await dbContext.StoreEventAsync(
-                [
-                    newWebService.ToCreateEvent(),
-                    new CommitDomainNameEvent(
-                        DnsRecordId: dnsRecord.Id,
-                        ResourceId: newWebService.Id,
-                        EventCore: EventCore.Create(request.TenantId)),
-                    release.ToDeploymentRequestedEvent(newWebService, deploymentEventCore)
-                ],
-                sh,
-                ct);
-
-            return new CreateWebServiceResponse(newWebService.Id);
-        }, cancellationToken: cancellationToken);
     }
 }
 
@@ -137,7 +145,6 @@ public sealed class CreateWebServiceRequestValidator : AbstractValidator<CreateW
 {
     public CreateWebServiceRequestValidator()
     {
-        RuleFor(x => x.TenantId).NotEmpty();
         RuleFor(x => x.ActorUserId.Value).NotEmpty();
         RuleFor(x => x.ActorEmail.Value).NotEmpty().EmailAddress();
         RuleFor(x => x.Body).SetValidator(new CreateWebServiceRequestBodyValidator());

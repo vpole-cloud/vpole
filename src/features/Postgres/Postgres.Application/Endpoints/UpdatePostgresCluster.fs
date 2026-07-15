@@ -14,6 +14,7 @@ open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Events
 open Pole.Features.Postgres.Application.Kubernetes
+open Pole.Features.Quotas.Contracts
 open Pole.Features.Shared.Models
 open Pole.Features.StorageProfiles.Contracts
 open Pole.Mediator
@@ -21,7 +22,8 @@ open Pole.ResultType
 
 type UpdatePostgresClusterRequestBody =
     { Instances : int option
-      Storage : int option }
+      Storage : int option
+      Resources : Resources option }
 
 type UpdatePostgresClusterResponse =
     { Id : string }
@@ -39,7 +41,8 @@ type UpdatePostgresClusterRequest =
 
 type UpdatePostgresClusterHandler(
     dbContext : IPostgresDbContext,
-    storageProfileResolver : IStorageProfileResolver) =
+    storageProfileResolver : IStorageProfileResolver,
+    quotaAdmissionExecutor : IQuotaAdmissionExecutor) =
     interface IMediatorHandler<UpdatePostgresClusterRequest, UpdatePostgresClusterResponse> with
         member _.HandleAsync(request, cancellationToken) =
             task {
@@ -60,6 +63,7 @@ type UpdatePostgresClusterHandler(
                 | Some cluster ->
                     let updatedInstances = defaultArg request.Body.Instances cluster.Spec.Instances
                     let updatedStorage = defaultArg request.Body.Storage cluster.Spec.Storage
+                    let updatedResources = defaultArg request.Body.Resources cluster.Spec.Resources
 
                     if cluster.Spec.DeploymentMode = PostgresDeploymentMode.StatefulSet && updatedInstances <> 1 then
                         let validationErrors = System.Collections.Generic.Dictionary<string, string[]>()
@@ -85,13 +89,17 @@ type UpdatePostgresClusterHandler(
                                     Spec =
                                         { Instances = updatedInstances
                                           Storage = updatedStorage
+                                          Resources = updatedResources
                                           StorageProfile = cluster.Spec.StorageProfile
                                           KubernetesNamespace = cluster.Spec.KubernetesNamespace
                                           Version = cluster.Spec.Version
                                           DeploymentMode = cluster.Spec.DeploymentMode } }
 
                             return!
-                                dbContext.RunInTransactionAsync<UpdatePostgresClusterResponse>(
+                                quotaAdmissionExecutor.ExecuteAsync<PostgresClusterSpec, UpdatePostgresClusterResponse>(
+                                    cluster.TenantId,
+                                    PostgresQuotaResourceKey.create cluster.Id,
+                                    UpdateQuotaMutation<PostgresClusterSpec>(cluster.Spec, updatedCluster.Spec),
                                     (fun session ct ->
                                         task {
                                             let! _ =
@@ -99,17 +107,13 @@ type UpdatePostgresClusterHandler(
                                                     session,
                                                     filter,
                                                     updatedCluster,
-                                                    cancellationToken = ct
-                                                )
+                                                    cancellationToken = ct)
 
                                             let event = PostgresClusterEvents.updated cluster updatedCluster
                                             do! dbContext.StoreEventAsync(event, session, ct)
-
                                             return { Id = request.ClusterId } |> ResultF.ofValue
-                                        }
-                                    ),
-                                    cancellationToken = cancellationToken
-                                )
+                                        }),
+                                    cancellationToken)
             }
 
 type UpdatePostgresClusterRequestValidator() as this =
@@ -117,6 +121,14 @@ type UpdatePostgresClusterRequestValidator() as this =
     do
         this.RuleFor(_.ClusterId)
             .NotEmpty()
+        |> ignore
+
+        this.When(
+            (fun request -> Option.isSome request.Body.Resources),
+            (fun () ->
+                this.RuleFor(fun request -> request.Body.Resources.Value)
+                    .SetValidator(PostgresResourcesValidator())
+                |> ignore))
         |> ignore
 
 [<AbstractClass; Sealed>]

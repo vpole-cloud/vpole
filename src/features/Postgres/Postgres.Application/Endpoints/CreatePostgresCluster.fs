@@ -15,6 +15,7 @@ open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Events
 open Pole.Features.Postgres.Application.Kubernetes
+open Pole.Features.Quotas.Contracts
 open Pole.Features.ResourceGroups.Contracts
 open Pole.Features.Shared.Models
 open Pole.Features.StorageProfiles.Contracts
@@ -27,6 +28,7 @@ type CreatePostgresClusterRequestBody =
       Version : int
       Instances : int option
       Storage : int option
+      Resources : Resources
       StorageProfileId : string
       Username : string
       Password : string }
@@ -44,14 +46,15 @@ type CreatePostgresClusterHandler(
     resourceGroupLookup : IResourceGroupLookup,
     storageProfileResolver : IStorageProfileResolver,
     secretStore : IPostgresClusterSecretStore,
-    settings : PostgresSettings) =
+    settings : PostgresSettings,
+    quotaAdmissionExecutor : IQuotaAdmissionExecutor) =
     let validate settings request =
         let validationErrors = System.Collections.Generic.Dictionary<string, string[]>()
 
         if not (PostgresSettings.isSupportedVersion settings request.Body.Version) then
             validationErrors["Body.Version"] <- [| $"Supported PostgreSQL versions are from {settings.SupportedVersions.From} to {settings.SupportedVersions.``To``}." |]
 
-        let requestedInstances = defaultArg request.Body.Instances PostgresCluster.emptyOptions.Instances
+        let requestedInstances = defaultArg request.Body.Instances PostgresCluster.DefaultInstances
         if settings.DefaultDeploymentMode = PostgresDeploymentMode.StatefulSet && requestedInstances <> 1 then
             validationErrors["Body.Instances"] <- [| "StatefulSet PostgreSQL supports exactly one instance." |]
 
@@ -79,7 +82,7 @@ type CreatePostgresClusterHandler(
                     | struct (false, _, placementFailure) ->
                         return placementFailure |> ResultF.ofFailure
                     | struct (true, placement, _) ->
-                        let requestedStorage = defaultArg request.Body.Storage PostgresCluster.emptyOptions.Storage
+                        let requestedStorage = defaultArg request.Body.Storage PostgresCluster.DefaultStorage
                         let! storageProfileResult =
                             storageProfileResolver.ResolveAsync(
                                 StorageProfileResolutionRequest(
@@ -102,27 +105,25 @@ type CreatePostgresClusterHandler(
                                     request.Body.Version
                                     settings.DefaultDeploymentMode
                                     storageProfile
-                                    { PostgresCluster.emptyOptions with
-                                        Instances = defaultArg request.Body.Instances PostgresCluster.emptyOptions.Instances
-                                        Storage = requestedStorage }
+                                    { Id = None
+                                      Instances = defaultArg request.Body.Instances PostgresCluster.DefaultInstances
+                                      Storage = requestedStorage
+                                      Resources = request.Body.Resources }
 
                             return!
-                                dbContext.RunInTransactionAsync<PostgresClusterDto>(
+                                quotaAdmissionExecutor.ExecuteAsync<PostgresClusterSpec, PostgresClusterDto>(
+                                    tenantId,
+                                    PostgresQuotaResourceKey.create cluster.Id,
+                                    CreateQuotaMutation<PostgresClusterSpec>(cluster.Spec),
                                     (fun session ct ->
                                         task {
                                             do! dbContext.Postgres.InsertOneAsync(session, cluster, cancellationToken = ct)
                                             do! secretStore.CreateAsync(placement.KubernetesNamespace, cluster.Id, request.Body.Username, request.Body.Password, ct)
                                             let event = PostgresClusterEvents.created cluster
-
                                             do! dbContext.StoreEventAsync(event, session, ct)
-
-                                            let response = PostgresCluster.toDto cluster
-
-                                            return Result.Success(response) :> Result<PostgresClusterDto>
-                                        }
-                                    ),
-                                    cancellationToken = cancellationToken
-                                )
+                                            return PostgresCluster.toDto cluster |> ResultF.ofValue
+                                        }),
+                                    cancellationToken)
             }
             
 type CreatePostgresClusterValidator() as this =
@@ -131,6 +132,10 @@ type CreatePostgresClusterValidator() as this =
         this.RuleFor(_.Body.Name).NotEmpty().WithMessage("Name is required.") |> ignore
         this.RuleFor(_.Body.GroupId).NotEmpty().WithMessage("GroupId is required.") |> ignore
         this.RuleFor(_.Body.Version).GreaterThan(0).WithMessage("Version is required.") |> ignore
+        this.RuleFor(_.Body.Resources)
+            .NotNull()
+            .SetValidator(PostgresResourcesValidator())
+        |> ignore
         this.RuleFor(_.Body.Username).NotEmpty().WithMessage("Username is required.") |> ignore
         this.RuleFor(_.Body.Password).NotEmpty().WithMessage("Password is required.") |> ignore
 
