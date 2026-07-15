@@ -25,9 +25,9 @@
     <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="FluentValidation" Version="12.1.1" />
-    <PackageReference Include="Hangfire.Core" Version="1.8.23" />
-    <PackageReference Include="MassTransit" Version="8.5.9" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="Hangfire.Core" />
+    <PackageReference Include="MassTransit" />
+    <PackageReference Include="Newtonsoft.Json" />
   </ItemGroup>
 </Project>

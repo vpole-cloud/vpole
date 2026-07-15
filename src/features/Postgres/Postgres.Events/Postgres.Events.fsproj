@@ -8,13 +8,13 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Compile Include="PostgresClusterCreatedEvent.fs" />
-        <Compile Include="PostgresClusterUpdatedEvent.fs" />
-        <Compile Include="PostgresClusterDeletedEvent.fs" />
+        <PackageReference Include="FSharp.Core" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.203" />
+        <Compile Include="PostgresClusterCreatedEvent.fs" />
+        <Compile Include="PostgresClusterUpdatedEvent.fs" />
+        <Compile Include="PostgresClusterDeletedEvent.fs" />
     </ItemGroup>
 
     <ItemGroup>
