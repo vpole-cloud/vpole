@@ -9,14 +9,14 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Aspire.Keycloak.Authentication" Version="13.1.0-preview.1.25616.3" />
-        <PackageReference Include="Aspire.MongoDB.Driver" Version="13.3.0" />
-        <PackageReference Include="Aspire.RabbitMQ.Client" Version="13.3.0" />
-        <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
-        <PackageReference Include="Hangfire" Version="1.8.23" />
-        <PackageReference Include="Hangfire.Mongo" Version="1.15.0" />
-        <PackageReference Include="MassTransit.RabbitMQ" Version="8.5.9" />
-        <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+        <PackageReference Include="Aspire.Keycloak.Authentication" />
+        <PackageReference Include="Aspire.MongoDB.Driver" />
+        <PackageReference Include="Aspire.RabbitMQ.Client" />
+        <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
+        <PackageReference Include="Hangfire" />
+        <PackageReference Include="Hangfire.Mongo" />
+        <PackageReference Include="MassTransit.RabbitMQ" />
+        <PackageReference Include="Newtonsoft.Json" />
     </ItemGroup>
 
     <ItemGroup>

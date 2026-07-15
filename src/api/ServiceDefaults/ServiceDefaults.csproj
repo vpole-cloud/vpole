@@ -14,15 +14,15 @@
 
         <ProjectReference Include="..\..\shared\Observability\Observability.csproj" />
 
-        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.7" />
-        <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.5.0" />
-        <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="10.5.0" />
-        <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
-        <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
-        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
-        <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
-        <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.1" />
-        <PackageReference Include="Scalar.AspNetCore" Version="2.14.11" />
+        <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+        <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
+        <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" />
+        <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+        <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
+        <PackageReference Include="Scalar.AspNetCore" />
         
     </ItemGroup>
 

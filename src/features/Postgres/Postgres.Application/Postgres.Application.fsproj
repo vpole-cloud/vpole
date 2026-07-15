@@ -8,6 +8,10 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="FSharp.Core" />
+    </ItemGroup>
+
+    <ItemGroup>
         <Compile Include="Common\PostgresSettings.fs" />
         <Compile Include="Common\PostgresValidators.fs" />
         <Compile Include="Common\PostgresQuotaProfile.fs" />
@@ -35,9 +39,8 @@
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
     </ItemGroup>
     <ItemGroup>
-        <PackageReference Include="FluentValidation" Version="12.1.1" />
-        <PackageReference Include="KubernetesClient" Version="19.0.2" />
-        <PackageReference Update="FSharp.Core" Version="10.1.203" />
+        <PackageReference Include="FluentValidation" />
+        <PackageReference Include="KubernetesClient" />
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />

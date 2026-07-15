@@ -8,6 +8,10 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="FSharp.Core" />
+    </ItemGroup>
+
+    <ItemGroup>
         <Compile Include="Common\SearchDto.fs" />
         <Compile Include="Common\ISearchDbContext.fs" />
         <Compile Include="Migrations\SearchDocumentIndexesMigration.fs" />
@@ -27,8 +31,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="FluentValidation" Version="12.1.1" />
-        <PackageReference Update="FSharp.Core" Version="10.1.203" />
+        <PackageReference Include="FluentValidation" />
     </ItemGroup>
 
     <ItemGroup>
