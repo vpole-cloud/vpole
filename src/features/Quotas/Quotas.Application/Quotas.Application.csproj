@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Pole.Features.Quotas.Application</AssemblyName>
+    <RootNamespace>Pole.Features.Quotas.Application</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Quotas.Contracts\Quotas.Contracts.csproj" />
+    <ProjectReference Include="..\Quotas.Domain\Quotas.Domain.csproj" />
+    <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
+    <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
+    <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
+    <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
+    <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
+    <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" Version="12.1.1" />
+  </ItemGroup>
+
+</Project>

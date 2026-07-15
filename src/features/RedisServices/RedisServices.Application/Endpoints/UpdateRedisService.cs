@@ -10,6 +10,7 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.Quotas.Contracts;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
@@ -44,7 +45,7 @@ public static class UpdateRedisService
 public sealed record UpdateRedisServiceRequest(
     [FromRoute] string Id,
     [FromBody] UpdateRedisServiceRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
 ) : IMediatorRequest<UpdateRedisServiceResponse>, ITenantWriteOperation;
 
 public sealed record UpdateRedisServiceRequestBody(
@@ -57,7 +58,8 @@ public sealed record UpdateRedisServiceResponse(string Id);
 
 public sealed class UpdateRedisServiceHandler(
     IRedisDbContext dbContext,
-    IStorageProfileResolver storageProfileResolver)
+    IStorageProfileResolver storageProfileResolver,
+    IQuotaAdmissionExecutor quotaAdmissionExecutor)
     : IMediatorHandler<UpdateRedisServiceRequest, UpdateRedisServiceResponse>
 {
     public async Task<Result<UpdateRedisServiceResponse>> HandleAsync(
@@ -96,32 +98,38 @@ public sealed class UpdateRedisServiceHandler(
         if (!storageProfileResult.TryGetValue(out var storageProfile, out var storageProfileFailure))
             return storageProfileFailure;
 
-        return await dbContext.RunInTransactionAsync<UpdateRedisServiceResponse>(async (sh, ct) =>
-        {
-            var changes = GetChanges(redis, request.Body, storageProfile);
-            if (HasChanges(changes))
+        var nextSpec = request.Body.Spec.ToDomain(redis.Spec.KubernetesNamespace, storageProfile);
+        return await quotaAdmissionExecutor.ExecuteAsync<RedisSpec, UpdateRedisServiceResponse>(
+            redis.TenantId,
+            RedisQuotaResourceKey.Create(redis.Id),
+            new UpdateQuotaMutation<RedisSpec>(redis.Spec, nextSpec),
+            async (session, transactionCancellationToken) =>
             {
-                await dbContext.RedisServices.UpdateOneAsync(
-                    session: sh,
-                    filter,
-                    GetUpdateDefinition(changes),
-                    cancellationToken: ct);
-            }
-
-            await dbContext.StoreEventAsync(new RedisServiceUpdatedEvent(
-                    request.Id,
-                    redis.Name,
-                    redis.ResourceGroupId,
-                    changes)
+                var changes = GetChanges(redis, request.Body, storageProfile);
+                if (HasChanges(changes))
                 {
-                    EventCore = EventCore.Create(redis.TenantId)
+                    await dbContext.RedisServices.UpdateOneAsync(
+                        session,
+                        filter,
+                        GetUpdateDefinition(changes),
+                        cancellationToken: transactionCancellationToken);
                 }
-                , sh, ct);
-            
-            return new UpdateRedisServiceResponse(
-                Id: redis.Id
-            );
-        }, cancellationToken: cancellationToken);
+
+                await dbContext.StoreEventAsync(
+                    new RedisServiceUpdatedEvent(
+                        request.Id,
+                        redis.Name,
+                        redis.ResourceGroupId,
+                        changes)
+                    {
+                        EventCore = EventCore.Create(redis.TenantId)
+                    },
+                    session,
+                    transactionCancellationToken);
+
+                return new UpdateRedisServiceResponse(redis.Id);
+            },
+            cancellationToken);
     }
 
     private static RedisServiceUpdatedEventChanges GetChanges(

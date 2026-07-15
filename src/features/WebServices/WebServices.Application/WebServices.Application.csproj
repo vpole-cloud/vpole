@@ -25,6 +25,7 @@
       <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
       <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
+      <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
     </ItemGroup>
 
     <ItemGroup>

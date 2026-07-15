@@ -2,6 +2,7 @@ namespace Pole.Features.Postgres.Events
 
 open MassTransit
 open Pole.Features.Events.Abstractions
+open Pole.Features.Shared.Models
 open Pole.Features.StorageProfiles.Contracts
 
 type PostgresDeploymentModeSnapshot =
@@ -11,6 +12,7 @@ type PostgresDeploymentModeSnapshot =
 type PostgresClusterSpecSnapshot =
     { Instances : int
       Storage : int
+      Resources : Resources
       StorageProfile : ResolvedStorageProfile
       KubernetesNamespace : string
       Version : int

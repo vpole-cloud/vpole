@@ -15,9 +15,20 @@ public static class ClientSessionHandleExtensions
         try
         {
             return await session.WithTransactionAsync(
-                callbackAsync,
+                async (transactionSession, transactionCancellationToken) =>
+                {
+                    var result = await callbackAsync(transactionSession, transactionCancellationToken);
+                    if (result is not ISuccess)
+                        throw new TransactionAbortedByResultException(result);
+
+                    return result;
+                },
                 transactionOptions,
                 cancellationToken);
+        }
+        catch (TransactionAbortedByResultException e)
+        {
+            return e.Result;
         }
         catch (MongoWriteException e) when (e.WriteError?.Category == ServerErrorCategory.DuplicateKey)
         {
@@ -38,9 +49,20 @@ public static class ClientSessionHandleExtensions
         try
         {
             return await session.WithTransactionAsync(
-                callbackAsync,
+                async (transactionSession, transactionCancellationToken) =>
+                {
+                    var result = await callbackAsync(transactionSession, transactionCancellationToken);
+                    if (result is not ISuccess)
+                        throw new TransactionAbortedByResultException(result);
+
+                    return result;
+                },
                 transactionOptions,
                 cancellationToken);
+        }
+        catch (TransactionAbortedByResultException e) when (e.Result is Result<T> result)
+        {
+            return result;
         }
         catch (MongoWriteException e) when (e.WriteError?.Category == ServerErrorCategory.DuplicateKey)
         {
@@ -51,5 +73,9 @@ public static class ClientSessionHandleExtensions
             return Failures.Conflict("A conflict occurred due to duplicate key error.");
         }
     }
-    
+
+    private sealed class TransactionAbortedByResultException(Result result) : Exception
+    {
+        public Result Result { get; } = result;
+    }
 }

@@ -9,6 +9,8 @@
 
     <ItemGroup>
         <Compile Include="Common\PostgresSettings.fs" />
+        <Compile Include="Common\PostgresValidators.fs" />
+        <Compile Include="Common\PostgresQuotaProfile.fs" />
         <Compile Include="Common\PostgresClusterDto.fs" />
         <Compile Include="Common\MongoExtensions.fs" />
         <Compile Include="Common\ResultF.fs" />
@@ -40,6 +42,7 @@
     <ItemGroup>
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
       <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
+      <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
       <ProjectReference Include="..\Postgres.Domain\Postgres.Domain.fsproj" />
       <ProjectReference Include="..\Postgres.Events\Postgres.Events.fsproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />

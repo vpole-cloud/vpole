@@ -54,30 +54,35 @@ public static class TestData
 
     public static CreateRedisServiceRequest CreateRedisServiceRequest(
         string resourceGroupId,
-        string name = "redis-main")
+        string name = "redis-main",
+        string? tenantId = null)
         => new(new CreateRedisServiceRequestBody(
             Name: name,
             ResourceGroupId: resourceGroupId,
             Spec: ValidRedisSpec(),
             Tags: ImmutableHashSet<string>.Empty),
-            TenantId);
+            tenantId ?? TenantId);
 
     public static CreatePostgresClusterRequest CreatePostgresClusterRequest(
         string resourceGroupId,
         string name = "postgres-main",
         int version = 17,
         string username = "postgres",
-        string password = "postgres-secret")
+        string password = "postgres-secret",
+        string? tenantId = null)
         => new(new CreatePostgresClusterRequestBody(
             name,
             resourceGroupId,
             version,
             FSharpOption<int>.Some(1),
             FSharpOption<int>.Some(10),
+            new Resources(
+                Requests: new Resource(1, 256),
+                Limits: new Resource(2, 512)),
             DefaultStorageProfileId,
             username,
             password),
-            TenantId);
+            tenantId ?? TenantId);
 
     public static WebServiceSpecDto ValidWebServiceSpec() => new(
         Image: new ImageInfoDto("docker.io", "nginx", "1.27"),

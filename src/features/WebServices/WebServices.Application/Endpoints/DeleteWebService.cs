@@ -13,6 +13,7 @@ using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Events;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.SourceBuilds.Contracts;
+using Pole.Features.Quotas.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -37,48 +38,49 @@ public static class DeleteWebService
 
 public sealed class DeleteWebServiceHandler(
     IWebServiceDbContext dbContext,
-    ISourceBuildReferenceLookup sourceBuildReferences
+    ISourceBuildReferenceLookup sourceBuildReferences,
+    IQuotaAdmissionExecutor quotaAdmissionExecutor
     ) : IMediatorHandler<DeleteWebServiceRequest, DeleteWebServiceResponse>
 {
     public async Task<Result<DeleteWebServiceResponse>> HandleAsync(DeleteWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var tenantId = request.TenantId;
-        if (tenantId is null)
-        {
-            var existing = await dbContext.WebServices
-                .Find(service => service.Id == request.Id)
-                .Project(service => service.TenantId)
-                .FirstOrDefaultAsync(cancellationToken);
-            if (existing is null)
-                return Failures.NotFound("Web service not found.", request.Id);
-            tenantId = existing;
-        }
-
         var configurationGuard = await sourceBuildReferences.EnsureWebServiceCanBeDeletedAsync(
-            tenantId,
+            request.TenantId,
             request.Id,
             cancellationToken);
         if (configurationGuard is Failure failure)
             return failure;
 
-        return await dbContext.RunInTransactionAsync<DeleteWebServiceResponse>(async (sh, ct) =>
-        {
-            var filter = Builders<WebService>.Filter.And(
-                Builders<WebService>.Filter.ForTenant(request.TenantId),
-                Builders<WebService>.Filter.Eq(ws => ws.Id, request.Id));
+        var filter = Builders<WebService>.Filter.And(
+            Builders<WebService>.Filter.ForTenant(request.TenantId),
+            Builders<WebService>.Filter.Eq(ws => ws.Id, request.Id));
+        var webService = await dbContext.WebServices
+            .Find(filter)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (webService is null)
+            return Failures.NotFound("Web service not found.", request.Id);
 
-            var webService = await dbContext.WebServices
-                .FindOneAndDeleteAsync(sh, filter, cancellationToken: ct);
+        return await quotaAdmissionExecutor.ExecuteAsync<WebServiceSpec, DeleteWebServiceResponse>(
+            webService.TenantId,
+            WebServiceQuotaResourceKey.Create(webService.Id),
+            new DeleteQuotaMutation<WebServiceSpec>(webService.Spec),
+            async (session, transactionCancellationToken) =>
+            {
+                var deleted = await dbContext.WebServices.FindOneAndDeleteAsync(
+                    session,
+                    filter,
+                    cancellationToken: transactionCancellationToken);
+                if (deleted is null)
+                    return Failures.NotFound("Web service not found.", request.Id);
 
-            if (webService is null)
-                return Failures.NotFound("Web service not found.", request.Id);
-
-            await dbContext.StoreEventAsync(webService.ToDeleteEvent(), sh, ct);
-            return new DeleteWebServiceResponse(
-                Id: request.Id
-            );
-        }, cancellationToken: cancellationToken);
+                await dbContext.StoreEventAsync(
+                    deleted.ToDeleteEvent(),
+                    session,
+                    transactionCancellationToken);
+                return new DeleteWebServiceResponse(request.Id);
+            },
+            cancellationToken);
     }
 }
 
@@ -101,7 +103,7 @@ public class DeleteWebServiceFromKubernetesOnWebServiceDeletedConsumer(
 
 public sealed record DeleteWebServiceRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
 ) : IMediatorRequest<DeleteWebServiceResponse>, ITenantWriteOperation;
 
 public sealed record DeleteWebServiceResponse(
