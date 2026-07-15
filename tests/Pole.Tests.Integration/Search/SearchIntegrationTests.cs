@@ -204,7 +204,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         var dnsRecord = await DbContext.DnsRecords.Find(record => record.Resource.Id == created.WebServiceId).FirstOrDefaultAsync();
         Assert.NotNull(dnsRecord);
 
-        var deleteResult = await Mediator.Send(new DeleteWebServiceRequest(created.WebServiceId));
+        var deleteResult = await Mediator.Send(new DeleteWebServiceRequest(created.WebServiceId, TestData.TenantId));
         Assert.True(deleteResult.TryGetValue(out _, out var deleteError));
         Assert.Null(deleteError);
 
@@ -340,6 +340,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         new(
             spec.Instances,
             spec.Storage,
+            spec.Resources,
             spec.StorageProfile,
             spec.KubernetesNamespace,
             spec.Version,

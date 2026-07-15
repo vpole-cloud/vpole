@@ -55,7 +55,8 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
                     Resources: new(
                         Requests: new(2, 512),
                         Limits: new(4, 1024))),
-                Tags: ["cache", "prod"]));
+                Tags: ["cache", "prod"]),
+            TenantId: TestData.TenantId);
 
         var updateResult = await Mediator.Send(updateRequest);
 
@@ -93,7 +94,8 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
                     Resources: new(
                         Requests: new(1, 128),
                         Limits: new(2, 256))),
-                Tags: []));
+                Tags: []),
+            TenantId: TestData.TenantId);
 
         var updateResult = await Mediator.Send(updateRequest);
 
@@ -132,7 +134,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
         var createResult = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id));
         Assert.True(createResult.TryGetValue(out var created, out _));
 
-        var deleteResult = await Mediator.Send(new DeleteRedisServiceRequest(created.RedisId));
+        var deleteResult = await Mediator.Send(new DeleteRedisServiceRequest(created.RedisId, TestData.TenantId));
 
         Assert.True(deleteResult.TryGetValue(out var response, out var error));
         Assert.Null(error);
@@ -146,7 +148,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task Delete_ReturnsNotFound_WhenRedisDoesNotExist()
     {
-        var result = await Mediator.Send(new DeleteRedisServiceRequest("507f1f77bcf86cd799439012"));
+        var result = await Mediator.Send(new DeleteRedisServiceRequest("507f1f77bcf86cd799439012", TestData.TenantId));
 
         Assert.False(result.TryGetValue(out _, out var error));
         Assert.IsType<NotFoundFailure>(error);

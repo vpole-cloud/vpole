@@ -6,6 +6,8 @@ using Pole.Features.DnsRecords.Domain;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
 using Pole.Features.Postgres.Application.Common;
+using Pole.Features.Quotas.Application.Common;
+using Pole.Features.Quotas.Domain;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceGroups.Application.Common;
@@ -36,6 +38,7 @@ public class MongoDbContext(
     IRedisDbContext,
     ISearchDbContext,
     IPostgresDbContext,
+    IQuotaDbContext,
     IStorageProfileDbContext,
     IDnsRecordDbContext,
     ITenantDbContext,
@@ -54,6 +57,9 @@ public class MongoDbContext(
     public IMongoCollection<ResourceGroup> ResourceGroups { get; } = database.GetCollection<ResourceGroup>("ResourceGroups");
     public IMongoCollection<DnsRecord> DnsRecords { get; } = database.GetCollection<DnsRecord>("DnsRecords");
     public IMongoCollection<PostgresCluster>  Postgres { get; } = database.GetCollection<PostgresCluster>("Postgres");
+    public IMongoCollection<TenantQuotaPolicy> TenantQuotaPolicies { get; } = database.GetCollection<TenantQuotaPolicy>("TenantQuotaPolicies");
+    public IMongoCollection<TenantQuotaUsage> TenantQuotaUsages { get; } = database.GetCollection<TenantQuotaUsage>("TenantQuotaUsages");
+    public IMongoCollection<QuotaReservation> QuotaReservations { get; } = database.GetCollection<QuotaReservation>("QuotaReservations");
     public IMongoCollection<StorageProfile> StorageProfiles { get; } = database.GetCollection<StorageProfile>("StorageProfiles");
     public IMongoCollection<OutboxMessage> OutboxMessages { get; } = database.GetCollection<OutboxMessage>("OutboxMessages");
     public IMongoCollection<Tenant> Tenants { get; } = database.GetCollection<Tenant>("Tenants");

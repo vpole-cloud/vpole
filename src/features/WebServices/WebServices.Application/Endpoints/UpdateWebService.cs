@@ -9,6 +9,7 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.Quotas.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
@@ -39,7 +40,7 @@ public static class UpdateWebService
 public sealed record UpdateWebServiceRequest(
     [FromRoute] string Id,
     [FromBody] UpdateWebServiceRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null,
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default,
     [FromClaim(Claims.Email)] ClaimValue<string?> ActorEmail = default
 ) : IMediatorRequest<UpdateWebServiceResponse>, ITenantWriteOperation;
@@ -53,7 +54,8 @@ public sealed record UpdateWebServiceRequestBody(
 public sealed record UpdateWebServiceResponse(string Id);
 
 public sealed class UpdateWebServiceHandler(
-    IWebServiceDbContext dbContext)
+    IWebServiceDbContext dbContext,
+    IQuotaAdmissionExecutor quotaAdmissionExecutor)
     : IMediatorHandler<UpdateWebServiceRequest, UpdateWebServiceResponse>
 {
     public async Task<Result<UpdateWebServiceResponse>> HandleAsync(
@@ -71,51 +73,57 @@ public sealed class UpdateWebServiceHandler(
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
 
-        return await dbContext.RunInTransactionAsync<UpdateWebServiceResponse>(async (sh, ct) =>
-        {
-            var changes = GetChanges(webService, request.Body);
-            var nextRevision = Math.Max(webService.ActiveRevision, 1) + 1;
-            var deploymentEventCore = EventCore.Create(webService.TenantId);
-            var release = WebServiceReleaseFactory.CreatePending(
-                webService.TenantId,
-                webService.Id,
-                nextRevision,
-                WebServiceReleaseAction.Update,
-                request.ActorUserId.Value,
-                request.ActorEmail.Value,
-                changes.WebServiceSpec.New,
-                deploymentEventCore.TraceId,
-                deploymentEventCore.CorrelationId,
-                deploymentEventCore.OccurredOn);
+        var nextSpec = request.Body.Spec.ToDomain(webService.Spec.KubernetesNamespace);
+        return await quotaAdmissionExecutor.ExecuteAsync<WebServiceSpec, UpdateWebServiceResponse>(
+            webService.TenantId,
+            WebServiceQuotaResourceKey.Create(webService.Id),
+            new UpdateQuotaMutation<WebServiceSpec>(webService.Spec, nextSpec),
+            async (session, transactionCancellationToken) =>
+            {
+                var changes = GetChanges(webService, request.Body);
+                var nextRevision = Math.Max(webService.ActiveRevision, 1) + 1;
+                var deploymentEventCore = EventCore.Create(webService.TenantId);
+                var release = WebServiceReleaseFactory.CreatePending(
+                    webService.TenantId,
+                    webService.Id,
+                    nextRevision,
+                    WebServiceReleaseAction.Update,
+                    request.ActorUserId.Value,
+                    request.ActorEmail.Value,
+                    changes.WebServiceSpec.New,
+                    deploymentEventCore.TraceId,
+                    deploymentEventCore.CorrelationId,
+                    deploymentEventCore.OccurredOn);
 
-            await dbContext.WebServices.UpdateOneAsync(
-                session: sh,
-                filter,
-                GetUpdateDefinition(changes, nextRevision),
-                cancellationToken: ct);
+                await dbContext.WebServices.UpdateOneAsync(
+                    session,
+                    filter,
+                    GetUpdateDefinition(changes, nextRevision),
+                    cancellationToken: transactionCancellationToken);
+                await dbContext.WebServiceReleases.InsertOneAsync(
+                    session,
+                    release,
+                    cancellationToken: transactionCancellationToken);
+                await dbContext.StoreEventAsync(
+                    new WebServiceUpdatedEvent(
+                        request.Id,
+                        webService.Name,
+                        webService.ResourceGroupId,
+                        webService.DnsRecord,
+                        changes)
+                    {
+                        EventCore = EventCore.Create(webService.TenantId)
+                    },
+                    session,
+                    transactionCancellationToken);
+                await dbContext.StoreEventAsync(
+                    release.ToDeploymentRequestedEvent(webService, deploymentEventCore),
+                    session,
+                    transactionCancellationToken);
 
-            await dbContext.WebServiceReleases.InsertOneAsync(sh, release, cancellationToken: ct);
-
-            await dbContext.StoreEventAsync(new WebServiceUpdatedEvent(
-                    request.Id,
-                    webService.Name,
-                    webService.ResourceGroupId,
-                    webService.DnsRecord,
-                    changes)
-                {
-                    EventCore = EventCore.Create(webService.TenantId)
-                }
-                , sh, ct);
-
-            await dbContext.StoreEventAsync(
-                release.ToDeploymentRequestedEvent(webService, deploymentEventCore),
-                sh,
-                ct);
-            
-            return new UpdateWebServiceResponse(
-                Id: webService.Id
-            );
-        }, cancellationToken: cancellationToken);
+                return new UpdateWebServiceResponse(webService.Id);
+            },
+            cancellationToken);
     }
 
     private static WebServiceUpdatedEventChanges GetChanges(WebService webService, UpdateWebServiceRequestBody body) =>

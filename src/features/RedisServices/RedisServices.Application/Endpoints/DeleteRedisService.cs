@@ -12,6 +12,7 @@ using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Events;
 using Pole.Features.RedisServices.Application.Kubernetes;
+using Pole.Features.Quotas.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -34,7 +35,8 @@ public static class DeleteRedisService
 }
 
 public sealed class DeleteRedisServiceHandler(
-    IRedisDbContext dbContext
+    IRedisDbContext dbContext,
+    IQuotaAdmissionExecutor quotaAdmissionExecutor
     ) : IMediatorHandler<DeleteRedisServiceRequest, DeleteRedisServiceResponse>
 {
     public async Task<Result<DeleteRedisServiceResponse>> HandleAsync(DeleteRedisServiceRequest request,
@@ -50,16 +52,27 @@ public sealed class DeleteRedisServiceHandler(
         if (redis is null)
             return Failures.NotFound("Redis service not found.", request.Id);
         
-        return await dbContext.RunInTransactionAsync<DeleteRedisServiceResponse>(async (sh, ct) =>
-        {
-            await dbContext.RedisServices
-                .DeleteOneAsync(filter, cancellationToken: ct);
-        
-            await dbContext.StoreEventAsync(redis.ToDeleteEvent(), sh, ct);
-            return new DeleteRedisServiceResponse(
-                Id: request.Id
-            );
-        }, cancellationToken: cancellationToken);
+        return await quotaAdmissionExecutor.ExecuteAsync<RedisSpec, DeleteRedisServiceResponse>(
+            redis.TenantId,
+            RedisQuotaResourceKey.Create(redis.Id),
+            new DeleteQuotaMutation<RedisSpec>(redis.Spec),
+            async (session, transactionCancellationToken) =>
+            {
+                var deleteResult = await dbContext.RedisServices.DeleteOneAsync(
+                    session,
+                    filter,
+                    cancellationToken: transactionCancellationToken);
+                if (deleteResult.DeletedCount == 0)
+                    return Failures.NotFound("Redis service not found.", request.Id);
+
+                await dbContext.StoreEventAsync(
+                    redis.ToDeleteEvent(),
+                    session,
+                    transactionCancellationToken);
+
+                return new DeleteRedisServiceResponse(request.Id);
+            },
+            cancellationToken);
     }
 }
 
@@ -78,7 +91,7 @@ public class DeleteRedisServiceFromKubernetesOnRedisServiceDeletedConsumer(
 
 public sealed record DeleteRedisServiceRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
 ) : IMediatorRequest<DeleteRedisServiceResponse>, ITenantWriteOperation;
 
 public sealed record DeleteRedisServiceResponse(

@@ -309,7 +309,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         var savedDns = await DbContext.DnsRecords.Find(record => record.Resource.Id == created.WebServiceId).FirstOrDefaultAsync();
         Assert.NotNull(savedDns);
 
-        var deleteResult = await Mediator.Send(new DeleteWebServiceRequest(created.WebServiceId));
+        var deleteResult = await Mediator.Send(new DeleteWebServiceRequest(created.WebServiceId, TestData.TenantId));
 
         Assert.True(deleteResult.TryGetValue(out var response, out var error));
         Assert.Null(error);

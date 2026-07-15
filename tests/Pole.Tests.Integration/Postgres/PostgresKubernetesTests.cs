@@ -8,6 +8,7 @@ using Npgsql;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Application.Kubernetes;
+using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 using PostgresCluster = Pole.Features.Postgres.Domain.PostgresCluster;
@@ -153,10 +154,14 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
     }
 
     private PostgresCluster BuildOperatorCluster() =>
-        new("postgres-k8s", TestData.TenantId, "postgres-k8s", "rg-k8s", new PostgresClusterSpec(1, 5, TestData.DefaultResolvedStorageProfile(), NamespaceName, 17, PostgresDeploymentMode.Operator));
+        new("postgres-k8s", TestData.TenantId, "postgres-k8s", "rg-k8s", new PostgresClusterSpec(1, 5, ResourceRequirements(), TestData.DefaultResolvedStorageProfile(), NamespaceName, 17, PostgresDeploymentMode.Operator));
 
     private PostgresCluster BuildStatefulSetCluster() =>
-        new("postgres-sts", TestData.TenantId, "postgres-sts", "rg-k8s", new PostgresClusterSpec(1, 5, TestData.DefaultResolvedStorageProfile(), NamespaceName, 17, PostgresDeploymentMode.StatefulSet));
+        new("postgres-sts", TestData.TenantId, "postgres-sts", "rg-k8s", new PostgresClusterSpec(1, 5, ResourceRequirements(), TestData.DefaultResolvedStorageProfile(), NamespaceName, 17, PostgresDeploymentMode.StatefulSet));
+
+    private static Resources ResourceRequirements() => new(
+        Requests: new Resource(1, 256),
+        Limits: new Resource(2, 512));
 
     private static PostgresSettings CreateSettings() =>
         new()

@@ -79,6 +79,7 @@ public sealed class TenantContextMiddleware(RequestDelegate next)
                path.StartsWithSegments("/api/v1/web-services") ||
                path.StartsWithSegments("/api/v1/redis-services") ||
                path.StartsWithSegments("/api/v1/postgres") ||
+               path.StartsWithSegments("/api/v1/tenant-quotas") ||
                path.StartsWithSegments("/api/v1/storage-profiles") ||
                path.StartsWithSegments("/api/v1/git-provider-connections") ||
                path.StartsWithSegments("/api/v1/source-repositories") ||

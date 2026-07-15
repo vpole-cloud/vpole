@@ -30,6 +30,17 @@ module PostgresStatefulSetKubernetesBuilder =
         requests["storage"] <- ResourceQuantity($"{cluster.Spec.Storage}Gi")
         requests
 
+    let private buildComputeResources (cluster : PostgresCluster) =
+        let requests = Dictionary<string, ResourceQuantity>()
+        requests["cpu"] <- ResourceQuantity($"{cluster.Spec.Resources.Requests.CpuCores}")
+        requests["memory"] <- ResourceQuantity($"{cluster.Spec.Resources.Requests.MemoryMi}Mi")
+
+        let limits = Dictionary<string, ResourceQuantity>()
+        limits["cpu"] <- ResourceQuantity($"{cluster.Spec.Resources.Limits.CpuCores}")
+        limits["memory"] <- ResourceQuantity($"{cluster.Spec.Resources.Limits.MemoryMi}Mi")
+
+        V1ResourceRequirements(Requests = requests, Limits = limits)
+
     let buildStatefulSet (cluster : PostgresCluster) (settings : PostgresSettings) =
         let labels = buildLabels cluster
         let namespaceName = cluster.Spec.KubernetesNamespace
@@ -62,6 +73,7 @@ module PostgresStatefulSetKubernetesBuilder =
                                                           [ V1EnvVar(Name = "POSTGRES_USER", ValueFrom = buildSecretKeyReference secretName "username")
                                                             V1EnvVar(Name = "POSTGRES_PASSWORD", ValueFrom = buildSecretKeyReference secretName "password")
                                                             V1EnvVar(Name = "POSTGRES_DB", Value = databaseName) ]),
+                                                  Resources = buildComputeResources cluster,
                                                   VolumeMounts = ResizeArray([ V1VolumeMount(Name = "postgres-data", MountPath = "/var/lib/postgresql/data") ])) ]))),
                     VolumeClaimTemplates =
                         ResizeArray(
