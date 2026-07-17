@@ -4,6 +4,7 @@ using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Endpoints;
 using Pole.Features.Functions.Domain;
+using Pole.Features.Functions.Runtime.Gateway;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -109,6 +110,35 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             .ToListAsync();
         Assert.Equal(FunctionRevisionState.Draining, promoted.Single(revision => revision.Id == created.RevisionId).State);
         Assert.Equal(FunctionRevisionState.Active, promoted.Single(revision => revision.Id == response.RevisionId).State);
+    }
+
+    [Fact]
+    public async Task Runtime_route_resolution_uses_binding_owned_tenant_and_active_revision()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = await CreateAsync(group.Id);
+        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
+        Assert.IsAssignableFrom<ISuccess>(await lifecycle.PromoteAsync(
+            TestData.TenantId,
+            created.FunctionAppId,
+            created.RevisionId));
+        var resolver = new FunctionRuntimeRouteResolver(DbContext);
+
+        var resolved = await resolver.ResolveAsync(
+            "ORDERS",
+            "orders/42",
+            "post",
+            FunctionExposure.Public);
+
+        Assert.NotNull(resolved);
+        Assert.Equal(TestData.TenantId, resolved.App.TenantId);
+        Assert.Equal(created.RevisionId, resolved.Revision.Id);
+        Assert.Equal("webhook", resolved.Route.HandlerName);
+        Assert.Null(await resolver.ResolveAsync(
+            "orders",
+            "orders/42",
+            "POST",
+            FunctionExposure.Internal));
     }
 
     [Fact]

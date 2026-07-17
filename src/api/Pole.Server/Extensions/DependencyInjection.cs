@@ -28,6 +28,7 @@ using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Activation;
 using Pole.Features.Functions.Runtime.Endpoints;
+using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
@@ -185,6 +186,7 @@ public static class DependencyInjection
             services.TryAddScoped<IDomainNameReservationService, DomainNameReservationService>();
             services.TryAddScoped<IResourceGroupLookup, ResourceGroupLookup>();
             services.TryAddScoped<IFunctionRevisionLifecycleService, FunctionRevisionLifecycleService>();
+            services.TryAddSingleton<IFunctionRuntimeRouteResolver, FunctionRuntimeRouteResolver>();
             services.TryAddScoped<IStorageProfileResolver, StorageProfileResolver>();
             services.TryAddScoped<IWebServiceSourceBuildDeploymentService, WebServiceSourceBuildDeploymentService>();
             services.TryAddScoped<IStorageDiscoveryService, KubernetesStorageDiscoveryService>();
