@@ -10,6 +10,7 @@ using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
+using Pole.Features.Functions.Application.Common;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.Postgres.Application.Endpoints;
@@ -40,6 +41,7 @@ public sealed class TestApiApplication : IAsyncDisposable
     private static readonly Assembly[] Assemblies =
     [
         typeof(WebServiceEndpoints).Assembly,
+        typeof(FunctionAppFeature).Assembly,
         typeof(PostgresClusterEndpoints).Assembly,
         typeof(QuotaEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,
@@ -85,6 +87,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton(new QuotaSettings());
         builder.Services.AddQuotaFramework(
             typeof(RedisQuotaProfile).Assembly,
+            typeof(FunctionAppQuotaProfile).Assembly,
             typeof(WebServiceQuotaProfile).Assembly,
             typeof(PostgresQuotaProfile).Assembly);
         builder.Services.AddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
@@ -145,6 +148,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapResourceGroupEndpoints()
             .MapWebServiceEndpoints()
             .MapRedisServiceEndpoints()
+            .MapFunctionAppEndpoints()
             .MapPostgresClusterEndpoints()
             .MapQuotaEndpoints()
             .MapSearchEndpoints()

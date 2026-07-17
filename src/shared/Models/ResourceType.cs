@@ -5,4 +5,5 @@ public enum ResourceType
     WebService,
     Redis,
     Postgres,
+    FunctionApp,
 }

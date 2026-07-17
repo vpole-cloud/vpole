@@ -3,6 +3,7 @@ using Pole.Database;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.GitProviders.Application.Common;
+using Pole.Features.Functions.Application.Common;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Postgres.Application.Common;
@@ -26,6 +27,7 @@ var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
 Assembly[] assemblies = [
     typeof(WebServiceEndpoints).Assembly,
+    typeof(FunctionAppFeature).Assembly,
     typeof(PostgresClusterEndpoints).Assembly,
     typeof(QuotaEndpoints).Assembly,
     typeof(DnsRecordEndpoints).Assembly,
@@ -42,6 +44,7 @@ Assembly[] assemblies = [
 ];
 Assembly[] outboxEventAssemblies = [
     typeof(Pole.Features.WebServices.Events.WebServiceCreatedEvent).Assembly,
+    typeof(Pole.Features.Functions.Events.FunctionAppCreatedEvent).Assembly,
     typeof(Pole.Features.DnsRecords.Events.CommitDomainNameEvent).Assembly,
     typeof(Pole.Features.Postgres.Events.PostgresClusterCreatedEvent).Assembly,
     typeof(Pole.Features.RedisServices.Events.RedisServiceCreatedEvent).Assembly,
@@ -60,6 +63,7 @@ builder.Services.AddKubernetes(configuration)
     .AddDatabase()
     .AddQuotaFramework(
         typeof(RedisQuotaProfile).Assembly,
+        typeof(FunctionAppQuotaProfile).Assembly,
         typeof(WebServiceQuotaProfile).Assembly,
         typeof(PostgresQuotaProfile).Assembly)
     .AddMigrations(assemblies)

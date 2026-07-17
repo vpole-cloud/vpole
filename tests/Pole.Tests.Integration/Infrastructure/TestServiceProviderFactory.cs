@@ -2,6 +2,7 @@ using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.Functions.Application.Common;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Application.Kubernetes;
@@ -29,6 +30,7 @@ public static class TestServiceProviderFactory
     private static readonly Assembly[] Assemblies =
     [
         typeof(WebServiceEndpoints).Assembly,
+        typeof(FunctionAppFeature).Assembly,
         typeof(PostgresClusterEndpoints).Assembly,
         typeof(QuotaEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,
@@ -47,6 +49,7 @@ public static class TestServiceProviderFactory
         services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
         services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
         services.AddMongoDbContextInterfaces();
+        services.AddScoped<IFunctionRevisionLifecycleService, FunctionRevisionLifecycleService>();
         services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         services.AddSingleton(new PostgresSettings
         {
@@ -56,6 +59,7 @@ public static class TestServiceProviderFactory
         services.AddSingleton(new QuotaSettings());
         services.AddQuotaFramework(
             typeof(RedisQuotaProfile).Assembly,
+            typeof(FunctionAppQuotaProfile).Assembly,
             typeof(WebServiceQuotaProfile).Assembly,
             typeof(PostgresQuotaProfile).Assembly);
         services.AddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();

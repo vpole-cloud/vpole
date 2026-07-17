@@ -5,6 +5,8 @@ using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.DnsRecords.Domain;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
+using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Domain;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Domain;
@@ -45,7 +47,8 @@ public class MongoDbContext(
     IUserDbContext,
     IGitProviderDbContext,
     IContainerRegistryDbContext,
-    ISourceBuildDbContext
+    ISourceBuildDbContext,
+    IFunctionAppDbContext
 {
     public IMongoDatabase Database { get; } = database;
     public IMongoClient Client { get; } = client;
@@ -71,5 +74,8 @@ public class MongoDbContext(
     public IMongoCollection<RegistryCredential> RegistryCredentials { get; } = database.GetCollection<RegistryCredential>("RegistryCredentials");
     public IMongoCollection<SourceBuildConfiguration> SourceBuildConfigurations { get; } = database.GetCollection<SourceBuildConfiguration>("SourceBuildConfigurations");
     public IMongoCollection<SourceBuildJob> SourceBuildJobs { get; } = database.GetCollection<SourceBuildJob>("SourceBuildJobs");
+    public IMongoCollection<FunctionApp> FunctionApps { get; } = database.GetCollection<FunctionApp>("FunctionApps");
+    public IMongoCollection<FunctionRevision> FunctionRevisions { get; } = database.GetCollection<FunctionRevision>("FunctionRevisions");
+    public IMongoCollection<FunctionRouteBinding> FunctionRouteBindings { get; } = database.GetCollection<FunctionRouteBinding>("FunctionRouteBindings");
 }
 

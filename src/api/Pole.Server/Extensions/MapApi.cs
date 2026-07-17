@@ -1,5 +1,6 @@
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.GitProviders.Application.Common;
+using Pole.Features.Functions.Application.Common;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
@@ -22,6 +23,7 @@ public static class MapApi
 
         group.MapResourceGroupEndpoints()
             .MapGitProviderEndpoints()
+            .MapFunctionAppEndpoints()
             .MapSourceBuildEndpoints()
             .MapTenantEndpoints()
             .MapUserEndpoints()
