@@ -11,6 +11,7 @@ using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.Postgres.Application.Endpoints;
@@ -42,6 +43,7 @@ public sealed class TestApiApplication : IAsyncDisposable
     [
         typeof(WebServiceEndpoints).Assembly,
         typeof(FunctionAppFeature).Assembly,
+        typeof(FunctionRuntimeFeature).Assembly,
         typeof(PostgresClusterEndpoints).Assembly,
         typeof(QuotaEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,

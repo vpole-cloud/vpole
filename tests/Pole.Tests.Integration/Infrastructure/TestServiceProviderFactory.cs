@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Application.Kubernetes;
@@ -31,6 +32,7 @@ public static class TestServiceProviderFactory
     [
         typeof(WebServiceEndpoints).Assembly,
         typeof(FunctionAppFeature).Assembly,
+        typeof(FunctionRuntimeFeature).Assembly,
         typeof(PostgresClusterEndpoints).Assembly,
         typeof(QuotaEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,

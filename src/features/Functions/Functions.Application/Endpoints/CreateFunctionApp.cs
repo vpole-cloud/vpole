@@ -266,7 +266,36 @@ public sealed class FunctionConfigurationValidator : AbstractValidator<FunctionC
     {
         RuleFor(configuration => configuration.EnvironmentVariables).NotNull();
         RuleFor(configuration => configuration.SecretReferences).NotNull();
+        RuleFor(configuration => configuration)
+            .Must(HasValidEnvironmentNames)
+            .WithMessage("Configuration keys must be valid environment variable names and cannot override Pole runtime settings.");
+        RuleFor(configuration => configuration)
+            .Must(HasNoDuplicateKeys)
+            .WithMessage("Environment variables and secret references cannot use the same key.");
     }
+
+    private static bool HasValidEnvironmentNames(FunctionConfiguration configuration) =>
+        configuration.EnvironmentVariables is not null &&
+        configuration.SecretReferences is not null &&
+        configuration.EnvironmentVariables.Keys
+            .Concat(configuration.SecretReferences.Keys)
+            .All(IsAllowedEnvironmentName);
+
+    private static bool HasNoDuplicateKeys(FunctionConfiguration configuration) =>
+        configuration.EnvironmentVariables is not null &&
+        configuration.SecretReferences is not null &&
+        !configuration.EnvironmentVariables.Keys.Intersect(
+                configuration.SecretReferences.Keys,
+                StringComparer.OrdinalIgnoreCase)
+            .Any();
+
+    private static bool IsAllowedEnvironmentName(string name) =>
+        !string.IsNullOrWhiteSpace(name) &&
+        (char.IsLetter(name[0]) || name[0] == '_') &&
+        name.All(character => char.IsLetterOrDigit(character) || character == '_') &&
+        !name.StartsWith("PoleFunctions__", StringComparison.OrdinalIgnoreCase) &&
+        !name.Equals("ASPNETCORE_URLS", StringComparison.OrdinalIgnoreCase) &&
+        !name.Equals("DOTNET_EnableDiagnostics", StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed class FunctionResourcesValidator : AbstractValidator<FunctionResources>
