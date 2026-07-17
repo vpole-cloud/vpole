@@ -35,6 +35,8 @@ public sealed class FunctionRevisionProvisioner(
     IFunctionRevisionLifecycleService lifecycleService,
     ILogger<FunctionRevisionProvisioner> logger) : IFunctionRevisionProvisioner
 {
+    private static readonly TimeSpan MetadataTimeout = TimeSpan.FromSeconds(10);
+
     public async Task<FunctionRevisionProvisioningOutcome> ProvisionAsync(
         FunctionApp app,
         FunctionRevision revision,
@@ -50,11 +52,13 @@ public sealed class FunctionRevisionProvisioner(
         {
             try
             {
+                using var metadataTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                metadataTimeout.CancelAfter(MetadataTimeout);
                 var response = await agentClient.GetMetadataAsync(
                     endpoint,
                     app,
                     revision,
-                    cancellationToken);
+                    metadataTimeout.Token);
                 if (!response.IsSuccess || response.Value is null)
                 {
                     metadataFailure = response.Error?.Message ??
@@ -89,6 +93,10 @@ public sealed class FunctionRevisionProvisioner(
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
+            }
+            catch (OperationCanceledException)
+            {
+                metadataFailure = "Function Agent metadata request timed out.";
             }
             catch (Exception exception) when (exception is HttpRequestException or FunctionAgentProtocolException)
             {

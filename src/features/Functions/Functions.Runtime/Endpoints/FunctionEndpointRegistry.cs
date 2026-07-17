@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Net;
 using k8s.Models;
 
 namespace Pole.Features.Functions.Runtime.Endpoints;
@@ -115,10 +116,10 @@ public sealed class FunctionEndpointRegistry(TimeProvider timeProvider) : IFunct
             return null;
 
         var service = new FunctionServiceKey(@namespace, serviceName);
-        return (SliceKey(@namespace, sliceName), new SliceState(service, Project(slice)));
+        return (SliceKey(@namespace, sliceName), new SliceState(service, Project(slice, @namespace)));
     }
 
-    private static ImmutableArray<FunctionEndpoint> Project(V1EndpointSlice slice)
+    private static ImmutableArray<FunctionEndpoint> Project(V1EndpointSlice slice, string sliceNamespace)
     {
         var port = slice.Ports?
             .FirstOrDefault(candidate => candidate.Name == "agent" && candidate.Protocol == "TCP")?
@@ -127,12 +128,39 @@ public sealed class FunctionEndpointRegistry(TimeProvider timeProvider) : IFunct
             return [];
 
         return (slice.Endpoints ?? [])
-            .Where(endpoint => endpoint.Conditions?.Ready == true && endpoint.Conditions.Terminating != true)
-            .SelectMany(endpoint => (endpoint.Addresses ?? []).Select(address => new FunctionEndpoint(
-                address,
-                port.Value,
-                endpoint.TargetRef?.Uid)))
+            .Where(endpoint =>
+                endpoint.Conditions?.Ready == true &&
+                endpoint.Conditions.Terminating != true &&
+                endpoint.TargetRef is
+                {
+                    Kind: "Pod",
+                    Uid: { Length: > 0 }
+                } target &&
+                (string.IsNullOrWhiteSpace(target.NamespaceProperty) ||
+                 string.Equals(target.NamespaceProperty, sliceNamespace, StringComparison.Ordinal)))
+            .SelectMany(endpoint => (endpoint.Addresses ?? [])
+                .Where(IsValidPodAddress)
+                .Select(address => new FunctionEndpoint(
+                    address,
+                    port.Value,
+                    endpoint.TargetRef!.Uid)))
             .ToImmutableArray();
+    }
+
+    private static bool IsValidPodAddress(string address)
+    {
+        if (!IPAddress.TryParse(address, out var ipAddress) || IPAddress.IsLoopback(ipAddress))
+            return false;
+        if (ipAddress.Equals(IPAddress.Any) || ipAddress.Equals(IPAddress.IPv6Any) ||
+            ipAddress.Equals(IPAddress.Broadcast))
+            return false;
+        if (ipAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+            return !ipAddress.IsIPv6LinkLocal && !ipAddress.IsIPv6Multicast;
+
+        var bytes = ipAddress.GetAddressBytes();
+        return bytes[0] is not 0 and not 127 &&
+               bytes[0] < 224 &&
+               !(bytes[0] == 169 && bytes[1] == 254);
     }
 
     private FunctionEndpointSnapshot Empty(FunctionServiceKey service) =>

@@ -81,7 +81,8 @@ public sealed class FunctionEndpointSliceWatcherTests
             new V1Endpoint
             {
                 Addresses = [address],
-                Conditions = new V1EndpointConditions { Ready = true, Terminating = false }
+                Conditions = new V1EndpointConditions { Ready = true, Terminating = false },
+                TargetRef = new V1ObjectReference { Kind = "Pod", Uid = $"pod-{address}" }
             }
         ]
     };

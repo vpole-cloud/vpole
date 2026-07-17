@@ -80,6 +80,10 @@ else
 }
 
 var api = builder.AddProject<Projects.Pole_Server>("pole-server")
+    .WithHttpEndpoint(targetPort: 5224, name: "http")
+    .WithHttpEndpoint(targetPort: 8081, name: "functions-public")
+    .WithHttpEndpoint(targetPort: 8082, name: "functions-internal")
+    .WithEnvironment("Functions__Gateway__ControlPort", "5224")
     .WithReference(keycloak)
     .WithReference(mongoServer)
     .WithReference(mongoReplicaSet)

@@ -17,7 +17,8 @@ public static class FunctionHttpRouteMatcher
         return routes
             .Where(route => route.Exposure == exposure && route.Methods.Any(candidate =>
                 string.Equals(candidate, method, StringComparison.OrdinalIgnoreCase)))
-            .OrderBy(route => Split(route.HandlerRoute).Count(IsParameter))
+            .OrderBy(route => Specificity(route.HandlerRoute), StringComparer.Ordinal)
+            .ThenBy(route => route.HandlerRoute, StringComparer.Ordinal)
             .FirstOrDefault(route => Matches(Split(route.HandlerRoute), requestSegments));
     }
 
@@ -64,4 +65,7 @@ public static class FunctionHttpRouteMatcher
 
     private static bool IsParameter(string segment) =>
         segment.Length >= 3 && segment[0] == '{' && segment[^1] == '}';
+
+    private static string Specificity(string route) =>
+        string.Concat(Split(route).Select(segment => IsParameter(segment) ? '1' : '0'));
 }
