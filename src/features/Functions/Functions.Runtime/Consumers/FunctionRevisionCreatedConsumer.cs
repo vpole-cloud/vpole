@@ -5,6 +5,7 @@ using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Events;
 using Pole.Features.Functions.Runtime.Kubernetes;
+using Pole.Features.Functions.Runtime.Provisioning;
 using Pole.ResultType;
 
 namespace Pole.Features.Functions.Runtime.Consumers;
@@ -13,6 +14,7 @@ public sealed class FunctionRevisionCreatedConsumer(
     IFunctionAppDbContext dbContext,
     IFunctionRevisionKubernetesManager kubernetesManager,
     IFunctionRevisionLifecycleService lifecycleService,
+    IEnumerable<IFunctionRevisionProvisioner> provisioners,
     ILogger<FunctionRevisionCreatedConsumer> logger)
     : IConsumer<FunctionRevisionCreatedEvent>
 {
@@ -41,7 +43,32 @@ public sealed class FunctionRevisionCreatedConsumer(
             new FunctionRevisionInKubernetes(app, revision),
             cancellationToken);
         if (applied is ISuccess)
+        {
+            var provisioner = provisioners.SingleOrDefault();
+            if (provisioner is null)
+            {
+                await FailAsync(
+                    tenantId,
+                    app,
+                    revision,
+                    "runtime-auth-unconfigured",
+                    "Function runtime authentication is not configured.",
+                    cancellationToken);
+                return;
+            }
+
+            var outcome = await provisioner.ProvisionAsync(app, revision, cancellationToken);
+            if (outcome.Succeeded)
+                return;
+            await FailAsync(
+                tenantId,
+                app,
+                revision,
+                outcome.FailureCode ?? "provisioning",
+                outcome.FailureMessage ?? "Function revision provisioning failed.",
+                cancellationToken);
             return;
+        }
 
         var failure = (Failure)applied;
         logger.LogError(
@@ -49,11 +76,28 @@ public sealed class FunctionRevisionCreatedConsumer(
             revision.Id,
             app.Id,
             failure.Message);
+        await FailAsync(
+            tenantId,
+            app,
+            revision,
+            "kubernetes-apply",
+            failure.Message,
+            cancellationToken);
+    }
+
+    private async Task FailAsync(
+        string tenantId,
+        FunctionApp app,
+        FunctionRevision revision,
+        string code,
+        string message,
+        CancellationToken cancellationToken)
+    {
         var failed = await lifecycleService.FailAsync(
             tenantId,
             app.Id,
             revision.Id,
-            new FunctionRevisionFailure("kubernetes-apply", failure.Message),
+            new FunctionRevisionFailure(code, message),
             cancellationToken);
         if (failed is IFailure completionFailure)
             throw new InvalidOperationException(completionFailure.Message);

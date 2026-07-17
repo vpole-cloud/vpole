@@ -1,0 +1,163 @@
+using Microsoft.Extensions.Logging;
+using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Domain;
+using Pole.Features.Functions.Runtime.Activation;
+using Pole.Features.Functions.Runtime.Agent;
+using Pole.Features.Functions.Runtime.Endpoints;
+using Pole.Features.Functions.Runtime.Kubernetes;
+using Pole.Functions.Protocol;
+using Pole.ResultType;
+
+namespace Pole.Features.Functions.Runtime.Provisioning;
+
+public sealed record FunctionRevisionProvisioningOutcome(
+    bool Succeeded,
+    string? FailureCode = null,
+    string? FailureMessage = null)
+{
+    public static FunctionRevisionProvisioningOutcome Success() => new(true);
+    public static FunctionRevisionProvisioningOutcome Failure(string code, string message) =>
+        new(false, code, message);
+}
+
+public interface IFunctionRevisionProvisioner
+{
+    Task<FunctionRevisionProvisioningOutcome> ProvisionAsync(
+        FunctionApp app,
+        FunctionRevision revision,
+        CancellationToken cancellationToken);
+}
+
+public sealed class FunctionRevisionProvisioner(
+    IFunctionRevisionActivator activator,
+    IFunctionAgentClient agentClient,
+    IFunctionRevisionKubernetesManager kubernetesManager,
+    IFunctionRevisionLifecycleService lifecycleService,
+    ILogger<FunctionRevisionProvisioner> logger) : IFunctionRevisionProvisioner
+{
+    public async Task<FunctionRevisionProvisioningOutcome> ProvisionAsync(
+        FunctionApp app,
+        FunctionRevision revision,
+        CancellationToken cancellationToken)
+    {
+        var subject = new FunctionRevisionInKubernetes(app, revision);
+        var activation = await activator.EnsureActiveAsync(app, revision, cancellationToken);
+        if (!activation.TryGetValue(out var snapshot, out var activationFailure))
+            return await FailAndStopAsync(subject, "activation", activationFailure.Message, cancellationToken);
+
+        var metadataFailure = "No ready Function Agent returned valid metadata.";
+        foreach (var endpoint in snapshot.Endpoints)
+        {
+            try
+            {
+                var response = await agentClient.GetMetadataAsync(
+                    endpoint,
+                    app,
+                    revision,
+                    cancellationToken);
+                if (!response.IsSuccess || response.Value is null)
+                {
+                    metadataFailure = response.Error?.Message ??
+                                      $"Function Agent metadata endpoint returned {(int)response.StatusCode}.";
+                    continue;
+                }
+
+                metadataFailure = ValidateMetadata(response.Value, endpoint, app, revision) ?? string.Empty;
+                if (metadataFailure.Length == 0)
+                {
+                    var scaled = await kubernetesManager.ScaleAsync(
+                        subject,
+                        revision.Spec.Scaling.MinInstances,
+                        cancellationToken);
+                    if (scaled is IFailure scaleFailure)
+                        return await FailAndStopAsync(subject, "minimum-scale", scaleFailure.Message, cancellationToken);
+
+                    var promoted = await lifecycleService.PromoteAsync(
+                        app.TenantId,
+                        app.Id,
+                        revision.Id,
+                        cancellationToken);
+                    return promoted is ISuccess
+                        ? FunctionRevisionProvisioningOutcome.Success()
+                        : await FailAndStopAsync(
+                            subject,
+                            "promotion",
+                            ((IFailure)promoted).Message,
+                            cancellationToken);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception) when (exception is HttpRequestException or FunctionAgentProtocolException)
+            {
+                metadataFailure = exception.Message;
+                logger.LogWarning(
+                    exception,
+                    "[function-agent-metadata-failed] Could not validate Agent endpoint {Address}:{Port} for revision {RevisionId}.",
+                    endpoint.Address,
+                    endpoint.Port,
+                    revision.Id);
+            }
+        }
+
+        return await FailAndStopAsync(subject, "agent-metadata", metadataFailure, cancellationToken);
+    }
+
+    private async Task<FunctionRevisionProvisioningOutcome> FailAndStopAsync(
+        FunctionRevisionInKubernetes subject,
+        string code,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        var stopped = await kubernetesManager.ScaleAsync(subject, 0, cancellationToken);
+        if (stopped is IFailure stopFailure)
+        {
+            logger.LogWarning(
+                "[function-revision-stop-failed] Could not return failed revision {RevisionId} to zero replicas: {Reason}",
+                subject.Revision.Id,
+                stopFailure.Message);
+        }
+
+        return FunctionRevisionProvisioningOutcome.Failure(code, message);
+    }
+
+    private static string? ValidateMetadata(
+        FunctionAgentMetadataResponse metadata,
+        FunctionEndpoint endpoint,
+        FunctionApp app,
+        FunctionRevision revision)
+    {
+        if (!string.Equals(metadata.ProtocolVersion, revision.Spec.RuntimeProtocolVersion, StringComparison.Ordinal))
+            return "Function Agent protocol version does not match the revision.";
+        if (!string.Equals(metadata.FunctionAppId, app.Id, StringComparison.Ordinal) ||
+            !string.Equals(metadata.RevisionId, revision.Id, StringComparison.Ordinal))
+            return "Function Agent runtime identity does not match the revision.";
+        if (!string.Equals(metadata.AgentInstanceId, endpoint.TargetUid, StringComparison.Ordinal))
+            return "Function Agent instance identity does not match its Kubernetes Pod UID.";
+        if (metadata.LifecycleState != FunctionAgentLifecycleState.Accepting)
+            return "Function Agent is not accepting invocations.";
+
+        var expected = revision.Spec.Handlers.ToDictionary(handler => handler.Name, StringComparer.Ordinal);
+        if (metadata.Handlers.Count != expected.Count ||
+            metadata.Handlers.Select(handler => handler.Name).Distinct(StringComparer.Ordinal).Count() != expected.Count)
+            return "Function Agent handler set does not match the revision.";
+        foreach (var actual in metadata.Handlers)
+        {
+            if (!expected.TryGetValue(actual.Name, out var handler) ||
+                actual.TriggerKind != TriggerKind(handler.Trigger) ||
+                actual.MaxConcurrencyPerInstance != handler.MaxConcurrencyPerInstance)
+                return $"Function Agent handler '{actual.Name}' does not match the revision.";
+        }
+
+        return null;
+    }
+
+    private static FunctionTriggerKind TriggerKind(FunctionTriggerSpec trigger) => trigger switch
+    {
+        HttpFunctionTriggerSpec => FunctionTriggerKind.Http,
+        TimerFunctionTriggerSpec => FunctionTriggerKind.Timer,
+        _ => throw new ArgumentOutOfRangeException(nameof(trigger), trigger, null)
+    };
+}

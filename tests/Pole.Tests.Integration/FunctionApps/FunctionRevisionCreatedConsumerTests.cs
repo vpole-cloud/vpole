@@ -40,6 +40,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             DbContext,
             manager,
             Services.GetRequiredService<IFunctionRevisionLifecycleService>(),
+            [],
             NullLogger<FunctionRevisionCreatedConsumer>.Instance);
         var message = new FunctionRevisionCreatedEvent(
             created.FunctionAppId,
@@ -64,6 +65,45 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             .SingleAsync();
         Assert.Null(app.PendingRevisionId);
         Assert.Equal(FunctionAppStatus.Failed, app.Status);
+    }
+
+    [Fact]
+    public async Task Missing_runtime_authentication_fails_closed_after_manifest_apply()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var create = await Mediator.Send(new CreateFunctionAppRequest(
+            new CreateFunctionAppRequestBody(
+                "unconfigured-runtime-functions",
+                "unconfigured-runtime-functions",
+                group.Id,
+                RevisionRequest(),
+                []),
+            TestData.TenantId));
+        Assert.True(create.TryGetValue(out var created, out var createFailure), createFailure?.Message);
+        var manager = new RecordingKubernetesManager(Result.Success());
+        var consumer = new FunctionRevisionCreatedConsumer(
+            DbContext,
+            manager,
+            Services.GetRequiredService<IFunctionRevisionLifecycleService>(),
+            [],
+            NullLogger<FunctionRevisionCreatedConsumer>.Instance);
+        var message = new FunctionRevisionCreatedEvent(
+            created.FunctionAppId,
+            created.RevisionId,
+            created.RevisionNumber,
+            null!)
+        {
+            EventCore = EventCore.Create(TestData.TenantId)
+        };
+
+        await consumer.HandleAsync(message);
+
+        var revision = await DbContext.FunctionRevisions
+            .Find(candidate => candidate.Id == created.RevisionId)
+            .SingleAsync();
+        Assert.Equal(FunctionRevisionState.Failed, revision.State);
+        Assert.Equal("runtime-auth-unconfigured", revision.Failure?.Code);
+        Assert.Equal(1, manager.ApplyCalls);
     }
 
     private static FunctionRevisionRequest RevisionRequest() =>
