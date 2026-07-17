@@ -27,6 +27,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\features\DnsRecords\DnsRecords.Application\DnsRecords.Application.csproj" />
+      <ProjectReference Include="..\..\features\Functions\Functions.Application\Functions.Application.csproj" />
       <ProjectReference Include="..\..\features\GitProviders\GitProviders.Application\GitProviders.Application.csproj" />
       <ProjectReference Include="..\..\features\ContainerRegistries\ContainerRegistries.Application\ContainerRegistries.Application.csproj" />
       <ProjectReference Include="..\..\features\SourceBuilds\SourceBuilds.Application\SourceBuilds.Application.csproj" />

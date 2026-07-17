@@ -28,6 +28,11 @@
     <Project Path="src/shared/Request/Request.csproj" />
   </Folder>
   <Folder Name="/features/" />
+  <Folder Name="/features/Functions/">
+    <Project Path="src/features/Functions/Functions.Application/Functions.Application.csproj" />
+    <Project Path="src/features/Functions/Functions.Domain/Functions.Domain.csproj" />
+    <Project Path="src/features/Functions/Functions.Events/Functions.Events.csproj" />
+  </Folder>
   <Folder Name="/features/Quotas/">
     <Project Path="src/features/Quotas/Quotas.Application/Quotas.Application.csproj" />
     <Project Path="src/features/Quotas/Quotas.Contracts/Quotas.Contracts.csproj" />
