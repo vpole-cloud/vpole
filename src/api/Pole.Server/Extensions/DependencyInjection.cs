@@ -31,6 +31,7 @@ using Pole.Features.Functions.Runtime.Agent;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Features.Functions.Runtime.Security;
+using Pole.Features.Functions.Runtime.Provisioning;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
@@ -140,6 +141,7 @@ public static class DependencyInjection
                         AllowAutoRedirect = false,
                         ConnectTimeout = TimeSpan.FromSeconds(5)
                     });
+                services.AddScoped<IFunctionRevisionProvisioner, FunctionRevisionProvisioner>();
             }
             services.TryAddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
             services.AddSingleton<IKubernetes>(_ =>
