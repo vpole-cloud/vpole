@@ -45,6 +45,27 @@ public sealed class FunctionActivationTests
     }
 
     [Fact]
+    public void Endpoint_registry_rejects_non_pod_and_non_unicast_targets()
+    {
+        var registry = new FunctionEndpointRegistry(TimeProvider.System);
+        var service = new FunctionServiceKey("functions", "orders-agent");
+        var nonPod = Endpoint("10.0.0.1", ready: true) with
+        {
+            TargetRef = new V1ObjectReference { Kind = "Service", Uid = "service-1" }
+        };
+
+        registry.ApplySlice(Slice(
+            "slice-untrusted",
+            service,
+            nonPod,
+            Endpoint("127.0.0.1", ready: true),
+            Endpoint("169.254.10.2", ready: true),
+            Endpoint("not-an-ip", ready: true)));
+
+        Assert.False(registry.GetSnapshot(service).HasReadyEndpoints);
+    }
+
+    [Fact]
     public void Endpoint_registry_rebuilds_old_service_when_a_slice_changes_ownership()
     {
         var registry = new FunctionEndpointRegistry(TimeProvider.System);
@@ -184,7 +205,7 @@ public sealed class FunctionActivationTests
     {
         Addresses = [address],
         Conditions = new V1EndpointConditions { Ready = ready, Terminating = terminating },
-        TargetRef = new V1ObjectReference { Uid = $"pod-{address}" }
+        TargetRef = new V1ObjectReference { Kind = "Pod", Uid = $"pod-{address}" }
     };
 
     private sealed class ControlledKubernetesManager : IFunctionRevisionKubernetesManager

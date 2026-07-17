@@ -57,4 +57,29 @@ public sealed class FunctionHttpRouteMatcherTests
         string method,
         FunctionExposure exposure) =>
         Assert.Null(FunctionHttpRouteMatcher.Match(Routes, path, method, exposure));
+
+    [Fact]
+    public void Earlier_literal_segment_wins_when_parameter_counts_are_equal()
+    {
+        var routes = new[]
+        {
+            new FunctionHttpRouteBinding(
+                "parameter-first",
+                "ParameterFirst",
+                "{category}/details",
+                ImmutableHashSet.Create("GET"),
+                FunctionExposure.Public),
+            new FunctionHttpRouteBinding(
+                "literal-first",
+                "LiteralFirst",
+                "orders/{id}",
+                ImmutableHashSet.Create("GET"),
+                FunctionExposure.Public)
+        };
+
+        var match = FunctionHttpRouteMatcher.Match(routes, "orders/details", "GET", FunctionExposure.Public);
+
+        Assert.NotNull(match);
+        Assert.Equal("LiteralFirst", match.HandlerName);
+    }
 }

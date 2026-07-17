@@ -5,6 +5,7 @@ using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Runtime.Consumers;
+using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Postgres.Application.Common;
@@ -92,6 +93,17 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 await app.Services.GetRequiredService<MigrationRunner>().RunMigrations();
+
+var functionGatewayOptions = app.Services.GetRequiredService<FunctionGatewayOptions>();
+app.MapWhen(
+    context => context.Connection.LocalPort == functionGatewayOptions.PublicPort ||
+               context.Connection.LocalPort == functionGatewayOptions.InternalPort,
+    functionApp =>
+    {
+        functionApp.UseTraceContext();
+        functionApp.UseFunctionListenerIsolation();
+        functionApp.Run(FunctionGatewayEndpointMapping.DispatchAsync);
+    });
 
 app.MapDefaultEndpoints();
 app.UseTraceContext();

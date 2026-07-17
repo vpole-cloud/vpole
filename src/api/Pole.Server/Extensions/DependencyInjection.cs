@@ -121,6 +121,10 @@ public static class DependencyInjection
         public IServiceCollection AddKubernetes(IConfiguration configuration)
         {
             services.TryAddSingleton(TimeProvider.System);
+            var gatewayOptions = configuration.GetSection(FunctionGatewayOptions.SectionName)
+                                     .Get<FunctionGatewayOptions>() ?? new FunctionGatewayOptions();
+            gatewayOptions.Validate();
+            services.AddSingleton(gatewayOptions);
             var functionAgentTokenSection = configuration.GetSection(FunctionAgentTokenOptions.SectionName);
             if (functionAgentTokenSection.Exists())
             {
@@ -135,13 +139,17 @@ public static class DependencyInjection
                 services.AddSingleton<IFunctionAgentTrustBundleProvider>(provider =>
                     provider.GetRequiredService<FunctionAgentTokenIssuer>());
                 services.AddHttpClient<IFunctionAgentClient, FunctionAgentClient>(client =>
-                    client.Timeout = TimeSpan.FromMinutes(2))
+                    client.Timeout = Timeout.InfiniteTimeSpan)
                     .ConfigurePrimaryHttpMessageHandler(static () => new SocketsHttpHandler
                     {
                         AllowAutoRedirect = false,
                         ConnectTimeout = TimeSpan.FromSeconds(5)
                     });
                 services.AddScoped<IFunctionRevisionProvisioner, FunctionRevisionProvisioner>();
+                services.TryAddSingleton<IFunctionEndpointSelector, FunctionEndpointSelector>();
+                services.TryAddSingleton<IFunctionPendingAdmissionLimiter, FunctionPendingAdmissionLimiter>();
+                services.TryAddSingleton<IFunctionPublicRateLimiter, FunctionPublicRateLimiter>();
+                services.TryAddSingleton<IFunctionHttpGateway, FunctionHttpGateway>();
             }
             services.TryAddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
             services.AddSingleton<IKubernetes>(_ =>

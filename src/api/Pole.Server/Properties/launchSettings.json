@@ -5,18 +5,20 @@
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": false,
-      "applicationUrl": "http://localhost:5224",
+      "applicationUrl": "http://localhost:5224;http://localhost:8081;http://localhost:8082",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "Functions__Gateway__ControlPort": "5224"
       }
     },
     "https": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": false,
-      "applicationUrl": "https://localhost:7123;http://localhost:5224",
+      "applicationUrl": "https://localhost:7123;http://localhost:5224;http://localhost:8081;http://localhost:8082",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "Functions__Gateway__ControlPort": "5224"
       }
     }
   }
