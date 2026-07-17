@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Kubernetes;
+using Pole.Features.Functions.Runtime.Security;
 using Pole.Functions.Protocol;
 using Xunit;
 
@@ -62,11 +63,38 @@ public sealed class FunctionRevisionManifestTests
 
         Assert.Equal(subject.App.Id, environment["PoleFunctions__FunctionAppId"].Value);
         Assert.Equal(subject.Revision.Id, environment["PoleFunctions__RevisionId"].Value);
+        Assert.Equal(subject.App.TenantId, environment["PoleFunctions__TenantId"].Value);
         Assert.Equal("8", environment["PoleFunctions__MaxConcurrencyPerInstance"].Value);
         Assert.Equal("4", environment["PoleFunctions__HandlerConcurrencyPerInstance__webhook"].Value);
         Assert.Equal("Debug", environment["LOG_LEVEL"].Value);
         Assert.Equal("function-secrets", environment["API_KEY"].ValueFrom.SecretKeyRef.Name);
         Assert.Equal("API_KEY", environment["API_KEY"].ValueFrom.SecretKeyRef.Key);
+    }
+
+    [Fact]
+    public void Deployment_injects_only_public_runtime_trust_and_pod_identity()
+    {
+        var subject = CreateSubject();
+        var trust = new FunctionAgentTrustBundle(
+            "pole-runtime",
+            "pole-agent",
+            [new FunctionAgentTrustedKey("key-1", "public-spki")]);
+
+        var environment = Assert.Single(subject.ToDeployment(trust).Spec.Template.Spec.Containers)
+            .Env.ToDictionary(item => item.Name);
+
+        Assert.Equal("pole-runtime", environment["PoleFunctions__AgentAuthentication__Issuer"].Value);
+        Assert.Equal("pole-agent", environment["PoleFunctions__AgentAuthentication__Audience"].Value);
+        Assert.Equal(
+            "metadata.uid",
+            environment["PoleFunctions__AgentAuthentication__TargetUid"].ValueFrom.FieldRef.FieldPath);
+        Assert.Equal(
+            "key-1",
+            environment["PoleFunctions__AgentAuthentication__TrustedKeys__0__KeyId"].Value);
+        Assert.Equal(
+            "public-spki",
+            environment["PoleFunctions__AgentAuthentication__TrustedKeys__0__SubjectPublicKeyInfoBase64"].Value);
+        Assert.DoesNotContain(environment.Keys, key => key.Contains("Private", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

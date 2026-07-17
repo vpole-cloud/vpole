@@ -27,8 +27,10 @@ using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Activation;
+using Pole.Features.Functions.Runtime.Agent;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Gateway;
+using Pole.Features.Functions.Runtime.Security;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
@@ -118,6 +120,27 @@ public static class DependencyInjection
         public IServiceCollection AddKubernetes(IConfiguration configuration)
         {
             services.TryAddSingleton(TimeProvider.System);
+            var functionAgentTokenSection = configuration.GetSection(FunctionAgentTokenOptions.SectionName);
+            if (functionAgentTokenSection.Exists())
+            {
+                var tokenOptions = functionAgentTokenSection.Get<FunctionAgentTokenOptions>() ??
+                                   throw new InvalidOperationException("Function Agent token configuration is invalid.");
+                tokenOptions.Validate();
+                services.AddSingleton(tokenOptions);
+                services.AddSingleton<IFunctionAgentSigningKeyProvider, FileFunctionAgentSigningKeyProvider>();
+                services.AddSingleton<FunctionAgentTokenIssuer>();
+                services.AddSingleton<IFunctionAgentTokenIssuer>(provider =>
+                    provider.GetRequiredService<FunctionAgentTokenIssuer>());
+                services.AddSingleton<IFunctionAgentTrustBundleProvider>(provider =>
+                    provider.GetRequiredService<FunctionAgentTokenIssuer>());
+                services.AddHttpClient<IFunctionAgentClient, FunctionAgentClient>(client =>
+                    client.Timeout = TimeSpan.FromMinutes(2))
+                    .ConfigurePrimaryHttpMessageHandler(static () => new SocketsHttpHandler
+                    {
+                        AllowAutoRedirect = false,
+                        ConnectTimeout = TimeSpan.FromSeconds(5)
+                    });
+            }
             services.TryAddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
             services.AddSingleton<IKubernetes>(_ =>
             {

@@ -1,5 +1,7 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -8,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Pole.Functions.Protocol;
 using Pole.Functions.Sdk;
+using Pole.Features.Functions.Runtime.Security;
 using Xunit;
 
 namespace Pole.Tests.Integration.Functions;
@@ -251,6 +254,106 @@ public sealed class FunctionAgentTests
     }
 
     [Fact]
+    public async Task Jwt_authentication_binds_calls_to_operation_revision_pod_and_attempt()
+    {
+        using var rsa = RSA.Create(2048);
+        var tokenOptions = new FunctionAgentTokenOptions
+        {
+            Issuer = "test-runtime",
+            Audience = "test-agent",
+            ActiveKeyId = "test-key",
+            TokenLifetimeSeconds = 60
+        };
+        var issuer = new FunctionAgentTokenIssuer(
+            tokenOptions,
+            new StaticSigningKeyProvider(new FunctionAgentSigningKey("test-key", rsa)),
+            TimeProvider.System);
+        var trustedKey = Assert.Single(issuer.GetTrustBundle().TrustedKeys);
+        await using var app = await StartAgentAsync(
+            functions => functions.AddHttpHandler(
+                "hello",
+                (_, _, _) => ValueTask.FromResult(PoleHttpResponse.Empty())),
+            allowUnauthenticatedRequests: false,
+            configureOptions: options =>
+            {
+                options.TenantId = "tenant-1";
+                options.AgentAuthentication.Issuer = tokenOptions.Issuer;
+                options.AgentAuthentication.Audience = tokenOptions.Audience;
+                options.AgentAuthentication.TargetUid = "pod-1";
+                options.AgentAuthentication.TrustedKeys.Add(new PoleFunctionAgentTrustedKeyOptions
+                {
+                    KeyId = trustedKey.KeyId,
+                    SubjectPublicKeyInfoBase64 = trustedKey.SubjectPublicKeyInfoBase64
+                });
+            });
+        var request = CreateReserveRequest("attempt-1");
+        var client = app.GetTestClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            issuer.Issue(new FunctionAgentTokenDescriptor(
+                "tenant-1",
+                "app-1",
+                "revision-1",
+                "pod-1",
+                PoleFunctionAgentToken.Operations.ReserveAttempt,
+                request.Attempt)));
+
+        using var accepted = await PostResponseAsync(
+            client,
+            PoleFunctionProtocol.ReserveAttemptPath,
+            request);
+
+        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            issuer.Issue(new FunctionAgentTokenDescriptor(
+                "tenant-1",
+                "app-1",
+                "revision-1",
+                "pod-1",
+                PoleFunctionAgentToken.Operations.Metadata)));
+        using var wrongOperation = await PostResponseAsync(
+            client,
+            PoleFunctionProtocol.ReserveAttemptPath,
+            CreateReserveRequest("attempt-2"));
+        Assert.Equal(HttpStatusCode.Unauthorized, wrongOperation.StatusCode);
+
+        var attemptBoundRequest = CreateReserveRequest("attempt-3");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            issuer.Issue(new FunctionAgentTokenDescriptor(
+                "tenant-1",
+                "app-1",
+                "revision-1",
+                "pod-1",
+                PoleFunctionAgentToken.Operations.ReserveAttempt,
+                attemptBoundRequest.Attempt)));
+        using var mismatchedAttempt = await PostResponseAsync(
+            client,
+            PoleFunctionProtocol.ReserveAttemptPath,
+            attemptBoundRequest with
+            {
+                Attempt = attemptBoundRequest.Attempt with { TenantId = "other-tenant" }
+            });
+        Assert.Equal(HttpStatusCode.Forbidden, mismatchedAttempt.StatusCode);
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            issuer.Issue(new FunctionAgentTokenDescriptor(
+                "tenant-1",
+                "app-1",
+                "revision-1",
+                "other-pod",
+                PoleFunctionAgentToken.Operations.ReserveAttempt,
+                CreateReserveRequest("attempt-4").Attempt)));
+        using var wrongPod = await PostResponseAsync(
+            client,
+            PoleFunctionProtocol.ReserveAttemptPath,
+            CreateReserveRequest("attempt-4"));
+        Assert.Equal(HttpStatusCode.Unauthorized, wrongPod.StatusCode);
+    }
+
+    [Fact]
     public async Task Draining_agent_rejects_start_of_a_reserved_attempt()
     {
         await using var app = await StartAgentAsync(functions => functions.AddHttpHandler(
@@ -335,7 +438,8 @@ public sealed class FunctionAgentTests
         TimeSpan? reservationLease = null,
         bool allowUnauthenticatedRequests = true,
         int maxRequestBodyBytes = 1_048_576,
-        int maxProtocolRequestBytes = 2_097_152)
+        int maxProtocolRequestBytes = 2_097_152,
+        Action<PoleFunctionsOptions>? configureOptions = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
@@ -348,6 +452,7 @@ public sealed class FunctionAgentTests
             options.AllowUnauthenticatedAgentRequests = allowUnauthenticatedRequests;
             options.MaxRequestBodyBytes = maxRequestBodyBytes;
             options.MaxProtocolRequestBytes = maxProtocolRequestBytes;
+            configureOptions?.Invoke(options);
             if (reservationLease is not null)
                 options.ReservationLease = reservationLease.Value;
         });
@@ -402,4 +507,10 @@ public sealed class FunctionAgentTests
         string path,
         TRequest request) =>
         client.PostAsync(path, JsonContent.Create(request, options: JsonOptions));
+
+    private sealed class StaticSigningKeyProvider(FunctionAgentSigningKey key)
+        : IFunctionAgentSigningKeyProvider
+    {
+        public FunctionAgentSigningKey GetSigningKey() => key;
+    }
 }

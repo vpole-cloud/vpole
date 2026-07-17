@@ -104,7 +104,7 @@ public static class PoleFunctionsServiceCollectionExtensions
         services.TryAddSingleton<FunctionAttemptStore>();
         services.TryAddSingleton<FunctionExecutionTracker>();
         services.TryAddSingleton<FunctionAttemptExecutor>();
-        services.TryAddSingleton<IPoleFunctionAgentAuthenticator, DenyByDefaultAgentAuthenticator>();
+        services.TryAddSingleton<IPoleFunctionAgentAuthenticator, PoleFunctionJwtAgentAuthenticator>();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IHostedService, FunctionAttemptCleanupService>());
         services.TryAddEnumerable(

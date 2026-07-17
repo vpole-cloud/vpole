@@ -3,6 +3,7 @@ using k8s;
 using k8s.Autorest;
 using k8s.Models;
 using Pole.Features.Core.Kubernetes;
+using Pole.Features.Functions.Runtime.Security;
 using Pole.ResultType;
 
 namespace Pole.Features.Functions.Runtime.Kubernetes;
@@ -14,16 +15,21 @@ public interface IFunctionRevisionKubernetesManager
     Task<Result> ScaleAsync(FunctionRevisionInKubernetes revision, int replicas, CancellationToken cancellationToken = default);
 }
 
-public sealed class FunctionRevisionKubernetesManager(IKubernetes kubernetes)
+public sealed class FunctionRevisionKubernetesManager(
+    IKubernetes kubernetes,
+    IEnumerable<IFunctionAgentTrustBundleProvider> trustBundleProviders)
     : IFunctionRevisionKubernetesManager
 {
+    private readonly FunctionAgentTrustBundle? trustBundle =
+        trustBundleProviders.SingleOrDefault()?.GetTrustBundle();
+
     public async Task<Result> ApplyAsync(
         FunctionRevisionInKubernetes revision,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var deployment = revision.ToDeployment();
+            var deployment = revision.ToDeployment(trustBundle);
             var service = revision.ToService();
             await CreateOrReplaceAsync(
                 () => kubernetes.AppsV1.CreateNamespacedDeploymentAsync(
