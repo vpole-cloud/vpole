@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Functions.Sdk</AssemblyName>
+        <RootNamespace>Pole.Functions.Sdk</RootNamespace>
+        <PackageId>Pole.Functions.Sdk</PackageId>
+        <Description>.NET SDK and Agent runtime for Pole Functions.</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
+        <ProjectReference Include="..\Pole.Functions.Protocol\Pole.Functions.Protocol.csproj" />
+    </ItemGroup>
+
+</Project>

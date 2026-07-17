@@ -6,6 +6,11 @@
   </Folder>
   <Folder Name="/examples/">
     <Project Path="src/examples/Blog/Blog.csproj" />
+    <Project Path="src/examples/Pole.Functions.Sample/Pole.Functions.Sample.csproj" />
+  </Folder>
+  <Folder Name="/sdk/">
+    <Project Path="src/sdk/Pole.Functions.Protocol/Pole.Functions.Protocol.csproj" />
+    <Project Path="src/sdk/Pole.Functions.Sdk/Pole.Functions.Sdk.csproj" />
   </Folder>
   <Folder Name="/shared/">
     <Project Path="src/shared/Mediator/Mediator.csproj" />
