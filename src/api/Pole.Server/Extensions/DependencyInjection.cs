@@ -26,6 +26,8 @@ using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Runtime.Kubernetes;
+using Pole.Features.Functions.Runtime.Activation;
+using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
@@ -126,6 +128,8 @@ public static class DependencyInjection
             services.AddSingleton<IPostgresClusterDeploymentManager, PostgresClusterDeploymentManager>();
             services.TryAddScoped<IWebServiceDeploymentApplier, KubernetesWebServiceDeploymentApplier>();
             services.TryAddSingleton<IFunctionRevisionKubernetesManager, FunctionRevisionKubernetesManager>();
+            services.TryAddSingleton<IFunctionEndpointRegistry, FunctionEndpointRegistry>();
+            services.TryAddSingleton<IFunctionRevisionActivator, FunctionRevisionActivator>();
             return services;
         }
         public IServiceCollection AddEventBus(IConfiguration configuration, Assembly[] assemblies)
