@@ -1,6 +1,7 @@
 using System.Globalization;
 using k8s.Models;
 using Pole.Features.Functions.Domain;
+using Pole.Features.Functions.Runtime.Security;
 using Pole.Functions.Protocol;
 
 namespace Pole.Features.Functions.Runtime.Kubernetes;
@@ -28,7 +29,7 @@ public readonly record struct FunctionRevisionInKubernetes(
         return $"fn-{id}-r{revisionNumber.ToString(CultureInfo.InvariantCulture)}";
     }
 
-    public V1Deployment ToDeployment()
+    public V1Deployment ToDeployment(FunctionAgentTrustBundle? trustBundle = null)
     {
         var selectorLabels = SelectorLabels();
         var labels = Labels();
@@ -46,7 +47,7 @@ public readonly record struct FunctionRevisionInKubernetes(
                     Protocol = "TCP"
                 }
             ],
-            Env = BuildEnvironment(),
+            Env = BuildEnvironment(trustBundle),
             Resources = new V1ResourceRequirements
             {
                 Requests = new Dictionary<string, ResourceQuantity>
@@ -138,7 +139,7 @@ public readonly record struct FunctionRevisionInKubernetes(
         }
     };
 
-    private List<V1EnvVar> BuildEnvironment()
+    private List<V1EnvVar> BuildEnvironment(FunctionAgentTrustBundle? trustBundle)
     {
         var environment = Revision.Spec.Configuration.EnvironmentVariables
             .Select(pair => Env(pair.Key, pair.Value))
@@ -161,6 +162,7 @@ public readonly record struct FunctionRevisionInKubernetes(
             Env("DOTNET_EnableDiagnostics", "0"),
             Env("PoleFunctions__FunctionAppId", App.Id),
             Env("PoleFunctions__RevisionId", Revision.Id),
+            Env("PoleFunctions__TenantId", App.TenantId),
             Env(
                 "PoleFunctions__MaxConcurrencyPerInstance",
                 Revision.Spec.Scaling.MaxConcurrencyPerInstance.ToString(CultureInfo.InvariantCulture)),
@@ -171,6 +173,29 @@ public readonly record struct FunctionRevisionInKubernetes(
         environment.AddRange(Revision.Spec.Handlers.Select(handler => Env(
             $"PoleFunctions__HandlerConcurrencyPerInstance__{handler.Name}",
             handler.MaxConcurrencyPerInstance.ToString(CultureInfo.InvariantCulture))));
+        if (trustBundle is not null)
+        {
+            environment.Add(Env("PoleFunctions__AgentAuthentication__Issuer", trustBundle.Issuer));
+            environment.Add(Env("PoleFunctions__AgentAuthentication__Audience", trustBundle.Audience));
+            environment.Add(new V1EnvVar
+            {
+                Name = "PoleFunctions__AgentAuthentication__TargetUid",
+                ValueFrom = new V1EnvVarSource
+                {
+                    FieldRef = new V1ObjectFieldSelector { FieldPath = "metadata.uid" }
+                }
+            });
+            for (var index = 0; index < trustBundle.TrustedKeys.Count; index++)
+            {
+                var key = trustBundle.TrustedKeys[index];
+                environment.Add(Env(
+                    $"PoleFunctions__AgentAuthentication__TrustedKeys__{index}__KeyId",
+                    key.KeyId));
+                environment.Add(Env(
+                    $"PoleFunctions__AgentAuthentication__TrustedKeys__{index}__SubjectPublicKeyInfoBase64",
+                    key.SubjectPublicKeyInfoBase64));
+            }
+        }
         return environment;
     }
 

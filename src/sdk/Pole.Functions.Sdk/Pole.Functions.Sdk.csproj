@@ -11,6 +11,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
         <ProjectReference Include="..\Pole.Functions.Protocol\Pole.Functions.Protocol.csproj" />
     </ItemGroup>

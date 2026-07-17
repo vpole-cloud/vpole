@@ -1,10 +1,13 @@
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace Pole.Functions.Sdk;
 
-internal sealed class FunctionAgentIdentity
+internal sealed class FunctionAgentIdentity(IOptions<PoleFunctionsOptions> options)
 {
-    public string InstanceId { get; } = Guid.NewGuid().ToString("N");
+    public string InstanceId { get; } = string.IsNullOrWhiteSpace(options.Value.AgentAuthentication.TargetUid)
+        ? Guid.NewGuid().ToString("N")
+        : options.Value.AgentAuthentication.TargetUid;
 }
 
 internal sealed class FunctionAgentLifecycle

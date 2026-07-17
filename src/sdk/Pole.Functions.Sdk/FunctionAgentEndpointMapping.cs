@@ -89,7 +89,7 @@ public static class PoleFunctionsEndpointRouteBuilderExtensions
                     request.Attempt.AttemptId,
                     request.Attempt)))
         {
-            return Results.Forbid();
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
         }
 
         var result = store.Reserve(request);

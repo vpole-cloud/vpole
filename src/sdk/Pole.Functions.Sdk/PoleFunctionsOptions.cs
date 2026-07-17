@@ -8,6 +8,7 @@ public sealed class PoleFunctionsOptions
 
     public string FunctionAppId { get; set; } = string.Empty;
     public string RevisionId { get; set; } = string.Empty;
+    public string TenantId { get; set; } = string.Empty;
     public int MaxConcurrencyPerInstance { get; set; } = 16;
     public int DefaultHandlerConcurrencyPerInstance { get; set; } = 16;
     public TimeSpan ReservationLease { get; set; } = TimeSpan.FromSeconds(15);
@@ -22,6 +23,7 @@ public sealed class PoleFunctionsOptions
     public int MaxHeaderBytes { get; set; } = 32_768;
     public int MaxPathAndQueryBytes { get; set; } = 8_192;
     public bool AllowUnauthenticatedAgentRequests { get; set; }
+    public PoleFunctionAgentAuthenticationOptions AgentAuthentication { get; set; } = new();
     public Dictionary<string, int> HandlerConcurrencyPerInstance { get; set; } = new(StringComparer.Ordinal);
 }
 
@@ -35,6 +37,7 @@ internal sealed class PoleFunctionsOptionsValidator : IValidateOptions<PoleFunct
             failures.Add($"{nameof(options.FunctionAppId)} is required.");
         if (string.IsNullOrWhiteSpace(options.RevisionId))
             failures.Add($"{nameof(options.RevisionId)} is required.");
+        ValidateAuthentication(options, failures);
         if (options.MaxConcurrencyPerInstance <= 0)
             failures.Add($"{nameof(options.MaxConcurrencyPerInstance)} must be positive.");
         if (options.DefaultHandlerConcurrencyPerInstance <= 0 ||
@@ -86,4 +89,49 @@ internal sealed class PoleFunctionsOptionsValidator : IValidateOptions<PoleFunct
             ? ValidateOptionsResult.Success
             : ValidateOptionsResult.Fail(failures);
     }
+
+    private static void ValidateAuthentication(PoleFunctionsOptions options, List<string> failures)
+    {
+        var authentication = options.AgentAuthentication;
+        if (!authentication.IsConfigured)
+            return;
+        if (string.IsNullOrWhiteSpace(options.TenantId))
+            failures.Add($"{nameof(options.TenantId)} is required when Agent authentication is configured.");
+        if (string.IsNullOrWhiteSpace(authentication.Issuer))
+            failures.Add($"{nameof(options.AgentAuthentication)}.{nameof(authentication.Issuer)} is required.");
+        if (string.IsNullOrWhiteSpace(authentication.Audience))
+            failures.Add($"{nameof(options.AgentAuthentication)}.{nameof(authentication.Audience)} is required.");
+        if (string.IsNullOrWhiteSpace(authentication.TargetUid))
+            failures.Add($"{nameof(options.AgentAuthentication)}.{nameof(authentication.TargetUid)} is required.");
+        if (authentication.ClockSkewSeconds is < 0 or > 60)
+            failures.Add($"{nameof(options.AgentAuthentication)}.{nameof(authentication.ClockSkewSeconds)} must be between 0 and 60.");
+        if (authentication.TrustedKeys.Count == 0)
+            failures.Add($"{nameof(options.AgentAuthentication)}.{nameof(authentication.TrustedKeys)} must contain at least one key.");
+        if (authentication.TrustedKeys.Any(key =>
+                string.IsNullOrWhiteSpace(key.KeyId) || string.IsNullOrWhiteSpace(key.SubjectPublicKeyInfoBase64)))
+        {
+            failures.Add($"{nameof(options.AgentAuthentication)} trusted keys require a key id and public key.");
+        }
+    }
+}
+
+public sealed class PoleFunctionAgentAuthenticationOptions
+{
+    public string Issuer { get; set; } = string.Empty;
+    public string Audience { get; set; } = string.Empty;
+    public string TargetUid { get; set; } = string.Empty;
+    public int ClockSkewSeconds { get; set; } = 5;
+    public List<PoleFunctionAgentTrustedKeyOptions> TrustedKeys { get; set; } = [];
+
+    internal bool IsConfigured =>
+        !string.IsNullOrWhiteSpace(Issuer) ||
+        !string.IsNullOrWhiteSpace(Audience) ||
+        !string.IsNullOrWhiteSpace(TargetUid) ||
+        TrustedKeys.Count > 0;
+}
+
+public sealed class PoleFunctionAgentTrustedKeyOptions
+{
+    public string KeyId { get; set; } = string.Empty;
+    public string SubjectPublicKeyInfoBase64 { get; set; } = string.Empty;
 }
