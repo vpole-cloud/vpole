@@ -59,6 +59,20 @@ public sealed class FunctionActivationTests
     }
 
     [Fact]
+    public void Endpoint_registry_relist_removes_slices_missing_from_the_latest_list()
+    {
+        var registry = new FunctionEndpointRegistry(TimeProvider.System);
+        var service = new FunctionServiceKey("functions", "orders-agent");
+        registry.ApplySlice(Slice("stale", service, Endpoint("10.0.0.1", ready: true)));
+
+        registry.ReplaceAll([Slice("current", service, Endpoint("10.0.0.2", ready: true))]);
+
+        Assert.Equal("10.0.0.2", Assert.Single(registry.GetSnapshot(service).Endpoints).Address);
+        registry.DeleteSlice("functions", "current");
+        Assert.False(registry.GetSnapshot(service).HasReadyEndpoints);
+    }
+
+    [Fact]
     public async Task Warm_activation_returns_snapshot_without_scaling()
     {
         var subject = CreateSubject();
