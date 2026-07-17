@@ -116,6 +116,7 @@ public static class DependencyInjection
 
         public IServiceCollection AddKubernetes(IConfiguration configuration)
         {
+            services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
             services.AddSingleton<IKubernetes>(_ =>
             {
@@ -128,8 +129,10 @@ public static class DependencyInjection
             services.AddSingleton<IPostgresClusterDeploymentManager, PostgresClusterDeploymentManager>();
             services.TryAddScoped<IWebServiceDeploymentApplier, KubernetesWebServiceDeploymentApplier>();
             services.TryAddSingleton<IFunctionRevisionKubernetesManager, FunctionRevisionKubernetesManager>();
+            services.TryAddSingleton<IFunctionEndpointSliceSource, KubernetesFunctionEndpointSliceSource>();
             services.TryAddSingleton<IFunctionEndpointRegistry, FunctionEndpointRegistry>();
             services.TryAddSingleton<IFunctionRevisionActivator, FunctionRevisionActivator>();
+            services.AddHostedService<FunctionEndpointSliceWatcher>();
             return services;
         }
         public IServiceCollection AddEventBus(IConfiguration configuration, Assembly[] assemblies)

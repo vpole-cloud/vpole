@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using k8s.Models;
 
@@ -19,6 +18,7 @@ public sealed record FunctionEndpointSnapshot(
 public interface IFunctionEndpointRegistry
 {
     FunctionEndpointSnapshot GetSnapshot(FunctionServiceKey service);
+    void ReplaceAll(IEnumerable<V1EndpointSlice> slices);
     void ApplySlice(V1EndpointSlice slice);
     void DeleteSlice(string @namespace, string sliceName);
 }
@@ -29,50 +29,93 @@ public sealed class FunctionEndpointRegistry(TimeProvider timeProvider) : IFunct
         FunctionServiceKey Service,
         ImmutableArray<FunctionEndpoint> Endpoints);
 
-    private readonly ConcurrentDictionary<string, SliceState> slices = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<FunctionServiceKey, FunctionEndpointSnapshot> snapshots = [];
+    private sealed record RegistryState(
+        ImmutableDictionary<string, SliceState> Slices,
+        ImmutableDictionary<FunctionServiceKey, FunctionEndpointSnapshot> Snapshots);
+
+    private readonly object writeLock = new();
+    private RegistryState state = new(
+        ImmutableDictionary.Create<string, SliceState>(StringComparer.Ordinal),
+        ImmutableDictionary<FunctionServiceKey, FunctionEndpointSnapshot>.Empty);
 
     public FunctionEndpointSnapshot GetSnapshot(FunctionServiceKey service) =>
-        snapshots.TryGetValue(service, out var snapshot)
+        Volatile.Read(ref state).Snapshots.TryGetValue(service, out var snapshot)
             ? snapshot
             : Empty(service);
+
+    public void ReplaceAll(IEnumerable<V1EndpointSlice> endpointSlices)
+    {
+        ArgumentNullException.ThrowIfNull(endpointSlices);
+        var slices = endpointSlices
+            .Select(TryProjectSlice)
+            .Where(projected => projected is not null)
+            .ToImmutableDictionary(
+                projected => projected!.Value.Key,
+                projected => projected!.Value.State,
+                StringComparer.Ordinal);
+        lock (writeLock)
+            Volatile.Write(ref state, BuildState(slices));
+    }
 
     public void ApplySlice(V1EndpointSlice slice)
     {
         ArgumentNullException.ThrowIfNull(slice);
-        var @namespace = slice.Metadata?.NamespaceProperty;
-        var sliceName = slice.Metadata?.Name;
-        if (string.IsNullOrWhiteSpace(@namespace) || string.IsNullOrWhiteSpace(sliceName))
+        var projected = TryProjectSlice(slice);
+        if (projected is null)
+        {
+            if (slice.Metadata is { NamespaceProperty: { Length: > 0 } @namespace, Name: { Length: > 0 } name })
+                DeleteSlice(@namespace, name);
             return;
-        if (slice.Metadata?.Labels is null ||
-            !slice.Metadata.Labels.TryGetValue("kubernetes.io/service-name", out var serviceName) ||
-            string.IsNullOrWhiteSpace(serviceName))
-            return;
-
-        var service = new FunctionServiceKey(@namespace, serviceName);
-        slices.TryGetValue(SliceKey(@namespace, sliceName), out var previous);
-        slices[SliceKey(@namespace, sliceName)] = new SliceState(service, Project(slice));
-        if (previous is not null && previous.Service != service)
-            Rebuild(previous.Service);
-        Rebuild(service);
+        }
+        lock (writeLock)
+        {
+            var current = Volatile.Read(ref state);
+            Volatile.Write(ref state, BuildState(current.Slices.SetItem(projected.Value.Key, projected.Value.State)));
+        }
     }
 
     public void DeleteSlice(string @namespace, string sliceName)
     {
-        if (slices.TryRemove(SliceKey(@namespace, sliceName), out var removed))
-            Rebuild(removed.Service);
+        lock (writeLock)
+        {
+            var current = Volatile.Read(ref state);
+            var updated = current.Slices.Remove(SliceKey(@namespace, sliceName));
+            if (updated != current.Slices)
+                Volatile.Write(ref state, BuildState(updated));
+        }
     }
 
-    private void Rebuild(FunctionServiceKey service)
+    private RegistryState BuildState(ImmutableDictionary<string, SliceState> slices)
     {
-        var endpoints = slices.Values
-            .Where(slice => slice.Service == service)
-            .SelectMany(slice => slice.Endpoints)
-            .DistinctBy(endpoint => (endpoint.Address, endpoint.Port, endpoint.TargetUid))
-            .OrderBy(endpoint => endpoint.Address, StringComparer.Ordinal)
-            .ThenBy(endpoint => endpoint.Port)
-            .ToImmutableArray();
-        snapshots[service] = new FunctionEndpointSnapshot(service, endpoints, timeProvider.GetUtcNow());
+        var now = timeProvider.GetUtcNow();
+        var snapshots = slices.Values
+            .GroupBy(slice => slice.Service)
+            .ToImmutableDictionary(
+                group => group.Key,
+                group => new FunctionEndpointSnapshot(
+                    group.Key,
+                    group.SelectMany(slice => slice.Endpoints)
+                        .DistinctBy(endpoint => (endpoint.Address, endpoint.Port, endpoint.TargetUid))
+                        .OrderBy(endpoint => endpoint.Address, StringComparer.Ordinal)
+                        .ThenBy(endpoint => endpoint.Port)
+                        .ToImmutableArray(),
+                    now));
+        return new RegistryState(slices, snapshots);
+    }
+
+    private static (string Key, SliceState State)? TryProjectSlice(V1EndpointSlice slice)
+    {
+        var @namespace = slice.Metadata?.NamespaceProperty;
+        var sliceName = slice.Metadata?.Name;
+        if (string.IsNullOrWhiteSpace(@namespace) || string.IsNullOrWhiteSpace(sliceName))
+            return null;
+        if (slice.Metadata?.Labels is null ||
+            !slice.Metadata.Labels.TryGetValue("kubernetes.io/service-name", out var serviceName) ||
+            string.IsNullOrWhiteSpace(serviceName))
+            return null;
+
+        var service = new FunctionServiceKey(@namespace, serviceName);
+        return (SliceKey(@namespace, sliceName), new SliceState(service, Project(slice)));
     }
 
     private static ImmutableArray<FunctionEndpoint> Project(V1EndpointSlice slice)
