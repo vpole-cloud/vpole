@@ -4,6 +4,7 @@ using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Postgres.Application.Common;
@@ -28,6 +29,7 @@ var configuration = builder.Configuration;
 Assembly[] assemblies = [
     typeof(WebServiceEndpoints).Assembly,
     typeof(FunctionAppFeature).Assembly,
+    typeof(FunctionRuntimeFeature).Assembly,
     typeof(PostgresClusterEndpoints).Assembly,
     typeof(QuotaEndpoints).Assembly,
     typeof(DnsRecordEndpoints).Assembly,

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Pole.Features.Functions.Runtime</AssemblyName>
+    <RootNamespace>Pole.Features.Functions.Runtime</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="KubernetesClient" />
+    <PackageReference Include="MassTransit.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Functions.Application\Functions.Application.csproj" />
+    <ProjectReference Include="..\Functions.Domain\Functions.Domain.csproj" />
+    <ProjectReference Include="..\Functions.Events\Functions.Events.csproj" />
+    <ProjectReference Include="..\..\..\shared\Kubernetes\Kubernetes.csproj" />
+    <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
+    <ProjectReference Include="..\..\..\sdk\Pole.Functions.Protocol\Pole.Functions.Protocol.csproj" />
+  </ItemGroup>
+</Project>
