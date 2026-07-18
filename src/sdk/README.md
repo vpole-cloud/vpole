@@ -2,6 +2,10 @@
 
 This directory contains the first executable version of the Pole Function Agent contract.
 
+This page owns the user-code and Agent protocol contract. See the [Pole Functions feature
+documentation](../features/Functions/README.md) for the control-plane resource, provisioning,
+revisions, triggers, scaling, and multi-instance runtime architecture.
+
 - `Pole.Functions.Protocol` contains language-neutral HTTP/JSON DTOs and protocol constants. It has no dependency on ASP.NET Core or Pole control-plane models.
 - `Pole.Functions.Sdk` contains the .NET handler API and the in-process Agent runtime.
 
@@ -9,11 +13,8 @@ This directory contains the first executable version of the Pole Function Agent 
 
 ```csharp
 builder.Services
-    .AddPoleFunctions(options =>
-    {
-        options.FunctionAppId = configuration["PoleFunctions:FunctionAppId"]!;
-        options.RevisionId = configuration["PoleFunctions:RevisionId"]!;
-    })
+    .AddPoleFunctions(
+        builder.Configuration.GetSection(PoleFunctionsOptions.SectionName))
     .AddHttpHandler("hello", (request, context, cancellationToken) =>
         ValueTask.FromResult(PoleHttpResponse.Text("Hello")));
 
@@ -39,6 +40,12 @@ Repeated reserve and execute requests for the same immutable attempt are idempot
 ## Security and shutdown
 
 Agent protocol endpoints deny requests by default. Health endpoints remain available for probes.
-Production images must register an `IPoleFunctionAgentAuthenticator`; its authorization context includes the operation and attempt identity so a signed runtime token can be bound to tenant, revision, handler, invocation, and attempt claims. The sample permits unauthenticated requests only in the Development environment.
+The SDK registers `PoleFunctionJwtAgentAuthenticator` by default. Production applications must bind
+the complete `PoleFunctions` configuration section injected by Pole so tenant identity, Pod target,
+trusted keys, and concurrency settings are not dropped. Its authorization context includes the
+operation and attempt identity, allowing the signed runtime token to be bound to tenant, revision,
+handler, invocation, and attempt claims. Use `UseAgentAuthenticator<T>()` only for a custom
+authentication scheme. The sample permits unauthenticated requests only in the Development
+environment.
 
 During shutdown the Agent becomes unready, rejects new executions, and waits for already accepted handlers. Handler deadline cancellation is cooperative because .NET cannot safely terminate arbitrary in-process user code. The maximum accepted invocation deadline is bounded by configuration; platform termination remains the final boundary for a non-cooperative handler.

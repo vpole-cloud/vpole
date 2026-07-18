@@ -124,33 +124,11 @@ The project is actively evolving and APIs may change.
 
 ---
 
-## Installation
-See the [installation guide](docs/instalation.md) for instructions on how to set up Pole in your environment.
+## Documentation
 
----
-
-## Architecture
-See the [architecture overview](docs/architecture_overview.md) for details about the tech stack and design principles behind Pole.
-
----
-
-## Engineering guidelines
-See the [engineering guidelines](docs/engineering-guidelines.md) for validation boundaries, expected failures, state modelling, collection ownership, typed APIs, and dependency behavior tests.
-
----
-
-## Observability
-See the [observability notes](docs/observability.md) for how Pole carries `TraceId` and `CorrelationId` through HTTP, logs, outbox records, and RabbitMQ.
-
----
-
-## Multitenancy
-See the [multitenancy notes](docs/multitenancy.md) for the tenant model, `X-Pole-Tenant-ID` request flow, and rules for tenant-scoped resources.
-
----
-
-## Testing
-See the [testing notes](docs/testing.md) for information about the current backend test setup, requirements, and how to run the integration suite.
+Start with the [documentation index](docs/README.md). It links to installation, architecture,
+engineering, operations, testing, and feature-owned documentation such as [Pole
+Functions](src/features/Functions/README.md).
 
 ---
 
