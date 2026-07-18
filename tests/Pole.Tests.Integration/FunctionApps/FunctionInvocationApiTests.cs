@@ -166,6 +166,10 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
             TestData.TenantId));
         Assert.True(create.TryGetValue(out var created, out var failure), failure?.Message);
         var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
+        Assert.IsAssignableFrom<ISuccess>(await lifecycle.MarkReadyAsync(
+            TestData.TenantId,
+            created.FunctionAppId,
+            created.RevisionId));
         Assert.IsAssignableFrom<ISuccess>(await lifecycle.PromoteAsync(
             TestData.TenantId,
             created.FunctionAppId,

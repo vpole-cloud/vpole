@@ -49,10 +49,8 @@ public sealed record FunctionRevision(
     string FunctionAppId,
     int RevisionNumber,
     FunctionRevisionSpec Spec,
-    FunctionRevisionState State,
-    DateTimeOffset CreatedAtUtc,
-    DateTimeOffset? ReadyAtUtc,
-    FunctionRevisionFailure? Failure)
+    FunctionRevisionStatus Status,
+    DateTimeOffset CreatedAtUtc)
 {
     public static FunctionRevision CreateProvisioning(
         string id,
@@ -67,60 +65,79 @@ public sealed record FunctionRevision(
             functionAppId,
             revisionNumber,
             spec,
-            FunctionRevisionState.Provisioning,
-            createdAtUtc,
-            ReadyAtUtc: null,
-            Failure: null);
+            new ProvisioningFunctionRevisionStatus(),
+            createdAtUtc);
 
-    public FunctionRevision Activate(DateTimeOffset readyAtUtc)
+    public FunctionRevision MarkReady(DateTimeOffset readyAtUtc)
     {
-        if (State != FunctionRevisionState.Provisioning)
-            throw new InvalidOperationException($"Cannot activate Function revision in state '{State}'.");
-        return this with
-        {
-            State = FunctionRevisionState.Active,
-            ReadyAtUtc = readyAtUtc,
-            Failure = null
-        };
+        if (Status is not ProvisioningFunctionRevisionStatus)
+            throw new InvalidOperationException($"Cannot mark Function revision ready from status '{Status.GetType().Name}'.");
+        return this with { Status = new ReadyFunctionRevisionStatus(readyAtUtc) };
+    }
+
+    public FunctionRevision Activate()
+    {
+        if (Status is not ReadyFunctionRevisionStatus ready)
+            throw new InvalidOperationException($"Cannot activate Function revision from status '{Status.GetType().Name}'.");
+        return this with { Status = new ActiveFunctionRevisionStatus(ready.ReadyAtUtc) };
     }
 
     public FunctionRevision Drain()
     {
-        if (State != FunctionRevisionState.Active || ReadyAtUtc is null)
-            throw new InvalidOperationException($"Cannot drain Function revision in state '{State}'.");
-        return this with { State = FunctionRevisionState.Draining };
+        if (Status is not ActiveFunctionRevisionStatus active)
+            throw new InvalidOperationException($"Cannot drain Function revision from status '{Status.GetType().Name}'.");
+        return this with { Status = new DrainingFunctionRevisionStatus(active.ReadyAtUtc) };
     }
 
     public FunctionRevision Retire()
     {
-        if (State != FunctionRevisionState.Draining || ReadyAtUtc is null)
-            throw new InvalidOperationException($"Cannot retire Function revision in state '{State}'.");
-        return this with { State = FunctionRevisionState.Retired };
+        if (Status is not DrainingFunctionRevisionStatus draining)
+            throw new InvalidOperationException($"Cannot retire Function revision from status '{Status.GetType().Name}'.");
+        return this with { Status = new RetiredFunctionRevisionStatus(draining.ReadyAtUtc) };
     }
 
     public FunctionRevision Fail(FunctionRevisionFailure failure)
     {
-        if (State != FunctionRevisionState.Provisioning)
-            throw new InvalidOperationException($"Cannot fail Function revision in state '{State}'.");
-        return this with
-        {
-            State = FunctionRevisionState.Failed,
-            ReadyAtUtc = null,
-            Failure = failure
-        };
+        if (Status is not (ProvisioningFunctionRevisionStatus or ReadyFunctionRevisionStatus))
+            throw new InvalidOperationException($"Cannot fail Function revision from status '{Status.GetType().Name}'.");
+        return this with { Status = new FailedFunctionRevisionStatus(failure) };
     }
-
-    public bool HasValidLifecycleState() => State switch
-    {
-        FunctionRevisionState.Provisioning => ReadyAtUtc is null && Failure is null,
-        FunctionRevisionState.Ready or
-        FunctionRevisionState.Active or
-        FunctionRevisionState.Draining or
-        FunctionRevisionState.Retired => ReadyAtUtc is not null && Failure is null,
-        FunctionRevisionState.Failed => ReadyAtUtc is null && Failure is not null,
-        _ => false
-    };
 }
+
+[BsonDiscriminator(RootClass = true)]
+[BsonKnownTypes(
+    typeof(ProvisioningFunctionRevisionStatus),
+    typeof(ReadyFunctionRevisionStatus),
+    typeof(ActiveFunctionRevisionStatus),
+    typeof(DrainingFunctionRevisionStatus),
+    typeof(RetiredFunctionRevisionStatus),
+    typeof(FailedFunctionRevisionStatus))]
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
+[JsonDerivedType(typeof(ProvisioningFunctionRevisionStatus), "provisioning")]
+[JsonDerivedType(typeof(ReadyFunctionRevisionStatus), "ready")]
+[JsonDerivedType(typeof(ActiveFunctionRevisionStatus), "active")]
+[JsonDerivedType(typeof(DrainingFunctionRevisionStatus), "draining")]
+[JsonDerivedType(typeof(RetiredFunctionRevisionStatus), "retired")]
+[JsonDerivedType(typeof(FailedFunctionRevisionStatus), "failed")]
+public abstract record FunctionRevisionStatus;
+
+[BsonDiscriminator("provisioning")]
+public sealed record ProvisioningFunctionRevisionStatus : FunctionRevisionStatus;
+
+[BsonDiscriminator("ready")]
+public sealed record ReadyFunctionRevisionStatus(DateTimeOffset ReadyAtUtc) : FunctionRevisionStatus;
+
+[BsonDiscriminator("active")]
+public sealed record ActiveFunctionRevisionStatus(DateTimeOffset ReadyAtUtc) : FunctionRevisionStatus;
+
+[BsonDiscriminator("draining")]
+public sealed record DrainingFunctionRevisionStatus(DateTimeOffset ReadyAtUtc) : FunctionRevisionStatus;
+
+[BsonDiscriminator("retired")]
+public sealed record RetiredFunctionRevisionStatus(DateTimeOffset ReadyAtUtc) : FunctionRevisionStatus;
+
+[BsonDiscriminator("failed")]
+public sealed record FailedFunctionRevisionStatus(FunctionRevisionFailure Failure) : FunctionRevisionStatus;
 
 public sealed record FunctionRevisionSpec(
     string KubernetesNamespace,
@@ -218,16 +235,6 @@ public enum TimerMisfirePolicy
 public sealed record FunctionRetryPolicy(
     int MaxAttempts,
     ImmutableList<int> BackoffSeconds);
-
-public enum FunctionRevisionState
-{
-    Provisioning,
-    Ready,
-    Active,
-    Draining,
-    Failed,
-    Retired
-}
 
 public sealed record FunctionRevisionFailure(string Code, string Message);
 

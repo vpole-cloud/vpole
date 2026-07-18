@@ -25,9 +25,12 @@ public sealed class MongoFunctionScaleTargetSource(
 {
     public async Task<IReadOnlyList<FunctionScaleTarget>> ListAsync(CancellationToken cancellationToken)
     {
-        var revisions = await dbContext.FunctionRevisions.Find(revision =>
-                revision.State == FunctionRevisionState.Active ||
-                revision.State == FunctionRevisionState.Draining)
+        var revisions = await dbContext.FunctionRevisions.Find(
+                Builders<FunctionRevision>.Filter.Or(
+                    Builders<FunctionRevision>.Filter
+                        .OfType<FunctionRevisionStatus, ActiveFunctionRevisionStatus>(revision => revision.Status),
+                    Builders<FunctionRevision>.Filter
+                        .OfType<FunctionRevisionStatus, DrainingFunctionRevisionStatus>(revision => revision.Status)))
             .ToListAsync(cancellationToken);
         if (revisions.Count == 0)
             return [];
@@ -53,7 +56,7 @@ public sealed class MongoFunctionScaleTargetSource(
             .Select(revision =>
             {
                 var app = appsByOwner[(revision.TenantId, revision.FunctionAppId)];
-                var serving = revision.State == FunctionRevisionState.Active &&
+                var serving = revision.Status is ActiveFunctionRevisionStatus &&
                               app.DesiredState == FunctionAppDesiredState.Enabled &&
                               app.Status == FunctionAppStatus.Ready &&
                               string.Equals(app.ActiveRevisionId, revision.Id, StringComparison.Ordinal);

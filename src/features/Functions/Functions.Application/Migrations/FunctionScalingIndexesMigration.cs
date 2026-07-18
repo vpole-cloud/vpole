@@ -15,9 +15,9 @@ public sealed class FunctionScalingIndexesMigration : IMigration
         context.GetCollection<FunctionRevision>("FunctionRevisions").Indexes.CreateOneAsync(
             new CreateIndexModel<FunctionRevision>(
                 Builders<FunctionRevision>.IndexKeys
-                    .Ascending(revision => revision.State)
+                    .Ascending("Status._t")
                     .Ascending(revision => revision.TenantId)
                     .Ascending(revision => revision.FunctionAppId),
-                new CreateIndexOptions { Name = "IX_FunctionRevisions_State_Tenant_App" }),
+                new CreateIndexOptions { Name = "IX_FunctionRevisions_Status_Tenant_App" }),
             cancellationToken: cancellationToken);
 }

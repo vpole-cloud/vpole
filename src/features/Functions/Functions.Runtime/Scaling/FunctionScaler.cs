@@ -861,7 +861,7 @@ public sealed class FunctionScaler(
         CancellationToken cancellationToken)
     {
         if (target.IsServing ||
-            target.Revision.State != FunctionRevisionState.Draining ||
+            target.Revision.Status is not DrainingFunctionRevisionStatus ||
             !HasConverged(replicas, readyReplicas, 0))
         {
             return;

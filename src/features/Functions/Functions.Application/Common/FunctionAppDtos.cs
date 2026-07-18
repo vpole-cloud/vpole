@@ -24,10 +24,8 @@ public sealed record FunctionRevisionDto(
     string FunctionAppId,
     int RevisionNumber,
     FunctionRevisionSpec Spec,
-    FunctionRevisionState State,
-    DateTimeOffset CreatedAtUtc,
-    DateTimeOffset? ReadyAtUtc,
-    FunctionRevisionFailure? Failure);
+    FunctionRevisionStatus Status,
+    DateTimeOffset CreatedAtUtc);
 
 public sealed record FunctionAppDetailsDto(
     FunctionAppDto FunctionApp,
@@ -59,8 +57,6 @@ public static class FunctionAppDtoExtensions
             revision.FunctionAppId,
             revision.RevisionNumber,
             revision.Spec,
-            revision.State,
-            revision.CreatedAtUtc,
-            revision.ReadyAtUtc,
-            revision.Failure);
+            revision.Status,
+            revision.CreatedAtUtc);
 }

@@ -261,7 +261,7 @@ public sealed class FunctionScalerTests
     {
         var harness = CreateHarness(
             scaling: new FunctionScalingPolicy(0, 5, 4, 8, 10, 30),
-            state: FunctionRevisionState.Draining,
+            status: new DrainingFunctionRevisionStatus(Now),
             isServing: false,
             replicaState: new FunctionReplicaState(1, 1, 1, 1),
             endpoints: [Endpoint("pod-1")]);
@@ -471,12 +471,12 @@ public sealed class FunctionScalerTests
         FunctionScalingPolicy scaling,
         FunctionReplicaState replicaState,
         int handlerConcurrency = 8,
-        FunctionRevisionState state = FunctionRevisionState.Active,
+        FunctionRevisionStatus? status = null,
         bool isServing = true,
         IReadOnlyList<FunctionEndpoint>? endpoints = null,
         IReadOnlyDictionary<string, int>? durableDemand = null)
     {
-        var target = CreateTarget(scaling, handlerConcurrency, state, isServing, durableDemand);
+        var target = CreateTarget(scaling, handlerConcurrency, status, isServing, durableDemand);
         var targetSource = new FakeTargetSource(target);
         var endpointRegistry = new FakeEndpointRegistry
         {
@@ -512,7 +512,7 @@ public sealed class FunctionScalerTests
     private static FunctionScaleTarget CreateTarget(
         FunctionScalingPolicy scaling,
         int handlerConcurrency,
-        FunctionRevisionState state,
+        FunctionRevisionStatus? status,
         bool isServing,
         IReadOnlyDictionary<string, int>? durableDemand)
     {
@@ -549,8 +549,7 @@ public sealed class FunctionScalerTests
         {
             Id = "507f1f77bcf86cd799439012",
             FunctionAppId = "507f1f77bcf86cd799439011",
-            State = state,
-            ReadyAtUtc = Now
+            Status = status ?? new ActiveFunctionRevisionStatus(Now)
         };
         var app = created.FunctionApp with
         {

@@ -67,8 +67,8 @@ public sealed class FunctionAppsInitialMigration : IMigration
                     Name = "UX_FunctionRevisions_Tenant_App_Active",
                     Unique = true,
                     PartialFilterExpression = Builders<FunctionRevision>.Filter.Eq(
-                        revision => revision.State,
-                        FunctionRevisionState.Active)
+                        "Status._t",
+                        "active")
                 })
         ], cancellationToken);
 

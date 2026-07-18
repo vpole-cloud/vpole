@@ -15,13 +15,42 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
     [Fact]
+    public async Task Promotion_requires_and_preserves_a_durable_ready_boundary()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = await CreateAsync(group.Id);
+        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
+
+        Assert.IsType<ConflictFailure>(await lifecycle.PromoteAsync(
+            TestData.TenantId,
+            created.FunctionAppId,
+            created.RevisionId));
+        var readiness = await Task.WhenAll(
+            lifecycle.MarkReadyAsync(TestData.TenantId, created.FunctionAppId, created.RevisionId),
+            lifecycle.MarkReadyAsync(TestData.TenantId, created.FunctionAppId, created.RevisionId));
+        Assert.All(readiness, result => Assert.IsAssignableFrom<ISuccess>(result));
+
+        var ready = await DbContext.FunctionRevisions
+            .Find(revision => revision.Id == created.RevisionId)
+            .SingleAsync();
+        Assert.IsType<ReadyFunctionRevisionStatus>(ready.Status);
+
+        var promotions = await Task.WhenAll(
+            lifecycle.PromoteAsync(TestData.TenantId, created.FunctionAppId, created.RevisionId),
+            lifecycle.PromoteAsync(TestData.TenantId, created.FunctionAppId, created.RevisionId));
+        Assert.All(promotions, result => Assert.IsAssignableFrom<ISuccess>(result));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("function-revision-promoted"));
+    }
+
+    [Fact]
     public async Task Create_and_promote_atomically_publish_revision_and_routes()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
         var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
 
-        var promotion = await lifecycle.PromoteAsync(
+        var promotion = await MarkReadyAndPromoteAsync(
+            lifecycle,
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId);
@@ -33,8 +62,7 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(FunctionAppStatus.Ready, app.Status);
 
         var revision = await DbContext.FunctionRevisions.Find(candidate => candidate.Id == created.RevisionId).SingleAsync();
-        Assert.Equal(FunctionRevisionState.Active, revision.State);
-        Assert.NotNull(revision.ReadyAtUtc);
+        var activeStatus = Assert.IsType<ActiveFunctionRevisionStatus>(revision.Status);
 
         var route = await DbContext.FunctionRouteBindings
             .Find(candidate => candidate.FunctionAppId == created.FunctionAppId)
@@ -52,7 +80,7 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(created.RevisionId, timer.RevisionId);
         Assert.Equal(1, timer.ScheduleVersion);
         Assert.True(timer.Enabled);
-        Assert.True(timer.NextOccurrenceUtc > revision.ReadyAtUtc);
+        Assert.True(timer.NextOccurrenceUtc > activeStatus.ReadyAtUtc);
     }
 
     [Fact]
@@ -61,7 +89,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
         var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
-        Assert.IsAssignableFrom<ISuccess>(await lifecycle.PromoteAsync(
+        Assert.IsAssignableFrom<ISuccess>(await MarkReadyAndPromoteAsync(
+            lifecycle,
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId));
@@ -85,7 +114,7 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         var candidate = await DbContext.FunctionRevisions
             .Find(revision => revision.Id == response.RevisionId)
             .SingleAsync();
-        Assert.Equal(FunctionRevisionState.Provisioning, candidate.State);
+        Assert.IsType<ProvisioningFunctionRevisionStatus>(candidate.Status);
         Assert.Equal("v2", candidate.Spec.Image.Tag);
         Assert.Equal("v1", original.Spec.Image.Tag);
 
@@ -103,7 +132,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(1000, app.AdmittedQuota.TotalCpuMillis);
         Assert.Equal(2L, await DbContext.CountOutboxMessagesAsync("function-revision-created"));
 
-        var promotion = await lifecycle.PromoteAsync(
+        var promotion = await MarkReadyAndPromoteAsync(
+            lifecycle,
             TestData.TenantId,
             created.FunctionAppId,
             response.RevisionId);
@@ -115,8 +145,10 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         var promoted = await DbContext.FunctionRevisions
             .Find(revision => revision.FunctionAppId == created.FunctionAppId)
             .ToListAsync();
-        Assert.Equal(FunctionRevisionState.Draining, promoted.Single(revision => revision.Id == created.RevisionId).State);
-        Assert.Equal(FunctionRevisionState.Active, promoted.Single(revision => revision.Id == response.RevisionId).State);
+        Assert.IsType<DrainingFunctionRevisionStatus>(
+            promoted.Single(revision => revision.Id == created.RevisionId).Status);
+        Assert.IsType<ActiveFunctionRevisionStatus>(
+            promoted.Single(revision => revision.Id == response.RevisionId).Status);
         var activeTimer = await DbContext.FunctionTimerStates
             .Find(timer => timer.FunctionAppId == created.FunctionAppId)
             .SingleAsync();
@@ -131,7 +163,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
         var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
-        Assert.IsAssignableFrom<ISuccess>(await lifecycle.PromoteAsync(
+        Assert.IsAssignableFrom<ISuccess>(await MarkReadyAndPromoteAsync(
+            lifecycle,
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId));
@@ -144,7 +177,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             new UpdateFunctionAppRequestBody(RevisionRequest("*/5 * * * *", "v2"), []),
             TestData.TenantId));
         Assert.True(update.TryGetValue(out var candidate, out var failure), failure?.Message);
-        Assert.IsAssignableFrom<ISuccess>(await lifecycle.PromoteAsync(
+        Assert.IsAssignableFrom<ISuccess>(await MarkReadyAndPromoteAsync(
+            lifecycle,
             TestData.TenantId,
             created.FunctionAppId,
             candidate.RevisionId));
@@ -163,7 +197,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
         var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
-        Assert.IsAssignableFrom<ISuccess>(await lifecycle.PromoteAsync(
+        Assert.IsAssignableFrom<ISuccess>(await MarkReadyAndPromoteAsync(
+            lifecycle,
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId));
@@ -173,7 +208,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             new UpdateFunctionAppRequestBody(RevisionRequest("*/10 * * * *", "v2"), []),
             TestData.TenantId));
         Assert.True(update.TryGetValue(out var candidate, out var failure), failure?.Message);
-        Assert.IsAssignableFrom<ISuccess>(await lifecycle.PromoteAsync(
+        Assert.IsAssignableFrom<ISuccess>(await MarkReadyAndPromoteAsync(
+            lifecycle,
             TestData.TenantId,
             created.FunctionAppId,
             candidate.RevisionId));
@@ -190,7 +226,7 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         var retired = await DbContext.FunctionRevisions
             .Find(revision => revision.Id == created.RevisionId)
             .SingleAsync();
-        Assert.Equal(FunctionRevisionState.Retired, retired.State);
+        Assert.IsType<RetiredFunctionRevisionStatus>(retired.Status);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("function-revision-retired"));
     }
 
@@ -200,7 +236,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
         var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
-        Assert.IsAssignableFrom<ISuccess>(await lifecycle.PromoteAsync(
+        Assert.IsAssignableFrom<ISuccess>(await MarkReadyAndPromoteAsync(
+            lifecycle,
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId));
@@ -213,7 +250,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             new UpdateFunctionAppRequestBody(RevisionRequest("*/10 * * * *", "v2"), []),
             TestData.TenantId));
         Assert.True(update.TryGetValue(out var candidate, out var failure), failure?.Message);
-        Assert.IsAssignableFrom<ISuccess>(await lifecycle.PromoteAsync(
+        Assert.IsAssignableFrom<ISuccess>(await MarkReadyAndPromoteAsync(
+            lifecycle,
             TestData.TenantId,
             created.FunctionAppId,
             candidate.RevisionId));
@@ -238,7 +276,7 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         var revision = await DbContext.FunctionRevisions
             .Find(item => item.Id == created.RevisionId)
             .SingleAsync();
-        Assert.Equal(FunctionRevisionState.Draining, revision.State);
+        Assert.IsType<DrainingFunctionRevisionStatus>(revision.Status);
         Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync("function-revision-retired"));
     }
 
@@ -248,7 +286,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
         var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
-        Assert.IsAssignableFrom<ISuccess>(await lifecycle.PromoteAsync(
+        Assert.IsAssignableFrom<ISuccess>(await MarkReadyAndPromoteAsync(
+            lifecycle,
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId));
@@ -277,7 +316,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
         var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
-        Assert.IsAssignableFrom<ISuccess>(await lifecycle.PromoteAsync(
+        Assert.IsAssignableFrom<ISuccess>(await MarkReadyAndPromoteAsync(
+            lifecycle,
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId));
@@ -290,6 +330,11 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             }, []),
             TestData.TenantId));
         Assert.True(update.TryGetValue(out var candidate, out var updateFailure), updateFailure?.Message);
+
+        Assert.IsAssignableFrom<ISuccess>(await lifecycle.MarkReadyAsync(
+            TestData.TenantId,
+            created.FunctionAppId,
+            candidate.RevisionId));
 
         var failed = await lifecycle.FailAsync(
             TestData.TenantId,
@@ -304,8 +349,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(FunctionAppStatus.Ready, app.Status);
         Assert.Equal(5, app.AdmittedQuota.WorkloadInstances);
         var revision = await DbContext.FunctionRevisions.Find(value => value.Id == candidate.RevisionId).SingleAsync();
-        Assert.Equal(FunctionRevisionState.Failed, revision.State);
-        Assert.Equal("image-pull", revision.Failure?.Code);
+        var failedStatus = Assert.IsType<FailedFunctionRevisionStatus>(revision.Status);
+        Assert.Equal("image-pull", failedStatus.Failure.Code);
         Assert.IsAssignableFrom<ISuccess>(await lifecycle.FailAsync(
             TestData.TenantId,
             created.FunctionAppId,
@@ -338,7 +383,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
         var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
-        Assert.IsAssignableFrom<ISuccess>(await lifecycle.PromoteAsync(
+        Assert.IsAssignableFrom<ISuccess>(await MarkReadyAndPromoteAsync(
+            lifecycle,
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId));
@@ -360,6 +406,18 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             .SingleAsync();
         Assert.False(timer.Enabled);
         Assert.Null(timer.Lease);
+    }
+
+    private static async Task<Result> MarkReadyAndPromoteAsync(
+        IFunctionRevisionLifecycleService lifecycle,
+        string tenantId,
+        string functionAppId,
+        string revisionId)
+    {
+        var ready = await lifecycle.MarkReadyAsync(tenantId, functionAppId, revisionId);
+        return ready is IFailure
+            ? ready
+            : await lifecycle.PromoteAsync(tenantId, functionAppId, revisionId);
     }
 
     private async Task<CreateFunctionAppResponse> CreateAsync(string resourceGroupId)

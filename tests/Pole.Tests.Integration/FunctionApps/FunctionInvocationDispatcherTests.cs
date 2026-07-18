@@ -560,7 +560,7 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         {
             Id = revisionId,
             FunctionAppId = appId
-        }).Activate(Now.AddMinutes(-4));
+        }).MarkReady(Now.AddMinutes(-4)).Activate();
         var trigger = Assert.IsType<TimerFunctionTriggerSpec>(revision.Spec.Handlers.Single().Trigger);
         return new FunctionSubject(app, revision, trigger);
     }

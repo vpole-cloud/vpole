@@ -379,11 +379,19 @@ Environment/config references
 Resources
 Scaling policy
 Handlers + polymorphic Trigger specs
-State: Provisioning | Ready | Active | Draining | Failed | Retired
+Status: polymorphic FunctionRevisionStatus
+  Provisioning
+  Ready(ReadyAtUtc)
+  Active(ReadyAtUtc)
+  Draining(ReadyAtUtc)
+  Retired(ReadyAtUtc)
+  Failed(Failure)
 CreatedAtUtc
-ReadyAtUtc
-Failure
 ```
+
+`Ready` є durable межею: Agent metadata та handler contract вже перевірені, але revision
+ще не отримала route/timer traffic. Promotion atomically переводить `Ready` у `Active`,
+перемикає route/timers і переводить попередню `Active` revision у `Draining`.
 
 Unique index: `(TenantId, FunctionAppId, RevisionNumber)`.
 

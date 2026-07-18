@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text.Json;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using Pole.Features.Functions.Application.Common;
@@ -86,11 +87,42 @@ public sealed class FunctionAppDomainTests
             [],
             DateTimeOffset.UtcNow);
 
-        var bson = created.Revision.ToBson();
+        var readyAtUtc = DateTimeOffset.Parse("2026-07-17T10:00:10Z");
+        var active = created.Revision.MarkReady(readyAtUtc).Activate();
+        var document = active.ToBsonDocument();
+        var statusDocument = document[nameof(FunctionRevision.Status)].AsBsonDocument;
+        Assert.Equal("active", statusDocument["_t"].AsBsonArray[^1].AsString);
+        var bson = document.ToBson();
         var restored = BsonSerializer.Deserialize<FunctionRevision>(bson);
 
         Assert.IsType<HttpFunctionTriggerSpec>(restored.Spec.Handlers[0].Trigger);
         Assert.IsType<TimerFunctionTriggerSpec>(restored.Spec.Handlers[1].Trigger);
+        Assert.Equal(readyAtUtc, Assert.IsType<ActiveFunctionRevisionStatus>(restored.Status).ReadyAtUtc);
+    }
+
+    [Fact]
+    public void Revision_dto_serializes_only_its_nested_status_polymorphically()
+    {
+        var created = FunctionAppFactory.Create(
+            "tenant-1",
+            "group-1",
+            "namespace",
+            "order-functions",
+            "orders",
+            CreateRevisionRequest(new HttpFunctionTriggerRequest("orders", ["POST"], FunctionExposure.Public))
+                .ToDomain(),
+            [],
+            DateTimeOffset.Parse("2026-07-17T10:00:00Z"));
+        var active = created.Revision
+            .MarkReady(DateTimeOffset.Parse("2026-07-17T10:00:10Z"))
+            .Activate();
+
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(
+            active.ToDto(),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        Assert.False(json.RootElement.TryGetProperty("type", out _));
+        Assert.Equal("active", json.RootElement.GetProperty("status").GetProperty("type").GetString());
     }
 
     [Theory]
@@ -118,13 +150,18 @@ public sealed class FunctionAppDomainTests
             [],
             DateTimeOffset.Parse("2026-07-17T10:00:00Z"));
 
-        Assert.True(created.Revision.HasValidLifecycleState());
-        var active = created.Revision.Activate(DateTimeOffset.Parse("2026-07-17T10:00:10Z"));
-        Assert.True(active.HasValidLifecycleState());
-        Assert.True(active.Drain().HasValidLifecycleState());
+        Assert.IsType<ProvisioningFunctionRevisionStatus>(created.Revision.Status);
+        var ready = created.Revision.MarkReady(DateTimeOffset.Parse("2026-07-17T10:00:10Z"));
+        Assert.IsType<ReadyFunctionRevisionStatus>(ready.Status);
+        var active = ready.Activate();
+        Assert.IsType<ActiveFunctionRevisionStatus>(active.Status);
+        var draining = active.Drain();
+        Assert.IsType<DrainingFunctionRevisionStatus>(draining.Status);
+        Assert.IsType<RetiredFunctionRevisionStatus>(draining.Retire().Status);
         var failed = created.Revision.Fail(new FunctionRevisionFailure("startup", "failed"));
-        Assert.True(failed.HasValidLifecycleState());
-        Assert.Throws<InvalidOperationException>(() => active.Activate(DateTimeOffset.UtcNow));
+        Assert.IsType<FailedFunctionRevisionStatus>(failed.Status);
+        Assert.IsType<FailedFunctionRevisionStatus>(ready.Fail(new FunctionRevisionFailure("promotion", "failed")).Status);
+        Assert.Throws<InvalidOperationException>(() => active.Activate());
     }
 
     private static FunctionRevisionRequest CreateRevisionRequest(params FunctionTriggerRequest[] triggers) =>

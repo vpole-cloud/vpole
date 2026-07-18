@@ -34,6 +34,33 @@ public sealed class FunctionRevisionProvisionerTests
 
         Assert.True(outcome.Succeeded);
         Assert.Equal([0], manager.ScaleRequests);
+        Assert.Equal(subject.Revision.Id, lifecycle.MarkedReadyRevisionId);
+        Assert.Equal(subject.Revision.Id, lifecycle.PromotedRevisionId);
+    }
+
+    [Fact]
+    public async Task Ready_revision_resumes_at_promotion_without_repeating_bootstrap_work()
+    {
+        var provisioning = CreateSubject();
+        var subject = provisioning with
+        {
+            Revision = provisioning.Revision.MarkReady(DateTimeOffset.UtcNow)
+        };
+        var endpoint = new FunctionEndpoint("10.0.0.1", 8080, "pod-1");
+        var manager = new RecordingManager();
+        var lifecycle = new RecordingLifecycle();
+        var provisioner = new FunctionRevisionProvisioner(
+            new ReadyActivator(endpoint, subject),
+            new MetadataClient(Metadata(subject, "pod-1")),
+            manager,
+            lifecycle,
+            NullLogger<FunctionRevisionProvisioner>.Instance);
+
+        var outcome = await provisioner.ProvisionAsync(subject.App, subject.Revision, CancellationToken.None);
+
+        Assert.True(outcome.Succeeded);
+        Assert.Empty(manager.ScaleRequests);
+        Assert.Null(lifecycle.MarkedReadyRevisionId);
         Assert.Equal(subject.Revision.Id, lifecycle.PromotedRevisionId);
     }
 
@@ -204,7 +231,18 @@ public sealed class FunctionRevisionProvisionerTests
 
     private sealed class RecordingLifecycle : IFunctionRevisionLifecycleService
     {
+        public string? MarkedReadyRevisionId { get; private set; }
         public string? PromotedRevisionId { get; private set; }
+
+        public Task<Result> MarkReadyAsync(
+            string tenantId,
+            string functionAppId,
+            string revisionId,
+            CancellationToken cancellationToken = default)
+        {
+            MarkedReadyRevisionId = revisionId;
+            return Task.FromResult<Result>(Result.Success());
+        }
 
         public Task<Result> PromoteAsync(
             string tenantId,
