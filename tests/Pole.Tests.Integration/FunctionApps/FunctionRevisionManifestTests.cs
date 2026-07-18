@@ -21,6 +21,9 @@ public sealed class FunctionRevisionManifestTests
         Assert.Equal("fn-507f1f77bcf86cd799439011-r3", deployment.Metadata.Name);
         Assert.Equal("pole-tenant-rg", deployment.Metadata.NamespaceProperty);
         Assert.Equal(0, deployment.Spec.Replicas);
+        Assert.Equal(
+            "0",
+            deployment.Metadata.Annotations[FunctionRevisionInKubernetes.ScaleGenerationAnnotation]);
         Assert.Equal(1, deployment.Spec.RevisionHistoryLimit);
         Assert.Equal("Recreate", deployment.Spec.Strategy.Type);
         Assert.Equal(subject.App.Id, deployment.Metadata.Labels["pole.io/function-app-id"]);

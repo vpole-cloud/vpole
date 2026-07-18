@@ -141,11 +141,18 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             CancellationToken cancellationToken = default) =>
             Task.FromResult<Result>(Result.Success());
 
-        public Task<Result> ScaleAsync(
+        public Task<Result> ScaleProvisioningAsync(
             FunctionRevisionInKubernetes revision,
             int replicas,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<Result>(Result.Success());
+
+        public Task<Result> ScaleAsync(
+            FunctionRevisionInKubernetes revision,
+            int replicas,
+            long coordinationGeneration,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
 
         public Task<Result<FunctionReplicaState>> ReadReplicaStateAsync(
             FunctionRevisionInKubernetes revision,

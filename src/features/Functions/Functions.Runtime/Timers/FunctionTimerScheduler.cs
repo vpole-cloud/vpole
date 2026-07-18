@@ -1,5 +1,7 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Domain;
@@ -10,26 +12,40 @@ public sealed class FunctionTimerOptions
 {
     public const string SectionName = "Functions:Timers";
 
+    [Range(1, 60)]
     public int SweepIntervalSeconds { get; set; } = 1;
-    public int ScheduleLeaseSeconds { get; set; } = 30;
-    public int DispatchLeaseSeconds { get; set; } = 960;
-    public int ExecutionTimeoutSeconds { get; set; } = 900;
-    public int BatchSize { get; set; } = 50;
 
-    public void Validate()
+    [Range(5, 300)]
+    public int ScheduleLeaseSeconds { get; set; } = 30;
+
+    [Range(10, 3_600)]
+    public int DispatchLeaseSeconds { get; set; } = 960;
+
+    [Range(1, 86_400)]
+    public int ExecutionTimeoutSeconds { get; set; } = 900;
+
+    [Range(1, 500)]
+    public int BatchSize { get; set; } = 50;
+}
+
+public sealed class FunctionTimerOptionsValidator : IValidateOptions<FunctionTimerOptions>
+{
+    public ValidateOptionsResult Validate(string? name, FunctionTimerOptions options)
     {
-        if (SweepIntervalSeconds is < 1 or > 60)
-            throw new InvalidOperationException("Function Timer sweep interval must be between 1 and 60 seconds.");
-        if (ScheduleLeaseSeconds is < 5 or > 300)
-            throw new InvalidOperationException("Function Timer schedule lease must be between 5 and 300 seconds.");
-        if (DispatchLeaseSeconds is < 10 or > 3600)
-            throw new InvalidOperationException("Function invocation dispatch lease must be between 10 and 3600 seconds.");
-        if (ExecutionTimeoutSeconds is < 1 or > 86400)
-            throw new InvalidOperationException("Function Timer execution timeout must be between 1 and 86400 seconds.");
-        if (DispatchLeaseSeconds <= ExecutionTimeoutSeconds)
-            throw new InvalidOperationException("Function invocation dispatch lease must exceed its execution timeout.");
-        if (BatchSize is < 1 or > 500)
-            throw new InvalidOperationException("Function Timer batch size must be between 1 and 500.");
+        var failures = FunctionOptionsValidation.GetDataAnnotationFailures(options);
+        if (options.DispatchLeaseSeconds <= options.ExecutionTimeoutSeconds)
+        {
+            failures.Add(
+                $"{nameof(options.DispatchLeaseSeconds)} must exceed {nameof(options.ExecutionTimeoutSeconds)}.");
+        }
+        if (options.DispatchLeaseSeconds <= FunctionScalingPolicy.MaximumActivationTimeoutSeconds)
+        {
+            failures.Add(
+                $"{nameof(options.DispatchLeaseSeconds)} must exceed the maximum Function activation timeout " +
+                $"of {FunctionScalingPolicy.MaximumActivationTimeoutSeconds} seconds.");
+        }
+
+        return FunctionOptionsValidation.ToValidateOptionsResult(failures);
     }
 }
 

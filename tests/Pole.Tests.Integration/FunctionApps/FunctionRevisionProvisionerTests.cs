@@ -118,7 +118,8 @@ public sealed class FunctionRevisionProvisionerTests
         public Task<Result<FunctionEndpointSnapshot>> EnsureActiveAsync(
             FunctionApp app,
             FunctionRevision revision,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+            bool forceScaleFence = false) =>
             Task.FromResult<Result<FunctionEndpointSnapshot>>(new FunctionEndpointSnapshot(
                 new FunctionServiceKey(subject.Namespace, subject.ServiceName),
                 [endpoint],
@@ -179,7 +180,7 @@ public sealed class FunctionRevisionProvisionerTests
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default) => Task.FromResult<Result>(Result.Success());
 
-        public Task<Result> ScaleAsync(
+        public Task<Result> ScaleProvisioningAsync(
             FunctionRevisionInKubernetes revision,
             int replicas,
             CancellationToken cancellationToken = default)
@@ -187,6 +188,13 @@ public sealed class FunctionRevisionProvisionerTests
             ScaleRequests.Add(replicas);
             return Task.FromResult<Result>(Result.Success());
         }
+
+        public Task<Result> ScaleAsync(
+            FunctionRevisionInKubernetes revision,
+            int replicas,
+            long coordinationGeneration,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
 
         public Task<Result<FunctionReplicaState>> ReadReplicaStateAsync(
             FunctionRevisionInKubernetes revision,

@@ -58,6 +58,7 @@ Assembly[] outboxEventAssemblies = [
 
 builder.AddServiceDefaults();
 builder.AddMongoDBClient("pole-database");
+builder.AddFunctionOrleansHosting();
 builder.AddSecurity();
 
 builder.Services.AddKubernetes(configuration)

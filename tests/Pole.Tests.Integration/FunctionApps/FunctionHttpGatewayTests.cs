@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Activation;
 using Pole.Features.Functions.Runtime.Agent;
+using Pole.Features.Functions.Runtime.Coordination;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Features.Functions.Runtime.Metering;
@@ -78,6 +79,31 @@ public sealed class FunctionHttpGatewayTests
     }
 
     [Fact]
+    public async Task Warm_request_forces_activation_fence_after_expired_scale_barrier_recovery()
+    {
+        var admissionCoordinator = new FakeAdmissionCoordinator(
+            (_, request, _) => Task.FromResult(new FunctionAdmissionDecision(
+                FunctionAdmissionDecisionKind.Granted,
+                new FunctionAdmissionToken(
+                    request.AdmissionId,
+                    "recovery-lease",
+                    "coordinator-incarnation",
+                    DateTimeOffset.MaxValue),
+                FunctionAdmissionRejection.None,
+                0,
+                RequiresActivationFence: true)));
+        var fixture = new GatewayFixture(admissionCoordinator: admissionCoordinator);
+
+        var context = fixture.CreateContext();
+        await fixture.Gateway.InvokeAsync(context, "orders", "items/42");
+
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+        Assert.Equal(1, fixture.Activator.Calls);
+        Assert.True(fixture.Activator.LastForceScaleFence);
+        Assert.Single(fixture.Agent.ExecutedEndpoints);
+    }
+
+    [Fact]
     public async Task Admission_rejection_returns_429_without_activation_or_agent_calls()
     {
         var fixture = new GatewayFixture(
@@ -91,6 +117,184 @@ public sealed class FunctionHttpGatewayTests
         Assert.Equal("pending_limit_exceeded", await ReadErrorCodeAsync(context));
         Assert.Equal(0, fixture.Activator.Calls);
         Assert.Empty(fixture.Agent.ReservedEndpoints);
+    }
+
+    [Fact]
+    public async Task Distributed_public_traffic_rejection_returns_429_without_admission_or_activation()
+    {
+        var traffic = new FakeTrafficCoordinator(
+            (_, _, _) => Task.FromResult(new FunctionTrafficDecision(
+                FunctionTrafficDecisionKind.Rejected,
+                FunctionTrafficRejection.RateLimitExceeded,
+                2500)));
+        var fixture = new GatewayFixture(
+            registrySnapshot: GatewayFixture.Snapshot([]),
+            trafficCoordinator: traffic);
+
+        var context = fixture.CreateContext();
+        await fixture.Gateway.InvokeAsync(context, "orders", "items/42");
+
+        Assert.Equal(StatusCodes.Status429TooManyRequests, context.Response.StatusCode);
+        Assert.Equal("rate_limit_exceeded", await ReadErrorCodeAsync(context));
+        Assert.Equal("3", context.Response.Headers.RetryAfter);
+        Assert.Equal(1, traffic.Calls);
+        Assert.Equal(0, fixture.AdmissionCoordinator.AcquireCalls);
+        Assert.Equal(0, fixture.Activator.Calls);
+        Assert.Empty(fixture.Agent.ReservedEndpoints);
+    }
+
+    [Fact]
+    public async Task Distributed_coordination_unavailable_returns_503_without_activation()
+    {
+        var admissionCoordinator = new FakeAdmissionCoordinator(
+            (_, _, _) => throw new InvalidOperationException("Orleans is unavailable."));
+        var fixture = new GatewayFixture(
+            registrySnapshot: GatewayFixture.Snapshot([]),
+            admissionCoordinator: admissionCoordinator);
+
+        var context = fixture.CreateContext();
+        await fixture.Gateway.InvokeAsync(context, "orders", "items/42");
+
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
+        Assert.Equal("function_coordination_unavailable", await ReadErrorCodeAsync(context));
+        Assert.Equal(1, admissionCoordinator.AcquireCalls);
+        Assert.Equal(0, fixture.Activator.Calls);
+        Assert.Empty(fixture.Agent.ReservedEndpoints);
+    }
+
+    [Fact]
+    public async Task Distributed_revision_quiescing_returns_503_with_retry_after()
+    {
+        var admissionCoordinator = new FakeAdmissionCoordinator(
+            (_, _, _) => Task.FromResult(new FunctionAdmissionDecision(
+                FunctionAdmissionDecisionKind.Rejected,
+                null,
+                FunctionAdmissionRejection.RevisionQuiescing,
+                1500,
+                false)));
+        var fixture = new GatewayFixture(
+            registrySnapshot: GatewayFixture.Snapshot([]),
+            admissionCoordinator: admissionCoordinator);
+
+        var context = fixture.CreateContext();
+        await fixture.Gateway.InvokeAsync(context, "orders", "items/42");
+
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
+        Assert.Equal("revision_scaling", await ReadErrorCodeAsync(context));
+        Assert.Equal("2", context.Response.Headers.RetryAfter);
+        Assert.Equal(0, fixture.Activator.Calls);
+        Assert.Empty(fixture.Agent.ReservedEndpoints);
+    }
+
+    [Theory]
+    [InlineData(FunctionAdmissionRejection.InvalidRequest)]
+    [InlineData(FunctionAdmissionRejection.IdempotencyConflict)]
+    public async Task Invalid_distributed_admission_rejection_returns_503(
+        FunctionAdmissionRejection rejection)
+    {
+        var admissionCoordinator = new FakeAdmissionCoordinator(
+            (_, _, _) => Task.FromResult(new FunctionAdmissionDecision(
+                FunctionAdmissionDecisionKind.Rejected,
+                null,
+                rejection,
+                0,
+                false)));
+        var fixture = new GatewayFixture(admissionCoordinator: admissionCoordinator);
+
+        var context = fixture.CreateContext();
+        await fixture.Gateway.InvokeAsync(context, "orders", "items/42");
+
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
+        Assert.Equal("function_coordination_rejected", await ReadErrorCodeAsync(context));
+        Assert.Empty(fixture.Agent.ReservedEndpoints);
+    }
+
+    [Fact]
+    public async Task Granted_distributed_admission_without_token_returns_503()
+    {
+        var admissionCoordinator = new FakeAdmissionCoordinator(
+            (_, _, _) => Task.FromResult(new FunctionAdmissionDecision(
+                FunctionAdmissionDecisionKind.Granted,
+                null,
+                FunctionAdmissionRejection.None,
+                0,
+                false)));
+        var fixture = new GatewayFixture(admissionCoordinator: admissionCoordinator);
+
+        var context = fixture.CreateContext();
+        await fixture.Gateway.InvokeAsync(context, "orders", "items/42");
+
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
+        Assert.Equal("function_coordination_rejected", await ReadErrorCodeAsync(context));
+        Assert.Empty(fixture.Agent.ReservedEndpoints);
+    }
+
+    [Fact]
+    public async Task Lost_admission_heartbeat_aborts_a_pending_body_upload()
+    {
+        var admissionCoordinator = new FakeAdmissionCoordinator(
+            renew: (_, _, _) => Task.FromResult(new FunctionAdmissionRenewalDecision(
+                FunctionAdmissionRenewalDecisionKind.Stale,
+                null)),
+            tokenLifetime: TimeSpan.FromSeconds(3));
+        var fixture = new GatewayFixture(admissionCoordinator: admissionCoordinator);
+        var context = fixture.CreateContext();
+        context.Request.ContentLength = 1;
+        context.Request.Body = new BlockingRequestBodyStream();
+
+        await fixture.Gateway.InvokeAsync(context, "orders", "items/42");
+
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
+        Assert.Equal("function_coordination_lost", await ReadErrorCodeAsync(context));
+        Assert.Equal(1, admissionCoordinator.RenewCalls);
+        Assert.Equal(0, fixture.Activator.Calls);
+        Assert.Empty(fixture.Agent.ReservedEndpoints);
+        AssertExactAdmissionRelease(admissionCoordinator);
+    }
+
+    [Fact]
+    public async Task Request_body_timeout_releases_admission_while_heartbeat_is_healthy()
+    {
+        var options = GatewayFixture.CreateOptions();
+        options.RequestBodyTimeoutSeconds = 1;
+        var admissionCoordinator = new FakeAdmissionCoordinator(
+            tokenLifetime: TimeSpan.FromSeconds(3));
+        var fixture = new GatewayFixture(
+            options: options,
+            admissionCoordinator: admissionCoordinator);
+        var context = fixture.CreateContext();
+        context.Request.ContentLength = 1;
+        context.Request.Body = new BlockingRequestBodyStream();
+
+        await fixture.Gateway.InvokeAsync(context, "orders", "items/42");
+
+        Assert.Equal(StatusCodes.Status408RequestTimeout, context.Response.StatusCode);
+        Assert.Equal("request_body_timeout", await ReadErrorCodeAsync(context));
+        Assert.True(admissionCoordinator.RenewCalls >= 1);
+        Assert.Equal(0, fixture.Activator.Calls);
+        Assert.Empty(fixture.Agent.ReservedEndpoints);
+        AssertExactAdmissionRelease(admissionCoordinator);
+    }
+
+    [Fact]
+    public async Task Accepted_execute_releases_exact_distributed_admission_before_observe()
+    {
+        var admissionCoordinator = new FakeAdmissionCoordinator();
+        var releaseWasVisibleAtObserve = false;
+        var agent = new RecordingAgentClient
+        {
+            ObserveStarted = () => releaseWasVisibleAtObserve = admissionCoordinator.Releases.Count == 1
+        };
+        var fixture = new GatewayFixture(
+            agent: agent,
+            admissionCoordinator: admissionCoordinator);
+
+        var context = fixture.CreateContext();
+        await fixture.Gateway.InvokeAsync(context, "orders", "items/42");
+
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+        Assert.True(releaseWasVisibleAtObserve);
+        AssertExactAdmissionRelease(admissionCoordinator);
     }
 
     [Fact]
@@ -126,13 +330,17 @@ public sealed class FunctionHttpGatewayTests
     {
         var first = new FunctionEndpoint("10.0.0.1", 8080, "pod-1");
         var second = new FunctionEndpoint("10.0.0.2", 8080, "pod-2");
+        var admissionCoordinator = new FakeAdmissionCoordinator();
+        var releaseWasVisibleAtObserve = false;
         var agent = new RecordingAgentClient
         {
-            ExecuteHandler = (_, _, _) => throw new HttpRequestException("response was lost")
+            ExecuteHandler = (_, _, _) => throw new HttpRequestException("response was lost"),
+            ObserveStarted = () => releaseWasVisibleAtObserve = admissionCoordinator.Releases.Count == 1
         };
         var fixture = new GatewayFixture(
             registrySnapshot: GatewayFixture.Snapshot([first, second]),
-            agent: agent);
+            agent: agent,
+            admissionCoordinator: admissionCoordinator);
 
         var context = fixture.CreateContext();
         await fixture.Gateway.InvokeAsync(context, "orders", "items/42");
@@ -141,6 +349,8 @@ public sealed class FunctionHttpGatewayTests
         Assert.Equal(first, Assert.Single(agent.ReservedEndpoints));
         Assert.Equal(first, Assert.Single(agent.ExecutedEndpoints));
         Assert.Equal(first, Assert.Single(agent.ObservedEndpoints));
+        Assert.True(releaseWasVisibleAtObserve);
+        AssertExactAdmissionRelease(admissionCoordinator);
     }
 
     [Fact]
@@ -336,6 +546,22 @@ public sealed class FunctionHttpGatewayTests
         return document.RootElement.GetProperty("code").GetString()!;
     }
 
+    private static void AssertExactAdmissionRelease(FakeAdmissionCoordinator coordinator)
+    {
+        Assert.NotNull(coordinator.LastAcquireRequest);
+        Assert.NotNull(coordinator.LastGrantedToken);
+        var acquired = coordinator.LastAcquireRequest;
+        var granted = coordinator.LastGrantedToken;
+        var release = Assert.Single(coordinator.Releases);
+        Assert.Equal(acquired.AdmissionId, granted.AdmissionId);
+        Assert.Equal(granted.AdmissionId, release.Request.AdmissionId);
+        Assert.Equal(granted.LeaseId, release.Request.LeaseId);
+        Assert.Equal(granted.CoordinatorIncarnation, release.Request.CoordinatorIncarnation);
+        Assert.Equal("tenant-1", release.Key.TenantId);
+        Assert.Equal("507f1f77bcf86cd799439011", release.Key.FunctionAppId);
+        Assert.Equal("507f1f77bcf86cd799439012", release.Key.RevisionId);
+    }
+
     private sealed class GatewayFixture
     {
         private static readonly FunctionEndpoint DefaultEndpoint = new("10.0.0.1", 8080, "pod-1");
@@ -346,7 +572,9 @@ public sealed class FunctionHttpGatewayTests
             RecordingAgentClient? agent = null,
             IFunctionPendingAdmissionLimiter? admission = null,
             FunctionGatewayOptions? options = null,
-            IFunctionMeterWriter? meterWriter = null)
+            IFunctionMeterWriter? meterWriter = null,
+            FakeAdmissionCoordinator? admissionCoordinator = null,
+            FakeTrafficCoordinator? trafficCoordinator = null)
         {
             Options = options ?? CreateOptions();
             var resolved = CreateResolvedRoute();
@@ -355,6 +583,8 @@ public sealed class FunctionHttpGatewayTests
             Activator = new RecordingActivator(activationSnapshot ?? Snapshot([DefaultEndpoint]));
             Agent = agent ?? new RecordingAgentClient();
             Meter = new RecordingMeterWriter();
+            AdmissionCoordinator = admissionCoordinator ?? new FakeAdmissionCoordinator();
+            TrafficCoordinator = trafficCoordinator ?? new FakeTrafficCoordinator();
             Gateway = new FunctionHttpGateway(
                 Resolver,
                 Registry,
@@ -363,6 +593,8 @@ public sealed class FunctionHttpGatewayTests
                 Agent,
                 admission ?? new FunctionPendingAdmissionLimiter(Options),
                 new AllowingPublicRateLimiter(),
+                AdmissionCoordinator,
+                TrafficCoordinator,
                 meterWriter ?? Meter,
                 Options,
                 TimeProvider.System);
@@ -374,6 +606,8 @@ public sealed class FunctionHttpGatewayTests
         public RecordingActivator Activator { get; }
         public RecordingAgentClient Agent { get; }
         public RecordingMeterWriter Meter { get; }
+        public FakeAdmissionCoordinator AdmissionCoordinator { get; }
+        public FakeTrafficCoordinator TrafficCoordinator { get; }
         public FunctionHttpGateway Gateway { get; }
 
         public DefaultHttpContext CreateContext(
@@ -493,13 +727,16 @@ public sealed class FunctionHttpGatewayTests
     private sealed class RecordingActivator(FunctionEndpointSnapshot snapshot) : IFunctionRevisionActivator
     {
         public int Calls { get; private set; }
+        public bool LastForceScaleFence { get; private set; }
 
         public Task<Result<FunctionEndpointSnapshot>> EnsureActiveAsync(
             FunctionApp app,
             FunctionRevision revision,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            bool forceScaleFence = false)
         {
             Calls++;
+            LastForceScaleFence = forceScaleFence;
             return Task.FromResult<Result<FunctionEndpointSnapshot>>(snapshot);
         }
     }
@@ -510,14 +747,132 @@ public sealed class FunctionHttpGatewayTests
             string revisionId,
             string handlerName,
             long reservedBytes) => null;
-        public FunctionPendingAdmissionSnapshot GetSnapshot(string revisionId) =>
-            FunctionPendingAdmissionSnapshot.Empty;
-        public FunctionScaleDownLease? TryBeginScaleDown(string revisionId) => null;
     }
 
     private sealed class AllowingPublicRateLimiter : IFunctionPublicRateLimiter
     {
         public bool TryAcquire(string functionRoute) => true;
+    }
+
+    private sealed record RecordedAdmissionRelease(
+        FunctionRevisionCoordinationKey Key,
+        FunctionAdmissionReleaseRequest Request);
+
+    private sealed class FakeAdmissionCoordinator(
+        Func<FunctionRevisionCoordinationKey, FunctionAdmissionRequest, CancellationToken,
+            Task<FunctionAdmissionDecision>>? acquire = null,
+        Func<FunctionRevisionCoordinationKey, FunctionAdmissionRenewalRequest, CancellationToken,
+            Task<FunctionAdmissionRenewalDecision>>? renew = null,
+        TimeSpan? tokenLifetime = null) : IFunctionAdmissionCoordinator
+    {
+        public int AcquireCalls { get; private set; }
+        public int RenewCalls { get; private set; }
+        public FunctionAdmissionRequest? LastAcquireRequest { get; private set; }
+        public FunctionAdmissionToken? LastGrantedToken { get; private set; }
+        public List<RecordedAdmissionRelease> Releases { get; } = [];
+
+        public async Task<FunctionAdmissionDecision> AcquireAsync(
+            FunctionRevisionCoordinationKey key,
+            FunctionAdmissionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            AcquireCalls++;
+            LastAcquireRequest = request;
+            if (acquire is not null)
+                return await acquire(key, request, cancellationToken);
+
+            LastGrantedToken = new FunctionAdmissionToken(
+                request.AdmissionId,
+                "admission-lease",
+                "coordinator-incarnation",
+                tokenLifetime is { } lifetime
+                    ? DateTimeOffset.UtcNow.Add(lifetime)
+                    : DateTimeOffset.MaxValue);
+            return new FunctionAdmissionDecision(
+                FunctionAdmissionDecisionKind.Granted,
+                LastGrantedToken,
+                FunctionAdmissionRejection.None,
+                0,
+                false);
+        }
+
+        public Task<FunctionAdmissionRenewalDecision> RenewAsync(
+            FunctionRevisionCoordinationKey key,
+            FunctionAdmissionRenewalRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            RenewCalls++;
+            return renew?.Invoke(key, request, cancellationToken) ??
+                   Task.FromResult(new FunctionAdmissionRenewalDecision(
+                       FunctionAdmissionRenewalDecisionKind.Renewed,
+                       request.Token with
+                       {
+                           ExpiresAtUtc = tokenLifetime is { } lifetime
+                               ? DateTimeOffset.UtcNow.Add(lifetime)
+                               : DateTimeOffset.MaxValue
+                       }));
+        }
+
+        public Task<FunctionAdmissionReleaseDecision> ReleaseAsync(
+            FunctionRevisionCoordinationKey key,
+            FunctionAdmissionReleaseRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            Releases.Add(new RecordedAdmissionRelease(key, request));
+            return Task.FromResult(FunctionAdmissionReleaseDecision.Released);
+        }
+
+        public Task<FunctionRevisionCoordinatorSnapshot> GetSnapshotAsync(
+            FunctionRevisionCoordinationKey key,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class BlockingRequestBodyStream : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return 0;
+        }
+
+        public override void Flush() => throw new NotSupportedException();
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    private sealed class FakeTrafficCoordinator(
+        Func<FunctionAppCoordinationKey, FunctionTrafficRequest, CancellationToken,
+            Task<FunctionTrafficDecision>>? acquire = null) : IFunctionTrafficCoordinator
+    {
+        public int Calls { get; private set; }
+
+        public Task<FunctionTrafficDecision> TryAcquireAsync(
+            FunctionAppCoordinationKey key,
+            FunctionTrafficRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return acquire?.Invoke(key, request, cancellationToken) ??
+                   Task.FromResult(new FunctionTrafficDecision(
+                       FunctionTrafficDecisionKind.Granted,
+                       FunctionTrafficRejection.None,
+                       0));
+        }
     }
 
     private sealed class RecordingMeterWriter : IFunctionMeterWriter
@@ -583,6 +938,7 @@ public sealed class FunctionHttpGatewayTests
         public HttpFunctionInvocationResult CompletionResult { get; init; } =
             new(StatusCodes.Status200OK, [], Encoding.UTF8.GetBytes("ok"));
         public string? ObservedAgentInstanceId { get; init; }
+        public Action? ObserveStarted { get; init; }
 
         public Task<FunctionAgentProtocolResponse<FunctionAgentMetadataResponse>> GetMetadataAsync(
             FunctionEndpoint endpoint,
@@ -638,6 +994,7 @@ public sealed class FunctionHttpGatewayTests
             int waitUpToMilliseconds,
             CancellationToken cancellationToken)
         {
+            ObserveStarted?.Invoke();
             ObservedEndpoints.Add(endpoint);
             var response = ObserveHandler?.Invoke(endpoint, attemptId) ??
                            new FunctionAgentProtocolResponse<FunctionAttemptStatusResponse>(

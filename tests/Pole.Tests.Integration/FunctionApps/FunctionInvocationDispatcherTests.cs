@@ -8,6 +8,7 @@ using MongoDB.Driver;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Activation;
 using Pole.Features.Functions.Runtime.Agent;
+using Pole.Features.Functions.Runtime.Coordination;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Timers;
 using Pole.Functions.Protocol;
@@ -48,7 +49,8 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
             }
         };
 
-        await CreateDispatcher(agent).RunOnceAsync(CancellationToken.None);
+        var admission = new RecordingAdmissionCoordinator();
+        await CreateDispatcher(agent, admission: admission).RunOnceAsync(CancellationToken.None);
 
         Assert.True(observedRunning);
         var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
@@ -88,6 +90,14 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         Assert.Equal(Now, payload.FiredAtUtc);
         Assert.Equal(invocation.IsPastDue, payload.IsPastDue);
         Assert.Equal(invocation.MissedOccurrenceCount, payload.MissedOccurrenceCount);
+        var admissionRequest = Assert.Single(admission.AcquireRequests);
+        Assert.Equal(invocation.Id, admissionRequest.Request.InvocationId);
+        Assert.Equal(FunctionAdmissionTriggerKind.Timer, admissionRequest.Request.TriggerKind);
+        Assert.Equal(0, admissionRequest.Request.ReservedBytes);
+        Assert.Equal($"timer:{CreateAttemptId(invocation.Id, 1)}", admissionRequest.Request.AdmissionId);
+        var release = Assert.Single(admission.ReleaseRequests);
+        Assert.Equal(admissionRequest.Token.LeaseId, release.Request.LeaseId);
+        Assert.Equal(admissionRequest.Token.CoordinatorIncarnation, release.Request.CoordinatorIncarnation);
     }
 
     [Fact]
@@ -207,7 +217,9 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
             ObserveHandler = (_, _) => throw new HttpRequestException("Agent remains unreachable.")
         };
 
-        await CreateDispatcher(agent, [FirstEndpoint, SecondEndpoint]).RunOnceAsync(CancellationToken.None);
+        var admission = new RecordingAdmissionCoordinator();
+        await CreateDispatcher(agent, [FirstEndpoint, SecondEndpoint], admission)
+            .RunOnceAsync(CancellationToken.None);
 
         Assert.Equal(new[] { FirstEndpoint }, agent.ReservedEndpoints);
         Assert.Equal(new[] { FirstEndpoint }, agent.ExecutedEndpoints);
@@ -218,11 +230,243 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         Assert.NotNull(persisted.Lease);
         Assert.Equal(0, await DbContext.FunctionMeterEvents.CountDocumentsAsync(
             candidate => candidate.InvocationId == invocation.Id));
+        Assert.Single(admission.ReleaseRequests);
     }
+
+    [Fact]
+    public async Task Admission_rejection_with_one_user_attempt_defers_without_consuming_attempt_budget()
+    {
+        var subject = CreateSubject();
+        var invocation = CreateInvocation(subject, retry: new FunctionRetryPolicy(1, []));
+        await InsertAsync(subject, invocation);
+        var agent = new RecordingAgentClient();
+        var admission = new RecordingAdmissionCoordinator
+        {
+            AcquireHandler = (_, _) => Task.FromResult(new FunctionAdmissionDecision(
+                FunctionAdmissionDecisionKind.Rejected,
+                null,
+                FunctionAdmissionRejection.RevisionQuiescing,
+                1000,
+                false))
+        };
+
+        await CreateDispatcher(agent, admission: admission).RunOnceAsync(CancellationToken.None);
+
+        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+            .SingleAsync();
+        Assert.Equal(FunctionInvocationState.Pending, persisted.State);
+        Assert.Equal(1, persisted.AttemptNumber);
+        Assert.Equal(Now.AddSeconds(1), persisted.NextAttemptAtUtc);
+        Assert.Equal("function_revision_scaling", persisted.Error?.Code);
+        Assert.Empty(agent.ReservedEndpoints);
+        Assert.Empty(agent.ExecutedEndpoints);
+        Assert.Empty(admission.ReleaseRequests);
+
+        var retryAgent = new RecordingAgentClient();
+        await CreateDispatcher(
+                retryAgent,
+                admission: new RecordingAdmissionCoordinator(),
+                timeProvider: new FixedTimeProvider(Now.AddSeconds(1)))
+            .RunOnceAsync(CancellationToken.None);
+
+        var completed = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+            .SingleAsync();
+        Assert.Equal(FunctionInvocationState.Succeeded, completed.State);
+        Assert.Equal(1, completed.AttemptNumber);
+        Assert.Equal(1, Assert.Single(retryAgent.ReserveRequests).Attempt.AttemptNumber);
+    }
+
+    [Fact]
+    public async Task Agent_capacity_before_start_defers_without_consuming_user_attempt()
+    {
+        var subject = CreateSubject();
+        var invocation = CreateInvocation(subject, retry: new FunctionRetryPolicy(1, []));
+        await InsertAsync(subject, invocation);
+        var agent = new RecordingAgentClient
+        {
+            ReserveHandler = (_, _) => Task.FromResult(
+                new FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse>(
+                    HttpStatusCode.TooManyRequests,
+                    Value: null,
+                    Error: new FunctionProtocolError(
+                        PoleFunctionProtocolErrors.CapacityExhausted,
+                        "Agent capacity is exhausted.",
+                        Retryable: true)))
+        };
+        var admission = new RecordingAdmissionCoordinator();
+
+        await CreateDispatcher(agent, [FirstEndpoint, SecondEndpoint], admission)
+            .RunOnceAsync(CancellationToken.None);
+
+        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+            .SingleAsync();
+        Assert.Equal(FunctionInvocationState.Pending, persisted.State);
+        Assert.Equal(1, persisted.AttemptNumber);
+        Assert.Equal(PoleFunctionProtocolErrors.CapacityExhausted, persisted.Error?.Code);
+        Assert.Equal(Now.AddSeconds(1), persisted.NextAttemptAtUtc);
+        Assert.Equal(2, agent.ReservedEndpoints.Count);
+        Assert.Empty(agent.ExecutedEndpoints);
+        Assert.Single(admission.ReleaseRequests);
+    }
+
+    [Fact]
+    public async Task Activation_failure_defers_without_consuming_user_attempt()
+    {
+        var subject = CreateSubject();
+        var invocation = CreateInvocation(subject, retry: new FunctionRetryPolicy(1, []));
+        await InsertAsync(subject, invocation);
+        var agent = new RecordingAgentClient();
+        var admission = new RecordingAdmissionCoordinator();
+
+        await CreateDispatcher(
+                agent,
+                endpoints: [],
+                admission: admission,
+                activator: new FailingActivator())
+            .RunOnceAsync(CancellationToken.None);
+
+        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+            .SingleAsync();
+        Assert.Equal(FunctionInvocationState.Pending, persisted.State);
+        Assert.Equal(1, persisted.AttemptNumber);
+        Assert.Equal("activation_failed", persisted.Error?.Code);
+        Assert.Equal(Now.AddSeconds(1), persisted.NextAttemptAtUtc);
+        Assert.Empty(agent.ReservedEndpoints);
+        Assert.Single(admission.ReleaseRequests);
+    }
+
+    [Fact]
+    public async Task Blocking_agent_reservation_is_cancelled_at_execution_deadline_and_deferred()
+    {
+        var subject = CreateSubject();
+        var invocation = CreateInvocation(subject, retry: new FunctionRetryPolicy(1, []));
+        await InsertAsync(subject, invocation);
+        var agent = new RecordingAgentClient { BlockReservationUntilCancellation = true };
+        var admission = new RecordingAdmissionCoordinator();
+
+        await CreateDispatcher(
+                agent,
+                admission: admission,
+                options: DeadlineTestOptions(),
+                timeProvider: TimeProvider.System)
+            .RunOnceAsync(CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(agent.ReservationCancellationObserved);
+        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+            .SingleAsync();
+        Assert.Equal(FunctionInvocationState.Pending, persisted.State);
+        Assert.Equal(1, persisted.AttemptNumber);
+        Assert.Equal("execution_deadline_exceeded", persisted.Error?.Code);
+        Assert.NotNull(persisted.NextAttemptAtUtc);
+        Assert.Null(persisted.Lease);
+        Assert.Empty(agent.ExecutedEndpoints);
+        Assert.Single(admission.ReleaseRequests);
+    }
+
+    [Fact]
+    public async Task Blocking_agent_execution_is_cancelled_at_deadline_and_left_ambiguous()
+    {
+        var subject = CreateSubject();
+        var invocation = CreateInvocation(subject, retry: new FunctionRetryPolicy(1, []));
+        await InsertAsync(subject, invocation);
+        var agent = new RecordingAgentClient { BlockExecutionUntilCancellation = true };
+        var admission = new RecordingAdmissionCoordinator();
+
+        await CreateDispatcher(
+                agent,
+                admission: admission,
+                options: DeadlineTestOptions(),
+                timeProvider: TimeProvider.System)
+            .RunOnceAsync(CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(agent.ExecutionCancellationObserved);
+        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+            .SingleAsync();
+        Assert.Equal(FunctionInvocationState.Dispatching, persisted.State);
+        Assert.Equal(1, persisted.AttemptNumber);
+        Assert.NotNull(persisted.Lease);
+        Assert.Empty(agent.ObservedEndpoints);
+        Assert.Single(admission.ReleaseRequests);
+    }
+
+    [Fact]
+    public async Task Blocking_agent_observation_is_cancelled_at_execution_deadline()
+    {
+        var subject = CreateSubject();
+        var invocation = CreateInvocation(subject, retry: new FunctionRetryPolicy(1, []));
+        await InsertAsync(subject, invocation);
+        var agent = new RecordingAgentClient
+        {
+            BlockObservationUntilCancellation = true,
+            StartedAtUtc = DateTimeOffset.UtcNow
+        };
+        var admission = new RecordingAdmissionCoordinator();
+
+        await CreateDispatcher(
+                agent,
+                admission: admission,
+                options: DeadlineTestOptions(),
+                timeProvider: TimeProvider.System)
+            .RunOnceAsync(CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(agent.ObservationCancellationObserved);
+        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+            .SingleAsync();
+        Assert.Equal(FunctionInvocationState.Running, persisted.State);
+        Assert.Equal(1, persisted.AttemptNumber);
+        Assert.NotNull(persisted.Lease);
+        Assert.Single(admission.ReleaseRequests);
+    }
+
+    [Fact]
+    public async Task Lost_admission_lease_cancels_pre_start_agent_call_without_consuming_attempt()
+    {
+        var subject = CreateSubject();
+        var invocation = CreateInvocation(subject, retry: new FunctionRetryPolicy(1, []));
+        await InsertAsync(subject, invocation);
+        var agent = new RecordingAgentClient { BlockReservationUntilCancellation = true };
+        var admission = new RecordingAdmissionCoordinator
+        {
+            TokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(3)
+        };
+        var options = DeadlineTestOptions();
+        options.ExecutionTimeoutSeconds = 10;
+
+        await CreateDispatcher(
+                agent,
+                admission: admission,
+                options: options,
+                timeProvider: TimeProvider.System)
+            .RunOnceAsync(CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(agent.ReservationCancellationObserved);
+        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+            .SingleAsync();
+        Assert.Equal(FunctionInvocationState.Pending, persisted.State);
+        Assert.Equal(1, persisted.AttemptNumber);
+        Assert.Equal("function_coordination_lost", persisted.Error?.Code);
+        Assert.Null(persisted.Lease);
+        Assert.Empty(agent.ExecutedEndpoints);
+    }
+
+    private static FunctionTimerOptions DeadlineTestOptions() => new()
+    {
+        BatchSize = 10,
+        DispatchLeaseSeconds = 180,
+        ExecutionTimeoutSeconds = 1
+    };
 
     private FunctionInvocationDispatcher CreateDispatcher(
         RecordingAgentClient agent,
-        IReadOnlyList<FunctionEndpoint>? endpoints = null)
+        IReadOnlyList<FunctionEndpoint>? endpoints = null,
+        RecordingAdmissionCoordinator? admission = null,
+        FunctionTimerOptions? options = null,
+        TimeProvider? timeProvider = null,
+        IFunctionRevisionActivator? activator = null)
     {
         var snapshot = new FunctionEndpointSnapshot(
             new FunctionServiceKey("pole-tenant-rg", "function-cleanup-agent"),
@@ -232,15 +476,16 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
             DbContext,
             new StubEndpointRegistry(snapshot),
             new SnapshotOrderEndpointSelector(),
-            new UnexpectedActivator(),
+            activator ?? new UnexpectedActivator(),
             agent,
-            new FunctionTimerOptions
+            admission ?? new RecordingAdmissionCoordinator(),
+            options ?? new FunctionTimerOptions
             {
                 BatchSize = 10,
-                DispatchLeaseSeconds = 30,
+                DispatchLeaseSeconds = 180,
                 ExecutionTimeoutSeconds = 10
             },
-            new FixedTimeProvider(Now),
+            timeProvider ?? new FixedTimeProvider(Now),
             NullLogger<FunctionInvocationDispatcher>.Instance);
     }
 
@@ -346,6 +591,10 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
     }
 
+    private static string CreateAttemptId(string invocationId, int attemptNumber) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{invocationId}:{attemptNumber}")))
+            .ToLowerInvariant();
+
     private sealed record FunctionSubject(
         FunctionApp App,
         FunctionRevision Revision,
@@ -369,8 +618,74 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         public Task<Result<FunctionEndpointSnapshot>> EnsureActiveAsync(
             FunctionApp app,
             FunctionRevision revision,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+            bool forceScaleFence = false) =>
             throw new InvalidOperationException("A ready endpoint snapshot should not activate the revision.");
+    }
+
+    private sealed class FailingActivator : IFunctionRevisionActivator
+    {
+        public Task<Result<FunctionEndpointSnapshot>> EnsureActiveAsync(
+            FunctionApp app,
+            FunctionRevision revision,
+            CancellationToken cancellationToken = default,
+            bool forceScaleFence = false) =>
+            Task.FromResult<Result<FunctionEndpointSnapshot>>(
+                Failures.ExternalService(
+                    "Function activation is temporarily unavailable.",
+                    "FunctionRuntime",
+                    string.Empty));
+    }
+
+    private sealed class RecordingAdmissionCoordinator : IFunctionAdmissionCoordinator
+    {
+        public List<(FunctionRevisionCoordinationKey Key, FunctionAdmissionRequest Request,
+            FunctionAdmissionToken Token)> AcquireRequests { get; } = [];
+        public List<(FunctionRevisionCoordinationKey Key, FunctionAdmissionReleaseRequest Request)> ReleaseRequests
+            { get; } = [];
+
+        public Func<FunctionRevisionCoordinationKey, FunctionAdmissionRequest,
+            Task<FunctionAdmissionDecision>>? AcquireHandler { get; init; }
+        public DateTimeOffset TokenExpiresAtUtc { get; init; } = Now.AddYears(1);
+
+        public async Task<FunctionAdmissionDecision> AcquireAsync(
+            FunctionRevisionCoordinationKey key,
+            FunctionAdmissionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (AcquireHandler is not null)
+                return await AcquireHandler(key, request);
+            var token = new FunctionAdmissionToken(
+                request.AdmissionId,
+                Guid.NewGuid().ToString("N"),
+                "coordinator-1",
+                TokenExpiresAtUtc);
+            AcquireRequests.Add((key, request, token));
+            return new FunctionAdmissionDecision(
+                FunctionAdmissionDecisionKind.Granted,
+                token,
+                FunctionAdmissionRejection.None,
+                0,
+                false);
+        }
+
+        public Task<FunctionAdmissionRenewalDecision> RenewAsync(
+            FunctionRevisionCoordinationKey key,
+            FunctionAdmissionRenewalRequest request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<FunctionAdmissionReleaseDecision> ReleaseAsync(
+            FunctionRevisionCoordinationKey key,
+            FunctionAdmissionReleaseRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ReleaseRequests.Add((key, request));
+            return Task.FromResult(FunctionAdmissionReleaseDecision.Released);
+        }
+
+        public Task<FunctionRevisionCoordinatorSnapshot> GetSnapshotAsync(
+            FunctionRevisionCoordinationKey key,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class RecordingAgentClient : IFunctionAgentClient
@@ -380,6 +695,13 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         public List<FunctionEndpoint> ObservedEndpoints { get; } = [];
         public List<ReserveFunctionAttemptRequest> ReserveRequests { get; } = [];
         public List<ExecuteFunctionAttemptRequest> ExecuteRequests { get; } = [];
+        public bool BlockReservationUntilCancellation { get; init; }
+        public bool BlockExecutionUntilCancellation { get; init; }
+        public bool BlockObservationUntilCancellation { get; init; }
+        public bool ReservationCancellationObserved { get; private set; }
+        public bool ExecutionCancellationObserved { get; private set; }
+        public bool ObservationCancellationObserved { get; private set; }
+        public DateTimeOffset StartedAtUtc { get; init; } = Now;
 
         public Func<FunctionEndpoint, ReserveFunctionAttemptRequest,
             Task<FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse>>>? ReserveHandler { get; init; }
@@ -409,6 +731,8 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         {
             ReservedEndpoints.Add(endpoint);
             ReserveRequests.Add(request);
+            if (BlockReservationUntilCancellation)
+                return BlockReservationAsync(cancellationToken);
             return ReserveHandler?.Invoke(endpoint, request) ?? Task.FromResult(new FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse>(
                 HttpStatusCode.OK,
                 new ReserveFunctionAttemptResponse(
@@ -430,11 +754,13 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         {
             ExecutedEndpoints.Add(endpoint);
             ExecuteRequests.Add(request);
+            if (BlockExecutionUntilCancellation)
+                return BlockExecutionAsync(cancellationToken);
             return ExecuteHandler?.Invoke(endpoint, attemptId, request) ?? Task.FromResult(new FunctionAgentProtocolResponse<StartFunctionAttemptResponse>(
                 HttpStatusCode.Accepted,
                 new StartFunctionAttemptResponse(
                     attemptId,
-                    Now,
+                    StartedAtUtc,
                     IsReplay: false,
                     StatusUrl: PoleFunctionProtocol.AttemptStatusPath(attemptId)),
                 Error: null));
@@ -449,8 +775,55 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
             CancellationToken cancellationToken)
         {
             ObservedEndpoints.Add(endpoint);
+            if (BlockObservationUntilCancellation)
+                return BlockObservationAsync(cancellationToken);
             return ObserveHandler?.Invoke(endpoint, attemptId) ??
                    Task.FromResult(SuccessfulCompletion(endpoint, attemptId));
+        }
+
+        private async Task<FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse>> BlockReservationAsync(
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                throw new InvalidOperationException("An infinite Agent reservation delay completed unexpectedly.");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                ReservationCancellationObserved = true;
+                throw;
+            }
+        }
+
+        private async Task<FunctionAgentProtocolResponse<StartFunctionAttemptResponse>> BlockExecutionAsync(
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                throw new InvalidOperationException("An infinite Agent execution delay completed unexpectedly.");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                ExecutionCancellationObserved = true;
+                throw;
+            }
+        }
+
+        private async Task<FunctionAgentProtocolResponse<FunctionAttemptStatusResponse>> BlockObservationAsync(
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                throw new InvalidOperationException("An infinite Agent observation delay completed unexpectedly.");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                ObservationCancellationObserved = true;
+                throw;
+            }
         }
     }
 

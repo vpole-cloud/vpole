@@ -8,6 +8,7 @@ using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Activation;
 using Pole.Features.Functions.Runtime.Agent;
+using Pole.Features.Functions.Runtime.Coordination;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Functions.Protocol;
@@ -25,6 +26,7 @@ public sealed class FunctionInvocationDispatcher(
     IFunctionEndpointSelector endpointSelector,
     IFunctionRevisionActivator activator,
     IFunctionAgentClient agentClient,
+    IFunctionAdmissionCoordinator admissionCoordinator,
     FunctionTimerOptions options,
     TimeProvider timeProvider,
     ILogger<FunctionInvocationDispatcher> logger) : IFunctionInvocationDispatcher
@@ -87,9 +89,10 @@ public sealed class FunctionInvocationDispatcher(
         {
             var now = timeProvider.GetUtcNow();
             var candidate = await dbContext.FunctionInvocations.Find(invocation =>
-                    invocation.State == FunctionInvocationState.Pending ||
-                    invocation.State == FunctionInvocationState.RetryScheduled &&
-                    invocation.NextAttemptAtUtc <= now)
+                    (invocation.State == FunctionInvocationState.Pending &&
+                     (invocation.NextAttemptAtUtc == null || invocation.NextAttemptAtUtc <= now)) ||
+                    (invocation.State == FunctionInvocationState.RetryScheduled &&
+                     invocation.NextAttemptAtUtc <= now))
                 .SortBy(invocation => invocation.NextAttemptAtUtc)
                 .ThenBy(invocation => invocation.CreatedAtUtc)
                 .FirstOrDefaultAsync(cancellationToken);
@@ -119,6 +122,7 @@ public sealed class FunctionInvocationDispatcher(
 
     private async Task DispatchAsync(FunctionInvocation invocation, CancellationToken cancellationToken)
     {
+        FunctionAdmissionLease? admissionLease = null;
         try
         {
             var app = await dbContext.FunctionApps.Find(candidate =>
@@ -145,26 +149,126 @@ public sealed class FunctionInvocationDispatcher(
                 return;
             }
 
-            var subject = new FunctionRevisionInKubernetes(app, revision);
-            var service = new FunctionServiceKey(subject.Namespace, subject.ServiceName);
-            var snapshot = endpointRegistry.GetSnapshot(service);
-            if (!snapshot.HasReadyEndpoints)
+            var attemptId = CreateAttemptId(invocation.Id, invocation.AttemptNumber);
+            var coordinationKey = new FunctionRevisionCoordinationKey(
+                invocation.TenantId,
+                invocation.FunctionAppId,
+                invocation.RevisionId);
+            FunctionAdmissionDecision admission;
+            try
             {
-                var activation = await activator.EnsureActiveAsync(app, revision, cancellationToken);
-                if (!activation.TryGetValue(out snapshot, out var activationFailure))
-                {
-                    await CompleteFailureAsync(
-                        invocation,
-                        FunctionInvocationError.Create(
-                            "activation_failed",
-                            activationFailure.Message,
-                            retryable: true),
-                        cancellationToken);
-                    return;
-                }
+                admission = await admissionCoordinator.AcquireAsync(
+                    coordinationKey,
+                    new FunctionAdmissionRequest(
+                        $"timer:{attemptId}",
+                        invocation.Id,
+                        invocation.HandlerName,
+                        FunctionAdmissionTriggerKind.Timer,
+                        ReservedBytes: 0),
+                    cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch
+            {
+                await DeferDispatchAsync(
+                    invocation,
+                    FunctionInvocationError.Create(
+                        "function_coordination_unavailable",
+                        "Function invocation coordination is temporarily unavailable.",
+                        retryable: true),
+                    TimeSpan.FromSeconds(RetryDelaySeconds(invocation)),
+                    cancellationToken);
+                return;
             }
 
-            var attemptId = CreateAttemptId(invocation.Id, invocation.AttemptNumber);
+            if (admission.Kind != FunctionAdmissionDecisionKind.Granted ||
+                admission.Token is not { } admissionToken)
+            {
+                var retryDelay = admission.RetryAfterMilliseconds > 0
+                    ? TimeSpan.FromMilliseconds(admission.RetryAfterMilliseconds)
+                    : TimeSpan.FromSeconds(RetryDelaySeconds(invocation));
+                await DeferDispatchAsync(
+                    invocation,
+                    FunctionInvocationError.Create(
+                        admission.Rejection == FunctionAdmissionRejection.RevisionQuiescing
+                            ? "function_revision_scaling"
+                            : "function_admission_rejected",
+                        admission.Rejection == FunctionAdmissionRejection.RevisionQuiescing
+                            ? "The Function revision is completing a scaling transition."
+                            : "Function invocation admission was temporarily rejected.",
+                        retryable: true),
+                    retryDelay,
+                    cancellationToken);
+                return;
+            }
+            admissionLease = new FunctionAdmissionLease(
+                admissionCoordinator,
+                coordinationKey,
+                admissionToken,
+                timeProvider);
+            using var admissionOwnership = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                admissionLease.LeaseLostToken);
+
+            FunctionEndpointSnapshot snapshot;
+            try
+            {
+                var renewedForActivation = await RenewDispatchLeaseAsync(
+                    invocation,
+                    admissionOwnership.Token);
+                if (renewedForActivation is null)
+                    return;
+                invocation = renewedForActivation;
+
+                var subject = new FunctionRevisionInKubernetes(app, revision);
+                var service = new FunctionServiceKey(subject.Namespace, subject.ServiceName);
+                snapshot = endpointRegistry.GetSnapshot(service);
+                if (!snapshot.HasReadyEndpoints || admission.RequiresActivationFence)
+                {
+                    var activation = await activator.EnsureActiveAsync(
+                        app,
+                        revision,
+                        admissionOwnership.Token,
+                        forceScaleFence: admission.RequiresActivationFence);
+                    if (!activation.TryGetValue(out var activatedSnapshot, out var activationFailure))
+                    {
+                        await DeferDispatchAsync(
+                            invocation,
+                            FunctionInvocationError.Create(
+                                "activation_failed",
+                                activationFailure.Message,
+                                retryable: true),
+                            TimeSpan.FromSeconds(RetryDelaySeconds(invocation)),
+                            cancellationToken);
+                        return;
+                    }
+                    snapshot = activatedSnapshot!;
+                }
+
+                var renewedForExecution = await RenewDispatchLeaseAsync(
+                    invocation,
+                    admissionOwnership.Token);
+                if (renewedForExecution is null)
+                    return;
+                invocation = renewedForExecution;
+            }
+            catch (OperationCanceledException) when (
+                admissionLease.IsLost && !cancellationToken.IsCancellationRequested)
+            {
+                await DeferDispatchForCoordinationLossAsync(invocation, cancellationToken);
+                return;
+            }
+
+            using var executionTimeout = new CancellationTokenSource(
+                TimeSpan.FromSeconds(options.ExecutionTimeoutSeconds),
+                timeProvider);
+            using var executionDeadline = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                executionTimeout.Token,
+                admissionLease.LeaseLostToken);
             var deadlineUtc = timeProvider.GetUtcNow().AddSeconds(options.ExecutionTimeoutSeconds);
             var identity = new FunctionAttemptIdentity(
                 invocation.TenantId,
@@ -191,10 +295,35 @@ public sealed class FunctionInvocationDispatcher(
                         app,
                         revision,
                         reserve,
-                        cancellationToken);
+                        executionDeadline.Token);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch (Exception exception) when (
-                    IsTransportFailure(exception) && !cancellationToken.IsCancellationRequested)
+                    IsTransportFailure(exception) &&
+                    admissionLease.IsLost &&
+                    !cancellationToken.IsCancellationRequested)
+                {
+                    await DeferDispatchForCoordinationLossAsync(invocation, cancellationToken);
+                    return;
+                }
+                catch (Exception exception) when (
+                    IsTransportFailure(exception) && executionTimeout.IsCancellationRequested)
+                {
+                    await DeferDispatchAsync(
+                        invocation,
+                        FunctionInvocationError.Create(
+                            "execution_deadline_exceeded",
+                            "The Function Timer attempt deadline elapsed before the Agent accepted it.",
+                            retryable: true),
+                        TimeSpan.FromSeconds(RetryDelaySeconds(invocation)),
+                        cancellationToken);
+                    return;
+                }
+                catch (Exception exception) when (
+                    IsTransportFailure(exception) && !executionDeadline.IsCancellationRequested)
                 {
                     continue;
                 }
@@ -203,23 +332,38 @@ public sealed class FunctionInvocationDispatcher(
                 {
                     if (IsCapacityRejection(reservation.Error))
                         continue;
-                    await CompleteFailureAsync(
-                        invocation,
-                        ToInvocationError(reservation.Error, "agent_reservation_failed"),
-                        cancellationToken);
+                    var error = ToInvocationError(reservation.Error, "agent_reservation_failed");
+                    if (error.Retryable)
+                    {
+                        await DeferDispatchAsync(
+                            invocation,
+                            error,
+                            TimeSpan.FromSeconds(RetryDelaySeconds(invocation)),
+                            cancellationToken);
+                    }
+                    else
+                    {
+                        await CompleteFailureAsync(invocation, error, cancellationToken);
+                    }
                     return;
                 }
                 if (reservation.Value is null ||
                     !string.Equals(reservation.Value.AttemptId, attemptId, StringComparison.Ordinal) ||
                     string.IsNullOrWhiteSpace(reservation.Value.ReservationToken))
                 {
-                    await CompleteFailureAsync(
+                    await DeferDispatchAsync(
                         invocation,
                         FunctionInvocationError.Create(
                             "invalid_agent_response",
                             "The Function Agent returned an invalid reservation.",
                             retryable: true),
+                        TimeSpan.FromSeconds(RetryDelaySeconds(invocation)),
                         cancellationToken);
+                    return;
+                }
+                if (admissionLease.IsLost)
+                {
+                    await DeferDispatchForCoordinationLossAsync(invocation, cancellationToken);
                     return;
                 }
 
@@ -242,10 +386,21 @@ public sealed class FunctionInvocationDispatcher(
                                 timeProvider.GetUtcNow(),
                                 invocation.IsPastDue,
                                 invocation.MissedOccurrenceCount)),
-                        cancellationToken);
+                        executionDeadline.Token);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch (Exception exception) when (
-                    IsTransportFailure(exception) && !cancellationToken.IsCancellationRequested)
+                    IsTransportFailure(exception) &&
+                    (executionTimeout.IsCancellationRequested || admissionLease.IsLost))
+                {
+                    // Execute may have crossed the start boundary before the deadline or
+                    // admission ownership was lost. Recovery must keep the attempt ambiguous.
+                }
+                catch (Exception exception) when (
+                    IsTransportFailure(exception) && !executionDeadline.IsCancellationRequested)
                 {
                     // Execute may have reached the Agent. The same endpoint is the only safe
                     // reconciliation target; an expired durable lease will create a new attempt.
@@ -255,14 +410,26 @@ public sealed class FunctionInvocationDispatcher(
                 {
                     if (IsCapacityRejection(started.Error))
                         continue;
-                    await CompleteFailureAsync(
-                        invocation,
-                        ToInvocationError(started.Error, "agent_execution_failed"),
-                        cancellationToken);
+                    var error = ToInvocationError(started.Error, "agent_execution_failed");
+                    if (error.Retryable)
+                    {
+                        await DeferDispatchAsync(
+                            invocation,
+                            error,
+                            TimeSpan.FromSeconds(RetryDelaySeconds(invocation)),
+                            cancellationToken);
+                    }
+                    else
+                    {
+                        await CompleteFailureAsync(invocation, error, cancellationToken);
+                    }
                     return;
                 }
                 if (started is null)
                 {
+                    await ReleaseAdmissionBestEffortAsync(admissionLease);
+                    if (executionTimeout.IsCancellationRequested || admissionLease.IsLost)
+                        return;
                     await ReconcileAmbiguousExecuteAsync(
                         invocation,
                         endpoint,
@@ -270,19 +437,24 @@ public sealed class FunctionInvocationDispatcher(
                         revision,
                         attemptId,
                         deadlineUtc,
-                        cancellationToken);
+                        executionDeadline.Token);
                     return;
                 }
+                await ReleaseAdmissionBestEffortAsync(admissionLease);
                 if (started.Value is null ||
                     !string.Equals(started.Value.AttemptId, attemptId, StringComparison.Ordinal))
                 {
-                    await CompleteFailureAsync(
+                    // HTTP 202 means Execute may have crossed the user-code boundary even if
+                    // its response body is malformed. Keep the durable lease ambiguous and
+                    // reconcile only with the same Agent; never reroute this attempt.
+                    await ReconcileAmbiguousExecuteAsync(
                         invocation,
-                        FunctionInvocationError.Create(
-                            "agent_attempt_mismatch",
-                            "The Function Agent returned a different attempt identity.",
-                            retryable: true),
-                        cancellationToken);
+                        endpoint,
+                        app,
+                        revision,
+                        attemptId,
+                        deadlineUtc,
+                        executionDeadline.Token);
                     return;
                 }
 
@@ -295,16 +467,24 @@ public sealed class FunctionInvocationDispatcher(
                         FunctionMeterEvent.Started(running, running.AttemptStartedAtUtc!.Value),
                         cancellationToken))
                     return;
-                await ObserveAsync(running, endpoint, app, revision, attemptId, deadlineUtc, cancellationToken);
+                await ObserveAsync(
+                    running,
+                    endpoint,
+                    app,
+                    revision,
+                    attemptId,
+                    deadlineUtc,
+                    executionDeadline.Token);
                 return;
             }
 
-            await CompleteFailureAsync(
+            await DeferDispatchAsync(
                 invocation,
                 FunctionInvocationError.Create(
                     PoleFunctionProtocolErrors.CapacityExhausted,
                     "No Function Agent instance could accept the Timer invocation.",
                     retryable: true),
+                TimeSpan.FromSeconds(RetryDelaySeconds(invocation)),
                 cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -318,7 +498,73 @@ public sealed class FunctionInvocationDispatcher(
                 "[function-invocation-dispatch-failed] Failed to dispatch invocation {InvocationId}",
                 invocation.Id);
         }
+        finally
+        {
+            if (admissionLease is not null)
+                await admissionLease.DisposeAsync();
+        }
     }
+
+    private async Task ReleaseAdmissionBestEffortAsync(FunctionAdmissionLease admission)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2), timeProvider);
+        try
+        {
+            await admission.ReleaseAsync(timeout.Token);
+        }
+        catch
+        {
+            // Admission expiry is the crash/unavailability fallback. Once Execute can have
+            // started, Agent status and the durable invocation become the demand sources.
+        }
+    }
+
+    private async Task<FunctionInvocation?> RenewDispatchLeaseAsync(
+        FunctionInvocation invocation,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var expiresAtUtc = now.AddSeconds(options.DispatchLeaseSeconds);
+        if (invocation.Lease is null)
+            return null;
+        if (invocation.Lease.ExpiresAtUtc >= expiresAtUtc)
+            return invocation;
+
+        var renewed = invocation.RenewDispatchLease(
+            invocation.Lease.Token,
+            now,
+            expiresAtUtc);
+        return await SaveTransitionAsync(invocation, renewed, meter: null, cancellationToken)
+            ? renewed
+            : null;
+    }
+
+    private async Task DeferDispatchAsync(
+        FunctionInvocation invocation,
+        FunctionInvocationError error,
+        TimeSpan retryDelay,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var deferred = invocation.DeferDispatch(
+            invocation.Lease!.Token,
+            now.Add(retryDelay > TimeSpan.Zero ? retryDelay : TimeSpan.FromSeconds(1)),
+            error,
+            now);
+        await SaveTransitionAsync(invocation, deferred, meter: null, cancellationToken);
+    }
+
+    private Task DeferDispatchForCoordinationLossAsync(
+        FunctionInvocation invocation,
+        CancellationToken cancellationToken) =>
+        DeferDispatchAsync(
+            invocation,
+            FunctionInvocationError.Create(
+                "function_coordination_lost",
+                "Function invocation coordination ownership was lost before the Agent accepted the attempt.",
+                retryable: true),
+            TimeSpan.FromSeconds(RetryDelaySeconds(invocation)),
+            cancellationToken);
 
     private async Task ReconcileAmbiguousExecuteAsync(
         FunctionInvocation invocation,
@@ -340,8 +586,12 @@ public sealed class FunctionInvocationDispatcher(
                 waitUpToMilliseconds: 1000,
                 cancellationToken);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
         catch (Exception exception) when (
-            IsTransportFailure(exception) && !cancellationToken.IsCancellationRequested)
+            IsTransportFailure(exception))
         {
             return;
         }
@@ -394,8 +644,12 @@ public sealed class FunctionInvocationDispatcher(
                     waitUpToMilliseconds: 1000,
                     cancellationToken);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
             catch (Exception exception) when (
-                IsTransportFailure(exception) && !cancellationToken.IsCancellationRequested)
+                IsTransportFailure(exception))
             {
                 return;
             }

@@ -16,7 +16,9 @@
         <PackageReference Include="Hangfire" />
         <PackageReference Include="Hangfire.Mongo" />
         <PackageReference Include="MassTransit.RabbitMQ" />
+        <PackageReference Include="Microsoft.Orleans.Hosting.Kubernetes" />
         <PackageReference Include="Newtonsoft.Json" />
+        <PackageReference Include="Orleans.Providers.MongoDB" />
     </ItemGroup>
 
     <ItemGroup>

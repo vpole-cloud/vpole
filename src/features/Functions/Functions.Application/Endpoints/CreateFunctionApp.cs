@@ -334,7 +334,9 @@ public sealed class FunctionScalingPolicyValidator : AbstractValidator<FunctionS
         RuleFor(scaling => scaling.TargetConcurrencyPerInstance).GreaterThan(0);
         RuleFor(scaling => scaling.MaxConcurrencyPerInstance).GreaterThan(0);
         RuleFor(scaling => scaling.ScaleDownDelaySeconds).InclusiveBetween(0, 3600);
-        RuleFor(scaling => scaling.ActivationTimeoutSeconds).InclusiveBetween(1, 120);
+        RuleFor(scaling => scaling.ActivationTimeoutSeconds).InclusiveBetween(
+            FunctionScalingPolicy.MinimumActivationTimeoutSeconds,
+            FunctionScalingPolicy.MaximumActivationTimeoutSeconds);
         RuleFor(scaling => scaling)
             .Must(value => value.TargetConcurrencyPerInstance <= value.MaxConcurrencyPerInstance)
             .WithMessage("Target concurrency cannot exceed maximum concurrency.");

@@ -160,7 +160,11 @@ public sealed record FunctionScalingPolicy(
     int TargetConcurrencyPerInstance,
     int MaxConcurrencyPerInstance,
     int ScaleDownDelaySeconds,
-    int ActivationTimeoutSeconds);
+    int ActivationTimeoutSeconds)
+{
+    public const int MinimumActivationTimeoutSeconds = 1;
+    public const int MaximumActivationTimeoutSeconds = 120;
+}
 
 public sealed record FunctionHandlerSpec(
     string Name,

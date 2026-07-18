@@ -64,11 +64,14 @@ public static class Extensions
                 {
                     metrics.AddAspNetCoreInstrumentation()
                         .AddHttpClientInstrumentation()
-                        .AddRuntimeInstrumentation();
+                        .AddRuntimeInstrumentation()
+                        .AddMeter("Microsoft.Orleans");
                 })
                 .WithTracing(tracing =>
                 {
                     tracing.AddSource(builder.Environment.ApplicationName)
+                        .AddSource("Microsoft.Orleans.Runtime")
+                        .AddSource("Microsoft.Orleans.Application")
                         .AddAspNetCoreInstrumentation(aspTracing =>
                             // Exclude health check requests from tracing
                             aspTracing.Filter = context =>

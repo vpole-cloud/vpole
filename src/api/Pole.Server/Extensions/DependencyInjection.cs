@@ -28,6 +28,7 @@ using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Activation;
 using Pole.Features.Functions.Runtime.Agent;
+using Pole.Features.Functions.Runtime.Coordination;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Features.Functions.Runtime.Security;
@@ -124,18 +125,30 @@ public static class DependencyInjection
         public IServiceCollection AddKubernetes(IConfiguration configuration)
         {
             services.TryAddSingleton(TimeProvider.System);
-            var gatewayOptions = configuration.GetSection(FunctionGatewayOptions.SectionName)
-                                     .Get<FunctionGatewayOptions>() ?? new FunctionGatewayOptions();
-            gatewayOptions.Validate();
-            services.AddSingleton(gatewayOptions);
-            var scalerOptions = configuration.GetSection(FunctionScalerOptions.SectionName)
-                                    .Get<FunctionScalerOptions>() ?? new FunctionScalerOptions();
-            scalerOptions.Validate();
-            services.AddSingleton(scalerOptions);
-            var timerOptions = configuration.GetSection(FunctionTimerOptions.SectionName)
-                                   .Get<FunctionTimerOptions>() ?? new FunctionTimerOptions();
-            timerOptions.Validate();
-            services.AddSingleton(timerOptions);
+            services.AddSingleton<IValidateOptions<FunctionGatewayOptions>, FunctionGatewayOptionsValidator>();
+            services.AddOptions<FunctionGatewayOptions>()
+                .Bind(configuration.GetSection(FunctionGatewayOptions.SectionName))
+                .ValidateOnStart();
+            services.AddSingleton(provider =>
+                provider.GetRequiredService<IOptions<FunctionGatewayOptions>>().Value);
+            services.AddSingleton<IValidateOptions<FunctionCoordinationOptions>, FunctionCoordinationOptionsValidator>();
+            services.AddOptions<FunctionCoordinationOptions>()
+                .Bind(configuration.GetSection(FunctionCoordinationOptions.SectionName))
+                .ValidateOnStart();
+            services.AddSingleton(provider =>
+                provider.GetRequiredService<IOptions<FunctionCoordinationOptions>>().Value);
+            services.AddSingleton<IValidateOptions<FunctionScalerOptions>, FunctionScalerOptionsValidator>();
+            services.AddOptions<FunctionScalerOptions>()
+                .Bind(configuration.GetSection(FunctionScalerOptions.SectionName))
+                .ValidateOnStart();
+            services.AddSingleton(provider =>
+                provider.GetRequiredService<IOptions<FunctionScalerOptions>>().Value);
+            services.AddSingleton<IValidateOptions<FunctionTimerOptions>, FunctionTimerOptionsValidator>();
+            services.AddOptions<FunctionTimerOptions>()
+                .Bind(configuration.GetSection(FunctionTimerOptions.SectionName))
+                .ValidateOnStart();
+            services.AddSingleton(provider =>
+                provider.GetRequiredService<IOptions<FunctionTimerOptions>>().Value);
             var functionAgentTokenSection = configuration.GetSection(FunctionAgentTokenOptions.SectionName);
             if (functionAgentTokenSection.Exists())
             {
@@ -158,6 +171,15 @@ public static class DependencyInjection
                     });
                 services.AddScoped<IFunctionRevisionProvisioner, FunctionRevisionProvisioner>();
                 services.TryAddSingleton<IFunctionEndpointSelector, FunctionEndpointSelector>();
+                services.TryAddSingleton<FunctionCoordinationClient>();
+                services.TryAddSingleton<IFunctionAdmissionCoordinator>(provider =>
+                    provider.GetRequiredService<FunctionCoordinationClient>());
+                services.TryAddSingleton<IFunctionTrafficCoordinator>(provider =>
+                    provider.GetRequiredService<FunctionCoordinationClient>());
+                services.TryAddSingleton<IFunctionActivationCoordinator>(provider =>
+                    provider.GetRequiredService<FunctionCoordinationClient>());
+                services.TryAddSingleton<IFunctionScalingCoordinator>(provider =>
+                    provider.GetRequiredService<FunctionCoordinationClient>());
                 services.TryAddSingleton<IFunctionPendingAdmissionLimiter, FunctionPendingAdmissionLimiter>();
                 services.TryAddSingleton<IFunctionPublicRateLimiter, FunctionPublicRateLimiter>();
                 services.TryAddSingleton<IFunctionMeterWriter, FunctionMeterWriter>();

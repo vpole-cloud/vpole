@@ -11,6 +11,7 @@ public readonly record struct FunctionRevisionInKubernetes(
     FunctionRevision Revision)
 {
     public const int AgentPort = 8080;
+    public const string ScaleGenerationAnnotation = "pole.io/function-scale-generation";
 
     public string Namespace => Revision.Spec.KubernetesNamespace;
     public string ResourceName => BuildResourceName(App.Id, Revision.RevisionNumber);
@@ -78,7 +79,7 @@ public readonly record struct FunctionRevisionInKubernetes(
         {
             ApiVersion = "apps/v1",
             Kind = "Deployment",
-            Metadata = Metadata(DeploymentName, labels),
+            Metadata = DeploymentMetadata(DeploymentName, labels),
             Spec = new V1DeploymentSpec
             {
                 Replicas = 0,
@@ -211,6 +212,13 @@ public readonly record struct FunctionRevisionInKubernetes(
             ["app.kubernetes.io/managed-by"] = "pole-server"
         }
     };
+
+    private V1ObjectMeta DeploymentMetadata(string name, IDictionary<string, string> labels)
+    {
+        var metadata = Metadata(name, labels);
+        metadata.Annotations![ScaleGenerationAnnotation] = "0";
+        return metadata;
+    }
 
     private Dictionary<string, string> Labels() => new()
     {

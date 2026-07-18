@@ -1,8 +1,8 @@
 # Pole Functions: архітектура та план реалізації
 
-Статус: узгоджений напрям, до реалізації
+Статус: реалізація розпочата; multi-instance coordination contract узгоджено
 
-Дата: 2026-07-17
+Дата: 2026-07-18
 
 Пов'язані issue:
 
@@ -23,14 +23,17 @@
 6. RabbitMQ trigger додається після стабілізації runtime. Він спочатку працює з зовнішнім або окремим tenant RabbitMQ через `SecretRef`/`ConnectionRef`; повноцінний Pole RabbitMQ resource не є передумовою.
 7. Асинхронні triggers мають семантику at-least-once. Exactly-once не розглядається.
 8. Pole використовує push-based execution: Trigger Controller/Gateway сам активує FunctionApp і надсилає invocation Agent-у. Agent не опитує Pole у пошуку роботи.
-9. Gateway/Dispatcher, Coordinator, Activator, Timer Scheduler і Scaler у MVP можуть бути окремими модулями в процесі `Pole.Server`. Межі між ними мають дозволяти винести runtime в окремий процес без зміни API чи Agent protocol.
-10. Coordinator управляє lifecycle revision, але не передає request body і не стоїть у warm data path.
+9. Gateway/Dispatcher, Coordinator, Activator, Timer Scheduler і Scaler у MVP можуть бути окремими модулями в процесі `Pole.Server`. Кожен instance `Pole.Server` co-host-ить Orleans silo; межі між модулями мають дозволяти винести runtime в окремий процес без зміни API чи Agent protocol.
+10. Coordinator управляє lifecycle revision і distributed admission, але не передає request body та не проксуює Agent traffic. Warm path виконує короткі grain calls для admission/rate limiting, після чого Gateway викликає Agent напряму.
 11. HTTP cold start очікується синхронно до окремого activation deadline, орієнтовно 20–30 секунд.
 12. Invocation прив'язується до конкретної immutable revision у момент admission. Усі retries використовують ту саму revision.
 13. Scaling: scale-to-zero плюс простий concurrency-based algorithm. KEDA, Knative, KEDA HTTP Add-on і HPA не потрібні для MVP.
 14. Agent жорстко обмежує concurrency per app і per handler на кожному instance.
 15. Metering збирається з першої версії. Hard runtime limits додаються відразу, місячний invocation count спочатку є soft budget із usage UI та alerts.
 16. Timer defaults: `concurrencyPolicy: Forbid` і `misfirePolicy: FireOnce`.
+17. `Pole.Server` вважається multi-instance від початку. Orleans використовує Mongo membership зі strategy `Multiple`, named persistent grain storage в окремій logical database `pole-orleans` на тому самому replica set і preview strongly-consistent distributed grain directory.
+18. Distributed coordination складається з revision coordinator grain та app traffic grain. HTTP і Timer беруть revision admission lease; public HTTP додатково проходить distributed token bucket.
+19. Kubernetes є shared source of truth для observed replicas/endpoints. Local `FunctionEndpointRegistry` є лише per-process cache, а scale writes fence-яться monotonic coordination generation та `resourceVersion` compare-and-swap.
 
 ## 2. Співвідношення з наявними issue
 
@@ -87,7 +90,7 @@
 | `Agent` | Вбудований SDK runtime/web application усередині user image. |
 | `FunctionGateway` | Приймає trigger, виконує admission, вибирає revision/endpoint і напряму викликає Agent. |
 | `Coordinator` | Серіалізує lifecycle операції revision: activation, readiness, desired replicas і drain. |
-| `Activator` | Змінює replicas Kubernetes Deployment через `/scale`. |
+| `Activator` | Застосовує fenced replica change до Kubernetes Deployment: replicas + coordination generation одним `resourceVersion` CAS. |
 | `EndpointWatcher` | LIST/WATCH Kubernetes EndpointSlices і підтримує snapshot ready Agent endpoints. |
 | `TimerScheduler` | Довговічно створює timer occurrences та передає їх Dispatcher-у. |
 
@@ -225,13 +228,14 @@ flowchart LR
     Store --> Dispatcher["Function Dispatcher"]
     Dispatcher --> Gateway
 
-    Gateway --> Admission["Admission: rate, budget, pending limits"]
-    Admission --> Routes["Endpoint snapshot cache"]
-    Admission --> Coordinator["Revision Coordinator grain"]
+    Gateway --> Traffic["App Traffic grain: public token bucket"]
+    Gateway --> Coordinator["Revision Coordinator grain: admission + lifecycle"]
+    Dispatcher --> Coordinator
+    Gateway --> Routes["Local EndpointRegistry cache"]
     Coordinator --> Activator["Kubernetes Activator / scaler"]
     Activator --> Deployment["Revision Deployment"]
     Watcher["EndpointSlice Watcher"] --> Routes
-    Watcher --> Coordinator
+    Coordinator --> OrleansMongo["Mongo membership + grain storage"]
 
     Routes --> Agent1["Agent pod A"]
     Routes --> Agent2["Agent pod B"]
@@ -269,11 +273,23 @@ Data plane:
 - concurrency scaling;
 - metering.
 
-У MVP обидві частини можуть бути hosted у `Pole.Server`, але повинні жити в різних projects/namespaces та спілкуватися через interfaces. Це зменшує blast radius майбутнього винесення Gateway/Dispatcher у `Pole.Functions.Runtime` process.
+У MVP обидві частини можуть бути hosted у `Pole.Server`, але повинні жити в різних projects/namespaces та спілкуватися через interfaces. Кожен `Pole.Server` co-host-ить Orleans silo, тому runtime correctness не залежить від одного application instance. Це зменшує blast radius майбутнього винесення Gateway/Dispatcher у `Pole.Functions.Runtime` process.
 
-### 6.2 Orleans Coordinator
+### 6.2 Orleans coordination cluster
 
-Пропонований grain:
+Кожен instance `Pole.Server` co-host-ить Orleans silo. У production усі silo одного deployment утворюють cluster через `Orleans.Providers.MongoDB`:
+
+- membership strategy: `MongoDBMembershipStrategy.Multiple`;
+- той самий physical MongoDB replica set, що й control plane;
+- окрема logical database `pole-orleans` і окремий collection prefix;
+- named persistent grain storage для coordination state з explicit Orleans binary serializer, тому versioned `[Id]` contract, а не C# property names, визначає persisted payload;
+- preview strongly-consistent distributed grain directory (`AddDistributedGrainDirectory`) для єдиної activation одного grain key у cluster;
+- Kubernetes hosting додає pod metadata/lifecycle integration, але не замінює Mongo membership provider;
+- production Pod запускається з in-cluster service account та namespaced RBAC `get/list/watch/patch` для Pods, яких потребує Orleans Kubernetes hosting. Deployment manifests живуть поза цим repository, тому це обов'язкова частина зовнішнього deployment contract і rollout check.
+
+Mongo collections FunctionApp/Revision/Invocation залишаються domain source of truth. Orleans storage зберігає лише coordination state і не замінює domain repositories.
+
+Revision grain:
 
 ```text
 IFunctionRevisionCoordinatorGrain
@@ -283,10 +299,20 @@ key = tenantId/functionAppId/revision
 Відповідальність:
 
 - single-flight `EnsureActive` для одночасних cold requests;
-- lifecycle state `Inactive`, `Activating`, `Ready`, `Draining`, `Failed`;
-- current desired replicas;
-- activation deadline та cooldown;
-- координація scaler decisions для однієї revision.
+- distributed admission leases для HTTP і Timer, включно з app/handler pending counters;
+- activation lease/deadline, recovery grace та desired replicas;
+- короткоживуче ownership scaler-а для revision;
+- quiescing epoch, який блокує нові admissions під час фінальної перевірки scale-down;
+- monotonic coordination generation і persisted scale intent/result для fencing Kubernetes writes та recovery після crash.
+
+App traffic grain:
+
+```text
+IFunctionAppTrafficGrain
+key = tenantId/functionAppId
+```
+
+Він є distributed public token bucket для request rate/burst. Локальний limiter може лишатися лише як додатковий process safety limit; він не забезпечує platform quota в multi-instance deployment.
 
 Grain не повинен:
 
@@ -295,9 +321,11 @@ Grain не повинен:
 - записувати metering event на кожен request;
 - бути єдиним джерелом істини для config або invocation state.
 
-Mongo/Kubernetes залишаються durable source of truth. Grain state має відновлюватися після restart із FunctionRevision та observed Kubernetes state.
+Grain calls мають бути короткими та мають окремий bounded deadline (5 секунд у MVP): grain видає lease/decision/generation, а Kubernetes I/O і очікування endpoint readiness виконуються поза grain. Перший admission grant має короткий 15-секундний provisional TTL, тому невідомий результат timed-out acquire не займає distributed capacity на повні 5 хвилин; після отримання token heartbeat продовжує його до звичайного 300-секундного lease. Persistent coordination state переживає restart; короткоживучі ownership/admission leases мають TTL, admission heartbeat поновлює довгий pre-start і fail-иться closed до expiry, а recovery grace не дозволяє новому owner-у одразу scale-to-zero на неповній картині. Якщо expired scale-down intent міг залишити зовнішній Kubernetes write у польоті, grain зберігає `AdmissionFenceRequired`; кожен виданий після recovery admission мусить примусово застосувати новішу Deployment generation до старту user code, а flag очищається лише після успішного fenced activation write.
 
-Для MVP допустимий один co-hosted Orleans silo з local clustering. До горизонтального scaling `Pole.Server` треба окремо вибрати production membership provider; Kubernetes hosting сам по собі не є Orleans clustering provider. Orleans використовується для keyed coordination, а не як заміна Mongo.
+Усі `Pole.Server` instances звертаються до тих самих logical grains. Якщо coordination cluster недоступний, HTTP admission fail-иться closed з `503`; Timer invocation не губиться, а залишається durable/pending для retry. Warm HTTP request тепер робить grain calls для public token bucket та revision admission, але request/response body і Agent traffic через Orleans не проходять.
+
+`Aspire.Hosting.Orleans` поки не додається: поточна Aspire integration не підтримує Mongo як clustering/storage provider. Local AppHost використовує пряме co-hosted Orleans configuration й наявний Mongo dependency; Orleans OpenTelemetry meter/activity-source conventions із Aspire guidance застосовуються.
 
 ### 6.3 Endpoint snapshots
 
@@ -314,7 +342,7 @@ Mongo/Kubernetes залишаються durable source of truth. Grain state м�
 - relist після expired resource version/HTTP 410;
 - не створювати watcher на кожну revision; використовувати namespace-scoped watchers або один cluster watcher із registry відомих Services.
 
-Gateway отримує immutable endpoint snapshot і викликає Agent pod напряму. Routing через ClusterIP Service лишається fallback, але не дає per-pod capacity-aware selection.
+Кожен `Pole.Server` має власний `FunctionEndpointRegistry`, наповнений EndpointSlice watcher-ом. Це performance cache, а не distributed authority: після restart/relist він відновлюється з Kubernetes, який лишається shared source of truth. Gateway отримує immutable local endpoint snapshot і викликає Agent pod напряму. Routing через ClusterIP Service лишається fallback, але не дає per-pod capacity-aware selection.
 
 ## 7. Persisted model
 
@@ -456,7 +484,7 @@ Unique state key: `(TenantId, TriggerId)`.
 10. After no queued/in-flight invocations remain and retention expires, old Deployment/Service may be deleted.
 11. If validation fails, revision becomes `Failed`, active pointer remains unchanged, and the previous revision continues serving.
 
-Manifest reconciliation must not overwrite runtime replica count. Manifests are reconciled through normal create/update logic, while scaling uses the Deployment `/scale` subresource.
+Manifest reconciliation must not overwrite runtime replica count або `pole.io/function-scale-generation`. Кожен runtime scale intent отримує monotonic generation у revision grain. Activator/scaler атомарно оновлює Deployment `spec.replicas` і generation annotation через replace із Kubernetes `resourceVersion` compare-and-swap; stale generation або CAS conflict не можуть перезаписати новіше рішення. Окрема unfenced bootstrap-операція дозволена лише для revision у стані `Provisioning`, яка ще не routable і не входить до scaler targets; contract відхиляє її для serving revision.
 
 ## 9. Agent protocol
 
@@ -508,6 +536,7 @@ Response distinguishes:
 Protocol requirements:
 
 - hard body/header limits;
+- окремий bounded request-body upload timeout, який звільняє local/distributed admission навіть за здорового heartbeat;
 - no credentials, raw connection strings або arbitrary internal headers in metering/logs;
 - Agent validates revision and handler;
 - Agent acquires app concurrency slot and handler slot during reservation, а user code запускає лише після explicit execute transition;
@@ -529,35 +558,37 @@ Agent Service доступний лише всередині cluster. Gateway д
 
 1. Gateway resolves route to FunctionApp + handler + active revision.
 2. Generates `invocationId` and records `received`.
-3. Validates method, body size, auth/exposure, rate/burst і usage budget.
-4. Reads local endpoint snapshot.
-5. Chooses ready endpoint, preferably least-loaded/round-robin із локальним load view.
-6. Gateway reserves capacity on that Agent; only explicit pre-start capacity rejection permits selection of another endpoint.
-7. Gateway executes the reserved attempt and receives explicit `Started` acknowledgement.
-8. Agent runs user handler and returns final response/lifecycle result directly to Gateway.
-9. Gateway returns response to client and emits completion metering.
+3. Validates method, body size, auth/exposure та usage budget.
+4. Для public route бере token у `IFunctionAppTrafficGrain`; exhausted bucket повертає `429`.
+5. Бере bounded distributed revision admission lease для app/handler та локальний process safety lease для pending bytes/requests.
+6. Reads local endpoint snapshot.
+7. Chooses ready endpoint, preferably least-loaded/round-robin із локальним load view.
+8. Gateway reserves capacity on that Agent; only explicit pre-start capacity rejection permits selection of another endpoint.
+9. Gateway executes the reserved attempt and receives explicit `Started` acknowledgement; distributed pending admission звільняється відповідно до lifecycle contract, TTL є crash fallback.
+10. Agent runs user handler and returns final response/lifecycle result directly to Gateway.
+11. Gateway returns response to client and emits completion metering.
 
 Якщо connection губиться після execute, Gateway спочатку запитує attempt status. Невизначений `unknown` не reroute-иться автоматично для HTTP, бо user code міг уже виконати side effect.
 
-Coordinator grain не бере участі в warm request.
+Warm request робить bounded grain calls для rate/admission correctness, але revision grain не виконує Kubernetes I/O, не очікує Agent і не бачить payload.
 
 ### 10.2 Cold path
 
-1. Gateway виконує admission до activation, щоб rejected traffic не будив pods.
-2. Якщо ready endpoints немає, Gateway викликає `EnsureActive(revisionId)`.
-3. Coordinator coalesces concurrent requests в одну activation operation.
-4. Activator scales revision Deployment `0 → 1` через `/scale`.
-5. EndpointWatcher спостерігає ready Agent endpoint.
-6. Coordinator повертає `Ready + endpoint snapshot version`.
+1. Gateway виконує distributed admission до activation, щоб rejected traffic не будив pods.
+2. Якщо ready endpoints немає, Gateway коротким grain call починає або приєднується до activation lease.
+3. Revision grain coalesces concurrent requests, persist-ить generation/activation intent і визначає owner-а операції.
+4. Owner поза grain атомарно scales revision Deployment `0 → 1`, записуючи replicas + generation annotation через `resourceVersion` CAS, а потім завершує activation intent у grain.
+5. EndpointWatcher кожного `Pole.Server` спостерігає ready Agent endpoint та оновлює local `FunctionEndpointRegistry`.
+6. Кожен Gateway чекає readiness у власному local registry; endpoint snapshot не передається через grain.
 7. Gateway напряму викликає Agent.
 
-Cold pending requests/bytes мають bounded limits. Activation deadline і handler execution deadline є різними. Activation timeout не repin-ить invocation на іншу revision і повертає `503` або `504` відповідно до failure category.
+Cold pending requests/bytes мають bounded limits. Request-body upload, activation і handler execution мають окремі deadlines. Activation timeout не repin-ить invocation на іншу revision і повертає `503` або `504` відповідно до failure category.
 
 ### 10.3 Public error semantics
 
 - request/rate/consumption quota exhausted: `429` + `Retry-After`;
 - all instances at capacity і bounded pending limit exhausted: `429` або `503` із machine-readable reason;
-- activation unavailable/cold queue unavailable: `503`;
+- coordination cluster unavailable, activation unavailable або cold queue unavailable: `503`;
 - body too large: `413`;
 - activation/upstream deadline exceeded: `504`;
 - user handler HTTP response, включно з `4xx/5xx`, повертається як handler result і не класифікується автоматично як runtime failure.
@@ -588,10 +619,10 @@ Mongo є source of truth:
    - створює унікальний Pending `FunctionInvocation`;
    - пересуває `NextFireAtUtc` на майбутній tick;
    - за потреби пише low-volume lifecycle event.
-4. Dispatcher швидко підхоплює Pending invocation, активує revision і push-ить attempt Agent-у.
+4. Dispatcher швидко підхоплює Pending invocation, бере той самий distributed revision admission lease, що й HTTP, активує revision і push-ить attempt Agent-у; platform/pre-start deferrals не витрачають user attempt budget.
 5. Lease expiry дозволяє recovery після crash.
 
-Hangfire можна використати як один періодичний wake-up/scanner, але correctness гарантують Mongo lease, unique occurrence index та idempotent state transitions.
+Hangfire можна використати як один періодичний wake-up/scanner, але correctness гарантують Mongo lease, unique occurrence index, distributed revision admission та idempotent state transitions. Недоступний Orleans cluster не переводить invocation у terminal failure: dispatch лишається durable і retry-иться.
 
 ### 11.2 Default policies
 
@@ -638,10 +669,21 @@ desired = clamp(desired, minInstances, maxInstances)
 - first cold request активує один instance;
 - scale-down після stabilization/idle delay;
 - scale-to-zero лише коли queued = 0 та inFlight = 0 протягом idle delay;
-- у MVP не робити partial scale-down, поки є in-flight invocations: Deployment `/scale` не гарантує, що Kubernetes видалить idle pod;
+- у MVP не робити partial scale-down, поки є in-flight invocations: Kubernetes не гарантує, що буде видалений саме idle pod;
 - `maxInstances` є одночасно user config, tenant quota ceiling і hard scaling bound.
 
 Target concurrency — scaling signal, а max concurrency — hard limit; їх не можна зливати в одне поле.
+
+### 12.3 Distributed scaler coordination
+
+- Revision grain видає короткоживуче scaler ownership lease, тому одну revision reconcile-ить один logical owner, навіть коли `Pole.Server` instances багато.
+- Зміна coordinator incarnation скидає локальні stabilization counters, а recovery grace забороняє агресивний scale-down, доки новий owner не відновив observed state. Просте expiry/reacquire ownership lease у тій самій incarnation не скидає вже підтверджений idle interval, інакше довгий scan багатьох revisions ніколи не досягне scale-down delay.
+- Перед scale-down owner відкриває quiescing epoch. Нові HTTP/Timer admissions тимчасово відхиляються з retry hint, а owner повторно читає durable та Agent demand перед scale write; це не дозволяє виданому external fencing token змагатися з новим invocation.
+- Після повторного читання distributed admission counters, Agent status, durable Timer demand і observed Kubernetes state owner створює persisted scale intent із monotonic generation.
+- Поточний scaler owner записує `spec.replicas` разом із generation annotation через `resourceVersion` CAS. Старий owner або повторне повідомлення з меншою generation не можуть перезаписати новіше рішення.
+- Scale completion містить поточний scaler ownership token; owner із expired/stale lease не може завершити intent після ownership handoff.
+- Transport/response-loss під час Kubernetes replace вважається uncertain: scaler повторно читає replicas + coordination generation, завершує `Applied` лише за точного збігу, а інакше залишає persisted intent/quiescing для наступного owner/reconcile. Новий demand не abort-ить такий intent без зовнішнього generation fence: barrier лишається до observed result або TTL, після якого `AdmissionFenceRequired` примусово відновлює serving replicas новішою generation. Лише доведена validation failure завершує intent як `Failed`.
+- Після доведеного Kubernetes result grain завершує scale intent; незавершений intent можна reconcile-ити після crash за persisted generation та observed annotation/replicas.
 
 ## 13. Metering, usage та quotas
 
@@ -751,7 +793,7 @@ pole.io/function-revision
 Gateway/Scaler отримує окремий service account із мінімальним RBAC:
 
 - get/list/watch Function Deployments/Services за потреби;
-- get/update/patch `deployments/scale`;
+- update Function Deployments для fenced replicas + generation CAS;
 - list/watch EndpointSlices;
 - get/list Pods лише якщо потрібно показувати startup failures.
 
@@ -856,8 +898,9 @@ templates/
 - Створити мінімальний sample Agent + fake handler.
 - Зафіксувати lifecycle-aware reserve/execute/status contract та explicit `Reserved/Started/Completed/Unknown` semantics.
 - Перевірити HTTP envelope, lifecycle streaming/result transport, reconciliation, body limits, cancellation і metadata validation.
-- Перевірити Orleans 10 co-hosting у .NET 10/Aspire, local single-silo mode та recovery model.
-- Перевірити Kubernetes client operations: Deployment `/scale` та EndpointSlice watch.
+- Перевірити Orleans 10 co-hosting у .NET 10, Mongo membership/storage provider compatibility, two-silo activation semantics, preview strongly-consistent directory та recovery model.
+- Зафіксувати, що `Aspire.Hosting.Orleans` deferred через відсутність Mongo provider integration; застосувати Orleans OTel meter/activity-source conventions.
+- Перевірити Kubernetes client operations: replicas + generation annotation `resourceVersion` CAS та EndpointSlice watch.
 - Результат: ADR/protocol contract і executable proof, без product CRUD.
 
 ### Slice 1 — FunctionApp control plane
@@ -891,8 +934,8 @@ templates/
 - registry pull credentials і image digest snapshot.
 - security context/probes/termination settings.
 - idempotent reconciler та cleanup.
-- scale subresource abstraction.
-- EndpointSlice resolver/cache.
+- fenced Deployment scale abstraction із monotonic generation annotation та `resourceVersion` CAS.
+- EndpointSlice resolver/local cache; Kubernetes лишається shared truth.
 - provisioning activation + Agent metadata validation.
 
 ### Slice 4 — HTTP Gateway та Coordinator
@@ -900,19 +943,24 @@ templates/
 - runtime route registry;
 - public/internal listeners і Kubernetes Services з окремою route registration;
 - persisted route binding lookup/cache та atomic active-revision promotion;
-- Orleans revision coordinator;
-- warm path без grain call;
+- co-hosted Orleans silo в кожному `Pole.Server`, Mongo `Multiple` membership, named storage у `pole-orleans` та strongly-consistent distributed directory;
+- Orleans revision coordinator та app traffic grains;
+- distributed public token bucket і HTTP revision admission;
+- warm path із короткими grain calls, але без body/Agent traffic через Orleans;
 - cold `EnsureActive` single-flight;
 - bounded pending requests/bytes;
 - endpoint load selection та pre-start reroute;
 - internal/public exposure;
 - activation/execution deadlines та public error mapping;
-- local rate/burst admission.
+- fail-closed `503` при недоступній coordination plane.
 
 ### Slice 5 — concurrency scaler і scale-to-zero
 
 - queued/in-flight accounting;
 - pure desired replica calculator;
+- distributed scaler ownership lease та recovery grace;
+- quiescing epoch, який fail-closed блокує нові admissions до завершення або abort scale-down;
+- persisted generation/scale intent та stale-owner fencing;
 - immediate scale-up;
 - stabilization/idle delay;
 - no partial scale-down with in-flight work in MVP;
@@ -924,6 +972,7 @@ templates/
 - Timer trigger validation і persisted schedule state;
 - one platform sweep/scanner;
 - Mongo lease + unique occurrence;
+- distributed revision admission перед claim/dispatch;
 - `Forbid + FireOnce` semantics;
 - durable pending invocation dispatch;
 - retries/backoff і recovery;
@@ -959,7 +1008,7 @@ templates/
 - custom domains;
 - traffic splitting/canary;
 - hard consumption billing quota;
-- split runtime process and multi-silo HA.
+- split runtime process зі збереженням того самого Orleans coordination contract.
 
 ## 18. Tests and validation
 
@@ -999,8 +1048,8 @@ templates/
 - no per-function public Ingress;
 - separate public/internal Gateway Services та Agent NetworkPolicy;
 - idempotent create/delete;
-- manifest reconcile never resets live replica count;
-- `/scale` conflict/retry behavior.
+- manifest reconcile never resets live replica count або scale generation;
+- replicas + generation atomic update, stale-generation rejection та `resourceVersion` conflict/retry behavior.
 
 ### EndpointSlice resolver
 
@@ -1014,9 +1063,10 @@ templates/
 
 ### HTTP/runtime
 
-- warm request does not call Coordinator;
-- many concurrent cold requests produce one activation;
+- warm request calls distributed token bucket/revision admission, але не передає body через grain і не виконує activation I/O;
+- many concurrent cold requests across two `Pole.Server` silos produce one activation;
 - admission rejection does not activate revision;
+- unavailable Orleans coordination returns fail-closed `503`;
 - bounded cold queue;
 - no retry after uncertain handler start;
 - pre-start capacity rejection may reroute, while post-execute `unknown` may not;
@@ -1030,6 +1080,8 @@ templates/
 
 - duplicate sweeps do not duplicate occurrence;
 - lease expiry/recovery;
+- HTTP і Timer share revision admission limit; CAS loser/crash звільняється explicit release або TTL;
+- coordination outage leaves durable invocation pending for retry;
 - `Forbid` with active prior invocation;
 - `FireOnce` after many missed ticks;
 - retry keeps invocation/revision and increments attempt;
@@ -1044,8 +1096,20 @@ templates/
 - burst scale-up;
 - idle delay;
 - no scale-down with queued/in-flight work;
-- stale/duplicate counters;
-- runtime restart recovery.
+- active quiescing transiently rejects a new HTTP/Timer admission, а expired barrier durably очищається перед наступним grant;
+- only current scaler owner may commit the latest generation;
+- stale owner/generation and Kubernetes CAS conflicts cannot overwrite a newer desired replica count;
+- runtime restart recovery reconciles persisted scale intent with observed annotation/replicas;
+- recovery grace prevents premature scale-to-zero after owner/runtime restart.
+
+### Orleans multi-instance coordination
+
+- two silos share Mongo membership with strategy `Multiple`;
+- the same grain key has one strongly-consistent activation across silos;
+- revision grain state persists through named Mongo storage in `pole-orleans`;
+- admission/app-handler counters and app traffic bucket are shared across Gateways;
+- activation single-flight, scaler ownership handoff, lease expiry та incomplete scale-intent recovery;
+- silo shutdown/restart does not allow stale ownership or stale generation to mutate Kubernetes.
 
 ### Metering
 
@@ -1060,6 +1124,7 @@ templates/
 ### Aspire та E2E
 
 - SDK/Agent protocol і production DI startup через Aspire;
+- direct co-hosted Orleans configuration starts against the AppHost Mongo replica set; `Aspire.Hosting.Orleans` resource is not required while Mongo providers are unsupported by that integration;
 - explicit sample Function Agent resource;
 - true EndpointSlice/Pod-IP/cold-start path у cluster-backed lane, бо host-process Aspire не гарантує reachability Pod IP;
 - production health endpoints для Gateway/Scheduler/Scaler.
@@ -1104,10 +1169,12 @@ Metrics labels мають бути low-cardinality: trigger kind, outcome, failu
 | Custom runtime стає великим окремим продуктом | Versioned narrow protocol, .NET SDK first, чіткі non-goals. |
 | User image має довгий/невдалий cold start | Startup probe, provisioning validation, bounded 20–30s activation, useful status/error. |
 | Gateway у Pole.Server збільшує blast radius | Окремий Runtime project/interfaces, bounded queues, можливість винесення process. |
-| Coordinator grain стає data-path bottleneck | Grain лише для activation/scaling; warm traffic і metering його оминають. |
-| Orleans local clustering не дає HA | Single runtime instance у MVP; production membership — окремий gate до horizontal scaling. |
+| Coordination grain стає data-path bottleneck | Grain calls містять лише bounded admission/rate/lifecycle state; payload і Agent traffic йдуть Gateway → Agent напряму. Навантаження partition-иться tenant/app/revision keys. |
+| Preview strongly-consistent directory або Mongo provider має regression з Orleans 10 | Pin/test exact package versions, two-silo integration tests, readiness/health probes та окремий rollout gate; за потреби directory/provider замінюється без зміни grain contracts. |
+| Orleans/Mongo coordination тимчасово недоступна | HTTP fail-closed `503`; durable Timer invocation лишається pending. Не fallback-итися на local counters, бо це порушить global limits. |
+| Один Mongo replica set збільшує shared failure domain | Окрема logical DB `pole-orleans`, окремі collection names/indexes/metrics і credentials із потрібним `readWrite`; за потреби topology можна рознести пізніше без зміни runtime contract. |
 | EndpointSlice watch губить events або дублює endpoints | Initial list + watch, RV recovery, union/dedupe, readiness filtering. |
-| Reconciler і scaler змагаються за replicas | Immutable revision manifests + окремий Deployment `/scale` subresource. |
+| Два scaler owner-и або reconciler змагаються за replicas | Ownership lease + quiescing epoch + persisted monotonic generation; replicas та annotation записуються одним `resourceVersion` CAS, manifest reconcile їх зберігає. |
 | Kubernetes видаляє busy pod при partial scale-down | MVP масштабує донизу лише без in-flight work; targeted drain пізніше. |
 | Timer дублює side effects | At-least-once contract, stable invocationId, SDK docs, unique occurrence + leases. |
 | Public HTTP вичерпує monthly quota | Rate/burst hard limits; monthly count soft/opt-in hard cap. |
@@ -1125,8 +1192,10 @@ Metrics labels мають бути low-cardinality: trigger kind, outcome, failu
 - Scale-down idle delay default: 60 секунд.
 - Agent local queue: zero або дуже мала bounded queue; основний backpressure належить Gateway.
 - Old revision retention і invocation raw-record retention задаються platform settings із startup validation.
-- Local rate limiter достатній для single runtime instance; distributed token leases потрібні до horizontal Gateway scaling.
-- Orleans 10 підходить до .NET 10, але production clustering provider має бути окремо обраний до multi-silo deployment.
+- Public rate/burst enforcement виконує distributed app traffic grain; local limiter є лише додатковим process safety limit.
+- HTTP і Timer використовують спільний distributed revision admission contract; Agent лишається final authority для per-instance app/handler concurrency.
+- Orleans cluster: co-hosted silo у кожному `Pole.Server`, Mongo membership strategy `Multiple`, named persistent storage в `pole-orleans`, preview strongly-consistent distributed directory.
+- `Aspire.Hosting.Orleans` deferred, доки integration не підтримує Mongo providers; AppHost запускає direct Orleans configuration і збирає Orleans OTel telemetry.
 
 ## 22. Definition of Done для Functions MVP
 
@@ -1135,7 +1204,7 @@ MVP завершений, коли:
 1. Користувач може створити .NET FunctionApp із official template, зібрати OCI image і задеплоїти його через Pole API.
 2. FunctionApp є tenant-scoped, розміщується у namespace ResourceGroup і проходить static quota admission.
 3. Pole створює immutable revision Deployment + Service, перевіряє Agent metadata та безпечно промотує revision.
-4. HTTP request до warm function не проходить через Coordinator.
+4. HTTP request до warm function проходить distributed app traffic/revision admission, але payload і Agent traffic не проходять через Orleans.
 5. HTTP request до zero-scaled function виконує bounded `0 → 1 → ready → invoke` flow і пізніше app повертається в zero.
 6. Agent дотримується app/handler concurrency limits, explicit reserve/start lifecycle, reconciliation і graceful drain.
 7. Runtime route globally/atomically resolves tenant + app, а internal function неможливо викликати через public listener/Ingress.
@@ -1145,6 +1214,9 @@ MVP завершений, коли:
 11. Tenant isolation, Kubernetes security, trace/correlation propagation і rate/pending/resource limits покриті tests.
 12. Pole internal RabbitMQ не використовується як tenant trigger broker.
 13. Для реалізації не потрібні KEDA, Knative або per-function Ingress.
+14. Два `Pole.Server` instances утворюють Orleans cluster через Mongo, мають global admission/rate/activation/scaler correctness і переживають ownership handoff без stale Kubernetes scale write.
+15. Kubernetes scale update атомарно fence-иться persisted generation annotation та `resourceVersion` CAS, а local EndpointRegistry відновлюється з Kubernetes як cache.
+16. Coordination outage повертає HTTP `503` без local correctness fallback; Timer invocation лишається durable для retry.
 
 Issue #18 не входить у цей Definition of Done і лишається окремим deferred ScheduledJob scope.
 
@@ -1163,5 +1235,8 @@ External primary documentation:
 
 - [Microsoft Orleans overview](https://learn.microsoft.com/en-us/dotnet/orleans/overview)
 - [Orleans Kubernetes hosting](https://learn.microsoft.com/en-us/dotnet/orleans/deployment/kubernetes)
+- [Orleans grain directory](https://learn.microsoft.com/en-us/dotnet/orleans/host/grain-directory)
+- [Orleans.Providers.MongoDB](https://github.com/OrleansContrib/Orleans.Providers.MongoDB)
+- [Aspire Orleans integration](https://aspire.dev/integrations/frameworks/orleans/)
 - [Kubernetes EndpointSlices](https://kubernetes.io/docs/concepts/services-networking/endpoint-slices/)
 - [Kubernetes Deployment scaling](https://kubernetes.io/docs/tasks/run-application/scale-deployment/)
