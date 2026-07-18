@@ -9,7 +9,7 @@ using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.ResultType;
 using Xunit;
 
-namespace Pole.Tests.Integration.SourceBuilds;
+namespace Pole.Features.SourceBuilds.Tests;
 
 public sealed class SourceBuildWorkspaceServiceTests
 {
