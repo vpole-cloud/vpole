@@ -6,8 +6,8 @@ scaling policy. Pole currently supports HTTP and timer triggers and can scale ac
 zero.
 
 This document is the canonical entry point for the Functions feature. The [.NET SDK and Agent
-contract](../../sdk/README.md) documents how user code runs inside an image. The deeper documents
-describe the [runtime architecture](docs/runtime-architecture.md) and [revision
+contract](https://github.com/lsbV/Pole.Functions) documents how user code runs inside an image. The
+deeper documents describe the [runtime architecture](docs/runtime-architecture.md) and [revision
 lifecycle](docs/revision-lifecycle.md).
 
 ## Supported scope
@@ -55,10 +55,10 @@ app.MapPoleFunctionsAgent();
 app.Run();
 ```
 
-See the [sample application](../../examples/Pole.Functions.Sample/Program.cs), its
-[Dockerfile](../../examples/Pole.Functions.Sample/Dockerfile), and the [SDK
-documentation](../../sdk/README.md) for the complete Agent contract, authentication, concurrency,
-shutdown, and attempt semantics.
+See the [sample
+application](https://github.com/lsbV/Pole.Functions/tree/main/samples/Pole.Functions.Sample) and [SDK
+documentation](https://github.com/lsbV/Pole.Functions) for the complete Agent contract,
+authentication, concurrency, shutdown, and attempt semantics.
 
 ## Function App specification
 
@@ -128,10 +128,11 @@ the deletion intent and event; runtime cleanup for that event is not implemented
 - [Functions.Runtime](Functions.Runtime/Functions.Runtime.csproj) owns Kubernetes reconciliation,
   the HTTP gateway, timers, Agent calls, endpoint discovery, Orleans coordination, scaling, and
   usage aggregation.
-- [Pole.Functions.Protocol](../../sdk/Pole.Functions.Protocol/Pole.Functions.Protocol.csproj) owns
-  the language-neutral Agent HTTP/JSON contract.
-- [Pole.Functions.Sdk](../../sdk/Pole.Functions.Sdk/Pole.Functions.Sdk.csproj) is the official .NET
-  handler API and in-process Agent runtime.
+- [Pole.Functions.Protocol](https://www.nuget.org/packages/Pole.Functions.Protocol) owns the
+  language-neutral Agent HTTP/JSON contract.
+- [Pole.Functions.Sdk](https://www.nuget.org/packages/Pole.Functions.Sdk) is the official .NET
+  handler API and in-process Agent runtime. Its source, sample, and tests live in the separate
+  MIT-licensed [Pole.Functions repository](https://github.com/lsbV/Pole.Functions).
 
 Function application data is stored in the main Pole Mongo database and scoped by `TenantId`.
 Cross-instance runtime coordination is stored separately by the Orleans Mongo provider. See
