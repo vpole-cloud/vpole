@@ -127,6 +127,13 @@ public sealed class FunctionRevisionLifecycleService(
                 if (routeUpdate.MatchedCount != 1)
                     return Failures.Conflict("Function route binding is unavailable.");
 
+                await ReconcileTimersAsync(
+                    session,
+                    state.App,
+                    state.Revision,
+                    now,
+                    transactionCancellationToken);
+
                 await dbContext.StoreEventAsync(
                     state.Revision.ToPromotedEvent(state.App.ActiveRevisionId),
                     session,
@@ -227,6 +234,20 @@ public sealed class FunctionRevisionLifecycleService(
             if (revision.State != FunctionRevisionState.Draining)
                 return Failures.Conflict("Only a draining Function revision can be retired.");
 
+            var durableWork = await dbContext.FunctionInvocations.CountDocumentsAsync(
+                transaction,
+                candidate => candidate.TenantId == tenantId &&
+                             candidate.FunctionAppId == functionAppId &&
+                             candidate.RevisionId == revisionId &&
+                             (candidate.State == FunctionInvocationState.Pending ||
+                              candidate.State == FunctionInvocationState.Dispatching ||
+                              candidate.State == FunctionInvocationState.Running ||
+                              candidate.State == FunctionInvocationState.RetryScheduled),
+                new CountOptions { Limit = 1 },
+                transactionCancellationToken);
+            if (durableWork != 0)
+                return Failures.Conflict("The Function revision still has durable invocations to process.");
+
             var retired = revision.Retire();
             var update = await dbContext.FunctionRevisions.UpdateOneAsync(
                 transaction,
@@ -293,6 +314,86 @@ public sealed class FunctionRevisionLifecycleService(
                     trigger.Exposure);
             })
             .ToImmutableList();
+
+    private async Task ReconcileTimersAsync(
+        IClientSessionHandle session,
+        FunctionApp app,
+        FunctionRevision revision,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var existing = await dbContext.FunctionTimerStates.Find(
+                session,
+                timer => timer.TenantId == app.TenantId && timer.FunctionAppId == app.Id)
+            .ToListAsync(cancellationToken);
+        var existingByTrigger = existing.ToDictionary(timer => timer.TriggerId, StringComparer.Ordinal);
+        var activeTriggerIds = new List<string>();
+
+        foreach (var handler in revision.Spec.Handlers)
+        {
+            if (handler.Trigger is not TimerFunctionTriggerSpec timer)
+                continue;
+
+            activeTriggerIds.Add(timer.TriggerId);
+            var schedule = FunctionCronSchedule.Parse(timer.Cron);
+            FunctionTimerState reconciled;
+            if (existingByTrigger.TryGetValue(timer.TriggerId, out var current))
+            {
+                var nextOccurrence = current.ScheduleVersion == timer.ScheduleVersion
+                    ? current.NextOccurrenceUtc
+                    : schedule.GetNextOccurrence(nowUtc);
+                reconciled = current.Reconcile(
+                    revision.Id,
+                    handler.Name,
+                    timer.Cron,
+                    timer.ScheduleVersion,
+                    timer.ConcurrencyPolicy,
+                    timer.MisfirePolicy,
+                    timer.Retry,
+                    nextOccurrence,
+                    nowUtc);
+            }
+            else
+            {
+                reconciled = FunctionTimerState.Create(
+                    app.TenantId,
+                    app.Id,
+                    revision.Id,
+                    timer.TriggerId,
+                    handler.Name,
+                    timer.Cron,
+                    timer.ScheduleVersion,
+                    timer.ConcurrencyPolicy,
+                    timer.MisfirePolicy,
+                    timer.Retry,
+                    schedule.GetNextOccurrence(nowUtc),
+                    nowUtc);
+            }
+
+            await dbContext.FunctionTimerStates.ReplaceOneAsync(
+                session,
+                candidate => candidate.Id == reconciled.Id &&
+                             candidate.TenantId == app.TenantId &&
+                             candidate.FunctionAppId == app.Id,
+                reconciled,
+                new ReplaceOptions { IsUpsert = true },
+                cancellationToken);
+        }
+
+        var disabledFilter = Builders<FunctionTimerState>.Filter.And(
+            Builders<FunctionTimerState>.Filter.Eq(timer => timer.TenantId, app.TenantId),
+            Builders<FunctionTimerState>.Filter.Eq(timer => timer.FunctionAppId, app.Id),
+            Builders<FunctionTimerState>.Filter.Eq(timer => timer.Enabled, true),
+            Builders<FunctionTimerState>.Filter.Nin(timer => timer.TriggerId, activeTriggerIds));
+        await dbContext.FunctionTimerStates.UpdateManyAsync(
+            session,
+            disabledFilter,
+            Builders<FunctionTimerState>.Update
+                .Set(timer => timer.Enabled, false)
+                .Set(timer => timer.Lease, null)
+                .Set(timer => timer.UpdatedAtUtc, nowUtc),
+            cancellationToken: cancellationToken);
+    }
 
     private sealed record PendingRevisionState(
         FunctionApp App,

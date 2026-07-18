@@ -33,6 +33,8 @@ using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Features.Functions.Runtime.Security;
 using Pole.Features.Functions.Runtime.Provisioning;
 using Pole.Features.Functions.Runtime.Scaling;
+using Pole.Features.Functions.Runtime.Timers;
+using Pole.Features.Functions.Runtime.Metering;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
@@ -130,6 +132,10 @@ public static class DependencyInjection
                                     .Get<FunctionScalerOptions>() ?? new FunctionScalerOptions();
             scalerOptions.Validate();
             services.AddSingleton(scalerOptions);
+            var timerOptions = configuration.GetSection(FunctionTimerOptions.SectionName)
+                                   .Get<FunctionTimerOptions>() ?? new FunctionTimerOptions();
+            timerOptions.Validate();
+            services.AddSingleton(timerOptions);
             var functionAgentTokenSection = configuration.GetSection(FunctionAgentTokenOptions.SectionName);
             if (functionAgentTokenSection.Exists())
             {
@@ -154,10 +160,17 @@ public static class DependencyInjection
                 services.TryAddSingleton<IFunctionEndpointSelector, FunctionEndpointSelector>();
                 services.TryAddSingleton<IFunctionPendingAdmissionLimiter, FunctionPendingAdmissionLimiter>();
                 services.TryAddSingleton<IFunctionPublicRateLimiter, FunctionPublicRateLimiter>();
+                services.TryAddSingleton<IFunctionMeterWriter, FunctionMeterWriter>();
                 services.TryAddSingleton<IFunctionHttpGateway, FunctionHttpGateway>();
                 services.TryAddSingleton<IFunctionScaleTargetSource, MongoFunctionScaleTargetSource>();
                 services.TryAddSingleton<IFunctionScaler, FunctionScaler>();
                 services.AddHostedService<FunctionScalerWorker>();
+                services.TryAddSingleton<IFunctionTimerScheduler, FunctionTimerScheduler>();
+                services.AddHostedService<FunctionTimerSchedulerWorker>();
+                services.TryAddSingleton<IFunctionInvocationDispatcher, FunctionInvocationDispatcher>();
+                services.AddHostedService<FunctionInvocationDispatcherWorker>();
+                services.TryAddSingleton<IFunctionUsageAggregator, FunctionUsageAggregator>();
+                services.AddHostedService<FunctionUsageAggregatorWorker>();
             }
             services.TryAddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
             services.AddSingleton<IKubernetes>(_ =>

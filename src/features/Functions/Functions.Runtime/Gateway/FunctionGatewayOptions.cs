@@ -20,6 +20,7 @@ public sealed class FunctionGatewayOptions
     public int PublicBurst { get; set; } = 200;
     public int ExecutionTimeoutSeconds { get; set; } = 120;
     public int AgentLongPollMilliseconds { get; set; } = 25_000;
+    public int PostStartMeterWriteTimeoutMilliseconds { get; set; } = 100;
     public HashSet<string> ForwardedRequestHeaders { get; set; } = new(
         ["Accept", "Content-Type", "User-Agent", "X-Request-ID"],
         StringComparer.OrdinalIgnoreCase);
@@ -41,7 +42,9 @@ public sealed class FunctionGatewayOptions
             throw new InvalidOperationException("Function Gateway pending limits are invalid.");
         if (PublicRequestsPerSecond <= 0 || PublicBurst < PublicRequestsPerSecond)
             throw new InvalidOperationException("Function Gateway public rate and burst limits are invalid.");
-        if (ExecutionTimeoutSeconds is <= 0 or > 900 || AgentLongPollMilliseconds is <= 0 or > 30_000)
+        if (ExecutionTimeoutSeconds is <= 0 or > 900 ||
+            AgentLongPollMilliseconds is <= 0 or > 30_000 ||
+            PostStartMeterWriteTimeoutMilliseconds is < 5 or > 1_000)
             throw new InvalidOperationException("Function Gateway execution deadlines are invalid.");
     }
 }

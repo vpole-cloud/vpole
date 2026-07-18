@@ -237,14 +237,21 @@ public sealed class FunctionScaler(
     {
         var pendingKey = PendingKey(target);
         var pendingSnapshot = pendingAdmission.GetSnapshot(pendingKey);
-        var pending = pendingSnapshot.Requests;
+        var durablePending = target.DurableDemandByHandler.Values.Sum();
+        var pending = checked(pendingSnapshot.Requests + durablePending);
+        var durableHandlerDemand = new Dictionary<string, int>(
+            target.DurableDemandByHandler,
+            StringComparer.Ordinal);
+        foreach (var (handlerName, handlerPending) in pendingSnapshot.HandlerRequests)
+            durableHandlerDemand[handlerName] = checked(
+                durableHandlerDemand.GetValueOrDefault(handlerName) + handlerPending);
         if (snapshot.Endpoints.IsDefaultOrEmpty)
         {
             var complete = state.LastRequestedReplicas is null or 0;
             return new DemandObservation(
                 pending,
                 0,
-                pendingSnapshot.HandlerRequests,
+                durableHandlerDemand,
                 complete);
         }
 
@@ -260,7 +267,7 @@ public sealed class FunctionScaler(
                 group => group.Key,
                 group => group.Sum(handler => checked(handler.Capacity.Reserved + handler.Capacity.Started)),
                 StringComparer.Ordinal);
-        foreach (var (handlerName, handlerPending) in pendingSnapshot.HandlerRequests)
+        foreach (var (handlerName, handlerPending) in durableHandlerDemand)
             handlers[handlerName] = checked(handlers.GetValueOrDefault(handlerName) + handlerPending);
         return new DemandObservation(
             pending,
