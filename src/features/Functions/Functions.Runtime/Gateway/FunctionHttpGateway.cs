@@ -65,18 +65,163 @@ public sealed class FunctionHttpGateway(
         ],
         StringComparer.OrdinalIgnoreCase);
 
+    private sealed record FunctionHttpInvocation(
+        string NormalizedRoute,
+        string HandlerPath,
+        FunctionExposure Exposure,
+        string InvocationId,
+        long ReservedBytes,
+        ResolvedFunctionHttpRoute Resolved,
+        FunctionRevisionCoordinationKey CoordinationKey,
+        FunctionMeterDimensions MeterDimensions);
+
+    private sealed record FunctionHttpAdmission(
+        FunctionAdmissionLease Lease,
+        bool RequiresActivationFence);
+
+    private readonly record struct FunctionRequestBodyResult(bool Succeeded, byte[]? Body);
+
+    private sealed record FunctionHttpAttempt(
+        string AttemptId,
+        DateTimeOffset DeadlineUtc,
+        ReserveFunctionAttemptRequest ReserveRequest,
+        HttpFunctionInvocationPayload Payload);
+
+    private sealed record FunctionHttpDispatch(
+        FunctionHttpInvocation Invocation,
+        FunctionHttpAttempt Attempt,
+        FunctionAdmissionLease DistributedAdmission,
+        FunctionPendingAdmissionLease PendingAdmission,
+        CancellationTokenSource ExecutionTimeout,
+        CancellationToken ExecutionDeadline,
+        CancellationToken PreStartDeadline,
+        CancellationToken RequestCancellation);
+
+    private enum EndpointReservationOutcome
+    {
+        Reserved,
+        Handled,
+        Unavailable,
+        CapacityRejected
+    }
+
+    private enum EndpointExecutionOutcome
+    {
+        Handled,
+        CapacityRejected
+    }
+
+    private readonly record struct EndpointReservationResult
+    {
+        private EndpointReservationResult(
+            EndpointReservationOutcome outcome,
+            string? reservationToken = null)
+        {
+            Outcome = outcome;
+            ReservationToken = reservationToken;
+        }
+
+        public EndpointReservationOutcome Outcome { get; }
+
+        public string? ReservationToken { get; }
+
+        public static EndpointReservationResult Reserved(string reservationToken) =>
+            new(EndpointReservationOutcome.Reserved, reservationToken);
+
+        public static EndpointReservationResult Handled() =>
+            new(EndpointReservationOutcome.Handled);
+
+        public static EndpointReservationResult Unavailable() =>
+            new(EndpointReservationOutcome.Unavailable);
+
+        public static EndpointReservationResult CapacityRejected() =>
+            new(EndpointReservationOutcome.CapacityRejected);
+    }
+
     public async Task InvokeAsync(
         HttpContext context,
         string functionRoute,
         string handlerPath,
         CancellationToken cancellationToken = default)
     {
+        var invocation = await ResolveInvocationAsync(
+            context,
+            functionRoute,
+            handlerPath,
+            cancellationToken);
+        if (invocation is null ||
+            !await TryAdmitPublicTrafficAsync(context, invocation, cancellationToken))
+        {
+            return;
+        }
+
+        using var pendingLease = await TryAcquirePendingAdmissionAsync(
+            context,
+            invocation,
+            cancellationToken);
+        if (pendingLease is null)
+            return;
+
+        var admission = await TryAcquireDistributedAdmissionAsync(
+            context,
+            invocation,
+            cancellationToken);
+        if (admission is null)
+            return;
+
+        await using var distributedAdmission = admission.Lease;
+        using var admissionLifetime = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            distributedAdmission.LeaseLostToken);
+
+        var body = await TryReadRequestBodyAsync(
+            context,
+            distributedAdmission,
+            admissionLifetime.Token,
+            cancellationToken);
+        if (!body.Succeeded ||
+            !await TryWriteAdmittedMeterAsync(
+                context,
+                invocation,
+                distributedAdmission,
+                admissionLifetime.Token,
+                cancellationToken))
+        {
+            return;
+        }
+
+        var snapshot = await TryGetReadyEndpointsAsync(
+            context,
+            invocation,
+            admission.RequiresActivationFence,
+            distributedAdmission,
+            admissionLifetime.Token,
+            cancellationToken);
+        if (snapshot is null)
+            return;
+
+        await DispatchToAgentsAsync(
+            context,
+            invocation,
+            snapshot,
+            body.Body,
+            pendingLease,
+            distributedAdmission,
+            cancellationToken);
+    }
+
+    private async Task<FunctionHttpInvocation?> ResolveInvocationAsync(
+        HttpContext context,
+        string functionRoute,
+        string handlerPath,
+        CancellationToken cancellationToken)
+    {
         var exposure = ResolveExposure(context.Connection.LocalPort);
         if (exposure is null)
         {
             await WriteErrorAsync(context, StatusCodes.Status404NotFound, "function_route_not_found",
                 "The Function route was not found.", cancellationToken);
-            return;
+            return null;
         }
 
         var normalizedRoute = functionRoute.Trim().ToLowerInvariant();
@@ -84,21 +229,21 @@ public sealed class FunctionHttpGateway(
         {
             await WriteErrorAsync(context, StatusCodes.Status404NotFound, "function_route_not_found",
                 "The Function route was not found.", cancellationToken);
-            return;
+            return null;
         }
 
         if (!RequestMetadataIsWithinLimits(context.Request))
         {
             await WriteErrorAsync(context, StatusCodes.Status431RequestHeaderFieldsTooLarge,
                 "request_metadata_too_large", "The Function request metadata exceeded its limit.", cancellationToken);
-            return;
+            return null;
         }
 
         if (context.Request.ContentLength is < 0 || context.Request.ContentLength > options.MaxRequestBodyBytes)
         {
             await WriteErrorAsync(context, StatusCodes.Status413PayloadTooLarge, "request_body_too_large",
                 "The Function request body exceeded its limit.", cancellationToken);
-            return;
+            return null;
         }
 
         var resolved = await routeResolver.ResolveAsync(
@@ -111,86 +256,58 @@ public sealed class FunctionHttpGateway(
         {
             await WriteErrorAsync(context, StatusCodes.Status404NotFound, "function_route_not_found",
                 "The Function route was not found.", cancellationToken);
-            return;
+            return null;
         }
 
         var invocationId = Guid.NewGuid().ToString("N");
-        if (exposure == FunctionExposure.Public && !publicRateLimiter.TryAcquire(normalizedRoute))
-        {
-            await WriteErrorAsync(context, StatusCodes.Status429TooManyRequests, "rate_limit_exceeded",
-                "The Function request rate limit was exceeded.", cancellationToken);
-            return;
-        }
-        if (exposure == FunctionExposure.Public)
-        {
-            FunctionTrafficDecision traffic;
-            try
-            {
-                traffic = await trafficCoordinator.TryAcquireAsync(
-                    new FunctionAppCoordinationKey(resolved.App.TenantId, resolved.App.Id),
-                    new FunctionTrafficRequest(invocationId, resolved.Route.HandlerName),
-                    cancellationToken);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch
-            {
-                await WriteErrorAsync(context, StatusCodes.Status503ServiceUnavailable,
-                    "function_coordination_unavailable",
-                    "Function request coordination is temporarily unavailable.", cancellationToken);
-                return;
-            }
-
-            if (traffic.Kind != FunctionTrafficDecisionKind.Granted)
-            {
-                if (traffic.RetryAfterMilliseconds > 0)
-                    context.Response.Headers.RetryAfter = RetryAfterSeconds(traffic.RetryAfterMilliseconds);
-                await WriteErrorAsync(
-                    context,
-                    traffic.Rejection == FunctionTrafficRejection.RateLimitExceeded
-                        ? StatusCodes.Status429TooManyRequests
-                        : StatusCodes.Status503ServiceUnavailable,
-                    traffic.Rejection == FunctionTrafficRejection.RateLimitExceeded
-                        ? "rate_limit_exceeded"
-                        : "function_coordination_rejected",
-                    traffic.Rejection == FunctionTrafficRejection.RateLimitExceeded
-                        ? "The Function request rate limit was exceeded."
-                        : "Function request coordination rejected an invalid decision.",
-                    cancellationToken);
-                return;
-            }
-        }
-
         var reservedBytes = context.Request.ContentLength ?? options.MaxRequestBodyBytes;
-        var pendingKey = $"{resolved.App.TenantId}/{resolved.App.Id}/{resolved.Revision.Id}";
-        using var pendingLease = pendingAdmission.TryAcquire(
-            pendingKey,
-            resolved.Route.HandlerName,
-            reservedBytes);
-        if (pendingLease is null)
-        {
-            await WriteErrorAsync(context, StatusCodes.Status429TooManyRequests, "pending_limit_exceeded",
-                "The Function pending request limit was exceeded.", cancellationToken);
-            return;
-        }
-
         var coordinationKey = new FunctionRevisionCoordinationKey(
             resolved.App.TenantId,
             resolved.App.Id,
             resolved.Revision.Id);
-        FunctionAdmissionDecision admissionDecision;
+        var meterDimensions = new FunctionMeterDimensions(
+            resolved.App.TenantId,
+            resolved.App.Id,
+            resolved.Revision.Id,
+            resolved.Route.TriggerId,
+            resolved.Route.HandlerName,
+            FunctionMeterTriggerKind.Http);
+        return new FunctionHttpInvocation(
+            normalizedRoute,
+            handlerPath,
+            exposure.Value,
+            invocationId,
+            reservedBytes,
+            resolved,
+            coordinationKey,
+            meterDimensions);
+    }
+
+    private async Task<bool> TryAdmitPublicTrafficAsync(
+        HttpContext context,
+        FunctionHttpInvocation invocation,
+        CancellationToken cancellationToken)
+    {
+        if (invocation.Exposure != FunctionExposure.Public)
+            return true;
+
+        if (!publicRateLimiter.TryAcquire(invocation.NormalizedRoute))
+        {
+            await WriteErrorAsync(context, StatusCodes.Status429TooManyRequests, "rate_limit_exceeded",
+                "The Function request rate limit was exceeded.", cancellationToken);
+            return false;
+        }
+
+        FunctionTrafficDecision traffic;
         try
         {
-            admissionDecision = await admissionCoordinator.AcquireAsync(
-                coordinationKey,
-                new FunctionAdmissionRequest(
-                    $"http:{invocationId}",
-                    invocationId,
-                    resolved.Route.HandlerName,
-                    FunctionAdmissionTriggerKind.Http,
-                    reservedBytes),
+            traffic = await trafficCoordinator.TryAcquireAsync(
+                new FunctionAppCoordinationKey(
+                    invocation.Resolved.App.TenantId,
+                    invocation.Resolved.App.Id),
+                new FunctionTrafficRequest(
+                    invocation.InvocationId,
+                    invocation.Resolved.Route.HandlerName),
                 cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -202,7 +319,76 @@ public sealed class FunctionHttpGateway(
             await WriteErrorAsync(context, StatusCodes.Status503ServiceUnavailable,
                 "function_coordination_unavailable",
                 "Function request coordination is temporarily unavailable.", cancellationToken);
-            return;
+            return false;
+        }
+
+        if (traffic.Kind == FunctionTrafficDecisionKind.Granted)
+            return true;
+
+        if (traffic.RetryAfterMilliseconds > 0)
+            context.Response.Headers.RetryAfter = RetryAfterSeconds(traffic.RetryAfterMilliseconds);
+        await WriteErrorAsync(
+            context,
+            traffic.Rejection == FunctionTrafficRejection.RateLimitExceeded
+                ? StatusCodes.Status429TooManyRequests
+                : StatusCodes.Status503ServiceUnavailable,
+            traffic.Rejection == FunctionTrafficRejection.RateLimitExceeded
+                ? "rate_limit_exceeded"
+                : "function_coordination_rejected",
+            traffic.Rejection == FunctionTrafficRejection.RateLimitExceeded
+                ? "The Function request rate limit was exceeded."
+                : "Function request coordination rejected an invalid decision.",
+            cancellationToken);
+        return false;
+    }
+
+    private async Task<FunctionPendingAdmissionLease?> TryAcquirePendingAdmissionAsync(
+        HttpContext context,
+        FunctionHttpInvocation invocation,
+        CancellationToken cancellationToken)
+    {
+        var pendingKey =
+            $"{invocation.Resolved.App.TenantId}/{invocation.Resolved.App.Id}/{invocation.Resolved.Revision.Id}";
+        var lease = pendingAdmission.TryAcquire(
+            pendingKey,
+            invocation.Resolved.Route.HandlerName,
+            invocation.ReservedBytes);
+        if (lease is not null)
+            return lease;
+
+        await WriteErrorAsync(context, StatusCodes.Status429TooManyRequests, "pending_limit_exceeded",
+            "The Function pending request limit was exceeded.", cancellationToken);
+        return null;
+    }
+
+    private async Task<FunctionHttpAdmission?> TryAcquireDistributedAdmissionAsync(
+        HttpContext context,
+        FunctionHttpInvocation invocation,
+        CancellationToken cancellationToken)
+    {
+        FunctionAdmissionDecision admissionDecision;
+        try
+        {
+            admissionDecision = await admissionCoordinator.AcquireAsync(
+                invocation.CoordinationKey,
+                new FunctionAdmissionRequest(
+                    $"http:{invocation.InvocationId}",
+                    invocation.InvocationId,
+                    invocation.Resolved.Route.HandlerName,
+                    FunctionAdmissionTriggerKind.Http,
+                    invocation.ReservedBytes),
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            await WriteErrorAsync(context, StatusCodes.Status503ServiceUnavailable,
+                "function_coordination_unavailable",
+                "Function request coordination is temporarily unavailable.", cancellationToken);
+            return null;
         }
 
         if (admissionDecision.Kind != FunctionAdmissionDecisionKind.Granted ||
@@ -234,42 +420,49 @@ public sealed class FunctionHttpGateway(
                         ? "The Function pending request limit was exceeded."
                         : "Function request coordination returned an invalid decision.",
                 cancellationToken);
-            return;
+            return null;
         }
-        await using var distributedAdmission = new FunctionAdmissionLease(
-            admissionCoordinator,
-            coordinationKey,
-            admissionToken,
-            timeProvider);
-        using var admissionLifetime = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            distributedAdmission.LeaseLostToken);
+
+        return new FunctionHttpAdmission(
+            new FunctionAdmissionLease(
+                admissionCoordinator,
+                invocation.CoordinationKey,
+                admissionToken,
+                timeProvider),
+            admissionDecision.RequiresActivationFence);
+    }
+
+    private async Task<FunctionRequestBodyResult> TryReadRequestBodyAsync(
+        HttpContext context,
+        FunctionAdmissionLease distributedAdmission,
+        CancellationToken admissionLifetime,
+        CancellationToken cancellationToken)
+    {
         using var bodyTimeout = new CancellationTokenSource(
             TimeSpan.FromSeconds(options.RequestBodyTimeoutSeconds),
             timeProvider);
         using var bodyLifetime = CancellationTokenSource.CreateLinkedTokenSource(
-            admissionLifetime.Token,
+            admissionLifetime,
             bodyTimeout.Token);
 
-        byte[]? body;
         try
         {
-            body = await ReadBodyAsync(context.Request, bodyLifetime.Token);
+            return new FunctionRequestBodyResult(
+                true,
+                await ReadBodyAsync(context.Request, bodyLifetime.Token));
         }
         catch (FunctionRequestBodyTooLargeException)
         {
             await WriteErrorAsync(context, StatusCodes.Status413PayloadTooLarge, "request_body_too_large",
                 "The Function request body exceeded its limit.", cancellationToken);
-            return;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return;
+            // The caller disconnected; there is no response to write.
         }
         catch (OperationCanceledException) when (distributedAdmission.IsLost)
         {
             await WriteAdmissionLostAsync(context, cancellationToken);
-            return;
         }
         catch (OperationCanceledException) when (bodyTimeout.IsCancellationRequested)
         {
@@ -279,78 +472,176 @@ public sealed class FunctionHttpGateway(
                 "request_body_timeout",
                 "The Function request body was not received before the upload deadline.",
                 cancellationToken);
-            return;
         }
 
-        var meterDimensions = new FunctionMeterDimensions(
-            resolved.App.TenantId,
-            resolved.App.Id,
-            resolved.Revision.Id,
-            resolved.Route.TriggerId,
-            resolved.Route.HandlerName,
-            FunctionMeterTriggerKind.Http);
+        return default;
+    }
+
+    private async Task<bool> TryWriteAdmittedMeterAsync(
+        HttpContext context,
+        FunctionHttpInvocation invocation,
+        FunctionAdmissionLease distributedAdmission,
+        CancellationToken admissionLifetime,
+        CancellationToken cancellationToken)
+    {
         try
         {
             await meterWriter.WriteAsync(
                 FunctionMeterEvent.CreateFact(
-                    meterDimensions,
-                    invocationId,
+                    invocation.MeterDimensions,
+                    invocation.InvocationId,
                     attemptNumber: 1,
                     FunctionMeterEventPhase.Admitted,
                     outcome: null,
                     executionDurationMilliseconds: null,
                     timeProvider.GetUtcNow()),
-                admissionLifetime.Token);
+                admissionLifetime);
+            return true;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return;
+            return false;
         }
         catch (OperationCanceledException) when (distributedAdmission.IsLost)
         {
             await WriteAdmissionLostAsync(context, cancellationToken);
+            return false;
+        }
+    }
+
+    private async Task<FunctionEndpointSnapshot?> TryGetReadyEndpointsAsync(
+        HttpContext context,
+        FunctionHttpInvocation invocation,
+        bool requiresActivationFence,
+        FunctionAdmissionLease distributedAdmission,
+        CancellationToken admissionLifetime,
+        CancellationToken cancellationToken)
+    {
+        var subject = new FunctionRevisionInKubernetes(
+            invocation.Resolved.App,
+            invocation.Resolved.Revision);
+        var service = new FunctionServiceKey(subject.Namespace, subject.ServiceName);
+        var snapshot = endpointRegistry.GetSnapshot(service);
+        if (snapshot.HasReadyEndpoints && !requiresActivationFence)
+            return snapshot;
+
+        try
+        {
+            var activation = await activator.EnsureActiveAsync(
+                invocation.Resolved.App,
+                invocation.Resolved.Revision,
+                admissionLifetime,
+                forceScaleFence: requiresActivationFence);
+            if (activation.TryGetValue(out snapshot, out _))
+                return snapshot;
+
+            await WriteErrorAsync(context, StatusCodes.Status503ServiceUnavailable, "activation_failed",
+                "The Function revision could not be activated.", cancellationToken);
+            return null;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (OperationCanceledException) when (distributedAdmission.IsLost)
+        {
+            await WriteAdmissionLostAsync(context, cancellationToken);
+            return null;
+        }
+    }
+
+    private async Task DispatchToAgentsAsync(
+        HttpContext context,
+        FunctionHttpInvocation invocation,
+        FunctionEndpointSnapshot snapshot,
+        byte[]? body,
+        FunctionPendingAdmissionLease pendingLease,
+        FunctionAdmissionLease distributedAdmission,
+        CancellationToken cancellationToken)
+    {
+        var attempt = CreateAttempt(context, invocation, body);
+        using var executionTimeout = new CancellationTokenSource(
+            TimeSpan.FromSeconds(options.ExecutionTimeoutSeconds),
+            timeProvider);
+        using var executionDeadline = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            executionTimeout.Token);
+        using var preStartDeadline = CancellationTokenSource.CreateLinkedTokenSource(
+            executionDeadline.Token,
+            distributedAdmission.LeaseLostToken);
+        var dispatch = new FunctionHttpDispatch(
+            invocation,
+            attempt,
+            distributedAdmission,
+            pendingLease,
+            executionTimeout,
+            executionDeadline.Token,
+            preStartDeadline.Token,
+            cancellationToken);
+
+        var endpointOrder = endpointSelector.Order(snapshot);
+        if (endpointOrder.Count == 0)
+        {
+            await WriteErrorAsync(context, StatusCodes.Status503ServiceUnavailable, "no_ready_agents",
+                "The Function revision has no ready Agent endpoints.", cancellationToken);
             return;
         }
 
-        var subject = new FunctionRevisionInKubernetes(resolved.App, resolved.Revision);
-        var service = new FunctionServiceKey(subject.Namespace, subject.ServiceName);
-        var snapshot = endpointRegistry.GetSnapshot(service);
-        if (!snapshot.HasReadyEndpoints || admissionDecision.RequiresActivationFence)
+        var hadCapacityRejection = false;
+        foreach (var endpoint in endpointOrder)
         {
-            try
-            {
-                var activation = await activator.EnsureActiveAsync(
-                    resolved.App,
-                    resolved.Revision,
-                    admissionLifetime.Token,
-                    forceScaleFence: admissionDecision.RequiresActivationFence);
-                if (!activation.TryGetValue(out snapshot, out _))
-                {
-                    await WriteErrorAsync(context, StatusCodes.Status503ServiceUnavailable, "activation_failed",
-                        "The Function revision could not be activated.", cancellationToken);
-                    return;
-                }
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
+            var reservation = await TryReserveEndpointAsync(context, endpoint, dispatch);
+            if (reservation.Outcome == EndpointReservationOutcome.Handled)
                 return;
-            }
-            catch (OperationCanceledException) when (distributedAdmission.IsLost)
+            if (reservation.Outcome == EndpointReservationOutcome.Unavailable)
+                continue;
+            if (reservation.Outcome == EndpointReservationOutcome.CapacityRejected)
             {
-                await WriteAdmissionLostAsync(context, cancellationToken);
+                hadCapacityRejection = true;
+                continue;
+            }
+
+            var reservationToken = reservation.ReservationToken
+                                   ?? throw new InvalidOperationException(
+                                       "A successful Function Agent reservation must include its token.");
+            var outcome = await TryExecuteEndpointAsync(
+                context,
+                endpoint,
+                reservationToken,
+                dispatch);
+            if (outcome == EndpointExecutionOutcome.Handled)
                 return;
+            if (outcome == EndpointExecutionOutcome.CapacityRejected)
+            {
+                hadCapacityRejection = true;
+                continue;
             }
         }
 
+        await WriteErrorAsync(
+            context,
+            hadCapacityRejection ? StatusCodes.Status429TooManyRequests : StatusCodes.Status503ServiceUnavailable,
+            hadCapacityRejection ? PoleFunctionProtocolErrors.CapacityExhausted : "agents_unavailable",
+            hadCapacityRejection
+                ? "All Function Agent instances are at capacity."
+                : "No Function Agent instance could accept the request.",
+            cancellationToken);
+    }
+
+    private FunctionHttpAttempt CreateAttempt(
+        HttpContext context,
+        FunctionHttpInvocation invocation,
+        byte[]? body)
+    {
         var attemptId = Guid.NewGuid().ToString("N");
         var deadlineUtc = timeProvider.GetUtcNow().AddSeconds(options.ExecutionTimeoutSeconds);
         var identity = new FunctionAttemptIdentity(
-            resolved.App.TenantId,
-            resolved.App.Id,
-            resolved.Revision.Id,
-            resolved.Route.HandlerName,
+            invocation.Resolved.App.TenantId,
+            invocation.Resolved.App.Id,
+            invocation.Resolved.Revision.Id,
+            invocation.Resolved.Route.HandlerName,
             FunctionTriggerKind.Http,
-            invocationId,
+            invocation.InvocationId,
             attemptId,
             AttemptNumber: 1);
         var traceContext = new FunctionInvocationTraceContext(
@@ -364,197 +655,179 @@ public sealed class FunctionHttpGateway(
             traceContext);
         var payload = new HttpFunctionInvocationPayload(
             context.Request.Method,
-            NormalizeHandlerPath(handlerPath),
+            NormalizeHandlerPath(invocation.HandlerPath),
             context.Request.QueryString.Value ?? string.Empty,
             ForwardHeaders(context.Request.Headers),
             body);
+        return new FunctionHttpAttempt(attemptId, deadlineUtc, reserveRequest, payload);
+    }
 
-        using var executionTimeout = new CancellationTokenSource(
-            TimeSpan.FromSeconds(options.ExecutionTimeoutSeconds),
-            timeProvider);
-        using var executionDeadline = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            executionTimeout.Token);
-        using var preStartDeadline = CancellationTokenSource.CreateLinkedTokenSource(
-            executionDeadline.Token,
-            distributedAdmission.LeaseLostToken);
-        var endpointOrder = endpointSelector.Order(snapshot);
-        if (endpointOrder.Count == 0)
+    private async Task<EndpointReservationResult> TryReserveEndpointAsync(
+        HttpContext context,
+        FunctionEndpoint endpoint,
+        FunctionHttpDispatch dispatch)
+    {
+        FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse> reservation;
+        try
         {
-            await WriteErrorAsync(context, StatusCodes.Status503ServiceUnavailable, "no_ready_agents",
-                "The Function revision has no ready Agent endpoints.", cancellationToken);
-            return;
-        }
-
-        var hadCapacityRejection = false;
-        foreach (var endpoint in endpointOrder)
-        {
-            FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse> reservation;
-            try
-            {
-                reservation = await agentClient.ReserveAsync(
-                    endpoint,
-                    resolved.App,
-                    resolved.Revision,
-                    reserveRequest,
-                    preStartDeadline.Token);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (OperationCanceledException) when (executionTimeout.IsCancellationRequested)
-            {
-                await WriteErrorAsync(context, StatusCodes.Status504GatewayTimeout, "execution_deadline_exceeded",
-                    "The Function execution deadline elapsed.", context.RequestAborted);
-                return;
-            }
-            catch (OperationCanceledException) when (distributedAdmission.IsLost)
-            {
-                await WriteAdmissionLostAsync(context, cancellationToken);
-                return;
-            }
-            catch (Exception exception) when (IsPreStartTransportFailure(exception, preStartDeadline.Token))
-            {
-                continue;
-            }
-
-            if (!reservation.IsSuccess || reservation.StatusCode != HttpStatusCode.OK)
-            {
-                if (IsPreStartRejection(reservation.Error))
-                {
-                    hadCapacityRejection = true;
-                    continue;
-                }
-
-                await WriteAgentErrorAsync(context, reservation.Error, cancellationToken);
-                return;
-            }
-            if (reservation.Value is null ||
-                !string.Equals(reservation.Value.AttemptId, attemptId, StringComparison.Ordinal) ||
-                string.IsNullOrWhiteSpace(reservation.Value.ReservationToken))
-            {
-                await WriteErrorAsync(context, StatusCodes.Status502BadGateway, "agent_attempt_mismatch",
-                    "The Function Agent returned a different attempt identity.", cancellationToken);
-                return;
-            }
-            if (reservation.Value.ExpiresAtUtc <= timeProvider.GetUtcNow() ||
-                reservation.Value.ExpiresAtUtc > deadlineUtc)
-            {
-                await WriteErrorAsync(context, StatusCodes.Status502BadGateway, "invalid_agent_response",
-                    "The Function Agent returned an invalid reservation.", cancellationToken);
-                return;
-            }
-
-            FunctionAgentProtocolResponse<StartFunctionAttemptResponse> started;
-            if (distributedAdmission.IsLost)
-            {
-                await WriteAdmissionLostAsync(context, cancellationToken);
-                return;
-            }
-            try
-            {
-                started = await agentClient.ExecuteAsync(
-                    endpoint,
-                    resolved.App,
-                    resolved.Revision,
-                    attemptId,
-                    new ExecuteFunctionAttemptRequest(
-                        PoleFunctionProtocol.Version,
-                        reservation.Value.ReservationToken,
-                        payload),
-                    preStartDeadline.Token);
-            }
-            catch (OperationCanceledException) when (
-                distributedAdmission.IsLost &&
-                !cancellationToken.IsCancellationRequested &&
-                !executionTimeout.IsCancellationRequested)
-            {
-                // Execute may have crossed the Agent boundary. Reconcile on that same Agent
-                // without tying the observation to the now-lost admission heartbeat.
-                await ReleaseAdmissionBestEffortAsync(distributedAdmission);
-                pendingLease.Dispose();
-                await ObserveAndWriteAsync(
-                    context,
-                    endpoint,
-                    resolved,
-                    attemptId,
-                    deadlineUtc,
-                    meterDimensions,
-                    invocationId,
-                    startedMeterWritten: false,
-                    executionDeadline.Token);
-                return;
-            }
-            catch (Exception exception) when (IsTransportFailure(exception))
-            {
-                // Execute may have reached the Agent. Reconcile only with that Agent; never reroute.
-                await ReleaseAdmissionBestEffortAsync(distributedAdmission);
-                pendingLease.Dispose();
-                await ObserveAndWriteAsync(
-                    context,
-                    endpoint,
-                    resolved,
-                    attemptId,
-                    deadlineUtc,
-                    meterDimensions,
-                    invocationId,
-                    startedMeterWritten: false,
-                    executionDeadline.Token);
-                return;
-            }
-
-            if (!started.IsSuccess || started.StatusCode != HttpStatusCode.Accepted)
-            {
-                if (IsPreStartRejection(started.Error))
-                {
-                    hadCapacityRejection = true;
-                    continue;
-                }
-
-                await WriteAgentErrorAsync(context, started.Error, cancellationToken);
-                return;
-            }
-            await ReleaseAdmissionBestEffortAsync(distributedAdmission);
-            pendingLease.Dispose();
-            if (started.Value is null ||
-                !string.Equals(started.Value.AttemptId, attemptId, StringComparison.Ordinal))
-            {
-                await WriteErrorAsync(context, StatusCodes.Status502BadGateway, "agent_attempt_mismatch",
-                    "The Function Agent returned a different attempt identity.", cancellationToken);
-                return;
-            }
-
-            await TryWritePostStartMeterAsync(
-                FunctionMeterEvent.CreateFact(
-                    meterDimensions,
-                    invocationId,
-                    attemptNumber: 1,
-                    FunctionMeterEventPhase.Started,
-                    outcome: null,
-                    executionDurationMilliseconds: null,
-                    started.Value.StartedAtUtc));
-            await ObserveAndWriteAsync(
-                context,
+            reservation = await agentClient.ReserveAsync(
                 endpoint,
-                resolved,
-                attemptId,
-                deadlineUtc,
-                meterDimensions,
-                invocationId,
-                startedMeterWritten: true,
-                executionDeadline.Token);
-            return;
+                dispatch.Invocation.Resolved.App,
+                dispatch.Invocation.Resolved.Revision,
+                dispatch.Attempt.ReserveRequest,
+                dispatch.PreStartDeadline);
+        }
+        catch (OperationCanceledException) when (dispatch.RequestCancellation.IsCancellationRequested)
+        {
+            return EndpointReservationResult.Handled();
+        }
+        catch (OperationCanceledException) when (dispatch.ExecutionTimeout.IsCancellationRequested)
+        {
+            await WriteErrorAsync(context, StatusCodes.Status504GatewayTimeout, "execution_deadline_exceeded",
+                "The Function execution deadline elapsed.", context.RequestAborted);
+            return EndpointReservationResult.Handled();
+        }
+        catch (OperationCanceledException) when (dispatch.DistributedAdmission.IsLost)
+        {
+            await WriteAdmissionLostAsync(context, dispatch.RequestCancellation);
+            return EndpointReservationResult.Handled();
+        }
+        catch (Exception exception) when (IsPreStartTransportFailure(exception, dispatch.PreStartDeadline))
+        {
+            return EndpointReservationResult.Unavailable();
         }
 
-        await WriteErrorAsync(
+        if (!reservation.IsSuccess || reservation.StatusCode != HttpStatusCode.OK)
+        {
+            if (IsPreStartRejection(reservation.Error))
+                return EndpointReservationResult.CapacityRejected();
+
+            await WriteAgentErrorAsync(context, reservation.Error, dispatch.RequestCancellation);
+            return EndpointReservationResult.Handled();
+        }
+        if (reservation.Value is null ||
+            !string.Equals(
+                reservation.Value.AttemptId,
+                dispatch.Attempt.AttemptId,
+                StringComparison.Ordinal) ||
+            string.IsNullOrWhiteSpace(reservation.Value.ReservationToken))
+        {
+            await WriteErrorAsync(context, StatusCodes.Status502BadGateway, "agent_attempt_mismatch",
+                "The Function Agent returned a different attempt identity.", dispatch.RequestCancellation);
+            return EndpointReservationResult.Handled();
+        }
+        if (reservation.Value.ExpiresAtUtc <= timeProvider.GetUtcNow() ||
+            reservation.Value.ExpiresAtUtc > dispatch.Attempt.DeadlineUtc)
+        {
+            await WriteErrorAsync(context, StatusCodes.Status502BadGateway, "invalid_agent_response",
+                "The Function Agent returned an invalid reservation.", dispatch.RequestCancellation);
+            return EndpointReservationResult.Handled();
+        }
+
+        return EndpointReservationResult.Reserved(reservation.Value.ReservationToken);
+    }
+
+    private async Task<EndpointExecutionOutcome> TryExecuteEndpointAsync(
+        HttpContext context,
+        FunctionEndpoint endpoint,
+        string reservationToken,
+        FunctionHttpDispatch dispatch)
+    {
+        if (dispatch.DistributedAdmission.IsLost)
+        {
+            await WriteAdmissionLostAsync(context, dispatch.RequestCancellation);
+            return EndpointExecutionOutcome.Handled;
+        }
+
+        FunctionAgentProtocolResponse<StartFunctionAttemptResponse> started;
+        try
+        {
+            started = await agentClient.ExecuteAsync(
+                endpoint,
+                dispatch.Invocation.Resolved.App,
+                dispatch.Invocation.Resolved.Revision,
+                dispatch.Attempt.AttemptId,
+                new ExecuteFunctionAttemptRequest(
+                    PoleFunctionProtocol.Version,
+                    reservationToken,
+                    dispatch.Attempt.Payload),
+                dispatch.PreStartDeadline);
+        }
+        catch (OperationCanceledException) when (
+            dispatch.DistributedAdmission.IsLost &&
+            !dispatch.RequestCancellation.IsCancellationRequested &&
+            !dispatch.ExecutionTimeout.IsCancellationRequested)
+        {
+            // Execute may have crossed the Agent boundary. Reconcile on that same Agent
+            // without tying the observation to the now-lost admission heartbeat.
+            await ReleaseAndObserveAmbiguousAttemptAsync(context, endpoint, dispatch);
+            return EndpointExecutionOutcome.Handled;
+        }
+        catch (Exception exception) when (IsTransportFailure(exception))
+        {
+            // Execute may have reached the Agent. Reconcile only with that Agent; never reroute.
+            await ReleaseAndObserveAmbiguousAttemptAsync(context, endpoint, dispatch);
+            return EndpointExecutionOutcome.Handled;
+        }
+
+        if (!started.IsSuccess || started.StatusCode != HttpStatusCode.Accepted)
+        {
+            if (IsPreStartRejection(started.Error))
+                return EndpointExecutionOutcome.CapacityRejected;
+
+            await WriteAgentErrorAsync(context, started.Error, dispatch.RequestCancellation);
+            return EndpointExecutionOutcome.Handled;
+        }
+
+        await ReleaseAdmissionBestEffortAsync(dispatch.DistributedAdmission);
+        dispatch.PendingAdmission.Dispose();
+        if (started.Value is null ||
+            !string.Equals(started.Value.AttemptId, dispatch.Attempt.AttemptId, StringComparison.Ordinal))
+        {
+            await WriteErrorAsync(context, StatusCodes.Status502BadGateway, "agent_attempt_mismatch",
+                "The Function Agent returned a different attempt identity.", dispatch.RequestCancellation);
+            return EndpointExecutionOutcome.Handled;
+        }
+
+        await TryWritePostStartMeterAsync(
+            FunctionMeterEvent.CreateFact(
+                dispatch.Invocation.MeterDimensions,
+                dispatch.Invocation.InvocationId,
+                attemptNumber: 1,
+                FunctionMeterEventPhase.Started,
+                outcome: null,
+                executionDurationMilliseconds: null,
+                started.Value.StartedAtUtc));
+        await ObserveAndWriteAsync(
             context,
-            hadCapacityRejection ? StatusCodes.Status429TooManyRequests : StatusCodes.Status503ServiceUnavailable,
-            hadCapacityRejection ? PoleFunctionProtocolErrors.CapacityExhausted : "agents_unavailable",
-            hadCapacityRejection
-                ? "All Function Agent instances are at capacity."
-                : "No Function Agent instance could accept the request.",
-            cancellationToken);
+            endpoint,
+            dispatch.Invocation.Resolved,
+            dispatch.Attempt.AttemptId,
+            dispatch.Attempt.DeadlineUtc,
+            dispatch.Invocation.MeterDimensions,
+            dispatch.Invocation.InvocationId,
+            startedMeterWritten: true,
+            dispatch.ExecutionDeadline);
+        return EndpointExecutionOutcome.Handled;
+    }
+
+    private async Task ReleaseAndObserveAmbiguousAttemptAsync(
+        HttpContext context,
+        FunctionEndpoint endpoint,
+        FunctionHttpDispatch dispatch)
+    {
+        await ReleaseAdmissionBestEffortAsync(dispatch.DistributedAdmission);
+        dispatch.PendingAdmission.Dispose();
+        await ObserveAndWriteAsync(
+            context,
+            endpoint,
+            dispatch.Invocation.Resolved,
+            dispatch.Attempt.AttemptId,
+            dispatch.Attempt.DeadlineUtc,
+            dispatch.Invocation.MeterDimensions,
+            dispatch.Invocation.InvocationId,
+            startedMeterWritten: false,
+            dispatch.ExecutionDeadline);
     }
 
     private async Task ObserveAndWriteAsync(

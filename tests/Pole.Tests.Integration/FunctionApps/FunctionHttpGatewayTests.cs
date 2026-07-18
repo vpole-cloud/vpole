@@ -277,23 +277,27 @@ public sealed class FunctionHttpGatewayTests
     }
 
     [Fact]
-    public async Task Accepted_execute_releases_exact_distributed_admission_before_observe()
+    public async Task Accepted_execute_releases_admissions_before_observe()
     {
         var admissionCoordinator = new FakeAdmissionCoordinator();
-        var releaseWasVisibleAtObserve = false;
+        var pendingAdmission = new TrackingAdmissionLimiter();
+        var admissionsWereReleasedAtObserve = false;
         var agent = new RecordingAgentClient
         {
-            ObserveStarted = () => releaseWasVisibleAtObserve = admissionCoordinator.Releases.Count == 1
+            ObserveStarted = () => admissionsWereReleasedAtObserve =
+                admissionCoordinator.Releases.Count == 1 && pendingAdmission.ActiveLeases == 0
         };
         var fixture = new GatewayFixture(
             agent: agent,
+            admission: pendingAdmission,
             admissionCoordinator: admissionCoordinator);
 
         var context = fixture.CreateContext();
         await fixture.Gateway.InvokeAsync(context, "orders", "items/42");
 
         Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
-        Assert.True(releaseWasVisibleAtObserve);
+        Assert.True(admissionsWereReleasedAtObserve);
+        Assert.Equal(0, pendingAdmission.ActiveLeases);
         AssertExactAdmissionRelease(admissionCoordinator);
     }
 
@@ -331,15 +335,18 @@ public sealed class FunctionHttpGatewayTests
         var first = new FunctionEndpoint("10.0.0.1", 8080, "pod-1");
         var second = new FunctionEndpoint("10.0.0.2", 8080, "pod-2");
         var admissionCoordinator = new FakeAdmissionCoordinator();
-        var releaseWasVisibleAtObserve = false;
+        var pendingAdmission = new TrackingAdmissionLimiter();
+        var admissionsWereReleasedAtObserve = false;
         var agent = new RecordingAgentClient
         {
             ExecuteHandler = (_, _, _) => throw new HttpRequestException("response was lost"),
-            ObserveStarted = () => releaseWasVisibleAtObserve = admissionCoordinator.Releases.Count == 1
+            ObserveStarted = () => admissionsWereReleasedAtObserve =
+                admissionCoordinator.Releases.Count == 1 && pendingAdmission.ActiveLeases == 0
         };
         var fixture = new GatewayFixture(
             registrySnapshot: GatewayFixture.Snapshot([first, second]),
             agent: agent,
+            admission: pendingAdmission,
             admissionCoordinator: admissionCoordinator);
 
         var context = fixture.CreateContext();
@@ -349,7 +356,8 @@ public sealed class FunctionHttpGatewayTests
         Assert.Equal(first, Assert.Single(agent.ReservedEndpoints));
         Assert.Equal(first, Assert.Single(agent.ExecutedEndpoints));
         Assert.Equal(first, Assert.Single(agent.ObservedEndpoints));
-        Assert.True(releaseWasVisibleAtObserve);
+        Assert.True(admissionsWereReleasedAtObserve);
+        Assert.Equal(0, pendingAdmission.ActiveLeases);
         AssertExactAdmissionRelease(admissionCoordinator);
     }
 
@@ -747,6 +755,22 @@ public sealed class FunctionHttpGatewayTests
             string revisionId,
             string handlerName,
             long reservedBytes) => null;
+    }
+
+    private sealed class TrackingAdmissionLimiter : IFunctionPendingAdmissionLimiter
+    {
+        private int activeLeases;
+
+        public int ActiveLeases => Volatile.Read(ref activeLeases);
+
+        public FunctionPendingAdmissionLease TryAcquire(
+            string revisionId,
+            string handlerName,
+            long reservedBytes)
+        {
+            Interlocked.Increment(ref activeLeases);
+            return new FunctionPendingAdmissionLease(() => Interlocked.Decrement(ref activeLeases));
+        }
     }
 
     private sealed class AllowingPublicRateLimiter : IFunctionPublicRateLimiter
