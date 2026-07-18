@@ -2,13 +2,19 @@
 
 Pole currently uses a **backend integration-first** testing setup.
 
-The main automated test suite lives in:
+The shared integration test suite lives in:
 
 - `tests/Pole.Tests.Integration`
 
+Independently testable feature behavior can live beside the feature in a dedicated test project. The first feature-local suite lives in:
+
+- `src/features/Functions/Functions.Tests`
+
 ## Current approach
 
-The test suite is organized as **one shared test project** with folders per feature instead of separate test projects for each feature.
+Pole uses a **hybrid test layout**. Tests that need shared Mongo, mediator, API, consumer, or live infrastructure fixtures remain in `Pole.Tests.Integration`. Tests that exercise one feature without the shared integration harness belong in that feature's sibling `*.Tests` project.
+
+A feature-local test project should reference only the production projects it exercises. Do not reference `Pole.Server`, copy shared integration fixtures, or include test source files from outside the project directory.
 
 Current coverage focuses on:
 
@@ -64,6 +70,14 @@ Before running cluster-backed tests:
 - as an alternative, you can create `tests/Pole.Tests.Integration/testsettings.local.json` with a local ingress base URI; this file is gitignored and not required for running tests
 
 ## Running tests
+
+Run the feature-local Functions suite from the repository root with:
+
+```bash
+dotnet test src/features/Functions/Functions.Tests/Functions.Tests.csproj
+```
+
+These tests do not require Docker or the shared integration fixtures.
 
 Run the integration suite from the repository root with:
 

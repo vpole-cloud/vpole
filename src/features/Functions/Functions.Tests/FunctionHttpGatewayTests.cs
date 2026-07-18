@@ -15,7 +15,7 @@ using Pole.Functions.Protocol;
 using Pole.ResultType;
 using Xunit;
 
-namespace Pole.Tests.Integration.FunctionApps;
+namespace Pole.Features.Functions.Tests;
 
 public sealed class FunctionHttpGatewayTests
 {

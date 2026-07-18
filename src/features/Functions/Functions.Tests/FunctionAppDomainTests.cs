@@ -8,7 +8,7 @@ using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
 using Xunit;
 
-namespace Pole.Tests.Integration.FunctionApps;
+namespace Pole.Features.Functions.Tests;
 
 public sealed class FunctionAppDomainTests
 {

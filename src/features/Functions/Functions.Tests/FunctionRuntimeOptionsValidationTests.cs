@@ -4,7 +4,7 @@ using Pole.Features.Functions.Runtime.Scaling;
 using Pole.Features.Functions.Runtime.Timers;
 using Xunit;
 
-namespace Pole.Tests.Integration.FunctionApps;
+namespace Pole.Features.Functions.Tests;
 
 public sealed class FunctionRuntimeOptionsValidationTests
 {

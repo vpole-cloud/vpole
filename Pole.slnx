@@ -28,6 +28,7 @@
     <Project Path="src/features/Functions/Functions.Domain/Functions.Domain.csproj" />
     <Project Path="src/features/Functions/Functions.Events/Functions.Events.csproj" />
     <Project Path="src/features/Functions/Functions.Runtime/Functions.Runtime.csproj" />
+    <Project Path="src/features/Functions/Functions.Tests/Functions.Tests.csproj" />
   </Folder>
   <Folder Name="/features/Quotas/">
     <Project Path="src/features/Quotas/Quotas.Application/Quotas.Application.csproj" />
