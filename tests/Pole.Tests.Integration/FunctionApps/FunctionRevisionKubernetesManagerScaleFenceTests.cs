@@ -76,7 +76,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         var provisioning = CreateSubject();
         var subject = provisioning with
         {
-            Revision = provisioning.Revision.Activate(DateTimeOffset.UtcNow)
+            Revision = provisioning.Revision.MarkReady(DateTimeOffset.UtcNow).Activate()
         };
         using var handler = new DeploymentHandler(Deployment(subject, replicas: 1, generation: 4));
         using var kubernetes = CreateKubernetes(handler);

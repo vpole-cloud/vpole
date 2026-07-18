@@ -43,6 +43,15 @@ public sealed class FunctionRevisionProvisioner(
         CancellationToken cancellationToken)
     {
         var subject = new FunctionRevisionInKubernetes(app, revision);
+        if (revision.Status is ReadyFunctionRevisionStatus)
+            return await PromoteAsync(subject, app, revision, cancellationToken);
+        if (revision.Status is not ProvisioningFunctionRevisionStatus)
+        {
+            return FunctionRevisionProvisioningOutcome.Failure(
+                "revision-status",
+                "Only a provisioning or ready Function revision can be provisioned.");
+        }
+
         var activation = await activator.EnsureActiveAsync(app, revision, cancellationToken);
         if (!activation.TryGetValue(out var snapshot, out var activationFailure))
             return await FailAndStopAsync(subject, "activation", activationFailure.Message, cancellationToken);
@@ -76,18 +85,15 @@ public sealed class FunctionRevisionProvisioner(
                     if (scaled is IFailure scaleFailure)
                         return await FailAndStopAsync(subject, "minimum-scale", scaleFailure.Message, cancellationToken);
 
-                    var promoted = await lifecycleService.PromoteAsync(
+                    var ready = await lifecycleService.MarkReadyAsync(
                         app.TenantId,
                         app.Id,
                         revision.Id,
                         cancellationToken);
-                    return promoted is ISuccess
-                        ? FunctionRevisionProvisioningOutcome.Success()
-                        : await FailAndStopAsync(
-                            subject,
-                            "promotion",
-                            ((IFailure)promoted).Message,
-                            cancellationToken);
+                    if (ready is IFailure readyFailure)
+                        return await FailAndStopAsync(subject, "readiness", readyFailure.Message, cancellationToken);
+
+                    return await PromoteAsync(subject, app, revision, cancellationToken);
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -111,6 +117,26 @@ public sealed class FunctionRevisionProvisioner(
         }
 
         return await FailAndStopAsync(subject, "agent-metadata", metadataFailure, cancellationToken);
+    }
+
+    private async Task<FunctionRevisionProvisioningOutcome> PromoteAsync(
+        FunctionRevisionInKubernetes subject,
+        FunctionApp app,
+        FunctionRevision revision,
+        CancellationToken cancellationToken)
+    {
+        var promoted = await lifecycleService.PromoteAsync(
+            app.TenantId,
+            app.Id,
+            revision.Id,
+            cancellationToken);
+        return promoted is ISuccess
+            ? FunctionRevisionProvisioningOutcome.Success()
+            : await FailAndStopAsync(
+                subject,
+                "promotion",
+                ((IFailure)promoted).Message,
+                cancellationToken);
     }
 
     private async Task<FunctionRevisionProvisioningOutcome> FailAndStopAsync(

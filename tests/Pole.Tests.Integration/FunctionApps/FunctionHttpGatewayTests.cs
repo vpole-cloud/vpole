@@ -682,7 +682,7 @@ public sealed class FunctionHttpGatewayTests
             {
                 Id = revisionId,
                 FunctionAppId = appId
-            }).Activate(Now);
+            }).MarkReady(Now).Activate();
             var route = new FunctionHttpRouteBinding(
                 "trigger-1",
                 "webhook",

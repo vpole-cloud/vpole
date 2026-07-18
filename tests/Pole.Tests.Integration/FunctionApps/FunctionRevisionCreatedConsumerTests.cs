@@ -9,6 +9,7 @@ using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Events;
 using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Functions.Runtime.Kubernetes;
+using Pole.Features.Functions.Runtime.Provisioning;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -58,8 +59,8 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
         var revision = await DbContext.FunctionRevisions
             .Find(candidate => candidate.Id == created.RevisionId)
             .SingleAsync();
-        Assert.Equal(FunctionRevisionState.Failed, revision.State);
-        Assert.Equal("kubernetes-apply", revision.Failure?.Code);
+        var failed = Assert.IsType<FailedFunctionRevisionStatus>(revision.Status);
+        Assert.Equal("kubernetes-apply", failed.Failure.Code);
         var app = await DbContext.FunctionApps
             .Find(candidate => candidate.Id == created.FunctionAppId)
             .SingleAsync();
@@ -101,9 +102,93 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
         var revision = await DbContext.FunctionRevisions
             .Find(candidate => candidate.Id == created.RevisionId)
             .SingleAsync();
-        Assert.Equal(FunctionRevisionState.Failed, revision.State);
-        Assert.Equal("runtime-auth-unconfigured", revision.Failure?.Code);
+        var failed = Assert.IsType<FailedFunctionRevisionStatus>(revision.Status);
+        Assert.Equal("runtime-auth-unconfigured", failed.Failure.Code);
         Assert.Equal(1, manager.ApplyCalls);
+    }
+
+    [Fact]
+    public async Task Ready_revision_redelivery_resumes_provisioner_without_reapplying_manifest()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var create = await Mediator.Send(new CreateFunctionAppRequest(
+            new CreateFunctionAppRequestBody(
+                "ready-redelivery-functions",
+                "ready-redelivery-functions",
+                group.Id,
+                RevisionRequest(),
+                []),
+            TestData.TenantId));
+        Assert.True(create.TryGetValue(out var created, out var createFailure), createFailure?.Message);
+        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
+        Assert.IsAssignableFrom<ISuccess>(await lifecycle.MarkReadyAsync(
+            TestData.TenantId,
+            created.FunctionAppId,
+            created.RevisionId));
+        var manager = new RecordingKubernetesManager(Result.Success());
+        var provisioner = new RecordingProvisioner();
+        var consumer = new FunctionRevisionCreatedConsumer(
+            DbContext,
+            manager,
+            lifecycle,
+            [provisioner],
+            NullLogger<FunctionRevisionCreatedConsumer>.Instance);
+        var message = new FunctionRevisionCreatedEvent(
+            created.FunctionAppId,
+            created.RevisionId,
+            created.RevisionNumber,
+            null!)
+        {
+            EventCore = EventCore.Create(TestData.TenantId)
+        };
+
+        await consumer.HandleAsync(message);
+
+        Assert.Equal(0, manager.ApplyCalls);
+        Assert.IsType<ReadyFunctionRevisionStatus>(Assert.IsType<FunctionRevision>(provisioner.Revision).Status);
+    }
+
+    [Fact]
+    public async Task Ready_revision_without_runtime_authentication_is_stopped_before_failure()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var create = await Mediator.Send(new CreateFunctionAppRequest(
+            new CreateFunctionAppRequestBody(
+                "ready-unconfigured-functions",
+                "ready-unconfigured-functions",
+                group.Id,
+                RevisionRequest(),
+                []),
+            TestData.TenantId));
+        Assert.True(create.TryGetValue(out var created, out var createFailure), createFailure?.Message);
+        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
+        Assert.IsAssignableFrom<ISuccess>(await lifecycle.MarkReadyAsync(
+            TestData.TenantId,
+            created.FunctionAppId,
+            created.RevisionId));
+        var manager = new RecordingKubernetesManager(Result.Success());
+        var consumer = new FunctionRevisionCreatedConsumer(
+            DbContext,
+            manager,
+            lifecycle,
+            [],
+            NullLogger<FunctionRevisionCreatedConsumer>.Instance);
+        var message = new FunctionRevisionCreatedEvent(
+            created.FunctionAppId,
+            created.RevisionId,
+            created.RevisionNumber,
+            null!)
+        {
+            EventCore = EventCore.Create(TestData.TenantId)
+        };
+
+        await consumer.HandleAsync(message);
+
+        Assert.Equal([0], manager.BootstrapScaleRequests);
+        var revision = await DbContext.FunctionRevisions
+            .Find(candidate => candidate.Id == created.RevisionId)
+            .SingleAsync();
+        Assert.IsType<FailedFunctionRevisionStatus>(revision.Status);
     }
 
     private static FunctionRevisionRequest RevisionRequest() =>
@@ -127,6 +212,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
         : IFunctionRevisionKubernetesManager
     {
         public int ApplyCalls { get; private set; }
+        public List<int> BootstrapScaleRequests { get; } = [];
 
         public Task<Result> ApplyAsync(
             FunctionRevisionInKubernetes revision,
@@ -144,8 +230,11 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
         public Task<Result> ScaleProvisioningAsync(
             FunctionRevisionInKubernetes revision,
             int replicas,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result>(Result.Success());
+            CancellationToken cancellationToken = default)
+        {
+            BootstrapScaleRequests.Add(replicas);
+            return Task.FromResult<Result>(Result.Success());
+        }
 
         public Task<Result> ScaleAsync(
             FunctionRevisionInKubernetes revision,
@@ -158,5 +247,19 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<Result<FunctionReplicaState>>(new FunctionReplicaState(0, 0, 0, 0));
+    }
+
+    private sealed class RecordingProvisioner : IFunctionRevisionProvisioner
+    {
+        public FunctionRevision? Revision { get; private set; }
+
+        public Task<FunctionRevisionProvisioningOutcome> ProvisionAsync(
+            FunctionApp app,
+            FunctionRevision revision,
+            CancellationToken cancellationToken)
+        {
+            Revision = revision;
+            return Task.FromResult(FunctionRevisionProvisioningOutcome.Success());
+        }
     }
 }

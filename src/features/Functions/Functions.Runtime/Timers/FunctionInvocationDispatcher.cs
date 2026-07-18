@@ -130,12 +130,16 @@ public sealed class FunctionInvocationDispatcher(
                     candidate.Id == invocation.FunctionAppId &&
                     candidate.DesiredState == FunctionAppDesiredState.Enabled)
                 .FirstOrDefaultAsync(cancellationToken);
-            var revision = await dbContext.FunctionRevisions.Find(candidate =>
-                    candidate.TenantId == invocation.TenantId &&
-                    candidate.FunctionAppId == invocation.FunctionAppId &&
-                    candidate.Id == invocation.RevisionId &&
-                    (candidate.State == FunctionRevisionState.Active ||
-                     candidate.State == FunctionRevisionState.Draining))
+            var revision = await dbContext.FunctionRevisions.Find(
+                    Builders<FunctionRevision>.Filter.And(
+                        Builders<FunctionRevision>.Filter.Eq(candidate => candidate.TenantId, invocation.TenantId),
+                        Builders<FunctionRevision>.Filter.Eq(candidate => candidate.FunctionAppId, invocation.FunctionAppId),
+                        Builders<FunctionRevision>.Filter.Eq(candidate => candidate.Id, invocation.RevisionId),
+                        Builders<FunctionRevision>.Filter.Or(
+                            Builders<FunctionRevision>.Filter
+                                .OfType<FunctionRevisionStatus, ActiveFunctionRevisionStatus>(candidate => candidate.Status),
+                            Builders<FunctionRevision>.Filter
+                                .OfType<FunctionRevisionStatus, DrainingFunctionRevisionStatus>(candidate => candidate.Status))))
                 .FirstOrDefaultAsync(cancellationToken);
             if (app is null || revision is null)
             {

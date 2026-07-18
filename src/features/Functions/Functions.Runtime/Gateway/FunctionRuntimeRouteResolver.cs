@@ -81,11 +81,13 @@ public sealed class FunctionRuntimeRouteResolver(IFunctionAppDbContext dbContext
         if (app is null)
             return null;
 
-        var revision = await dbContext.FunctionRevisions.Find(candidate =>
-                candidate.TenantId == binding.TenantId &&
-                candidate.FunctionAppId == binding.FunctionAppId &&
-                candidate.Id == revisionId &&
-                candidate.State == FunctionRevisionState.Active)
+        var revision = await dbContext.FunctionRevisions.Find(
+                Builders<FunctionRevision>.Filter.And(
+                    Builders<FunctionRevision>.Filter.Eq(candidate => candidate.TenantId, binding.TenantId),
+                    Builders<FunctionRevision>.Filter.Eq(candidate => candidate.FunctionAppId, binding.FunctionAppId),
+                    Builders<FunctionRevision>.Filter.Eq(candidate => candidate.Id, revisionId),
+                    Builders<FunctionRevision>.Filter
+                        .OfType<FunctionRevisionStatus, ActiveFunctionRevisionStatus>(candidate => candidate.Status)))
             .FirstOrDefaultAsync(cancellationToken);
         return revision is null
             ? null

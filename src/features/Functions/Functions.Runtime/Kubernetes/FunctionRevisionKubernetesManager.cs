@@ -13,8 +13,8 @@ public interface IFunctionRevisionKubernetesManager
 {
     Task<Result> ApplyAsync(FunctionRevisionInKubernetes revision, CancellationToken cancellationToken = default);
     Task<Result> DeleteAsync(FunctionRevisionInKubernetes revision, CancellationToken cancellationToken = default);
-    // Only provisioning may bypass the runtime coordination generation. Provisioning revisions
-    // are not routable and are excluded from the scaler until promotion completes.
+    // Only non-serving bootstrap statuses may bypass the runtime coordination generation.
+    // Provisioning and ready revisions are not routable or owned by the scaler.
     Task<Result> ScaleProvisioningAsync(
         FunctionRevisionInKubernetes revision,
         int replicas,
@@ -142,10 +142,10 @@ public sealed class FunctionRevisionKubernetesManager(
         int replicas,
         CancellationToken cancellationToken = default)
     {
-        if (revision.Revision.State != FunctionRevisionState.Provisioning)
+        if (revision.Revision.Status is not (ProvisioningFunctionRevisionStatus or ReadyFunctionRevisionStatus))
         {
             return Failures.Conflict(
-                "Only a provisioning Function revision may use the unfenced bootstrap scale operation.");
+                "Only a provisioning or ready Function revision may use the unfenced bootstrap scale operation.");
         }
         if (replicas < 0 || replicas > revision.Revision.Spec.Scaling.MaxInstances)
         {

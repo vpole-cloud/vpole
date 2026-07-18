@@ -36,52 +36,69 @@ public sealed class FunctionRevisionCreatedConsumer(
             .FirstOrDefaultAsync(cancellationToken);
         if (app is null || revision is null)
             throw new InvalidOperationException("Function App or revision no longer exists.");
-        if (revision.State != FunctionRevisionState.Provisioning)
+        if (revision.Status is not (ProvisioningFunctionRevisionStatus or ReadyFunctionRevisionStatus))
             return;
 
-        var applied = await kubernetesManager.ApplyAsync(
-            new FunctionRevisionInKubernetes(app, revision),
-            cancellationToken);
-        if (applied is ISuccess)
+        if (revision.Status is ProvisioningFunctionRevisionStatus)
         {
-            var provisioner = provisioners.SingleOrDefault();
-            if (provisioner is null)
+            var applied = await kubernetesManager.ApplyAsync(
+                new FunctionRevisionInKubernetes(app, revision),
+                cancellationToken);
+            if (applied is IFailure applyFailure)
             {
+                logger.LogError(
+                    "[function-revision-provisioning-failed] Kubernetes could not apply revision {RevisionId} for Function App {FunctionAppId}: {Reason}",
+                    revision.Id,
+                    app.Id,
+                    applyFailure.Message);
                 await FailAsync(
                     tenantId,
                     app,
                     revision,
-                    "runtime-auth-unconfigured",
-                    "Function runtime authentication is not configured.",
+                    "kubernetes-apply",
+                    applyFailure.Message,
                     cancellationToken);
                 return;
             }
+        }
 
-            var outcome = await provisioner.ProvisionAsync(app, revision, cancellationToken);
-            if (outcome.Succeeded)
-                return;
+        var provisioner = provisioners.SingleOrDefault();
+        if (provisioner is null)
+        {
+            if (revision.Status is ReadyFunctionRevisionStatus)
+            {
+                var stopped = await kubernetesManager.ScaleProvisioningAsync(
+                    new FunctionRevisionInKubernetes(app, revision),
+                    0,
+                    cancellationToken);
+                if (stopped is IFailure stopFailure)
+                {
+                    logger.LogWarning(
+                        "[function-revision-stop-failed] Could not return unconfigured ready revision {RevisionId} to zero replicas: {Reason}",
+                        revision.Id,
+                        stopFailure.Message);
+                }
+            }
+
             await FailAsync(
                 tenantId,
                 app,
                 revision,
-                outcome.FailureCode ?? "provisioning",
-                outcome.FailureMessage ?? "Function revision provisioning failed.",
+                "runtime-auth-unconfigured",
+                "Function runtime authentication is not configured.",
                 cancellationToken);
             return;
         }
 
-        var failure = (Failure)applied;
-        logger.LogError(
-            "[function-revision-provisioning-failed] Kubernetes could not apply revision {RevisionId} for Function App {FunctionAppId}: {Reason}",
-            revision.Id,
-            app.Id,
-            failure.Message);
+        var outcome = await provisioner.ProvisionAsync(app, revision, cancellationToken);
+        if (outcome.Succeeded)
+            return;
         await FailAsync(
             tenantId,
             app,
             revision,
-            "kubernetes-apply",
-            failure.Message,
+            outcome.FailureCode ?? "provisioning",
+            outcome.FailureMessage ?? "Function revision provisioning failed.",
             cancellationToken);
     }
 
