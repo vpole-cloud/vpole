@@ -18,7 +18,8 @@ public static class FunctionAppEndpoints
             .MapDeleteFunctionAppEndpoint()
             .MapGetFunctionAppByIdEndpoint()
             .MapGetFunctionAppsEndpoint()
-            .MapGetFunctionRevisionsEndpoint();
+            .MapGetFunctionRevisionsEndpoint()
+            .MapFunctionInvocationEndpoints();
         return app;
     }
 }

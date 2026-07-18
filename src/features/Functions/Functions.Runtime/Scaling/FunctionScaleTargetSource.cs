@@ -9,7 +9,8 @@ namespace Pole.Features.Functions.Runtime.Scaling;
 public sealed record FunctionScaleTarget(
     FunctionApp App,
     FunctionRevision Revision,
-    bool IsServing);
+    bool IsServing,
+    IReadOnlyDictionary<string, int> DurableDemandByHandler);
 
 public interface IFunctionScaleTargetSource
 {
@@ -35,6 +36,18 @@ public sealed class MongoFunctionScaleTargetSource(
         var apps = await dbContext.FunctionApps.Find(app => appIds.Contains(app.Id))
             .ToListAsync(cancellationToken);
         var appsByOwner = apps.ToDictionary(app => (app.TenantId, app.Id));
+        var revisionIds = revisions.Select(revision => revision.Id).ToArray();
+        var invocations = await dbContext.FunctionInvocations.Find(invocation =>
+                revisionIds.Contains(invocation.RevisionId) &&
+                (invocation.State == FunctionInvocationState.Pending ||
+                 invocation.State == FunctionInvocationState.Dispatching ||
+                 invocation.State == FunctionInvocationState.Running ||
+                 invocation.State == FunctionInvocationState.RetryScheduled))
+            .ToListAsync(cancellationToken);
+        var durableDemand = invocations
+            .GroupBy(invocation =>
+                (invocation.TenantId, invocation.FunctionAppId, invocation.RevisionId, invocation.HandlerName))
+            .ToDictionary(group => group.Key, group => group.Count());
         return revisions
             .Where(revision => appsByOwner.ContainsKey((revision.TenantId, revision.FunctionAppId)))
             .Select(revision =>
@@ -44,7 +57,12 @@ public sealed class MongoFunctionScaleTargetSource(
                               app.DesiredState == FunctionAppDesiredState.Enabled &&
                               app.Status == FunctionAppStatus.Ready &&
                               string.Equals(app.ActiveRevisionId, revision.Id, StringComparison.Ordinal);
-                return new FunctionScaleTarget(app, revision, serving);
+                var handlerDemand = durableDemand
+                    .Where(entry => entry.Key.TenantId == revision.TenantId &&
+                                    entry.Key.FunctionAppId == revision.FunctionAppId &&
+                                    entry.Key.RevisionId == revision.Id)
+                    .ToDictionary(entry => entry.Key.HandlerName, entry => entry.Value, StringComparer.Ordinal);
+                return new FunctionScaleTarget(app, revision, serving, handlerDemand);
             })
             .ToArray();
     }

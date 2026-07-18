@@ -77,5 +77,9 @@ public class MongoDbContext(
     public IMongoCollection<FunctionApp> FunctionApps { get; } = database.GetCollection<FunctionApp>("FunctionApps");
     public IMongoCollection<FunctionRevision> FunctionRevisions { get; } = database.GetCollection<FunctionRevision>("FunctionRevisions");
     public IMongoCollection<FunctionRouteBinding> FunctionRouteBindings { get; } = database.GetCollection<FunctionRouteBinding>("FunctionRouteBindings");
+    public IMongoCollection<FunctionTimerState> FunctionTimerStates { get; } = database.GetCollection<FunctionTimerState>("FunctionTimerStates");
+    public IMongoCollection<FunctionInvocation> FunctionInvocations { get; } = database.GetCollection<FunctionInvocation>("FunctionInvocations");
+    public IMongoCollection<FunctionMeterEvent> FunctionMeterEvents { get; } = database.GetCollection<FunctionMeterEvent>("FunctionMeterEvents");
+    public IMongoCollection<FunctionUsageBucket> FunctionUsageBuckets { get; } = database.GetCollection<FunctionUsageBucket>("FunctionUsageBuckets");
 }
 

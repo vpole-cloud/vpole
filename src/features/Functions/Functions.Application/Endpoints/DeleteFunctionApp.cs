@@ -85,6 +85,16 @@ public sealed class DeleteFunctionAppHandler(IFunctionAppDbContext dbContext, Ti
                     .Set(route => route.State, FunctionRouteBindingState.Disabled)
                     .Set(route => route.UpdatedAtUtc, now),
                 cancellationToken: transactionCancellationToken);
+            await dbContext.FunctionTimerStates.UpdateManyAsync(
+                session,
+                timer => timer.TenantId == app.TenantId &&
+                         timer.FunctionAppId == app.Id &&
+                         timer.Enabled,
+                Builders<FunctionTimerState>.Update
+                    .Set(timer => timer.Enabled, false)
+                    .Set(timer => timer.Lease, null)
+                    .Set(timer => timer.UpdatedAtUtc, now),
+                cancellationToken: transactionCancellationToken);
             await dbContext.StoreEventAsync(
                 new FunctionAppDeleteRequestedEvent(app.Id, app.ActiveRevisionId)
                 {

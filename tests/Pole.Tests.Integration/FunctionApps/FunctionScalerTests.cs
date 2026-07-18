@@ -35,6 +35,22 @@ public sealed class FunctionScalerTests
     }
 
     [Fact]
+    public async Task Durable_timer_demand_activates_zero_scaled_revision()
+    {
+        var harness = CreateHarness(
+            scaling: new FunctionScalingPolicy(0, 5, 4, 8, 30, 30),
+            replicaState: new FunctionReplicaState(0, 0, 0, 0),
+            durableDemand: new Dictionary<string, int>(StringComparer.Ordinal)
+            {
+                ["webhook"] = 3
+            });
+
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal([1], harness.Kubernetes.ScaleRequests);
+    }
+
+    [Fact]
     public async Task Handler_concurrency_limit_can_require_more_instances_than_app_target()
     {
         var harness = CreateHarness(
@@ -263,9 +279,10 @@ public sealed class FunctionScalerTests
         int handlerConcurrency = 8,
         FunctionRevisionState state = FunctionRevisionState.Active,
         bool isServing = true,
-        IReadOnlyList<FunctionEndpoint>? endpoints = null)
+        IReadOnlyList<FunctionEndpoint>? endpoints = null,
+        IReadOnlyDictionary<string, int>? durableDemand = null)
     {
-        var target = CreateTarget(scaling, handlerConcurrency, state, isServing);
+        var target = CreateTarget(scaling, handlerConcurrency, state, isServing, durableDemand);
         var targetSource = new FakeTargetSource(target);
         var endpointRegistry = new FakeEndpointRegistry
         {
@@ -299,7 +316,8 @@ public sealed class FunctionScalerTests
         FunctionScalingPolicy scaling,
         int handlerConcurrency,
         FunctionRevisionState state,
-        bool isServing)
+        bool isServing,
+        IReadOnlyDictionary<string, int>? durableDemand)
     {
         var spec = new FunctionRevisionSpecInput(
             new FunctionImage("registry.example", "team/functions", "v1"),
@@ -344,7 +362,11 @@ public sealed class FunctionScalerTests
             PendingRevisionId = null,
             Status = FunctionAppStatus.Ready
         };
-        return new FunctionScaleTarget(app, revision, isServing);
+        return new FunctionScaleTarget(
+            app,
+            revision,
+            isServing,
+            durableDemand ?? new Dictionary<string, int>(StringComparer.Ordinal));
     }
 
     private static FunctionEndpoint Endpoint(string podUid) =>

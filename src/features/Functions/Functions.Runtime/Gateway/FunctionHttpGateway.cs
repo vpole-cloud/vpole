@@ -8,6 +8,7 @@ using Pole.Features.Functions.Runtime.Activation;
 using Pole.Features.Functions.Runtime.Agent;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Kubernetes;
+using Pole.Features.Functions.Runtime.Metering;
 using Pole.Functions.Protocol;
 using Pole.Observability;
 
@@ -30,6 +31,7 @@ public sealed class FunctionHttpGateway(
     IFunctionAgentClient agentClient,
     IFunctionPendingAdmissionLimiter pendingAdmission,
     IFunctionPublicRateLimiter publicRateLimiter,
+    IFunctionMeterWriter meterWriter,
     FunctionGatewayOptions options,
     TimeProvider timeProvider) : IFunctionHttpGateway
 {
@@ -151,6 +153,25 @@ public sealed class FunctionHttpGateway(
             return;
         }
 
+        var invocationId = Guid.NewGuid().ToString("N");
+        var meterDimensions = new FunctionMeterDimensions(
+            resolved.App.TenantId,
+            resolved.App.Id,
+            resolved.Revision.Id,
+            resolved.Route.TriggerId,
+            resolved.Route.HandlerName,
+            FunctionMeterTriggerKind.Http);
+        await meterWriter.WriteAsync(
+            FunctionMeterEvent.CreateFact(
+                meterDimensions,
+                invocationId,
+                attemptNumber: 1,
+                FunctionMeterEventPhase.Admitted,
+                outcome: null,
+                executionDurationMilliseconds: null,
+                timeProvider.GetUtcNow()),
+            cancellationToken);
+
         var subject = new FunctionRevisionInKubernetes(resolved.App, resolved.Revision);
         var service = new FunctionServiceKey(subject.Namespace, subject.ServiceName);
         var snapshot = endpointRegistry.GetSnapshot(service);
@@ -168,7 +189,6 @@ public sealed class FunctionHttpGateway(
             }
         }
 
-        var invocationId = Guid.NewGuid().ToString("N");
         var attemptId = Guid.NewGuid().ToString("N");
         var deadlineUtc = timeProvider.GetUtcNow().AddSeconds(options.ExecutionTimeoutSeconds);
         var identity = new FunctionAttemptIdentity(
@@ -289,6 +309,9 @@ public sealed class FunctionHttpGateway(
                     resolved,
                     attemptId,
                     deadlineUtc,
+                    meterDimensions,
+                    invocationId,
+                    startedMeterWritten: false,
                     executionDeadline.Token);
                 return;
             }
@@ -313,12 +336,24 @@ public sealed class FunctionHttpGateway(
             }
 
             pendingLease.Dispose();
+            await TryWritePostStartMeterAsync(
+                FunctionMeterEvent.CreateFact(
+                    meterDimensions,
+                    invocationId,
+                    attemptNumber: 1,
+                    FunctionMeterEventPhase.Started,
+                    outcome: null,
+                    executionDurationMilliseconds: null,
+                    started.Value.StartedAtUtc));
             await ObserveAndWriteAsync(
                 context,
                 endpoint,
                 resolved,
                 attemptId,
                 deadlineUtc,
+                meterDimensions,
+                invocationId,
+                startedMeterWritten: true,
                 executionDeadline.Token);
             return;
         }
@@ -339,6 +374,9 @@ public sealed class FunctionHttpGateway(
         ResolvedFunctionHttpRoute resolved,
         string attemptId,
         DateTimeOffset deadlineUtc,
+        FunctionMeterDimensions meterDimensions,
+        string invocationId,
+        bool startedMeterWritten,
         CancellationToken cancellationToken)
     {
         var consecutiveTransportFailures = 0;
@@ -404,6 +442,23 @@ public sealed class FunctionHttpGateway(
             switch (observation.Value.Status)
             {
                 case CompletedFunctionAttemptStatus completed:
+                    if (!startedMeterWritten)
+                    {
+                        await TryWritePostStartMeterAsync(
+                            FunctionMeterEvent.CreateFact(
+                                meterDimensions,
+                                invocationId,
+                                attemptNumber: 1,
+                                FunctionMeterEventPhase.Started,
+                                outcome: null,
+                                executionDurationMilliseconds: null,
+                                completed.StartedAtUtc));
+                        startedMeterWritten = true;
+                    }
+                    await WriteCompletionMeterAsync(
+                        meterDimensions,
+                        invocationId,
+                        completed);
                     await WriteCompletionAsync(context, completed, context.RequestAborted);
                     return;
                 case ExpiredFunctionAttemptStatus:
@@ -412,7 +467,21 @@ public sealed class FunctionHttpGateway(
                         "The Function attempt state is unknown; it was not executed again.", context.RequestAborted);
                     return;
                 case ReservedFunctionAttemptStatus:
-                case StartedFunctionAttemptStatus:
+                    break;
+                case StartedFunctionAttemptStatus started:
+                    if (!startedMeterWritten)
+                    {
+                        await TryWritePostStartMeterAsync(
+                            FunctionMeterEvent.CreateFact(
+                                meterDimensions,
+                                invocationId,
+                                attemptNumber: 1,
+                                FunctionMeterEventPhase.Started,
+                                outcome: null,
+                                executionDurationMilliseconds: null,
+                                started.StartedAtUtc));
+                        startedMeterWritten = true;
+                    }
                     break;
             }
         }
@@ -422,6 +491,41 @@ public sealed class FunctionHttpGateway(
             await WriteErrorAsync(context, StatusCodes.Status504GatewayTimeout, "execution_deadline_exceeded",
                 "The Function execution deadline elapsed.", context.RequestAborted);
         }
+    }
+
+    private Task WriteCompletionMeterAsync(
+        FunctionMeterDimensions dimensions,
+        string invocationId,
+        CompletedFunctionAttemptStatus completed)
+    {
+        var outcome = completed.Outcome switch
+        {
+            FunctionAttemptOutcome.Succeeded => FunctionMeterOutcome.Succeeded,
+            FunctionAttemptOutcome.RetryableFailure => FunctionMeterOutcome.RetryableFailure,
+            FunctionAttemptOutcome.PermanentFailure => FunctionMeterOutcome.PermanentFailure,
+            FunctionAttemptOutcome.TimedOut => FunctionMeterOutcome.TimedOut,
+            FunctionAttemptOutcome.Cancelled => FunctionMeterOutcome.Cancelled,
+            _ => FunctionMeterOutcome.PlatformFailure
+        };
+        var duration = Math.Max(
+            0,
+            (long)(completed.CompletedAtUtc - completed.StartedAtUtc).TotalMilliseconds);
+        return TryWritePostStartMeterAsync(FunctionMeterEvent.CreateFact(
+                dimensions,
+                invocationId,
+                attemptNumber: 1,
+                FunctionMeterEventPhase.Completed,
+                outcome,
+                duration,
+                completed.CompletedAtUtc));
+    }
+
+    private async Task TryWritePostStartMeterAsync(FunctionMeterEvent meterEvent)
+    {
+        using var timeout = new CancellationTokenSource(
+            TimeSpan.FromMilliseconds(options.PostStartMeterWriteTimeoutMilliseconds),
+            timeProvider);
+        await meterWriter.TryWriteAsync(meterEvent, timeout.Token);
     }
 
     private async Task WriteCompletionAsync(

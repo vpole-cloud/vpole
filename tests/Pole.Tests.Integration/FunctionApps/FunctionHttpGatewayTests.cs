@@ -9,6 +9,7 @@ using Pole.Features.Functions.Runtime.Activation;
 using Pole.Features.Functions.Runtime.Agent;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Gateway;
+using Pole.Features.Functions.Runtime.Metering;
 using Pole.Functions.Protocol;
 using Pole.ResultType;
 using Xunit;
@@ -33,6 +34,31 @@ public sealed class FunctionHttpGatewayTests
         Assert.Single(fixture.Agent.ReservedEndpoints);
         Assert.Single(fixture.Agent.ExecutedEndpoints);
         Assert.Single(fixture.Agent.ObservedEndpoints);
+        Assert.Equal(
+            [
+                FunctionMeterEventPhase.Admitted,
+                FunctionMeterEventPhase.Started,
+                FunctionMeterEventPhase.Completed
+            ],
+            fixture.Meter.Events.Select(meter => meter.Phase));
+        Assert.All(fixture.Meter.Events, meter => Assert.Equal(FunctionMeterTriggerKind.Http, meter.TriggerKind));
+    }
+
+    [Fact]
+    public async Task Post_start_meter_stall_is_bounded_and_preserves_user_response()
+    {
+        var meter = new StallingPostStartMeterWriter();
+        var options = GatewayFixture.CreateOptions();
+        options.PostStartMeterWriteTimeoutMilliseconds = 10;
+        var fixture = new GatewayFixture(options: options, meterWriter: meter);
+
+        var context = fixture.CreateContext();
+        await fixture.Gateway.InvokeAsync(context, "orders", "items/42");
+
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+        Assert.Equal("ok", await ReadBodyAsync(context));
+        Assert.Equal(1, meter.RequiredWrites);
+        Assert.Equal(2, meter.CancelledPostStartWrites);
     }
 
     [Fact]
@@ -319,7 +345,8 @@ public sealed class FunctionHttpGatewayTests
             FunctionEndpointSnapshot? activationSnapshot = null,
             RecordingAgentClient? agent = null,
             IFunctionPendingAdmissionLimiter? admission = null,
-            FunctionGatewayOptions? options = null)
+            FunctionGatewayOptions? options = null,
+            IFunctionMeterWriter? meterWriter = null)
         {
             Options = options ?? CreateOptions();
             var resolved = CreateResolvedRoute();
@@ -327,6 +354,7 @@ public sealed class FunctionHttpGatewayTests
             Registry = new StubEndpointRegistry(registrySnapshot ?? Snapshot([DefaultEndpoint]));
             Activator = new RecordingActivator(activationSnapshot ?? Snapshot([DefaultEndpoint]));
             Agent = agent ?? new RecordingAgentClient();
+            Meter = new RecordingMeterWriter();
             Gateway = new FunctionHttpGateway(
                 Resolver,
                 Registry,
@@ -335,6 +363,7 @@ public sealed class FunctionHttpGatewayTests
                 Agent,
                 admission ?? new FunctionPendingAdmissionLimiter(Options),
                 new AllowingPublicRateLimiter(),
+                meterWriter ?? Meter,
                 Options,
                 TimeProvider.System);
         }
@@ -344,6 +373,7 @@ public sealed class FunctionHttpGatewayTests
         public StubEndpointRegistry Registry { get; }
         public RecordingActivator Activator { get; }
         public RecordingAgentClient Agent { get; }
+        public RecordingMeterWriter Meter { get; }
         public FunctionHttpGateway Gateway { get; }
 
         public DefaultHttpContext CreateContext(
@@ -488,6 +518,52 @@ public sealed class FunctionHttpGatewayTests
     private sealed class AllowingPublicRateLimiter : IFunctionPublicRateLimiter
     {
         public bool TryAcquire(string functionRoute) => true;
+    }
+
+    private sealed class RecordingMeterWriter : IFunctionMeterWriter
+    {
+        public List<FunctionMeterEvent> Events { get; } = [];
+
+        public Task WriteAsync(
+            FunctionMeterEvent meterEvent,
+            CancellationToken cancellationToken = default)
+        {
+            Events.Add(meterEvent);
+            return Task.CompletedTask;
+        }
+
+        public Task TryWriteAsync(
+            FunctionMeterEvent meterEvent,
+            CancellationToken cancellationToken = default) =>
+            WriteAsync(meterEvent, cancellationToken);
+    }
+
+    private sealed class StallingPostStartMeterWriter : IFunctionMeterWriter
+    {
+        public int RequiredWrites { get; private set; }
+        public int CancelledPostStartWrites { get; private set; }
+
+        public Task WriteAsync(
+            FunctionMeterEvent meterEvent,
+            CancellationToken cancellationToken = default)
+        {
+            RequiredWrites++;
+            return Task.CompletedTask;
+        }
+
+        public async Task TryWriteAsync(
+            FunctionMeterEvent meterEvent,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                CancelledPostStartWrites++;
+            }
+        }
     }
 
     private sealed class RecordingAgentClient : IFunctionAgentClient
