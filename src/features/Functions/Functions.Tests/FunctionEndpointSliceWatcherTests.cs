@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Xunit;
 
-namespace Pole.Tests.Integration.FunctionApps;
+namespace Pole.Features.Functions.Tests;
 
 public sealed class FunctionEndpointSliceWatcherTests
 {

@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Pole.Features.Functions.Runtime.Gateway;
 using Xunit;
 
-namespace Pole.Tests.Integration.FunctionApps;
+namespace Pole.Features.Functions.Tests;
 
 public sealed class FunctionGatewayInfrastructureTests
 {

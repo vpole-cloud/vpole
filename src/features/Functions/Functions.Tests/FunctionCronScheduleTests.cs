@@ -1,7 +1,7 @@
 using Pole.Features.Functions.Domain;
 using Xunit;
 
-namespace Pole.Tests.Integration.FunctionApps;
+namespace Pole.Features.Functions.Tests;
 
 public sealed class FunctionCronScheduleTests
 {

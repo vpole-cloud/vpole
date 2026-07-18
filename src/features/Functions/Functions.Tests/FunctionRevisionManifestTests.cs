@@ -5,7 +5,7 @@ using Pole.Features.Functions.Runtime.Security;
 using Pole.Functions.Protocol;
 using Xunit;
 
-namespace Pole.Tests.Integration.FunctionApps;
+namespace Pole.Features.Functions.Tests;
 
 public sealed class FunctionRevisionManifestTests
 {
