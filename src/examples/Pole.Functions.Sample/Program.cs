@@ -2,15 +2,22 @@ using Pole.Functions.Sdk;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services
-    .AddPoleFunctions(options =>
+var functions = builder.Services.AddPoleFunctions(
+    builder.Configuration.GetSection(PoleFunctionsOptions.SectionName));
+
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.PostConfigure<PoleFunctionsOptions>(options =>
     {
-        options.FunctionAppId = builder.Configuration["PoleFunctions:FunctionAppId"] ?? "sample-app";
-        options.RevisionId = builder.Configuration["PoleFunctions:RevisionId"] ?? "local";
-        options.MaxConcurrencyPerInstance = 8;
-        options.DefaultHandlerConcurrencyPerInstance = 4;
-        options.AllowUnauthenticatedAgentRequests = builder.Environment.IsDevelopment();
-    })
+        if (string.IsNullOrWhiteSpace(options.FunctionAppId))
+            options.FunctionAppId = "sample-app";
+        if (string.IsNullOrWhiteSpace(options.RevisionId))
+            options.RevisionId = "local";
+        options.AllowUnauthenticatedAgentRequests = true;
+    });
+}
+
+functions
     .AddHttpHandler(
         "hello",
         (request, context, cancellationToken) =>

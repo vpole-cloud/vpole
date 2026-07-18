@@ -1,0 +1,62 @@
+# Pole documentation
+
+Pole uses a hybrid documentation layout. Platform-wide rules and operational guides live in this
+directory. Documentation that explains one feature's behavior lives beside that feature's code.
+
+## Where documentation belongs
+
+Use the following ownership rule for new documentation:
+
+- `src/features/<Feature>/README.md` is the canonical entry point for a feature. It should explain
+  the feature's purpose, supported scope, module boundaries, API surface, important flows,
+  dependencies, and current limitations.
+- `src/features/<Feature>/docs/*.md` contains deeper feature-specific design or operational notes
+  when the README would otherwise become difficult to navigate.
+- `docs/*.md` contains cross-cutting architecture, engineering policy, installation, testing, and
+  runbooks that apply to multiple features.
+- SDKs, examples, and other independently consumable packages keep usage documentation next to
+  their package and link back to the owning feature.
+
+Keep one canonical explanation for each behavior and link to it from other locations. A central
+document may summarize a feature, but the feature-local README owns its implementation details.
+
+When introducing a new feature README, prefer these sections when they are relevant:
+
+1. Purpose and supported scope.
+2. Module boundaries and owned data.
+3. API and tenant boundary.
+4. Domain lifecycle and key runtime flows.
+5. Events and external dependencies.
+6. Configuration and operations.
+7. Tests, limitations, and related documentation.
+
+Existing documents can move to this layout incrementally. Moving unrelated documentation is not a
+requirement when adding or changing one feature.
+
+## Getting started
+
+- [Installation](instalation.md)
+- [Architecture overview](architecture_overview.md)
+- [Aspire local development](aspire-local-development.md)
+
+## Architecture and engineering
+
+- [Engineering guidelines](engineering-guidelines.md)
+- [Multitenancy](multitenancy.md)
+- [Tenant quotas](quotas.md)
+- [Observability](observability.md)
+
+## Feature documentation
+
+- [Pole Functions](../src/features/Functions/README.md)
+- [Search](search.md) (existing central document; it can move beside the feature independently)
+
+## Development and verification
+
+- [Testing](testing.md)
+- [Aspire end-to-end testing](aspire-e2e-testing.md)
+- [GitHub source build end-to-end testing](github-source-build-e2e.md)
+
+## SDKs
+
+- [Pole Functions .NET SDK and Agent contract](../src/sdk/README.md)
