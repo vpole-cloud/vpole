@@ -137,6 +137,12 @@ public sealed class FunctionRevisionProvisionerTests
                 metadata,
                 null));
 
+        public Task<FunctionAgentProtocolResponse<FunctionAgentStatusResponse>> GetStatusAsync(
+            FunctionEndpoint endpoint,
+            FunctionApp app,
+            FunctionRevision revision,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
         public Task<FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse>> ReserveAsync(
             FunctionEndpoint endpoint,
             FunctionApp app,
@@ -181,6 +187,11 @@ public sealed class FunctionRevisionProvisionerTests
             ScaleRequests.Add(replicas);
             return Task.FromResult<Result>(Result.Success());
         }
+
+        public Task<Result<FunctionReplicaState>> ReadReplicaStateAsync(
+            FunctionRevisionInKubernetes revision,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result<FunctionReplicaState>>(new FunctionReplicaState(0, 0, 0, 0));
     }
 
     private sealed class RecordingLifecycle : IFunctionRevisionLifecycleService
@@ -202,6 +213,12 @@ public sealed class FunctionRevisionProvisionerTests
             string functionAppId,
             string revisionId,
             FunctionRevisionFailure failure,
+            CancellationToken cancellationToken = default) => Task.FromResult<Result>(Result.Success());
+
+        public Task<Result> RetireAsync(
+            string tenantId,
+            string functionAppId,
+            string revisionId,
             CancellationToken cancellationToken = default) => Task.FromResult<Result>(Result.Success());
     }
 }

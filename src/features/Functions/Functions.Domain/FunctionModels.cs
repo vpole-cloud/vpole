@@ -91,6 +91,13 @@ public sealed record FunctionRevision(
         return this with { State = FunctionRevisionState.Draining };
     }
 
+    public FunctionRevision Retire()
+    {
+        if (State != FunctionRevisionState.Draining || ReadyAtUtc is null)
+            throw new InvalidOperationException($"Cannot retire Function revision in state '{State}'.");
+        return this with { State = FunctionRevisionState.Retired };
+    }
+
     public FunctionRevision Fail(FunctionRevisionFailure failure)
     {
         if (State != FunctionRevisionState.Provisioning)

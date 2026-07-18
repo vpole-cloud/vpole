@@ -13,7 +13,17 @@ public interface IFunctionRevisionKubernetesManager
     Task<Result> ApplyAsync(FunctionRevisionInKubernetes revision, CancellationToken cancellationToken = default);
     Task<Result> DeleteAsync(FunctionRevisionInKubernetes revision, CancellationToken cancellationToken = default);
     Task<Result> ScaleAsync(FunctionRevisionInKubernetes revision, int replicas, CancellationToken cancellationToken = default);
+    Task<Result<FunctionReplicaState>> ReadReplicaStateAsync(
+        FunctionRevisionInKubernetes revision,
+        CancellationToken cancellationToken = default);
 }
+
+public sealed record FunctionReplicaState(
+    int Desired,
+    int Current,
+    int Ready,
+    int Available = 0,
+    bool GenerationObserved = true);
 
 public sealed class FunctionRevisionKubernetesManager(
     IKubernetes kubernetes,
@@ -149,6 +159,36 @@ public sealed class FunctionRevisionKubernetesManager(
         {
             return Failures.ExternalService(
                 "Unable to scale Function revision in Kubernetes.",
+                "Kubernetes",
+                exception.Message);
+        }
+    }
+
+    public async Task<Result<FunctionReplicaState>> ReadReplicaStateAsync(
+        FunctionRevisionInKubernetes revision,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var deployment = await kubernetes.AppsV1.ReadNamespacedDeploymentAsync(
+                revision.DeploymentName,
+                revision.Namespace,
+                cancellationToken: cancellationToken);
+            return new FunctionReplicaState(
+                deployment.Spec.Replicas ?? 0,
+                deployment.Status?.Replicas ?? 0,
+                deployment.Status?.ReadyReplicas ?? 0,
+                deployment.Status?.AvailableReplicas ?? 0,
+                deployment.Status?.ObservedGeneration >= deployment.Metadata.Generation);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return Failures.ExternalService(
+                "Unable to read Function revision replica state from Kubernetes.",
                 "Kubernetes",
                 exception.Message);
         }

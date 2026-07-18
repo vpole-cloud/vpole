@@ -238,6 +238,11 @@ public sealed class FunctionActivationTests
             return scaleCompletion.Task;
         }
 
+        public Task<Result<FunctionReplicaState>> ReadReplicaStateAsync(
+            FunctionRevisionInKubernetes revision,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result<FunctionReplicaState>>(new FunctionReplicaState(0, 0, 0, 0));
+
         public void CompleteScale() => scaleCompletion.TrySetResult(Result.Success());
     }
 }

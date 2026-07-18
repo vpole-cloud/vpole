@@ -25,6 +25,12 @@ public interface IFunctionAgentClient
         FunctionRevision revision,
         CancellationToken cancellationToken);
 
+    Task<FunctionAgentProtocolResponse<FunctionAgentStatusResponse>> GetStatusAsync(
+        FunctionEndpoint endpoint,
+        FunctionApp app,
+        FunctionRevision revision,
+        CancellationToken cancellationToken);
+
     Task<FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse>> ReserveAsync(
         FunctionEndpoint endpoint,
         FunctionApp app,
@@ -68,6 +74,23 @@ public sealed class FunctionAgentClient(
             revision,
             PoleFunctionProtocol.MetadataPath,
             PoleFunctionAgentToken.Operations.Metadata,
+            content: null,
+            attempt: null,
+            attemptId: null,
+            cancellationToken);
+
+    public Task<FunctionAgentProtocolResponse<FunctionAgentStatusResponse>> GetStatusAsync(
+        FunctionEndpoint endpoint,
+        FunctionApp app,
+        FunctionRevision revision,
+        CancellationToken cancellationToken) =>
+        SendAsync<FunctionAgentStatusResponse>(
+            HttpMethod.Get,
+            endpoint,
+            app,
+            revision,
+            PoleFunctionProtocol.AgentStatusPath,
+            PoleFunctionAgentToken.Operations.AgentStatus,
             content: null,
             attempt: null,
             attemptId: null,

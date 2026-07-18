@@ -54,13 +54,30 @@ public sealed class FunctionGatewayInfrastructureTests
             MaxPendingRequestsPerRevision = 1
         };
         var limiter = new FunctionPendingAdmissionLimiter(options);
-        var lease = limiter.TryAcquire("tenant/app/revision", 10);
+        var lease = limiter.TryAcquire("tenant/app/revision", "webhook", 10);
 
         Assert.NotNull(lease);
-        Assert.Null(limiter.TryAcquire("tenant/app/revision", 10));
+        Assert.Equal(1, limiter.GetSnapshot("tenant/app/revision").HandlerRequests["webhook"]);
+        Assert.Null(limiter.TryAcquire("tenant/app/revision", "webhook", 10));
 
         lease.Dispose();
         lease.Dispose();
-        Assert.NotNull(limiter.TryAcquire("tenant/app/revision", 10));
+        Assert.Empty(limiter.GetSnapshot("tenant/app/revision").HandlerRequests);
+        Assert.NotNull(limiter.TryAcquire("tenant/app/revision", "webhook", 10));
+    }
+
+    [Fact]
+    public void Scale_down_transition_excludes_new_admission_until_released()
+    {
+        var limiter = new FunctionPendingAdmissionLimiter(new FunctionGatewayOptions());
+        var transition = limiter.TryBeginScaleDown("tenant/app/revision");
+
+        Assert.NotNull(transition);
+        Assert.True(limiter.GetSnapshot("tenant/app/revision").Quiescing);
+        Assert.Null(limiter.TryAcquire("tenant/app/revision", "webhook", 1));
+
+        transition.Dispose();
+        Assert.False(limiter.GetSnapshot("tenant/app/revision").Quiescing);
+        Assert.NotNull(limiter.TryAcquire("tenant/app/revision", "webhook", 1));
     }
 }

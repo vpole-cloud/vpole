@@ -58,6 +58,12 @@ internal static class FunctionAppEventExtensions
             EventCore = EventCore.Create(revision.TenantId)
         };
 
+    public static FunctionRevisionRetiredEvent ToRetiredEvent(this FunctionRevision revision) =>
+        new(revision.FunctionAppId, revision.Id, revision.RevisionNumber)
+        {
+            EventCore = EventCore.Create(revision.TenantId)
+        };
+
     public static FunctionRevisionSpecSnapshot ToSnapshot(this FunctionRevisionSpec spec) =>
         new(
             spec.KubernetesNamespace,

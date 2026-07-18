@@ -146,5 +146,10 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             int replicas,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<Result>(Result.Success());
+
+        public Task<Result<FunctionReplicaState>> ReadReplicaStateAsync(
+            FunctionRevisionInKubernetes revision,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result<FunctionReplicaState>>(new FunctionReplicaState(0, 0, 0, 0));
     }
 }
