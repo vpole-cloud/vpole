@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>Pole.Features.SourceBuilds.Tests</AssemblyName>
+    <RootNamespace>Pole.Features.SourceBuilds.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SourceBuilds.Application\SourceBuilds.Application.csproj" />
+    <ProjectReference Include="..\SourceBuilds.Domain\SourceBuilds.Domain.csproj" />
+    <ProjectReference Include="..\..\ContainerRegistries\ContainerRegistries.Contracts\ContainerRegistries.Contracts.csproj" />
+    <ProjectReference Include="..\..\ContainerRegistries\ContainerRegistries.Domain\ContainerRegistries.Domain.csproj" />
+    <ProjectReference Include="..\..\GitProviders\GitProviders.Application\GitProviders.Application.csproj" />
+    <ProjectReference Include="..\..\GitProviders\GitProviders.Domain\GitProviders.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

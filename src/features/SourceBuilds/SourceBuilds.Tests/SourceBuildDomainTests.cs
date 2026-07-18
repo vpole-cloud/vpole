@@ -5,7 +5,7 @@ using Pole.Features.ContainerRegistries.Domain;
 using Pole.Features.SourceBuilds.Domain;
 using Xunit;
 
-namespace Pole.Tests.Integration.SourceBuilds;
+namespace Pole.Features.SourceBuilds.Tests;
 
 public sealed class SourceBuildDomainTests
 {

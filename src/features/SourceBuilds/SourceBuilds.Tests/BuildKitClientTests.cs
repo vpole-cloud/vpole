@@ -4,7 +4,7 @@ using Pole.Features.SourceBuilds.Application.Execution;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
-namespace Pole.Tests.Integration.SourceBuilds;
+namespace Pole.Features.SourceBuilds.Tests;
 
 public sealed class BuildKitClientTests
 {

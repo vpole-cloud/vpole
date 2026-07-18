@@ -4,7 +4,7 @@ using System.Text;
 using Pole.Features.SourceBuilds.Application.Execution;
 using Xunit;
 
-namespace Pole.Tests.Integration.SourceBuilds;
+namespace Pole.Features.SourceBuilds.Tests;
 
 public sealed class RepositoryArchiveExtractorTests
 {

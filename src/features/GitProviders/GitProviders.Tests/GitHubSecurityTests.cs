@@ -5,7 +5,7 @@ using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
 using Xunit;
 
-namespace Pole.Tests.Integration.GitProviders;
+namespace Pole.Features.GitProviders.Tests;
 
 public sealed class GitHubSecurityTests
 {

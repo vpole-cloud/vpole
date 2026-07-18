@@ -6,9 +6,11 @@ The shared integration test suite lives in:
 
 - `tests/Pole.Tests.Integration`
 
-Independently testable feature behavior can live beside the feature in a dedicated test project. The first feature-local suite lives in:
+Independently testable feature behavior can live beside the feature in a dedicated test project. The current feature-local suites live in:
 
 - `src/features/Functions/Functions.Tests`
+- `src/features/GitProviders/GitProviders.Tests`
+- `src/features/SourceBuilds/SourceBuilds.Tests`
 
 ## Current approach
 
@@ -77,7 +79,14 @@ Run the feature-local Functions suite from the repository root with:
 dotnet test src/features/Functions/Functions.Tests/Functions.Tests.csproj
 ```
 
-These tests do not require Docker or the shared integration fixtures.
+Run the GitProviders and SourceBuilds suites the same way:
+
+```bash
+dotnet test src/features/GitProviders/GitProviders.Tests/GitProviders.Tests.csproj
+dotnet test src/features/SourceBuilds/SourceBuilds.Tests/SourceBuilds.Tests.csproj
+```
+
+Feature-local tests do not require Docker or the shared integration fixtures.
 
 Run the integration suite from the repository root with:
 
