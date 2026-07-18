@@ -33,8 +33,6 @@
         <ProjectReference Include="..\..\src\features\ContainerRegistries\ContainerRegistries.Application\ContainerRegistries.Application.csproj" />
         <ProjectReference Include="..\..\src\features\SourceBuilds\SourceBuilds.Application\SourceBuilds.Application.csproj" />
         <ProjectReference Include="..\..\src\shared\Observability\Observability.csproj" />
-        <ProjectReference Include="..\..\src\sdk\Pole.Functions.Protocol\Pole.Functions.Protocol.csproj" />
-        <ProjectReference Include="..\..\src\sdk\Pole.Functions.Sdk\Pole.Functions.Sdk.csproj" />
     </ItemGroup>
 
 </Project>

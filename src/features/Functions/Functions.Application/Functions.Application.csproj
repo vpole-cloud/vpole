@@ -12,6 +12,7 @@
         <PackageReference Include="FluentValidation" />
         <PackageReference Include="MassTransit.Abstractions" />
         <PackageReference Include="MongoDB.Driver" />
+        <PackageReference Include="Pole.Functions.Protocol" />
     </ItemGroup>
 
     <ItemGroup>
@@ -24,7 +25,6 @@
         <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
         <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
         <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
-        <ProjectReference Include="..\..\..\sdk\Pole.Functions.Protocol\Pole.Functions.Protocol.csproj" />
     </ItemGroup>
 
 </Project>

@@ -59,4 +59,4 @@ requirement when adding or changing one feature.
 
 ## SDKs
 
-- [Pole Functions .NET SDK and Agent contract](../src/sdk/README.md)
+- [Pole Functions .NET SDK and Agent contract](https://github.com/lsbV/Pole.Functions)
