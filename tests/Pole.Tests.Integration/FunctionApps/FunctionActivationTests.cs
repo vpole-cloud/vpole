@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using k8s.Models;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Activation;
+using Pole.Features.Functions.Runtime.Coordination;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Functions.Protocol;
@@ -102,14 +103,44 @@ public sealed class FunctionActivationTests
             "ready",
             new FunctionServiceKey(subject.Namespace, subject.ServiceName),
             Endpoint("10.0.0.1", ready: true)));
+        var coordinator = new FakeActivationCoordinator();
         var manager = new ControlledKubernetesManager();
-        var activator = new FunctionRevisionActivator(registry, manager, TimeProvider.System);
+        var activator = new FunctionRevisionActivator(registry, coordinator, manager, TimeProvider.System);
 
         var result = await activator.EnsureActiveAsync(subject.App, subject.Revision);
 
         var success = Assert.IsType<Success<FunctionEndpointSnapshot>>(result);
         Assert.Equal("10.0.0.1", Assert.Single(success.Value.Endpoints).Address);
+        Assert.Equal(0, coordinator.BeginCalls);
         Assert.Equal(0, manager.ScaleCalls);
+    }
+
+    [Fact]
+    public async Task Warm_activation_forces_a_new_generation_when_admission_requires_a_fence()
+    {
+        var subject = CreateSubject();
+        var registry = new FunctionEndpointRegistry(TimeProvider.System);
+        registry.ApplySlice(Slice(
+            "ready",
+            new FunctionServiceKey(subject.Namespace, subject.ServiceName),
+            Endpoint("10.0.0.1", ready: true)));
+        var coordinator = new FakeActivationCoordinator(generation: 43);
+        var manager = new ControlledKubernetesManager();
+        var activator = new FunctionRevisionActivator(registry, coordinator, manager, TimeProvider.System);
+
+        var activation = activator.EnsureActiveAsync(
+            subject.App,
+            subject.Revision,
+            forceScaleFence: true);
+        await manager.ScaleStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        manager.CompleteScale();
+        var result = await activation;
+
+        Assert.IsType<Success<FunctionEndpointSnapshot>>(result);
+        Assert.Equal(1, coordinator.BeginCalls);
+        Assert.Equal(1, coordinator.CompleteCalls);
+        Assert.Equal(1, manager.ScaleCalls);
+        Assert.Equal(43, manager.LastGeneration);
     }
 
     [Fact]
@@ -117,8 +148,9 @@ public sealed class FunctionActivationTests
     {
         var subject = CreateSubject();
         var registry = new FunctionEndpointRegistry(TimeProvider.System);
+        var coordinator = new FakeActivationCoordinator(generation: 42);
         var manager = new ControlledKubernetesManager();
-        var activator = new FunctionRevisionActivator(registry, manager, TimeProvider.System);
+        var activator = new FunctionRevisionActivator(registry, coordinator, manager, TimeProvider.System);
 
         var first = activator.EnsureActiveAsync(subject.App, subject.Revision);
         await manager.ScaleStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
@@ -139,6 +171,52 @@ public sealed class FunctionActivationTests
             Assert.Equal("10.0.0.8", Assert.Single(success.Value.Endpoints).Address);
         });
         Assert.Equal(1, manager.ScaleCalls);
+        Assert.Equal(42, manager.LastGeneration);
+        Assert.Equal(1, coordinator.BeginCalls);
+        Assert.Equal(1, coordinator.CompleteCalls);
+    }
+
+    [Fact]
+    public async Task Coordination_failure_does_not_scale_the_revision()
+    {
+        var subject = CreateSubject();
+        var registry = new FunctionEndpointRegistry(TimeProvider.System);
+        var coordinator = new FakeActivationCoordinator(
+            begin: (_, _, _) => throw new InvalidOperationException("Orleans is unavailable."));
+        var manager = new ControlledKubernetesManager();
+        var activator = new FunctionRevisionActivator(registry, coordinator, manager, TimeProvider.System);
+
+        var result = await activator.EnsureActiveAsync(subject.App, subject.Revision);
+
+        var failure = Assert.IsType<Failure<FunctionEndpointSnapshot>>(result);
+        var external = Assert.IsType<ExternalServiceFailure>(failure.Error);
+        Assert.Equal("FunctionRuntime", external.ServiceName);
+        Assert.Contains("coordination is unavailable", external.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, manager.ScaleCalls);
+        Assert.Equal(1, coordinator.BeginCalls);
+        Assert.Equal(0, coordinator.CompleteCalls);
+    }
+
+    [Fact]
+    public async Task Fenced_scale_conflict_fails_activation_without_completing_the_lease()
+    {
+        var subject = CreateSubject();
+        var registry = new FunctionEndpointRegistry(TimeProvider.System);
+        var coordinator = new FakeActivationCoordinator(generation: 17, leaseId: "shared-lease");
+        var manager = new ControlledKubernetesManager();
+        var activator = new FunctionRevisionActivator(registry, coordinator, manager, TimeProvider.System);
+
+        var activation = activator.EnsureActiveAsync(subject.App, subject.Revision);
+        await manager.ScaleStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        manager.CompleteScale(Failures.Conflict("The shared generation was already applied."));
+
+        var result = await activation;
+
+        var failure = Assert.IsType<Failure<FunctionEndpointSnapshot>>(result);
+        Assert.IsType<ConflictFailure>(failure.Error);
+        Assert.Equal(17, manager.LastGeneration);
+        Assert.Equal(1, coordinator.BeginCalls);
+        Assert.Equal(0, coordinator.CompleteCalls);
     }
 
     private static FunctionRevisionInKubernetes CreateSubject()
@@ -218,6 +296,8 @@ public sealed class FunctionActivationTests
 
         public int ScaleCalls { get; private set; }
 
+        public long? LastGeneration { get; private set; }
+
         public Task<Result> ApplyAsync(
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default) =>
@@ -228,12 +308,20 @@ public sealed class FunctionActivationTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult<Result>(Result.Success());
 
+        public Task<Result> ScaleProvisioningAsync(
+            FunctionRevisionInKubernetes revision,
+            int replicas,
+            CancellationToken cancellationToken = default) =>
+            ScaleAsync(revision, replicas, 0, cancellationToken);
+
         public Task<Result> ScaleAsync(
             FunctionRevisionInKubernetes revision,
             int replicas,
+            long coordinationGeneration,
             CancellationToken cancellationToken = default)
         {
             ScaleCalls++;
+            LastGeneration = coordinationGeneration;
             ScaleStarted.TrySetResult();
             return scaleCompletion.Task;
         }
@@ -243,6 +331,54 @@ public sealed class FunctionActivationTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult<Result<FunctionReplicaState>>(new FunctionReplicaState(0, 0, 0, 0));
 
-        public void CompleteScale() => scaleCompletion.TrySetResult(Result.Success());
+        public void CompleteScale(Result? result = null) =>
+            scaleCompletion.TrySetResult(result ?? Result.Success());
+    }
+
+    private sealed class FakeActivationCoordinator(
+        long generation = 1,
+        string leaseId = "activation-lease",
+        Func<FunctionRevisionCoordinationKey, FunctionActivationBeginRequest, CancellationToken,
+            Task<FunctionActivationBeginDecision>>? begin = null) : IFunctionActivationCoordinator
+    {
+        private int beginCalls;
+        private int completeCalls;
+
+        public int BeginCalls => Volatile.Read(ref beginCalls);
+
+        public int CompleteCalls => Volatile.Read(ref completeCalls);
+
+        public string? LastCompletedLeaseId { get; private set; }
+
+        public Task<FunctionActivationBeginDecision> BeginActivationAsync(
+            FunctionRevisionCoordinationKey key,
+            FunctionActivationBeginRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref beginCalls);
+            if (begin is not null)
+                return begin(key, request, cancellationToken);
+
+            return Task.FromResult(new FunctionActivationBeginDecision(
+                FunctionActivationBeginDecisionKind.Granted,
+                new FunctionActivationLease(
+                    request.OperationId,
+                    leaseId,
+                    generation,
+                    request.DesiredReplicas,
+                    DateTimeOffset.MaxValue),
+                FunctionActivationRejection.None,
+                0));
+        }
+
+        public Task<FunctionActivationCompleteDecision> CompleteActivationAsync(
+            FunctionRevisionCoordinationKey key,
+            FunctionActivationCompleteRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref completeCalls);
+            LastCompletedLeaseId = request.LeaseId;
+            return Task.FromResult(FunctionActivationCompleteDecision.Completed);
+        }
     }
 }

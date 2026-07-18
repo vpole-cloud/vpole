@@ -69,7 +69,7 @@ public sealed class FunctionRevisionProvisioner(
                 metadataFailure = ValidateMetadata(response.Value, endpoint, app, revision) ?? string.Empty;
                 if (metadataFailure.Length == 0)
                 {
-                    var scaled = await kubernetesManager.ScaleAsync(
+                    var scaled = await kubernetesManager.ScaleProvisioningAsync(
                         subject,
                         revision.Spec.Scaling.MinInstances,
                         cancellationToken);
@@ -119,7 +119,7 @@ public sealed class FunctionRevisionProvisioner(
         string message,
         CancellationToken cancellationToken)
     {
-        var stopped = await kubernetesManager.ScaleAsync(subject, 0, cancellationToken);
+        var stopped = await kubernetesManager.ScaleProvisioningAsync(subject, 0, cancellationToken);
         if (stopped is IFailure stopFailure)
         {
             logger.LogWarning(

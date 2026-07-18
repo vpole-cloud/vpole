@@ -33,6 +33,8 @@
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.19.2" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageVersion Include="Microsoft.OpenApi" Version="2.9.0" />
+    <PackageVersion Include="Microsoft.Orleans.Hosting.Kubernetes" Version="10.2.1" />
+    <PackageVersion Include="Microsoft.Orleans.Server" Version="10.2.1" />
     <PackageVersion Include="Microsoft.Playwright" Version="1.61.0" />
     <PackageVersion Include="MongoDB.Driver" Version="3.10.0" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
@@ -42,6 +44,7 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.16.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.16.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.16.0" />
+    <PackageVersion Include="Orleans.Providers.MongoDB" Version="9.5.0" />
     <PackageVersion Include="Scalar.AspNetCore" Version="2.16.12" />
     <PackageVersion Include="SharpCompress" Version="0.50.0" />
     <PackageVersion Include="Snappier" Version="1.3.1" />

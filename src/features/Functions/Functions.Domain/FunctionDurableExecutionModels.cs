@@ -333,9 +333,12 @@ public sealed record FunctionInvocation(
     {
         if (State.IsTerminal())
             throw new InvalidOperationException($"A terminal invocation in state '{State}' cannot be dispatched.");
-        if (State == FunctionInvocationState.RetryScheduled &&
-            (NextAttemptAtUtc is null || NextAttemptAtUtc > acquiredAtUtc))
-            throw new InvalidOperationException("The invocation retry is not due yet.");
+        if ((State == FunctionInvocationState.Pending &&
+             NextAttemptAtUtc is { } pendingDispatchAtUtc &&
+             pendingDispatchAtUtc > acquiredAtUtc) ||
+            (State == FunctionInvocationState.RetryScheduled &&
+             (NextAttemptAtUtc is null || NextAttemptAtUtc > acquiredAtUtc)))
+            throw new InvalidOperationException("The invocation dispatch is not due yet.");
         if (State is FunctionInvocationState.Dispatching or FunctionInvocationState.Running &&
             Lease is { } current && current.IsActiveAt(acquiredAtUtc) &&
             !string.Equals(current.Token, token, StringComparison.Ordinal))
@@ -353,6 +356,52 @@ public sealed record FunctionInvocation(
             UpdatedAtUtc = acquiredAtUtc,
             AttemptStartedAtUtc = null,
             NextAttemptAtUtc = null
+        };
+    }
+
+    public FunctionInvocation RenewDispatchLease(
+        string leaseToken,
+        DateTimeOffset renewedAtUtc,
+        DateTimeOffset expiresAtUtc)
+    {
+        RequireDispatchingOrRunning();
+        RequireActiveLease(leaseToken, renewedAtUtc);
+        FunctionDurableModelGuard.Utc(expiresAtUtc, nameof(expiresAtUtc));
+        if (expiresAtUtc <= renewedAtUtc)
+            throw new ArgumentOutOfRangeException(nameof(expiresAtUtc), "A renewed lease must expire in the future.");
+
+        return this with
+        {
+            Lease = Lease! with { ExpiresAtUtc = expiresAtUtc },
+            UpdatedAtUtc = renewedAtUtc
+        };
+    }
+
+    public FunctionInvocation DeferDispatch(
+        string leaseToken,
+        DateTimeOffset nextDispatchAtUtc,
+        FunctionInvocationError reason,
+        DateTimeOffset nowUtc)
+    {
+        RequireState(FunctionInvocationState.Dispatching);
+        RequireActiveLease(leaseToken, nowUtc);
+        FunctionDurableModelGuard.Utc(nextDispatchAtUtc, nameof(nextDispatchAtUtc));
+        ArgumentNullException.ThrowIfNull(reason);
+        if (nextDispatchAtUtc <= nowUtc)
+            throw new ArgumentOutOfRangeException(
+                nameof(nextDispatchAtUtc),
+                "A deferred dispatch must be scheduled in the future.");
+        if (!reason.Retryable)
+            throw new InvalidOperationException("A deferred dispatch requires a retryable platform error.");
+
+        return this with
+        {
+            State = FunctionInvocationState.Pending,
+            Lease = null,
+            UpdatedAtUtc = nowUtc,
+            AttemptStartedAtUtc = null,
+            NextAttemptAtUtc = nextDispatchAtUtc,
+            Error = reason
         };
     }
 
@@ -496,7 +545,8 @@ public sealed record FunctionInvocation(
         {
             FunctionInvocationState.Pending =>
                 Lease is null && AttemptStartedAtUtc is null && CompletedAtUtc is null &&
-                NextAttemptAtUtc is null && Error is null,
+                (NextAttemptAtUtc is null && Error is null ||
+                 NextAttemptAtUtc is not null && Error is { Retryable: true }),
             FunctionInvocationState.Dispatching =>
                 Lease is not null && AttemptStartedAtUtc is null && CompletedAtUtc is null &&
                 NextAttemptAtUtc is null,

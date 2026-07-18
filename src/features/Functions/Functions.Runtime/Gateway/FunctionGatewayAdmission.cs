@@ -3,20 +3,16 @@ namespace Pole.Features.Functions.Runtime.Gateway;
 public interface IFunctionPendingAdmissionLimiter
 {
     FunctionPendingAdmissionLease? TryAcquire(string revisionId, string handlerName, long reservedBytes);
-    FunctionPendingAdmissionSnapshot GetSnapshot(string revisionId);
-    FunctionScaleDownLease? TryBeginScaleDown(string revisionId);
 }
 
 public sealed record FunctionPendingAdmissionSnapshot(
     int Requests,
     long Bytes,
-    bool Quiescing,
     IReadOnlyDictionary<string, int> HandlerRequests)
 {
     public static readonly FunctionPendingAdmissionSnapshot Empty = new(
         0,
         0,
-        false,
         new Dictionary<string, int>(StringComparer.Ordinal));
 }
 
@@ -27,7 +23,6 @@ public sealed class FunctionPendingAdmissionLimiter(FunctionGatewayOptions optio
     {
         public int Requests;
         public long Bytes;
-        public bool Quiescing;
         public Dictionary<string, int> HandlerRequests { get; } = new(StringComparer.Ordinal);
     }
 
@@ -47,7 +42,7 @@ public sealed class FunctionPendingAdmissionLimiter(FunctionGatewayOptions optio
         {
             if (!revisions.TryGetValue(revisionId, out var revision))
                 revision = new RevisionCounters();
-            if (revision.Quiescing || requests >= options.MaxPendingRequests ||
+            if (requests >= options.MaxPendingRequests ||
                 revision.Requests >= options.MaxPendingRequestsPerRevision ||
                 bytes + reservedBytes > options.MaxPendingBytes ||
                 revision.Bytes + reservedBytes > options.MaxPendingBytesPerRevision)
@@ -70,25 +65,8 @@ public sealed class FunctionPendingAdmissionLimiter(FunctionGatewayOptions optio
                 ? new FunctionPendingAdmissionSnapshot(
                     revision.Requests,
                     revision.Bytes,
-                    revision.Quiescing,
                     new Dictionary<string, int>(revision.HandlerRequests, StringComparer.Ordinal))
                 : FunctionPendingAdmissionSnapshot.Empty;
-    }
-
-    public FunctionScaleDownLease? TryBeginScaleDown(string revisionId)
-    {
-        lock (sync)
-        {
-            if (!revisions.TryGetValue(revisionId, out var revision))
-            {
-                revision = new RevisionCounters();
-                revisions[revisionId] = revision;
-            }
-            if (revision.Requests != 0 || revision.Quiescing)
-                return null;
-            revision.Quiescing = true;
-            return new FunctionScaleDownLease(() => EndScaleDown(revisionId));
-        }
     }
 
     private void Release(string revisionId, string handlerName, long reservedBytes)
@@ -106,18 +84,6 @@ public sealed class FunctionPendingAdmissionLimiter(FunctionGatewayOptions optio
                 revision.HandlerRequests.Remove(handlerName);
             else
                 revision.HandlerRequests[handlerName] = handlerRequests;
-            if (revision.Requests == 0 && !revision.Quiescing)
-                revisions.Remove(revisionId);
-        }
-    }
-
-    private void EndScaleDown(string revisionId)
-    {
-        lock (sync)
-        {
-            if (!revisions.TryGetValue(revisionId, out var revision))
-                return;
-            revision.Quiescing = false;
             if (revision.Requests == 0)
                 revisions.Remove(revisionId);
         }
@@ -125,12 +91,6 @@ public sealed class FunctionPendingAdmissionLimiter(FunctionGatewayOptions optio
 }
 
 public sealed class FunctionPendingAdmissionLease(Action release) : IDisposable
-{
-    private Action? release = release;
-    public void Dispose() => Interlocked.Exchange(ref release, null)?.Invoke();
-}
-
-public sealed class FunctionScaleDownLease(Action release) : IDisposable
 {
     private Action? release = release;
     public void Dispose() => Interlocked.Exchange(ref release, null)?.Invoke();

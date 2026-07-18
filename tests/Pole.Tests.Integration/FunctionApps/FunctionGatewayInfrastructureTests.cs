@@ -11,9 +11,11 @@ public sealed class FunctionGatewayInfrastructureTests
     {
         var options = new FunctionGatewayOptions { ControlPort = 8081, PublicPort = 8081 };
 
-        var exception = Assert.Throws<InvalidOperationException>(options.Validate);
+        var result = new FunctionGatewayOptionsValidator().Validate(null, options);
 
-        Assert.Contains("distinct", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures, failure =>
+            failure.Contains("distinct", StringComparison.OrdinalIgnoreCase));
     }
 
     [Theory]
@@ -64,20 +66,5 @@ public sealed class FunctionGatewayInfrastructureTests
         lease.Dispose();
         Assert.Empty(limiter.GetSnapshot("tenant/app/revision").HandlerRequests);
         Assert.NotNull(limiter.TryAcquire("tenant/app/revision", "webhook", 10));
-    }
-
-    [Fact]
-    public void Scale_down_transition_excludes_new_admission_until_released()
-    {
-        var limiter = new FunctionPendingAdmissionLimiter(new FunctionGatewayOptions());
-        var transition = limiter.TryBeginScaleDown("tenant/app/revision");
-
-        Assert.NotNull(transition);
-        Assert.True(limiter.GetSnapshot("tenant/app/revision").Quiescing);
-        Assert.Null(limiter.TryAcquire("tenant/app/revision", "webhook", 1));
-
-        transition.Dispose();
-        Assert.False(limiter.GetSnapshot("tenant/app/revision").Quiescing);
-        Assert.NotNull(limiter.TryAcquire("tenant/app/revision", "webhook", 1));
     }
 }

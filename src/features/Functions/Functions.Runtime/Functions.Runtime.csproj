@@ -10,6 +10,7 @@
     <PackageReference Include="KubernetesClient" />
     <PackageReference Include="MassTransit.Abstractions" />
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
+    <PackageReference Include="Microsoft.Orleans.Server" />
   </ItemGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />

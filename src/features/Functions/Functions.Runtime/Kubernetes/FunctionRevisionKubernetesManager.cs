@@ -3,6 +3,7 @@ using k8s;
 using k8s.Autorest;
 using k8s.Models;
 using Pole.Features.Core.Kubernetes;
+using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Security;
 using Pole.ResultType;
 
@@ -12,7 +13,17 @@ public interface IFunctionRevisionKubernetesManager
 {
     Task<Result> ApplyAsync(FunctionRevisionInKubernetes revision, CancellationToken cancellationToken = default);
     Task<Result> DeleteAsync(FunctionRevisionInKubernetes revision, CancellationToken cancellationToken = default);
-    Task<Result> ScaleAsync(FunctionRevisionInKubernetes revision, int replicas, CancellationToken cancellationToken = default);
+    // Only provisioning may bypass the runtime coordination generation. Provisioning revisions
+    // are not routable and are excluded from the scaler until promotion completes.
+    Task<Result> ScaleProvisioningAsync(
+        FunctionRevisionInKubernetes revision,
+        int replicas,
+        CancellationToken cancellationToken = default);
+    Task<Result> ScaleAsync(
+        FunctionRevisionInKubernetes revision,
+        int replicas,
+        long coordinationGeneration,
+        CancellationToken cancellationToken = default);
     Task<Result<FunctionReplicaState>> ReadReplicaStateAsync(
         FunctionRevisionInKubernetes revision,
         CancellationToken cancellationToken = default);
@@ -23,7 +34,8 @@ public sealed record FunctionReplicaState(
     int Current,
     int Ready,
     int Available = 0,
-    bool GenerationObserved = true);
+    bool GenerationObserved = true,
+    long CoordinationGeneration = 0);
 
 public sealed class FunctionRevisionKubernetesManager(
     IKubernetes kubernetes,
@@ -54,6 +66,7 @@ public sealed class FunctionRevisionKubernetesManager(
                         cancellationToken: cancellationToken);
                     deployment.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
                     deployment.Spec.Replicas = existing.Spec.Replicas;
+                    PreserveScaleGeneration(deployment, existing);
                     await kubernetes.AppsV1.ReplaceNamespacedDeploymentAsync(
                         deployment,
                         deployment.Metadata.Name,
@@ -124,11 +137,16 @@ public sealed class FunctionRevisionKubernetesManager(
         }
     }
 
-    public async Task<Result> ScaleAsync(
+    public async Task<Result> ScaleProvisioningAsync(
         FunctionRevisionInKubernetes revision,
         int replicas,
         CancellationToken cancellationToken = default)
     {
+        if (revision.Revision.State != FunctionRevisionState.Provisioning)
+        {
+            return Failures.Conflict(
+                "Only a provisioning Function revision may use the unfenced bootstrap scale operation.");
+        }
         if (replicas < 0 || replicas > revision.Revision.Spec.Scaling.MaxInstances)
         {
             return Failures.ValidationFailure(new Dictionary<string, string[]>
@@ -164,6 +182,90 @@ public sealed class FunctionRevisionKubernetesManager(
         }
     }
 
+    public async Task<Result> ScaleAsync(
+        FunctionRevisionInKubernetes revision,
+        int replicas,
+        long coordinationGeneration,
+        CancellationToken cancellationToken = default)
+    {
+        if (replicas < 0 || replicas > revision.Revision.Spec.Scaling.MaxInstances)
+        {
+            return Failures.ValidationFailure(new Dictionary<string, string[]>
+            {
+                [nameof(replicas)] = ["Replica count is outside the Function revision scaling bounds."]
+            });
+        }
+        if (coordinationGeneration <= 0)
+        {
+            return Failures.ValidationFailure(new Dictionary<string, string[]>
+            {
+                [nameof(coordinationGeneration)] = ["Scale coordination generation must be positive."]
+            });
+        }
+
+        try
+        {
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                var deployment = await kubernetes.AppsV1.ReadNamespacedDeploymentAsync(
+                    revision.DeploymentName,
+                    revision.Namespace,
+                    cancellationToken: cancellationToken);
+                if (!TryReadScaleGeneration(deployment, out var currentGeneration))
+                {
+                    return Failures.Conflict(
+                        "The Function revision has an invalid Kubernetes scale generation annotation.");
+                }
+                if (currentGeneration > coordinationGeneration)
+                {
+                    return Failures.Conflict(
+                        "A newer Function revision scale decision has already been applied.");
+                }
+                if (currentGeneration == coordinationGeneration)
+                {
+                    return deployment.Spec.Replicas == replicas
+                        ? Result.Success()
+                        : Failures.Conflict(
+                            "The Function revision scale generation is already associated with another replica count.");
+                }
+
+                deployment.Spec.Replicas = replicas;
+                deployment.Metadata.Annotations ??= new Dictionary<string, string>();
+                deployment.Metadata.Annotations[FunctionRevisionInKubernetes.ScaleGenerationAnnotation] =
+                    coordinationGeneration.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                try
+                {
+                    await kubernetes.AppsV1.ReplaceNamespacedDeploymentAsync(
+                        deployment,
+                        deployment.Metadata.Name,
+                        revision.Namespace,
+                        cancellationToken: cancellationToken);
+                    return Result.Success();
+                }
+                catch (HttpOperationException exception) when (
+                    exception.Response?.StatusCode == HttpStatusCode.Conflict)
+                {
+                    // Another writer changed resourceVersion. Re-read both the generation and replicas
+                    // before deciding whether this command is still current.
+                }
+            }
+
+            return Failures.Conflict(
+                "The Function revision changed repeatedly while applying its scale decision.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return Failures.ExternalService(
+                "Unable to scale Function revision in Kubernetes.",
+                "Kubernetes",
+                exception.Message);
+        }
+    }
+
     public async Task<Result<FunctionReplicaState>> ReadReplicaStateAsync(
         FunctionRevisionInKubernetes revision,
         CancellationToken cancellationToken = default)
@@ -179,7 +281,10 @@ public sealed class FunctionRevisionKubernetesManager(
                 deployment.Status?.Replicas ?? 0,
                 deployment.Status?.ReadyReplicas ?? 0,
                 deployment.Status?.AvailableReplicas ?? 0,
-                deployment.Status?.ObservedGeneration >= deployment.Metadata.Generation);
+                deployment.Status?.ObservedGeneration >= deployment.Metadata.Generation,
+                TryReadScaleGeneration(deployment, out var coordinationGeneration)
+                    ? coordinationGeneration
+                    : 0);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -214,5 +319,33 @@ public sealed class FunctionRevisionKubernetesManager(
         desired.Spec.HealthCheckNodePort = existing.Spec.HealthCheckNodePort;
         desired.Spec.IpFamilies = existing.Spec.IpFamilies;
         desired.Spec.IpFamilyPolicy = existing.Spec.IpFamilyPolicy;
+    }
+
+    private static void PreserveScaleGeneration(V1Deployment desired, V1Deployment existing)
+    {
+        if (existing.Metadata.Annotations is null ||
+            !existing.Metadata.Annotations.TryGetValue(
+                FunctionRevisionInKubernetes.ScaleGenerationAnnotation,
+                out var generation))
+        {
+            return;
+        }
+        desired.Metadata.Annotations ??= new Dictionary<string, string>();
+        desired.Metadata.Annotations[FunctionRevisionInKubernetes.ScaleGenerationAnnotation] =
+            generation;
+    }
+
+    private static bool TryReadScaleGeneration(V1Deployment deployment, out long generation)
+    {
+        generation = 0;
+        return deployment.Metadata.Annotations is null ||
+               !deployment.Metadata.Annotations.TryGetValue(
+                   FunctionRevisionInKubernetes.ScaleGenerationAnnotation,
+                   out var value) ||
+               long.TryParse(
+                   value,
+                   System.Globalization.NumberStyles.None,
+                   System.Globalization.CultureInfo.InvariantCulture,
+                   out generation) && generation >= 0;
     }
 }

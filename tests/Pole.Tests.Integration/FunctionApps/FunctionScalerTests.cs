@@ -3,8 +3,8 @@ using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Agent;
+using Pole.Features.Functions.Runtime.Coordination;
 using Pole.Features.Functions.Runtime.Endpoints;
-using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Scaling;
 using Pole.Functions.Protocol;
@@ -27,7 +27,7 @@ public sealed class FunctionScalerTests
         var harness = CreateHarness(
             scaling: new FunctionScalingPolicy(0, 4, 2, 8, 30, 30),
             replicaState: new FunctionReplicaState(0, 0, 0, 0));
-        harness.Pending.Requests = pending;
+        harness.Coordinator.AdmissionRequests = pending;
 
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
 
@@ -82,8 +82,8 @@ public sealed class FunctionScalerTests
             appReserved: 1,
             handlerReserved: 1,
             handlerLimit: 1);
-        harness.Pending.Requests = 1;
-        harness.Pending.HandlerRequests = new Dictionary<string, int>(StringComparer.Ordinal)
+        harness.Coordinator.AdmissionRequests = 1;
+        harness.Coordinator.HandlerRequests = new Dictionary<string, int>(StringComparer.Ordinal)
         {
             ["webhook"] = 1
         };
@@ -155,14 +155,34 @@ public sealed class FunctionScalerTests
             endpoints: [Endpoint("pod-1")]);
 
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
-        harness.Time.Advance(TimeSpan.FromSeconds(19));
+        harness.Time.Advance(TimeSpan.FromSeconds(9));
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+        harness.Time.Advance(TimeSpan.FromSeconds(9));
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
 
         Assert.Empty(harness.Kubernetes.ScaleRequests);
 
-        harness.Time.Advance(TimeSpan.FromSeconds(1));
+        harness.Time.Advance(TimeSpan.FromSeconds(2));
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
 
+        Assert.Equal([0], harness.Kubernetes.ScaleRequests);
+    }
+
+    [Fact]
+    public async Task Expired_ownership_reacquisition_in_same_incarnation_preserves_idle_timing()
+    {
+        var harness = CreateHarness(
+            scaling: new FunctionScalingPolicy(0, 5, 4, 8, 20, 30),
+            replicaState: new FunctionReplicaState(1, 1, 1, 1),
+            endpoints: [Endpoint("pod-1")]);
+
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+        harness.Time.Advance(TimeSpan.FromSeconds(11));
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+        harness.Time.Advance(TimeSpan.FromSeconds(11));
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal(3, harness.Coordinator.OwnershipRequests.Count);
         Assert.Equal([0], harness.Kubernetes.ScaleRequests);
     }
 
@@ -192,12 +212,12 @@ public sealed class FunctionScalerTests
             scaling: new FunctionScalingPolicy(0, 5, 4, 8, 0, 30),
             replicaState: new FunctionReplicaState(1, 1, 1, 1),
             endpoints: [Endpoint("pod-1")]);
-        harness.Pending.BeginningScaleDown = () => harness.Pending.Requests = 1;
+        harness.Coordinator.BeginningQuiescing = () => harness.Coordinator.AdmissionRequests = 1;
 
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
 
         Assert.Empty(harness.Kubernetes.ScaleRequests);
-        Assert.False(harness.Pending.Quiescing);
+        Assert.False(harness.Coordinator.Quiescing);
     }
 
     [Fact]
@@ -215,7 +235,7 @@ public sealed class FunctionScalerTests
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
 
         Assert.Empty(harness.Kubernetes.ScaleRequests);
-        Assert.False(harness.Pending.Quiescing);
+        Assert.False(harness.Coordinator.Quiescing);
     }
 
     [Fact]
@@ -228,12 +248,12 @@ public sealed class FunctionScalerTests
 
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
 
-        Assert.True(harness.Pending.Quiescing);
+        Assert.True(harness.Coordinator.Quiescing);
         harness.Kubernetes.ReplicaState = new FunctionReplicaState(0, 0, 0, 0);
         harness.Endpoints.Endpoints = [];
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
 
-        Assert.False(harness.Pending.Quiescing);
+        Assert.False(harness.Coordinator.Quiescing);
     }
 
     [Fact]
@@ -247,7 +267,9 @@ public sealed class FunctionScalerTests
             endpoints: [Endpoint("pod-1")]);
 
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
-        harness.Time.Advance(TimeSpan.FromSeconds(10));
+        harness.Time.Advance(TimeSpan.FromSeconds(9));
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+        harness.Time.Advance(TimeSpan.FromSeconds(1));
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
 
         Assert.Equal([0], harness.Kubernetes.ScaleRequests);
@@ -273,6 +295,178 @@ public sealed class FunctionScalerTests
         Assert.Equal([2], harness.Kubernetes.ScaleRequests);
     }
 
+    [Fact]
+    public async Task Scale_change_uses_coordinator_intent_observed_replicas_and_fenced_generation()
+    {
+        var harness = CreateHarness(
+            scaling: new FunctionScalingPolicy(0, 5, 4, 8, 30, 30),
+            replicaState: new FunctionReplicaState(0, 0, 0, 0));
+        harness.Coordinator.AdmissionRequests = 3;
+
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+
+        var begin = Assert.Single(harness.Coordinator.ScaleRequests);
+        Assert.Equal(0, begin.ObservedReplicas);
+        Assert.Null(begin.QuiescingEpoch);
+        Assert.Equal([1], harness.Kubernetes.ScaleRequests);
+        var generation = Assert.Single(harness.Kubernetes.ScaleGenerations);
+        var completion = Assert.Single(harness.Coordinator.ScaleCompletions);
+        Assert.Equal(generation, completion.Generation);
+        Assert.Equal(FunctionCoordinationCompletionOutcome.Applied, completion.Outcome);
+        Assert.Equal(begin.ScalerToken, completion.ScalerToken);
+    }
+
+    [Fact]
+    public async Task Observed_replicas_classify_first_coordinated_change_as_scale_down()
+    {
+        var harness = CreateHarness(
+            scaling: new FunctionScalingPolicy(0, 5, 4, 8, 0, 30),
+            replicaState: new FunctionReplicaState(1, 1, 1, 1),
+            endpoints: [Endpoint("pod-1")]);
+        harness.Coordinator.DesiredReplicas = null;
+
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal([0], harness.Kubernetes.ScaleRequests);
+        var begin = Assert.Single(harness.Coordinator.ScaleRequests);
+        Assert.Equal(1, begin.ObservedReplicas);
+        Assert.NotNull(begin.QuiescingEpoch);
+    }
+
+    [Fact]
+    public async Task Coordinator_failure_prevents_kubernetes_change()
+    {
+        var harness = CreateHarness(
+            scaling: new FunctionScalingPolicy(0, 5, 2, 8, 30, 30),
+            replicaState: new FunctionReplicaState(0, 0, 0, 0));
+        harness.Coordinator.AdmissionRequests = 4;
+        harness.Coordinator.ThrowOnSnapshot = true;
+
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+
+        Assert.Empty(harness.Coordinator.ScaleRequests);
+        Assert.Empty(harness.Kubernetes.ScaleRequests);
+    }
+
+    [Fact]
+    public async Task Ownership_is_renewed_and_incarnation_change_resets_idle_timing()
+    {
+        var harness = CreateHarness(
+            scaling: new FunctionScalingPolicy(0, 5, 4, 8, 20, 30),
+            replicaState: new FunctionReplicaState(1, 1, 1, 1),
+            endpoints: [Endpoint("pod-1")]);
+
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+        harness.Time.Advance(TimeSpan.FromSeconds(9));
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+        harness.Coordinator.RestartIncarnation("coordinator-2");
+        harness.Time.Advance(TimeSpan.FromSeconds(9));
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+        harness.Time.Advance(TimeSpan.FromSeconds(2));
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+
+        Assert.Empty(harness.Kubernetes.ScaleRequests);
+        Assert.NotEmpty(harness.Coordinator.RenewalRequests);
+        Assert.Equal(2, harness.Coordinator.OwnershipRequests.Count);
+        Assert.Single(harness.Coordinator.OwnershipRequests.Select(request => request.OwnerId).Distinct());
+        Assert.Single(harness.Coordinator.OwnershipRequests.Select(request => request.OperationId).Distinct());
+    }
+
+    [Fact]
+    public async Task Kubernetes_validation_failure_aborts_scale_intent_and_quiescing_barrier()
+    {
+        var harness = CreateHarness(
+            scaling: new FunctionScalingPolicy(0, 5, 4, 8, 0, 30),
+            replicaState: new FunctionReplicaState(1, 1, 1, 1),
+            endpoints: [Endpoint("pod-1")]);
+        harness.Kubernetes.ScaleResult = Failures.ValidationFailure(
+            new Dictionary<string, string[]> { ["replicas"] = ["Invalid replicas."] });
+
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal([0], harness.Kubernetes.ScaleRequests);
+        Assert.False(harness.Coordinator.Quiescing);
+        Assert.Null(harness.Coordinator.PendingScaleIntent);
+        Assert.Contains(
+            harness.Coordinator.ScaleCompletions,
+            completion => completion.Outcome == FunctionCoordinationCompletionOutcome.Failed);
+        Assert.Equal(
+            [FunctionQuiescingCompletionOutcome.Aborted],
+            harness.Coordinator.QuiescingCompletions);
+    }
+
+    [Fact]
+    public async Task Kubernetes_uncertain_failure_keeps_scale_intent_and_quiescing_for_recovery()
+    {
+        var harness = CreateHarness(
+            scaling: new FunctionScalingPolicy(0, 5, 4, 8, 0, 30),
+            replicaState: new FunctionReplicaState(1, 1, 1, 1),
+            endpoints: [Endpoint("pod-1")]);
+        harness.Kubernetes.ScaleResult = Failures.ExternalService(
+            "Unable to scale.",
+            "Kubernetes",
+            "test failure");
+
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal([0], harness.Kubernetes.ScaleRequests);
+        Assert.True(harness.Coordinator.Quiescing);
+        Assert.NotNull(harness.Coordinator.PendingScaleIntent);
+        Assert.Empty(harness.Coordinator.ScaleCompletions);
+        Assert.Empty(harness.Coordinator.QuiescingCompletions);
+
+        harness.Coordinator.AdmissionRequests = 1;
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal([0], harness.Kubernetes.ScaleRequests);
+        Assert.True(harness.Coordinator.Quiescing);
+        Assert.NotNull(harness.Coordinator.PendingScaleIntent);
+        Assert.Empty(harness.Coordinator.ScaleCompletions);
+        Assert.Empty(harness.Coordinator.QuiescingCompletions);
+    }
+
+    [Fact]
+    public async Task Kubernetes_uncertain_failure_completes_applied_when_fenced_state_matches()
+    {
+        var harness = CreateHarness(
+            scaling: new FunctionScalingPolicy(0, 5, 4, 8, 30, 30),
+            replicaState: new FunctionReplicaState(0, 0, 0, 0));
+        harness.Coordinator.AdmissionRequests = 1;
+        harness.Kubernetes.ScaleResult = Failures.ExternalService(
+            "Unable to scale.",
+            "Kubernetes",
+            "response lost after apply");
+        harness.Kubernetes.ApplyScaleBeforeFailure = true;
+
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+
+        var completion = Assert.Single(harness.Coordinator.ScaleCompletions);
+        Assert.Equal(FunctionCoordinationCompletionOutcome.Applied, completion.Outcome);
+        Assert.Null(harness.Coordinator.PendingScaleIntent);
+        Assert.Equal(completion.Generation, harness.Kubernetes.ReplicaState.CoordinationGeneration);
+        Assert.Equal(1, harness.Kubernetes.ReplicaState.Desired);
+    }
+
+    [Fact]
+    public async Task Persisted_pending_scale_is_recovered_with_its_original_generation()
+    {
+        var harness = CreateHarness(
+            scaling: new FunctionScalingPolicy(0, 5, 4, 8, 30, 30),
+            replicaState: new FunctionReplicaState(0, 0, 0, 0));
+        harness.Coordinator.SeedPendingScale(desiredReplicas: 2);
+        var pending = Assert.IsType<FunctionScaleIntent>(harness.Coordinator.PendingScaleIntent);
+
+        await harness.Scaler.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal([2], harness.Kubernetes.ScaleRequests);
+        Assert.Equal([pending.Generation], harness.Kubernetes.ScaleGenerations);
+        Assert.Null(harness.Coordinator.PendingScaleIntent);
+        Assert.Contains(
+            harness.Coordinator.ScaleCompletions,
+            completion => completion.IntentId == pending.IntentId &&
+                          completion.Outcome == FunctionCoordinationCompletionOutcome.Applied);
+    }
+
     private static Harness CreateHarness(
         FunctionScalingPolicy scaling,
         FunctionReplicaState replicaState,
@@ -288,15 +482,18 @@ public sealed class FunctionScalerTests
         {
             Endpoints = endpoints?.ToImmutableArray() ?? []
         };
-        var agent = new FakeAgentClient();
-        var pending = new FakePendingAdmissionLimiter();
-        var kubernetes = new FakeKubernetesManager { ReplicaState = replicaState };
         var time = new MutableTimeProvider(Now);
+        var agent = new FakeAgentClient();
+        var coordinator = new FakeScalingCoordinator(time)
+        {
+            DesiredReplicas = replicaState.Desired
+        };
+        var kubernetes = new FakeKubernetesManager { ReplicaState = replicaState };
         var scaler = new FunctionScaler(
             targetSource,
             endpointRegistry,
             agent,
-            pending,
+            coordinator,
             kubernetes,
             new FunctionScalerOptions { AgentStatusTimeoutSeconds = 1 },
             time,
@@ -306,7 +503,7 @@ public sealed class FunctionScalerTests
             targetSource,
             endpointRegistry,
             agent,
-            pending,
+            coordinator,
             kubernetes,
             time,
             scaler);
@@ -400,7 +597,7 @@ public sealed class FunctionScalerTests
         FakeTargetSource TargetSource,
         FakeEndpointRegistry Endpoints,
         FakeAgentClient Agent,
-        FakePendingAdmissionLimiter Pending,
+        FakeScalingCoordinator Coordinator,
         FakeKubernetesManager Kubernetes,
         MutableTimeProvider Time,
         FunctionScaler Scaler);
@@ -434,38 +631,324 @@ public sealed class FunctionScalerTests
         public void DeleteSlice(string @namespace, string sliceName) => throw new NotSupportedException();
     }
 
-    private sealed class FakePendingAdmissionLimiter : IFunctionPendingAdmissionLimiter
+    private sealed class FakeScalingCoordinator(MutableTimeProvider time) : IFunctionScalingCoordinator
     {
-        public int Requests { get; set; }
-        public bool Quiescing { get; private set; }
-        public Action? BeginningScaleDown { get; set; }
+        private FunctionScalerOwnershipToken? ownership;
+        private int ownershipSequence;
+        private int intentSequence;
 
-        public FunctionPendingAdmissionLease? TryAcquire(
-            string revisionId,
-            string handlerName,
-            long reservedBytes) =>
-            throw new NotSupportedException();
-
-        public FunctionPendingAdmissionSnapshot GetSnapshot(string revisionId) =>
-            new(Requests, 0, Quiescing, HandlerRequests);
-
+        public string Incarnation { get; set; } = "coordinator-1";
+        public long Generation { get; set; } = 10;
+        public int? DesiredReplicas { get; set; }
+        public int AdmissionRequests { get; set; }
         public IReadOnlyDictionary<string, int> HandlerRequests { get; set; } =
             new Dictionary<string, int>(StringComparer.Ordinal);
+        public FunctionQuiescingIntent? QuiescingIntent { get; private set; }
+        public FunctionScaleIntent? PendingScaleIntent { get; private set; }
+        public bool Quiescing => QuiescingIntent is not null;
+        public bool RejectOwnership { get; set; }
+        public bool RejectRenewal { get; set; }
+        public bool ThrowOnSnapshot { get; set; }
+        public bool ThrowOnBeginScale { get; set; }
+        public Action? BeginningQuiescing { get; set; }
+        public List<FunctionScalerOwnershipRequest> OwnershipRequests { get; } = [];
+        public List<FunctionScalerOwnershipToken> RenewalRequests { get; } = [];
+        public List<FunctionScaleBeginRequest> ScaleRequests { get; } = [];
+        public List<FunctionScaleCompleteRequest> ScaleCompletions { get; } = [];
+        public List<FunctionQuiescingCompletionOutcome> QuiescingCompletions { get; } = [];
 
-        public FunctionScaleDownLease? TryBeginScaleDown(string revisionId)
+        public Task<FunctionScalerOwnershipDecision> TryAcquireOwnershipAsync(
+            FunctionRevisionCoordinationKey key,
+            FunctionScalerOwnershipRequest request,
+            CancellationToken cancellationToken = default)
         {
-            BeginningScaleDown?.Invoke();
-            if (Requests != 0 || Quiescing)
-                return null;
-            Quiescing = true;
-            return new FunctionScaleDownLease(() => Quiescing = false);
+            OwnershipRequests.Add(request);
+            if (RejectOwnership)
+                return Task.FromResult(new FunctionScalerOwnershipDecision(
+                    FunctionScalerOwnershipDecisionKind.Busy,
+                    null,
+                    1));
+
+            if (ownership is not null &&
+                ownership.ExpiresAtUtc > time.GetUtcNow() &&
+                (!string.Equals(ownership.OperationId, request.OperationId, StringComparison.Ordinal) ||
+                 !string.Equals(ownership.OwnerId, request.OwnerId, StringComparison.Ordinal)))
+            {
+                return Task.FromResult(new FunctionScalerOwnershipDecision(
+                    FunctionScalerOwnershipDecisionKind.Busy,
+                    null,
+                    1));
+            }
+
+            ownership = ownership is not null &&
+                        ownership.ExpiresAtUtc > time.GetUtcNow() &&
+                        string.Equals(ownership.OperationId, request.OperationId, StringComparison.Ordinal) &&
+                        string.Equals(ownership.OwnerId, request.OwnerId, StringComparison.Ordinal)
+                ? ownership
+                : new FunctionScalerOwnershipToken(
+                    request.OperationId,
+                    request.OwnerId,
+                    $"ownership-{++ownershipSequence}",
+                    Incarnation,
+                    time.GetUtcNow().AddSeconds(10));
+            return Task.FromResult(new FunctionScalerOwnershipDecision(
+                FunctionScalerOwnershipDecisionKind.Granted,
+                ownership,
+                0));
         }
+
+        public Task<FunctionScalerOwnershipDecision> RenewOwnershipAsync(
+            FunctionRevisionCoordinationKey key,
+            FunctionScalerOwnershipToken token,
+            CancellationToken cancellationToken = default)
+        {
+            RenewalRequests.Add(token);
+            if (RejectRenewal || !Owns(token))
+            {
+                return Task.FromResult(new FunctionScalerOwnershipDecision(
+                    FunctionScalerOwnershipDecisionKind.Rejected,
+                    null,
+                    0));
+            }
+
+            ownership = ownership! with { ExpiresAtUtc = time.GetUtcNow().AddSeconds(10) };
+            return Task.FromResult(new FunctionScalerOwnershipDecision(
+                FunctionScalerOwnershipDecisionKind.Granted,
+                ownership,
+                0));
+        }
+
+        public Task<FunctionScalerOwnershipReleaseDecision> ReleaseOwnershipAsync(
+            FunctionRevisionCoordinationKey key,
+            FunctionScalerOwnershipToken token,
+            CancellationToken cancellationToken = default)
+        {
+            if (!Owns(token))
+                return Task.FromResult(FunctionScalerOwnershipReleaseDecision.Stale);
+            ownership = null;
+            return Task.FromResult(FunctionScalerOwnershipReleaseDecision.Released);
+        }
+
+        public Task<FunctionQuiescingDecision> BeginQuiescingAsync(
+            FunctionRevisionCoordinationKey key,
+            FunctionQuiescingBeginRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            BeginningQuiescing?.Invoke();
+            if (!Owns(request.ScalerToken))
+            {
+                return Task.FromResult(new FunctionQuiescingDecision(
+                    FunctionQuiescingDecisionKind.Stale,
+                    null,
+                    0));
+            }
+            if (AdmissionRequests != 0)
+            {
+                return Task.FromResult(new FunctionQuiescingDecision(
+                    FunctionQuiescingDecisionKind.ActiveAdmissions,
+                    null,
+                    1));
+            }
+            if (QuiescingIntent is not null &&
+                !string.Equals(QuiescingIntent.OperationId, request.OperationId, StringComparison.Ordinal))
+            {
+                return Task.FromResult(new FunctionQuiescingDecision(
+                    FunctionQuiescingDecisionKind.Busy,
+                    null,
+                    1));
+            }
+
+            QuiescingIntent ??= new FunctionQuiescingIntent(
+                request.OperationId,
+                $"quiescing-{++intentSequence}",
+                ++Generation,
+                time.GetUtcNow(),
+                time.GetUtcNow().AddMinutes(5));
+            return Task.FromResult(new FunctionQuiescingDecision(
+                FunctionQuiescingDecisionKind.Granted,
+                new FunctionQuiescingLease(
+                    QuiescingIntent.OperationId,
+                    QuiescingIntent.LeaseId,
+                    QuiescingIntent.Epoch,
+                    QuiescingIntent.ExpiresAtUtc),
+                0));
+        }
+
+        public Task<FunctionQuiescingCompleteDecision> CompleteQuiescingAsync(
+            FunctionRevisionCoordinationKey key,
+            FunctionQuiescingCompleteRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (!Owns(request.ScalerToken) ||
+                QuiescingIntent is null ||
+                QuiescingIntent.LeaseId != request.LeaseId ||
+                QuiescingIntent.Epoch != request.Epoch)
+            {
+                return Task.FromResult(FunctionQuiescingCompleteDecision.Stale);
+            }
+            if (PendingScaleIntent is not null)
+                return Task.FromResult(FunctionQuiescingCompleteDecision.Busy);
+            if (AdmissionRequests != 0)
+                return Task.FromResult(FunctionQuiescingCompleteDecision.ActiveAdmissions);
+
+            QuiescingCompletions.Add(request.Outcome);
+            QuiescingIntent = null;
+            if (request.Outcome == FunctionQuiescingCompletionOutcome.Aborted)
+                Generation++;
+            return Task.FromResult(FunctionQuiescingCompleteDecision.Completed);
+        }
+
+        public Task<FunctionScaleBeginDecision> BeginScaleAsync(
+            FunctionRevisionCoordinationKey key,
+            FunctionScaleBeginRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ScaleRequests.Add(request);
+            if (ThrowOnBeginScale)
+                throw new InvalidOperationException("Coordinator unavailable.");
+            if (!Owns(request.ScalerToken))
+                return Task.FromResult(ScaleDecision(FunctionScaleBeginDecisionKind.Stale));
+            if (PendingScaleIntent is not null)
+            {
+                if (!string.Equals(PendingScaleIntent.OperationId, request.OperationId, StringComparison.Ordinal) ||
+                    PendingScaleIntent.DesiredReplicas != request.DesiredReplicas ||
+                    PendingScaleIntent.QuiescingEpoch != request.QuiescingEpoch)
+                {
+                    return Task.FromResult(ScaleDecision(FunctionScaleBeginDecisionKind.Busy));
+                }
+
+                return Task.FromResult(new FunctionScaleBeginDecision(
+                    FunctionScaleBeginDecisionKind.Granted,
+                    ToLease(PendingScaleIntent),
+                    0));
+            }
+
+            var isScaleDown = request.DesiredReplicas < Math.Max(DesiredReplicas ?? 0, request.ObservedReplicas);
+            if (isScaleDown &&
+                (request.QuiescingEpoch is null || QuiescingIntent?.Epoch != request.QuiescingEpoch))
+            {
+                return Task.FromResult(ScaleDecision(FunctionScaleBeginDecisionKind.QuiescingRequired));
+            }
+            if (!isScaleDown && request.QuiescingEpoch is not null)
+                return Task.FromResult(ScaleDecision(FunctionScaleBeginDecisionKind.Rejected));
+
+            var previous = DesiredReplicas;
+            DesiredReplicas = request.DesiredReplicas;
+            PendingScaleIntent = new FunctionScaleIntent(
+                request.OperationId,
+                $"scale-{++intentSequence}",
+                ++Generation,
+                request.DesiredReplicas,
+                previous,
+                request.QuiescingEpoch,
+                time.GetUtcNow(),
+                time.GetUtcNow().AddMinutes(5));
+            return Task.FromResult(new FunctionScaleBeginDecision(
+                FunctionScaleBeginDecisionKind.Granted,
+                ToLease(PendingScaleIntent),
+                0));
+        }
+
+        public Task<FunctionScaleCompleteDecision> CompleteScaleAsync(
+            FunctionRevisionCoordinationKey key,
+            FunctionScaleCompleteRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ScaleCompletions.Add(request);
+            if (!Owns(request.ScalerToken) ||
+                PendingScaleIntent is null ||
+                PendingScaleIntent.IntentId != request.IntentId ||
+                PendingScaleIntent.Generation != request.Generation)
+            {
+                return Task.FromResult(FunctionScaleCompleteDecision.Stale);
+            }
+
+            if (request.Outcome == FunctionCoordinationCompletionOutcome.Failed)
+                DesiredReplicas = PendingScaleIntent.PreviousDesiredReplicas;
+            PendingScaleIntent = null;
+            return Task.FromResult(FunctionScaleCompleteDecision.Completed);
+        }
+
+        public Task<FunctionRevisionCoordinatorSnapshot> GetSnapshotAsync(
+            FunctionRevisionCoordinationKey key,
+            CancellationToken cancellationToken = default)
+        {
+            if (ThrowOnSnapshot)
+                throw new InvalidOperationException("Coordinator unavailable.");
+            return Task.FromResult(new FunctionRevisionCoordinatorSnapshot(
+                key,
+                Incarnation,
+                Generation,
+                DesiredReplicas,
+                DateTimeOffset.MinValue,
+                new FunctionAdmissionSnapshot(
+                    AdmissionRequests,
+                    0,
+                    new Dictionary<string, int>(HandlerRequests, StringComparer.Ordinal)),
+                null,
+                QuiescingIntent,
+                PendingScaleIntent,
+                ownership));
+        }
+
+        public void RestartIncarnation(string incarnation)
+        {
+            Incarnation = incarnation;
+            ownership = null;
+        }
+
+        public void SeedPendingScale(int desiredReplicas, long? quiescingEpoch = null)
+        {
+            var previous = DesiredReplicas;
+            if (quiescingEpoch is not null && QuiescingIntent is null)
+            {
+                QuiescingIntent = new FunctionQuiescingIntent(
+                    "recovered-quiescing",
+                    "recovered-quiescing-lease",
+                    quiescingEpoch.Value,
+                    time.GetUtcNow(),
+                    time.GetUtcNow().AddMinutes(5));
+            }
+            DesiredReplicas = desiredReplicas;
+            PendingScaleIntent = new FunctionScaleIntent(
+                "recovered-scale",
+                "recovered-intent",
+                ++Generation,
+                desiredReplicas,
+                previous,
+                quiescingEpoch,
+                time.GetUtcNow(),
+                time.GetUtcNow().AddMinutes(5));
+        }
+
+        private bool Owns(FunctionScalerOwnershipToken token) =>
+            ownership is not null &&
+            ownership.ExpiresAtUtc > time.GetUtcNow() &&
+            string.Equals(ownership.OperationId, token.OperationId, StringComparison.Ordinal) &&
+            string.Equals(ownership.OwnerId, token.OwnerId, StringComparison.Ordinal) &&
+            string.Equals(ownership.LeaseId, token.LeaseId, StringComparison.Ordinal) &&
+            string.Equals(ownership.CoordinatorIncarnation, token.CoordinatorIncarnation, StringComparison.Ordinal) &&
+            string.Equals(token.CoordinatorIncarnation, Incarnation, StringComparison.Ordinal);
+
+        private static FunctionScaleBeginDecision ScaleDecision(FunctionScaleBeginDecisionKind kind) =>
+            new(kind, null, 0);
+
+        private static FunctionScaleLease ToLease(FunctionScaleIntent intent) =>
+            new(
+                intent.OperationId,
+                intent.IntentId,
+                intent.Generation,
+                intent.DesiredReplicas,
+                intent.ExpiresAtUtc);
     }
 
     private sealed class FakeKubernetesManager : IFunctionRevisionKubernetesManager
     {
         public FunctionReplicaState ReplicaState { get; set; } = new(0, 0, 0, 0);
         public List<int> ScaleRequests { get; } = [];
+        public List<long> ScaleGenerations { get; } = [];
+        public Result ScaleResult { get; set; } = Result.Success();
+        public bool ApplyScaleBeforeFailure { get; set; }
 
         public Task<Result> ApplyAsync(
             FunctionRevisionInKubernetes revision,
@@ -475,13 +958,30 @@ public sealed class FunctionScalerTests
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
+        public Task<Result> ScaleProvisioningAsync(
+            FunctionRevisionInKubernetes revision,
+            int replicas,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("The scaler must use a fenced coordination generation.");
+
         public Task<Result> ScaleAsync(
             FunctionRevisionInKubernetes revision,
             int replicas,
+            long coordinationGeneration,
             CancellationToken cancellationToken = default)
         {
             ScaleRequests.Add(replicas);
-            return Task.FromResult<Result>(Result.Success());
+            ScaleGenerations.Add(coordinationGeneration);
+            if (ScaleResult is not IFailure || ApplyScaleBeforeFailure)
+            {
+                ReplicaState = ReplicaState with
+                {
+                    Desired = replicas,
+                    GenerationObserved = false,
+                    CoordinationGeneration = coordinationGeneration
+                };
+            }
+            return Task.FromResult(ScaleResult);
         }
 
         public Task<Result<FunctionReplicaState>> ReadReplicaStateAsync(

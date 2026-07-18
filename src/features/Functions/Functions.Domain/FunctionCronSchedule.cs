@@ -8,6 +8,8 @@ namespace Pole.Features.Functions.Domain;
 /// </summary>
 public sealed class FunctionCronSchedule
 {
+    // Gregorian dates and weekdays repeat after 400 years, so one full cycle is
+    // sufficient to prove that a valid five-field schedule has no future match.
     private const int MaximumSearchYears = 400;
 
     private readonly CronField _minutes;
