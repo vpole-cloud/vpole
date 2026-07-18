@@ -21,6 +21,12 @@ public interface IFunctionRevisionLifecycleService
         string revisionId,
         FunctionRevisionFailure failure,
         CancellationToken cancellationToken = default);
+
+    Task<Result> RetireAsync(
+        string tenantId,
+        string functionAppId,
+        string revisionId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class FunctionRevisionLifecycleService(
@@ -197,6 +203,45 @@ public sealed class FunctionRevisionLifecycleService(
                 return true;
             },
             cancellationToken);
+    }
+
+    public async Task<Result> RetireAsync(
+        string tenantId,
+        string functionAppId,
+        string revisionId,
+        CancellationToken cancellationToken = default)
+    {
+        using var session = await dbContext.Client.StartSessionAsync(cancellationToken: cancellationToken);
+        return await session.WithTransactionAsync<Result>(async (transaction, transactionCancellationToken) =>
+        {
+            var revision = await dbContext.FunctionRevisions.Find(
+                    transaction,
+                    candidate => candidate.TenantId == tenantId &&
+                                 candidate.FunctionAppId == functionAppId &&
+                                 candidate.Id == revisionId)
+                .FirstOrDefaultAsync(transactionCancellationToken);
+            if (revision is null)
+                return Failures.NotFound("Function revision not found.", revisionId);
+            if (revision.State == FunctionRevisionState.Retired)
+                return Result.Success();
+            if (revision.State != FunctionRevisionState.Draining)
+                return Failures.Conflict("Only a draining Function revision can be retired.");
+
+            var retired = revision.Retire();
+            var update = await dbContext.FunctionRevisions.UpdateOneAsync(
+                transaction,
+                candidate => candidate.TenantId == tenantId &&
+                             candidate.FunctionAppId == functionAppId &&
+                             candidate.Id == revisionId &&
+                             candidate.State == FunctionRevisionState.Draining,
+                Builders<FunctionRevision>.Update.Set(candidate => candidate.State, retired.State),
+                cancellationToken: transactionCancellationToken);
+            if (update.MatchedCount != 1)
+                return Failures.Conflict("Function revision state changed concurrently.");
+
+            await dbContext.StoreEventAsync(revision.ToRetiredEvent(), transaction, transactionCancellationToken);
+            return Result.Success();
+        }, cancellationToken: cancellationToken);
     }
 
     private async Task<Result<PendingRevisionState>> LoadStateAsync(

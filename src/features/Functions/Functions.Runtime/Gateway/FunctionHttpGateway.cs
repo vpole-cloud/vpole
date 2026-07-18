@@ -118,11 +118,24 @@ public sealed class FunctionHttpGateway(
 
         var reservedBytes = context.Request.ContentLength ?? options.MaxRequestBodyBytes;
         var pendingKey = $"{resolved.App.TenantId}/{resolved.App.Id}/{resolved.Revision.Id}";
-        using var pendingLease = pendingAdmission.TryAcquire(pendingKey, reservedBytes);
+        using var pendingLease = pendingAdmission.TryAcquire(
+            pendingKey,
+            resolved.Route.HandlerName,
+            reservedBytes);
         if (pendingLease is null)
         {
-            await WriteErrorAsync(context, StatusCodes.Status429TooManyRequests, "pending_limit_exceeded",
-                "The Function pending request limit was exceeded.", cancellationToken);
+            var admission = pendingAdmission.GetSnapshot(pendingKey);
+            if (admission.Quiescing)
+            {
+                context.Response.Headers.RetryAfter = "1";
+                await WriteErrorAsync(context, StatusCodes.Status503ServiceUnavailable, "revision_scaling",
+                    "The Function revision is completing a scaling transition.", cancellationToken);
+            }
+            else
+            {
+                await WriteErrorAsync(context, StatusCodes.Status429TooManyRequests, "pending_limit_exceeded",
+                    "The Function pending request limit was exceeded.", cancellationToken);
+            }
             return;
         }
 

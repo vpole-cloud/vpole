@@ -113,6 +113,43 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task Retire_transitions_only_draining_revision_and_publishes_event_once()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = await CreateAsync(group.Id);
+        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
+        Assert.IsAssignableFrom<ISuccess>(await lifecycle.PromoteAsync(
+            TestData.TenantId,
+            created.FunctionAppId,
+            created.RevisionId));
+
+        var update = await Mediator.Send(new UpdateFunctionAppRequest(
+            created.FunctionAppId,
+            new UpdateFunctionAppRequestBody(RevisionRequest("*/10 * * * *", "v2"), []),
+            TestData.TenantId));
+        Assert.True(update.TryGetValue(out var candidate, out var failure), failure?.Message);
+        Assert.IsAssignableFrom<ISuccess>(await lifecycle.PromoteAsync(
+            TestData.TenantId,
+            created.FunctionAppId,
+            candidate.RevisionId));
+
+        Assert.IsAssignableFrom<ISuccess>(await lifecycle.RetireAsync(
+            TestData.TenantId,
+            created.FunctionAppId,
+            created.RevisionId));
+        Assert.IsAssignableFrom<ISuccess>(await lifecycle.RetireAsync(
+            TestData.TenantId,
+            created.FunctionAppId,
+            created.RevisionId));
+
+        var retired = await DbContext.FunctionRevisions
+            .Find(revision => revision.Id == created.RevisionId)
+            .SingleAsync();
+        Assert.Equal(FunctionRevisionState.Retired, retired.State);
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("function-revision-retired"));
+    }
+
+    [Fact]
     public async Task Runtime_route_resolution_uses_binding_owned_tenant_and_active_revision()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());

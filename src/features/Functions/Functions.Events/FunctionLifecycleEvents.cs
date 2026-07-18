@@ -47,6 +47,15 @@ public sealed record FunctionRevisionFailedEvent(
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
+[EntityName("function-revision-retired")]
+public sealed record FunctionRevisionRetiredEvent(
+    string FunctionAppId,
+    string RevisionId,
+    int RevisionNumber) : IPoleEvent
+{
+    public EventCore EventCore { get; init; } = EventCore.Create();
+}
+
 [EntityName("function-app-delete-requested")]
 public sealed record FunctionAppDeleteRequestedEvent(
     string FunctionAppId,

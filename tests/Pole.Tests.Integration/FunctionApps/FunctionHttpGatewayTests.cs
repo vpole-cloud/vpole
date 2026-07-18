@@ -476,7 +476,13 @@ public sealed class FunctionHttpGatewayTests
 
     private sealed class RejectingAdmissionLimiter : IFunctionPendingAdmissionLimiter
     {
-        public FunctionPendingAdmissionLease? TryAcquire(string revisionId, long reservedBytes) => null;
+        public FunctionPendingAdmissionLease? TryAcquire(
+            string revisionId,
+            string handlerName,
+            long reservedBytes) => null;
+        public FunctionPendingAdmissionSnapshot GetSnapshot(string revisionId) =>
+            FunctionPendingAdmissionSnapshot.Empty;
+        public FunctionScaleDownLease? TryBeginScaleDown(string revisionId) => null;
     }
 
     private sealed class AllowingPublicRateLimiter : IFunctionPublicRateLimiter
@@ -503,6 +509,12 @@ public sealed class FunctionHttpGatewayTests
         public string? ObservedAgentInstanceId { get; init; }
 
         public Task<FunctionAgentProtocolResponse<FunctionAgentMetadataResponse>> GetMetadataAsync(
+            FunctionEndpoint endpoint,
+            FunctionApp app,
+            FunctionRevision revision,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<FunctionAgentProtocolResponse<FunctionAgentStatusResponse>> GetStatusAsync(
             FunctionEndpoint endpoint,
             FunctionApp app,
             FunctionRevision revision,

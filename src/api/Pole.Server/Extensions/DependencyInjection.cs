@@ -32,6 +32,7 @@ using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Features.Functions.Runtime.Security;
 using Pole.Features.Functions.Runtime.Provisioning;
+using Pole.Features.Functions.Runtime.Scaling;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
@@ -125,6 +126,10 @@ public static class DependencyInjection
                                      .Get<FunctionGatewayOptions>() ?? new FunctionGatewayOptions();
             gatewayOptions.Validate();
             services.AddSingleton(gatewayOptions);
+            var scalerOptions = configuration.GetSection(FunctionScalerOptions.SectionName)
+                                    .Get<FunctionScalerOptions>() ?? new FunctionScalerOptions();
+            scalerOptions.Validate();
+            services.AddSingleton(scalerOptions);
             var functionAgentTokenSection = configuration.GetSection(FunctionAgentTokenOptions.SectionName);
             if (functionAgentTokenSection.Exists())
             {
@@ -150,6 +155,9 @@ public static class DependencyInjection
                 services.TryAddSingleton<IFunctionPendingAdmissionLimiter, FunctionPendingAdmissionLimiter>();
                 services.TryAddSingleton<IFunctionPublicRateLimiter, FunctionPublicRateLimiter>();
                 services.TryAddSingleton<IFunctionHttpGateway, FunctionHttpGateway>();
+                services.TryAddSingleton<IFunctionScaleTargetSource, MongoFunctionScaleTargetSource>();
+                services.TryAddSingleton<IFunctionScaler, FunctionScaler>();
+                services.AddHostedService<FunctionScalerWorker>();
             }
             services.TryAddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
             services.AddSingleton<IKubernetes>(_ =>
