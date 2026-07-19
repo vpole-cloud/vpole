@@ -374,6 +374,13 @@ name suffix and a returned permission namespace matching the expected Harbor pro
 every matching or already-known robot ID. Known IDs are deleted directly without a global name
 search.
 
+Before each Harbor cleanup sweep, a worker acquires a five-minute durable lease on the exact
+`CleanupRequired` state through a MongoDB compare-and-set. The lease token is required by every
+subsequent state update, and the external work is bounded to four minutes, so a stale worker cannot
+close or overwrite a newer verification sweep. Concurrent replicas skip a cleanup while its lease
+is active. If a worker crashes, the lease expires and another replica can recover the same cleanup
+without operator intervention.
+
 If cleanup fails, the project stays in `CleanupRequired` with sanitized failure metadata. The
 `cleanup-container-registry-provisioning` Hangfire job retries these records every minute. Robot
 deletion treats Harbor `404` as success, so retries and multiple Pole replicas are idempotent.

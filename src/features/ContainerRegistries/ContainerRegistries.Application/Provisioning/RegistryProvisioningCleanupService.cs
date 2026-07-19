@@ -21,6 +21,8 @@ internal static class RegistryProvisioningCleanupPolicy
 {
     public static readonly TimeSpan NameVerificationHorizon = TimeSpan.FromMinutes(10);
     public static readonly TimeSpan RetryDelay = TimeSpan.FromMinutes(1);
+    public static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(5);
+    public static readonly TimeSpan LeasedWorkTimeout = TimeSpan.FromMinutes(4);
 }
 
 public interface IRegistryProvisioningCleanupService
@@ -69,10 +71,12 @@ public sealed class RegistryProvisioningCleanupService(
             null,
             0,
             now,
-            attempt.NameVerificationNotBeforeUtc is null
+            attempt.NameVerificationNotBeforeUtc is null || attempt.NameVerificationNotBeforeUtc <= now
                 ? now
                 : now + RegistryProvisioningCleanupPolicy.RetryDelay,
             attempt.NameVerificationNotBeforeUtc ?? now,
+            null,
+            null,
             null);
         var provisioningAttempt = Builders<RegistryProject>.Filter.And(
             Builders<RegistryProject>.Filter.OfType<RegistryProjectState, ProvisioningRegistryProject>(
@@ -119,6 +123,23 @@ public sealed class RegistryProvisioningCleanupService(
         CleanupRequiredRegistryProjectProvisioning cleanup,
         CancellationToken cancellationToken = default)
     {
+        var leasedCleanup = await TryAcquireCleanupLeaseAsync(
+            projectId,
+            cleanup,
+            cancellationToken);
+        if (leasedCleanup is null)
+            return Result.Success();
+
+        using var workTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        workTimeout.CancelAfter(RegistryProvisioningCleanupPolicy.LeasedWorkTimeout);
+        return await CleanupWithLeaseAsync(projectId, leasedCleanup, workTimeout.Token);
+    }
+
+    private async Task<Result> CleanupWithLeaseAsync(
+        string projectId,
+        CleanupRequiredRegistryProjectProvisioning cleanup,
+        CancellationToken cancellationToken)
+    {
         var result = await registryClient.DeleteRobotCredentialsAsync(
             [
                 new RegistryRobotCleanupTarget(
@@ -141,7 +162,10 @@ public sealed class RegistryProvisioningCleanupService(
                 cleanup.CleanupRequiredAtUtc),
             Builders<RegistryProject>.Filter.Eq(
                 item => ((CleanupRequiredRegistryProjectProvisioning)item.State).AttemptId,
-                cleanup.AttemptId));
+                cleanup.AttemptId),
+            Builders<RegistryProject>.Filter.Eq(
+                item => ((CleanupRequiredRegistryProjectProvisioning)item.State).CleanupLeaseToken,
+                cleanup.CleanupLeaseToken));
 
         if (!result.TryGetValue(out var cleanupResult, out var cleanupFailure))
         {
@@ -150,7 +174,9 @@ public sealed class RegistryProvisioningCleanupService(
                 LastCleanupFailureCode = cleanupFailure.GetType().Name,
                 LastCleanupFailureMessage = cleanupFailure.Message,
                 CleanupAttemptCount = cleanup.CleanupAttemptCount + 1,
-                LastCleanupAttemptAtUtc = now
+                LastCleanupAttemptAtUtc = now,
+                CleanupLeaseToken = null,
+                CleanupLeaseExpiresAtUtc = null
             };
             await dbContext.RegistryProjects.UpdateOneAsync(
                 currentState,
@@ -183,7 +209,9 @@ public sealed class RegistryProvisioningCleanupService(
                 CleanupAttemptCount = cleanup.CleanupAttemptCount + 1,
                 CleanupNotBeforeUtc = now + RegistryProvisioningCleanupPolicy.RetryDelay,
                 CleanupVerificationNotBeforeUtc = verificationNotBefore,
-                LastCleanupAttemptAtUtc = now
+                LastCleanupAttemptAtUtc = now,
+                CleanupLeaseToken = null,
+                CleanupLeaseExpiresAtUtc = null
             };
             await dbContext.RegistryProjects.UpdateOneAsync(
                 currentState,
@@ -209,6 +237,52 @@ public sealed class RegistryProvisioningCleanupService(
             cleanup.ExternalProjectId,
             cleanup.AttemptId);
         return Result.Success();
+    }
+
+    private async Task<CleanupRequiredRegistryProjectProvisioning?> TryAcquireCleanupLeaseAsync(
+        string projectId,
+        CleanupRequiredRegistryProjectProvisioning observedCleanup,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var leaseToken = Guid.NewGuid().ToString("N");
+        var leaseExpiresAt = now + RegistryProvisioningCleanupPolicy.LeaseDuration;
+        var availableLease = Builders<RegistryProject>.Filter.Or(
+            Builders<RegistryProject>.Filter.Eq(
+                item => ((CleanupRequiredRegistryProjectProvisioning)item.State).CleanupLeaseToken,
+                null),
+            Builders<RegistryProject>.Filter.Lte(
+                item => ((CleanupRequiredRegistryProjectProvisioning)item.State).CleanupLeaseExpiresAtUtc,
+                now));
+        var leasedProject = await dbContext.RegistryProjects.FindOneAndUpdateAsync(
+            Builders<RegistryProject>.Filter.And(
+                Builders<RegistryProject>.Filter.Eq(item => item.Id, projectId),
+                Builders<RegistryProject>.Filter.OfType<RegistryProjectState, CleanupRequiredRegistryProjectProvisioning>(
+                    item => item.State),
+                Builders<RegistryProject>.Filter.Eq(
+                    item => ((CleanupRequiredRegistryProjectProvisioning)item.State).AttemptId,
+                    observedCleanup.AttemptId),
+                Builders<RegistryProject>.Filter.Eq(
+                    item => ((CleanupRequiredRegistryProjectProvisioning)item.State).CleanupRequiredAtUtc,
+                    observedCleanup.CleanupRequiredAtUtc),
+                Builders<RegistryProject>.Filter.Lte(
+                    item => ((CleanupRequiredRegistryProjectProvisioning)item.State).CleanupNotBeforeUtc,
+                    now),
+                availableLease),
+            Builders<RegistryProject>.Update
+                .Set(
+                    item => ((CleanupRequiredRegistryProjectProvisioning)item.State).CleanupLeaseToken,
+                    leaseToken)
+                .Set(
+                    item => ((CleanupRequiredRegistryProjectProvisioning)item.State).CleanupLeaseExpiresAtUtc,
+                    leaseExpiresAt)
+                .Set(item => item.UpdatedAtUtc, now),
+            new FindOneAndUpdateOptions<RegistryProject> { ReturnDocument = ReturnDocument.After },
+            cancellationToken);
+        return leasedProject?.State is CleanupRequiredRegistryProjectProvisioning leasedCleanup &&
+               leasedCleanup.CleanupLeaseToken == leaseToken
+            ? leasedCleanup
+            : null;
     }
 
     public async Task ReconcileAsync(CancellationToken cancellationToken = default)
