@@ -25,11 +25,33 @@ public sealed record RegistryProject(
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(
     typeof(ProvisioningRegistryProject),
+    typeof(RemoteProvisionedRegistryProject),
+    typeof(CleanupRequiredRegistryProjectProvisioning),
     typeof(ReadyRegistryProject),
     typeof(FailedRegistryProjectProvisioning))]
 public abstract record RegistryProjectState;
 
-public sealed record ProvisioningRegistryProject(DateTime StartedAtUtc) : RegistryProjectState;
+public sealed record ProvisioningRegistryProject(string AttemptId, DateTime StartedAtUtc) : RegistryProjectState;
+
+public sealed record RemoteProvisionedRegistryProject(
+    string AttemptId,
+    string ExternalProjectId,
+    string BuildExternalRobotId,
+    string PullExternalRobotId,
+    DateTime ProvisionedAtUtc) : RegistryProjectState;
+
+public sealed record CleanupRequiredRegistryProjectProvisioning(
+    string AttemptId,
+    string ExternalProjectId,
+    string BuildExternalRobotId,
+    string PullExternalRobotId,
+    string OriginalFailureCode,
+    string OriginalFailureMessage,
+    string? LastCleanupFailureCode,
+    string? LastCleanupFailureMessage,
+    int CleanupAttemptCount,
+    DateTime CleanupRequiredAtUtc,
+    DateTime? LastCleanupAttemptAtUtc) : RegistryProjectState;
 
 public sealed record ReadyRegistryProject(
     string ExternalProjectId,
@@ -60,7 +82,7 @@ public static class RegistryProjectFactory
             tenantId,
             provider,
             name,
-            new ProvisioningRegistryProject(options.CreatedAtUtc),
+            new ProvisioningRegistryProject(Guid.NewGuid().ToString("N"), options.CreatedAtUtc),
             createdByUserId,
             options.CreatedAtUtc,
             options.CreatedAtUtc);

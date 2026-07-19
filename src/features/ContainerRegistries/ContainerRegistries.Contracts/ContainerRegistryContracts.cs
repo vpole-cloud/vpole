@@ -46,6 +46,10 @@ public interface IContainerRegistryClient
         string reference,
         CancellationToken cancellationToken = default);
 
+    Task<Result> DeleteRobotCredentialsAsync(
+        IReadOnlyCollection<string> externalRobotIds,
+        CancellationToken cancellationToken = default);
+
     Task<Result> DeleteProjectAsync(
         string externalProjectId,
         CancellationToken cancellationToken = default);

@@ -294,6 +294,7 @@ public static class DependencyInjection
             services.TryAddScoped<IRegistryCredentialResolver, RegistryCredentialResolver>();
             services.TryAddScoped<IRegistryCredentialRewrapService, RegistryCredentialRewrapService>();
             services.TryAddScoped<IRuntimeRegistryAccessProvider, RuntimeRegistryAccessProvider>();
+            services.TryAddScoped<IRegistryProvisioningCleanupService, RegistryProvisioningCleanupService>();
             services.TryAddScoped<IContainerRegistryProvisioningService, ContainerRegistryProvisioningService>();
             services.AddHttpClient<IContainerRegistryClient, HarborContainerRegistryClient>()
                 .ConfigurePrimaryHttpMessageHandler(static () => new HttpClientHandler
@@ -458,6 +459,11 @@ public static class DependencyInjection
                 RecurringJob.AddOrUpdate<SourceBuildQueueRecoveryJob>(
                     "recover-source-build-queue",
                     job => job.RecoverAsync(),
+                    Cron.Minutely);
+
+                RecurringJob.AddOrUpdate<IRegistryProvisioningCleanupService>(
+                    "cleanup-container-registry-provisioning",
+                    job => job.ReconcileAsync(CancellationToken.None),
                     Cron.Minutely);
             }
             catch (Exception ex)
