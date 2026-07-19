@@ -166,6 +166,8 @@ public sealed class RegistryProvisioningCleanupService(
             Builders<RegistryProject>.Filter.Eq(
                 item => ((CleanupRequiredRegistryProjectProvisioning)item.State).CleanupLeaseToken,
                 cleanup.CleanupLeaseToken));
+        var retryNotBefore = now + RegistryProvisioningCleanupPolicy.RetryDelay;
+        var requiresNameVerification = cleanup.BuildExternalRobotId is null || cleanup.PullExternalRobotId is null;
 
         if (!result.TryGetValue(out var cleanupResult, out var cleanupFailure))
         {
@@ -174,6 +176,10 @@ public sealed class RegistryProvisioningCleanupService(
                 LastCleanupFailureCode = cleanupFailure.GetType().Name,
                 LastCleanupFailureMessage = cleanupFailure.Message,
                 CleanupAttemptCount = cleanup.CleanupAttemptCount + 1,
+                CleanupNotBeforeUtc = retryNotBefore,
+                CleanupVerificationNotBeforeUtc = requiresNameVerification
+                    ? new[] { cleanup.CleanupVerificationNotBeforeUtc, retryNotBefore }.Max()
+                    : cleanup.CleanupVerificationNotBeforeUtc,
                 LastCleanupAttemptAtUtc = now,
                 CleanupLeaseToken = null,
                 CleanupLeaseExpiresAtUtc = null
@@ -193,7 +199,6 @@ public sealed class RegistryProvisioningCleanupService(
             return cleanupFailure;
         }
 
-        var requiresNameVerification = cleanup.BuildExternalRobotId is null || cleanup.PullExternalRobotId is null;
         if (requiresNameVerification &&
             (cleanupResult.MatchedByNameCount > 0 || now < cleanup.CleanupVerificationNotBeforeUtc))
         {
@@ -201,13 +206,13 @@ public sealed class RegistryProvisioningCleanupService(
                 ? new[]
                 {
                     cleanup.CleanupVerificationNotBeforeUtc,
-                    now + RegistryProvisioningCleanupPolicy.RetryDelay
+                    retryNotBefore
                 }.Max()
                 : cleanup.CleanupVerificationNotBeforeUtc;
             var pendingVerification = cleanup with
             {
                 CleanupAttemptCount = cleanup.CleanupAttemptCount + 1,
-                CleanupNotBeforeUtc = now + RegistryProvisioningCleanupPolicy.RetryDelay,
+                CleanupNotBeforeUtc = retryNotBefore,
                 CleanupVerificationNotBeforeUtc = verificationNotBefore,
                 LastCleanupAttemptAtUtc = now,
                 CleanupLeaseToken = null,
