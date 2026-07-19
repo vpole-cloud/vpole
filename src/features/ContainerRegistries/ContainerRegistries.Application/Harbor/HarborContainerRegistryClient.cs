@@ -378,7 +378,10 @@ public sealed class HarborContainerRegistryClient(
         long Id,
         string Name,
         string Secret,
-        [property: JsonPropertyName("expires_at")] long ExpiresAt);
+        [property: JsonPropertyName("expires_at")] long ExpiresAt)
+    {
+        public override string ToString() => "HarborRobotCreated([REDACTED])";
+    }
 
     private sealed record HarborArtifact(string Digest, long Size);
 

@@ -1,10 +1,13 @@
 using System.Reflection;
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Configuration;
+using Pole.Encryption;
 using Pole.ASP.Helpers;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.ContainerRegistries.Application.Common;
@@ -38,6 +41,7 @@ namespace Pole.Tests.Integration.Infrastructure;
 public sealed class TestApiApplication : IAsyncDisposable
 {
     private readonly WebApplication _app;
+    private readonly string _encryptionKeyDirectory;
 
     private static readonly Assembly[] Assemblies =
     [
@@ -56,9 +60,13 @@ public sealed class TestApiApplication : IAsyncDisposable
         typeof(StorageProfileEndpoints).Assembly
     ];
 
-    private TestApiApplication(WebApplication app, FakeGitHubAppClient gitHubClient)
+    private TestApiApplication(
+        WebApplication app,
+        FakeGitHubAppClient gitHubClient,
+        string encryptionKeyDirectory)
     {
         _app = app;
+        _encryptionKeyDirectory = encryptionKeyDirectory;
         GitHubClient = gitHubClient;
         Client = app.GetTestClient();
         Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, TestData.TenantId);
@@ -69,9 +77,34 @@ public sealed class TestApiApplication : IAsyncDisposable
 
     public static async Task<TestApiApplication> StartAsync(MongoReplicaSetFixture fixture)
     {
+        var encryptionKeyDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "pole-api-integration-encryption",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(encryptionKeyDirectory);
+        var encryptionKeyPath = Path.Combine(encryptionKeyDirectory, "api-v1.key");
+        var encryptionKey = RandomNumberGenerator.GetBytes(32);
+        try
+        {
+            await File.WriteAllTextAsync(encryptionKeyPath, Convert.ToBase64String(encryptionKey));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(encryptionKey);
+        }
+
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
             EnvironmentName = Environments.Development
+        });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["EnvelopeEncryption:ActiveProviderId"] = LocalKeyFileKeyEncryptionProvider.StableProviderId,
+            ["EnvelopeEncryption:LocalKeyFile:ActiveKeyId"] = "api-integration",
+            ["EnvelopeEncryption:LocalKeyFile:ActiveKeyVersion"] = "1",
+            ["EnvelopeEncryption:LocalKeyFile:Keys:0:Id"] = "api-integration",
+            ["EnvelopeEncryption:LocalKeyFile:Keys:0:Version"] = "1",
+            ["EnvelopeEncryption:LocalKeyFile:Keys:0:Path"] = encryptionKeyPath
         });
 
         builder.WebHost.UseTestServer();
@@ -98,6 +131,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddMigrations(Assemblies);
         builder.Services.AddSearchFeature();
         builder.Services.AddGitProvidersFeature();
+        builder.Services.AddEnvelopeEncryption(builder.Configuration);
         builder.Services.AddSingleton(new HarborOptions());
         builder.Services.AddContainerRegistriesFeature();
         builder.Services.AddSingleton<ISourceBuildJobDispatcher, TestSourceBuildJobDispatcher>();
@@ -148,6 +182,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         app.MapGroup("/api/v1")
             .RequireAuthorization()
             .MapResourceGroupEndpoints()
+            .MapContainerRegistryEndpoints()
             .MapWebServiceEndpoints()
             .MapRedisServiceEndpoints()
             .MapFunctionAppEndpoints()
@@ -161,13 +196,14 @@ public sealed class TestApiApplication : IAsyncDisposable
 
         await app.StartAsync();
 
-        return new TestApiApplication(app, gitHubClient);
+        return new TestApiApplication(app, gitHubClient, encryptionKeyDirectory);
     }
 
     public async ValueTask DisposeAsync()
     {
         await _app.StopAsync();
         await _app.DisposeAsync();
+        Directory.Delete(_encryptionKeyDirectory, recursive: true);
     }
 
 }

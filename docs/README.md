@@ -43,6 +43,7 @@ requirement when adding or changing one feature.
 
 - [Engineering guidelines](engineering-guidelines.md)
 - [Multitenancy](multitenancy.md)
+- [Envelope encryption operations](envelope-encryption.md)
 - [Tenant quotas](quotas.md)
 - [Observability](observability.md)
 

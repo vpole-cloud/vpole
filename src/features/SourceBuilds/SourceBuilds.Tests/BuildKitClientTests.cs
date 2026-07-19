@@ -11,6 +11,24 @@ public sealed class BuildKitClientTests
     private const string Digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     [Fact]
+    public void BuildRequestStringRepresentationRedactsCredentialsAndDockerfile()
+    {
+        var request = new BuildKitBuildRequest(
+            "context",
+            "RUN echo dockerfile-secret",
+            new RegistryPushTarget("harbor.test", "pole-test", "service", "tag"),
+            "sensitive-username",
+            "sensitive-registry-secret");
+
+        var diagnostic = request.ToString();
+
+        Assert.DoesNotContain("sensitive-username", diagnostic, StringComparison.Ordinal);
+        Assert.DoesNotContain("sensitive-registry-secret", diagnostic, StringComparison.Ordinal);
+        Assert.DoesNotContain("dockerfile-secret", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("REDACTED", diagnostic, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Build_UsesArgumentListTemporaryDockerConfigAndMetadataDigest()
     {
         using var context = new TemporaryDirectory();

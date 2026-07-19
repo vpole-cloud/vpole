@@ -66,6 +66,22 @@ else
 
 var rabbitMqUsername = builder.AddParameter("rabbitmq-username");
 var rabbitMqPassword = builder.AddParameter("rabbitmq-password", secret: true);
+var envelopeEncryptionActiveKeyId = builder.AddParameter("envelope-encryption-active-key-id");
+var envelopeEncryptionActiveKeyVersion = builder.AddParameter("envelope-encryption-active-key-version");
+var envelopeEncryptionActiveKeyPath = builder.AddParameter("envelope-encryption-active-key-path", secret: true);
+var retainedEnvelopeKeyParameterNames = new[]
+{
+    "envelope-encryption-retained-key-id",
+    "envelope-encryption-retained-key-version",
+    "envelope-encryption-retained-key-path"
+};
+var retainedEnvelopeKeyParametersPresent = retainedEnvelopeKeyParameterNames.Count(
+    name => !string.IsNullOrWhiteSpace(builder.Configuration[$"Parameters:{name}"]));
+if (retainedEnvelopeKeyParametersPresent is > 0 and < 3)
+{
+    throw new InvalidOperationException(
+        "The retained envelope-encryption key ID, version, and path parameters must be configured together.");
+}
 var rabbitMq = builder.AddRabbitMQ("pole-rabbitmq", rabbitMqUsername, rabbitMqPassword)
     .WithManagementPlugin();
 if (!e2eEnabled)
@@ -84,10 +100,25 @@ var api = builder.AddProject<Projects.Pole_Server>("pole-server")
     .WithHttpEndpoint(targetPort: 8081, name: "functions-public")
     .WithHttpEndpoint(targetPort: 8082, name: "functions-internal")
     .WithEnvironment("Functions__Gateway__ControlPort", "5224")
+    .WithEnvironment("EnvelopeEncryption__ActiveProviderId", "local-key-file")
+    .WithEnvironment("EnvelopeEncryption__LocalKeyFile__ActiveKeyId", envelopeEncryptionActiveKeyId)
+    .WithEnvironment("EnvelopeEncryption__LocalKeyFile__ActiveKeyVersion", envelopeEncryptionActiveKeyVersion)
+    .WithEnvironment("EnvelopeEncryption__LocalKeyFile__Keys__0__Id", envelopeEncryptionActiveKeyId)
+    .WithEnvironment("EnvelopeEncryption__LocalKeyFile__Keys__0__Version", envelopeEncryptionActiveKeyVersion)
+    .WithEnvironment("EnvelopeEncryption__LocalKeyFile__Keys__0__Path", envelopeEncryptionActiveKeyPath)
     .WithReference(keycloak)
     .WithReference(mongoServer)
     .WithReference(mongoReplicaSet)
     .WithReference(rabbitMq);
+if (retainedEnvelopeKeyParametersPresent == retainedEnvelopeKeyParameterNames.Length)
+{
+    var retainedKeyId = builder.AddParameter("envelope-encryption-retained-key-id");
+    var retainedKeyVersion = builder.AddParameter("envelope-encryption-retained-key-version");
+    var retainedKeyPath = builder.AddParameter("envelope-encryption-retained-key-path", secret: true);
+    api.WithEnvironment("EnvelopeEncryption__LocalKeyFile__Keys__1__Id", retainedKeyId)
+        .WithEnvironment("EnvelopeEncryption__LocalKeyFile__Keys__1__Version", retainedKeyVersion)
+        .WithEnvironment("EnvelopeEncryption__LocalKeyFile__Keys__1__Path", retainedKeyPath);
+}
 if (e2eEnabled)
 {
     api

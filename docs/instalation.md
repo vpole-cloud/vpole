@@ -108,6 +108,11 @@ Aspire:
 
 This is the **recommended way to start Pole today**.
 
+Before the first start, bootstrap and back up the LocalKeyFile envelope-encryption key, then set the
+required AppHost parameters as described in the
+[envelope-encryption runbook](envelope-encryption.md#aspire-local-development). Pole deliberately
+does not generate a key when the file is absent.
+
 ---
 
 ## Running Pole locally (development)
@@ -130,7 +135,8 @@ Aspire will:
 * configure service dependencies
 * expose a local dashboard
 
-No manual container setup is required.
+No manual dependency-container setup is required. The operator-created envelope-encryption key
+file remains a separate prerequisite and must not be committed or stored in normal appsettings.
 
 ---
 

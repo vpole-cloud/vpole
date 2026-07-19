@@ -18,6 +18,8 @@
     <Project Path="src/shared/Multitenancy/Multitenancy.csproj" />
     <Project Path="src/shared/Kubernetes/Kubernetes.csproj" />
     <Project Path="src/shared/Events/Events.csproj" />
+    <Project Path="src/shared/Encryption/Encryption.csproj" />
+    <Project Path="src/shared/Encryption.Tests/Encryption.Tests.csproj" />
     <Project Path="src/shared/Models/Models.csproj" />
     <Project Path="src/shared/Observability/Observability.csproj" />
     <Project Path="src/shared/Request/Request.csproj" />

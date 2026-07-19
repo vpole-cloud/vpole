@@ -32,6 +32,7 @@
         <ProjectReference Include="..\..\src\features\Quotas\Quotas.Domain\Quotas.Domain.csproj" />
         <ProjectReference Include="..\..\src\features\ContainerRegistries\ContainerRegistries.Application\ContainerRegistries.Application.csproj" />
         <ProjectReference Include="..\..\src\features\SourceBuilds\SourceBuilds.Application\SourceBuilds.Application.csproj" />
+        <ProjectReference Include="..\..\src\shared\Encryption\Encryption.csproj" />
         <ProjectReference Include="..\..\src\shared\Observability\Observability.csproj" />
     </ItemGroup>
 

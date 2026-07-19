@@ -36,6 +36,14 @@ Pole's cross-cutting code design conventions are documented in [engineering guid
 
 Pole uses tenant-scoped shared Mongo collections. Resource APIs select the active tenant with `X-Pole-Tenant-ID`, and tenant-owned documents carry `TenantId`. See [multitenancy](multitenancy.md) for the full model, request flow, and implementation rules.
 
+### Sensitive values
+
+Pole-held sensitive values use versioned envelope encryption with authenticated tenant/platform,
+object, field, and value-version context. The default `local-key-file` provider is fully
+self-hosted and keeps KEKs outside MongoDB and normal application configuration. See
+[envelope encryption operations](envelope-encryption.md) for the threat boundary, bootstrap,
+backup/restore, multi-replica, and rotation procedures.
+
 ### Quotas
 
 Tenant quota admission uses feature-owned typed profiles with shared CPU, RAM, and workload definitions, then commits quota usage together with the resource mutation and outbox records. See [tenant quotas](quotas.md) for the model and extension workflow.

@@ -36,6 +36,7 @@
       <ProjectReference Include="..\..\features\SourceBuilds\SourceBuilds.Application\SourceBuilds.Application.csproj" />
       <ProjectReference Include="..\..\features\DnsRecords\DnsRecords.Contracts\DnsRecords.Contracts.csproj" />
       <ProjectReference Include="..\..\shared\Events\Events.csproj" />
+      <ProjectReference Include="..\..\shared\Encryption\Encryption.csproj" />
       <ProjectReference Include="..\..\features\Outbox\Outbox.Application\Outbox.Application.csproj" />
       <ProjectReference Include="..\..\features\Postgres\Postgres.Application\Postgres.Application.fsproj" />
       <ProjectReference Include="..\..\features\Quotas\Quotas.Application\Quotas.Application.csproj" />
