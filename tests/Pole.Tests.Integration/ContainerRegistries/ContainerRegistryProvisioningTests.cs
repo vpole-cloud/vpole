@@ -293,6 +293,11 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         Assert.Equal(0, registryClient.DeleteProjectCalls);
 
         registryClient.FailRobotCleanup = false;
+        cleanupService = CreateCleanupService(
+            registryClient,
+            new FixedTimeProvider(new DateTimeOffset(
+                cleanupRequired.CleanupNotBeforeUtc.AddSeconds(1),
+                TimeSpan.Zero)));
         await cleanupService.ReconcileAsync();
 
         var reconciled = await Fixture.DbContext.RegistryProjects
@@ -482,6 +487,41 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         Assert.Null(pending.CleanupLeaseExpiresAtUtc);
         Assert.True(pending.CleanupVerificationNotBeforeUtc > now.UtcDateTime);
         Assert.Equal(1, registryClient.RobotCleanupCalls);
+    }
+
+    [Fact]
+    public async Task FailedCleanupDefersStaleWorkerUntilRetryDelay()
+    {
+        var now = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        var registryClient = new FakeContainerRegistryClient { FailRobotCleanup = true };
+        var cleanupService = CreateCleanupService(registryClient, new FixedTimeProvider(now));
+        var project = CreateCleanupRequiredProject(
+            TestData.TenantId,
+            "pole-failed-cleanup-retry",
+            AttemptIdOne,
+            "17",
+            null,
+            null,
+            now.AddMinutes(-20).UtcDateTime);
+        var cleanup = Assert.IsType<CleanupRequiredRegistryProjectProvisioning>(project.State) with
+        {
+            CleanupVerificationNotBeforeUtc = now.AddMinutes(-1).UtcDateTime
+        };
+        project = project with { State = cleanup };
+        await Fixture.DbContext.RegistryProjects.InsertOneAsync(project);
+
+        var failedWorker = await cleanupService.CleanupAsync(project.Id, cleanup);
+        var staleWorkerAfterLeaseRelease = await cleanupService.CleanupAsync(project.Id, cleanup);
+
+        Assert.IsType<ExternalServiceFailure>(failedWorker);
+        Assert.IsAssignableFrom<ISuccess>(staleWorkerAfterLeaseRelease);
+        Assert.Equal(1, registryClient.RobotCleanupCalls);
+        var stored = await Fixture.DbContext.RegistryProjects.Find(item => item.Id == project.Id).SingleAsync();
+        var pending = Assert.IsType<CleanupRequiredRegistryProjectProvisioning>(stored.State);
+        Assert.Equal(now.AddMinutes(1).UtcDateTime, pending.CleanupNotBeforeUtc);
+        Assert.True(pending.CleanupVerificationNotBeforeUtc >= pending.CleanupNotBeforeUtc);
+        Assert.Null(pending.CleanupLeaseToken);
+        Assert.Null(pending.CleanupLeaseExpiresAtUtc);
     }
 
     [Fact]

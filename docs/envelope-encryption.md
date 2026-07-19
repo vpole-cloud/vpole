@@ -381,9 +381,12 @@ close or overwrite a newer verification sweep. Concurrent replicas skip a cleanu
 is active. If a worker crashes, the lease expires and another replica can recover the same cleanup
 without operator intervention.
 
-If cleanup fails, the project stays in `CleanupRequired` with sanitized failure metadata. The
-`cleanup-container-registry-provisioning` Hangfire job retries these records every minute. Robot
-deletion treats Harbor `404` as success, so retries and multiple Pole replicas are idempotent.
+If cleanup fails, the project stays in `CleanupRequired` with sanitized failure metadata and cannot
+be leased again before the one-minute retry delay. Name-only cleanup also extends its verification
+deadline through that delay, so an already-queued stale worker cannot close the state immediately
+after a partial failed sweep. The `cleanup-container-registry-provisioning` Hangfire job retries
+eligible records every minute. Robot deletion treats Harbor `404` as success, so retries and
+multiple Pole replicas are idempotent.
 Operators should alert on persisting `CleanupRequiredRegistryProjectProvisioning` records and
 Harbor-cleanup warning logs; manual recovery must delete only robots whose names match the recorded
 attempt ID (or their recorded IDs), never the tenant project.
