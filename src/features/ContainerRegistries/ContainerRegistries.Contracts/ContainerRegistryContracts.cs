@@ -2,7 +2,31 @@ using Pole.ResultType;
 
 namespace Pole.Features.ContainerRegistries.Contracts;
 
-public sealed record RegistryProjectProvisioningRequest(string TenantId, string ProjectName);
+public sealed record RegistryProjectProvisioningRequest(
+    string TenantId,
+    string ProjectName,
+    string AttemptId);
+
+public sealed record RegistryRobotNames(string Build, string Pull)
+{
+    public static RegistryRobotNames ForAttempt(string attemptId)
+    {
+        var normalized = attemptId.Trim().ToLowerInvariant();
+        if (normalized.Length != 32 || normalized.Any(character => !char.IsAsciiHexDigit(character)))
+            throw new ArgumentException("Registry provisioning attempt ids must be 32 hexadecimal characters.", nameof(attemptId));
+
+        return new RegistryRobotNames(
+            $"pole-build-{normalized}",
+            $"pole-runtime-{normalized}");
+    }
+}
+
+public sealed record RegistryRobotCleanupTarget(
+    string ProjectName,
+    string Name,
+    string? ExternalRobotId);
+
+public sealed record RegistryRobotCleanupResult(int MatchedByNameCount);
 
 public sealed record RegistryRobotCredential(
     string ExternalRobotId,
@@ -46,8 +70,8 @@ public interface IContainerRegistryClient
         string reference,
         CancellationToken cancellationToken = default);
 
-    Task<Result> DeleteRobotCredentialsAsync(
-        IReadOnlyCollection<string> externalRobotIds,
+    Task<Result<RegistryRobotCleanupResult>> DeleteRobotCredentialsAsync(
+        IReadOnlyCollection<RegistryRobotCleanupTarget> targets,
         CancellationToken cancellationToken = default);
 
     Task<Result> DeleteProjectAsync(

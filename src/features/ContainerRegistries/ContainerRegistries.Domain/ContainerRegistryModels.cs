@@ -42,15 +42,20 @@ public sealed record RemoteProvisionedRegistryProject(
 
 public sealed record CleanupRequiredRegistryProjectProvisioning(
     string AttemptId,
+    string ProjectName,
     string ExternalProjectId,
-    string BuildExternalRobotId,
-    string PullExternalRobotId,
+    string BuildRobotName,
+    string PullRobotName,
+    string? BuildExternalRobotId,
+    string? PullExternalRobotId,
     string OriginalFailureCode,
     string OriginalFailureMessage,
     string? LastCleanupFailureCode,
     string? LastCleanupFailureMessage,
     int CleanupAttemptCount,
     DateTime CleanupRequiredAtUtc,
+    DateTime CleanupNotBeforeUtc,
+    DateTime CleanupVerificationNotBeforeUtc,
     DateTime? LastCleanupAttemptAtUtc) : RegistryProjectState;
 
 public sealed record ReadyRegistryProject(

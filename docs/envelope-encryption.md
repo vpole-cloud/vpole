@@ -355,16 +355,31 @@ project may predate the current request and may already contain repositories, so
 a Harbor project or repository after credential encryption or MongoDB persistence fails. It revokes
 only the build and runtime robot credentials created by that provisioning attempt.
 
-Pole records the remote project and robot IDs in a non-secret `RemoteProvisioned` state before it
-encrypts or persists credentials. Before any robot deletion it atomically moves that exact attempt
-to `CleanupRequired`; this compare-and-set is the safety barrier for an uncertain MongoDB commit. If
-the transaction actually reached `Ready`, the cleanup claim cannot replace it and the robots remain
-active. If cleanup fails, the project stays in `CleanupRequired` with sanitized failure metadata.
-The `cleanup-container-registry-provisioning` Hangfire job retries these records every minute and
-also claims remote-provisioned attempts abandoned for ten minutes. Robot deletion treats Harbor
-`404` as success, so retries and multiple Pole replicas are idempotent. Operators should alert on
-persisting `CleanupRequiredRegistryProjectProvisioning` records and Harbor-cleanup warning logs;
-manual recovery must delete only the recorded robot IDs, never the tenant project.
+Each provisioning attempt is assigned a durable 32-character attempt ID before Harbor is called.
+Pole derives the build and runtime robot names from that ID, so the same names can be reconstructed
+after a restart even when Harbor created a robot but the create response was lost. When Harbor does
+return robot IDs, Pole also records them in the non-secret `RemoteProvisioned` state before it
+encrypts or persists credentials.
+
+Before any robot deletion Pole atomically moves that exact attempt to `CleanupRequired`; this
+compare-and-set is the safety barrier for an uncertain MongoDB commit. If the transaction actually
+reached `Ready`, the cleanup claim cannot replace it and the robots remain active. A failed or
+ambiguous Harbor create is also moved to `CleanupRequired`, with the deterministic names and any
+known IDs. Name-only cleanup sweeps Harbor once per minute but remains durable for a ten-minute
+settle horizon, which is longer than Pole's two-minute Harbor request timeout. A sweep that finds a
+robot extends verification until a later empty sweep, so a delayed pull robot cannot appear after
+the state has already closed. Stale `Provisioning` and `RemoteProvisioned` attempts are claimed
+after ten minutes. Cleanup queries Harbor by deterministic name, requires both the attempt-specific
+name suffix and a returned permission namespace matching the expected Harbor project, and deletes
+every matching or already-known robot ID. Known IDs are deleted directly without a global name
+search.
+
+If cleanup fails, the project stays in `CleanupRequired` with sanitized failure metadata. The
+`cleanup-container-registry-provisioning` Hangfire job retries these records every minute. Robot
+deletion treats Harbor `404` as success, so retries and multiple Pole replicas are idempotent.
+Operators should alert on persisting `CleanupRequiredRegistryProjectProvisioning` records and
+Harbor-cleanup warning logs; manual recovery must delete only robots whose names match the recorded
+attempt ID (or their recorded IDs), never the tenant project.
 
 ## Plaintext handling rules
 

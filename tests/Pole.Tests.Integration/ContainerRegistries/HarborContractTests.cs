@@ -20,15 +20,15 @@ public sealed class HarborContractTests
         using var httpClient = new HttpClient(handler);
         var client = new HarborContainerRegistryClient(
             httpClient,
-            options,
-            NullLogger<HarborContainerRegistryClient>.Instance);
+            options);
         var projectName = $"pole-contract-{Guid.NewGuid():N}"[..30];
+        var attemptId = Guid.NewGuid().ToString("N");
         ProvisionedRegistryProject? provisioned = null;
 
         try
         {
             var result = await client.ProvisionProjectAsync(
-                new RegistryProjectProvisioningRequest("contract-test", projectName));
+                new RegistryProjectProvisioningRequest("contract-test", projectName, attemptId));
 
             if (!result.TryGetValue(out var created, out var failure))
                 Assert.Fail(failure.ToString());
@@ -57,9 +57,9 @@ public sealed class HarborContractTests
         using var httpClient = new HttpClient(handler);
         var registryClient = new HarborContainerRegistryClient(
             httpClient,
-            options,
-            NullLogger<HarborContainerRegistryClient>.Instance);
+            options);
         var projectName = $"pole-buildkit-contract-{Guid.NewGuid():N}"[..30];
+        var attemptId = Guid.NewGuid().ToString("N");
         ProvisionedRegistryProject? provisioned = null;
         using var context = new TemporaryDirectory();
         var completed = false;
@@ -67,7 +67,7 @@ public sealed class HarborContractTests
         try
         {
             var projectResult = await registryClient.ProvisionProjectAsync(
-                new RegistryProjectProvisioningRequest("buildkit-contract-test", projectName));
+                new RegistryProjectProvisioningRequest("buildkit-contract-test", projectName, attemptId));
             if (!projectResult.TryGetValue(out var created, out var provisioningFailure))
                 Assert.Fail(provisioningFailure.ToString());
             provisioned = created;
