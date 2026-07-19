@@ -9,9 +9,19 @@ namespace Pole.Features.ContainerRegistries.Application.Provisioning;
 
 public sealed record RegistryProvisioningAttempt(
     string AttemptId,
+    string ProjectName,
     string ExternalProjectId,
-    string BuildExternalRobotId,
-    string PullExternalRobotId);
+    string BuildRobotName,
+    string PullRobotName,
+    string? BuildExternalRobotId,
+    string? PullExternalRobotId,
+    DateTime? NameVerificationNotBeforeUtc);
+
+internal static class RegistryProvisioningCleanupPolicy
+{
+    public static readonly TimeSpan NameVerificationHorizon = TimeSpan.FromMinutes(10);
+    public static readonly TimeSpan RetryDelay = TimeSpan.FromMinutes(1);
+}
 
 public interface IRegistryProvisioningCleanupService
 {
@@ -47,7 +57,10 @@ public sealed class RegistryProvisioningCleanupService(
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var cleanup = new CleanupRequiredRegistryProjectProvisioning(
             attempt.AttemptId,
+            attempt.ProjectName,
             attempt.ExternalProjectId,
+            attempt.BuildRobotName,
+            attempt.PullRobotName,
             attempt.BuildExternalRobotId,
             attempt.PullExternalRobotId,
             originalFailure.GetType().Name,
@@ -56,23 +69,42 @@ public sealed class RegistryProvisioningCleanupService(
             null,
             0,
             now,
+            attempt.NameVerificationNotBeforeUtc is null
+                ? now
+                : now + RegistryProvisioningCleanupPolicy.RetryDelay,
+            attempt.NameVerificationNotBeforeUtc ?? now,
             null);
+        var provisioningAttempt = Builders<RegistryProject>.Filter.And(
+            Builders<RegistryProject>.Filter.OfType<RegistryProjectState, ProvisioningRegistryProject>(
+                item => item.State),
+            Builders<RegistryProject>.Filter.Eq(
+                item => ((ProvisioningRegistryProject)item.State).AttemptId,
+                attempt.AttemptId));
+        var expectedState = provisioningAttempt;
+        if (attempt.NameVerificationNotBeforeUtc is null)
+        {
+            var remoteAttempt = Builders<RegistryProject>.Filter.And(
+                Builders<RegistryProject>.Filter.OfType<RegistryProjectState, RemoteProvisionedRegistryProject>(
+                    item => item.State),
+                Builders<RegistryProject>.Filter.Eq(
+                    item => ((RemoteProvisionedRegistryProject)item.State).AttemptId,
+                    attempt.AttemptId),
+                Builders<RegistryProject>.Filter.Eq(
+                    item => ((RemoteProvisionedRegistryProject)item.State).ExternalProjectId,
+                    attempt.ExternalProjectId),
+                Builders<RegistryProject>.Filter.Eq(
+                    item => ((RemoteProvisionedRegistryProject)item.State).BuildExternalRobotId,
+                    attempt.BuildExternalRobotId),
+                Builders<RegistryProject>.Filter.Eq(
+                    item => ((RemoteProvisionedRegistryProject)item.State).PullExternalRobotId,
+                    attempt.PullExternalRobotId));
+            expectedState = Builders<RegistryProject>.Filter.Or(provisioningAttempt, remoteAttempt);
+        }
+
         return await dbContext.RegistryProjects.FindOneAndUpdateAsync(
             Builders<RegistryProject>.Filter.And(
                 Builders<RegistryProject>.Filter.Eq(item => item.Id, projectId),
-                Builders<RegistryProject>.Filter.Or(
-                    Builders<RegistryProject>.Filter.And(
-                        Builders<RegistryProject>.Filter.OfType<RegistryProjectState, ProvisioningRegistryProject>(
-                            item => item.State),
-                        Builders<RegistryProject>.Filter.Eq(
-                            item => ((ProvisioningRegistryProject)item.State).AttemptId,
-                            attempt.AttemptId)),
-                    Builders<RegistryProject>.Filter.And(
-                        Builders<RegistryProject>.Filter.OfType<RegistryProjectState, RemoteProvisionedRegistryProject>(
-                            item => item.State),
-                        Builders<RegistryProject>.Filter.Eq(
-                            item => ((RemoteProvisionedRegistryProject)item.State).AttemptId,
-                            attempt.AttemptId)))),
+                expectedState),
             Builders<RegistryProject>.Update
                 .Set(item => item.State, cleanup)
                 .Set(item => item.UpdatedAtUtc, now),
@@ -88,7 +120,16 @@ public sealed class RegistryProvisioningCleanupService(
         CancellationToken cancellationToken = default)
     {
         var result = await registryClient.DeleteRobotCredentialsAsync(
-            [cleanup.BuildExternalRobotId, cleanup.PullExternalRobotId],
+            [
+                new RegistryRobotCleanupTarget(
+                    cleanup.ProjectName,
+                    cleanup.BuildRobotName,
+                    cleanup.BuildExternalRobotId),
+                new RegistryRobotCleanupTarget(
+                    cleanup.ProjectName,
+                    cleanup.PullRobotName,
+                    cleanup.PullExternalRobotId)
+            ],
             cancellationToken);
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var currentState = Builders<RegistryProject>.Filter.And(
@@ -102,7 +143,7 @@ public sealed class RegistryProvisioningCleanupService(
                 item => ((CleanupRequiredRegistryProjectProvisioning)item.State).AttemptId,
                 cleanup.AttemptId));
 
-        if (result is Failure cleanupFailure)
+        if (!result.TryGetValue(out var cleanupResult, out var cleanupFailure))
         {
             var failedCleanup = cleanup with
             {
@@ -126,6 +167,33 @@ public sealed class RegistryProvisioningCleanupService(
             return cleanupFailure;
         }
 
+        var requiresNameVerification = cleanup.BuildExternalRobotId is null || cleanup.PullExternalRobotId is null;
+        if (requiresNameVerification &&
+            (cleanupResult.MatchedByNameCount > 0 || now < cleanup.CleanupVerificationNotBeforeUtc))
+        {
+            var verificationNotBefore = cleanupResult.MatchedByNameCount > 0
+                ? new[]
+                {
+                    cleanup.CleanupVerificationNotBeforeUtc,
+                    now + RegistryProvisioningCleanupPolicy.RetryDelay
+                }.Max()
+                : cleanup.CleanupVerificationNotBeforeUtc;
+            var pendingVerification = cleanup with
+            {
+                CleanupAttemptCount = cleanup.CleanupAttemptCount + 1,
+                CleanupNotBeforeUtc = now + RegistryProvisioningCleanupPolicy.RetryDelay,
+                CleanupVerificationNotBeforeUtc = verificationNotBefore,
+                LastCleanupAttemptAtUtc = now
+            };
+            await dbContext.RegistryProjects.UpdateOneAsync(
+                currentState,
+                Builders<RegistryProject>.Update
+                    .Set(item => item.State, pendingVerification)
+                    .Set(item => item.UpdatedAtUtc, now),
+                cancellationToken: cancellationToken);
+            return Result.Success();
+        }
+
         await dbContext.RegistryProjects.UpdateOneAsync(
             currentState,
             Builders<RegistryProject>.Update
@@ -145,9 +213,14 @@ public sealed class RegistryProvisioningCleanupService(
 
     public async Task ReconcileAsync(CancellationToken cancellationToken = default)
     {
+        var now = timeProvider.GetUtcNow().UtcDateTime;
         var pending = await dbContext.RegistryProjects
-            .Find(Builders<RegistryProject>.Filter.OfType<RegistryProjectState, CleanupRequiredRegistryProjectProvisioning>(
-                item => item.State))
+            .Find(Builders<RegistryProject>.Filter.And(
+                Builders<RegistryProject>.Filter.OfType<RegistryProjectState, CleanupRequiredRegistryProjectProvisioning>(
+                    item => item.State),
+                Builders<RegistryProject>.Filter.Lte(
+                    item => ((CleanupRequiredRegistryProjectProvisioning)item.State).CleanupNotBeforeUtc,
+                    now)))
             .SortBy(item => item.UpdatedAtUtc)
             .Limit(ReconciliationBatchSize)
             .ToListAsync(cancellationToken);
@@ -157,7 +230,7 @@ public sealed class RegistryProvisioningCleanupService(
                 await ReconcileCleanupAsync(project.Id, cleanup, cancellationToken);
         }
 
-        var cutoff = timeProvider.GetUtcNow().UtcDateTime - AbandonedAttemptAge;
+        var cutoff = now - AbandonedAttemptAge;
         var abandoned = await dbContext.RegistryProjects
             .Find(Builders<RegistryProject>.Filter.And(
                 Builders<RegistryProject>.Filter.OfType<RegistryProjectState, RemoteProvisionedRegistryProject>(
@@ -170,31 +243,51 @@ public sealed class RegistryProvisioningCleanupService(
         {
             if (project.State is not RemoteProvisionedRegistryProject remote)
                 continue;
-            await ReconcileAbandonedAsync(project.Id, remote, cancellationToken);
+            await ReconcileAbandonedAsync(project, remote, cancellationToken);
+        }
+
+        var abandonedProvisioning = await dbContext.RegistryProjects
+            .Find(Builders<RegistryProject>.Filter.And(
+                Builders<RegistryProject>.Filter.OfType<RegistryProjectState, ProvisioningRegistryProject>(
+                    item => item.State),
+                Builders<RegistryProject>.Filter.Lte(item => item.UpdatedAtUtc, cutoff)))
+            .SortBy(item => item.UpdatedAtUtc)
+            .Limit(ReconciliationBatchSize)
+            .ToListAsync(cancellationToken);
+        foreach (var project in abandonedProvisioning)
+        {
+            if (project.State is not ProvisioningRegistryProject provisioning)
+                continue;
+            await ReconcileAbandonedProvisioningAsync(project, provisioning, cancellationToken);
         }
     }
 
     private async Task ReconcileAbandonedAsync(
-        string projectId,
+        RegistryProject project,
         RemoteProvisionedRegistryProject remote,
         CancellationToken cancellationToken)
     {
         try
         {
+            var names = RegistryRobotNames.ForAttempt(remote.AttemptId);
             var attempt = new RegistryProvisioningAttempt(
                 remote.AttemptId,
+                project.Name,
                 remote.ExternalProjectId,
+                names.Build,
+                names.Pull,
                 remote.BuildExternalRobotId,
-                remote.PullExternalRobotId);
+                remote.PullExternalRobotId,
+                null);
             var claimed = await ClaimCleanupAsync(
-                projectId,
+                project.Id,
                 attempt,
                 Failures.Internal(
                     "Container registry provisioning was interrupted.",
                     "A stale remote-provisioned attempt was queued for robot credential cleanup."),
                 cancellationToken);
             if (claimed is not null)
-                await ReconcileCleanupAsync(projectId, claimed, cancellationToken);
+                await ReconcileCleanupAsync(project.Id, claimed, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -205,9 +298,50 @@ public sealed class RegistryProvisioningCleanupService(
             logger.LogWarning(
                 "Abandoned container registry provisioning reconciliation threw {ExceptionType} for project {RegistryProjectId}, Harbor project {ExternalProjectId}, attempt {AttemptId}.",
                 exception.GetType().Name,
-                projectId,
+                project.Id,
                 remote.ExternalProjectId,
                 remote.AttemptId);
+        }
+    }
+
+    private async Task ReconcileAbandonedProvisioningAsync(
+        RegistryProject project,
+        ProvisioningRegistryProject provisioning,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var names = RegistryRobotNames.ForAttempt(provisioning.AttemptId);
+            var attempt = new RegistryProvisioningAttempt(
+                provisioning.AttemptId,
+                project.Name,
+                project.Name,
+                names.Build,
+                names.Pull,
+                null,
+                null,
+                provisioning.StartedAtUtc + RegistryProvisioningCleanupPolicy.NameVerificationHorizon);
+            var claimed = await ClaimCleanupAsync(
+                project.Id,
+                attempt,
+                Failures.Internal(
+                    "Container registry provisioning was interrupted.",
+                    "A stale provisioning attempt was queued for deterministic robot cleanup."),
+                cancellationToken);
+            if (claimed is not null)
+                await ReconcileCleanupAsync(project.Id, claimed, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                "Abandoned container registry provisioning reconciliation threw {ExceptionType} for project {RegistryProjectId}, attempt {AttemptId}.",
+                exception.GetType().Name,
+                project.Id,
+                provisioning.AttemptId);
         }
     }
 

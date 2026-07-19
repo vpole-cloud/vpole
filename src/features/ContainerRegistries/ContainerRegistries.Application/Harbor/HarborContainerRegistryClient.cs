@@ -4,7 +4,6 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Extensions.Logging;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.ResultType;
@@ -13,8 +12,7 @@ namespace Pole.Features.ContainerRegistries.Application.Harbor;
 
 public sealed class HarborContainerRegistryClient(
     HttpClient httpClient,
-    HarborOptions options,
-    ILogger<HarborContainerRegistryClient> logger) : IContainerRegistryClient
+    HarborOptions options) : IContainerRegistryClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -29,28 +27,24 @@ public sealed class HarborContainerRegistryClient(
         if (!projectResult.TryGetValue(out var project, out var projectFailure))
             return projectFailure;
 
-        RegistryRobotCredential? buildCredential = null;
         try
         {
-            var suffix = Guid.NewGuid().ToString("N")[..10];
+            var robotNames = RegistryRobotNames.ForAttempt(request.AttemptId);
             var buildResult = await CreateRobotAsync(
                 project.Name,
-                $"pole-build-{suffix}",
+                robotNames.Build,
                 [new HarborAccess("repository", "pull"), new HarborAccess("repository", "push")],
                 cancellationToken);
-            if (!buildResult.TryGetValue(out buildCredential, out var buildFailure))
+            if (!buildResult.TryGetValue(out var buildCredential, out var buildFailure))
                 return buildFailure;
 
             var pullResult = await CreateRobotAsync(
                 project.Name,
-                $"pole-runtime-{suffix}",
+                robotNames.Pull,
                 [new HarborAccess("repository", "pull")],
                 cancellationToken);
             if (!pullResult.TryGetValue(out var pullCredential, out var pullFailure))
-            {
-                await CleanupPartiallyCreatedRobotsAsync([buildCredential.ExternalRobotId]);
                 return pullFailure;
-            }
 
             return new ProvisionedRegistryProject(
                 project.Id.ToString(),
@@ -60,27 +54,15 @@ public sealed class HarborContainerRegistryClient(
         }
         catch (HttpRequestException)
         {
-            if (buildCredential is not null)
-                await CleanupPartiallyCreatedRobotsAsync([buildCredential.ExternalRobotId]);
             return HarborFailure<ProvisionedRegistryProject>("Network request failed.");
         }
         catch (JsonException)
         {
-            if (buildCredential is not null)
-                await CleanupPartiallyCreatedRobotsAsync([buildCredential.ExternalRobotId]);
             return HarborFailure<ProvisionedRegistryProject>("Harbor returned malformed JSON.");
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            if (buildCredential is not null)
-                await CleanupPartiallyCreatedRobotsAsync([buildCredential.ExternalRobotId]);
             return HarborFailure<ProvisionedRegistryProject>("Harbor request timed out.");
-        }
-        catch (OperationCanceledException)
-        {
-            if (buildCredential is not null)
-                await CleanupPartiallyCreatedRobotsAsync([buildCredential.ExternalRobotId]);
-            throw;
         }
     }
 
@@ -169,33 +151,106 @@ public sealed class HarborContainerRegistryClient(
         }
     }
 
-    public async Task<Result> DeleteRobotCredentialsAsync(
-        IReadOnlyCollection<string> externalRobotIds,
+    public async Task<Result<RegistryRobotCleanupResult>> DeleteRobotCredentialsAsync(
+        IReadOnlyCollection<RegistryRobotCleanupTarget> targets,
         CancellationToken cancellationToken = default)
     {
         if (!options.IsConfigured)
             return NotConfigured();
 
         Failure? firstFailure = null;
-        foreach (var robotId in externalRobotIds.Distinct(StringComparer.Ordinal))
+        var matchedByNameCount = 0;
+        foreach (var target in targets.DistinctBy(item => item.Name, StringComparer.Ordinal))
         {
-            try
+            var robotIds = new HashSet<string>(StringComparer.Ordinal);
+            if (!string.IsNullOrWhiteSpace(target.ExternalRobotId))
+                robotIds.Add(target.ExternalRobotId);
+
+            if (string.IsNullOrWhiteSpace(target.ExternalRobotId))
             {
-                var deleted = await DeleteRobotAsync(robotId, cancellationToken);
-                if (deleted is Failure failure)
-                    firstFailure ??= failure;
+                try
+                {
+                    var discovered = await FindRobotIdsByNameAsync(
+                        target.ProjectName,
+                        target.Name,
+                        cancellationToken);
+                    if (discovered.TryGetValue(out var discoveredIds, out var discoveryFailure))
+                    {
+                        robotIds.UnionWith(discoveredIds);
+                        matchedByNameCount += discoveredIds.Count;
+                    }
+                    else
+                    {
+                        firstFailure ??= discoveryFailure;
+                    }
+                }
+                catch (HttpRequestException)
+                {
+                    firstFailure ??= HarborFailure("Network request failed.");
+                }
+                catch (JsonException)
+                {
+                    firstFailure ??= HarborFailure("Harbor returned malformed JSON.");
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    firstFailure ??= HarborFailure("Harbor request timed out.");
+                }
             }
-            catch (HttpRequestException)
+
+            foreach (var robotId in robotIds)
             {
-                firstFailure ??= HarborFailure("Network request failed.");
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                firstFailure ??= HarborFailure("Harbor request timed out.");
+                try
+                {
+                    var deleted = await DeleteRobotAsync(robotId, cancellationToken);
+                    if (deleted is Failure failure)
+                        firstFailure ??= failure;
+                }
+                catch (HttpRequestException)
+                {
+                    firstFailure ??= HarborFailure("Network request failed.");
+                }
+                catch (JsonException)
+                {
+                    firstFailure ??= HarborFailure("Harbor returned malformed JSON.");
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    firstFailure ??= HarborFailure("Harbor request timed out.");
+                }
             }
         }
 
-        return firstFailure is null ? Result.Success() : firstFailure;
+        return firstFailure is null
+            ? new RegistryRobotCleanupResult(matchedByNameCount)
+            : firstFailure;
+    }
+
+    private async Task<Result<IReadOnlyList<string>>> FindRobotIdsByNameAsync(
+        string projectName,
+        string robotName,
+        CancellationToken cancellationToken)
+    {
+        const int pageSize = 100;
+        var ids = new List<string>();
+        for (var page = 1; ; page++)
+        {
+            var query = Uri.EscapeDataString($"name={robotName}");
+            using var response = await SendAsync(
+                HttpMethod.Get,
+                $"api/v2.0/robots?q={query}&page={page}&page_size={pageSize}",
+                null,
+                cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return await HarborFailureAsync<IReadOnlyList<string>>(response, cancellationToken);
+
+            var robots = await response.Content.ReadFromJsonAsync<HarborRobot[]>(JsonOptions, cancellationToken) ?? [];
+            ids.AddRange(robots
+                .Where(robot => RobotMatchesCleanupTarget(robot, projectName, robotName))
+                .Select(robot => robot.Id.ToString()));
+            if (robots.Length < pageSize)
+                return ids;
+        }
     }
 
     private async Task<Result<HarborProject>> EnsureProjectAsync(
@@ -311,7 +366,7 @@ public sealed class HarborContainerRegistryClient(
             "project",
             false,
             options.RobotDurationDays,
-            [new HarborRobotPermission("project", projectName, access)]);
+            [new HarborRobotPermissionRequest("project", projectName, access)]);
         using var response = await SendAsync(HttpMethod.Post, "api/v2.0/robots", request, cancellationToken);
         if (!response.IsSuccessStatusCode)
             return await HarborFailureAsync<RegistryRobotCredential>(response, cancellationToken);
@@ -339,29 +394,6 @@ public sealed class HarborContainerRegistryClient(
         return await HarborFailureAsync(response, cancellationToken);
     }
 
-    private async Task CleanupPartiallyCreatedRobotsAsync(IReadOnlyCollection<string> robotIds)
-    {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        try
-        {
-            var cleanup = await DeleteRobotCredentialsAsync(robotIds, timeout.Token);
-            if (cleanup is Failure failure)
-            {
-                logger.LogWarning(
-                    "Harbor robot cleanup after partial provisioning failed: {FailureType}. Manual cleanup is required for robot ids {RobotIds}.",
-                    failure.GetType().Name,
-                    robotIds);
-            }
-        }
-        catch (Exception exception)
-        {
-            logger.LogWarning(
-                "Harbor robot cleanup after partial provisioning threw {ExceptionType}. Manual cleanup is required for robot ids {RobotIds}.",
-                exception.GetType().Name,
-                robotIds);
-        }
-    }
-
     private async Task<HttpResponseMessage> SendAsync(
         HttpMethod method,
         string path,
@@ -378,6 +410,14 @@ public sealed class HarborContainerRegistryClient(
     }
 
     private static string Encode(string segment) => Uri.EscapeDataString(segment);
+
+    private static bool RobotMatchesCleanupTarget(
+        HarborRobot robot,
+        string projectName,
+        string requestedName) =>
+        robot.Name?.EndsWith($"+{requestedName}", StringComparison.Ordinal) is true &&
+        robot.Permissions?.Any(permission =>
+            string.Equals(permission.Namespace, projectName, StringComparison.Ordinal)) is true;
 
     // Harbor treats nested repository names as one route parameter. Uri construction
     // unescapes the first encoding before transport, so the embedded slash must be encoded twice.
@@ -427,9 +467,9 @@ public sealed class HarborContainerRegistryClient(
         string Level,
         bool Disable,
         long Duration,
-        IReadOnlyList<HarborRobotPermission> Permissions);
+        IReadOnlyList<HarborRobotPermissionRequest> Permissions);
 
-    private sealed record HarborRobotPermission(
+    private sealed record HarborRobotPermissionRequest(
         string Kind,
         string Namespace,
         IReadOnlyList<HarborAccess> Access);
@@ -444,6 +484,13 @@ public sealed class HarborContainerRegistryClient(
     {
         public override string ToString() => "HarborRobotCreated([REDACTED])";
     }
+
+    private sealed record HarborRobot(
+        long Id,
+        string? Name,
+        HarborRobotPermissionResponse[]? Permissions);
+
+    private sealed record HarborRobotPermissionResponse(string? Namespace);
 
     private sealed record HarborArtifact(string Digest, long Size);
 

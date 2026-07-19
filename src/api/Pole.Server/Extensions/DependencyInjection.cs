@@ -296,7 +296,8 @@ public static class DependencyInjection
             services.TryAddScoped<IRuntimeRegistryAccessProvider, RuntimeRegistryAccessProvider>();
             services.TryAddScoped<IRegistryProvisioningCleanupService, RegistryProvisioningCleanupService>();
             services.TryAddScoped<IContainerRegistryProvisioningService, ContainerRegistryProvisioningService>();
-            services.AddHttpClient<IContainerRegistryClient, HarborContainerRegistryClient>()
+            services.AddHttpClient<IContainerRegistryClient, HarborContainerRegistryClient>(client =>
+                    client.Timeout = TimeSpan.FromMinutes(2))
                 .ConfigurePrimaryHttpMessageHandler(static () => new HttpClientHandler
                 {
                     // Harbor's Basic-auth API can set a browser session cookie. Replaying it without

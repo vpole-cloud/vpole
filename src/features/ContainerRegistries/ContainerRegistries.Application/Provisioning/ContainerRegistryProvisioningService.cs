@@ -36,31 +36,51 @@ public sealed class ContainerRegistryProvisioningService(
         if (project.State is ReadyRegistryProject)
             return project;
 
+        var provisioningState = (ProvisioningRegistryProject)project.State;
+        var attemptId = provisioningState.AttemptId;
+        var robotNames = RegistryRobotNames.ForAttempt(attemptId);
+        var nameOnlyAttempt = new RegistryProvisioningAttempt(
+            attemptId,
+            project.Name,
+            project.Name,
+            robotNames.Build,
+            robotNames.Pull,
+            null,
+            null,
+            provisioningState.StartedAtUtc + RegistryProvisioningCleanupPolicy.NameVerificationHorizon);
+
         Result<ProvisionedRegistryProject> provisioned;
         try
         {
             provisioned = await registryClient.ProvisionProjectAsync(
-                new RegistryProjectProvisioningRequest(tenantId, project.Name),
+                new RegistryProjectProvisioningRequest(tenantId, project.Name, attemptId),
                 cancellationToken);
         }
         catch
         {
-            await MarkFailedAfterInterruptionAsync(project.Id);
+            await CompensateFailureAsync(
+                project.Id,
+                nameOnlyAttempt,
+                Failures.Internal(
+                    "Container registry provisioning was interrupted.",
+                    "Deterministically named robot credentials were queued for cleanup."));
             throw;
         }
         if (!provisioned.TryGetValue(out var remoteProject, out var provisioningFailure))
         {
-            using var stateTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await MarkFailedAsync(project.Id, provisioningFailure, stateTimeout.Token);
+            await CompensateFailureAsync(project.Id, nameOnlyAttempt, provisioningFailure);
             return provisioningFailure;
         }
 
-        var attemptId = ((ProvisioningRegistryProject)project.State).AttemptId;
         var attempt = new RegistryProvisioningAttempt(
             attemptId,
+            project.Name,
             remoteProject.ExternalProjectId,
+            robotNames.Build,
+            robotNames.Pull,
             remoteProject.BuildCredential.ExternalRobotId,
-            remoteProject.PullCredential.ExternalRobotId);
+            remoteProject.PullCredential.ExternalRobotId,
+            null);
         RegistryCredential buildCredential;
         RegistryCredential pullCredential;
         try
@@ -69,8 +89,8 @@ public sealed class ContainerRegistryProvisioningService(
             var remoteState = new RemoteProvisionedRegistryProject(
                 attempt.AttemptId,
                 attempt.ExternalProjectId,
-                attempt.BuildExternalRobotId,
-                attempt.PullExternalRobotId,
+                remoteProject.BuildCredential.ExternalRobotId,
+                remoteProject.PullCredential.ExternalRobotId,
                 now);
             var remoteRecorded = await RecordRemoteProvisioningAsync(
                 project.Id,
@@ -241,42 +261,6 @@ public sealed class ContainerRegistryProvisioningService(
             new RegistryCredentialFactory.CreateOptions(credentialId, now));
     }
 
-    private async Task MarkFailedAsync(
-        string projectId,
-        Failure failure,
-        CancellationToken cancellationToken)
-    {
-        var now = timeProvider.GetUtcNow().UtcDateTime;
-        var code = failure.GetType().Name;
-        await dbContext.RegistryProjects.UpdateOneAsync(
-            Builders<RegistryProject>.Filter.And(
-                Builders<RegistryProject>.Filter.Eq(item => item.Id, projectId),
-                Builders<RegistryProject>.Filter.OfType<RegistryProjectState, ProvisioningRegistryProject>(
-                    item => item.State)),
-            Builders<RegistryProject>.Update
-                .Set(item => item.State, new FailedRegistryProjectProvisioning(code, failure.Message, now))
-                .Set(item => item.UpdatedAtUtc, now),
-            cancellationToken: cancellationToken);
-    }
-
-    private async Task MarkFailedAfterInterruptionAsync(string projectId)
-    {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        try
-        {
-            await MarkFailedAsync(
-                projectId,
-                Failures.Internal(
-                    "Container registry provisioning was interrupted.",
-                    "The provider request did not return a complete provisioning result."),
-                timeout.Token);
-        }
-        catch (Exception)
-        {
-            // Preserve the provider exception. A remaining Provisioning state is visible to operators.
-        }
-    }
-
     private async Task<Result> RecordRemoteProvisioningAsync(
         string projectId,
         RemoteProvisionedRegistryProject remoteState,
@@ -313,7 +297,7 @@ public sealed class ContainerRegistryProvisioningService(
                 failure,
                 timeout.Token);
             cleanup ??= await FindMatchingCleanupAsync(projectId, attempt, timeout.Token);
-            if (cleanup is not null)
+            if (cleanup is not null && cleanup.CleanupNotBeforeUtc <= timeProvider.GetUtcNow().UtcDateTime)
                 await cleanupService.CleanupAsync(projectId, cleanup, timeout.Token);
         }
         catch (Exception)
@@ -371,7 +355,10 @@ public sealed class ContainerRegistryProvisioningService(
             .FirstOrDefaultAsync(cancellationToken);
         return project?.State is CleanupRequiredRegistryProjectProvisioning cleanup &&
                cleanup.AttemptId == attempt.AttemptId &&
+               cleanup.ProjectName == attempt.ProjectName &&
                cleanup.ExternalProjectId == attempt.ExternalProjectId &&
+               cleanup.BuildRobotName == attempt.BuildRobotName &&
+               cleanup.PullRobotName == attempt.PullRobotName &&
                cleanup.BuildExternalRobotId == attempt.BuildExternalRobotId &&
                cleanup.PullExternalRobotId == attempt.PullExternalRobotId
             ? cleanup

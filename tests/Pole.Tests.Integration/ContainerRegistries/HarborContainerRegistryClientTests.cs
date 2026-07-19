@@ -1,6 +1,5 @@
 using System.Net;
 using System.Text;
-using Microsoft.Extensions.Logging.Abstractions;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ContainerRegistries.Application.Harbor;
 using Pole.Features.ContainerRegistries.Contracts;
@@ -11,6 +10,8 @@ namespace Pole.Tests.Integration.ContainerRegistries;
 
 public sealed class HarborContainerRegistryClientTests
 {
+    private const string AttemptId = "0123456789abcdef0123456789abcdef";
+
     [Fact]
     public async Task Provisioning_CreatesPrivateProjectAndLeastPrivilegeRobots()
     {
@@ -48,13 +49,16 @@ public sealed class HarborContainerRegistryClientTests
         });
         var client = CreateClient(handler);
 
-        var result = await client.ProvisionProjectAsync(new RegistryProjectProvisioningRequest("tenant", "pole-test"));
+        var result = await client.ProvisionProjectAsync(
+            new RegistryProjectProvisioningRequest("tenant", "pole-test", AttemptId));
 
         Assert.True(result.TryGetValue(out var provisioned, out _));
         Assert.Equal("17", provisioned.ExternalProjectId);
         Assert.Equal("build-secret", provisioned.BuildCredential.Secret);
         Assert.Equal("pull-secret", provisioned.PullCredential.Secret);
         Assert.Equal(2, robotBodies.Count);
+        Assert.Contains($"\"name\":\"pole-build-{AttemptId}\"", robotBodies[0], StringComparison.Ordinal);
+        Assert.Contains($"\"name\":\"pole-runtime-{AttemptId}\"", robotBodies[1], StringComparison.Ordinal);
         Assert.Contains("\"namespace\":\"pole-test\"", robotBodies[0], StringComparison.Ordinal);
         Assert.Contains("\"action\":\"push\"", robotBodies[0], StringComparison.Ordinal);
         Assert.DoesNotContain("\"action\":\"push\"", robotBodies[1], StringComparison.Ordinal);
@@ -62,22 +66,14 @@ public sealed class HarborContainerRegistryClientTests
     }
 
     [Fact]
-    public async Task PartialRobotFailure_DeletesCreatedRobotAndRedactsResponseBody()
+    public async Task PartialRobotFailure_ReturnsFailureForDurableCallerOwnedCleanup()
     {
         var robotRequests = 0;
-        var deletedRobot = false;
         var handler = new DelegateHandler(async request =>
         {
             var path = request.RequestUri!.AbsolutePath;
             if (request.Method == HttpMethod.Get)
                 return Json(HttpStatusCode.OK, """[{ "project_id": 17, "name": "pole-test" }]""");
-            if (request.Method == HttpMethod.Delete)
-            {
-                Assert.Equal("/api/v2.0/robots/21", path);
-                deletedRobot = true;
-                return new HttpResponseMessage(HttpStatusCode.OK);
-            }
-
             robotRequests++;
             _ = await request.Content!.ReadAsStringAsync();
             return robotRequests == 1
@@ -88,18 +84,18 @@ public sealed class HarborContainerRegistryClientTests
         });
         var client = CreateClient(handler);
 
-        var result = await client.ProvisionProjectAsync(new RegistryProjectProvisioningRequest("tenant", "pole-test"));
+        var result = await client.ProvisionProjectAsync(
+            new RegistryProjectProvisioningRequest("tenant", "pole-test", AttemptId));
 
         Assert.False(result.TryGetValue(out _, out var failure));
-        Assert.True(deletedRobot);
+        Assert.Equal(2, robotRequests);
         Assert.DoesNotContain("build-secret", failure.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task PullRobotTimeoutStillCleansKnownBuildRobotWithIndependentToken()
+    public async Task PullRobotTimeout_ReturnsFailureForDurableCallerOwnedCleanup()
     {
         var robotRequests = 0;
-        var deletedRobot = false;
         var handler = new DelegateHandler(request =>
         {
             var path = request.RequestUri!.AbsolutePath;
@@ -108,13 +104,6 @@ public sealed class HarborContainerRegistryClientTests
                 return Task.FromResult(Json(
                     HttpStatusCode.OK,
                     """[{ "project_id": 17, "name": "pole-test" }]"""));
-            }
-
-            if (request.Method == HttpMethod.Delete)
-            {
-                Assert.Equal("/api/v2.0/robots/21", path);
-                deletedRobot = true;
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
             }
 
             robotRequests++;
@@ -127,10 +116,10 @@ public sealed class HarborContainerRegistryClientTests
         var client = CreateClient(handler);
 
         var result = await client.ProvisionProjectAsync(
-            new RegistryProjectProvisioningRequest("tenant", "pole-test"));
+            new RegistryProjectProvisioningRequest("tenant", "pole-test", AttemptId));
 
         Assert.False(result.TryGetValue(out _, out var failure));
-        Assert.True(deletedRobot);
+        Assert.Equal(2, robotRequests);
         Assert.Contains("timed out", failure.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
@@ -163,23 +152,79 @@ public sealed class HarborContainerRegistryClientTests
         {
             var path = request.RequestUri!.AbsolutePath;
             calls.Add($"{request.Method} {path}");
-            return Task.FromResult(path switch
+            return Task.FromResult((request.Method, path) switch
             {
-                "/api/v2.0/robots/21" => new HttpResponseMessage(HttpStatusCode.InternalServerError),
-                "/api/v2.0/robots/22" => new HttpResponseMessage(HttpStatusCode.NotFound),
+                ({ } method, "/api/v2.0/robots/21") when method == HttpMethod.Delete =>
+                    new HttpResponseMessage(HttpStatusCode.InternalServerError),
+                ({ } method, "/api/v2.0/robots/22") when method == HttpMethod.Delete =>
+                    new HttpResponseMessage(HttpStatusCode.NotFound),
                 _ => throw new Xunit.Sdk.XunitException($"Unexpected Harbor request: {request.Method} {path}")
             });
         });
         var client = CreateClient(handler);
 
-        var result = await client.DeleteRobotCredentialsAsync(["21", "22"]);
+        var result = await client.DeleteRobotCredentialsAsync(
+        [
+            new RegistryRobotCleanupTarget("pole-test", $"pole-build-{AttemptId}", "21"),
+            new RegistryRobotCleanupTarget("pole-test", $"pole-runtime-{AttemptId}", "22")
+        ]);
 
-        Assert.IsType<ExternalServiceFailure>(result);
+        Assert.False(result.TryGetValue(out _, out var failure));
+        Assert.IsType<ExternalServiceFailure>(failure);
         Assert.Equal(
-            ["DELETE /api/v2.0/robots/21", "DELETE /api/v2.0/robots/22"],
+            [
+                "DELETE /api/v2.0/robots/21",
+                "DELETE /api/v2.0/robots/22"
+            ],
             calls);
         Assert.DoesNotContain(calls, call => call.Contains("/projects/", StringComparison.Ordinal));
         Assert.DoesNotContain(calls, call => call.Contains("/repositories/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RobotCleanup_DiscoversRobotByDeterministicNameWhenCreateResponseWasLost()
+    {
+        var robotName = $"pole-build-{AttemptId}";
+        var calls = new List<string>();
+        var handler = new DelegateHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            calls.Add($"{request.Method} {path}{request.RequestUri.Query}");
+            return Task.FromResult((request.Method, path) switch
+            {
+                ({ } method, "/api/v2.0/robots") when method == HttpMethod.Get =>
+                    Json(HttpStatusCode.OK, $$"""
+                        [
+                          {
+                            "id": 21,
+                            "name": "custom-prefix-project+{{robotName}}",
+                            "permissions": [{ "namespace": "project" }]
+                          },
+                          {
+                            "id": 22,
+                            "name": "custom-prefix-other-project+{{robotName}}",
+                            "permissions": [{ "namespace": "other-project" }]
+                          }
+                        ]
+                        """),
+                ({ } method, "/api/v2.0/robots/21") when method == HttpMethod.Delete =>
+                    new HttpResponseMessage(HttpStatusCode.NoContent),
+                _ => throw new Xunit.Sdk.XunitException($"Unexpected Harbor request: {request.Method} {path}")
+            });
+        });
+        var client = CreateClient(handler);
+
+        var result = await client.DeleteRobotCredentialsAsync(
+            [new RegistryRobotCleanupTarget("project", robotName, null)]);
+
+        Assert.True(result.TryGetValue(out var cleanup, out _));
+        Assert.Equal(1, cleanup.MatchedByNameCount);
+        Assert.Equal(
+            [
+                $"GET /api/v2.0/robots?q=name%3D{robotName}&page=1&page_size=100",
+                "DELETE /api/v2.0/robots/21"
+            ],
+            calls);
     }
 
     [Fact]
@@ -242,8 +287,7 @@ public sealed class HarborContainerRegistryClientTests
                 RegistryHost = "harbor.test",
                 Username = "admin",
                 Password = "admin-secret"
-            },
-            NullLogger<HarborContainerRegistryClient>.Instance);
+            });
 
     private static HttpResponseMessage Json(HttpStatusCode statusCode, string json) =>
         new(statusCode)
