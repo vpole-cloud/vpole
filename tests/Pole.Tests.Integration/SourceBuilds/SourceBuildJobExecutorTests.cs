@@ -229,6 +229,11 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
             Task.FromResult<Result<RegistryArtifact>>(
                 new RegistryArtifact(repositoryName, reference, Digest, 100));
 
+        public Task<Result> DeleteRobotCredentialsAsync(
+            IReadOnlyCollection<string> externalRobotIds,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<Result> DeleteProjectAsync(
             string externalProjectId,
             CancellationToken cancellationToken = default) =>

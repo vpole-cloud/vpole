@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Microsoft.Extensions.Logging.Abstractions;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ContainerRegistries.Application.Harbor;
 using Pole.Features.ContainerRegistries.Contracts;
@@ -95,6 +96,45 @@ public sealed class HarborContainerRegistryClientTests
     }
 
     [Fact]
+    public async Task PullRobotTimeoutStillCleansKnownBuildRobotWithIndependentToken()
+    {
+        var robotRequests = 0;
+        var deletedRobot = false;
+        var handler = new DelegateHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (request.Method == HttpMethod.Get)
+            {
+                return Task.FromResult(Json(
+                    HttpStatusCode.OK,
+                    """[{ "project_id": 17, "name": "pole-test" }]"""));
+            }
+
+            if (request.Method == HttpMethod.Delete)
+            {
+                Assert.Equal("/api/v2.0/robots/21", path);
+                deletedRobot = true;
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+            }
+
+            robotRequests++;
+            return robotRequests == 1
+                ? Task.FromResult(Json(HttpStatusCode.Created, """
+                    { "id": 21, "name": "robot$build", "secret": "build-secret", "expires_at": -1 }
+                    """))
+                : Task.FromException<HttpResponseMessage>(new TaskCanceledException("simulated timeout"));
+        });
+        var client = CreateClient(handler);
+
+        var result = await client.ProvisionProjectAsync(
+            new RegistryProjectProvisioningRequest("tenant", "pole-test"));
+
+        Assert.False(result.TryGetValue(out _, out var failure));
+        Assert.True(deletedRobot);
+        Assert.Contains("timed out", failure.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ArtifactLookup_MapsDigestAndDoubleEscapesNestedRepositoryName()
     {
         var handler = new DelegateHandler(request =>
@@ -113,6 +153,33 @@ public sealed class HarborContainerRegistryClientTests
         Assert.True(result.TryGetValue(out var artifact, out _));
         Assert.Equal("sha256:abc", artifact.Digest);
         Assert.Equal(1234, artifact.SizeBytes);
+    }
+
+    [Fact]
+    public async Task RobotCleanupAttemptsEveryRobotAndReturnsFailureWithoutDeletingProjectResources()
+    {
+        var calls = new List<string>();
+        var handler = new DelegateHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            calls.Add($"{request.Method} {path}");
+            return Task.FromResult(path switch
+            {
+                "/api/v2.0/robots/21" => new HttpResponseMessage(HttpStatusCode.InternalServerError),
+                "/api/v2.0/robots/22" => new HttpResponseMessage(HttpStatusCode.NotFound),
+                _ => throw new Xunit.Sdk.XunitException($"Unexpected Harbor request: {request.Method} {path}")
+            });
+        });
+        var client = CreateClient(handler);
+
+        var result = await client.DeleteRobotCredentialsAsync(["21", "22"]);
+
+        Assert.IsType<ExternalServiceFailure>(result);
+        Assert.Equal(
+            ["DELETE /api/v2.0/robots/21", "DELETE /api/v2.0/robots/22"],
+            calls);
+        Assert.DoesNotContain(calls, call => call.Contains("/projects/", StringComparison.Ordinal));
+        Assert.DoesNotContain(calls, call => call.Contains("/repositories/", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -166,14 +233,17 @@ public sealed class HarborContainerRegistryClientTests
     }
 
     private static HarborContainerRegistryClient CreateClient(HttpMessageHandler handler) =>
-        new(new HttpClient(handler), new HarborOptions
-        {
-            Enabled = true,
-            BaseUrl = "https://harbor.test",
-            RegistryHost = "harbor.test",
-            Username = "admin",
-            Password = "admin-secret"
-        });
+        new(
+            new HttpClient(handler),
+            new HarborOptions
+            {
+                Enabled = true,
+                BaseUrl = "https://harbor.test",
+                RegistryHost = "harbor.test",
+                Username = "admin",
+                Password = "admin-secret"
+            },
+            NullLogger<HarborContainerRegistryClient>.Instance);
 
     private static HttpResponseMessage Json(HttpStatusCode statusCode, string json) =>
         new(statusCode)

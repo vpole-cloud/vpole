@@ -18,7 +18,10 @@ public sealed class HarborContractTests
         var options = GetOptions();
         using var handler = new HttpClientHandler { UseCookies = false };
         using var httpClient = new HttpClient(handler);
-        var client = new HarborContainerRegistryClient(httpClient, options);
+        var client = new HarborContainerRegistryClient(
+            httpClient,
+            options,
+            NullLogger<HarborContainerRegistryClient>.Instance);
         var projectName = $"pole-contract-{Guid.NewGuid():N}"[..30];
         ProvisionedRegistryProject? provisioned = null;
 
@@ -52,7 +55,10 @@ public sealed class HarborContractTests
         var options = GetOptions();
         using var handler = new HttpClientHandler { UseCookies = false };
         using var httpClient = new HttpClient(handler);
-        var registryClient = new HarborContainerRegistryClient(httpClient, options);
+        var registryClient = new HarborContainerRegistryClient(
+            httpClient,
+            options,
+            NullLogger<HarborContainerRegistryClient>.Instance);
         var projectName = $"pole-buildkit-contract-{Guid.NewGuid():N}"[..30];
         ProvisionedRegistryProject? provisioned = null;
         using var context = new TemporaryDirectory();

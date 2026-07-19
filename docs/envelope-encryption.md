@@ -348,6 +348,24 @@ Coordinate removal/recreation of the corresponding remote robot credentials so s
 are revoked; deleting only MongoDB records is not a credential rotation. Until reprovisioning is
 complete, legacy entries fail closed and builds or pulls that depend on them may be unavailable.
 
+## Registry provisioning recovery
+
+Harbor project ownership is deliberately outside automatic provisioning compensation. A tenant
+project may predate the current request and may already contain repositories, so Pole never deletes
+a Harbor project or repository after credential encryption or MongoDB persistence fails. It revokes
+only the build and runtime robot credentials created by that provisioning attempt.
+
+Pole records the remote project and robot IDs in a non-secret `RemoteProvisioned` state before it
+encrypts or persists credentials. Before any robot deletion it atomically moves that exact attempt
+to `CleanupRequired`; this compare-and-set is the safety barrier for an uncertain MongoDB commit. If
+the transaction actually reached `Ready`, the cleanup claim cannot replace it and the robots remain
+active. If cleanup fails, the project stays in `CleanupRequired` with sanitized failure metadata.
+The `cleanup-container-registry-provisioning` Hangfire job retries these records every minute and
+also claims remote-provisioned attempts abandoned for ten minutes. Robot deletion treats Harbor
+`404` as success, so retries and multiple Pole replicas are idempotent. Operators should alert on
+persisting `CleanupRequiredRegistryProjectProvisioning` records and Harbor-cleanup warning logs;
+manual recovery must delete only the recorded robot IDs, never the tenant project.
+
 ## Plaintext handling rules
 
 Plaintext exists only in the owning operation's process memory for the shortest practical time. It
