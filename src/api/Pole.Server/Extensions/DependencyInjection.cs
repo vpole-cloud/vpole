@@ -289,10 +289,10 @@ public static class DependencyInjection
 
         public IServiceCollection AddContainerRegistriesFeature()
         {
-            services.AddDataProtection().SetApplicationName("Pole");
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IRegistryCredentialProtector, RegistryCredentialProtector>();
             services.TryAddScoped<IRegistryCredentialResolver, RegistryCredentialResolver>();
+            services.TryAddScoped<IRegistryCredentialRewrapService, RegistryCredentialRewrapService>();
             services.TryAddScoped<IRuntimeRegistryAccessProvider, RuntimeRegistryAccessProvider>();
             services.TryAddScoped<IContainerRegistryProvisioningService, ContainerRegistryProvisioningService>();
             services.AddHttpClient<IContainerRegistryClient, HarborContainerRegistryClient>()

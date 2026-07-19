@@ -59,11 +59,25 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         var privateKeyPath = Path.Combine(_scratchDirectory, "github-app-private-key.pem");
         using (var rsa = RSA.Create(2048))
             await File.WriteAllTextAsync(privateKeyPath, rsa.ExportPkcs8PrivateKeyPem(), _shutdown.Token);
+        var envelopeEncryptionKeyPath = Path.Combine(_scratchDirectory, "envelope-encryption-v1.key");
+        var envelopeEncryptionKey = RandomNumberGenerator.GetBytes(32);
+        try
+        {
+            await File.WriteAllTextAsync(
+                envelopeEncryptionKeyPath,
+                Convert.ToBase64String(envelopeEncryptionKey),
+                _shutdown.Token);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(envelopeEncryptionKey);
+        }
 
         var githubClientId = $"pole-e2e-client-{Guid.NewGuid():N}";
         var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.Pole_AppHost>(
             CreateAppHostArguments(
                 privateKeyPath,
+                envelopeEncryptionKeyPath,
                 githubClientId,
                 _sourceBuildSettings,
                 _scratchDirectory,
@@ -455,6 +469,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     private static string[] CreateAppHostArguments(
         string privateKeyPath,
+        string envelopeEncryptionKeyPath,
         string githubClientId,
         SourceBuildSettings? sourceBuildSettings,
         string scratchDirectory,
@@ -482,7 +497,10 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         $"Parameters:github-app-client-secret={githubClientSecret}",
         "Parameters:github-app-slug=pole-e2e",
         $"Parameters:github-app-private-key-path={privateKeyPath}",
-        "Parameters:github-app-public-base-url=http://placeholder.invalid"
+        "Parameters:github-app-public-base-url=http://placeholder.invalid",
+        "Parameters:envelope-encryption-active-key-id=pole-e2e",
+        "Parameters:envelope-encryption-active-key-version=1",
+        $"Parameters:envelope-encryption-active-key-path={envelopeEncryptionKeyPath}"
         };
         if (sourceBuildSettings is not null)
         {

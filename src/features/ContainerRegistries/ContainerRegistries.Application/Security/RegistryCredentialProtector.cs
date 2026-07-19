@@ -1,34 +1,59 @@
-using System.Security.Cryptography;
-using Microsoft.AspNetCore.DataProtection;
+using Pole.Encryption;
+using Pole.Features.ContainerRegistries.Domain;
 using Pole.ResultType;
 
 namespace Pole.Features.ContainerRegistries.Application.Security;
 
 public interface IRegistryCredentialProtector
 {
-    string Protect(string secret);
-    Result<string> Unprotect(string protectedSecret);
+    ValueTask<Result<EncryptedValue>> ProtectAsync(
+        string tenantId,
+        string credentialId,
+        long secretVersion,
+        string secret,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<Result<string>> UnprotectAsync(
+        RegistryCredential credential,
+        CancellationToken cancellationToken = default);
 }
 
-public sealed class RegistryCredentialProtector(IDataProtectionProvider dataProtectionProvider)
+public sealed class RegistryCredentialProtector(IEnvelopeEncryptionService envelopeEncryption)
     : IRegistryCredentialProtector
 {
-    private readonly IDataProtector _protector =
-        dataProtectionProvider.CreateProtector("Pole.ContainerRegistry.Credential.v1");
+    public ValueTask<Result<EncryptedValue>> ProtectAsync(
+        string tenantId,
+        string credentialId,
+        long secretVersion,
+        string secret,
+        CancellationToken cancellationToken = default) =>
+        envelopeEncryption.EncryptStringAsync(
+            secret,
+            RegistryCredentialEncryptionContext.Create(tenantId, credentialId, secretVersion),
+            cancellationToken);
 
-    public string Protect(string secret) => _protector.Protect(secret);
+    public ValueTask<Result<string>> UnprotectAsync(
+        RegistryCredential credential,
+        CancellationToken cancellationToken = default) =>
+        envelopeEncryption.DecryptStringAsync(
+            credential.EncryptedSecret,
+            RegistryCredentialEncryptionContext.Create(
+                credential.TenantId,
+                credential.Id,
+                credential.SecretVersion),
+            cancellationToken);
+}
 
-    public Result<string> Unprotect(string protectedSecret)
-    {
-        try
-        {
-            return _protector.Unprotect(protectedSecret);
-        }
-        catch (CryptographicException)
-        {
-            return Failures.Internal(
-                "The container registry credential could not be decrypted.",
-                "The Data Protection key used to encrypt the credential is unavailable or invalid.");
-        }
-    }
+internal static class RegistryCredentialEncryptionContext
+{
+    public static EnvelopeEncryptionContext Create(
+        string tenantId,
+        string credentialId,
+        long secretVersion) =>
+        EnvelopeEncryptionContext.ForTenant(
+            tenantId,
+            "container-registry-credential",
+            credentialId,
+            "secret",
+            secretVersion);
 }

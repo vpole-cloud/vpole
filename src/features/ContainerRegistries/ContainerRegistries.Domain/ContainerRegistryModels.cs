@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Encryption;
 
 namespace Pole.Features.ContainerRegistries.Domain;
 
@@ -81,7 +82,8 @@ public sealed record RegistryCredential(
     RegistryCredentialPurpose Purpose,
     string ExternalRobotId,
     string Username,
-    string ProtectedSecret,
+    long SecretVersion,
+    EncryptedValue EncryptedSecret,
     DateTime CreatedAtUtc,
     DateTime? ExpiresAtUtc);
 
@@ -98,7 +100,8 @@ public static class RegistryCredentialFactory
         RegistryCredentialPurpose purpose,
         string externalRobotId,
         string username,
-        string protectedSecret,
+        long secretVersion,
+        EncryptedValue encryptedSecret,
         DateTime? expiresAtUtc,
         CreateOptions options) =>
         new(
@@ -108,7 +111,8 @@ public static class RegistryCredentialFactory
             purpose,
             externalRobotId,
             username,
-            protectedSecret,
+            secretVersion,
+            encryptedSecret,
             options.CreatedAtUtc,
             expiresAtUtc);
 }

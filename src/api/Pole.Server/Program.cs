@@ -1,5 +1,6 @@
 using System.Reflection;
 using Pole.Database;
+using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.GitProviders.Application.Common;
@@ -71,6 +72,7 @@ builder.Services.AddKubernetes(configuration)
         typeof(WebServiceQuotaProfile).Assembly,
         typeof(PostgresQuotaProfile).Assembly)
     .AddMigrations(assemblies)
+    .AddEnvelopeEncryption(configuration)
     .AddSearchFeature()
     .AddGitProvidersFeature()
     .AddContainerRegistriesFeature()
@@ -93,6 +95,8 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// Validate and load every configured KEK before migrations or background-job setup can touch MongoDB.
+_ = app.Services.GetRequiredService<IEnvelopeEncryptionService>();
 await app.Services.GetRequiredService<MigrationRunner>().RunMigrations();
 
 var functionGatewayOptions = app.Services.GetRequiredService<FunctionGatewayOptions>();

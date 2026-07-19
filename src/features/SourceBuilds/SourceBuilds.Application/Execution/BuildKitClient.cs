@@ -13,7 +13,11 @@ public sealed record BuildKitBuildRequest(
     string Dockerfile,
     RegistryPushTarget Target,
     string RegistryUsername,
-    string RegistrySecret);
+    string RegistrySecret)
+{
+    public override string ToString() =>
+        $"BuildKitBuildRequest(context={ContextPath}, target={Target.Reference}, credentials=[REDACTED])";
+}
 
 public sealed record BuiltContainerImage(string Reference, string Digest);
 

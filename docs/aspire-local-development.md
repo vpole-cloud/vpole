@@ -7,9 +7,15 @@ Use the Aspire AppHost when a change must be verified against Pole's real local 
 - Docker is running.
 - The repository's .NET SDK and Node.js dependencies are available.
 - The Aspire CLI and Aspire MCP server are installed.
+- A LocalKeyFile KEK has been bootstrapped and configured through AppHost user secrets; see
+  [Envelope encryption operations](envelope-encryption.md#aspire-local-development).
 - A Kubernetes context is configured only when the workflow exercises reconciliation.
 
 The AppHost is `src/api/Pole.AppHost/Pole.AppHost.csproj`. It starts MongoDB, Keycloak, RabbitMQ, the Pole API, and the Vite frontend. The sample `blog` project requires an explicit start.
+
+Pole validates and loads the complete envelope-encryption key ring before migrations or background
+jobs start. A missing or invalid key is an intentional fail-closed startup error; AppHost never
+creates a replacement.
 
 Source builds add two optional, explicit-start resources:
 

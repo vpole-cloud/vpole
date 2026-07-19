@@ -8,7 +8,10 @@ namespace Pole.Features.ContainerRegistries.Application.Security;
 public sealed record ResolvedRegistryCredential(
     string Username,
     string Secret,
-    DateTime? ExpiresAtUtc);
+    DateTime? ExpiresAtUtc)
+{
+    public override string ToString() => "ResolvedRegistryCredential([REDACTED])";
+}
 
 public interface IRegistryCredentialResolver
 {
@@ -43,7 +46,7 @@ public sealed class RegistryCredentialResolver(
         if (credential.ExpiresAtUtc is not null && credential.ExpiresAtUtc <= now)
             return Failures.Conflict("The container registry credential has expired and must be rotated.");
 
-        var secret = protector.Unprotect(credential.ProtectedSecret);
+        var secret = await protector.UnprotectAsync(credential, cancellationToken);
         if (!secret.TryGetValue(out var value, out var failure))
             return failure;
 

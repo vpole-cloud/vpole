@@ -8,7 +8,10 @@ public sealed record RegistryRobotCredential(
     string ExternalRobotId,
     string Username,
     string Secret,
-    DateTime? ExpiresAtUtc);
+    DateTime? ExpiresAtUtc)
+{
+    public override string ToString() => "RegistryRobotCredential([REDACTED])";
+}
 
 public sealed record ProvisionedRegistryProject(
     string ExternalProjectId,
@@ -54,7 +57,10 @@ public sealed record RuntimeRegistryAccess(
     string ProjectName,
     string KubernetesSecretName,
     string Username,
-    string Secret);
+    string Secret)
+{
+    public override string ToString() => "RuntimeRegistryAccess([REDACTED])";
+}
 
 public interface IRuntimeRegistryAccessProvider
 {

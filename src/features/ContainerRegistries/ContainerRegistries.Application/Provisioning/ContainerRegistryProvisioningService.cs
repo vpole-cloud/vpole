@@ -22,6 +22,8 @@ public sealed class ContainerRegistryProvisioningService(
     IRegistryCredentialProtector credentialProtector,
     TimeProvider timeProvider) : IContainerRegistryProvisioningService
 {
+    private const long InitialSecretVersion = 1;
+
     public async Task<Result<RegistryProject>> EnsureTenantProjectAsync(
         string tenantId,
         string initiatedByUserId,
@@ -42,52 +44,77 @@ public sealed class ContainerRegistryProvisioningService(
             return provisioningFailure;
         }
 
-        var now = timeProvider.GetUtcNow().UtcDateTime;
-        var buildCredential = CreateCredential(
-            project,
-            RegistryCredentialPurpose.BuildPushPull,
-            remoteProject.BuildCredential,
-            now);
-        var pullCredential = CreateCredential(
-            project,
-            RegistryCredentialPurpose.RuntimePull,
-            remoteProject.PullCredential,
-            now);
-        var ready = new ReadyRegistryProject(
-            remoteProject.ExternalProjectId,
-            buildCredential.Id,
-            pullCredential.Id,
-            now);
-
-        var persisted = await dbContext.RunInTransactionAsync<RegistryProject>(async (session, ct) =>
+        try
         {
-            var update = await dbContext.RegistryProjects.UpdateOneAsync(
-                session,
-                Builders<RegistryProject>.Filter.And(
-                    Builders<RegistryProject>.Filter.Eq(item => item.Id, project.Id),
-                    Builders<RegistryProject>.Filter.OfType<RegistryProjectState, ProvisioningRegistryProject>(
-                        item => item.State)),
-                Builders<RegistryProject>.Update
-                    .Set(item => item.State, ready)
-                    .Set(item => item.UpdatedAtUtc, now),
-                cancellationToken: ct);
-            if (update.ModifiedCount != 1)
-                return Failures.Conflict("The registry project provisioning state changed concurrently.");
+            var now = timeProvider.GetUtcNow().UtcDateTime;
+            var buildCredentialResult = await CreateCredentialAsync(
+                project,
+                RegistryCredentialPurpose.BuildPushPull,
+                remoteProject.BuildCredential,
+                now,
+                cancellationToken);
+            if (!buildCredentialResult.TryGetValue(out var buildCredential, out var buildCredentialFailure))
+            {
+                await CompensateAsync(project.Id, remoteProject.ExternalProjectId, buildCredentialFailure);
+                return buildCredentialFailure;
+            }
 
-            await dbContext.RegistryCredentials.InsertManyAsync(
-                session,
-                [buildCredential, pullCredential],
-                cancellationToken: ct);
-            return project with { State = ready, UpdatedAtUtc = now };
-        }, cancellationToken: cancellationToken);
+            var pullCredentialResult = await CreateCredentialAsync(
+                project,
+                RegistryCredentialPurpose.RuntimePull,
+                remoteProject.PullCredential,
+                now,
+                cancellationToken);
+            if (!pullCredentialResult.TryGetValue(out var pullCredential, out var pullCredentialFailure))
+            {
+                await CompensateAsync(project.Id, remoteProject.ExternalProjectId, pullCredentialFailure);
+                return pullCredentialFailure;
+            }
+            var ready = new ReadyRegistryProject(
+                remoteProject.ExternalProjectId,
+                buildCredential.Id,
+                pullCredential.Id,
+                now);
 
-        if (persisted.TryGetValue(out _, out _))
+            var persisted = await dbContext.RunInTransactionAsync<RegistryProject>(async (session, ct) =>
+            {
+                var update = await dbContext.RegistryProjects.UpdateOneAsync(
+                    session,
+                    Builders<RegistryProject>.Filter.And(
+                        Builders<RegistryProject>.Filter.Eq(item => item.Id, project.Id),
+                        Builders<RegistryProject>.Filter.OfType<RegistryProjectState, ProvisioningRegistryProject>(
+                            item => item.State)),
+                    Builders<RegistryProject>.Update
+                        .Set(item => item.State, ready)
+                        .Set(item => item.UpdatedAtUtc, now),
+                    cancellationToken: ct);
+                if (update.ModifiedCount != 1)
+                    return Failures.Conflict("The registry project provisioning state changed concurrently.");
+
+                await dbContext.RegistryCredentials.InsertManyAsync(
+                    session,
+                    [buildCredential, pullCredential],
+                    cancellationToken: ct);
+                return project with { State = ready, UpdatedAtUtc = now };
+            }, cancellationToken: cancellationToken);
+
+            if (persisted.TryGetValue(out _, out _))
+                return persisted;
+
+            if (!persisted.TryGetValue(out _, out var persistenceFailure))
+                await CompensateAsync(project.Id, remoteProject.ExternalProjectId, persistenceFailure);
             return persisted;
-
-        await registryClient.DeleteProjectAsync(remoteProject.ExternalProjectId, cancellationToken);
-        if (!persisted.TryGetValue(out _, out var persistenceFailure))
-            await MarkFailedAsync(project.Id, persistenceFailure, cancellationToken);
-        return persisted;
+        }
+        catch
+        {
+            await CompensateAsync(
+                project.Id,
+                remoteProject.ExternalProjectId,
+                Failures.Internal(
+                    "Container registry provisioning was interrupted.",
+                    "Remote resource cleanup was requested before the operation was retried."));
+            throw;
+        }
     }
 
     private async Task<Result<RegistryProject>> ClaimProvisioningAsync(
@@ -135,22 +162,34 @@ public sealed class ContainerRegistryProvisioningService(
             cancellationToken);
     }
 
-    private RegistryCredential CreateCredential(
+    private async ValueTask<Result<RegistryCredential>> CreateCredentialAsync(
         RegistryProject project,
         RegistryCredentialPurpose purpose,
         RegistryRobotCredential credential,
-        DateTime now) =>
-        RegistryCredentialFactory.Create(
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var credentialId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+        var encryptedSecret = await credentialProtector.ProtectAsync(
+            project.TenantId,
+            credentialId,
+            InitialSecretVersion,
+            credential.Secret,
+            cancellationToken);
+        if (!encryptedSecret.TryGetValue(out var encryptedValue, out var failure))
+            return failure;
+
+        return RegistryCredentialFactory.Create(
             project.TenantId,
             project.Id,
             purpose,
             credential.ExternalRobotId,
             credential.Username,
-            credentialProtector.Protect(credential.Secret),
+            InitialSecretVersion,
+            encryptedValue,
             credential.ExpiresAtUtc,
-            new RegistryCredentialFactory.CreateOptions(
-                MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
-                now));
+            new RegistryCredentialFactory.CreateOptions(credentialId, now));
+    }
 
     private async Task MarkFailedAsync(
         string projectId,
@@ -168,5 +207,31 @@ public sealed class ContainerRegistryProvisioningService(
                 .Set(item => item.State, new FailedRegistryProjectProvisioning(code, failure.Message, now))
                 .Set(item => item.UpdatedAtUtc, now),
             cancellationToken: cancellationToken);
+    }
+
+    private async Task CompensateAsync(
+        string projectId,
+        string externalProjectId,
+        Failure failure)
+    {
+        using var deletionTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try
+        {
+            await registryClient.DeleteProjectAsync(externalProjectId, deletionTimeout.Token);
+        }
+        catch (Exception)
+        {
+            // Best effort: never replace the original provisioning result or exception with cleanup failure.
+        }
+
+        using var stateTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try
+        {
+            await MarkFailedAsync(projectId, failure, stateTimeout.Token);
+        }
+        catch (Exception)
+        {
+            // The persisted Provisioning state remains an explicit signal for operator recovery.
+        }
     }
 }

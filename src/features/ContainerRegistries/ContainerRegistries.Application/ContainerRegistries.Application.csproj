@@ -13,5 +13,8 @@
     <ProjectReference Include="..\ContainerRegistries.Contracts\ContainerRegistries.Contracts.csproj" />
     <ProjectReference Include="..\ContainerRegistries.Domain\ContainerRegistries.Domain.csproj" />
     <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
+    <ProjectReference Include="..\..\..\shared\Encryption\Encryption.csproj" />
+    <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
+    <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
   </ItemGroup>
 </Project>
