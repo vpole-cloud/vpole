@@ -56,7 +56,9 @@ public sealed record CleanupRequiredRegistryProjectProvisioning(
     DateTime CleanupRequiredAtUtc,
     DateTime CleanupNotBeforeUtc,
     DateTime CleanupVerificationNotBeforeUtc,
-    DateTime? LastCleanupAttemptAtUtc) : RegistryProjectState;
+    DateTime? LastCleanupAttemptAtUtc,
+    string? CleanupLeaseToken,
+    DateTime? CleanupLeaseExpiresAtUtc) : RegistryProjectState;
 
 public sealed record ReadyRegistryProject(
     string ExternalProjectId,

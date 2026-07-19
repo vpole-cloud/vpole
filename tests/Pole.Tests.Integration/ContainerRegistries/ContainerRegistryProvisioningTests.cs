@@ -436,6 +436,85 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
     }
 
     [Fact]
+    public async Task ConcurrentCleanupWorkersAreSerializedByDurableLease()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var registryClient = new FakeContainerRegistryClient
+        {
+            CleanupStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously),
+            ContinueCleanup = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously)
+        };
+        registryClient.MatchedByNameCounts.Enqueue(1);
+        registryClient.MatchedByNameCounts.Enqueue(0);
+        var cleanupService = CreateCleanupService(registryClient, new FixedTimeProvider(now));
+        var project = CreateCleanupRequiredProject(
+            TestData.TenantId,
+            "pole-concurrent-cleanup",
+            AttemptIdOne,
+            "17",
+            null,
+            null,
+            now.AddMinutes(-20).UtcDateTime);
+        var cleanup = Assert.IsType<CleanupRequiredRegistryProjectProvisioning>(project.State) with
+        {
+            CleanupVerificationNotBeforeUtc = now.AddMinutes(-1).UtcDateTime
+        };
+        project = project with { State = cleanup };
+        await Fixture.DbContext.RegistryProjects.InsertOneAsync(project);
+
+        var firstWorker = cleanupService.CleanupAsync(project.Id, cleanup);
+        await registryClient.CleanupStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        var staleWorker = await cleanupService.CleanupAsync(project.Id, cleanup);
+
+        Assert.IsAssignableFrom<ISuccess>(staleWorker);
+        Assert.Equal(1, registryClient.RobotCleanupCalls);
+        registryClient.ContinueCleanup.SetResult(true);
+        Assert.IsAssignableFrom<ISuccess>(await firstWorker);
+
+        var staleWorkerAfterLeaseRelease = await cleanupService.CleanupAsync(project.Id, cleanup);
+
+        Assert.IsAssignableFrom<ISuccess>(staleWorkerAfterLeaseRelease);
+
+        var stored = await Fixture.DbContext.RegistryProjects.Find(item => item.Id == project.Id).SingleAsync();
+        var pending = Assert.IsType<CleanupRequiredRegistryProjectProvisioning>(stored.State);
+        Assert.Null(pending.CleanupLeaseToken);
+        Assert.Null(pending.CleanupLeaseExpiresAtUtc);
+        Assert.True(pending.CleanupVerificationNotBeforeUtc > now.UtcDateTime);
+        Assert.Equal(1, registryClient.RobotCleanupCalls);
+    }
+
+    [Fact]
+    public async Task ExpiredCleanupLeaseIsRecoveredAfterWorkerCrash()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var registryClient = new FakeContainerRegistryClient();
+        var cleanupService = CreateCleanupService(registryClient, new FixedTimeProvider(now));
+        var project = CreateCleanupRequiredProject(
+            TestData.TenantId,
+            "pole-expired-cleanup-lease",
+            AttemptIdOne,
+            "17",
+            "21",
+            "22",
+            now.AddMinutes(-10).UtcDateTime);
+        var cleanup = Assert.IsType<CleanupRequiredRegistryProjectProvisioning>(project.State) with
+        {
+            CleanupLeaseToken = "abandoned-lease",
+            CleanupLeaseExpiresAtUtc = now.AddMinutes(-1).UtcDateTime
+        };
+        project = project with { State = cleanup };
+        await Fixture.DbContext.RegistryProjects.InsertOneAsync(project);
+
+        var result = await cleanupService.CleanupAsync(project.Id, cleanup);
+
+        Assert.IsAssignableFrom<ISuccess>(result);
+        Assert.Equal(1, registryClient.RobotCleanupCalls);
+        var stored = await Fixture.DbContext.RegistryProjects.Find(item => item.Id == project.Id).SingleAsync();
+        Assert.IsType<FailedRegistryProjectProvisioning>(stored.State);
+    }
+
+    [Fact]
     public async Task ReconcilerContinuesAfterOneCleanupThrows()
     {
         var now = DateTimeOffset.UtcNow;
@@ -525,8 +604,8 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         string name,
         string attemptId,
         string externalProjectId,
-        string buildRobotId,
-        string pullRobotId,
+        string? buildRobotId,
+        string? pullRobotId,
         DateTime now)
     {
         var robotNames = RegistryRobotNames.ForAttempt(attemptId);
@@ -553,6 +632,8 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
                 now,
                 now,
                 now,
+                null,
+                null,
                 null)
         };
     }
@@ -744,6 +825,8 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         public bool FailNextProvision { get; init; }
         public bool FailRobotCleanup { get; set; }
         public int ThrowRobotCleanupCalls { get; set; }
+        public TaskCompletionSource<bool>? CleanupStarted { get; init; }
+        public TaskCompletionSource<bool>? ContinueCleanup { get; init; }
 
         public Task<Result<ProvisionedRegistryProject>> ProvisionProjectAsync(
             RegistryProjectProvisioningRequest request,
@@ -770,7 +853,7 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
             CancellationToken cancellationToken = default) =>
             Task.FromResult<Result<RegistryArtifact>>(Failures.NotFound("Artifact not found."));
 
-        public Task<Result<RegistryRobotCleanupResult>> DeleteRobotCredentialsAsync(
+        public async Task<Result<RegistryRobotCleanupResult>> DeleteRobotCredentialsAsync(
             IReadOnlyCollection<RegistryRobotCleanupTarget> targets,
             CancellationToken cancellationToken = default)
         {
@@ -785,10 +868,13 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
                 ThrowRobotCleanupCalls--;
                 throw new HttpRequestException("simulated cleanup transport failure");
             }
-            return Task.FromResult<Result<RegistryRobotCleanupResult>>(FailRobotCleanup
+            CleanupStarted?.TrySetResult(true);
+            if (ContinueCleanup is not null)
+                await ContinueCleanup.Task.WaitAsync(cancellationToken);
+            return FailRobotCleanup
                 ? Failures.ExternalService("Harbor robot cleanup failed.", "Harbor", "Status 500.")
                 : new RegistryRobotCleanupResult(
-                    MatchedByNameCounts.TryDequeue(out var matchedCount) ? matchedCount : 0));
+                    MatchedByNameCounts.TryDequeue(out var matchedCount) ? matchedCount : 0);
         }
 
         public Task<Result> DeleteProjectAsync(
