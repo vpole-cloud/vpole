@@ -22,8 +22,9 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
     public async Task OperatorCreateAsync_CreatesSecretAndClusterCustomResource()
     {
         var cluster = BuildOperatorCluster();
-        IPostgresClusterSecretStore secretStore = new KubernetesPostgresClusterSecretStore(Kubernetes);
-        IPostgresClusterDeploymentBackend backend = new OperatorPostgresClusterDeploymentBackend(Kubernetes, CreateSettings());
+        var clientProvider = new FixedKubernetesClientProvider(Kubernetes);
+        IPostgresClusterSecretStore secretStore = new KubernetesPostgresClusterSecretStore(clientProvider);
+        IPostgresClusterDeploymentBackend backend = new OperatorPostgresClusterDeploymentBackend(clientProvider, CreateSettings());
 
         await secretStore.CreateAsync(NamespaceName, cluster.Id, "postgres-user", "initial-secret", CancellationToken.None);
         await backend.CreateAsync(cluster, "postgres-user", CancellationToken.None);
@@ -47,8 +48,9 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
     public async Task OperatorCreateAsync_WaitsForClusterReadiness_AndExecutesSimpleSql()
     {
         var cluster = BuildOperatorCluster();
-        IPostgresClusterSecretStore secretStore = new KubernetesPostgresClusterSecretStore(Kubernetes);
-        IPostgresClusterDeploymentBackend backend = new OperatorPostgresClusterDeploymentBackend(Kubernetes, CreateSettings());
+        var clientProvider = new FixedKubernetesClientProvider(Kubernetes);
+        IPostgresClusterSecretStore secretStore = new KubernetesPostgresClusterSecretStore(clientProvider);
+        IPostgresClusterDeploymentBackend backend = new OperatorPostgresClusterDeploymentBackend(clientProvider, CreateSettings());
 
         await secretStore.CreateAsync(NamespaceName, cluster.Id, "postgres-user", "initial-secret", CancellationToken.None);
         await backend.CreateAsync(cluster, "postgres-user", CancellationToken.None);
@@ -73,7 +75,8 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
     public async Task UpdatePasswordAsync_RewritesSecret()
     {
         var cluster = BuildOperatorCluster();
-        IPostgresClusterSecretStore secretStore = new KubernetesPostgresClusterSecretStore(Kubernetes);
+        IPostgresClusterSecretStore secretStore = new KubernetesPostgresClusterSecretStore(
+            new FixedKubernetesClientProvider(Kubernetes));
 
         await secretStore.CreateAsync(NamespaceName, cluster.Id, "postgres-user", "initial-secret", CancellationToken.None);
         await secretStore.UpdatePasswordAsync(NamespaceName, cluster.Id, "rotated-secret", CancellationToken.None);
@@ -90,8 +93,9 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
     public async Task OperatorDeleteAsync_RemovesSecretAndCluster()
     {
         var cluster = BuildOperatorCluster();
-        IPostgresClusterSecretStore secretStore = new KubernetesPostgresClusterSecretStore(Kubernetes);
-        IPostgresClusterDeploymentBackend backend = new OperatorPostgresClusterDeploymentBackend(Kubernetes, CreateSettings());
+        var clientProvider = new FixedKubernetesClientProvider(Kubernetes);
+        IPostgresClusterSecretStore secretStore = new KubernetesPostgresClusterSecretStore(clientProvider);
+        IPostgresClusterDeploymentBackend backend = new OperatorPostgresClusterDeploymentBackend(clientProvider, CreateSettings());
 
         await secretStore.CreateAsync(NamespaceName, cluster.Id, "postgres-user", "initial-secret", CancellationToken.None);
         await backend.CreateAsync(cluster, "postgres-user", CancellationToken.None);
@@ -112,8 +116,9 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
     public async Task StatefulSetCreateAsync_WaitsForPodReadiness_AndExecutesSimpleSql()
     {
         var cluster = BuildStatefulSetCluster();
-        IPostgresClusterSecretStore secretStore = new KubernetesPostgresClusterSecretStore(Kubernetes);
-        IPostgresClusterDeploymentBackend backend = new StatefulSetPostgresClusterDeploymentBackend(Kubernetes, CreateSettings());
+        var clientProvider = new FixedKubernetesClientProvider(Kubernetes);
+        IPostgresClusterSecretStore secretStore = new KubernetesPostgresClusterSecretStore(clientProvider);
+        IPostgresClusterDeploymentBackend backend = new StatefulSetPostgresClusterDeploymentBackend(clientProvider, CreateSettings());
 
         await secretStore.CreateAsync(NamespaceName, cluster.Id, "postgres-user", "initial-secret", CancellationToken.None);
         await backend.CreateAsync(cluster, "postgres-user", CancellationToken.None);
@@ -138,8 +143,9 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
     public async Task StatefulSetDeleteAsync_RemovesResources()
     {
         var cluster = BuildStatefulSetCluster();
-        IPostgresClusterSecretStore secretStore = new KubernetesPostgresClusterSecretStore(Kubernetes);
-        IPostgresClusterDeploymentBackend backend = new StatefulSetPostgresClusterDeploymentBackend(Kubernetes, CreateSettings());
+        var clientProvider = new FixedKubernetesClientProvider(Kubernetes);
+        IPostgresClusterSecretStore secretStore = new KubernetesPostgresClusterSecretStore(clientProvider);
+        IPostgresClusterDeploymentBackend backend = new StatefulSetPostgresClusterDeploymentBackend(clientProvider, CreateSettings());
 
         await secretStore.CreateAsync(NamespaceName, cluster.Id, "postgres-user", "initial-secret", CancellationToken.None);
         await backend.CreateAsync(cluster, "postgres-user", CancellationToken.None);

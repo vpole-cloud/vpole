@@ -1,4 +1,3 @@
-using k8s;
 using MassTransit;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -8,6 +7,7 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Events;
@@ -85,13 +85,14 @@ public sealed class DeleteWebServiceHandler(
 }
 
 public class DeleteWebServiceFromKubernetesOnWebServiceDeletedConsumer(
-    IKubernetes kubernetes
+    IKubernetesClientProvider kubernetesClientProvider
     ) : IConsumer<WebServiceDeletedEvent>
 {
     public async Task Consume(ConsumeContext<WebServiceDeletedEvent> context)
     {
         var message = context.Message;
         var ct = context.CancellationToken;
+        var kubernetes = await kubernetesClientProvider.GetDefaultAsync(ct);
         
         await WebServiceKubernetesResourceManager.DeleteAsync(
             kubernetes,

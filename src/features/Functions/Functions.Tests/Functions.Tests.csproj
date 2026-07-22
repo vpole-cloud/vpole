@@ -22,6 +22,7 @@
     <ProjectReference Include="..\Functions.Application\Functions.Application.csproj" />
     <ProjectReference Include="..\Functions.Domain\Functions.Domain.csproj" />
     <ProjectReference Include="..\Functions.Runtime\Functions.Runtime.csproj" />
+    <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

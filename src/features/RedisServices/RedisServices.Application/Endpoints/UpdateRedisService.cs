@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using FluentValidation;
-using k8s;
 using MassTransit;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -12,6 +11,7 @@ using Pole.Database;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Events;
@@ -159,7 +159,7 @@ public sealed class UpdateRedisServiceHandler(
 
 public class UpdateRedisServiceInKubernetesOnRedisServiceUpdatedConsumer(
     IRedisDbContext dbContext,
-    IKubernetes kubernetes)
+    IKubernetesClientProvider kubernetesClientProvider)
     : IConsumer<RedisServiceUpdatedEvent>
 {
     public async Task Consume(ConsumeContext<RedisServiceUpdatedEvent> context)
@@ -171,6 +171,7 @@ public class UpdateRedisServiceInKubernetesOnRedisServiceUpdatedConsumer(
         if (redis is null) return;
 
         var inKuber = redis.ToKubernetes();
+        var kubernetes = await kubernetesClientProvider.GetDefaultAsync(ct);
 
         await RedisKubernetesResourceManager.ReplaceAsync(kubernetes, inKuber, ct);
     }

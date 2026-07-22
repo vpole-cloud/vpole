@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Pole.Features.DeploymentTargets.Application</AssemblyName>
+    <RootNamespace>Pole.Features.DeploymentTargets.Application</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
+    <ProjectReference Include="..\DeploymentTargets.Domain\DeploymentTargets.Domain.csproj" />
+    <ProjectReference Include="..\..\..\shared\Encryption\Encryption.csproj" />
+    <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
+    <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
+    <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
+    <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="KubernetesClient" />
+  </ItemGroup>
+
+</Project>

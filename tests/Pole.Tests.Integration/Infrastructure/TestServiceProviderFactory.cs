@@ -2,6 +2,8 @@ using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.DeploymentTargets.Application.Endpoints;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Postgres.Application.Common;
@@ -38,6 +40,7 @@ public static class TestServiceProviderFactory
         typeof(ResourceGroupEndpoints).Assembly,
         typeof(RedisServiceEndpoints).Assembly,
         typeof(DnsRecordEndpoints).Assembly,
+        typeof(DeploymentTargetFeature).Assembly,
         typeof(SearchEndpoints).Assembly,
         typeof(StorageProfileEndpoints).Assembly
     ];
@@ -65,6 +68,7 @@ public static class TestServiceProviderFactory
             typeof(WebServiceQuotaProfile).Assembly,
             typeof(PostgresQuotaProfile).Assembly);
         services.AddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
+        services.AddSingleton<IDeploymentTargetLookup, TestDeploymentTargetLookup>();
         services.AddSingleton<InMemoryPostgresClusterSecretStore>();
         services.AddSingleton<IPostgresClusterSecretStore>(sp => sp.GetRequiredService<InMemoryPostgresClusterSecretStore>());
         services.AddMigrations(Assemblies);

@@ -47,6 +47,11 @@
     <Project Path="src/features/ContainerRegistries/ContainerRegistries.Contracts/ContainerRegistries.Contracts.csproj" />
     <Project Path="src/features/ContainerRegistries/ContainerRegistries.Domain/ContainerRegistries.Domain.csproj" />
   </Folder>
+  <Folder Name="/features/DeploymentTargets/">
+    <Project Path="src/features/DeploymentTargets/DeploymentTargets.Application/DeploymentTargets.Application.csproj" />
+    <Project Path="src/features/DeploymentTargets/DeploymentTargets.Contracts/DeploymentTargets.Contracts.csproj" />
+    <Project Path="src/features/DeploymentTargets/DeploymentTargets.Domain/DeploymentTargets.Domain.csproj" />
+  </Folder>
   <Folder Name="/features/SourceBuilds/">
     <Project Path="src/features/SourceBuilds/SourceBuilds.Application/SourceBuilds.Application.csproj" />
     <Project Path="src/features/SourceBuilds/SourceBuilds.Contracts/SourceBuilds.Contracts.csproj" />

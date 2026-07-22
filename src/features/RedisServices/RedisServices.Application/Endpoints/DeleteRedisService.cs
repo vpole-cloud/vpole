@@ -1,4 +1,3 @@
-using k8s;
 using MassTransit;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -8,6 +7,7 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Events;
@@ -77,13 +77,14 @@ public sealed class DeleteRedisServiceHandler(
 }
 
 public class DeleteRedisServiceFromKubernetesOnRedisServiceDeletedConsumer(
-    IKubernetes kubernetes
+    IKubernetesClientProvider kubernetesClientProvider
     ) : IConsumer<RedisServiceDeletedEvent>
 {
     public async Task Consume(ConsumeContext<RedisServiceDeletedEvent> context)
     {
         var message = context.Message;
         var ct = context.CancellationToken;
+        var kubernetes = await kubernetesClientProvider.GetDefaultAsync(ct);
 
         await RedisKubernetesResourceManager.DeleteAsync(kubernetes, message.Name, message.Spec.KubernetesNamespace, ct);
     }

@@ -1,4 +1,5 @@
 using Pole.Features.ContainerRegistries.Application.Common;
+using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.Functions.Application.Common;
@@ -24,6 +25,8 @@ public static class MapApi
 
         group.MapResourceGroupEndpoints()
             .MapContainerRegistryEndpoints()
+            .MapDeploymentTargetEndpoints()
+            .MapDeploymentTargetEncryptionEndpoints()
             .MapGitProviderEndpoints()
             .MapFunctionAppEndpoints()
             .MapSourceBuildEndpoints()

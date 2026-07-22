@@ -1,5 +1,7 @@
 # Envelope Encryption Operations
 
+Platform-owned Kubernetes credentials use the same envelope primitive with target-scoped associated data. Their import, rotation, and owner-specific rewrap flow are documented in [deployment targets](deployment-targets.md).
+
 Pole uses envelope encryption for sensitive values that it owns. A fresh data-encryption key
 (DEK) protects each sensitive value version, and a configured key-encryption key (KEK) wraps that
 DEK. The persisted envelope contains the algorithm version, provider ID, KEK ID and version,

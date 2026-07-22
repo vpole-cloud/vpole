@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using FluentValidation;
-using k8s;
 using MassTransit;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -10,6 +9,7 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
@@ -46,12 +46,19 @@ public sealed class CreateRedisServiceHandler(
     IRedisDbContext dbContext,
     IResourceGroupLookup resourceGroupLookup,
     IStorageProfileResolver storageProfileResolver,
-    IQuotaAdmissionExecutor quotaAdmissionExecutor)
+    IQuotaAdmissionExecutor quotaAdmissionExecutor,
+    IDeploymentTargetLookup deploymentTargetLookup)
     : IMediatorHandler<CreateRedisServiceRequest, CreateRedisServiceResponse>
 {
     public async Task<Result<CreateRedisServiceResponse>> HandleAsync(CreateRedisServiceRequest request,
         CancellationToken cancellationToken = default)
     {
+        var targetAdmission = await deploymentTargetLookup.ResolveForNewWorkloadAsync(
+            deploymentTargetId: null,
+            cancellationToken);
+        if (!targetAdmission.TryGetValue(out _, out var targetAdmissionFailure))
+            return targetAdmissionFailure;
+
         var placementResult = await resourceGroupLookup.GetPlacementAsync(
             request.TenantId,
             request.Body.ResourceGroupId,
@@ -102,7 +109,7 @@ public sealed class CreateRedisServiceHandler(
 }
 
 public class ProvisionRedisServiceOnRedisServiceCreatedConsumer(
-    IKubernetes kubernetes)
+    IKubernetesClientProvider kubernetesClientProvider)
     : IConsumer<RedisServiceCreatedEvent>
 {
     public async Task Consume(ConsumeContext<RedisServiceCreatedEvent> context)
@@ -110,6 +117,7 @@ public class ProvisionRedisServiceOnRedisServiceCreatedConsumer(
         var ct = context.CancellationToken;
         var redis = context.Message.ToRedis();
         var inKuber = redis.ToKubernetes();
+        var kubernetes = await kubernetesClientProvider.GetDefaultAsync(ct);
 
         await RedisKubernetesResourceManager.CreateAsync(kubernetes, inKuber, ct);
     }

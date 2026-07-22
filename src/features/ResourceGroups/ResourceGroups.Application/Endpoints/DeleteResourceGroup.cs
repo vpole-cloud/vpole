@@ -8,6 +8,7 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Events;
@@ -74,13 +75,14 @@ public sealed class DeleteResourceGroupHandler(
 }
 
 public class DeleteKubernetesNamespaceOnResourceGroupDeletedConsumer(
-    IKubernetes kubernetes
+    IKubernetesClientProvider kubernetesClientProvider
     ) : IConsumer<ResourceGroupDeletedEvent>
 {
     public async Task Consume(ConsumeContext<ResourceGroupDeletedEvent> context)
     {
         var message = context.Message;
         var ct = context.CancellationToken;
+        var kubernetes = await kubernetesClientProvider.GetDefaultAsync(ct);
 
         await kubernetes.CoreV1.DeleteNamespaceAsync(
             name: message.KubernetesNamespace,
