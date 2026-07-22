@@ -27,7 +27,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         var webService = BuildSourceBuildE2eWebService();
         var deploymentEvent = CreateDeploymentEvent(webService, "release-k8s");
         var applier = new KubernetesWebServiceDeploymentApplier(
-            Kubernetes,
+            new FixedKubernetesClientProvider(Kubernetes),
             new UnexpectedRegistryAccessProvider());
 
         var result = await applier.ApplyAsync(deploymentEvent);
@@ -53,7 +53,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         Assert.NotNull(deploymentEvent.Spec.Config.PortMappings);
 
         var applier = new KubernetesWebServiceDeploymentApplier(
-            Kubernetes,
+            new FixedKubernetesClientProvider(Kubernetes),
             new UnexpectedRegistryAccessProvider());
         var result = await applier.ApplyAsync(deploymentEvent);
 

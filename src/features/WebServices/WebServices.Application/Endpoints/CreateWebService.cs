@@ -8,6 +8,7 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.DnsRecords.Contracts;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DnsRecords.Events;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
@@ -45,12 +46,19 @@ public sealed class CreateWebServiceHandler(
     IWebServiceDbContext dbContext,
     IDomainNameReservationService domainNameReservationService,
     IResourceGroupLookup resourceGroupLookup,
-    IQuotaAdmissionExecutor quotaAdmissionExecutor)
+    IQuotaAdmissionExecutor quotaAdmissionExecutor,
+    IDeploymentTargetLookup deploymentTargetLookup)
     : IMediatorHandler<CreateWebServiceRequest, CreateWebServiceResponse>
 {
     public async Task<Result<CreateWebServiceResponse>> HandleAsync(CreateWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
+        var targetAdmission = await deploymentTargetLookup.ResolveForNewWorkloadAsync(
+            deploymentTargetId: null,
+            cancellationToken);
+        if (!targetAdmission.TryGetValue(out _, out var targetAdmissionFailure))
+            return targetAdmissionFailure;
+
         var placementResult = await resourceGroupLookup.GetPlacementAsync(
             request.TenantId,
             request.Body.ResourceGroupId,

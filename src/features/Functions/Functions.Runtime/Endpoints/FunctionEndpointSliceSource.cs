@@ -1,6 +1,7 @@
 using System.Runtime.ExceptionServices;
 using k8s;
 using k8s.Models;
+using Pole.Features.DeploymentTargets.Contracts;
 
 namespace Pole.Features.Functions.Runtime.Endpoints;
 
@@ -20,7 +21,7 @@ public interface IFunctionEndpointSliceSource
         CancellationToken cancellationToken);
 }
 
-public sealed class KubernetesFunctionEndpointSliceSource(IKubernetes kubernetes)
+public sealed class KubernetesFunctionEndpointSliceSource(IKubernetesClientProvider kubernetesClientProvider)
     : IFunctionEndpointSliceSource
 {
     private const string ServiceNameLabel = "kubernetes.io/service-name";
@@ -29,6 +30,7 @@ public sealed class KubernetesFunctionEndpointSliceSource(IKubernetes kubernetes
         string? continuationToken,
         CancellationToken cancellationToken)
     {
+        var kubernetes = await kubernetesClientProvider.GetDefaultAsync(cancellationToken);
         var response = await kubernetes.DiscoveryV1.ListEndpointSliceForAllNamespacesAsync(
             allowWatchBookmarks: false,
             continueParameter: continuationToken,
@@ -45,6 +47,7 @@ public sealed class KubernetesFunctionEndpointSliceSource(IKubernetes kubernetes
         string resourceVersion,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        var kubernetes = await kubernetesClientProvider.GetDefaultAsync(cancellationToken);
         Exception? watchError = null;
         var events = kubernetes.DiscoveryV1.WatchListEndpointSliceForAllNamespacesAsync(
             allowWatchBookmarks: true,

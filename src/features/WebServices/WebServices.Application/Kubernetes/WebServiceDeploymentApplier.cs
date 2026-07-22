@@ -1,5 +1,6 @@
 using k8s;
 using Pole.Features.ContainerRegistries.Contracts;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Events;
 using Pole.ResultType;
@@ -12,11 +13,15 @@ public interface IWebServiceDeploymentApplier
 }
 
 public sealed class KubernetesWebServiceDeploymentApplier(
-    IKubernetes kubernetes,
+    IKubernetesClientProvider kubernetesClientProvider,
     IRuntimeRegistryAccessProvider registryAccessProvider) : IWebServiceDeploymentApplier
 {
     public async Task<Result> ApplyAsync(WebServiceDeploymentRequestedEvent deploymentEvent, CancellationToken cancellationToken = default)
     {
+        var clientResult = await ResolveKubernetesAsync(cancellationToken);
+        if (!clientResult.TryGetValue(out var kubernetes, out var clientFailure))
+            return clientFailure;
+
         try
         {
             var metadata = new WebServiceDeploymentMetadata(
@@ -71,6 +76,22 @@ public sealed class KubernetesWebServiceDeploymentApplier(
                 "Unable to prepare web service deployment for Kubernetes.",
                 "Kubernetes",
                 "Kubernetes deployment preparation failed.");
+        }
+    }
+
+    private async Task<Result<IKubernetes>> ResolveKubernetesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var kubernetes = await kubernetesClientProvider.GetDefaultAsync(cancellationToken);
+            return new Success<IKubernetes>(kubernetes);
+        }
+        catch (DeploymentTargetUnavailableException exception)
+        {
+            return Failures.ExternalService(
+                "Unable to prepare web service deployment for Kubernetes.",
+                "Kubernetes",
+                $"Deployment target unavailable ({exception.Reason}).");
         }
     }
 }

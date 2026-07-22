@@ -4,7 +4,6 @@ using Hangfire;
 using Hangfire.Mongo;
 using Hangfire.Mongo.Migration.Strategies;
 using Hangfire.Mongo.Migration.Strategies.Backup;
-using k8s;
 using MassTransit;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -21,6 +20,12 @@ using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.DnsRecords.Contracts;
 using Pole.Features.DnsRecords.Application.Filters;
+using Pole.Features.DeploymentTargets.Application.Bootstrap;
+using Pole.Features.DeploymentTargets.Application.Common;
+using Pole.Features.DeploymentTargets.Application.Connections;
+using Pole.Features.DeploymentTargets.Application.Security;
+using Pole.Features.DeploymentTargets.Application.Validation;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.GitProviders.Application.Analysis;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
@@ -195,11 +200,6 @@ public static class DependencyInjection
                 services.AddHostedService<FunctionUsageAggregatorWorker>();
             }
             services.TryAddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
-            services.AddSingleton<IKubernetes>(_ =>
-            {
-                var config = KubernetesClientConfiguration.BuildConfigFromConfigFile();
-                return new Kubernetes(config);
-            });
             services.AddSingleton<IPostgresClusterSecretStore, KubernetesPostgresClusterSecretStore>();
             services.AddSingleton<IPostgresClusterDeploymentBackend, OperatorPostgresClusterDeploymentBackend>();
             services.AddSingleton<IPostgresClusterDeploymentBackend, StatefulSetPostgresClusterDeploymentBackend>();
@@ -210,6 +210,36 @@ public static class DependencyInjection
             services.TryAddSingleton<IFunctionEndpointRegistry, FunctionEndpointRegistry>();
             services.TryAddSingleton<IFunctionRevisionActivator, FunctionRevisionActivator>();
             services.AddHostedService<FunctionEndpointSliceWatcher>();
+            return services;
+        }
+
+        public IServiceCollection AddDeploymentTargetsFeature(IConfiguration configuration)
+        {
+            services.TryAddSingleton(TimeProvider.System);
+            services.TryAddEnumerable(
+                ServiceDescriptor.Singleton<IValidateOptions<DeploymentTargetOptions>, DeploymentTargetOptionsValidator>());
+            services.AddOptions<DeploymentTargetOptions>()
+                .Bind(configuration.GetSection(DeploymentTargetOptions.SectionName))
+                .ValidateOnStart();
+            services.TryAddSingleton(provider =>
+                provider.GetRequiredService<IOptions<DeploymentTargetOptions>>().Value);
+
+            services.TryAddSingleton<IDeploymentTargetConnectionProtector, DeploymentTargetConnectionProtector>();
+            services.TryAddSingleton<DeploymentTargetConnectionService>();
+            services.TryAddSingleton<IDeploymentTargetConnectionPreparer>(provider =>
+                provider.GetRequiredService<DeploymentTargetConnectionService>());
+            services.TryAddSingleton<IDeploymentTargetKubernetesClientFactory>(provider =>
+                provider.GetRequiredService<DeploymentTargetConnectionService>());
+            services.TryAddSingleton<IDeploymentTargetProbe, DeploymentTargetProbe>();
+            services.TryAddSingleton<KubernetesClientProvider>();
+            services.TryAddSingleton<IKubernetesClientProvider>(provider =>
+                provider.GetRequiredService<KubernetesClientProvider>());
+            services.TryAddSingleton<IDeploymentTargetClientCache>(provider =>
+                provider.GetRequiredService<KubernetesClientProvider>());
+            services.TryAddSingleton<IDeploymentTargetBootstrapper, DeploymentTargetBootstrapper>();
+            services.TryAddScoped<IDeploymentTargetLookup, DeploymentTargetLookup>();
+            services.TryAddScoped<IDeploymentTargetReferenceAdmission, DeploymentTargetReferenceAdmission>();
+            services.TryAddScoped<IDeploymentTargetCredentialRewrapService, DeploymentTargetCredentialRewrapService>();
             return services;
         }
         public IServiceCollection AddEventBus(IConfiguration configuration, Assembly[] assemblies)
@@ -256,6 +286,7 @@ public static class DependencyInjection
             services.TryAddSingleton<IStorageProfileDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IGitProviderDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IContainerRegistryDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.TryAddSingleton<IDeploymentTargetDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ISourceBuildDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IFunctionAppDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.AddHttpContextAccessor();

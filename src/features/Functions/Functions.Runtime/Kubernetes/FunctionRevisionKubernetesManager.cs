@@ -3,6 +3,7 @@ using k8s;
 using k8s.Autorest;
 using k8s.Models;
 using Pole.Features.Core.Kubernetes;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Security;
 using Pole.ResultType;
@@ -38,7 +39,7 @@ public sealed record FunctionReplicaState(
     long CoordinationGeneration = 0);
 
 public sealed class FunctionRevisionKubernetesManager(
-    IKubernetes kubernetes,
+    IKubernetesClientProvider kubernetesClientProvider,
     IEnumerable<IFunctionAgentTrustBundleProvider> trustBundleProviders)
     : IFunctionRevisionKubernetesManager
 {
@@ -49,6 +50,10 @@ public sealed class FunctionRevisionKubernetesManager(
         FunctionRevisionInKubernetes revision,
         CancellationToken cancellationToken = default)
     {
+        var clientResult = await ResolveKubernetesAsync(cancellationToken);
+        if (!clientResult.TryGetValue(out var kubernetes, out var clientFailure))
+            return clientFailure;
+
         try
         {
             var deployment = revision.ToDeployment(trustBundle);
@@ -110,6 +115,10 @@ public sealed class FunctionRevisionKubernetesManager(
         FunctionRevisionInKubernetes revision,
         CancellationToken cancellationToken = default)
     {
+        var clientResult = await ResolveKubernetesAsync(cancellationToken);
+        if (!clientResult.TryGetValue(out var kubernetes, out var clientFailure))
+            return clientFailure;
+
         try
         {
             await KubernetesExtensions.DeleteIfExistsAsync(() =>
@@ -154,6 +163,10 @@ public sealed class FunctionRevisionKubernetesManager(
                 [nameof(replicas)] = ["Replica count is outside the Function revision scaling bounds."]
             });
         }
+
+        var clientResult = await ResolveKubernetesAsync(cancellationToken);
+        if (!clientResult.TryGetValue(out var kubernetes, out var clientFailure))
+            return clientFailure;
 
         try
         {
@@ -202,6 +215,10 @@ public sealed class FunctionRevisionKubernetesManager(
                 [nameof(coordinationGeneration)] = ["Scale coordination generation must be positive."]
             });
         }
+
+        var clientResult = await ResolveKubernetesAsync(cancellationToken);
+        if (!clientResult.TryGetValue(out var kubernetes, out var clientFailure))
+            return clientFailure;
 
         try
         {
@@ -270,6 +287,10 @@ public sealed class FunctionRevisionKubernetesManager(
         FunctionRevisionInKubernetes revision,
         CancellationToken cancellationToken = default)
     {
+        var clientResult = await ResolveKubernetesAsync(cancellationToken);
+        if (!clientResult.TryGetValue(out var kubernetes, out var clientFailure))
+            return clientFailure;
+
         try
         {
             var deployment = await kubernetes.AppsV1.ReadNamespacedDeploymentAsync(
@@ -296,6 +317,22 @@ public sealed class FunctionRevisionKubernetesManager(
                 "Unable to read Function revision replica state from Kubernetes.",
                 "Kubernetes",
                 exception.Message);
+        }
+    }
+
+    private async Task<Result<IKubernetes>> ResolveKubernetesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var kubernetes = await kubernetesClientProvider.GetDefaultAsync(cancellationToken);
+            return new Success<IKubernetes>(kubernetes);
+        }
+        catch (DeploymentTargetUnavailableException exception)
+        {
+            return Failures.ExternalService(
+                "The default Kubernetes deployment target is unavailable.",
+                "Kubernetes",
+                $"Deployment target unavailable ({exception.Reason}).");
         }
     }
 

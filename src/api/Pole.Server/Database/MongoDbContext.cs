@@ -1,6 +1,8 @@
 using MongoDB.Driver;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ContainerRegistries.Domain;
+using Pole.Features.DeploymentTargets.Application.Common;
+using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.DnsRecords.Domain;
 using Pole.Features.GitProviders.Application.Common;
@@ -47,6 +49,7 @@ public class MongoDbContext(
     IUserDbContext,
     IGitProviderDbContext,
     IContainerRegistryDbContext,
+    IDeploymentTargetDbContext,
     ISourceBuildDbContext,
     IFunctionAppDbContext
 {
@@ -72,6 +75,8 @@ public class MongoDbContext(
     public IMongoCollection<SourceRepository> SourceRepositories { get; } = database.GetCollection<SourceRepository>("SourceRepositories");
     public IMongoCollection<RegistryProject> RegistryProjects { get; } = database.GetCollection<RegistryProject>("RegistryProjects");
     public IMongoCollection<RegistryCredential> RegistryCredentials { get; } = database.GetCollection<RegistryCredential>("RegistryCredentials");
+    public IMongoCollection<DeploymentTarget> DeploymentTargets { get; } = database.GetCollection<DeploymentTarget>("DeploymentTargets");
+    public IMongoCollection<DeploymentTargetSettings> DeploymentTargetSettings { get; } = database.GetCollection<DeploymentTargetSettings>("DeploymentTargetSettings");
     public IMongoCollection<SourceBuildConfiguration> SourceBuildConfigurations { get; } = database.GetCollection<SourceBuildConfiguration>("SourceBuildConfigurations");
     public IMongoCollection<SourceBuildJob> SourceBuildJobs { get; } = database.GetCollection<SourceBuildJob>("SourceBuildJobs");
     public IMongoCollection<FunctionApp> FunctionApps { get; } = database.GetCollection<FunctionApp>("FunctionApps");

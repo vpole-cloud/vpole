@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using k8s;
 using k8s.Models;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Security;
@@ -89,7 +90,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
     }
 
     private static FunctionRevisionKubernetesManager CreateManager(IKubernetes kubernetes) =>
-        new(kubernetes, Array.Empty<IFunctionAgentTrustBundleProvider>());
+        new(new FixedKubernetesClientProvider(kubernetes), Array.Empty<IFunctionAgentTrustBundleProvider>());
 
     private static Kubernetes CreateKubernetes(DelegatingHandler handler) =>
         new(
@@ -151,6 +152,17 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
     }
 
     private sealed record RecordedPut(string Path, string Body);
+
+    private sealed class FixedKubernetesClientProvider(IKubernetes kubernetes) : IKubernetesClientProvider
+    {
+        public Task<IKubernetes> GetAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(kubernetes);
+
+        public Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(kubernetes);
+    }
 
     private sealed class DeploymentHandler(V1Deployment deployment) : DelegatingHandler
     {

@@ -20,6 +20,7 @@
     <ProjectReference Include="..\Functions.Application\Functions.Application.csproj" />
     <ProjectReference Include="..\Functions.Domain\Functions.Domain.csproj" />
     <ProjectReference Include="..\Functions.Events\Functions.Events.csproj" />
+    <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
     <ProjectReference Include="..\..\..\shared\Kubernetes\Kubernetes.csproj" />
     <ProjectReference Include="..\..\..\shared\Observability\Observability.csproj" />
     <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />

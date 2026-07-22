@@ -7,6 +7,7 @@ Pole's cross-cutting code design conventions are documented in [engineering guid
 * **.NET 10 / ASP.NET Core**
 * Aspire for local development
 * Custom control-plane APIs (not kubectl wrappers)
+* Database-backed Kubernetes deployment targets with encrypted remote credentials and a zero-configuration local bootstrap; see [deployment targets](deployment-targets.md)
 * Kubernetes official **C# client**
 * **MongoDB**
 * **RabbitMQ** (events, outbox patterns)

@@ -11,6 +11,11 @@ using Pole.Encryption;
 using Pole.ASP.Helpers;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.ContainerRegistries.Application.Common;
+using Pole.Features.DeploymentTargets.Application.Common;
+using Pole.Features.DeploymentTargets.Application.Endpoints;
+using Pole.Features.DeploymentTargets.Application.Migrations;
+using Pole.Features.DeploymentTargets.Application.Validation;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.Functions.Application.Common;
@@ -55,6 +60,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         typeof(DnsRecordEndpoints).Assembly,
         typeof(GitProviderEndpoints).Assembly,
         typeof(ContainerRegistryFeature).Assembly,
+        typeof(DeploymentTargetFeature).Assembly,
         typeof(SourceBuildFeature).Assembly,
         typeof(SearchEndpoints).Assembly,
         typeof(StorageProfileEndpoints).Assembly
@@ -63,17 +69,23 @@ public sealed class TestApiApplication : IAsyncDisposable
     private TestApiApplication(
         WebApplication app,
         FakeGitHubAppClient gitHubClient,
+        TestDeploymentTargetLookup deploymentTargetLookup,
         string encryptionKeyDirectory)
     {
         _app = app;
         _encryptionKeyDirectory = encryptionKeyDirectory;
         GitHubClient = gitHubClient;
+        DeploymentTargetLookup = deploymentTargetLookup;
         Client = app.GetTestClient();
         Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, TestData.TenantId);
     }
 
     public HttpClient Client { get; }
     public FakeGitHubAppClient GitHubClient { get; }
+    private TestDeploymentTargetLookup DeploymentTargetLookup { get; }
+
+    public void RejectNewDeploymentTargetWorkloads() =>
+        DeploymentTargetLookup.RejectNewWorkloads = true;
 
     public static async Task<TestApiApplication> StartAsync(MongoReplicaSetFixture fixture)
     {
@@ -104,7 +116,8 @@ public sealed class TestApiApplication : IAsyncDisposable
             ["EnvelopeEncryption:LocalKeyFile:ActiveKeyVersion"] = "1",
             ["EnvelopeEncryption:LocalKeyFile:Keys:0:Id"] = "api-integration",
             ["EnvelopeEncryption:LocalKeyFile:Keys:0:Version"] = "1",
-            ["EnvelopeEncryption:LocalKeyFile:Keys:0:Path"] = encryptionKeyPath
+            ["EnvelopeEncryption:LocalKeyFile:Keys:0:Path"] = encryptionKeyPath,
+            ["DeploymentTargets:Bootstrap:Enabled"] = "false"
         });
 
         builder.WebHost.UseTestServer();
@@ -132,6 +145,12 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSearchFeature();
         builder.Services.AddGitProvidersFeature();
         builder.Services.AddEnvelopeEncryption(builder.Configuration);
+        builder.Services.AddDeploymentTargetsFeature(builder.Configuration);
+        builder.Services.RemoveAll<IDeploymentTargetProbe>();
+        builder.Services.AddSingleton<IDeploymentTargetProbe, TestDeploymentTargetProbe>();
+        builder.Services.RemoveAll<IDeploymentTargetLookup>();
+        var deploymentTargetLookup = new TestDeploymentTargetLookup();
+        builder.Services.AddSingleton<IDeploymentTargetLookup>(deploymentTargetLookup);
         builder.Services.AddSingleton(new HarborOptions());
         builder.Services.AddContainerRegistriesFeature();
         builder.Services.AddSingleton<ISourceBuildJobDispatcher, TestSourceBuildJobDispatcher>();
@@ -173,6 +192,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         });
 
         var app = builder.Build();
+        await new DeploymentTargetMigration().Up(fixture.Database);
         app.UseTraceContext();
         app.UseCors("frontend-dev");
         app.UseAuthentication();
@@ -183,6 +203,8 @@ public sealed class TestApiApplication : IAsyncDisposable
             .RequireAuthorization()
             .MapResourceGroupEndpoints()
             .MapContainerRegistryEndpoints()
+            .MapDeploymentTargetEndpoints()
+            .MapDeploymentTargetEncryptionEndpoints()
             .MapWebServiceEndpoints()
             .MapRedisServiceEndpoints()
             .MapFunctionAppEndpoints()
@@ -196,7 +218,11 @@ public sealed class TestApiApplication : IAsyncDisposable
 
         await app.StartAsync();
 
-        return new TestApiApplication(app, gitHubClient, encryptionKeyDirectory);
+        return new TestApiApplication(
+            app,
+            gitHubClient,
+            deploymentTargetLookup,
+            encryptionKeyDirectory);
     }
 
     public async ValueTask DisposeAsync()

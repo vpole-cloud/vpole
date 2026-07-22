@@ -5,6 +5,7 @@ open System.Text
 open System.Threading
 open System.Threading.Tasks
 open Pole.Features.Core.Kubernetes
+open Pole.Features.DeploymentTargets.Contracts
 open k8s
 open k8s.Autorest
 open k8s.Models
@@ -30,7 +31,7 @@ type IPostgresClusterSecretStore =
         clusterId : string *
         cancellationToken : CancellationToken -> Task<PostgresClusterCredentials option>
 
-type KubernetesPostgresClusterSecretStore(kubernetes : IKubernetes) =
+type KubernetesPostgresClusterSecretStore(kubernetesClientProvider : IKubernetesClientProvider) =
     let tryGetStringData (secret : V1Secret) key =
         match secret.StringData with
         | null -> None
@@ -57,17 +58,22 @@ type KubernetesPostgresClusterSecretStore(kubernetes : IKubernetes) =
 
     interface IPostgresClusterSecretStore with
         member _.CreateAsync(namespaceName, clusterId, username, password, cancellationToken) =
-            let secret = V1Secret()
-            secret.ApiVersion <- "v1"
-            secret.Kind <- "Secret"
-            secret.Metadata <- V1ObjectMeta(Name = PostgresClusterKubernetesBuilder.buildSecretName clusterId, NamespaceProperty = namespaceName)
-            secret.StringData <- dict [ "username", username; "password", password ]
+            task {
+                let! kubernetes = kubernetesClientProvider.GetDefaultAsync(cancellationToken)
+                let secret = V1Secret()
+                secret.ApiVersion <- "v1"
+                secret.Kind <- "Secret"
+                secret.Metadata <- V1ObjectMeta(Name = PostgresClusterKubernetesBuilder.buildSecretName clusterId, NamespaceProperty = namespaceName)
+                secret.StringData <- dict [ "username", username; "password", password ]
 
-            KubernetesExtensions.CreateIfNotExistAsync(fun () ->
-                kubernetes.CoreV1.CreateNamespacedSecretAsync(secret, namespaceName, cancellationToken = cancellationToken))
+                do!
+                    KubernetesExtensions.CreateIfNotExistAsync(fun () ->
+                        kubernetes.CoreV1.CreateNamespacedSecretAsync(secret, namespaceName, cancellationToken = cancellationToken))
+            }
 
         member _.UpdatePasswordAsync(namespaceName, clusterId, password, cancellationToken) =
             task {
+                let! kubernetes = kubernetesClientProvider.GetDefaultAsync(cancellationToken)
                 let secretName = PostgresClusterKubernetesBuilder.buildSecretName clusterId
                 let! secret = kubernetes.CoreV1.ReadNamespacedSecretAsync(secretName, namespaceName, cancellationToken = cancellationToken)
 
@@ -98,6 +104,7 @@ type KubernetesPostgresClusterSecretStore(kubernetes : IKubernetes) =
         member _.GetAsync(namespaceName, clusterId, cancellationToken) =
             task {
                 try
+                    let! kubernetes = kubernetesClientProvider.GetDefaultAsync(cancellationToken)
                     let secretName = PostgresClusterKubernetesBuilder.buildSecretName clusterId
                     let! secret = kubernetes.CoreV1.ReadNamespacedSecretAsync(secretName, namespaceName, cancellationToken = cancellationToken)
                     return toCredentials secret

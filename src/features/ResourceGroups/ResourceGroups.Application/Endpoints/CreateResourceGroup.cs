@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
@@ -51,13 +52,20 @@ public sealed record CreateResourceGroupRequestBody(
 
 public sealed class CreateResourceGroupHandler(
     IKubernetesNamespaceGenerator namespaceGenerator,
-    IResourceGroupDbContext dbContext
+    IResourceGroupDbContext dbContext,
+    IDeploymentTargetLookup deploymentTargetLookup
     ) : IMediatorHandler<CreateResourceGroupRequest, ResourceGroupDto>
 {
     public async Task<Result<ResourceGroupDto>> HandleAsync(
         CreateResourceGroupRequest request,
         CancellationToken cancellationToken = default)
     {
+        var admission = await deploymentTargetLookup.ResolveForNewWorkloadAsync(
+            deploymentTargetId: null,
+            cancellationToken);
+        if (!admission.TryGetValue(out _, out var admissionFailure))
+            return admissionFailure;
+
         var createOptions = ResourceGroupFactory.DefaultCreateOptions with
         {
             Tags = request.Body.Tags
@@ -99,13 +107,14 @@ public sealed class CreateResourceGroupValidator : AbstractValidator<CreateResou
 }
 
 public class ProvisionResourceGroupOnResourceGroupCreatedConsumer(
-    IKubernetes kubernetes
+    IKubernetesClientProvider kubernetesClientProvider
     ) : IConsumer<ResourceGroupCreatedEvent>
 {
     public async Task Consume(ConsumeContext<ResourceGroupCreatedEvent> context)
     {
         var message = context.Message;
         var ct = context.CancellationToken;
+        var kubernetes = await kubernetesClientProvider.GetDefaultAsync(ct);
 
         await kubernetes.CoreV1.CreateNamespaceAsync(new V1Namespace()
         {

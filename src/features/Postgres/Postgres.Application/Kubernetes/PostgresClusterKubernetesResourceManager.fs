@@ -6,6 +6,7 @@ open System.Threading.Tasks
 open k8s
 open Pole.Features.Postgres.Domain
 open Pole.Features.Core.Kubernetes
+open Pole.Features.DeploymentTargets.Contracts
 open Pole.Features.Postgres.Application.Common
 
 type IPostgresClusterDeploymentManager =
@@ -19,23 +20,30 @@ type IPostgresClusterDeploymentBackend =
     abstract member UpdateAsync : cluster : PostgresCluster * username : string * cancellationToken : CancellationToken -> Task
     abstract member DeleteAsync : clusterId : string * namespaceName : string * cancellationToken : CancellationToken -> Task
 
-type OperatorPostgresClusterDeploymentBackend(kubernetes : IKubernetes, settings : PostgresSettings) =
+type OperatorPostgresClusterDeploymentBackend(
+    kubernetesClientProvider : IKubernetesClientProvider,
+    settings : PostgresSettings) =
     interface IPostgresClusterDeploymentBackend with
         member _.DeploymentMode = PostgresDeploymentMode.Operator
 
         member _.CreateAsync(cluster, username, cancellationToken) =
-            KubernetesExtensions.CreateIfNotExistAsync(fun () ->
-                kubernetes.CustomObjects.CreateNamespacedCustomObjectAsync(
-                    PostgresClusterKubernetesBuilder.buildCluster cluster username settings,
-                    group = "postgresql.cnpg.io",
-                    version = "v1",
-                    namespaceParameter = cluster.Spec.KubernetesNamespace,
-                    plural = "clusters",
-                    cancellationToken = cancellationToken)
-                :> Task)
+            task {
+                let! kubernetes = kubernetesClientProvider.GetDefaultAsync(cancellationToken)
+                do!
+                    KubernetesExtensions.CreateIfNotExistAsync(fun () ->
+                        kubernetes.CustomObjects.CreateNamespacedCustomObjectAsync(
+                            PostgresClusterKubernetesBuilder.buildCluster cluster username settings,
+                            group = "postgresql.cnpg.io",
+                            version = "v1",
+                            namespaceParameter = cluster.Spec.KubernetesNamespace,
+                            plural = "clusters",
+                            cancellationToken = cancellationToken)
+                        :> Task)
+            }
 
         member _.UpdateAsync(cluster, username, cancellationToken) =
             task {
+                let! kubernetes = kubernetesClientProvider.GetDefaultAsync(cancellationToken)
                 let! existingResource =
                     kubernetes.CustomObjects.GetNamespacedCustomObjectAsync(
                         group = "postgresql.cnpg.io",
@@ -69,6 +77,7 @@ type OperatorPostgresClusterDeploymentBackend(kubernetes : IKubernetes, settings
 
         member _.DeleteAsync(clusterId, namespaceName, cancellationToken) =
             task {
+                let! kubernetes = kubernetesClientProvider.GetDefaultAsync(cancellationToken)
                 do!
                     KubernetesExtensions.DeleteIfExistsAsync(fun () ->
                         kubernetes.CustomObjects.DeleteNamespacedCustomObjectAsync(
@@ -87,7 +96,9 @@ type OperatorPostgresClusterDeploymentBackend(kubernetes : IKubernetes, settings
                             cancellationToken = cancellationToken))
             }
 
-type StatefulSetPostgresClusterDeploymentBackend(kubernetes : IKubernetes, settings : PostgresSettings) =
+type StatefulSetPostgresClusterDeploymentBackend(
+    kubernetesClientProvider : IKubernetesClientProvider,
+    settings : PostgresSettings) =
     let dataPersistentVolumeClaimName clusterId =
         $"postgres-data-{clusterId}-0"
 
@@ -96,6 +107,7 @@ type StatefulSetPostgresClusterDeploymentBackend(kubernetes : IKubernetes, setti
 
         member _.CreateAsync(cluster, _, cancellationToken) =
             task {
+                let! kubernetes = kubernetesClientProvider.GetDefaultAsync(cancellationToken)
                 do!
                     KubernetesExtensions.CreateIfNotExistAsync(fun () ->
                         kubernetes.CoreV1.CreateNamespacedServiceAsync(
@@ -128,6 +140,7 @@ type StatefulSetPostgresClusterDeploymentBackend(kubernetes : IKubernetes, setti
 
         member _.UpdateAsync(cluster, _, cancellationToken) =
             task {
+                let! kubernetes = kubernetesClientProvider.GetDefaultAsync(cancellationToken)
                 do!
                     kubernetes.CoreV1.ReplaceNamespacedServiceAsync(
                         PostgresStatefulSetKubernetesBuilder.buildReadWriteService cluster,
@@ -158,6 +171,7 @@ type StatefulSetPostgresClusterDeploymentBackend(kubernetes : IKubernetes, setti
             let readWriteServiceName = PostgresClusterKubernetesBuilder.buildReadWriteServiceName clusterId
 
             task {
+                let! kubernetes = kubernetesClientProvider.GetDefaultAsync(cancellationToken)
                 do!
                     KubernetesExtensions.DeleteIfExistsAsync(fun () ->
                         kubernetes.AppsV1.DeleteNamespacedStatefulSetAsync(

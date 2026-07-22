@@ -2,6 +2,8 @@
 
 Pole currently uses a **backend integration-first** testing setup.
 
+Deployment-target changes should cover bootstrap idempotency and replica races, platform-admin authorization, write-only encrypted credentials, kubeconfig input hardening, two-target client routing, revision/connection-version cache behavior, workload admission, health observation fencing, and service-account metadata tamper resistance. The focused Mongo-backed suite is under `tests/Pole.Tests.Integration/DeploymentTargets`.
+
 The shared integration test suite lives in:
 
 - `tests/Pole.Tests.Integration`

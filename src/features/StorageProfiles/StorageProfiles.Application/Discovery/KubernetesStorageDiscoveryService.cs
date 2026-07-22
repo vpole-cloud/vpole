@@ -1,12 +1,14 @@
 using k8s;
 using k8s.Models;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.StorageProfiles.Application.Discovery;
 
-public sealed class KubernetesStorageDiscoveryService(IKubernetes kubernetes) : IStorageDiscoveryService
+public sealed class KubernetesStorageDiscoveryService(IKubernetesClientProvider kubernetesClientProvider)
+    : IStorageDiscoveryService
 {
     private static readonly string[] DefaultStorageClassAnnotationKeys =
     [
@@ -17,6 +19,10 @@ public sealed class KubernetesStorageDiscoveryService(IKubernetes kubernetes) : 
     public async Task<Result<IReadOnlyCollection<KubernetesStorageClassDto>>> GetStorageClassesAsync(
         CancellationToken cancellationToken = default)
     {
+        var clientResult = await ResolveKubernetesAsync(cancellationToken);
+        if (!clientResult.TryGetValue(out var kubernetes, out var clientFailure))
+            return clientFailure;
+
         try
         {
             var storageClasses = await kubernetes.StorageV1.ListStorageClassAsync(cancellationToken: cancellationToken);
@@ -38,6 +44,10 @@ public sealed class KubernetesStorageDiscoveryService(IKubernetes kubernetes) : 
     public async Task<Result<IReadOnlyCollection<KubernetesPersistentVolumeDto>>> GetPersistentVolumesAsync(
         CancellationToken cancellationToken = default)
     {
+        var clientResult = await ResolveKubernetesAsync(cancellationToken);
+        if (!clientResult.TryGetValue(out var kubernetes, out var clientFailure))
+            return clientFailure;
+
         try
         {
             var persistentVolumes = await kubernetes.CoreV1.ListPersistentVolumeAsync(cancellationToken: cancellationToken);
@@ -59,6 +69,10 @@ public sealed class KubernetesStorageDiscoveryService(IKubernetes kubernetes) : 
     public async Task<Result<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>> GetPersistentVolumeClaimsAsync(
         CancellationToken cancellationToken = default)
     {
+        var clientResult = await ResolveKubernetesAsync(cancellationToken);
+        if (!clientResult.TryGetValue(out var kubernetes, out var clientFailure))
+            return clientFailure;
+
         try
         {
             var persistentVolumeClaims = await kubernetes.CoreV1.ListPersistentVolumeClaimForAllNamespacesAsync(
@@ -81,6 +95,10 @@ public sealed class KubernetesStorageDiscoveryService(IKubernetes kubernetes) : 
 
     public async Task<Result<IReadOnlySet<string>>> GetStorageClassNamesAsync(CancellationToken cancellationToken = default)
     {
+        var clientResult = await ResolveKubernetesAsync(cancellationToken);
+        if (!clientResult.TryGetValue(out var kubernetes, out var clientFailure))
+            return clientFailure;
+
         try
         {
             var storageClasses = await kubernetes.StorageV1.ListStorageClassAsync(cancellationToken: cancellationToken);
@@ -96,6 +114,22 @@ public sealed class KubernetesStorageDiscoveryService(IKubernetes kubernetes) : 
         catch (Exception exception)
         {
             return Failures.ExternalService("Unable to query Kubernetes storage classes.", "Kubernetes", exception.GetType().Name);
+        }
+    }
+
+    private async Task<Result<IKubernetes>> ResolveKubernetesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var kubernetes = await kubernetesClientProvider.GetDefaultAsync(cancellationToken);
+            return new Success<IKubernetes>(kubernetes);
+        }
+        catch (DeploymentTargetUnavailableException exception)
+        {
+            return Failures.ExternalService(
+                "Unable to resolve the default Kubernetes deployment target.",
+                "Kubernetes",
+                $"Deployment target unavailable ({exception.Reason}).");
         }
     }
 

@@ -9,6 +9,7 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
@@ -118,13 +119,20 @@ public sealed class CreateFunctionAppHandler(
     IFunctionAppDbContext dbContext,
     IResourceGroupLookup resourceGroupLookup,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IDeploymentTargetLookup deploymentTargetLookup)
     : IMediatorHandler<CreateFunctionAppRequest, CreateFunctionAppResponse>
 {
     public async Task<Result<CreateFunctionAppResponse>> HandleAsync(
         CreateFunctionAppRequest request,
         CancellationToken cancellationToken = default)
     {
+        var targetAdmission = await deploymentTargetLookup.ResolveForNewWorkloadAsync(
+            deploymentTargetId: null,
+            cancellationToken);
+        if (!targetAdmission.TryGetValue(out _, out var targetAdmissionFailure))
+            return targetAdmissionFailure;
+
         var placementResult = await resourceGroupLookup.GetPlacementAsync(
             request.TenantId,
             request.Body.ResourceGroupId,
