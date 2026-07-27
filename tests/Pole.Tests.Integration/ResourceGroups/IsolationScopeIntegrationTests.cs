@@ -106,6 +106,109 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
     }
 
     [Fact]
+    public async Task Delete_EmptyAdditionalScope_RemovesItImmediately()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var scope = IsolationScopeFactory.CreateAdditional(
+            resourceGroup.TenantId,
+            resourceGroup.Id,
+            "temporary",
+            IsolationScopeFactory.DefaultOptions);
+        await DbContext.IsolationScopes.InsertOneAsync(scope);
+
+        var result = await Mediator.Send(new DeleteIsolationScopeRequest(
+            resourceGroup.Id,
+            scope.Id,
+            resourceGroup.TenantId));
+
+        Assert.True(result.TryGetValue(
+            out DeleteIsolationScopeResponse? response,
+            out Failure? failure));
+        Assert.Null(failure);
+        Assert.NotNull(response);
+        Assert.True(response.Deleted);
+        Assert.False(await DbContext.IsolationScopes
+            .Find(item => item.Id == scope.Id)
+            .AnyAsync());
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+            "isolation-scope-deletion-requested"));
+    }
+
+    [Fact]
+    public async Task Delete_DefaultScope_ReturnsConflict()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+
+        var result = await Mediator.Send(new DeleteIsolationScopeRequest(
+            resourceGroup.Id,
+            resourceGroup.DefaultIsolationScopeId,
+            resourceGroup.TenantId));
+
+        Assert.False(result.TryGetValue(out _, out var failure));
+        Assert.IsType<ConflictFailure>(failure);
+        Assert.True(await DbContext.IsolationScopes
+            .Find(scope => scope.Id == resourceGroup.DefaultIsolationScopeId)
+            .AnyAsync());
+    }
+
+    [Fact]
+    public async Task Delete_ScopeWithRuntimeCells_RequestsAsynchronousDeletion()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var scope = IsolationScopeFactory.CreateAdditional(
+            resourceGroup.TenantId,
+            resourceGroup.Id,
+            "private",
+            IsolationScopeFactory.DefaultOptions);
+        await DbContext.IsolationScopes.InsertOneAsync(scope);
+        var cells = new[]
+        {
+            RuntimeCellFactory.Create(
+                resourceGroup.TenantId,
+                resourceGroup.Id,
+                scope.Id,
+                "507f1f77bcf86cd799439071",
+                "pole-private-a",
+                RuntimeCellFactory.DefaultOptions),
+            RuntimeCellFactory.Create(
+                resourceGroup.TenantId,
+                resourceGroup.Id,
+                scope.Id,
+                "507f1f77bcf86cd799439072",
+                "pole-private-b",
+                RuntimeCellFactory.DefaultOptions)
+        };
+        await DbContext.RuntimeCells.InsertManyAsync(cells);
+
+        var result = await Mediator.Send(new DeleteIsolationScopeRequest(
+            resourceGroup.Id,
+            scope.Id,
+            resourceGroup.TenantId));
+
+        Assert.True(result.TryGetValue(
+            out DeleteIsolationScopeResponse? response,
+            out Failure? failure));
+        Assert.Null(failure);
+        Assert.NotNull(response);
+        Assert.False(response.Deleted);
+        Assert.True(response.DeletionRequested);
+        var savedScope = await DbContext.IsolationScopes
+            .Find(item => item.Id == scope.Id)
+            .SingleAsync();
+        Assert.IsType<DeletingIsolationScopeLifecycleState>(savedScope.Lifecycle);
+        var savedCells = await DbContext.RuntimeCells
+            .Find(item => item.IsolationScopeId == scope.Id)
+            .ToListAsync();
+        Assert.Equal(2, savedCells.Count);
+        Assert.All(savedCells, cell =>
+            Assert.IsType<DeletingRuntimeCellState>(cell.State));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+            "isolation-scope-deletion-requested"));
+        Assert.Equal(2L, await DbContext.CountOutboxMessagesAsync(
+            "runtime-cell-deletion-requested"));
+    }
+
+    [Fact]
     public async Task Migration_CreatesExpectedIndexes()
     {
         var scopeIndexes = await (await DbContext.IsolationScopes.Indexes.ListAsync())
@@ -119,6 +222,8 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.Contains(scopeIndexes, index =>
             index["name"] == "UX_IsolationScopes_ResourceGroup_Name" &&
             index["unique"].AsBoolean);
+        Assert.Contains(scopeIndexes, index =>
+            index["name"] == "IX_IsolationScopes_Lifecycle_UpdatedAt");
         Assert.Contains(cellIndexes, index =>
             index["name"] == "UX_RuntimeCells_Scope_Target" &&
             index["unique"].AsBoolean);

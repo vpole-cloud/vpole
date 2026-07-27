@@ -1,7 +1,9 @@
+using System.Collections.Immutable;
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.Shared.Models;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -81,5 +83,67 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
 
         var outboxCount = await DbContext.CountOutboxMessagesAsync("resource-group-deleted");
         Assert.Equal(1L, outboxCount);
+    }
+
+    [Fact]
+    public async Task Delete_ReturnsConflict_WhenLegacyResourcesAreRegistered()
+    {
+        var seeded = TestData.SeedResourceGroup();
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(seeded with
+        {
+            Resources = ImmutableList.Create(
+                new ShortResourceInfo(
+                    "507f1f77bcf86cd799439081",
+                    "legacy-resource",
+                    ResourceType.WebService))
+        });
+
+        var result = await Mediator.Send(new DeleteResourceGroupRequest(resourceGroup.Id));
+
+        Assert.False(result.TryGetValue(out _, out var failure));
+        Assert.IsType<ConflictFailure>(failure);
+        Assert.True(await DbContext.ResourceGroups
+            .Find(group => group.Id == resourceGroup.Id)
+            .AnyAsync());
+    }
+
+    [Fact]
+    public async Task Delete_WithRuntimeCell_RequestsAggregateDeletion()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var cell = RuntimeCellFactory.Create(
+            resourceGroup.TenantId,
+            resourceGroup.Id,
+            resourceGroup.DefaultIsolationScopeId,
+            "507f1f77bcf86cd799439071",
+            "pole-delete-resource-group",
+            RuntimeCellFactory.DefaultOptions);
+        await DbContext.RuntimeCells.InsertOneAsync(cell);
+
+        var result = await Mediator.Send(new DeleteResourceGroupRequest(resourceGroup.Id));
+
+        Assert.True(result.TryGetValue(
+            out DeleteResourceGroupResponse? response,
+            out Failure? failure));
+        Assert.Null(failure);
+        Assert.NotNull(response);
+        Assert.False(response.Deleted);
+        Assert.True(response.DeletionRequested);
+        var savedGroup = await DbContext.ResourceGroups
+            .Find(group => group.Id == resourceGroup.Id)
+            .SingleAsync();
+        Assert.IsType<DeletingResourceGroupLifecycleState>(savedGroup.Lifecycle);
+        var savedScope = await DbContext.IsolationScopes
+            .Find(scope => scope.Id == resourceGroup.DefaultIsolationScopeId)
+            .SingleAsync();
+        Assert.IsType<DeletingIsolationScopeLifecycleState>(savedScope.Lifecycle);
+        var savedCell = await DbContext.RuntimeCells
+            .Find(item => item.Id == cell.Id)
+            .SingleAsync();
+        Assert.IsType<DeletingRuntimeCellState>(savedCell.State);
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+            "runtime-cell-deletion-requested"));
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
+            "resource-group-deleted"));
     }
 }

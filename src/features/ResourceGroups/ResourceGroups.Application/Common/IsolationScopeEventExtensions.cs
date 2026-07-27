@@ -15,4 +15,16 @@ internal static class IsolationScopeEventExtensions
         {
             EventCore = EventCore.Create(scope.TenantId)
         };
+
+    public static IsolationScopeDeletionRequestedEvent ToDeletionRequestedEvent(
+        this IsolationScope scope)
+    {
+        if (scope.Lifecycle is not DeletingIsolationScopeLifecycleState)
+            throw new InvalidOperationException("The isolation scope is not pending deletion.");
+
+        return new IsolationScopeDeletionRequestedEvent(scope.Id, scope.ResourceGroupId)
+        {
+            EventCore = EventCore.Create(scope.TenantId)
+        };
+    }
 }

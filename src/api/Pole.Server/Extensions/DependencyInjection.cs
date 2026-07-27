@@ -299,6 +299,7 @@ public static class DependencyInjection
             services.TryAddScoped<IDomainNameReservationService, DomainNameReservationService>();
             services.TryAddScoped<IResourceGroupLookup, ResourceGroupLookup>();
             services.TryAddScoped<IResourcePlacementService, ResourcePlacementService>();
+            services.TryAddScoped<IResourceGroupDeletionFinalizer, ResourceGroupDeletionFinalizer>();
             services.TryAddSingleton<IRuntimeCellNamespaceNameGenerator, RuntimeCellNamespaceNameGenerator>();
             services.TryAddScoped<IRuntimeCellNamespaceManager, KubernetesRuntimeCellNamespaceManager>();
             services.TryAddScoped<RuntimeCellRecoveryJob>();

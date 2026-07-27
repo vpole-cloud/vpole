@@ -3,10 +3,12 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
+using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.ResourceGroups.Application.Migrations;
 using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -93,6 +95,35 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
         Assert.NotEqual(first.RuntimeCellId, second.RuntimeCellId);
         Assert.NotEqual(first.DeploymentTargetId, second.DeploymentTargetId);
         Assert.Equal(first.KubernetesNamespace, second.KubernetesNamespace);
+    }
+
+    [Fact]
+    public async Task ConcurrentPlacementAndDeletion_DoNotLeaveActivePlacementUnderDeletedAggregate()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var service = CreateService(new PlacementTargetLookup());
+
+        await Task.WhenAll(
+            ResolveAsync(service, resourceGroup.Id, null, DefaultTargetId),
+            Mediator.Send(new DeleteResourceGroupRequest(
+                resourceGroup.Id,
+                resourceGroup.TenantId)));
+
+        var savedGroup = await DbContext.ResourceGroups
+            .Find(group => group.Id == resourceGroup.Id)
+            .FirstOrDefaultAsync();
+        var cells = await DbContext.RuntimeCells
+            .Find(cell => cell.ResourceGroupId == resourceGroup.Id)
+            .ToListAsync();
+        if (savedGroup is null)
+        {
+            Assert.Empty(cells);
+            return;
+        }
+
+        Assert.IsType<DeletingResourceGroupLifecycleState>(savedGroup.Lifecycle);
+        Assert.All(cells, cell =>
+            Assert.IsType<DeletingRuntimeCellState>(cell.State));
     }
 
     private ResourcePlacementService CreateService(PlacementTargetLookup lookup) =>

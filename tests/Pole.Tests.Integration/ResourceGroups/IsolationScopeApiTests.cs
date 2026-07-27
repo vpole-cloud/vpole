@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -66,5 +68,43 @@ public sealed class IsolationScopeApiTests(MongoReplicaSetFixture fixture)
             $"/api/v1/resource-groups/{resourceGroup.Id}/isolation-scopes",
             new { name = " production " });
         Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteEndpoint_ReturnsNoContentConflictAndAccepted()
+    {
+        var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(
+            TestData.SeedResourceGroup());
+        var emptyScope = IsolationScopeFactory.CreateAdditional(
+            resourceGroup.TenantId,
+            resourceGroup.Id,
+            "empty",
+            IsolationScopeFactory.DefaultOptions);
+        var occupiedScope = IsolationScopeFactory.CreateAdditional(
+            resourceGroup.TenantId,
+            resourceGroup.Id,
+            "occupied",
+            IsolationScopeFactory.DefaultOptions);
+        await Fixture.DbContext.IsolationScopes.InsertManyAsync(
+            [emptyScope, occupiedScope]);
+        var cell = RuntimeCellFactory.Create(
+            resourceGroup.TenantId,
+            resourceGroup.Id,
+            occupiedScope.Id,
+            "507f1f77bcf86cd799439071",
+            "pole-delete-api",
+            RuntimeCellFactory.DefaultOptions);
+        await Fixture.DbContext.RuntimeCells.InsertOneAsync(cell);
+
+        using var emptyResponse = await Client.DeleteAsync(
+            $"/api/v1/resource-groups/{resourceGroup.Id}/isolation-scopes/{emptyScope.Id}");
+        using var defaultResponse = await Client.DeleteAsync(
+            $"/api/v1/resource-groups/{resourceGroup.Id}/isolation-scopes/{resourceGroup.DefaultIsolationScopeId}");
+        using var occupiedResponse = await Client.DeleteAsync(
+            $"/api/v1/resource-groups/{resourceGroup.Id}/isolation-scopes/{occupiedScope.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, emptyResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, defaultResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, occupiedResponse.StatusCode);
     }
 }
