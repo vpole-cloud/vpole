@@ -61,6 +61,8 @@ public class MongoDbContext(
     public IMongoCollection<Redis> RedisServices { get; } = database.GetCollection<Redis>("RedisServices");
     public IMongoCollection<SearchDocument> SearchDocuments { get; } = database.GetCollection<SearchDocument>("SearchDocuments");
     public IMongoCollection<ResourceGroup> ResourceGroups { get; } = database.GetCollection<ResourceGroup>("ResourceGroups");
+    public IMongoCollection<IsolationScope> IsolationScopes { get; } = database.GetCollection<IsolationScope>("IsolationScopes");
+    public IMongoCollection<RuntimeCell> RuntimeCells { get; } = database.GetCollection<RuntimeCell>("RuntimeCells");
     public IMongoCollection<DnsRecord> DnsRecords { get; } = database.GetCollection<DnsRecord>("DnsRecords");
     public IMongoCollection<PostgresCluster>  Postgres { get; } = database.GetCollection<PostgresCluster>("Postgres");
     public IMongoCollection<TenantQuotaPolicy> TenantQuotaPolicies { get; } = database.GetCollection<TenantQuotaPolicy>("TenantQuotaPolicies");

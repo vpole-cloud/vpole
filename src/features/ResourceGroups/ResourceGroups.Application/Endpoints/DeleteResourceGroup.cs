@@ -62,6 +62,13 @@ public sealed class DeleteResourceGroupHandler(
 
         return await dbContext.RunInTransactionAsync<DeleteResourceGroupResponse>(async (sh, ct) =>
         {
+            await dbContext.IsolationScopes.DeleteManyAsync(
+                session: sh,
+                filter: scope =>
+                    scope.TenantId == resourceGroup.TenantId &&
+                    scope.ResourceGroupId == resourceGroup.Id,
+                cancellationToken: ct);
+
             await dbContext.ResourceGroups.DeleteOneAsync(
                 session: sh,
                 filter: filter,
@@ -89,4 +96,3 @@ public class DeleteKubernetesNamespaceOnResourceGroupDeletedConsumer(
             cancellationToken: ct);
     }
 }
-

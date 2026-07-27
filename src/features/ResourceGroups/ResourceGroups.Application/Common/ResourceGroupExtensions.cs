@@ -9,6 +9,7 @@ public static class ResourceGroupExtensions
             Id: rg.Id,
             Name: rg.Name,
             Description: rg.Description,
+            DefaultIsolationScopeId: rg.DefaultIsolationScopeId,
             Resources: rg.Resources.Select(r => new ShortResourceInfoDto(
                 Id: r.Id,
                 Name: r.Name,

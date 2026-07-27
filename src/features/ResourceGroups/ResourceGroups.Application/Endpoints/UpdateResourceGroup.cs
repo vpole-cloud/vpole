@@ -47,7 +47,8 @@ public sealed record UpdateResourceGroupRequestBody(
 );
 
 public sealed class UpdateResourceGroupHandler(
-    IResourceGroupDbContext dbContext)
+    IResourceGroupDbContext dbContext,
+    TimeProvider timeProvider)
     : IMediatorHandler<UpdateResourceGroupRequest, ResourceGroupDto>
 {
     public async Task<Result<ResourceGroupDto>> HandleAsync(
@@ -65,57 +66,49 @@ public sealed class UpdateResourceGroupHandler(
         if (resourceGroup is null)
             return Failures.NotFound("Resource group not found.", request.Id);
 
+        var updated = resourceGroup.UpdateMetadata(
+            request.Body.Description,
+            request.Body.Tags,
+            timeProvider.GetUtcNow().UtcDateTime);
+        var changes = GetChanges(resourceGroup, updated);
+
         return await dbContext.RunInTransactionAsync<ResourceGroupDto>(async (sh, ct) =>
         {
-            var changes = GetChanges(resourceGroup, request.Body);
-            if (HasChanges(changes))
+            if (updated.Revision != resourceGroup.Revision)
             {
-                await dbContext.ResourceGroups.UpdateOneAsync(
-                    session: sh,
-                    filter: filter,
-                    update: GetUpdateDefinition(changes),
+                var replacement = await dbContext.ResourceGroups.ReplaceOneAsync(
+                    sh,
+                    Builders<ResourceGroup>.Filter.And(
+                        filter,
+                        Builders<ResourceGroup>.Filter.Eq(
+                            group => group.Revision,
+                            resourceGroup.Revision)),
+                    updated,
                     cancellationToken: ct);
+                if (replacement.ModifiedCount != 1)
+                    return Failures.Conflict("The resource group changed while it was being updated.");
             }
 
             await dbContext.StoreEventAsync(new ResourceGroupUpdatedEvent(
                 request.Id,
-                resourceGroup.Name,
-                request.Body.Description,
-                resourceGroup.KubernetesNamespace,
-                resourceGroup.Resources,
+                updated.Name,
+                updated.Description,
+                updated.KubernetesNamespace,
+                updated.Resources,
                 changes)
             {
-                EventCore = EventCore.Create(resourceGroup.TenantId)
+                EventCore = EventCore.Create(updated.TenantId)
             }, sh, ct);
 
-            return new ResourceGroupDto(
-                Id: resourceGroup.Id,
-                Name: resourceGroup.Name,
-                Description: request.Body.Description,
-                Resources: resourceGroup.Resources.Select(x => new ShortResourceInfoDto(x.Id, x.Name, x.Type)),
-                Tags: request.Body.Tags
-            );
+            return updated.ToDto();
         }, cancellationToken: cancellationToken);
     }
 
-    private static ResourceGroupUpdatedEventChanges GetChanges(ResourceGroup resourceGroup, UpdateResourceGroupRequestBody body) =>
-        new(UpdateLog<string>.Of(resourceGroup.Description, body.Description),
+    private static ResourceGroupUpdatedEventChanges GetChanges(ResourceGroup previous, ResourceGroup updated) =>
+        new(UpdateLog<string>.Of(previous.Description, updated.Description),
             UpdateLog<ImmutableHashSet<string>>.Of(
-                resourceGroup.Tags,
-                body.Tags));
-
-    private static UpdateDefinition<ResourceGroup> GetUpdateDefinition(ResourceGroupUpdatedEventChanges changes)
-    {
-        var updates = new Queue<UpdateDefinition<ResourceGroup>>();
-        if (!changes.Description.AreEqual)
-            updates.Enqueue(Builders<ResourceGroup>.Update.Set(rg => rg.Description, changes.Description.New));
-        if (!changes.Tags.AreEqual)
-            updates.Enqueue(Builders<ResourceGroup>.Update.Set(rg => rg.Tags, changes.Tags.New));
-        return Builders<ResourceGroup>.Update.Combine(updates);
-    }
-
-    private static bool HasChanges(ResourceGroupUpdatedEventChanges changes) =>
-        !changes.Description.AreEqual || !changes.Tags.AreEqual;
+                previous.Tags,
+                updated.Tags));
 }
 
 public sealed class UpdateResourceGroupValidator : AbstractValidator<UpdateResourceGroupRequest>
@@ -131,4 +124,3 @@ public sealed class UpdateResourceGroupValidator : AbstractValidator<UpdateResou
             .MaximumLength(30);
     }
 }
-

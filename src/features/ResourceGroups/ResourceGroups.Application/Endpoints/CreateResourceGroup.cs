@@ -77,14 +77,27 @@ public sealed class CreateResourceGroupHandler(
             kubernetesNamespace: namespaceGenerator.GenerateNamespaceName(request.TenantId, createOptions.Id),
             options: createOptions
         );
+        var defaultScope = IsolationScopeFactory.CreateDefault(
+            request.TenantId,
+            resourceGroup.Id,
+            new IsolationScopeFactory.CreateOptions(
+                resourceGroup.DefaultIsolationScopeId,
+                resourceGroup.CreatedAtUtc));
         return await dbContext.RunInTransactionAsync<ResourceGroupDto>(async (sh, ct) =>
         {
             await dbContext.ResourceGroups.InsertOneAsync(
                 session: sh,
                 document: resourceGroup,
                 cancellationToken: ct);
-            
-            await dbContext.StoreEventAsync(resourceGroup.ToCreateEvent(), sh, ct);
+            await dbContext.IsolationScopes.InsertOneAsync(
+                session: sh,
+                document: defaultScope,
+                cancellationToken: ct);
+
+            await dbContext.StoreEventAsync(
+                resourceGroup.ToCreateEvent(),
+                sh,
+                ct);
             
             return resourceGroup.ToDto();
         }, cancellationToken: cancellationToken);
@@ -132,4 +145,3 @@ public class ProvisionResourceGroupOnResourceGroupCreatedConsumer(
         }, cancellationToken: ct);
     }
 }
-

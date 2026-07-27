@@ -49,6 +49,7 @@ public static class TestServiceProviderFactory
     {
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Debug));
+        services.AddSingleton(TimeProvider.System);
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
         services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
@@ -95,4 +96,3 @@ public static class TestServiceProviderFactory
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(FakeAuthBehaviour<,>));
     }
 }
-
