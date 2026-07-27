@@ -6,6 +6,7 @@ public sealed record ResourceGroupDto(
     string Id,
     string Name,
     string Description,
+    string DefaultIsolationScopeId,
     IEnumerable<ShortResourceInfoDto> Resources,
     IEnumerable<string> Tags
 );

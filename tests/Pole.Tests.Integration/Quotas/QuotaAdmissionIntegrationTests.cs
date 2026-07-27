@@ -147,7 +147,7 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
     [Fact]
     public async Task UsageIsTenantScoped()
     {
-        const string otherTenantId = "tenant-other";
+        const string otherTenantId = "507f1f77bcf86cd799439022";
         await SeedPolicyAsync(TestData.TenantId, [new(RedisServiceCountQuota.QuotaKey, 1)]);
         await SeedPolicyAsync(otherTenantId, [new(RedisServiceCountQuota.QuotaKey, 1)]);
         var firstGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());

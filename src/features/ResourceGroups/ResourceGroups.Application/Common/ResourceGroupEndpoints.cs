@@ -17,6 +17,7 @@ public static class ResourceGroupEndpoints
                 .WithTags("ResourceGroups")
                 .MapCreateResourceGroupEndpoint()
                 .MapGetResourceGroupsEndpoint()
+                .MapIsolationScopeEndpoints()
                 .MapUpdateResourceGroupEndpoint()
                 .MapDeleteResourceGroupEndpoints();
                 
@@ -25,4 +26,3 @@ public static class ResourceGroupEndpoints
     }
     
 }
-

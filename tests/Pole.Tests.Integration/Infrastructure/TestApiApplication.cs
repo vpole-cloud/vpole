@@ -27,6 +27,7 @@ using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Application.Migrations;
 using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
@@ -194,6 +195,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         var app = builder.Build();
         await new DeploymentTargetMigration().Up(fixture.Database);
         await new DeploymentTargetReferenceMigration().Up(fixture.Database);
+        await new ResourceGroupPlacementMigration().Up(fixture.Database);
         app.UseTraceContext();
         app.UseCors("frontend-dev");
         app.UseAuthentication();
