@@ -27,18 +27,18 @@ public sealed class GetRuntimeCellsHandler(IResourceGroupDbContext dbContext)
         GetRuntimeCellsRequest request,
         CancellationToken cancellationToken = default)
     {
-        var resourceGroupExists = await dbContext.ResourceGroups
+        var resourceGroup = await dbContext.ResourceGroups
             .Find(Builders<ResourceGroup>.Filter.And(
                 Builders<ResourceGroup>.Filter.ForTenant(request.TenantId),
                 Builders<ResourceGroup>.Filter.Eq(group => group.Id, request.ResourceGroupId)))
-            .AnyAsync(cancellationToken);
-        if (!resourceGroupExists)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (resourceGroup is null)
             return Failures.NotFound("Resource group not found.", request.ResourceGroupId);
 
         var runtimeCells = await dbContext.RuntimeCells
             .Find(cell =>
-                cell.ResourceGroupId == request.ResourceGroupId &&
-                cell.TenantId == request.TenantId)
+                cell.ResourceGroupId == resourceGroup.Id &&
+                cell.TenantId == resourceGroup.TenantId)
             .SortBy(cell => cell.IsolationScopeId)
             .ThenBy(cell => cell.DeploymentTargetId)
             .ToListAsync(cancellationToken);

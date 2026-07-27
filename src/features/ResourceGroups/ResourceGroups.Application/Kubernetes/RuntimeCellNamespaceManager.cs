@@ -98,7 +98,21 @@ public sealed class KubernetesRuntimeCellNamespaceManager(
                 await kubernetes.CoreV1.DeleteNamespaceAsync(
                     runtimeCell.KubernetesNamespace,
                     cancellationToken: cancellationToken);
+            }
+            catch (HttpOperationException exception)
+                when (exception.Response?.StatusCode == HttpStatusCode.NotFound)
+            {
                 return Result.Success();
+            }
+
+            try
+            {
+                var remaining = await kubernetes.CoreV1.ReadNamespaceAsync(
+                    runtimeCell.KubernetesNamespace,
+                    cancellationToken: cancellationToken);
+                return HasExpectedOwnership(remaining, runtimeCell)
+                    ? DeletionPending()
+                    : OwnershipConflict(runtimeCell.KubernetesNamespace);
             }
             catch (HttpOperationException exception)
                 when (exception.Response?.StatusCode == HttpStatusCode.NotFound)
@@ -143,6 +157,12 @@ public sealed class KubernetesRuntimeCellNamespaceManager(
             $"Unable to {operation} the runtime cell Kubernetes namespace.",
             "Kubernetes",
             "The Kubernetes namespace operation failed.");
+
+    private static ExternalServiceFailure DeletionPending() =>
+        Failures.ExternalService(
+            "The runtime cell Kubernetes namespace is still being deleted.",
+            "Kubernetes",
+            "The Kubernetes namespace deletion has not completed yet.");
 
     private static ExternalServiceFailure DeploymentTargetFailure(
         string operation,

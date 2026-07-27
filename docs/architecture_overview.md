@@ -37,6 +37,19 @@ Pole's cross-cutting code design conventions are documented in [engineering guid
 
 Pole uses tenant-scoped shared Mongo collections. Resource APIs select the active tenant with `X-Pole-Tenant-ID`, and tenant-owned documents carry `TenantId`. See [multitenancy](multitenancy.md) for the full model, request flow, and implementation rules.
 
+### Workload placement
+
+Tenant organization and Kubernetes placement are separate concepts. A `ResourceGroup`
+owns one default `IsolationScope`; a `RuntimeCell` materializes a scope in one
+`DeploymentTarget` and owns that cluster's Kubernetes namespace. Runtime cells are created
+lazily through a caller-owned Mongo transaction, then reconciled through the durable outbox.
+
+The current release provides the placement substrate and namespace lifecycle. Existing
+WebService, Redis, PostgreSQL, and Functions handlers still use the transitional
+resource-group namespace until their ResourceDeployment adoption work is complete. See
+[workload placement](workload-placement.md) for ownership, lifecycle, deletion, and migration
+boundaries.
+
 ### Sensitive values
 
 Pole-held sensitive values use versioned envelope encryption with authenticated tenant/platform,

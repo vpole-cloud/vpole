@@ -65,7 +65,17 @@ public sealed class ResourcePlacementService(
             session,
             cancellationToken);
         if (existing is not null)
+        {
+            var fenceResult = await FenceParentsAsync(
+                resourceGroup,
+                scope,
+                timeProvider.GetUtcNow().UtcDateTime,
+                session,
+                cancellationToken);
+            if (fenceResult is not ISuccess)
+                return (Failure)fenceResult;
             return existing.ToPlacement();
+        }
 
         var admissionResult = await deploymentTargetLookup.ResolveForNewWorkloadAsync(
             deploymentTargetId,
@@ -81,7 +91,17 @@ public sealed class ResourcePlacementService(
                 session,
                 cancellationToken);
             if (existing is not null)
+            {
+                var fenceResult = await FenceParentsAsync(
+                    resourceGroup,
+                    scope,
+                    timeProvider.GetUtcNow().UtcDateTime,
+                    session,
+                    cancellationToken);
+                if (fenceResult is not ISuccess)
+                    return (Failure)fenceResult;
                 return existing.ToPlacement();
+            }
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -95,31 +115,14 @@ public sealed class ResourcePlacementService(
             {
                 CreatedAtUtc = now
             });
-        var resourceGroupFence = await dbContext.ResourceGroups.UpdateOneAsync(
+        var parentFence = await FenceParentsAsync(
+            resourceGroup,
+            scope,
+            now,
             session,
-            Builders<ResourceGroup>.Filter.And(
-                Builders<ResourceGroup>.Filter.Eq(group => group.Id, resourceGroup.Id),
-                Builders<ResourceGroup>.Filter.Eq(group => group.TenantId, tenantId),
-                Builders<ResourceGroup>.Filter.Eq("Lifecycle._t", "active")),
-            Builders<ResourceGroup>.Update
-                .Inc(group => group.Revision, 1)
-                .Set(group => group.UpdatedAtUtc, now),
-            cancellationToken: cancellationToken);
-        if (resourceGroupFence.ModifiedCount != 1)
-            return Failures.Conflict("The resource group changed while placement was being created.");
-
-        var scopeFence = await dbContext.IsolationScopes.UpdateOneAsync(
-            session,
-            Builders<IsolationScope>.Filter.And(
-                Builders<IsolationScope>.Filter.Eq(item => item.Id, scope.Id),
-                Builders<IsolationScope>.Filter.Eq(item => item.TenantId, tenantId),
-                Builders<IsolationScope>.Filter.Eq("Lifecycle._t", "active")),
-            Builders<IsolationScope>.Update
-                .Inc(item => item.Revision, 1)
-                .Set(item => item.UpdatedAtUtc, now),
-            cancellationToken: cancellationToken);
-        if (scopeFence.ModifiedCount != 1)
-            return Failures.Conflict("The isolation scope changed while placement was being created.");
+            cancellationToken);
+        if (parentFence is not ISuccess)
+            return (Failure)parentFence;
 
         var filter = Builders<RuntimeCell>.Filter.And(
             Builders<RuntimeCell>.Filter.Eq(cell => cell.IsolationScopeId, scope.Id),
@@ -162,6 +165,46 @@ public sealed class ResourcePlacementService(
         }
 
         return runtimeCell.ToPlacement();
+    }
+
+    private async Task<Result> FenceParentsAsync(
+        ResourceGroup resourceGroup,
+        IsolationScope scope,
+        DateTime fencedAtUtc,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var resourceGroupFence = await dbContext.ResourceGroups.UpdateOneAsync(
+            session,
+            Builders<ResourceGroup>.Filter.And(
+                Builders<ResourceGroup>.Filter.Eq(group => group.Id, resourceGroup.Id),
+                Builders<ResourceGroup>.Filter.Eq(
+                    group => group.TenantId,
+                    resourceGroup.TenantId),
+                Builders<ResourceGroup>.Filter.Eq("Lifecycle._t", "active")),
+            Builders<ResourceGroup>.Update
+                .Inc(group => group.Revision, 1)
+                .Set(group => group.UpdatedAtUtc, fencedAtUtc),
+            cancellationToken: cancellationToken);
+        if (resourceGroupFence.ModifiedCount != 1)
+            return Failures.Conflict("The resource group changed while placement was being created.");
+
+        var scopeFence = await dbContext.IsolationScopes.UpdateOneAsync(
+            session,
+            Builders<IsolationScope>.Filter.And(
+                Builders<IsolationScope>.Filter.Eq(item => item.Id, scope.Id),
+                Builders<IsolationScope>.Filter.Eq(
+                    item => item.TenantId,
+                    resourceGroup.TenantId),
+                Builders<IsolationScope>.Filter.Eq("Lifecycle._t", "active")),
+            Builders<IsolationScope>.Update
+                .Inc(item => item.Revision, 1)
+                .Set(item => item.UpdatedAtUtc, fencedAtUtc),
+            cancellationToken: cancellationToken);
+        if (scopeFence.ModifiedCount != 1)
+            return Failures.Conflict("The isolation scope changed while placement was being created.");
+
+        return Result.Success();
     }
 
     private async Task<RuntimeCell?> FindAsync(

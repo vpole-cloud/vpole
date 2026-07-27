@@ -106,6 +106,44 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
     }
 
     [Fact]
+    public async Task PlatformAdminReads_ResolveChildTenantFromOwningResourceGroup()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var scope = IsolationScopeFactory.CreateAdditional(
+            resourceGroup.TenantId,
+            resourceGroup.Id,
+            "platform-read",
+            IsolationScopeFactory.DefaultOptions);
+        await DbContext.IsolationScopes.InsertOneAsync(scope);
+        var cell = RuntimeCellFactory.Create(
+            resourceGroup.TenantId,
+            resourceGroup.Id,
+            scope.Id,
+            "507f1f77bcf86cd799439071",
+            "pole-platform-read",
+            RuntimeCellFactory.DefaultOptions);
+        await DbContext.RuntimeCells.InsertOneAsync(cell);
+
+        var scopesResult = await Mediator.Send(
+            new GetIsolationScopesRequest(resourceGroup.Id));
+        var scopeResult = await Mediator.Send(
+            new GetIsolationScopeRequest(resourceGroup.Id, scope.Id));
+        var cellsResult = await Mediator.Send(
+            new GetRuntimeCellsRequest(resourceGroup.Id));
+        var cellResult = await Mediator.Send(
+            new GetRuntimeCellRequest(resourceGroup.Id, cell.Id));
+
+        Assert.True(scopesResult.TryGetValue(out var scopes, out _));
+        Assert.Contains(scopes, item => item.Id == scope.Id);
+        Assert.True(scopeResult.TryGetValue(out var foundScope, out _));
+        Assert.Equal(scope.Id, foundScope.Id);
+        Assert.True(cellsResult.TryGetValue(out var cells, out _));
+        Assert.Contains(cells, item => item.Id == cell.Id);
+        Assert.True(cellResult.TryGetValue(out var foundCell, out _));
+        Assert.Equal(cell.Id, foundCell.Id);
+    }
+
+    [Fact]
     public async Task Delete_EmptyAdditionalScope_RemovesItImmediately()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());

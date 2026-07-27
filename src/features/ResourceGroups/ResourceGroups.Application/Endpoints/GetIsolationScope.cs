@@ -6,8 +6,10 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
+using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -26,11 +28,21 @@ public sealed class GetIsolationScopeHandler(IResourceGroupDbContext dbContext)
         GetIsolationScopeRequest request,
         CancellationToken cancellationToken = default)
     {
+        var resourceGroup = await dbContext.ResourceGroups
+            .Find(Builders<ResourceGroup>.Filter.And(
+                Builders<ResourceGroup>.Filter.ForTenant(request.TenantId),
+                Builders<ResourceGroup>.Filter.Eq(
+                    group => group.Id,
+                    request.ResourceGroupId)))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (resourceGroup is null)
+            return Failures.NotFound("Resource group not found.", request.ResourceGroupId);
+
         var scope = await dbContext.IsolationScopes
             .Find(item =>
                 item.Id == request.ScopeId &&
-                item.ResourceGroupId == request.ResourceGroupId &&
-                item.TenantId == request.TenantId)
+                item.ResourceGroupId == resourceGroup.Id &&
+                item.TenantId == resourceGroup.TenantId)
             .FirstOrDefaultAsync(cancellationToken);
         return scope is null
             ? Failures.NotFound("Isolation scope not found.", request.ScopeId)

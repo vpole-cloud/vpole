@@ -27,18 +27,18 @@ public sealed class GetIsolationScopesHandler(IResourceGroupDbContext dbContext)
         GetIsolationScopesRequest request,
         CancellationToken cancellationToken = default)
     {
-        var resourceGroupExists = await dbContext.ResourceGroups
+        var resourceGroup = await dbContext.ResourceGroups
             .Find(Builders<ResourceGroup>.Filter.And(
                 Builders<ResourceGroup>.Filter.ForTenant(request.TenantId),
                 Builders<ResourceGroup>.Filter.Eq(group => group.Id, request.ResourceGroupId)))
-            .AnyAsync(cancellationToken);
-        if (!resourceGroupExists)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (resourceGroup is null)
             return Failures.NotFound("Resource group not found.", request.ResourceGroupId);
 
         var scopes = await dbContext.IsolationScopes
             .Find(scope =>
-                scope.TenantId == request.TenantId &&
-                scope.ResourceGroupId == request.ResourceGroupId)
+                scope.TenantId == resourceGroup.TenantId &&
+                scope.ResourceGroupId == resourceGroup.Id)
             .SortByDescending(scope => scope.IsDefault)
             .ThenBy(scope => scope.NormalizedName)
             .ToListAsync(cancellationToken);

@@ -4,6 +4,13 @@ Pole currently uses a **backend integration-first** testing setup.
 
 Deployment-target changes should cover bootstrap idempotency and replica races, platform-admin authorization, write-only encrypted credentials, kubeconfig input hardening, two-target client routing, revision/connection-version cache behavior, workload admission, health observation fencing, and service-account metadata tamper resistance. The focused Mongo-backed suite is under `tests/Pole.Tests.Integration/DeploymentTargets`.
 
+Resource placement changes should cover default/additional scope ownership, tenant-safe nested
+APIs, atomic scope-target get-or-create, placement-versus-deletion races, generation-fenced
+reconciliation, namespace ownership labels, reference registration/removal, retry recovery,
+and finalization. The focused slice is under
+`tests/Pole.Tests.Integration/ResourceGroups`. Namespace manager tests use fake Kubernetes
+HTTP responses; a live cluster is not required for this slice.
+
 The shared integration test suite lives in:
 
 - `tests/Pole.Tests.Integration`

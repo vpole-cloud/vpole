@@ -201,6 +201,47 @@ public sealed class RuntimeCellNamespaceTests
     }
 
     [Fact]
+    public async Task Delete_OwnedNamespace_WaitsForConfirmedNotFound()
+    {
+        var runtimeCell = CreateRuntimeCell();
+        using var handler = new NamespaceApiHandler
+        {
+            ExistingNamespace = RuntimeCellNamespaceManifestBuilder.Build(runtimeCell),
+            ReadStatusCodes = [HttpStatusCode.OK, HttpStatusCode.NotFound]
+        };
+        using var kubernetes = CreateKubernetes(handler);
+        var subject = new KubernetesRuntimeCellNamespaceManager(
+            new RecordingKubernetesClientProvider(kubernetes));
+
+        var result = await subject.DeleteAsync(runtimeCell);
+
+        Assert.IsAssignableFrom<ISuccess>(result);
+        Assert.Equal(2, handler.ReadRequests);
+        Assert.Equal(1, handler.DeleteRequests);
+    }
+
+    [Fact]
+    public async Task Delete_OwnedNamespace_StillPresent_ReturnsRetryableFailure()
+    {
+        var runtimeCell = CreateRuntimeCell();
+        using var handler = new NamespaceApiHandler
+        {
+            ExistingNamespace = RuntimeCellNamespaceManifestBuilder.Build(runtimeCell),
+            ReadStatusCodes = [HttpStatusCode.OK, HttpStatusCode.OK]
+        };
+        using var kubernetes = CreateKubernetes(handler);
+        var subject = new KubernetesRuntimeCellNamespaceManager(
+            new RecordingKubernetesClientProvider(kubernetes));
+
+        var result = await subject.DeleteAsync(runtimeCell);
+
+        var failure = Assert.IsType<ExternalServiceFailure>(result);
+        Assert.DoesNotContain("provider-secret", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(2, handler.ReadRequests);
+        Assert.Equal(1, handler.DeleteRequests);
+    }
+
+    [Fact]
     public async Task Delete_ForeignNamespace_ReturnsConflictWithoutDeleting()
     {
         var runtimeCell = CreateRuntimeCell();
@@ -313,6 +354,7 @@ public sealed class RuntimeCellNamespaceTests
     {
         public HttpStatusCode CreateStatusCode { get; init; } = HttpStatusCode.Created;
         public HttpStatusCode ReadStatusCode { get; init; } = HttpStatusCode.OK;
+        public IReadOnlyList<HttpStatusCode>? ReadStatusCodes { get; init; }
         public HttpStatusCode DeleteStatusCode { get; init; } = HttpStatusCode.OK;
         public V1Namespace? ExistingNamespace { get; init; }
         public V1Namespace? CreatedNamespace { get; private set; }
@@ -342,14 +384,18 @@ public sealed class RuntimeCellNamespaceTests
             if (request.Method == HttpMethod.Get &&
                 path.StartsWith("/api/v1/namespaces/", StringComparison.Ordinal))
             {
+                var requestIndex = ReadRequests;
                 ReadRequests++;
-                return ReadStatusCode == HttpStatusCode.OK
+                var readStatusCode = ReadStatusCodes is { Count: > 0 }
+                    ? ReadStatusCodes[Math.Min(requestIndex, ReadStatusCodes.Count - 1)]
+                    : ReadStatusCode;
+                return readStatusCode == HttpStatusCode.OK
                     ? Response(
                         request,
                         HttpStatusCode.OK,
                         SerializeNamespace(ExistingNamespace ??
                                            throw new InvalidOperationException("An existing namespace is required.")))
-                    : Response(request, ReadStatusCode, SerializeStatus(ReadStatusCode));
+                    : Response(request, readStatusCode, SerializeStatus(readStatusCode));
             }
 
             if (request.Method == HttpMethod.Delete &&

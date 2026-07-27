@@ -14,7 +14,7 @@ Each target has a stable ID, display name, stable cluster identity, connection v
 
 The stable identity is derived from the `kube-system` namespace UID. Validation also records the Kubernetes server version and self-subject access results for get/create/update/patch/delete on namespaces.
 
-The default target is stored in the singleton `DeploymentTargetSettings` document. The local cluster has no special `IsManagementCluster` flag. In the current transitional model resources without persisted placement resolve the default target. Explicit per-resource placement is introduced by the RuntimeCell and ResourceDeployment work; the default is therefore not mutable through the #35 API.
+The default target is stored in the singleton `DeploymentTargetSettings` document. The local cluster has no special `IsManagementCluster` flag. RuntimeCell placement now persists the selected target for each isolation scope. Resource features that have not yet adopted ResourceDeployment still resolve the default target through the transitional resource-group placement contract; the default is therefore not mutable through the #35 API.
 
 ## Connection kinds and security
 
@@ -66,6 +66,12 @@ Every feature that persists a deployment-target reference must use the central r
 2. In the same transaction that removes the placement, call `UnregisterAsync` with the same owner identity.
 
 The admission service writes the target fence and central registry atomically. Those fence writes contend with target deletion on the target document. A registration committed first is visible to the deletion guard; a deletion fence committed first rejects registration. Reference removal can race safely, but may make the current delete attempt return a conflict that is resolved by retrying.
+
+Runtime cells register `OwnerType = "RuntimeCell"` and `OwnerId = RuntimeCell.Id` in the
+same transaction that creates the cell and its initial reconciliation event. The reference
+remains until namespace deletion succeeds. It is a referential-integrity index used to block
+unsafe target deletion; the RuntimeCell document remains the source of truth for placement
+and lifecycle. See [workload placement](workload-placement.md).
 
 `POST /{id}/validate` is an operational health refresh, not request validation. It rebuilds a client from the stored credential, probes Kubernetes health and namespace capabilities, verifies the stable cluster identity, and compare-and-sets only the observational fields when the target revision and connection version are unchanged.
 

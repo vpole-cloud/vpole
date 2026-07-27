@@ -1,6 +1,6 @@
 # Multitenancy
 
-Pole uses tenant-scoped, shared-storage multitenancy. A tenant is the top-level workspace boundary for users and resources. Resource groups remain the operational boundary that maps to Kubernetes namespaces, but each resource group belongs to exactly one tenant.
+Pole uses tenant-scoped, shared-storage multitenancy. A tenant is the top-level workspace boundary for users and resources. Each resource group belongs to exactly one tenant, while Kubernetes isolation and physical placement are represented separately by `IsolationScope` and `RuntimeCell`.
 
 The current implementation uses:
 
@@ -69,6 +69,8 @@ If the header is missing, the request reaches the mediator without a `TenantCont
 Tenant-owned domain documents include `TenantId`:
 
 * `ResourceGroup`
+* `IsolationScope`
+* `RuntimeCell`
 * `WebService`
 * `Redis`
 * `PostgresCluster`
@@ -91,18 +93,38 @@ Domain names are intentionally checked globally during web service creation. Eve
 
 ## Kubernetes Isolation
 
-Resource groups own Kubernetes namespaces. Namespace names are generated from the configured prefix, tenant id, and resource group id:
+Every resource group owns one default `IsolationScope`, created atomically with the group.
+Additional scopes provide separate isolation boundaries without changing tenant ownership.
+A `RuntimeCell` represents one scope placed in one Kubernetes deployment target and is the
+authoritative owner of that target's namespace.
+
+Runtime-cell namespace names are generated from the configured prefix, tenant id, and full
+isolation-scope id:
 
 ```text
-<prefix>-<tenant-id-prefix>-<resource-group-id>
+<prefix>-t-<tenant8>-is-<scope24>
 ```
 
-Created namespaces are labeled with:
+The normalized prefix is at most 24 characters, and the complete name is a DNS label of at
+most 63 characters. The same scope therefore receives the same namespace name in different
+clusters. Namespace identity is still cluster-local because each runtime cell records its
+deployment target.
+
+Runtime-cell namespaces are labeled with:
 
 * `pole.io/tenant-id`
 * `pole.io/resource-group-id`
+* `pole.io/isolation-scope-id`
+* `pole.io/runtime-cell-id`
+* `pole.io/deployment-target-id`
 
-Runtime resources use the namespace stored on the owning resource group. Events carry `EventCore.TenantId`, so consumers can preserve tenant context while creating, updating, deleting, and indexing resources asynchronously.
+All scope and runtime-cell queries combine tenant, resource-group, and object identity.
+Events carry `EventCore.TenantId`; consumers never depend on ambient HTTP tenant context.
+
+WebService, Redis, PostgreSQL, and Functions have not yet adopted ResourceDeployment. During
+that transition they continue to use the legacy namespace stored on the resource group. New
+placement code must use `IResourcePlacementService`; see
+[workload placement](workload-placement.md).
 
 ## API Surface
 

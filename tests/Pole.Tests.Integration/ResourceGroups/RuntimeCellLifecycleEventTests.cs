@@ -98,4 +98,28 @@ public sealed class RuntimeCellLifecycleEventTests
         Assert.Equal("NamespaceOwnershipConflict", root.GetProperty("failureCode").GetString());
         Assert.Equal(4, root.EnumerateObject().Count());
     }
+
+    [Fact]
+    public void IsolationScopeDeletionRequested_HasStableNameAndTenantMetadata()
+    {
+        var @event = new IsolationScopeDeletionRequestedEvent(
+            "507f1f77bcf86cd799439013",
+            "507f1f77bcf86cd799439014")
+        {
+            EventCore = Core
+        };
+        var entityName = typeof(IsolationScopeDeletionRequestedEvent)
+            .GetCustomAttribute<EntityNameAttribute>();
+
+        Assert.NotNull(entityName);
+        Assert.Equal("isolation-scope-deletion-requested", entityName.EntityName);
+        var payloadJson = JsonSerializer.Serialize(@event, EventJson.SerializerOptions);
+        var roundTripped = JsonSerializer.Deserialize<IsolationScopeDeletionRequestedEvent>(
+            payloadJson,
+            EventJson.SerializerOptions);
+        Assert.NotNull(roundTripped);
+        Assert.Equal(TenantId, roundTripped.EventCore.TenantId);
+        Assert.Equal(@event.IsolationScopeId, roundTripped.IsolationScopeId);
+        Assert.Equal(@event.ResourceGroupId, roundTripped.ResourceGroupId);
+    }
 }
