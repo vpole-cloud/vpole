@@ -102,6 +102,47 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
     }
 
     [Fact]
+    public async Task DeletionPending_KeepsTargetReferenceAndPersistsRetryableFailure()
+    {
+        var provisioning = await InsertCellAsync();
+        var deleting = provisioning.RequestDeletion(InitialTime.AddMinutes(1));
+        await DbContext.RuntimeCells.ReplaceOneAsync(
+            cell => cell.Id == provisioning.Id,
+            deleting);
+        var admission = new RecordingReferenceAdmission();
+        var manager = new RecordingNamespaceManager(
+            Result.Success(),
+            Failures.ExternalService(
+                "The runtime cell Kubernetes namespace is still being deleted.",
+                "Kubernetes",
+                "Deletion is pending."));
+        var consumer = new DeleteRuntimeCellOnDeletionRequestedConsumer(
+            DbContext,
+            manager,
+            admission,
+            new ResourceGroupDeletionFinalizer(
+                DbContext,
+                new FixedTimeProvider(InitialTime.AddMinutes(2))),
+            new FixedTimeProvider(InitialTime.AddMinutes(2)));
+        var message = new RuntimeCellDeletionRequestedEvent(
+            deleting.Id,
+            deleting.DesiredGeneration)
+        {
+            EventCore = EventCore.Create(deleting.TenantId)
+        };
+
+        await consumer.HandleAsync(message);
+
+        var saved = await DbContext.RuntimeCells
+            .Find(item => item.Id == deleting.Id)
+            .SingleAsync();
+        var failed = Assert.IsType<FailedRuntimeCellState>(saved.State);
+        Assert.Equal(RuntimeCellOperation.Deletion, failed.Operation);
+        Assert.Equal(0, admission.UnregisterCallCount);
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync("runtime-cell-deleted"));
+    }
+
+    [Fact]
     public async Task DeletionSuccess_FinalizesDeletingResourceGroupAfterLastCell()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(
@@ -183,6 +224,17 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         var recovered = await DbContext.RuntimeCells.Find(item => item.Id == cell.Id).SingleAsync();
         Assert.IsType<ProvisioningRuntimeCellState>(recovered.State);
         Assert.Equal(cell.DesiredGeneration + 1, recovered.DesiredGeneration);
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+            "runtime-cell-reconciliation-requested"));
+
+        var laterJob = new RuntimeCellRecoveryJob(
+            DbContext,
+            new ResourceGroupDeletionFinalizer(
+                DbContext,
+                new FixedTimeProvider(InitialTime.AddMinutes(3))),
+            new FixedTimeProvider(InitialTime.AddMinutes(3)));
+        await laterJob.RecoverAsync();
+
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
             "runtime-cell-reconciliation-requested"));
     }

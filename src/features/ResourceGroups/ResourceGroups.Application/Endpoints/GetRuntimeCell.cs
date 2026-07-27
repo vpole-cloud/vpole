@@ -6,8 +6,10 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
+using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -26,11 +28,21 @@ public sealed class GetRuntimeCellHandler(IResourceGroupDbContext dbContext)
         GetRuntimeCellRequest request,
         CancellationToken cancellationToken = default)
     {
+        var resourceGroup = await dbContext.ResourceGroups
+            .Find(Builders<ResourceGroup>.Filter.And(
+                Builders<ResourceGroup>.Filter.ForTenant(request.TenantId),
+                Builders<ResourceGroup>.Filter.Eq(
+                    group => group.Id,
+                    request.ResourceGroupId)))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (resourceGroup is null)
+            return Failures.NotFound("Resource group not found.", request.ResourceGroupId);
+
         var runtimeCell = await dbContext.RuntimeCells
             .Find(cell =>
                 cell.Id == request.CellId &&
-                cell.ResourceGroupId == request.ResourceGroupId &&
-                cell.TenantId == request.TenantId)
+                cell.ResourceGroupId == resourceGroup.Id &&
+                cell.TenantId == resourceGroup.TenantId)
             .FirstOrDefaultAsync(cancellationToken);
         return runtimeCell is null
             ? Failures.NotFound("Runtime cell not found.", request.CellId)

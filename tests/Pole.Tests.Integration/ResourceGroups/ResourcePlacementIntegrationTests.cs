@@ -126,6 +126,41 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
             Assert.IsType<DeletingRuntimeCellState>(cell.State));
     }
 
+    [Fact]
+    public async Task ConcurrentExistingCellReuseAndDeletion_AreParentFenced()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var service = CreateService(new PlacementTargetLookup());
+        var initial = await ResolveAsync(
+            service,
+            resourceGroup.Id,
+            null,
+            DefaultTargetId);
+        Assert.True(initial.TryGetValue(out _, out _));
+
+        await Task.WhenAll(
+            ResolveAsync(service, resourceGroup.Id, null, DefaultTargetId),
+            Mediator.Send(new DeleteResourceGroupRequest(
+                resourceGroup.Id,
+                resourceGroup.TenantId)));
+
+        var savedGroup = await DbContext.ResourceGroups
+            .Find(group => group.Id == resourceGroup.Id)
+            .FirstOrDefaultAsync();
+        var cells = await DbContext.RuntimeCells
+            .Find(cell => cell.ResourceGroupId == resourceGroup.Id)
+            .ToListAsync();
+        if (savedGroup is null)
+        {
+            Assert.Empty(cells);
+            return;
+        }
+
+        Assert.IsType<DeletingResourceGroupLifecycleState>(savedGroup.Lifecycle);
+        Assert.All(cells, cell =>
+            Assert.IsType<DeletingRuntimeCellState>(cell.State));
+    }
+
     private ResourcePlacementService CreateService(PlacementTargetLookup lookup) =>
         new(
             DbContext,

@@ -7,6 +7,10 @@ public sealed record ResourceGroupDto(
     string Name,
     string Description,
     string DefaultIsolationScopeId,
+    string Lifecycle,
+    long Revision,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc,
     IEnumerable<ShortResourceInfoDto> Resources,
     IEnumerable<string> Tags
 );

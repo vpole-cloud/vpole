@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Endpoints;
+using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Shared.Models;
 using Pole.ResultType;
@@ -29,6 +30,8 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
         Assert.Equal(request.Body.Name, saved.Name);
         Assert.StartsWith("test-", saved.KubernetesNamespace);
         Assert.Equal(created.DefaultIsolationScopeId, saved.DefaultIsolationScopeId);
+        Assert.Equal("active", created.Lifecycle);
+        Assert.Equal(saved.Revision, created.Revision);
 
         var defaultScope = await DbContext.IsolationScopes
             .Find(scope => scope.ResourceGroupId == saved.Id)
@@ -133,6 +136,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             .Find(group => group.Id == resourceGroup.Id)
             .SingleAsync();
         Assert.IsType<DeletingResourceGroupLifecycleState>(savedGroup.Lifecycle);
+        Assert.Equal("deleting", savedGroup.ToDto().Lifecycle);
         var savedScope = await DbContext.IsolationScopes
             .Find(scope => scope.Id == resourceGroup.DefaultIsolationScopeId)
             .SingleAsync();
@@ -145,5 +149,22 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             "runtime-cell-deletion-requested"));
         Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
             "resource-group-deleted"));
+    }
+
+    [Fact]
+    public async Task TransitionalPlacement_RejectsDeletingResourceGroup()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        await DbContext.ResourceGroups.ReplaceOneAsync(
+            group => group.Id == resourceGroup.Id,
+            resourceGroup.RequestDeletion(resourceGroup.UpdatedAtUtc.AddMinutes(1)));
+        var lookup = new ResourceGroupLookup(DbContext);
+
+        var result = await lookup.GetPlacementAsync(
+            resourceGroup.TenantId,
+            resourceGroup.Id);
+
+        Assert.False(result.TryGetValue(out _, out var failure));
+        Assert.IsType<ConflictFailure>(failure);
     }
 }

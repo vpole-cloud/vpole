@@ -41,11 +41,14 @@ public sealed class ResourceGroupLookup(IResourceGroupDbContext dbContext) : IRe
             .Find(rg => rg.Id == resourceGroupId && rg.TenantId == tenantId)
             .FirstOrDefaultAsync(cancellationToken);
 
-        return resourceGroup is null
-            ? Failures.NotFound($"Resource group '{resourceGroupId}' was not found.", resourceGroupId)
-            : new ResourceGroupPlacement(
-                resourceGroup.Id,
-                resourceGroup.TenantId,
-                resourceGroup.KubernetesNamespace);
+        if (resourceGroup is null)
+            return Failures.NotFound($"Resource group '{resourceGroupId}' was not found.", resourceGroupId);
+        if (resourceGroup.Lifecycle is not ActiveResourceGroupLifecycleState)
+            return Failures.Conflict("The resource group is being deleted.");
+
+        return new ResourceGroupPlacement(
+            resourceGroup.Id,
+            resourceGroup.TenantId,
+            resourceGroup.KubernetesNamespace);
     }
 }
