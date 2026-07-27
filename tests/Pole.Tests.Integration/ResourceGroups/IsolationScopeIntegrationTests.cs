@@ -124,5 +124,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             index["unique"].AsBoolean);
         Assert.Contains(cellIndexes, index =>
             index["name"] == "IX_RuntimeCells_State_Retry");
+        Assert.Contains(cellIndexes, index =>
+            index["name"] == "IX_RuntimeCells_State_UpdatedAt");
     }
 }

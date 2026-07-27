@@ -23,9 +23,9 @@
     </ItemGroup>
 
     <ItemGroup>
+      <PackageReference Include="Hangfire.Core" />
       <PackageReference Include="KubernetesClient" />
+      <PackageReference Include="MassTransit" />
     </ItemGroup>
 
 </Project>
-
-

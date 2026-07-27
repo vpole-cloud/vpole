@@ -1,0 +1,214 @@
+using MongoDB.Bson;
+using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.DeploymentTargets.Domain;
+using Pole.Features.ResourceGroups.Application.Kubernetes;
+using Pole.Features.ResourceGroups.Application.Migrations;
+using Pole.Features.ResourceGroups.Application.Services;
+using Pole.Features.ResourceGroups.Contracts;
+using Pole.ResultType;
+using Pole.Tests.Integration.Infrastructure;
+using Xunit;
+
+namespace Pole.Tests.Integration.ResourceGroups;
+
+public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fixture)
+    : MediatorIntegrationTestBase(fixture)
+{
+    private const string DefaultTargetId = "507f1f77bcf86cd799439071";
+    private const string SecondTargetId = "507f1f77bcf86cd799439072";
+
+    public override async Task InitializeAsync()
+    {
+        await base.InitializeAsync();
+        await new ResourceGroupPlacementMigration().Up(Fixture.Database);
+    }
+
+    [Fact]
+    public async Task ConcurrentResolve_CreatesOneCellReferenceAndInitialEvent()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var lookup = new PlacementTargetLookup();
+        var service = CreateService(lookup);
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 12)
+            .Select(_ => ResolveAsync(service, resourceGroup.Id, null, null)));
+
+        Assert.All(results, result => Assert.IsType<Success<ResourcePlacement>>(result));
+        var placements = results
+            .Select(result => ((Success<ResourcePlacement>)result).Value)
+            .ToList();
+        Assert.Single(placements.Select(placement => placement.RuntimeCellId).Distinct());
+        Assert.Equal(1L, await DbContext.RuntimeCells.CountDocumentsAsync(
+            cell => cell.ResourceGroupId == resourceGroup.Id));
+        Assert.Equal(1L, await DbContext.DeploymentTargetReferences.CountDocumentsAsync(
+            reference =>
+                reference.OwnerType == ResourcePlacementService.ReferenceOwnerType &&
+                reference.OwnerId == placements[0].RuntimeCellId));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+            "runtime-cell-reconciliation-requested"));
+    }
+
+    [Fact]
+    public async Task ExistingCell_RemainsUsable_WhenTargetRejectsNewWorkloads()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var lookup = new PlacementTargetLookup();
+        var service = CreateService(lookup);
+        var created = await ResolveAsync(service, resourceGroup.Id, null, DefaultTargetId);
+        Assert.True(created.TryGetValue(out var first, out _));
+
+        lookup.RejectNewWorkloads = true;
+        var existing = await ResolveAsync(service, resourceGroup.Id, null, DefaultTargetId);
+        var rejectedNewTarget = await ResolveAsync(service, resourceGroup.Id, null, SecondTargetId);
+
+        Assert.True(existing.TryGetValue(out var same, out _));
+        Assert.Equal(first.RuntimeCellId, same.RuntimeCellId);
+        Assert.False(rejectedNewTarget.TryGetValue(out _, out var failure));
+        Assert.IsType<ConflictFailure>(failure);
+        Assert.Equal(1L, await DbContext.RuntimeCells.CountDocumentsAsync(
+            cell => cell.ResourceGroupId == resourceGroup.Id));
+    }
+
+    [Fact]
+    public async Task SameScope_UsesSameNamespaceName_InDifferentTargets()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var service = CreateService(new PlacementTargetLookup());
+
+        var firstResult = await ResolveAsync(
+            service,
+            resourceGroup.Id,
+            resourceGroup.DefaultIsolationScopeId,
+            DefaultTargetId);
+        var secondResult = await ResolveAsync(
+            service,
+            resourceGroup.Id,
+            resourceGroup.DefaultIsolationScopeId,
+            SecondTargetId);
+
+        Assert.True(firstResult.TryGetValue(out var first, out _));
+        Assert.True(secondResult.TryGetValue(out var second, out _));
+        Assert.NotEqual(first.RuntimeCellId, second.RuntimeCellId);
+        Assert.NotEqual(first.DeploymentTargetId, second.DeploymentTargetId);
+        Assert.Equal(first.KubernetesNamespace, second.KubernetesNamespace);
+    }
+
+    private ResourcePlacementService CreateService(PlacementTargetLookup lookup) =>
+        new(
+            DbContext,
+            lookup,
+            new MongoReferenceAdmission(DbContext),
+            new RuntimeCellNamespaceNameGenerator(
+                new KubernetesOptions { NamespaceNamePrefix = "pole-test" }),
+            TimeProvider.System);
+
+    private Task<Result<ResourcePlacement>> ResolveAsync(
+        IResourcePlacementService service,
+        string resourceGroupId,
+        string? isolationScopeId,
+        string? deploymentTargetId) =>
+        DbContext.RunInTransactionAsync<ResourcePlacement>(
+            (session, cancellationToken) => service.ResolveOrCreateAsync(
+                TestData.TenantId,
+                resourceGroupId,
+                isolationScopeId,
+                deploymentTargetId,
+                session,
+                cancellationToken));
+
+    private sealed class PlacementTargetLookup : IDeploymentTargetLookup
+    {
+        public bool RejectNewWorkloads { get; set; }
+
+        public Task<Result<DeploymentTargetLookupDto>> GetAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result<DeploymentTargetLookupDto>>(CreateTarget(deploymentTargetId));
+
+        public Task<Result<DeploymentTargetLookupDto>> GetDefaultAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result<DeploymentTargetLookupDto>>(CreateTarget(DefaultTargetId));
+
+        public Task<Result<DeploymentTargetLookupDto>> ResolveForNewWorkloadAsync(
+            string? deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            RejectNewWorkloads
+                ? Task.FromResult<Result<DeploymentTargetLookupDto>>(
+                    Failures.Conflict("The deployment target is not accepting new workloads."))
+                : Task.FromResult<Result<DeploymentTargetLookupDto>>(
+                    CreateTarget(deploymentTargetId ?? DefaultTargetId));
+
+        private static DeploymentTargetLookupDto CreateTarget(string id) =>
+            new(
+                id,
+                $"Target {id[^2..]}",
+                $"test:kubernetes:{id}",
+                "InCluster",
+                ConnectionVersion: 1,
+                Revision: 1,
+                Enabled: true,
+                AcceptsWorkloads: true,
+                DeletionRequested: false,
+                HealthStatus: "Healthy");
+    }
+
+    private sealed class MongoReferenceAdmission(
+        Pole.Server.Database.MongoDbContext dbContext)
+        : IDeploymentTargetReferenceAdmission
+    {
+        public async Task<Result> RegisterAsync(
+            string deploymentTargetId,
+            DeploymentTargetReferenceOwner owner,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
+        {
+            var filter = Builders<DeploymentTargetReference>.Filter.And(
+                Builders<DeploymentTargetReference>.Filter.Eq(
+                    reference => reference.DeploymentTargetId,
+                    deploymentTargetId),
+                Builders<DeploymentTargetReference>.Filter.Eq(
+                    reference => reference.OwnerType,
+                    owner.Type),
+                Builders<DeploymentTargetReference>.Filter.Eq(
+                    reference => reference.OwnerId,
+                    owner.Id));
+            await dbContext.DeploymentTargetReferences.UpdateOneAsync(
+                session,
+                filter,
+                Builders<DeploymentTargetReference>.Update
+                    .SetOnInsert(reference => reference.Id, ObjectId.GenerateNewId().ToString())
+                    .SetOnInsert(reference => reference.DeploymentTargetId, deploymentTargetId)
+                    .SetOnInsert(reference => reference.OwnerType, owner.Type)
+                    .SetOnInsert(reference => reference.OwnerId, owner.Id)
+                    .SetOnInsert(reference => reference.CreatedAtUtc, DateTime.UtcNow),
+                new UpdateOptions { IsUpsert = true },
+                cancellationToken);
+            return Result.Success();
+        }
+
+        public async Task<Result> UnregisterAsync(
+            string deploymentTargetId,
+            DeploymentTargetReferenceOwner owner,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
+        {
+            var filter = Builders<DeploymentTargetReference>.Filter.And(
+                Builders<DeploymentTargetReference>.Filter.Eq(
+                    reference => reference.DeploymentTargetId,
+                    deploymentTargetId),
+                Builders<DeploymentTargetReference>.Filter.Eq(
+                    reference => reference.OwnerType,
+                    owner.Type),
+                Builders<DeploymentTargetReference>.Filter.Eq(
+                    reference => reference.OwnerId,
+                    owner.Id));
+            await dbContext.DeploymentTargetReferences.DeleteOneAsync(
+                session,
+                filter,
+                cancellationToken: cancellationToken);
+            return Result.Success();
+        }
+    }
+}
