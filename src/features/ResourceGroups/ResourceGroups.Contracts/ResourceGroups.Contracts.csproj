@@ -12,4 +12,8 @@
       <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="MongoDB.Driver" />
+    </ItemGroup>
+
 </Project>

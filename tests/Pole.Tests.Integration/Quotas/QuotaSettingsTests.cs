@@ -14,6 +14,7 @@ public sealed class QuotaSettingsTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
+                ["kubernetes:NamespaceNamePrefix"] = "test-pole",
                 ["Quotas:ActiveReservationMinutes"] = "0",
                 ["Quotas:FinalizedReservationHistoryDays"] = "-1"
             })

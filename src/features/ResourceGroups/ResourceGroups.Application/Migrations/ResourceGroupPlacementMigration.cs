@@ -82,6 +82,14 @@ public sealed class ResourceGroupPlacementMigration : IMigration
                 new CreateIndexOptions
                 {
                     Name = "IX_RuntimeCells_State_Retry"
+                }),
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys
+                    .Ascending("State._t")
+                    .Ascending("UpdatedAtUtc"),
+                new CreateIndexOptions
+                {
+                    Name = "IX_RuntimeCells_State_UpdatedAt"
                 })
         ], cancellationToken);
     }

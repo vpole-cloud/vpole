@@ -50,6 +50,8 @@ using Pole.Features.Quotas.Application.Services;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Application.Jobs;
+using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Search.Application.Common;
@@ -296,6 +298,10 @@ public static class DependencyInjection
             services.AddHttpContextAccessor();
             services.TryAddScoped<IDomainNameReservationService, DomainNameReservationService>();
             services.TryAddScoped<IResourceGroupLookup, ResourceGroupLookup>();
+            services.TryAddScoped<IResourcePlacementService, ResourcePlacementService>();
+            services.TryAddSingleton<IRuntimeCellNamespaceNameGenerator, RuntimeCellNamespaceNameGenerator>();
+            services.TryAddScoped<IRuntimeCellNamespaceManager, KubernetesRuntimeCellNamespaceManager>();
+            services.TryAddScoped<RuntimeCellRecoveryJob>();
             services.TryAddScoped<IFunctionRevisionLifecycleService, FunctionRevisionLifecycleService>();
             services.TryAddSingleton<IFunctionRuntimeRouteResolver, FunctionRuntimeRouteResolver>();
             services.TryAddScoped<IStorageProfileResolver, StorageProfileResolver>();
@@ -365,7 +371,14 @@ public static class DependencyInjection
         public IServiceCollection AddSettings(IConfiguration configuration)
         {
             services.AddSettingsSection<OutboxSettings>(OutboxSettings.SectionName, configuration);
-            services.AddSettingsSection<KubernetesOptions>(KubernetesOptions.SectionName, configuration);
+            services.AddSingleton<
+                IValidateOptions<KubernetesOptions>,
+                RuntimeCellNamespaceOptionsValidator>();
+            services.AddOptions<KubernetesOptions>()
+                .Bind(configuration.GetSection(KubernetesOptions.SectionName))
+                .ValidateOnStart();
+            services.AddSingleton(
+                sp => sp.GetRequiredService<IOptions<KubernetesOptions>>().Value);
             services.AddSettingsSection<PostgresSettings>(PostgresSettings.SectionName, configuration);
             services.AddOptions<QuotaSettings>()
                 .Bind(configuration.GetSection(QuotaSettings.SectionName))
@@ -495,6 +508,11 @@ public static class DependencyInjection
                 RecurringJob.AddOrUpdate<SourceBuildQueueRecoveryJob>(
                     "recover-source-build-queue",
                     job => job.RecoverAsync(),
+                    Cron.Minutely);
+
+                RecurringJob.AddOrUpdate<RuntimeCellRecoveryJob>(
+                    "recover-runtime-cells",
+                    job => job.RecoverAsync(CancellationToken.None),
                     Cron.Minutely);
 
                 RecurringJob.AddOrUpdate<IRegistryProvisioningCleanupService>(
