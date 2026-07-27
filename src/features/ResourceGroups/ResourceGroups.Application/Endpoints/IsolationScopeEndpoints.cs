@@ -7,5 +7,6 @@ public static class IsolationScopeEndpoints
     public static IEndpointRouteBuilder MapIsolationScopeEndpoints(this IEndpointRouteBuilder app) =>
         app.MapCreateIsolationScopeEndpoint()
             .MapGetIsolationScopesEndpoint()
-            .MapGetIsolationScopeEndpoint();
+            .MapGetIsolationScopeEndpoint()
+            .MapDeleteIsolationScopeEndpoint();
 }

@@ -23,6 +23,15 @@ public sealed record IsolationScope(
     {
         if (IsDefault)
             throw new InvalidOperationException("The default isolation scope cannot be deleted separately.");
+
+        return RequestDeletionCore(requestedAtUtc);
+    }
+
+    public IsolationScope RequestResourceGroupDeletion(DateTime requestedAtUtc) =>
+        RequestDeletionCore(requestedAtUtc);
+
+    private IsolationScope RequestDeletionCore(DateTime requestedAtUtc)
+    {
         if (Lifecycle is DeletingIsolationScopeLifecycleState)
             return this;
 

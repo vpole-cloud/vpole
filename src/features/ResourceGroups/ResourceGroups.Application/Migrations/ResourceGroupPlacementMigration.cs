@@ -44,6 +44,14 @@ public sealed class ResourceGroupPlacementMigration : IMigration
                 new CreateIndexOptions
                 {
                     Name = "IX_IsolationScopes_Tenant_ResourceGroup"
+                }),
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys
+                    .Ascending("Lifecycle._t")
+                    .Ascending("UpdatedAtUtc"),
+                new CreateIndexOptions
+                {
+                    Name = "IX_IsolationScopes_Lifecycle_UpdatedAt"
                 })
         ], cancellationToken);
 

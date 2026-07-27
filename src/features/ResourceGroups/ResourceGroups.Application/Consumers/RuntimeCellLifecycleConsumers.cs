@@ -143,6 +143,7 @@ public sealed class DeleteRuntimeCellOnDeletionRequestedConsumer(
     IResourceGroupDbContext dbContext,
     IRuntimeCellNamespaceManager namespaceManager,
     IDeploymentTargetReferenceAdmission referenceAdmission,
+    IResourceGroupDeletionFinalizer deletionFinalizer,
     TimeProvider timeProvider)
     : IConsumer<RuntimeCellDeletionRequestedEvent>
 {
@@ -182,7 +183,7 @@ public sealed class DeleteRuntimeCellOnDeletionRequestedConsumer(
         var deleted = runtimeCell.MarkDeleted(
             message.Generation,
             timeProvider.GetUtcNow().UtcDateTime);
-        await dbContext.RunInTransactionAsync(async (session, ct) =>
+        var persistence = await dbContext.RunInTransactionAsync(async (session, ct) =>
         {
             var replacement = await dbContext.RuntimeCells.ReplaceOneAsync(
                 session,
@@ -208,6 +209,15 @@ public sealed class DeleteRuntimeCellOnDeletionRequestedConsumer(
             await dbContext.StoreEventAsync(deleted.ToDeletedEvent(), session, ct);
             return Result.Success();
         }, cancellationToken: cancellationToken);
+
+        if (persistence is ISuccess)
+        {
+            await deletionFinalizer.TryFinalizeAsync(
+                runtimeCell.TenantId,
+                runtimeCell.ResourceGroupId,
+                runtimeCell.IsolationScopeId,
+                cancellationToken);
+        }
     }
 
     private async Task PersistFailureAsync(

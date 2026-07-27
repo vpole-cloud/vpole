@@ -95,6 +95,32 @@ public sealed class ResourcePlacementService(
             {
                 CreatedAtUtc = now
             });
+        var resourceGroupFence = await dbContext.ResourceGroups.UpdateOneAsync(
+            session,
+            Builders<ResourceGroup>.Filter.And(
+                Builders<ResourceGroup>.Filter.Eq(group => group.Id, resourceGroup.Id),
+                Builders<ResourceGroup>.Filter.Eq(group => group.TenantId, tenantId),
+                Builders<ResourceGroup>.Filter.Eq("Lifecycle._t", "active")),
+            Builders<ResourceGroup>.Update
+                .Inc(group => group.Revision, 1)
+                .Set(group => group.UpdatedAtUtc, now),
+            cancellationToken: cancellationToken);
+        if (resourceGroupFence.ModifiedCount != 1)
+            return Failures.Conflict("The resource group changed while placement was being created.");
+
+        var scopeFence = await dbContext.IsolationScopes.UpdateOneAsync(
+            session,
+            Builders<IsolationScope>.Filter.And(
+                Builders<IsolationScope>.Filter.Eq(item => item.Id, scope.Id),
+                Builders<IsolationScope>.Filter.Eq(item => item.TenantId, tenantId),
+                Builders<IsolationScope>.Filter.Eq("Lifecycle._t", "active")),
+            Builders<IsolationScope>.Update
+                .Inc(item => item.Revision, 1)
+                .Set(item => item.UpdatedAtUtc, now),
+            cancellationToken: cancellationToken);
+        if (scopeFence.ModifiedCount != 1)
+            return Failures.Conflict("The isolation scope changed while placement was being created.");
+
         var filter = Builders<RuntimeCell>.Filter.And(
             Builders<RuntimeCell>.Filter.Eq(cell => cell.IsolationScopeId, scope.Id),
             Builders<RuntimeCell>.Filter.Eq(cell => cell.DeploymentTargetId, admittedTarget.Id));

@@ -87,4 +87,24 @@ public sealed class RuntimeCellApiTests(MongoReplicaSetFixture fixture)
             $"/api/v1/resource-groups/{otherResourceGroup.Id}/runtime-cells/{cell.Id}");
         Assert.Equal(HttpStatusCode.NotFound, crossGroup.StatusCode);
     }
+
+    [Fact]
+    public async Task DeleteResourceGroup_WithRuntimeCell_ReturnsAccepted()
+    {
+        var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(
+            TestData.SeedResourceGroup());
+        var cell = RuntimeCellFactory.Create(
+            resourceGroup.TenantId,
+            resourceGroup.Id,
+            resourceGroup.DefaultIsolationScopeId,
+            "507f1f77bcf86cd799439071",
+            "pole-delete-group-api",
+            RuntimeCellFactory.DefaultOptions);
+        await Fixture.DbContext.RuntimeCells.InsertOneAsync(cell);
+
+        using var response = await Client.DeleteAsync(
+            $"/api/v1/resource-groups/{resourceGroup.Id}");
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+    }
 }

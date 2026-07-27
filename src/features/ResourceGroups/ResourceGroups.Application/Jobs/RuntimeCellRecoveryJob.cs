@@ -2,6 +2,7 @@ using Hangfire;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
 
@@ -9,6 +10,7 @@ namespace Pole.Features.ResourceGroups.Application.Jobs;
 
 public sealed class RuntimeCellRecoveryJob(
     IResourceGroupDbContext dbContext,
+    IResourceGroupDeletionFinalizer deletionFinalizer,
     TimeProvider timeProvider)
 {
     private const int BatchSize = 100;
@@ -19,6 +21,20 @@ public sealed class RuntimeCellRecoveryJob(
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var staleBefore = now.Subtract(InFlightTimeout);
+        var deletingScopes = await dbContext.IsolationScopes
+            .Find(Builders<IsolationScope>.Filter.Eq("Lifecycle._t", "deleting"))
+            .SortBy(scope => scope.UpdatedAtUtc)
+            .Limit(BatchSize)
+            .ToListAsync(cancellationToken);
+        foreach (var scope in deletingScopes)
+        {
+            await deletionFinalizer.TryFinalizeAsync(
+                scope.TenantId,
+                scope.ResourceGroupId,
+                scope.Id,
+                cancellationToken);
+        }
+
         var candidates = await dbContext.RuntimeCells
             .Find(Builders<RuntimeCell>.Filter.Or(
                 Builders<RuntimeCell>.Filter.And(

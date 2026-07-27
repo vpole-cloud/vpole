@@ -5,6 +5,7 @@ using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Application.Consumers;
 using Pole.Features.ResourceGroups.Application.Jobs;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
+using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.ResultType;
@@ -78,6 +79,9 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
             DbContext,
             manager,
             admission,
+            new ResourceGroupDeletionFinalizer(
+                DbContext,
+                new FixedTimeProvider(InitialTime.AddMinutes(2))),
             new FixedTimeProvider(InitialTime.AddMinutes(2)));
         var message = new RuntimeCellDeletionRequestedEvent(
             deleting.Id,
@@ -98,6 +102,63 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
     }
 
     [Fact]
+    public async Task DeletionSuccess_FinalizesDeletingResourceGroupAfterLastCell()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(
+            TestData.SeedResourceGroup());
+        var requestedAt = resourceGroup.UpdatedAtUtc.AddMinutes(1);
+        await DbContext.ResourceGroups.ReplaceOneAsync(
+            group => group.Id == resourceGroup.Id,
+            resourceGroup.RequestDeletion(requestedAt));
+        var defaultScope = await DbContext.IsolationScopes
+            .Find(scope => scope.Id == resourceGroup.DefaultIsolationScopeId)
+            .SingleAsync();
+        await DbContext.IsolationScopes.ReplaceOneAsync(
+            scope => scope.Id == defaultScope.Id,
+            defaultScope.RequestResourceGroupDeletion(requestedAt));
+        var cell = RuntimeCellFactory.Create(
+                resourceGroup.TenantId,
+                resourceGroup.Id,
+                defaultScope.Id,
+                "507f1f77bcf86cd799439071",
+                "pole-finalize-resource-group",
+                new RuntimeCellFactory.CreateOptions(
+                    ObjectId.GenerateNewId().ToString(),
+                    requestedAt))
+            .RequestDeletion(requestedAt.AddMinutes(1));
+        await DbContext.RuntimeCells.InsertOneAsync(cell);
+        var completedAt = requestedAt.AddMinutes(2);
+        var consumer = new DeleteRuntimeCellOnDeletionRequestedConsumer(
+            DbContext,
+            new RecordingNamespaceManager(Result.Success(), Result.Success()),
+            new RecordingReferenceAdmission(),
+            new ResourceGroupDeletionFinalizer(
+                DbContext,
+                new FixedTimeProvider(completedAt)),
+            new FixedTimeProvider(completedAt));
+        var message = new RuntimeCellDeletionRequestedEvent(
+            cell.Id,
+            cell.DesiredGeneration)
+        {
+            EventCore = EventCore.Create(cell.TenantId)
+        };
+
+        await consumer.HandleAsync(message);
+
+        Assert.False(await DbContext.ResourceGroups
+            .Find(group => group.Id == resourceGroup.Id)
+            .AnyAsync());
+        Assert.False(await DbContext.IsolationScopes
+            .Find(scope => scope.ResourceGroupId == resourceGroup.Id)
+            .AnyAsync());
+        Assert.False(await DbContext.RuntimeCells
+            .Find(item => item.ResourceGroupId == resourceGroup.Id)
+            .AnyAsync());
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("runtime-cell-deleted"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("resource-group-deleted"));
+    }
+
+    [Fact]
     public async Task Recovery_AdvancesDueFailure_AndOnlyWritesAnOutboxRequest()
     {
         var cell = await InsertCellAsync();
@@ -112,6 +173,9 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         await DbContext.RuntimeCells.ReplaceOneAsync(item => item.Id == cell.Id, failed);
         var job = new RuntimeCellRecoveryJob(
             DbContext,
+            new ResourceGroupDeletionFinalizer(
+                DbContext,
+                new FixedTimeProvider(InitialTime.AddMinutes(2))),
             new FixedTimeProvider(InitialTime.AddMinutes(2)));
 
         await job.RecoverAsync();
@@ -121,6 +185,51 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         Assert.Equal(cell.DesiredGeneration + 1, recovered.DesiredGeneration);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
             "runtime-cell-reconciliation-requested"));
+    }
+
+    [Fact]
+    public async Task Recovery_FinalizesDeletionAfterDeletedCellCrashWindow()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(
+            TestData.SeedResourceGroup());
+        var requestedAt = resourceGroup.UpdatedAtUtc.AddMinutes(1);
+        await DbContext.ResourceGroups.ReplaceOneAsync(
+            group => group.Id == resourceGroup.Id,
+            resourceGroup.RequestDeletion(requestedAt));
+        var defaultScope = await DbContext.IsolationScopes
+            .Find(scope => scope.Id == resourceGroup.DefaultIsolationScopeId)
+            .SingleAsync();
+        await DbContext.IsolationScopes.ReplaceOneAsync(
+            scope => scope.Id == defaultScope.Id,
+            defaultScope.RequestResourceGroupDeletion(requestedAt));
+        var deleting = RuntimeCellFactory.Create(
+                resourceGroup.TenantId,
+                resourceGroup.Id,
+                defaultScope.Id,
+                "507f1f77bcf86cd799439071",
+                "pole-recovery-finalize",
+                new RuntimeCellFactory.CreateOptions(
+                    ObjectId.GenerateNewId().ToString(),
+                    requestedAt))
+            .RequestDeletion(requestedAt.AddMinutes(1));
+        var deleted = deleting.MarkDeleted(
+            deleting.DesiredGeneration,
+            requestedAt.AddMinutes(2));
+        await DbContext.RuntimeCells.InsertOneAsync(deleted);
+        var recoveryTime = requestedAt.AddMinutes(3);
+        var job = new RuntimeCellRecoveryJob(
+            DbContext,
+            new ResourceGroupDeletionFinalizer(
+                DbContext,
+                new FixedTimeProvider(recoveryTime)),
+            new FixedTimeProvider(recoveryTime));
+
+        await job.RecoverAsync();
+
+        Assert.False(await DbContext.ResourceGroups
+            .Find(group => group.Id == resourceGroup.Id)
+            .AnyAsync());
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("resource-group-deleted"));
     }
 
     private async Task<RuntimeCell> InsertCellAsync()
