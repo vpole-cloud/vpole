@@ -215,7 +215,8 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         var deleteClock = new BlockingTimeProvider(Now.AddMinutes(1));
         var deleteHandler = new DeleteDeploymentTargetHandler(
             fixture.DbContext,
-            [],
+            new DeploymentTargetReader(fixture.DbContext),
+            new DeploymentTargetDeletionGuard(fixture.DbContext),
             new NoOpClientCache(),
             deleteClock);
 
@@ -283,7 +284,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         return DeploymentTargetFactory.Create(
             "Existing cluster",
             $"kubernetes:kube-system:{id}",
-            new InClusterDeploymentTargetConnection(connectionVersion),
+            DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
             DeploymentTargetHealth.Healthy(connectionVersion, Now.UtcDateTime),
             DeploymentTargetCapabilities.Unknown(connectionVersion),
             enabled: true,
@@ -336,8 +337,8 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
 
             DeploymentTargetConnection connection = input switch
             {
-                InClusterConnectionInput => new InClusterDeploymentTargetConnection(connectionVersion),
-                KubeconfigConnectionInput kubeconfig => new KubeconfigDeploymentTargetConnection(
+                InClusterConnectionInput => DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
+                KubeconfigConnectionInput kubeconfig => DeploymentTargetConnectionFactory.CreateKubeconfig(
                     connectionVersion,
                     kubeconfig.ContextName ?? "captured-context",
                     "https://bootstrap.invalid",

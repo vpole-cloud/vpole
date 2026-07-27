@@ -57,7 +57,7 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
             preparedServiceAccount.Connection);
         var inClusterTarget = CreateTarget(
             ObjectId.GenerateNewId().ToString(),
-            new InClusterDeploymentTargetConnection(1));
+            DeploymentTargetConnectionFactory.CreateInCluster(1));
         await fixture.DbContext.DeploymentTargets.InsertManyAsync(
         [
             CreateTarget(kubeconfigTargetId, kubeconfigConnection),
@@ -138,6 +138,7 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
             });
         var handler = new UpdateDeploymentTargetHandler(
             fixture.DbContext,
+            new DeploymentTargetReader(fixture.DbContext),
             new NoOpClientCache(),
             timeProvider);
 

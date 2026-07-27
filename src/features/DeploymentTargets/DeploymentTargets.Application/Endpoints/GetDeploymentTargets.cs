@@ -13,14 +13,16 @@ namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 public sealed record GetDeploymentTargetsRequest
     : IMediatorRequest<IReadOnlyCollection<DeploymentTargetDto>>;
 
-public sealed class GetDeploymentTargetsHandler(IDeploymentTargetDbContext dbContext)
+public sealed class GetDeploymentTargetsHandler(
+    IDeploymentTargetDbContext dbContext,
+    DeploymentTargetReader reader)
     : IMediatorHandler<GetDeploymentTargetsRequest, IReadOnlyCollection<DeploymentTargetDto>>
 {
     public async Task<Result<IReadOnlyCollection<DeploymentTargetDto>>> HandleAsync(
         GetDeploymentTargetsRequest request,
         CancellationToken cancellationToken = default)
     {
-        var defaultId = await DeploymentTargetEndpointSupport.GetDefaultIdAsync(dbContext, cancellationToken);
+        var defaultId = await reader.GetDefaultIdAsync(cancellationToken);
         var targets = await dbContext.DeploymentTargets
             .Find(Builders<DeploymentTarget>.Filter.Empty)
             .SortBy(target => target.DisplayName)

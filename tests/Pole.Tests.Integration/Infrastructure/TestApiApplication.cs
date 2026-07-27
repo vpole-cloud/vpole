@@ -193,6 +193,7 @@ public sealed class TestApiApplication : IAsyncDisposable
 
         var app = builder.Build();
         await new DeploymentTargetMigration().Up(fixture.Database);
+        await new DeploymentTargetReferenceMigration().Up(fixture.Database);
         app.UseTraceContext();
         app.UseCors("frontend-dev");
         app.UseAuthentication();
@@ -233,4 +234,3 @@ public sealed class TestApiApplication : IAsyncDisposable
     }
 
 }
-

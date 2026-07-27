@@ -74,7 +74,7 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
 
         var connectionRevision = metadataRevision.ReplaceConnectionCredential(
             metadataRevision.ClusterIdentity,
-            new InClusterDeploymentTargetConnection(metadataRevision.Connection.Version + 1),
+            DeploymentTargetConnectionFactory.CreateInCluster(metadataRevision.Connection.Version + 1),
             metadataRevision.UpdatedAtUtc.AddSeconds(1));
         await ReplaceTargetAsync(connectionRevision);
         var clientAfterConnectionRotation = await provider.GetAsync(target.Id);
@@ -135,7 +135,7 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
         await provider.GetAsync(target.Id);
         var updatedTarget = target.ReplaceConnectionCredential(
             target.ClusterIdentity,
-            new InClusterDeploymentTargetConnection(target.Connection.Version + 1),
+            DeploymentTargetConnectionFactory.CreateInCluster(target.Connection.Version + 1),
             target.UpdatedAtUtc.AddSeconds(1));
         await ReplaceTargetAsync(updatedTarget);
         await provider.GetAsync(target.Id);
@@ -170,7 +170,7 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
         return DeploymentTargetFactory.Create(
             $"Target {id[..8]}",
             $"cluster-{id}",
-            new InClusterDeploymentTargetConnection(connectionVersion),
+            DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
             health,
             DeploymentTargetCapabilities.Unknown(connectionVersion),
             enabled,

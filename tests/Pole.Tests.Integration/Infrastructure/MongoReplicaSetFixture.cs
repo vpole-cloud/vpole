@@ -11,6 +11,8 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 public sealed class MongoReplicaSetFixture : IAsyncLifetime
 {
+    private const string DefaultMongoImage = "mongo:8.0";
+
     private readonly int _mongoPort;
     private readonly IContainer _container;
 
@@ -23,8 +25,11 @@ public sealed class MongoReplicaSetFixture : IAsyncLifetime
     public MongoReplicaSetFixture()
     {
         _mongoPort = GetFreePort();
+        var mongoImage = Environment.GetEnvironmentVariable("POLE_TEST_MONGO_IMAGE");
+        if (string.IsNullOrWhiteSpace(mongoImage))
+            mongoImage = DefaultMongoImage;
 
-        _container = new ContainerBuilder("mongo:8.0")
+        _container = new ContainerBuilder(mongoImage)
             .WithPortBinding(_mongoPort, _mongoPort)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(_mongoPort))
             .WithCommand("mongod", "--replSet", "rs0", "--bind_ip_all", "--port", _mongoPort.ToString())

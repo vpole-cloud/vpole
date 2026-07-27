@@ -1,9 +1,9 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
@@ -20,11 +20,12 @@ public sealed record CreateDeploymentTargetRequestBody(
     bool AcceptsWorkloads,
     DeploymentTargetConnectionRequestBody Connection);
 
-public sealed record CreateDeploymentTargetRequest(CreateDeploymentTargetRequestBody Body)
+public sealed record CreateDeploymentTargetRequest(
+    [FromBody] CreateDeploymentTargetRequestBody Body)
     : IMediatorRequest<DeploymentTargetDto>;
 
 public sealed class CreateDeploymentTargetHandler(
-    IDeploymentTargetDbContext dbContext,
+    DeploymentTargetPersistence persistence,
     IDeploymentTargetConnectionPreparer connectionPreparer,
     IDeploymentTargetProbe probe,
     TimeProvider timeProvider)
@@ -34,15 +35,12 @@ public sealed class CreateDeploymentTargetHandler(
         CreateDeploymentTargetRequest request,
         CancellationToken cancellationToken = default)
     {
-        var bodyValidation = ValidateBody(request.Body);
-        if (bodyValidation is not null)
-            return bodyValidation;
-        var inputResult = DeploymentTargetEndpointSupport.ToConnectionInput(request.Body.Connection);
-        if (!inputResult.TryGetValue(out var input, out var inputFailure))
-            return inputFailure;
-
         var id = ObjectId.GenerateNewId().ToString();
-        var preparedResult = await connectionPreparer.PrepareAsync(id, 1, input, cancellationToken);
+        var preparedResult = await connectionPreparer.PrepareAsync(
+            id,
+            connectionVersion: 1,
+            request.Body.Connection.ToInput(),
+            cancellationToken);
         if (!preparedResult.TryGetValue(out var prepared, out var prepareFailure))
             return prepareFailure;
 
@@ -54,7 +52,7 @@ public sealed class CreateDeploymentTargetHandler(
                 cancellationToken: cancellationToken);
             if (!observation.IsUsable || observation.ClusterIdentity is null)
             {
-                return DeploymentTargetEndpointSupport.ConnectionValidationFailure(
+                return ConnectionValidationFailure(
                     observation.Health.FailureMessage ?? "The Kubernetes connection is not usable.");
             }
 
@@ -68,37 +66,44 @@ public sealed class CreateDeploymentTargetHandler(
                 request.Body.Enabled,
                 request.Body.AcceptsWorkloads,
                 new DeploymentTargetFactory.CreateOptions(id, now));
-            try
-            {
-                await dbContext.DeploymentTargets.InsertOneAsync(target, cancellationToken: cancellationToken);
-            }
-            catch (MongoWriteException exception) when (
-                exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
-            {
-                return Failures.Conflict("A deployment target for this Kubernetes cluster already exists.");
-            }
-
-            return target.ToDto();
+            var inserted = await persistence.InsertAsync(target, cancellationToken);
+            return inserted.TryGetValue(out var persisted, out var insertionFailure)
+                ? persisted.ToDto()
+                : insertionFailure;
         }
     }
 
-    private static ValidationFailure? ValidateBody(CreateDeploymentTargetRequestBody? body)
+    private static ValidationFailure ConnectionValidationFailure(string safeMessage) =>
+        Failures.ValidationFailure(new Dictionary<string, string[]>
+        {
+            ["Body.Connection"] = [safeMessage]
+        });
+}
+
+public sealed class CreateDeploymentTargetRequestValidator
+    : AbstractValidator<CreateDeploymentTargetRequest>
+{
+    public CreateDeploymentTargetRequestValidator() =>
+        RuleFor(request => request.Body)
+            .NotNull()
+            .SetValidator(new CreateDeploymentTargetRequestBodyValidator());
+}
+
+public sealed class CreateDeploymentTargetRequestBodyValidator
+    : AbstractValidator<CreateDeploymentTargetRequestBody>
+{
+    public CreateDeploymentTargetRequestBodyValidator()
     {
-        if (body is null)
-            return DeploymentTargetEndpointSupport.BodyValidationFailure("Request body is required.");
-        if (string.IsNullOrWhiteSpace(body.DisplayName) || body.DisplayName.Trim().Length > 80)
-        {
-            return DeploymentTargetEndpointSupport.BodyValidationFailure(
-                "Display name is required and must be 80 characters or less.");
-        }
-        if (!body.Enabled && body.AcceptsWorkloads)
-        {
-            return DeploymentTargetEndpointSupport.BodyValidationFailure(
-                "A disabled deployment target cannot accept workloads.");
-        }
-        if (body.Connection is null)
-            return DeploymentTargetEndpointSupport.BodyValidationFailure("Connection is required.");
-        return null;
+        RuleFor(body => body.DisplayName)
+            .NotEmpty()
+            .MaximumLength(80);
+        RuleFor(body => body.AcceptsWorkloads)
+            .Equal(false)
+            .When(body => !body.Enabled)
+            .WithMessage("A disabled deployment target cannot accept workloads.");
+        RuleFor(body => body.Connection)
+            .NotNull()
+            .SetValidator(new DeploymentTargetConnectionRequestBodyValidator());
     }
 }
 
@@ -108,10 +113,10 @@ public static class CreateDeploymentTargetEndpoint
     {
         app.MapPost("/", async (
                 IMediator mediator,
-                [FromBody] CreateDeploymentTargetRequestBody body,
+                [AsParameters] CreateDeploymentTargetRequest request,
                 CancellationToken cancellationToken) =>
             {
-                var result = await mediator.Send(new CreateDeploymentTargetRequest(body), cancellationToken);
+                var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(target =>
                     Results.Created($"/api/v1/platform/deployment-targets/{target.Id}", target));
             })

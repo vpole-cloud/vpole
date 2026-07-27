@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -17,12 +18,10 @@ public static class RewrapDeploymentTargetCredentials
     {
         app.MapPost("/deployment-target-credentials/rewrap", async (
                 IMediator mediator,
-                [FromBody] RewrapDeploymentTargetCredentialsRequestBody body,
+                [AsParameters] RewrapDeploymentTargetCredentialsRequest request,
                 CancellationToken cancellationToken) =>
             {
-                var result = await mediator.Send(
-                    new RewrapDeploymentTargetCredentialsRequest(body),
-                    cancellationToken);
+                var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(Results.Ok);
             })
             .WithName("RewrapDeploymentTargetCredentials")
@@ -41,7 +40,7 @@ public sealed record RewrapDeploymentTargetCredentialsRequestBody(
     int KeyWrapAlgorithmVersion);
 
 public sealed record RewrapDeploymentTargetCredentialsRequest(
-    RewrapDeploymentTargetCredentialsRequestBody Body)
+    [FromBody] RewrapDeploymentTargetCredentialsRequestBody Body)
     : IMediatorRequest<DeploymentTargetCredentialRewrapSummary>;
 
 public sealed class RewrapDeploymentTargetCredentialsHandler(
@@ -50,29 +49,8 @@ public sealed class RewrapDeploymentTargetCredentialsHandler(
 {
     public Task<Result<DeploymentTargetCredentialRewrapSummary>> HandleAsync(
         RewrapDeploymentTargetCredentialsRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        if (request.Body is null ||
-            string.IsNullOrWhiteSpace(request.Body.ProviderId) ||
-            request.Body.ProviderId.Length > 128 ||
-            string.IsNullOrWhiteSpace(request.Body.KeyId) ||
-            request.Body.KeyId.Length > 128 ||
-            request.Body.KeyVersion < 1 ||
-            string.IsNullOrWhiteSpace(request.Body.KeyWrapAlgorithm) ||
-            request.Body.KeyWrapAlgorithm.Length > 128 ||
-            request.Body.KeyWrapAlgorithmVersion < 1)
-        {
-            return Task.FromResult<Result<DeploymentTargetCredentialRewrapSummary>>(
-                Failures.ValidationFailure(new Dictionary<string, string[]>
-                {
-                    ["Body"] =
-                    [
-                        "ProviderId, KeyId, KeyWrapAlgorithm, and positive key and algorithm versions are required."
-                    ]
-                }));
-        }
-
-        return rewrapService.RewrapAllAsync(
+        CancellationToken cancellationToken = default) =>
+        rewrapService.RewrapAllAsync(
             new EnvelopeEncryptionKeyReference(
                 request.Body.ProviderId,
                 request.Body.KeyId,
@@ -80,5 +58,26 @@ public sealed class RewrapDeploymentTargetCredentialsHandler(
                 request.Body.KeyWrapAlgorithm,
                 request.Body.KeyWrapAlgorithmVersion),
             cancellationToken);
+}
+
+public sealed class RewrapDeploymentTargetCredentialsRequestValidator
+    : AbstractValidator<RewrapDeploymentTargetCredentialsRequest>
+{
+    public RewrapDeploymentTargetCredentialsRequestValidator() =>
+        RuleFor(request => request.Body)
+            .NotNull()
+            .SetValidator(new RewrapDeploymentTargetCredentialsRequestBodyValidator());
+}
+
+public sealed class RewrapDeploymentTargetCredentialsRequestBodyValidator
+    : AbstractValidator<RewrapDeploymentTargetCredentialsRequestBody>
+{
+    public RewrapDeploymentTargetCredentialsRequestBodyValidator()
+    {
+        RuleFor(body => body.ProviderId).NotEmpty().MaximumLength(128);
+        RuleFor(body => body.KeyId).NotEmpty().MaximumLength(128);
+        RuleFor(body => body.KeyVersion).GreaterThan(0);
+        RuleFor(body => body.KeyWrapAlgorithm).NotEmpty().MaximumLength(128);
+        RuleFor(body => body.KeyWrapAlgorithmVersion).GreaterThan(0);
     }
 }

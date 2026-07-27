@@ -43,6 +43,11 @@ The integration suite uses:
 
 MongoDB is started as a **single-node replica set** because the application uses Mongo transactions, and transactions require replica set support.
 
+The integration fixture uses `mongo:8.0` by default. A developer can override only the local
+Testcontainers image with `POLE_TEST_MONGO_IMAGE`. This is useful when the host kernel is
+temporarily incompatible with the default image; CI and normal development should keep the
+default so Pole continues to exercise MongoDB 8 behavior.
+
 ## Test layers
 
 The current suite intentionally mixes a few different test layers inside one project:
@@ -62,6 +67,13 @@ Before running the integration suite:
 
 - make sure **Docker is running**
 - make sure the .NET SDK for the repo is installed
+
+On Linux kernel 6.19, MongoDB 8.0 currently cannot start because of an upstream TCMalloc
+incompatibility. Until MongoDB publishes a compatible build, use the local fallback:
+
+```bash
+POLE_TEST_MONGO_IMAGE=mongo:7.0 dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj -maxcpucount:1 -nodeReuse:false
+```
 
 If Docker is not running, Testcontainers will fail before tests start.
 

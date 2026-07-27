@@ -1,7 +1,9 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.DeploymentTargets.Application.Common;
@@ -18,12 +20,13 @@ public sealed record RotateDeploymentTargetCredentialsRequestBody(
     DeploymentTargetConnectionRequestBody Connection);
 
 public sealed record RotateDeploymentTargetCredentialsRequest(
-    string Id,
-    RotateDeploymentTargetCredentialsRequestBody Body)
+    [FromRoute] string Id,
+    [FromBody] RotateDeploymentTargetCredentialsRequestBody Body)
     : IMediatorRequest<DeploymentTargetDto>;
 
 public sealed class RotateDeploymentTargetCredentialsHandler(
     IDeploymentTargetDbContext dbContext,
+    DeploymentTargetReader reader,
     IDeploymentTargetConnectionPreparer connectionPreparer,
     IDeploymentTargetProbe probe,
     IDeploymentTargetClientCache clientCache,
@@ -34,25 +37,16 @@ public sealed class RotateDeploymentTargetCredentialsHandler(
         RotateDeploymentTargetCredentialsRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (request.Body is null || request.Body.Revision < 1 || request.Body.Connection is null)
-            return DeploymentTargetEndpointSupport.BodyValidationFailure("Revision and connection are required.");
-        var inputResult = DeploymentTargetEndpointSupport.ToConnectionInput(request.Body.Connection);
-        if (!inputResult.TryGetValue(out var input, out var inputFailure))
-            return inputFailure;
-        var targetResult = await DeploymentTargetEndpointSupport.GetTargetAsync(
-            dbContext,
-            request.Id,
-            cancellationToken);
+        var targetResult = await reader.GetAsync(request.Id, cancellationToken);
         if (!targetResult.TryGetValue(out var target, out var targetFailure))
             return targetFailure;
         if (target.Revision != request.Body.Revision)
             return Failures.Conflict("The deployment target changed. Reload it and retry.");
 
-        var nextConnectionVersion = checked(target.Connection.Version + 1);
         var preparedResult = await connectionPreparer.PrepareAsync(
             target.Id,
-            nextConnectionVersion,
-            input,
+            target.NextConnectionVersion,
+            request.Body.Connection.ToInput(),
             cancellationToken);
         if (!preparedResult.TryGetValue(out var prepared, out var prepareFailure))
             return prepareFailure;
@@ -66,19 +60,19 @@ public sealed class RotateDeploymentTargetCredentialsHandler(
                 cancellationToken);
             if (!observation.IsUsable || observation.ClusterIdentity is null)
             {
-                return DeploymentTargetEndpointSupport.ConnectionValidationFailure(
+                return ConnectionValidationFailure(
                     observation.Health.FailureMessage ?? "The Kubernetes connection is not usable.");
             }
             if (!string.Equals(target.ClusterIdentity, observation.ClusterIdentity, StringComparison.Ordinal))
             {
-                return DeploymentTargetEndpointSupport.ConnectionValidationFailure(
+                return ConnectionValidationFailure(
                     "Replacement credentials resolve to a different Kubernetes cluster.");
             }
 
             var updated = target.ReplaceConnectionCredential(
                     observation.ClusterIdentity,
                     prepared.Connection,
-                    DeploymentTargetEndpointSupport.CheckedAtUtc(timeProvider, target.UpdatedAtUtc))
+                    DeploymentTargetClock.UtcNowAfter(timeProvider, target.UpdatedAtUtc))
                 .ApplyValidationObservation(
                     target.Revision + 1,
                     prepared.Connection.Version,
@@ -86,7 +80,7 @@ public sealed class RotateDeploymentTargetCredentialsHandler(
                     observation.Capabilities);
             var persisted = await dbContext.DeploymentTargets.FindOneAndUpdateAsync(
                 Builders<DeploymentTarget>.Filter.And(
-                    DeploymentTargetEndpointSupport.RevisionFilter(target),
+                    DeploymentTargetFilters.RevisionFilter(target),
                     Builders<DeploymentTarget>.Filter.Eq(
                         item => item.Connection.Version,
                         target.Connection.Version)),
@@ -105,9 +99,41 @@ public sealed class RotateDeploymentTargetCredentialsHandler(
                 return Failures.Conflict("The deployment target changed. Reload it and retry.");
 
             clientCache.Invalidate(target.Id);
-            var defaultId = await DeploymentTargetEndpointSupport.GetDefaultIdAsync(dbContext, cancellationToken);
+            var defaultId = await reader.GetDefaultIdAsync(cancellationToken);
             return persisted.ToDto(persisted.Id == defaultId);
         }
+    }
+
+    private static ValidationFailure ConnectionValidationFailure(string safeMessage) =>
+        Failures.ValidationFailure(new Dictionary<string, string[]>
+        {
+            ["Body.Connection"] = [safeMessage]
+        });
+}
+
+public sealed class RotateDeploymentTargetCredentialsRequestValidator
+    : AbstractValidator<RotateDeploymentTargetCredentialsRequest>
+{
+    public RotateDeploymentTargetCredentialsRequestValidator()
+    {
+        RuleFor(request => request.Id)
+            .Must(id => ObjectId.TryParse(id, out _))
+            .WithMessage("Deployment target ID must be a MongoDB ObjectId.");
+        RuleFor(request => request.Body)
+            .NotNull()
+            .SetValidator(new RotateDeploymentTargetCredentialsRequestBodyValidator());
+    }
+}
+
+public sealed class RotateDeploymentTargetCredentialsRequestBodyValidator
+    : AbstractValidator<RotateDeploymentTargetCredentialsRequestBody>
+{
+    public RotateDeploymentTargetCredentialsRequestBodyValidator()
+    {
+        RuleFor(body => body.Revision).GreaterThan(0);
+        RuleFor(body => body.Connection)
+            .NotNull()
+            .SetValidator(new DeploymentTargetConnectionRequestBodyValidator());
     }
 }
 
@@ -116,15 +142,12 @@ public static class RotateDeploymentTargetCredentialsEndpoint
     public static IEndpointRouteBuilder MapRotateDeploymentTargetCredentialsEndpoint(
         this IEndpointRouteBuilder app)
     {
-        app.MapPut("/{id}/credentials", async (
+        app.MapPut("/{Id}/credentials", async (
                 IMediator mediator,
-                [FromRoute] string id,
-                [FromBody] RotateDeploymentTargetCredentialsRequestBody body,
+                [AsParameters] RotateDeploymentTargetCredentialsRequest request,
                 CancellationToken cancellationToken) =>
             {
-                var result = await mediator.Send(
-                    new RotateDeploymentTargetCredentialsRequest(id, body),
-                    cancellationToken);
+                var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(Results.Ok);
             })
             .WithName("RotateDeploymentTargetCredentials")

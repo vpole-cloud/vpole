@@ -1,7 +1,9 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.DeploymentTargets.Application.Common;
@@ -18,11 +20,14 @@ public sealed record UpdateDeploymentTargetRequestBody(
     bool AcceptsWorkloads,
     long Revision);
 
-public sealed record UpdateDeploymentTargetRequest(string Id, UpdateDeploymentTargetRequestBody Body)
+public sealed record UpdateDeploymentTargetRequest(
+    [FromRoute] string Id,
+    [FromBody] UpdateDeploymentTargetRequestBody Body)
     : IMediatorRequest<DeploymentTargetDto>;
 
 public sealed class UpdateDeploymentTargetHandler(
     IDeploymentTargetDbContext dbContext,
+    DeploymentTargetReader reader,
     IDeploymentTargetClientCache clientCache,
     TimeProvider timeProvider)
     : IMediatorHandler<UpdateDeploymentTargetRequest, DeploymentTargetDto>
@@ -31,48 +36,28 @@ public sealed class UpdateDeploymentTargetHandler(
         UpdateDeploymentTargetRequest request,
         CancellationToken cancellationToken = default)
     {
-        var bodyValidation = ValidateBody(request.Body);
-        if (bodyValidation is not null)
-            return bodyValidation;
-        var targetResult = await DeploymentTargetEndpointSupport.GetTargetAsync(
-            dbContext,
-            request.Id,
-            cancellationToken);
+        var targetResult = await reader.GetAsync(request.Id, cancellationToken);
         if (!targetResult.TryGetValue(out var target, out var targetFailure))
             return targetFailure;
         if (target.Revision != request.Body.Revision)
             return Failures.Conflict("The deployment target changed. Reload it and retry.");
+        if (request.Body.AcceptsWorkloads && target.DeletionRequestedAtUtc is not null)
+            return Failures.Conflict("A deployment target pending deletion cannot accept workloads.");
 
-        DeploymentTarget updated;
-        try
-        {
-            updated = target.Reconfigure(
-                request.Body.DisplayName,
-                request.Body.Enabled,
-                request.Body.AcceptsWorkloads,
-                DeploymentTargetEndpointSupport.CheckedAtUtc(timeProvider, target.UpdatedAtUtc));
-        }
-        catch (ArgumentException)
-        {
-            return DeploymentTargetEndpointSupport.BodyValidationFailure(
-                "The deployment-target update is invalid.");
-        }
-        catch (InvalidOperationException)
-        {
-            return DeploymentTargetEndpointSupport.BodyValidationFailure(
-                "The deployment-target update is invalid.");
-        }
+        var updated = target.Reconfigure(
+            request.Body.DisplayName,
+            request.Body.Enabled,
+            request.Body.AcceptsWorkloads,
+            DeploymentTargetClock.UtcNowAfter(timeProvider, target.UpdatedAtUtc));
 
-        if (ReferenceEquals(updated, target))
+        if (updated.Revision == target.Revision)
         {
-            var existingDefaultId = await DeploymentTargetEndpointSupport.GetDefaultIdAsync(
-                dbContext,
-                cancellationToken);
+            var existingDefaultId = await reader.GetDefaultIdAsync(cancellationToken);
             return target.ToDto(target.Id == existingDefaultId);
         }
 
         var persisted = await dbContext.DeploymentTargets.FindOneAndUpdateAsync(
-            DeploymentTargetEndpointSupport.RevisionFilter(target),
+            DeploymentTargetFilters.RevisionFilter(target),
             Builders<DeploymentTarget>.Update.Combine(
                 Builders<DeploymentTarget>.Update.Set(item => item.DisplayName, updated.DisplayName),
                 Builders<DeploymentTarget>.Update.Set(item => item.Enabled, updated.Enabled),
@@ -91,27 +76,38 @@ public sealed class UpdateDeploymentTargetHandler(
 
         if (!persisted.Enabled)
             clientCache.Invalidate(target.Id);
-        var defaultId = await DeploymentTargetEndpointSupport.GetDefaultIdAsync(dbContext, cancellationToken);
+        var defaultId = await reader.GetDefaultIdAsync(cancellationToken);
         return persisted.ToDto(persisted.Id == defaultId);
     }
+}
 
-    private static ValidationFailure? ValidateBody(UpdateDeploymentTargetRequestBody? body)
+public sealed class UpdateDeploymentTargetRequestValidator
+    : AbstractValidator<UpdateDeploymentTargetRequest>
+{
+    public UpdateDeploymentTargetRequestValidator()
     {
-        if (body is null)
-            return DeploymentTargetEndpointSupport.BodyValidationFailure("Request body is required.");
-        if (string.IsNullOrWhiteSpace(body.DisplayName) || body.DisplayName.Trim().Length > 80)
-        {
-            return DeploymentTargetEndpointSupport.BodyValidationFailure(
-                "Display name is required and must be 80 characters or less.");
-        }
-        if (body.Revision < 1)
-            return DeploymentTargetEndpointSupport.BodyValidationFailure("A positive revision is required.");
-        if (!body.Enabled && body.AcceptsWorkloads)
-        {
-            return DeploymentTargetEndpointSupport.BodyValidationFailure(
-                "A disabled deployment target cannot accept workloads.");
-        }
-        return null;
+        RuleFor(request => request.Id)
+            .Must(id => ObjectId.TryParse(id, out _))
+            .WithMessage("Deployment target ID must be a MongoDB ObjectId.");
+        RuleFor(request => request.Body)
+            .NotNull()
+            .SetValidator(new UpdateDeploymentTargetRequestBodyValidator());
+    }
+}
+
+public sealed class UpdateDeploymentTargetRequestBodyValidator
+    : AbstractValidator<UpdateDeploymentTargetRequestBody>
+{
+    public UpdateDeploymentTargetRequestBodyValidator()
+    {
+        RuleFor(body => body.DisplayName)
+            .NotEmpty()
+            .MaximumLength(80);
+        RuleFor(body => body.Revision).GreaterThan(0);
+        RuleFor(body => body.AcceptsWorkloads)
+            .Equal(false)
+            .When(body => !body.Enabled)
+            .WithMessage("A disabled deployment target cannot accept workloads.");
     }
 }
 
@@ -119,15 +115,12 @@ public static class UpdateDeploymentTargetEndpoint
 {
     public static IEndpointRouteBuilder MapUpdateDeploymentTargetEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPut("/{id}", async (
+        app.MapPut("/{Id}", async (
                 IMediator mediator,
-                [FromRoute] string id,
-                [FromBody] UpdateDeploymentTargetRequestBody body,
+                [AsParameters] UpdateDeploymentTargetRequest request,
                 CancellationToken cancellationToken) =>
             {
-                var result = await mediator.Send(
-                    new UpdateDeploymentTargetRequest(id, body),
-                    cancellationToken);
+                var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(Results.Ok);
             })
             .WithName("UpdateDeploymentTarget")

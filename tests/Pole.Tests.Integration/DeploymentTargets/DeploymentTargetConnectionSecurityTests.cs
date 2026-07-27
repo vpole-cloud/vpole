@@ -223,7 +223,7 @@ public sealed class DeploymentTargetConnectionSecurityTests
         using (prepared)
         {
             var persisted = Assert.IsType<ServiceAccountDeploymentTargetConnection>(prepared.Connection);
-            var tampered = new ServiceAccountDeploymentTargetConnection(
+            var tampered = DeploymentTargetConnectionFactory.CreateServiceAccount(
                 persisted.Version,
                 metadata == "server" ? "https://attacker.pole.test:6443" : persisted.ServerUrl,
                 metadata == "ca" ? AlternateCertificateAuthorityData.Value : persisted.CertificateAuthorityData,
@@ -259,7 +259,7 @@ public sealed class DeploymentTargetConnectionSecurityTests
                 ? ObjectId.GenerateNewId().ToString()
                 : targetId;
             DeploymentTargetConnection requestedConnection = changedIdentity == "version"
-                ? new KubeconfigDeploymentTargetConnection(
+                ? DeploymentTargetConnectionFactory.CreateKubeconfig(
                     persisted.Version + 1,
                     persisted.ContextName,
                     persisted.ServerUrl,

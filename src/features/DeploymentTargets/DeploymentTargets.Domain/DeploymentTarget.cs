@@ -3,91 +3,25 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace Pole.Features.DeploymentTargets.Domain;
 
-public sealed record DeploymentTarget
+public sealed record DeploymentTarget(
+    [property: BsonId]
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string Id,
+    string DisplayName,
+    string ClusterIdentity,
+    DeploymentTargetConnection Connection,
+    DeploymentTargetHealth Health,
+    DeploymentTargetCapabilities Capabilities,
+    long Revision,
+    long ReferenceFence,
+    bool Enabled,
+    bool AcceptsWorkloads,
+    DateTime? DeletionRequestedAtUtc,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc)
 {
-    [BsonConstructor]
-    public DeploymentTarget(
-        string id,
-        string displayName,
-        string clusterIdentity,
-        DeploymentTargetConnection connection,
-        DeploymentTargetHealth health,
-        DeploymentTargetCapabilities capabilities,
-        long revision,
-        long referenceFence,
-        bool enabled,
-        bool acceptsWorkloads,
-        DateTime? deletionRequestedAtUtc,
-        DateTime createdAtUtc,
-        DateTime updatedAtUtc)
-    {
-        Id = DeploymentTargetValueGuard.ObjectId(id, nameof(id));
-        DisplayName = DeploymentTargetValueGuard.Required(
-            displayName,
-            nameof(displayName),
-            DeploymentTargetValueGuard.MaximumDisplayNameLength);
-        ClusterIdentity = DeploymentTargetValueGuard.Required(
-            clusterIdentity,
-            nameof(clusterIdentity),
-            DeploymentTargetValueGuard.MaximumClusterIdentityLength);
-        Connection = connection ?? throw new ArgumentNullException(nameof(connection));
-        Health = health ?? throw new ArgumentNullException(nameof(health));
-        Capabilities = capabilities ?? throw new ArgumentNullException(nameof(capabilities));
-        Revision = DeploymentTargetValueGuard.Positive(revision, nameof(revision));
-        ReferenceFence = DeploymentTargetValueGuard.NonNegative(referenceFence, nameof(referenceFence));
-        CreatedAtUtc = DeploymentTargetValueGuard.Utc(createdAtUtc, nameof(createdAtUtc));
-        UpdatedAtUtc = DeploymentTargetValueGuard.Utc(updatedAtUtc, nameof(updatedAtUtc));
-        DeletionRequestedAtUtc = deletionRequestedAtUtc is null
-            ? null
-            : DeploymentTargetValueGuard.Utc(deletionRequestedAtUtc.Value, nameof(deletionRequestedAtUtc));
-
-        if (UpdatedAtUtc < CreatedAtUtc)
-            throw new ArgumentException("The update time cannot precede the creation time.", nameof(updatedAtUtc));
-        if (DeletionRequestedAtUtc > UpdatedAtUtc)
-        {
-            throw new ArgumentException(
-                "The deletion request time cannot be later than the update time.",
-                nameof(deletionRequestedAtUtc));
-        }
-        if (!enabled && acceptsWorkloads)
-        {
-            throw new ArgumentException(
-                "A disabled deployment target cannot accept new workloads.",
-                nameof(acceptsWorkloads));
-        }
-        if (DeletionRequestedAtUtc is not null && acceptsWorkloads)
-        {
-            throw new ArgumentException(
-                "A deployment target pending deletion cannot accept new workloads.",
-                nameof(acceptsWorkloads));
-        }
-        if (health.ConnectionVersion != connection.Version ||
-            capabilities.ConnectionVersion != connection.Version)
-        {
-            throw new ArgumentException(
-                "Connection, health, and capability versions must match.",
-                nameof(connection));
-        }
-
-        Enabled = enabled;
-        AcceptsWorkloads = acceptsWorkloads;
-    }
-
-    [BsonId]
-    [BsonRepresentation(BsonType.ObjectId)]
-    public string Id { get; }
-    public string DisplayName { get; }
-    public string ClusterIdentity { get; }
-    public DeploymentTargetConnection Connection { get; }
-    public DeploymentTargetHealth Health { get; }
-    public DeploymentTargetCapabilities Capabilities { get; }
-    public long Revision { get; }
-    public long ReferenceFence { get; }
-    public bool Enabled { get; }
-    public bool AcceptsWorkloads { get; }
-    public DateTime? DeletionRequestedAtUtc { get; }
-    public DateTime CreatedAtUtc { get; }
-    public DateTime UpdatedAtUtc { get; }
+    [BsonIgnore]
+    public long NextConnectionVersion => checked(Connection.Version + 1);
 
     public DeploymentTarget UpdateMetadata(string displayName, DateTime updatedAtUtc)
     {
@@ -194,7 +128,7 @@ public sealed record DeploymentTarget
             checked(Revision + 1),
             ReferenceFence,
             Enabled,
-            acceptsWorkloads: false,
+            AcceptsWorkloads: false,
             normalizedRequestedAtUtc,
             CreatedAtUtc,
             normalizedRequestedAtUtc);
@@ -216,7 +150,7 @@ public sealed record DeploymentTarget
                 "Replacement credentials must resolve to the same Kubernetes cluster identity.");
         }
 
-        var expectedVersion = checked(Connection.Version + 1);
+        var expectedVersion = NextConnectionVersion;
         if (replacement.Version != expectedVersion)
         {
             throw new InvalidOperationException(
@@ -320,21 +254,54 @@ public static class DeploymentTargetFactory
         DeploymentTargetCapabilities capabilities,
         bool enabled,
         bool acceptsWorkloads,
-        CreateOptions options) =>
-        new(
-            options.Id,
+        CreateOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(health);
+        ArgumentNullException.ThrowIfNull(capabilities);
+
+        var normalizedId = DeploymentTargetValueGuard.ObjectId(options.Id, nameof(options.Id));
+        var normalizedDisplayName = DeploymentTargetValueGuard.Required(
             displayName,
+            nameof(displayName),
+            DeploymentTargetValueGuard.MaximumDisplayNameLength);
+        var normalizedClusterIdentity = DeploymentTargetValueGuard.Required(
             clusterIdentity,
+            nameof(clusterIdentity),
+            DeploymentTargetValueGuard.MaximumClusterIdentityLength);
+        var normalizedCreatedAtUtc = DeploymentTargetValueGuard.Utc(
+            options.CreatedAtUtc,
+            nameof(options.CreatedAtUtc));
+
+        if (!enabled && acceptsWorkloads)
+        {
+            throw new ArgumentException(
+                "A disabled deployment target cannot accept new workloads.",
+                nameof(acceptsWorkloads));
+        }
+        if (health.ConnectionVersion != connection.Version ||
+            capabilities.ConnectionVersion != connection.Version)
+        {
+            throw new ArgumentException(
+                "Connection, health, and capability versions must match.",
+                nameof(connection));
+        }
+
+        return new DeploymentTarget(
+            normalizedId,
+            normalizedDisplayName,
+            normalizedClusterIdentity,
             connection,
             health,
             capabilities,
-            revision: 1,
-            referenceFence: 0,
+            Revision: 1,
+            ReferenceFence: 0,
             enabled,
             acceptsWorkloads,
-            deletionRequestedAtUtc: null,
-            options.CreatedAtUtc,
-            options.CreatedAtUtc);
+            DeletionRequestedAtUtc: null,
+            normalizedCreatedAtUtc,
+            normalizedCreatedAtUtc);
+    }
 }
 
 internal static class DeploymentTargetValueGuard
@@ -363,13 +330,6 @@ internal static class DeploymentTargetValueGuard
     {
         if (value < 1)
             throw new ArgumentOutOfRangeException(parameterName, "The value must be positive.");
-        return value;
-    }
-
-    public static long NonNegative(long value, string parameterName)
-    {
-        if (value < 0)
-            throw new ArgumentOutOfRangeException(parameterName, "The value cannot be negative.");
         return value;
     }
 

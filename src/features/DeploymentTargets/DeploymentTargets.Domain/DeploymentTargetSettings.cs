@@ -2,38 +2,32 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace Pole.Features.DeploymentTargets.Domain;
 
-public sealed record DeploymentTargetSettings
+public sealed record DeploymentTargetSettings(
+    [property: BsonId]
+    string Id,
+    string DefaultDeploymentTargetId,
+    long Revision,
+    DateTime UpdatedAtUtc)
 {
     public const string SingletonId = "deployment-target-settings";
 
-    [BsonConstructor]
-    public DeploymentTargetSettings(
-        string id,
-        string defaultDeploymentTargetId,
-        long revision,
-        DateTime updatedAtUtc)
-    {
-        if (!string.Equals(id, SingletonId, StringComparison.Ordinal))
-            throw new ArgumentException("The deployment-target settings ID is invalid.", nameof(id));
-
-        Id = id;
-        DefaultDeploymentTargetId = DeploymentTargetValueGuard.ObjectId(
-            defaultDeploymentTargetId,
-            nameof(defaultDeploymentTargetId));
-        Revision = DeploymentTargetValueGuard.Positive(revision, nameof(revision));
-        UpdatedAtUtc = DeploymentTargetValueGuard.Utc(updatedAtUtc, nameof(updatedAtUtc));
-    }
-
-    [BsonId]
-    public string Id { get; }
-    public string DefaultDeploymentTargetId { get; }
-    public long Revision { get; }
-    public DateTime UpdatedAtUtc { get; }
-
     public static DeploymentTargetSettings Create(
         string defaultDeploymentTargetId,
-        DateTime createdAtUtc) =>
-        new(SingletonId, defaultDeploymentTargetId, revision: 1, createdAtUtc);
+        DateTime createdAtUtc)
+    {
+        var normalizedTargetId = DeploymentTargetValueGuard.ObjectId(
+            defaultDeploymentTargetId,
+            nameof(defaultDeploymentTargetId));
+        var normalizedCreatedAtUtc = DeploymentTargetValueGuard.Utc(
+            createdAtUtc,
+            nameof(createdAtUtc));
+
+        return new DeploymentTargetSettings(
+            SingletonId,
+            normalizedTargetId,
+            Revision: 1,
+            normalizedCreatedAtUtc);
+    }
 
     public DeploymentTargetSettings SetDefault(
         string deploymentTargetId,

@@ -1,25 +1,28 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
-using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 
-public sealed record DeleteDeploymentTargetRequest(string Id)
+public sealed record DeleteDeploymentTargetRequest(
+    [FromRoute] string Id)
     : IMediatorRequest<string>;
 
 public sealed class DeleteDeploymentTargetHandler(
     IDeploymentTargetDbContext dbContext,
-    IEnumerable<IDeploymentTargetReferenceSource> referenceSources,
+    DeploymentTargetReader reader,
+    IDeploymentTargetDeletionGuard deletionGuard,
     IDeploymentTargetClientCache clientCache,
     TimeProvider timeProvider)
     : IMediatorHandler<DeleteDeploymentTargetRequest, string>
@@ -28,13 +31,10 @@ public sealed class DeleteDeploymentTargetHandler(
         DeleteDeploymentTargetRequest request,
         CancellationToken cancellationToken = default)
     {
-        var targetResult = await DeploymentTargetEndpointSupport.GetTargetAsync(
-            dbContext,
-            request.Id,
-            cancellationToken);
+        var targetResult = await reader.GetAsync(request.Id, cancellationToken);
         if (!targetResult.TryGetValue(out var target, out var targetFailure))
             return targetFailure;
-        var defaultId = await DeploymentTargetEndpointSupport.GetDefaultIdAsync(dbContext, cancellationToken);
+        var defaultId = await reader.GetDefaultIdAsync(cancellationToken);
         if (target.Id == defaultId)
             return Failures.Conflict("The default deployment target cannot be deleted.");
 
@@ -42,7 +42,7 @@ public sealed class DeleteDeploymentTargetHandler(
         if (target.DeletionRequestedAtUtc is null)
         {
             var deletionRequested = target.RequestDeletion(
-                DeploymentTargetEndpointSupport.CheckedAtUtc(timeProvider, target.UpdatedAtUtc));
+                DeploymentTargetClock.UtcNowAfter(timeProvider, target.UpdatedAtUtc));
             var persistedFence = await dbContext.DeploymentTargets.FindOneAndUpdateAsync(
                 ReferenceFenceFilter(target),
                 Builders<DeploymentTarget>.Update.Combine(
@@ -68,12 +68,11 @@ public sealed class DeleteDeploymentTargetHandler(
             fencedTarget = persistedFence;
         }
 
-        foreach (var source in referenceSources)
-        {
-            var canDelete = await source.EnsureCanDeleteAsync(fencedTarget.Id, cancellationToken);
-            if (canDelete is not ISuccess)
-                return (Failure)canDelete;
-        }
+        var canDelete = await deletionGuard.EnsureNoReferencesAsync(
+            fencedTarget.Id,
+            cancellationToken);
+        if (canDelete is not ISuccess)
+            return (Failure)canDelete;
 
         var deleted = await dbContext.RunInTransactionAsync<string>(async (session, ct) =>
         {
@@ -107,7 +106,7 @@ public sealed class DeleteDeploymentTargetHandler(
 
     private static FilterDefinition<DeploymentTarget> ReferenceFenceFilter(DeploymentTarget target) =>
         Builders<DeploymentTarget>.Filter.And(
-            DeploymentTargetEndpointSupport.RevisionFilter(target),
+            DeploymentTargetFilters.RevisionFilter(target),
             Builders<DeploymentTarget>.Filter.Eq(
                 item => item.ReferenceFence,
                 target.ReferenceFence),
@@ -117,7 +116,7 @@ public sealed class DeleteDeploymentTargetHandler(
 
     private static FilterDefinition<DeploymentTarget> DeletionFenceFilter(DeploymentTarget target) =>
         Builders<DeploymentTarget>.Filter.And(
-            DeploymentTargetEndpointSupport.RevisionFilter(target),
+            DeploymentTargetFilters.RevisionFilter(target),
             Builders<DeploymentTarget>.Filter.Eq(
                 item => item.ReferenceFence,
                 target.ReferenceFence),
@@ -126,16 +125,25 @@ public sealed class DeleteDeploymentTargetHandler(
                 target.DeletionRequestedAtUtc));
 }
 
+public sealed class DeleteDeploymentTargetRequestValidator
+    : AbstractValidator<DeleteDeploymentTargetRequest>
+{
+    public DeleteDeploymentTargetRequestValidator() =>
+        RuleFor(request => request.Id)
+            .Must(id => ObjectId.TryParse(id, out _))
+            .WithMessage("Deployment target ID must be a MongoDB ObjectId.");
+}
+
 public static class DeleteDeploymentTargetEndpoint
 {
     public static IEndpointRouteBuilder MapDeleteDeploymentTargetEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{id}", async (
+        app.MapDelete("/{Id}", async (
                 IMediator mediator,
-                [FromRoute] string id,
+                [AsParameters] DeleteDeploymentTargetRequest request,
                 CancellationToken cancellationToken) =>
             {
-                var result = await mediator.Send(new DeleteDeploymentTargetRequest(id), cancellationToken);
+                var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(_ => Results.NoContent());
             })
             .WithName("DeleteDeploymentTarget")

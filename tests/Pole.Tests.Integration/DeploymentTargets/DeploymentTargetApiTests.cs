@@ -28,6 +28,26 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task RequestValidation_RejectsInvalidRouteAndBodyBeforeHandlers()
+    {
+        SetPlatformAdmin();
+        var invalidIdResponse = await Client.GetAsync(
+            "/api/v1/platform/deployment-targets/not-an-object-id");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidIdResponse.StatusCode);
+
+        var invalidBodyResponse = await Client.PostAsJsonAsync(
+            "/api/v1/platform/deployment-targets/",
+            new CreateDeploymentTargetRequestBody(
+                "Invalid admission",
+                Enabled: false,
+                AcceptsWorkloads: true,
+                new DeploymentTargetConnectionRequestBody("InCluster")));
+        Assert.Equal(HttpStatusCode.BadRequest, invalidBodyResponse.StatusCode);
+        Assert.Equal(0, await Fixture.DbContext.DeploymentTargets.CountDocumentsAsync(
+            Builders<DeploymentTarget>.Filter.Empty));
+    }
+
+    [Fact]
     public async Task Create_PersistsEncryptedWriteOnlyCredential_AndRejectsDuplicateClusterIdentity()
     {
         SetPlatformAdmin();
@@ -98,6 +118,26 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
                 AcceptsWorkloads: true,
                 created.Revision));
         Assert.Equal(HttpStatusCode.Conflict, staleResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task NoOpUpdate_PreservesRevision()
+    {
+        SetPlatformAdmin();
+        var created = await CreateTargetAsync();
+
+        var response = await Client.PutAsJsonAsync(
+            $"/api/v1/platform/deployment-targets/{created.Id}",
+            new UpdateDeploymentTargetRequestBody(
+                created.DisplayName,
+                created.Enabled,
+                created.AcceptsWorkloads,
+                created.Revision));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var unchanged = await response.Content.ReadFromJsonAsync<DeploymentTargetDto>();
+        Assert.NotNull(unchanged);
+        Assert.Equal(created.Revision, unchanged.Revision);
     }
 
     [Fact]

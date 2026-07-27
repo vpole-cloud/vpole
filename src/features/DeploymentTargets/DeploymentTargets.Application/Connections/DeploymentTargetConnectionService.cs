@@ -103,7 +103,7 @@ public sealed class DeploymentTargetConnectionService(
             return failure;
 
         return new PreparedDeploymentTargetConnection(
-            new InClusterDeploymentTargetConnection(connectionVersion),
+            DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
             client);
     }
 
@@ -151,7 +151,7 @@ public sealed class DeploymentTargetConnectionService(
                 return encryptionFailure;
             }
 
-            var persisted = new KubeconfigDeploymentTargetConnection(
+            var persisted = DeploymentTargetConnectionFactory.CreateKubeconfig(
                 connectionVersion,
                 canonical.ContextName,
                 canonical.ServerUrl,
@@ -219,7 +219,7 @@ public sealed class DeploymentTargetConnectionService(
                 return encryptionFailure;
             }
 
-            var persisted = new ServiceAccountDeploymentTargetConnection(
+            var persisted = DeploymentTargetConnectionFactory.CreateServiceAccount(
                 connectionVersion,
                 canonical.ServerUrl,
                 canonical.CertificateAuthorityData,

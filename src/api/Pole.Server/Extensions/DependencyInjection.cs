@@ -231,6 +231,7 @@ public static class DependencyInjection
             services.TryAddSingleton<IDeploymentTargetKubernetesClientFactory>(provider =>
                 provider.GetRequiredService<DeploymentTargetConnectionService>());
             services.TryAddSingleton<IDeploymentTargetProbe, DeploymentTargetProbe>();
+            services.TryAddScoped<DeploymentTargetValidationService>();
             services.TryAddSingleton<KubernetesClientProvider>();
             services.TryAddSingleton<IKubernetesClientProvider>(provider =>
                 provider.GetRequiredService<KubernetesClientProvider>());
@@ -239,6 +240,9 @@ public static class DependencyInjection
             services.TryAddSingleton<IDeploymentTargetBootstrapper, DeploymentTargetBootstrapper>();
             services.TryAddScoped<IDeploymentTargetLookup, DeploymentTargetLookup>();
             services.TryAddScoped<IDeploymentTargetReferenceAdmission, DeploymentTargetReferenceAdmission>();
+            services.TryAddScoped<IDeploymentTargetDeletionGuard, DeploymentTargetDeletionGuard>();
+            services.TryAddScoped<DeploymentTargetReader>();
+            services.TryAddScoped<DeploymentTargetPersistence>();
             services.TryAddScoped<IDeploymentTargetCredentialRewrapService, DeploymentTargetCredentialRewrapService>();
             return services;
         }
@@ -507,4 +511,3 @@ public static class DependencyInjection
         }
     }
 }
-

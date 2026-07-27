@@ -83,32 +83,24 @@ public interface IDeploymentTargetLookup
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// Implemented by future RuntimeCell and ResourceDeployment owners so target deletion can be
-/// rejected without exposing their collections through the DeploymentTargets feature.
-/// </summary>
-public interface IDeploymentTargetReferenceSource
-{
-    Task<Result> EnsureCanDeleteAsync(
-        string deploymentTargetId,
-        CancellationToken cancellationToken = default);
-}
+public sealed record DeploymentTargetReferenceOwner(string Type, string Id);
 
 /// <summary>
-/// Provides the shared write fence for durable deployment-target references. Reference owners must
-/// call the matching method inside the same Mongo transaction that creates or removes their own
-/// reference. Calls with a session that has no active transaction fail fast. This makes reference
-/// creation and target deletion contend on the target document.
+/// Owns the central registry and write fence for durable deployment-target references. Resource
+/// owners must register or unregister their reference inside the same Mongo transaction as their
+/// own mutation. Calls with a session that has no active transaction fail fast.
 /// </summary>
 public interface IDeploymentTargetReferenceAdmission
 {
-    Task<Result> FenceCreationAsync(
+    Task<Result> RegisterAsync(
         string deploymentTargetId,
+        DeploymentTargetReferenceOwner owner,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-    Task<Result> FenceRemovalAsync(
+    Task<Result> UnregisterAsync(
         string deploymentTargetId,
+        DeploymentTargetReferenceOwner owner,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 }

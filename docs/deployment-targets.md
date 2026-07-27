@@ -58,15 +58,16 @@ All deployment-target endpoints require the platform-admin role:
 
 Configuration updates and credential rotation are revision-fenced. Duplicate cluster identities are rejected. The default target cannot be deleted.
 
-Deletion is a retryable two-phase operation. Pole first persists `DeletionRequestedAtUtc` and turns off `AcceptsWorkloads`; this durable fence prevents any new workload or durable reference from being admitted. It then calls every registered `IDeploymentTargetReferenceSource`, so RuntimeCell and ResourceDeployment owners can veto deletion while references exist, and finally deletes the exact fenced version. If a reference still exists, the target remains visible as pending deletion and does not accept new workloads; remove the references and retry the same delete request.
+Deletion is a retryable two-phase operation. Pole first persists `DeletionRequestedAtUtc` and turns off `AcceptsWorkloads`; this durable fence prevents any new workload or durable reference from being admitted. It then performs one indexed lookup in the central `DeploymentTargetReferences` registry and finally deletes the exact fenced version. If a reference still exists, the target remains visible as pending deletion and does not accept new workloads; remove the references and retry the same delete request.
 
-Every feature that persists a deployment-target reference must follow both sides of the reference contract:
+Every feature that persists a deployment-target reference must use the central reference-admission contract:
 
-1. Implement `IDeploymentTargetReferenceSource` and query its durable references during deletion.
-2. In the same MongoDB transaction that creates the reference, call `IDeploymentTargetReferenceAdmission.FenceCreationAsync` before inserting it.
-3. In the same transaction that removes the reference, call `FenceRemovalAsync` before deleting it.
+1. In the same MongoDB transaction that creates its resource placement, call `IDeploymentTargetReferenceAdmission.RegisterAsync` with a stable owner type and owner ID.
+2. In the same transaction that removes the placement, call `UnregisterAsync` with the same owner identity.
 
-Those fence writes contend with target deletion on the target document. A creation committed first is observed by the reference source; a deletion fence committed first rejects the creation. Reference removal can race safely, but may make the current delete attempt return a conflict that is resolved by retrying.
+The admission service writes the target fence and central registry atomically. Those fence writes contend with target deletion on the target document. A registration committed first is visible to the deletion guard; a deletion fence committed first rejects registration. Reference removal can race safely, but may make the current delete attempt return a conflict that is resolved by retrying.
+
+`POST /{id}/validate` is an operational health refresh, not request validation. It rebuilds a client from the stored credential, probes Kubernetes health and namespace capabilities, verifies the stable cluster identity, and compare-and-sets only the observational fields when the target revision and connection version are unchanged.
 
 ## Client lifecycle
 
