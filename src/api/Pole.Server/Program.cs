@@ -102,6 +102,7 @@ var app = builder.Build();
 
 // Validate and load every configured KEK before migrations or background-job setup can touch MongoDB.
 _ = app.Services.GetRequiredService<IEnvelopeEncryptionService>();
+_ = app.Services.GetRequiredService<OutboxEventAssemblyCatalog>();
 await app.Services.GetRequiredService<MigrationRunner>().RunMigrations();
 await app.Services.GetRequiredService<IDeploymentTargetBootstrapper>().BootstrapAsync();
 
@@ -139,4 +140,3 @@ app.MapGet("/test-keycloak", () => "Hello World!")
 app.MapApiEndpoints();
 
 app.Run();
-

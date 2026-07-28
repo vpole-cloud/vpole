@@ -11,7 +11,6 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
@@ -192,7 +191,7 @@ public sealed class DeleteResourceGroupHandler(
                 cancellationToken);
         }
         await dbContext.StoreEventAsync(
-            scopeBatch.Events.Concat(cellBatch.Events),
+            scopeBatch.OutboxWrites.Concat(cellBatch.OutboxWrites),
             session,
             cancellationToken);
 
@@ -236,7 +235,7 @@ public sealed class DeleteResourceGroupHandler(
         DateTime requestedAtUtc)
     {
         var writes = new List<WriteModel<IsolationScope>>();
-        var events = new List<IPoleEvent>();
+        var outboxWrites = new List<OutboxWrite>();
         foreach (var scope in scopes.Where(scope =>
                      scope.Lifecycle is not DeletingIsolationScopeLifecycleState))
         {
@@ -248,10 +247,11 @@ public sealed class DeleteResourceGroupHandler(
                         item => item.Revision,
                         scope.Revision)),
                 deletingScope));
-            events.Add(deletingScope.ToDeletionRequestedEvent());
+            outboxWrites.Add(
+                OutboxWrite.Create(deletingScope.ToDeletionRequestedEvent()));
         }
 
-        return new DeletionBatch<IsolationScope>(writes, events);
+        return new DeletionBatch<IsolationScope>(writes, outboxWrites);
     }
 
     private static DeletionBatch<RuntimeCell> CreateCellDeletionBatch(
@@ -259,7 +259,7 @@ public sealed class DeleteResourceGroupHandler(
         DateTime requestedAtUtc)
     {
         var writes = new List<WriteModel<RuntimeCell>>();
-        var events = new List<IPoleEvent>();
+        var outboxWrites = new List<OutboxWrite>();
         foreach (var cell in cells.Where(cell =>
                      cell.State is not (DeletedRuntimeCellState or DeletingRuntimeCellState)))
         {
@@ -271,10 +271,14 @@ public sealed class DeleteResourceGroupHandler(
                         item => item.DesiredGeneration,
                         cell.DesiredGeneration)),
                 deletingCell));
-            events.Add(deletingCell.ToDeletionRequestedEvent());
+            outboxWrites.Add(OutboxWrite.Create(
+                deletingCell.ToDeletionRequestedEvent(),
+                RuntimeCellPendingKey.Deletion(
+                    deletingCell.Id,
+                    deletingCell.DesiredGeneration)));
         }
 
-        return new DeletionBatch<RuntimeCell>(writes, events);
+        return new DeletionBatch<RuntimeCell>(writes, outboxWrites);
     }
 
     private static FilterDefinition<ResourceGroup> ResourceGroupFilter(
@@ -310,7 +314,7 @@ public sealed class DeleteResourceGroupHandler(
 
     private sealed record DeletionBatch<TEntity>(
         IReadOnlyList<WriteModel<TEntity>> Writes,
-        IReadOnlyList<IPoleEvent> Events);
+        IReadOnlyList<OutboxWrite> OutboxWrites);
 }
 
 public class DeleteKubernetesNamespaceOnResourceGroupDeletedConsumer(

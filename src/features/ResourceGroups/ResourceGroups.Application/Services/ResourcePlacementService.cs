@@ -159,7 +159,11 @@ public sealed class ResourcePlacementService(
                 return (Failure)referenceResult;
 
             await dbContext.StoreEventAsync(
-                runtimeCell.ToReconciliationRequestedEvent(),
+                OutboxWrite.Create(
+                    runtimeCell.ToReconciliationRequestedEvent(),
+                    RuntimeCellPendingKey.Reconciliation(
+                        runtimeCell.Id,
+                        runtimeCell.DesiredGeneration)),
                 session,
                 cancellationToken);
         }

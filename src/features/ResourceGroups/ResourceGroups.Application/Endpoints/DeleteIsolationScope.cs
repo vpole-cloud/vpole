@@ -8,7 +8,6 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Mediator;
@@ -205,9 +204,12 @@ public sealed class DeleteIsolationScopeHandler(
             deletingScope,
             cancellationToken: cancellationToken);
 
-        var scopeEvents = new List<IPoleEvent>();
+        var outboxWrites = new List<OutboxWrite>();
         if (context.Scope.Lifecycle is not DeletingIsolationScopeLifecycleState)
-            scopeEvents.Add(deletingScope.ToDeletionRequestedEvent());
+        {
+            outboxWrites.Add(
+                OutboxWrite.Create(deletingScope.ToDeletionRequestedEvent()));
+        }
 
         var cellBatch = CreateCellDeletionBatch(
             context.Cells,
@@ -221,7 +223,7 @@ public sealed class DeleteIsolationScopeHandler(
                 cancellationToken);
         }
         await dbContext.StoreEventAsync(
-            scopeEvents.Concat(cellBatch.Events),
+            outboxWrites.Concat(cellBatch.OutboxWrites),
             session,
             cancellationToken);
 
@@ -233,7 +235,7 @@ public sealed class DeleteIsolationScopeHandler(
         DateTime requestedAtUtc)
     {
         var writes = new List<WriteModel<RuntimeCell>>();
-        var events = new List<IPoleEvent>();
+        var outboxWrites = new List<OutboxWrite>();
         foreach (var cell in cells.Where(cell =>
                      cell.State is not (DeletedRuntimeCellState or DeletingRuntimeCellState)))
         {
@@ -245,10 +247,14 @@ public sealed class DeleteIsolationScopeHandler(
                         item => item.DesiredGeneration,
                         cell.DesiredGeneration)),
                 deletingCell));
-            events.Add(deletingCell.ToDeletionRequestedEvent());
+            outboxWrites.Add(OutboxWrite.Create(
+                deletingCell.ToDeletionRequestedEvent(),
+                RuntimeCellPendingKey.Deletion(
+                    deletingCell.Id,
+                    deletingCell.DesiredGeneration)));
         }
 
-        return new CellDeletionBatch(writes, events);
+        return new CellDeletionBatch(writes, outboxWrites);
     }
 
     private static FilterDefinition<ResourceGroup> ResourceGroupFilter(
@@ -288,5 +294,5 @@ public sealed class DeleteIsolationScopeHandler(
 
     private sealed record CellDeletionBatch(
         IReadOnlyList<WriteModel<RuntimeCell>> Writes,
-        IReadOnlyList<IPoleEvent> Events);
+        IReadOnlyList<OutboxWrite> OutboxWrites);
 }

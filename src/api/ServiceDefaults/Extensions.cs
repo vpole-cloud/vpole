@@ -65,7 +65,8 @@ public static class Extensions
                     metrics.AddAspNetCoreInstrumentation()
                         .AddHttpClientInstrumentation()
                         .AddRuntimeInstrumentation()
-                        .AddMeter("Microsoft.Orleans");
+                        .AddMeter("Microsoft.Orleans")
+                        .AddMeter("Pole.Outbox");
                 })
                 .WithTracing(tracing =>
                 {

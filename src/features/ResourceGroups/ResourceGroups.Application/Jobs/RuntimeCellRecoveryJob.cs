@@ -1,11 +1,9 @@
-using System.Text.Json;
 using Hangfire;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.Features.Shared.Models;
 using Pole.ResultType;
 
 namespace Pole.Features.ResourceGroups.Application.Jobs;
@@ -61,46 +59,10 @@ public sealed class RuntimeCellRecoveryJob(
             .SortBy(cell => cell.UpdatedAtUtc)
             .Limit(BatchSize)
             .ToListAsync(cancellationToken);
-        var pendingRequests = await LoadPendingRequestKeysAsync(cancellationToken);
-
         foreach (var candidate in candidates)
         {
-            if (pendingRequests.Contains((candidate.Id, candidate.DesiredGeneration)))
-                continue;
-
             await RecoverAsync(candidate.Id, now, cancellationToken);
         }
-    }
-
-    private async Task<HashSet<(string RuntimeCellId, long Generation)>>
-        LoadPendingRequestKeysAsync(CancellationToken cancellationToken)
-    {
-        var pendingMessages = await dbContext.OutboxMessages
-            .Find(Builders<OutboxMessage>.Filter.And(
-                Builders<OutboxMessage>.Filter.Eq(message => message.ProcessedOn, null),
-                Builders<OutboxMessage>.Filter.In(
-                    message => message.EventType,
-                    [
-                        "runtime-cell-reconciliation-requested",
-                        "runtime-cell-deletion-requested"
-                    ])))
-            .Project(message => message.PayloadJson)
-            .ToListAsync(cancellationToken);
-        var keys = new HashSet<(string RuntimeCellId, long Generation)>();
-        foreach (var payloadJson in pendingMessages)
-        {
-            using var payload = JsonDocument.Parse(payloadJson);
-            var root = payload.RootElement;
-            if (root.TryGetProperty("runtimeCellId", out var runtimeCellId) &&
-                root.TryGetProperty("generation", out var generation) &&
-                runtimeCellId.GetString() is { } id &&
-                generation.TryGetInt64(out var value))
-            {
-                keys.Add((id, value));
-            }
-        }
-
-        return keys;
     }
 
     private async Task RecoverAsync(
@@ -120,14 +82,22 @@ public sealed class RuntimeCellRecoveryJob(
             {
                 case ProvisioningRuntimeCellState:
                     await dbContext.StoreEventAsync(
-                        current.ToReconciliationRequestedEvent(),
+                        OutboxWrite.Create(
+                            current.ToReconciliationRequestedEvent(),
+                            RuntimeCellPendingKey.Reconciliation(
+                                current.Id,
+                                current.DesiredGeneration)),
                         session,
                         ct);
                     return Result.Success();
 
                 case DeletingRuntimeCellState:
                     await dbContext.StoreEventAsync(
-                        current.ToDeletionRequestedEvent(),
+                        OutboxWrite.Create(
+                            current.ToDeletionRequestedEvent(),
+                            RuntimeCellPendingKey.Deletion(
+                                current.Id,
+                                current.DesiredGeneration)),
                         session,
                         ct);
                     return Result.Success();
@@ -174,14 +144,22 @@ public sealed class RuntimeCellRecoveryJob(
         if (failed.Operation == RuntimeCellOperation.Reconciliation)
         {
             await dbContext.StoreEventAsync(
-                retried.ToReconciliationRequestedEvent(),
+                OutboxWrite.Create(
+                    retried.ToReconciliationRequestedEvent(),
+                    RuntimeCellPendingKey.Reconciliation(
+                        retried.Id,
+                        retried.DesiredGeneration)),
                 session,
                 cancellationToken);
         }
         else
         {
             await dbContext.StoreEventAsync(
-                retried.ToDeletionRequestedEvent(),
+                OutboxWrite.Create(
+                    retried.ToDeletionRequestedEvent(),
+                    RuntimeCellPendingKey.Deletion(
+                        retried.Id,
+                        retried.DesiredGeneration)),
                 session,
                 cancellationToken);
         }

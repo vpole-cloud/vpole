@@ -50,6 +50,20 @@ When an event is stored in the outbox, Pole writes the IDs in two places:
 
 This duplication is intentional. The payload keeps the event self-contained, while the top-level fields make outbox inspection, retries, and replay debugging easier.
 
+Each outbox document has an explicit delivery state:
+
+- `Pending` stores the attempt count, the next due time, and the last sanitized publish error.
+- `Published` stores the successful publish time.
+- `Abandoned` is reserved for permanent structural failures such as an unknown persisted event name or malformed payload.
+
+Broker and transport failures remain pending and retry with capped exponential backoff. Pole
+delivers events at least once: a process crash after RabbitMQ accepts a publish but before
+Mongo records `Published` can publish the same event again. Consumers must therefore remain
+idempotent, and no global or per-aggregate event ordering is guaranteed.
+
+Persisted event names come from required, unique `[EntityName]` attributes. Pole validates
+the configured event catalog during startup instead of falling back to CLR type names.
+
 ## RabbitMQ Flow
 
 When the outbox processor publishes an event, it restores `TraceContext` from the outbox record and event payload.
@@ -64,6 +78,11 @@ X-Correlation-ID
 MassTransit consume filters restore `TraceContext` from headers first, then fall back to the event payload. Consumer logs therefore use the same IDs as the original API request.
 
 Derived messages should publish while `TraceContext` is set. For example, the DNS delete filter restores the consumed message context before publishing its follow-up delete event.
+
+The `Pole.Outbox` meter reports bounded delivery counters, publish duration, retry delay,
+cleanup counts, pending/abandoned counts, and oldest-pending age. Metric tags use stable event
+names, outcomes, and failure codes; they do not contain tenant IDs, message IDs, trace IDs,
+correlation IDs, exception messages, or payload data.
 
 ## Debugging
 

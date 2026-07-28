@@ -371,7 +371,14 @@ public static class DependencyInjection
 
         public IServiceCollection AddSettings(IConfiguration configuration)
         {
-            services.AddSettingsSection<OutboxSettings>(OutboxSettings.SectionName, configuration);
+            services.AddSingleton<
+                IValidateOptions<OutboxSettings>,
+                OutboxSettingsValidator>();
+            services.AddOptions<OutboxSettings>()
+                .Bind(configuration.GetSection(OutboxSettings.SectionName))
+                .ValidateOnStart();
+            services.AddSingleton(
+                sp => sp.GetRequiredService<IOptions<OutboxSettings>>().Value);
             services.AddSingleton<
                 IValidateOptions<KubernetesOptions>,
                 RuntimeCellNamespaceOptionsValidator>();
@@ -409,6 +416,7 @@ public static class DependencyInjection
 
         public IServiceCollection AddHangfireWithMongo(IConfiguration configuration)
         {
+            services.TryAddSingleton(TimeProvider.System);
             services.AddHangfire((serviceProvider, config) =>
             {
                 var mongoClient = serviceProvider.GetRequiredService<IMongoClient>();
@@ -438,6 +446,9 @@ public static class DependencyInjection
                 options.HeartbeatInterval = TimeSpan.FromSeconds(30);
             });
             services.AddScoped<OutboxProcessorJob>();
+            services.AddScoped<IOutboxPublisher, MassTransitOutboxPublisher>();
+            services.AddSingleton<OutboxMetrics>();
+            services.AddSingleton<OutboxRetryDelayPolicy>();
 
             return services;
         }
@@ -488,43 +499,34 @@ public static class DependencyInjection
     {
         public WebApplication UseHangfire()
         {
-            try
-            {
-                var outboxSettings = app.Services.GetRequiredService<IOptions<OutboxSettings>>().Value;
-
-                // Configure Hangfire Dashboard (open to everyone for now)
+            var outboxSettings = app.Services.GetRequiredService<IOptions<OutboxSettings>>().Value;
+            if (app.Environment.IsDevelopment())
                 app.UseHangfireDashboard();
 
-                // Schedule recurring jobs for outbox processing
-                RecurringJob.AddOrUpdate<OutboxProcessorJob>(
-                    "process-outbox-messages",
-                    job => job.ProcessOutboxMessagesAsync(),
-                    outboxSettings.ProcessingCronExpression);
+            RecurringJob.AddOrUpdate<OutboxProcessorJob>(
+                "process-outbox-messages",
+                job => job.ProcessOutboxMessagesAsync(CancellationToken.None),
+                outboxSettings.ProcessingCronExpression);
 
-                RecurringJob.AddOrUpdate<OutboxProcessorJob>(
-                    "cleanup-outbox-messages",
-                    job => job.CleanupProcessedMessagesAsync(),
-                    Cron.Daily(3)); // Daily at 3 AM
+            RecurringJob.AddOrUpdate<OutboxProcessorJob>(
+                "cleanup-outbox-messages",
+                job => job.CleanupMessagesAsync(CancellationToken.None),
+                Cron.Daily(3));
 
-                RecurringJob.AddOrUpdate<SourceBuildQueueRecoveryJob>(
-                    "recover-source-build-queue",
-                    job => job.RecoverAsync(),
-                    Cron.Minutely);
+            RecurringJob.AddOrUpdate<SourceBuildQueueRecoveryJob>(
+                "recover-source-build-queue",
+                job => job.RecoverAsync(),
+                Cron.Minutely);
 
-                RecurringJob.AddOrUpdate<RuntimeCellRecoveryJob>(
-                    "recover-runtime-cells",
-                    job => job.RecoverAsync(CancellationToken.None),
-                    Cron.Minutely);
+            RecurringJob.AddOrUpdate<RuntimeCellRecoveryJob>(
+                "recover-runtime-cells",
+                job => job.RecoverAsync(CancellationToken.None),
+                Cron.Minutely);
 
-                RecurringJob.AddOrUpdate<IRegistryProvisioningCleanupService>(
-                    "cleanup-container-registry-provisioning",
-                    job => job.ReconcileAsync(CancellationToken.None),
-                    Cron.Minutely);
-            }
-            catch (Exception ex)
-            {
-                app.Logger.LogError(ex, "Failed to initialize Hangfire. Background jobs will not be available.");
-            }
+            RecurringJob.AddOrUpdate<IRegistryProvisioningCleanupService>(
+                "cleanup-container-registry-provisioning",
+                job => job.ReconcileAsync(CancellationToken.None),
+                Cron.Minutely);
 
             return app;
         }
