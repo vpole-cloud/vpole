@@ -77,125 +77,216 @@ public sealed class DeleteIsolationScopeHandler(
     TimeProvider timeProvider)
     : IMediatorHandler<DeleteIsolationScopeRequest, DeleteIsolationScopeResponse>
 {
-    public async Task<Result<DeleteIsolationScopeResponse>> HandleAsync(
+    public Task<Result<DeleteIsolationScopeResponse>> HandleAsync(
         DeleteIsolationScopeRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await dbContext.RunInTransactionAsync<DeleteIsolationScopeResponse>(
-            async (session, ct) =>
-            {
-                var resourceGroupFilter = Builders<ResourceGroup>.Filter.And(
-                    Builders<ResourceGroup>.Filter.ForTenant(request.TenantId),
-                    Builders<ResourceGroup>.Filter.Eq(group => group.Id, request.ResourceGroupId));
-                var resourceGroup = await dbContext.ResourceGroups
-                    .Find(session, resourceGroupFilter)
-                    .FirstOrDefaultAsync(ct);
-                if (resourceGroup is null)
-                    return Failures.NotFound("Resource group not found.", request.ResourceGroupId);
-                if (resourceGroup.Lifecycle is not ActiveResourceGroupLifecycleState)
-                    return Failures.Conflict("The resource group is being deleted.");
-
-                var scopeFilter = Builders<IsolationScope>.Filter.And(
-                    Builders<IsolationScope>.Filter.Eq(scope => scope.Id, request.ScopeId),
-                    Builders<IsolationScope>.Filter.Eq(scope => scope.ResourceGroupId, resourceGroup.Id),
-                    Builders<IsolationScope>.Filter.Eq(scope => scope.TenantId, resourceGroup.TenantId));
-                var scope = await dbContext.IsolationScopes
-                    .Find(session, scopeFilter)
-                    .FirstOrDefaultAsync(ct);
-                if (scope is null)
-                    return Failures.NotFound("Isolation scope not found.", request.ScopeId);
-                if (scope.IsDefault)
-                    return Failures.Conflict("The default isolation scope cannot be deleted separately.");
-
-                var cells = await dbContext.RuntimeCells
-                    .Find(session, cell =>
-                        cell.TenantId == resourceGroup.TenantId &&
-                        cell.ResourceGroupId == resourceGroup.Id &&
-                        cell.IsolationScopeId == scope.Id)
-                    .ToListAsync(ct);
-                var now = timeProvider.GetUtcNow().UtcDateTime;
-                var fence = await dbContext.ResourceGroups.UpdateOneAsync(
-                    session,
-                    Builders<ResourceGroup>.Filter.And(
-                        resourceGroupFilter,
-                        Builders<ResourceGroup>.Filter.Eq(
-                            group => group.Revision,
-                            resourceGroup.Revision),
-                        Builders<ResourceGroup>.Filter.Eq("Lifecycle._t", "active")),
-                    Builders<ResourceGroup>.Update
-                        .Inc(group => group.Revision, 1)
-                        .Set(group => group.UpdatedAtUtc, now),
-                    cancellationToken: ct);
-                if (fence.ModifiedCount != 1)
-                {
-                    return Failures.Conflict(
-                        "The resource group changed while the isolation scope was being deleted.");
-                }
-
-                if (cells.All(cell => cell.State is DeletedRuntimeCellState))
-                {
-                    var deletionRequested = scope.RequestDeletion(now);
-                    await dbContext.RuntimeCells.DeleteManyAsync(
-                        session,
-                        cell =>
-                            cell.TenantId == resourceGroup.TenantId &&
-                            cell.ResourceGroupId == resourceGroup.Id &&
-                            cell.IsolationScopeId == scope.Id,
-                        cancellationToken: ct);
-                    await dbContext.IsolationScopes.DeleteOneAsync(
-                        session,
-                        scopeFilter,
-                        cancellationToken: ct);
-                    await dbContext.StoreEventAsync(
-                        deletionRequested.ToDeletionRequestedEvent(),
-                        session,
-                        ct);
-                    return new DeleteIsolationScopeResponse(scope.Id, true, true);
-                }
-
-                var deletingScope = scope.RequestDeletion(now);
-                await dbContext.IsolationScopes.ReplaceOneAsync(
-                    session,
-                    Builders<IsolationScope>.Filter.And(
-                        scopeFilter,
-                        Builders<IsolationScope>.Filter.Eq(item => item.Revision, scope.Revision)),
-                    deletingScope,
-                    cancellationToken: ct);
-
-                var deletionEvents = new List<IPoleEvent>();
-                if (scope.Lifecycle is not DeletingIsolationScopeLifecycleState)
-                    deletionEvents.Add(deletingScope.ToDeletionRequestedEvent());
-
-                var cellReplacements = new List<WriteModel<RuntimeCell>>();
-                foreach (var cell in cells.Where(cell => cell.State is not DeletedRuntimeCellState))
-                {
-                    if (cell.State is DeletingRuntimeCellState)
-                        continue;
-
-                    var deletingCell = cell.RequestDeletion(now);
-                    cellReplacements.Add(new ReplaceOneModel<RuntimeCell>(
-                        Builders<RuntimeCell>.Filter.And(
-                            Builders<RuntimeCell>.Filter.Eq(item => item.Id, cell.Id),
-                            Builders<RuntimeCell>.Filter.Eq(
-                                item => item.DesiredGeneration,
-                                cell.DesiredGeneration)),
-                        deletingCell));
-                    deletionEvents.Add(deletingCell.ToDeletionRequestedEvent());
-                }
-
-                if (cellReplacements.Count > 0)
-                {
-                    await dbContext.RuntimeCells.BulkWriteAsync(
-                        session,
-                        cellReplacements,
-                        new BulkWriteOptions { IsOrdered = true },
-                        ct);
-                }
-                await dbContext.StoreEventAsync(deletionEvents, session, ct);
-
-                return new DeleteIsolationScopeResponse(scope.Id, false, true);
-            },
+        CancellationToken cancellationToken = default) =>
+        dbContext.RunInTransactionAsync<DeleteIsolationScopeResponse>(
+            (session, ct) => DeleteAsync(request, session, ct),
             cancellationToken: cancellationToken);
-        return result;
+
+    private async Task<Result<DeleteIsolationScopeResponse>> DeleteAsync(
+        DeleteIsolationScopeRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var contextResult = await LoadDeletionContextAsync(
+            request,
+            session,
+            cancellationToken);
+        if (!contextResult.TryGetValue(out var context, out var loadFailure))
+            return loadFailure;
+
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var fence = await FenceResourceGroupAsync(
+            context.ResourceGroup,
+            request,
+            now,
+            session,
+            cancellationToken);
+        if (fence is not ISuccess)
+            return (Failure)fence;
+
+        return context.Cells.All(cell => cell.State is DeletedRuntimeCellState)
+            ? await DeleteCompletedScopeAsync(context, now, session, cancellationToken)
+            : await RequestScopeDeletionAsync(context, now, session, cancellationToken);
     }
+
+    private async Task<Result<IsolationScopeDeletionContext>> LoadDeletionContextAsync(
+        DeleteIsolationScopeRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var resourceGroup = await dbContext.ResourceGroups
+            .Find(session, ResourceGroupFilter(request))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (resourceGroup is null)
+            return Failures.NotFound("Resource group not found.", request.ResourceGroupId);
+        if (resourceGroup.Lifecycle is not ActiveResourceGroupLifecycleState)
+            return Failures.Conflict("The resource group is being deleted.");
+
+        var scope = await dbContext.IsolationScopes
+            .Find(session, ScopeFilter(request.ScopeId, resourceGroup))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (scope is null)
+            return Failures.NotFound("Isolation scope not found.", request.ScopeId);
+        if (scope.IsDefault)
+            return Failures.Conflict("The default isolation scope cannot be deleted separately.");
+
+        var cells = await dbContext.RuntimeCells
+            .Find(session, CellFilter(resourceGroup, scope.Id))
+            .ToListAsync(cancellationToken);
+        return new IsolationScopeDeletionContext(resourceGroup, scope, cells);
+    }
+
+    private async Task<Result> FenceResourceGroupAsync(
+        ResourceGroup resourceGroup,
+        DeleteIsolationScopeRequest request,
+        DateTime fencedAtUtc,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var fence = await dbContext.ResourceGroups.UpdateOneAsync(
+            session,
+            Builders<ResourceGroup>.Filter.And(
+                ResourceGroupFilter(request),
+                Builders<ResourceGroup>.Filter.Eq(
+                    group => group.Revision,
+                    resourceGroup.Revision),
+                Builders<ResourceGroup>.Filter
+                    .OfType<ResourceGroupLifecycleState, ActiveResourceGroupLifecycleState>(
+                        group => group.Lifecycle)),
+            Builders<ResourceGroup>.Update
+                .Inc(group => group.Revision, 1)
+                .Set(group => group.UpdatedAtUtc, fencedAtUtc),
+            cancellationToken: cancellationToken);
+
+        return fence.ModifiedCount == 1
+            ? Result.Success()
+            : Failures.Conflict(
+                "The resource group changed while the isolation scope was being deleted.");
+    }
+
+    private async Task<DeleteIsolationScopeResponse> DeleteCompletedScopeAsync(
+        IsolationScopeDeletionContext context,
+        DateTime requestedAtUtc,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var deletionRequested = context.Scope.RequestDeletion(requestedAtUtc);
+        await dbContext.RuntimeCells.DeleteManyAsync(
+            session,
+            CellFilter(context.ResourceGroup, context.Scope.Id),
+            cancellationToken: cancellationToken);
+        await dbContext.IsolationScopes.DeleteOneAsync(
+            session,
+            ScopeFilter(context.Scope.Id, context.ResourceGroup),
+            cancellationToken: cancellationToken);
+        await dbContext.StoreEventAsync(
+            deletionRequested.ToDeletionRequestedEvent(),
+            session,
+            cancellationToken);
+        return new DeleteIsolationScopeResponse(context.Scope.Id, true, true);
+    }
+
+    private async Task<DeleteIsolationScopeResponse> RequestScopeDeletionAsync(
+        IsolationScopeDeletionContext context,
+        DateTime requestedAtUtc,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var deletingScope = context.Scope.RequestDeletion(requestedAtUtc);
+        await dbContext.IsolationScopes.ReplaceOneAsync(
+            session,
+            Builders<IsolationScope>.Filter.And(
+                ScopeFilter(context.Scope.Id, context.ResourceGroup),
+                Builders<IsolationScope>.Filter.Eq(
+                    scope => scope.Revision,
+                    context.Scope.Revision)),
+            deletingScope,
+            cancellationToken: cancellationToken);
+
+        var scopeEvents = new List<IPoleEvent>();
+        if (context.Scope.Lifecycle is not DeletingIsolationScopeLifecycleState)
+            scopeEvents.Add(deletingScope.ToDeletionRequestedEvent());
+
+        var cellBatch = CreateCellDeletionBatch(
+            context.Cells,
+            requestedAtUtc);
+        if (cellBatch.Writes.Count > 0)
+        {
+            await dbContext.RuntimeCells.BulkWriteAsync(
+                session,
+                cellBatch.Writes,
+                new BulkWriteOptions { IsOrdered = true },
+                cancellationToken);
+        }
+        await dbContext.StoreEventAsync(
+            scopeEvents.Concat(cellBatch.Events),
+            session,
+            cancellationToken);
+
+        return new DeleteIsolationScopeResponse(context.Scope.Id, false, true);
+    }
+
+    private static CellDeletionBatch CreateCellDeletionBatch(
+        IReadOnlyList<RuntimeCell> cells,
+        DateTime requestedAtUtc)
+    {
+        var writes = new List<WriteModel<RuntimeCell>>();
+        var events = new List<IPoleEvent>();
+        foreach (var cell in cells.Where(cell =>
+                     cell.State is not (DeletedRuntimeCellState or DeletingRuntimeCellState)))
+        {
+            var deletingCell = cell.RequestDeletion(requestedAtUtc);
+            writes.Add(new ReplaceOneModel<RuntimeCell>(
+                Builders<RuntimeCell>.Filter.And(
+                    Builders<RuntimeCell>.Filter.Eq(item => item.Id, cell.Id),
+                    Builders<RuntimeCell>.Filter.Eq(
+                        item => item.DesiredGeneration,
+                        cell.DesiredGeneration)),
+                deletingCell));
+            events.Add(deletingCell.ToDeletionRequestedEvent());
+        }
+
+        return new CellDeletionBatch(writes, events);
+    }
+
+    private static FilterDefinition<ResourceGroup> ResourceGroupFilter(
+        DeleteIsolationScopeRequest request) =>
+        Builders<ResourceGroup>.Filter.And(
+            Builders<ResourceGroup>.Filter.ForTenant(request.TenantId),
+            Builders<ResourceGroup>.Filter.Eq(group => group.Id, request.ResourceGroupId));
+
+    private static FilterDefinition<IsolationScope> ScopeFilter(
+        string scopeId,
+        ResourceGroup resourceGroup) =>
+        Builders<IsolationScope>.Filter.And(
+            Builders<IsolationScope>.Filter.Eq(scope => scope.Id, scopeId),
+            Builders<IsolationScope>.Filter.Eq(
+                scope => scope.ResourceGroupId,
+                resourceGroup.Id),
+            Builders<IsolationScope>.Filter.Eq(
+                scope => scope.TenantId,
+                resourceGroup.TenantId));
+
+    private static FilterDefinition<RuntimeCell> CellFilter(
+        ResourceGroup resourceGroup,
+        string scopeId) =>
+        Builders<RuntimeCell>.Filter.And(
+            Builders<RuntimeCell>.Filter.Eq(
+                cell => cell.TenantId,
+                resourceGroup.TenantId),
+            Builders<RuntimeCell>.Filter.Eq(
+                cell => cell.ResourceGroupId,
+                resourceGroup.Id),
+            Builders<RuntimeCell>.Filter.Eq(cell => cell.IsolationScopeId, scopeId));
+
+    private sealed record IsolationScopeDeletionContext(
+        ResourceGroup ResourceGroup,
+        IsolationScope Scope,
+        IReadOnlyList<RuntimeCell> Cells);
+
+    private sealed record CellDeletionBatch(
+        IReadOnlyList<WriteModel<RuntimeCell>> Writes,
+        IReadOnlyList<IPoleEvent> Events);
 }

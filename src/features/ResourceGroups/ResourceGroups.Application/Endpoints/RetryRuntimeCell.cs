@@ -59,7 +59,9 @@ public sealed class RetryRuntimeCellHandler(
                     Builders<RuntimeCell>.Filter.Eq(
                         cell => cell.DesiredGeneration,
                         current.DesiredGeneration),
-                    Builders<RuntimeCell>.Filter.Eq("State._t", "failed")),
+                    Builders<RuntimeCell>.Filter
+                        .OfType<RuntimeCellState, FailedRuntimeCellState>(
+                            cell => cell.State)),
                 retried,
                 cancellationToken: ct);
             if (replacement.ModifiedCount != 1)

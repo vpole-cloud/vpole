@@ -70,7 +70,10 @@ public sealed class ResourceGroupDeletionFinalizer(
                 var unfinishedCellExists = await dbContext.RuntimeCells
                     .Find(session, Builders<RuntimeCell>.Filter.And(
                         cellFilter,
-                        Builders<RuntimeCell>.Filter.Ne("State._t", "deleted")))
+                        Builders<RuntimeCell>.Filter.Not(
+                            Builders<RuntimeCell>.Filter
+                                .OfType<RuntimeCellState, DeletedRuntimeCellState>(
+                                    cell => cell.State))))
                     .AnyAsync(ct);
                 if (unfinishedCellExists)
                     return Result.Success();
@@ -108,7 +111,9 @@ public sealed class ResourceGroupDeletionFinalizer(
                 session,
                 Builders<ResourceGroup>.Filter.And(
                     resourceGroupFilter,
-                    Builders<ResourceGroup>.Filter.Eq("Lifecycle._t", "deleting")),
+                    Builders<ResourceGroup>.Filter
+                        .OfType<ResourceGroupLifecycleState, DeletingResourceGroupLifecycleState>(
+                            group => group.Lifecycle)),
                 cancellationToken: ct);
             if (deletion.DeletedCount == 1)
                 await dbContext.StoreEventAsync(resourceGroup.ToDeleteEvent(), session, ct);

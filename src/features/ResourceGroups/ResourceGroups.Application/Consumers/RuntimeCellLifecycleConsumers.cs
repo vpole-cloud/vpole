@@ -65,10 +65,9 @@ public sealed class ReconcileRuntimeCellOnReconciliationRequestedConsumer(
         {
             var replacement = await dbContext.RuntimeCells.ReplaceOneAsync(
                 session,
-                CurrentStateFilter(
+                CurrentStateFilter<ProvisioningRuntimeCellState>(
                     runtimeCell,
-                    generation,
-                    "provisioning"),
+                    generation),
                 ready,
                 cancellationToken: ct);
             if (replacement.ModifiedCount == 0)
@@ -97,10 +96,9 @@ public sealed class ReconcileRuntimeCellOnReconciliationRequestedConsumer(
         {
             var replacement = await dbContext.RuntimeCells.ReplaceOneAsync(
                 session,
-                CurrentStateFilter(
+                CurrentStateFilter<ProvisioningRuntimeCellState>(
                     runtimeCell,
-                    generation,
-                    "provisioning"),
+                    generation),
                 failed,
                 cancellationToken: ct);
             if (replacement.ModifiedCount == 0)
@@ -114,15 +112,16 @@ public sealed class ReconcileRuntimeCellOnReconciliationRequestedConsumer(
         }, cancellationToken: cancellationToken);
     }
 
-    internal static FilterDefinition<RuntimeCell> CurrentStateFilter(
+    internal static FilterDefinition<RuntimeCell> CurrentStateFilter<TState>(
         RuntimeCell runtimeCell,
-        long generation,
-        string stateDiscriminator) =>
+        long generation)
+        where TState : RuntimeCellState =>
         Builders<RuntimeCell>.Filter.And(
             Builders<RuntimeCell>.Filter.Eq(cell => cell.Id, runtimeCell.Id),
             Builders<RuntimeCell>.Filter.Eq(cell => cell.TenantId, runtimeCell.TenantId),
             Builders<RuntimeCell>.Filter.Eq(cell => cell.DesiredGeneration, generation),
-            Builders<RuntimeCell>.Filter.Eq("State._t", stateDiscriminator));
+            Builders<RuntimeCell>.Filter.OfType<RuntimeCellState, TState>(
+                cell => cell.State));
 
     internal static string FailureCode(Failure failure) =>
         failure switch
@@ -187,10 +186,10 @@ public sealed class DeleteRuntimeCellOnDeletionRequestedConsumer(
         {
             var replacement = await dbContext.RuntimeCells.ReplaceOneAsync(
                 session,
-                ReconcileRuntimeCellOnReconciliationRequestedConsumer.CurrentStateFilter(
+                ReconcileRuntimeCellOnReconciliationRequestedConsumer
+                    .CurrentStateFilter<DeletingRuntimeCellState>(
                     runtimeCell,
-                    message.Generation,
-                    "deleting"),
+                    message.Generation),
                 deleted,
                 cancellationToken: ct);
             if (replacement.ModifiedCount == 0)
@@ -239,10 +238,10 @@ public sealed class DeleteRuntimeCellOnDeletionRequestedConsumer(
         {
             await dbContext.RuntimeCells.ReplaceOneAsync(
                 session,
-                ReconcileRuntimeCellOnReconciliationRequestedConsumer.CurrentStateFilter(
+                ReconcileRuntimeCellOnReconciliationRequestedConsumer
+                    .CurrentStateFilter<DeletingRuntimeCellState>(
                     runtimeCell,
-                    generation,
-                    "deleting"),
+                    generation),
                 failed,
                 cancellationToken: ct);
             return Result.Success();

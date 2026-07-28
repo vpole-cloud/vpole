@@ -49,7 +49,9 @@ public sealed class CreateIsolationScopeHandler(
             var fencedFilter = Builders<ResourceGroup>.Filter.And(
                 resourceGroupFilter,
                 Builders<ResourceGroup>.Filter.Eq(group => group.Revision, resourceGroup.Revision),
-                Builders<ResourceGroup>.Filter.Eq("Lifecycle._t", "active"));
+                Builders<ResourceGroup>.Filter
+                    .OfType<ResourceGroupLifecycleState, ActiveResourceGroupLifecycleState>(
+                        group => group.Lifecycle));
             var fence = await dbContext.ResourceGroups.UpdateOneAsync(
                 session,
                 fencedFilter,

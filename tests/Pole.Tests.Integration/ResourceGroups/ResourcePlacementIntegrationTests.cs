@@ -37,9 +37,8 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
         var results = await Task.WhenAll(Enumerable.Range(0, 12)
             .Select(_ => ResolveAsync(service, resourceGroup.Id, null, null)));
 
-        Assert.All(results, result => Assert.IsType<Success<ResourcePlacement>>(result));
         var placements = results
-            .Select(result => ((Success<ResourcePlacement>)result).Value)
+            .Select(result => result.AssertSuccess())
             .ToList();
         Assert.Single(placements.Select(placement => placement.RuntimeCellId).Distinct());
         Assert.Equal(1L, await DbContext.RuntimeCells.CountDocumentsAsync(
@@ -59,15 +58,15 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
         var lookup = new PlacementTargetLookup();
         var service = CreateService(lookup);
         var created = await ResolveAsync(service, resourceGroup.Id, null, DefaultTargetId);
-        Assert.True(created.TryGetValue(out var first, out _));
+        var first = created.AssertSuccess();
 
         lookup.RejectNewWorkloads = true;
         var existing = await ResolveAsync(service, resourceGroup.Id, null, DefaultTargetId);
         var rejectedNewTarget = await ResolveAsync(service, resourceGroup.Id, null, SecondTargetId);
 
-        Assert.True(existing.TryGetValue(out var same, out _));
+        var same = existing.AssertSuccess();
         Assert.Equal(first.RuntimeCellId, same.RuntimeCellId);
-        Assert.False(rejectedNewTarget.TryGetValue(out _, out var failure));
+        var failure = rejectedNewTarget.AssertFailure();
         Assert.IsType<ConflictFailure>(failure);
         Assert.Equal(1L, await DbContext.RuntimeCells.CountDocumentsAsync(
             cell => cell.ResourceGroupId == resourceGroup.Id));
@@ -90,8 +89,8 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
             resourceGroup.DefaultIsolationScopeId,
             SecondTargetId);
 
-        Assert.True(firstResult.TryGetValue(out var first, out _));
-        Assert.True(secondResult.TryGetValue(out var second, out _));
+        var first = firstResult.AssertSuccess();
+        var second = secondResult.AssertSuccess();
         Assert.NotEqual(first.RuntimeCellId, second.RuntimeCellId);
         Assert.NotEqual(first.DeploymentTargetId, second.DeploymentTargetId);
         Assert.Equal(first.KubernetesNamespace, second.KubernetesNamespace);
@@ -136,7 +135,7 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
             resourceGroup.Id,
             null,
             DefaultTargetId);
-        Assert.True(initial.TryGetValue(out _, out _));
+        _ = initial.AssertSuccess();
 
         await Task.WhenAll(
             ResolveAsync(service, resourceGroup.Id, null, DefaultTargetId),
