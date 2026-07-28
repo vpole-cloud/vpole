@@ -181,7 +181,9 @@ public sealed class ResourcePlacementService(
                 Builders<ResourceGroup>.Filter.Eq(
                     group => group.TenantId,
                     resourceGroup.TenantId),
-                Builders<ResourceGroup>.Filter.Eq("Lifecycle._t", "active")),
+                Builders<ResourceGroup>.Filter
+                    .OfType<ResourceGroupLifecycleState, ActiveResourceGroupLifecycleState>(
+                        group => group.Lifecycle)),
             Builders<ResourceGroup>.Update
                 .Inc(group => group.Revision, 1)
                 .Set(group => group.UpdatedAtUtc, fencedAtUtc),
@@ -196,7 +198,9 @@ public sealed class ResourcePlacementService(
                 Builders<IsolationScope>.Filter.Eq(
                     item => item.TenantId,
                     resourceGroup.TenantId),
-                Builders<IsolationScope>.Filter.Eq("Lifecycle._t", "active")),
+                Builders<IsolationScope>.Filter
+                    .OfType<IsolationScopeLifecycleState, ActiveIsolationScopeLifecycleState>(
+                        item => item.Lifecycle)),
             Builders<IsolationScope>.Update
                 .Inc(item => item.Revision, 1)
                 .Set(item => item.UpdatedAtUtc, fencedAtUtc),

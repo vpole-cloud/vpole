@@ -21,9 +21,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
 
         var result = await Mediator.Send(request);
 
-        Assert.True(result.TryGetValue(out ResourceGroupDto? created, out Failure? error));
-        Assert.Null(error);
-        Assert.NotNull(created);
+        var created = result.AssertSuccess();
 
         var saved = await DbContext.ResourceGroups.Find(group => group.Id == created.Id).FirstOrDefaultAsync();
         Assert.NotNull(saved);
@@ -59,9 +57,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             PageSize = 10
         });
 
-        result.TryGetValue(out var response, out var error);
-        Assert.Null(error);
-        Assert.NotNull(response);
+        var response = result.AssertSuccess();
         Assert.Single(response.Items);
         Assert.Equal("alpha", response.Items.Single().Name);
     }
@@ -73,9 +69,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
 
         var result = await Mediator.Send(new DeleteResourceGroupRequest(resourceGroup.Id));
 
-        result.TryGetValue(out var response, out var error);
-        Assert.Null(error);
-        Assert.NotNull(response);
+        var response = result.AssertSuccess();
         Assert.True(response.Deleted);
 
         var deleted = await DbContext.ResourceGroups.Find(group => group.Id == resourceGroup.Id).FirstOrDefaultAsync();
@@ -103,7 +97,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
 
         var result = await Mediator.Send(new DeleteResourceGroupRequest(resourceGroup.Id));
 
-        Assert.False(result.TryGetValue(out _, out var failure));
+        var failure = result.AssertFailure();
         Assert.IsType<ConflictFailure>(failure);
         Assert.True(await DbContext.ResourceGroups
             .Find(group => group.Id == resourceGroup.Id)
@@ -125,11 +119,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
 
         var result = await Mediator.Send(new DeleteResourceGroupRequest(resourceGroup.Id));
 
-        Assert.True(result.TryGetValue(
-            out DeleteResourceGroupResponse? response,
-            out Failure? failure));
-        Assert.Null(failure);
-        Assert.NotNull(response);
+        var response = result.AssertSuccess();
         Assert.False(response.Deleted);
         Assert.True(response.DeletionRequested);
         var savedGroup = await DbContext.ResourceGroups
@@ -164,7 +154,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             resourceGroup.TenantId,
             resourceGroup.Id);
 
-        Assert.False(result.TryGetValue(out _, out var failure));
+        var failure = result.AssertFailure();
         Assert.IsType<ConflictFailure>(failure);
     }
 }

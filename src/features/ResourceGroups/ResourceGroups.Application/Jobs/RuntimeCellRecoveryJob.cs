@@ -24,7 +24,9 @@ public sealed class RuntimeCellRecoveryJob(
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var staleBefore = now.Subtract(InFlightTimeout);
         var deletingScopes = await dbContext.IsolationScopes
-            .Find(Builders<IsolationScope>.Filter.Eq("Lifecycle._t", "deleting"))
+            .Find(Builders<IsolationScope>.Filter
+                .OfType<IsolationScopeLifecycleState, DeletingIsolationScopeLifecycleState>(
+                    scope => scope.Lifecycle))
             .SortBy(scope => scope.UpdatedAtUtc)
             .Limit(BatchSize)
             .ToListAsync(cancellationToken);
@@ -40,14 +42,22 @@ public sealed class RuntimeCellRecoveryJob(
         var candidates = await dbContext.RuntimeCells
             .Find(Builders<RuntimeCell>.Filter.Or(
                 Builders<RuntimeCell>.Filter.And(
-                    Builders<RuntimeCell>.Filter.Eq("State._t", "provisioning"),
+                    Builders<RuntimeCell>.Filter
+                        .OfType<RuntimeCellState, ProvisioningRuntimeCellState>(
+                            cell => cell.State),
                     Builders<RuntimeCell>.Filter.Lte(cell => cell.UpdatedAtUtc, staleBefore)),
                 Builders<RuntimeCell>.Filter.And(
-                    Builders<RuntimeCell>.Filter.Eq("State._t", "deleting"),
+                    Builders<RuntimeCell>.Filter
+                        .OfType<RuntimeCellState, DeletingRuntimeCellState>(
+                            cell => cell.State),
                     Builders<RuntimeCell>.Filter.Lte(cell => cell.UpdatedAtUtc, staleBefore)),
                 Builders<RuntimeCell>.Filter.And(
-                    Builders<RuntimeCell>.Filter.Eq("State._t", "failed"),
-                    Builders<RuntimeCell>.Filter.Lte("State.RetryNotBeforeUtc", now))))
+                    Builders<RuntimeCell>.Filter
+                        .OfType<RuntimeCellState, FailedRuntimeCellState>(
+                            cell => cell.State),
+                    Builders<RuntimeCell>.Filter.Lte(
+                        cell => ((FailedRuntimeCellState)cell.State).RetryNotBeforeUtc,
+                        now))))
             .SortBy(cell => cell.UpdatedAtUtc)
             .Limit(BatchSize)
             .ToListAsync(cancellationToken);
@@ -153,7 +163,9 @@ public sealed class RuntimeCellRecoveryJob(
                 Builders<RuntimeCell>.Filter.Eq(
                     cell => cell.DesiredGeneration,
                     current.DesiredGeneration),
-                Builders<RuntimeCell>.Filter.Eq("State._t", "failed")),
+                Builders<RuntimeCell>.Filter
+                    .OfType<RuntimeCellState, FailedRuntimeCellState>(
+                        cell => cell.State)),
             retried,
             cancellationToken: cancellationToken);
         if (replacement.ModifiedCount == 0)

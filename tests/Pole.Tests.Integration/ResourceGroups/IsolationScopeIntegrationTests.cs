@@ -27,17 +27,14 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             new CreateIsolationScopeRequestBody("Production"),
             resourceGroup.TenantId));
 
-        Assert.True(createResult.TryGetValue(out IsolationScopeDto? created, out Failure? createFailure));
-        Assert.Null(createFailure);
-        Assert.NotNull(created);
+        var created = createResult.AssertSuccess();
         Assert.False(created.IsDefault);
         Assert.Equal("Production", created.Name);
 
         var listResult = await Mediator.Send(new GetIsolationScopesRequest(
             resourceGroup.Id,
             resourceGroup.TenantId));
-        Assert.True(listResult.TryGetValue(out var scopes, out var listFailure));
-        Assert.Null(listFailure);
+        var scopes = listResult.AssertSuccess();
         Assert.Equal(2, scopes.Count);
         Assert.True(scopes[0].IsDefault);
         Assert.Equal(created.Id, scopes[1].Id);
@@ -46,8 +43,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             resourceGroup.Id,
             created.Id,
             resourceGroup.TenantId));
-        Assert.True(getResult.TryGetValue(out var found, out var getFailure));
-        Assert.Null(getFailure);
+        var found = getResult.AssertSuccess();
         Assert.Equal(created.Id, found.Id);
         Assert.Equal(created.ResourceGroupId, found.ResourceGroupId);
         Assert.Equal(created.Name, found.Name);
@@ -70,8 +66,8 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             new CreateIsolationScopeRequestBody(" production "),
             resourceGroup.TenantId));
 
-        Assert.IsType<Success<IsolationScopeDto>>(first);
-        Assert.False(duplicate.TryGetValue(out _, out var failure));
+        _ = first.AssertSuccess();
+        var failure = duplicate.AssertFailure();
         Assert.IsType<ConflictFailure>(failure);
         Assert.Equal(2L, await DbContext.IsolationScopes.CountDocumentsAsync(
             scope => scope.ResourceGroupId == resourceGroup.Id));
@@ -99,9 +95,9 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             scope.Id,
             "507f1f77bcf86cd799439012"));
 
-        Assert.False(crossGroup.TryGetValue(out _, out var crossGroupFailure));
+        var crossGroupFailure = crossGroup.AssertFailure();
         Assert.IsType<NotFoundFailure>(crossGroupFailure);
-        Assert.False(crossTenant.TryGetValue(out _, out var crossTenantFailure));
+        var crossTenantFailure = crossTenant.AssertFailure();
         Assert.IsType<NotFoundFailure>(crossTenantFailure);
     }
 
@@ -133,13 +129,13 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
         var cellResult = await Mediator.Send(
             new GetRuntimeCellRequest(resourceGroup.Id, cell.Id));
 
-        Assert.True(scopesResult.TryGetValue(out var scopes, out _));
+        var scopes = scopesResult.AssertSuccess();
         Assert.Contains(scopes, item => item.Id == scope.Id);
-        Assert.True(scopeResult.TryGetValue(out var foundScope, out _));
+        var foundScope = scopeResult.AssertSuccess();
         Assert.Equal(scope.Id, foundScope.Id);
-        Assert.True(cellsResult.TryGetValue(out var cells, out _));
+        var cells = cellsResult.AssertSuccess();
         Assert.Contains(cells, item => item.Id == cell.Id);
-        Assert.True(cellResult.TryGetValue(out var foundCell, out _));
+        var foundCell = cellResult.AssertSuccess();
         Assert.Equal(cell.Id, foundCell.Id);
     }
 
@@ -159,11 +155,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             scope.Id,
             resourceGroup.TenantId));
 
-        Assert.True(result.TryGetValue(
-            out DeleteIsolationScopeResponse? response,
-            out Failure? failure));
-        Assert.Null(failure);
-        Assert.NotNull(response);
+        var response = result.AssertSuccess();
         Assert.True(response.Deleted);
         Assert.False(await DbContext.IsolationScopes
             .Find(item => item.Id == scope.Id)
@@ -182,7 +174,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             resourceGroup.DefaultIsolationScopeId,
             resourceGroup.TenantId));
 
-        Assert.False(result.TryGetValue(out _, out var failure));
+        var failure = result.AssertFailure();
         Assert.IsType<ConflictFailure>(failure);
         Assert.True(await DbContext.IsolationScopes
             .Find(scope => scope.Id == resourceGroup.DefaultIsolationScopeId)
@@ -223,11 +215,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             scope.Id,
             resourceGroup.TenantId));
 
-        Assert.True(result.TryGetValue(
-            out DeleteIsolationScopeResponse? response,
-            out Failure? failure));
-        Assert.Null(failure);
-        Assert.NotNull(response);
+        var response = result.AssertSuccess();
         Assert.False(response.Deleted);
         Assert.True(response.DeletionRequested);
         var savedScope = await DbContext.IsolationScopes
