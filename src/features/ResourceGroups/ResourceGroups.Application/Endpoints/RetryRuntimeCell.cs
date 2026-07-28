@@ -70,14 +70,22 @@ public sealed class RetryRuntimeCellHandler(
             if (failed.Operation == RuntimeCellOperation.Reconciliation)
             {
                 await dbContext.StoreEventAsync(
-                    retried.ToReconciliationRequestedEvent(),
+                    OutboxWrite.Create(
+                        retried.ToReconciliationRequestedEvent(),
+                        RuntimeCellPendingKey.Reconciliation(
+                            retried.Id,
+                            retried.DesiredGeneration)),
                     session,
                     ct);
             }
             else
             {
                 await dbContext.StoreEventAsync(
-                    retried.ToDeletionRequestedEvent(),
+                    OutboxWrite.Create(
+                        retried.ToDeletionRequestedEvent(),
+                        RuntimeCellPendingKey.Deletion(
+                            retried.Id,
+                            retried.DesiredGeneration)),
                     session,
                     ct);
             }

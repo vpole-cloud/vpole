@@ -11,6 +11,13 @@ and finalization. The focused slice is under
 `tests/Pole.Tests.Integration/ResourceGroups`. Namespace manager tests use fake Kubernetes
 HTTP responses; a live cluster is not required for this slice.
 
+Outbox changes should cover state transitions, required event identities, settings
+validation, keyed-write deduplication, concurrent Mongo transactions, publish/retry/abandon
+lifecycle, cancellation, and bounded terminal cleanup. The focused tests are under
+`tests/Pole.Tests.Integration/Database` and `tests/Pole.Tests.Integration/Outbox`. The
+processor tests use a narrow fake publisher; RabbitMQ is not required. Mongo persistence and
+concurrency tests use the existing replica-set Testcontainer.
+
 The shared integration test suite lives in:
 
 - `tests/Pole.Tests.Integration`

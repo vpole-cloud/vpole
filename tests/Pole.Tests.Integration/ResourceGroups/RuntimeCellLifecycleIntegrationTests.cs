@@ -3,11 +3,13 @@ using MongoDB.Driver;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Application.Consumers;
+using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Jobs;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
+using Pole.Features.Shared.Models;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -226,6 +228,20 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         Assert.Equal(cell.DesiredGeneration + 1, recovered.DesiredGeneration);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
             "runtime-cell-reconciliation-requested"));
+        var pendingRequest = await DbContext.OutboxMessages
+            .Find(message =>
+                message.EventType == "runtime-cell-reconciliation-requested")
+            .SingleAsync();
+        Assert.Equal(
+            RuntimeCellPendingKey.Reconciliation(
+                recovered.Id,
+                recovered.DesiredGeneration),
+            pendingRequest.PendingKey);
+        Assert.IsType<PendingOutboxMessageState>(pendingRequest.State);
+
+        await DbContext.OutboxMessages.ReplaceOneAsync(
+            message => message.Id == pendingRequest.Id,
+            pendingRequest with { PayloadJson = "{ malformed payload" });
 
         var laterJob = new RuntimeCellRecoveryJob(
             DbContext,

@@ -115,6 +115,13 @@ job republishes requests for stale provisioning/deleting cells and advances due 
 It also scans lifecycle-indexed deleting scopes to close the crash window between successful
 cell persistence and aggregate finalization. The job does not call Kubernetes directly.
 
+Reconciliation and deletion requests use a centralized logical pending key containing the
+runtime-cell ID, generation, and operation. The outbox enqueues that key atomically and treats
+an already-pending key as a successful no-op. Recovery therefore neither scans nor
+deserializes outbox payload JSON, and concurrent recovery cannot create multiple active
+requests for the same operation and generation. Publishing or structurally abandoning a
+message releases its key so a later recovery pass can enqueue a fresh request.
+
 ## Deletion and finalization
 
 Deleting an empty additional scope completes synchronously with `204 No Content`. If the

@@ -23,6 +23,7 @@ using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.Postgres.Application.Endpoints;
+using Pole.Features.Outbox.Application.Migrations;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
@@ -196,6 +197,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         await new DeploymentTargetMigration().Up(fixture.Database);
         await new DeploymentTargetReferenceMigration().Up(fixture.Database);
         await new ResourceGroupPlacementMigration().Up(fixture.Database);
+        await new OutboxMessageMigration().Up(fixture.Database);
         app.UseTraceContext();
         app.UseCors("frontend-dev");
         app.UseAuthentication();

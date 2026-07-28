@@ -4,11 +4,13 @@ using Pole.Database;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.ResourceGroups.Application.Endpoints;
+using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.ResourceGroups.Application.Migrations;
 using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.Shared.Models;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -49,6 +51,16 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
                 reference.OwnerId == placements[0].RuntimeCellId));
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
             "runtime-cell-reconciliation-requested"));
+        var requestMessage = await DbContext.OutboxMessages
+            .Find(message =>
+                message.EventType == "runtime-cell-reconciliation-requested")
+            .SingleAsync();
+        Assert.Equal(
+            RuntimeCellPendingKey.Reconciliation(
+                placements[0].RuntimeCellId,
+                1),
+            requestMessage.PendingKey);
+        Assert.IsType<PendingOutboxMessageState>(requestMessage.State);
     }
 
     [Fact]

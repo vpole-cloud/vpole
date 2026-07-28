@@ -3,6 +3,7 @@ using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.ResourceGroups.Application.Migrations;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.Shared.Models;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -232,6 +233,18 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             "isolation-scope-deletion-requested"));
         Assert.Equal(2L, await DbContext.CountOutboxMessagesAsync(
             "runtime-cell-deletion-requested"));
+        var deletionRequests = await DbContext.OutboxMessages
+            .Find(message =>
+                message.EventType == "runtime-cell-deletion-requested")
+            .ToListAsync();
+        Assert.All(deletionRequests, request =>
+        {
+            Assert.IsType<PendingOutboxMessageState>(request.State);
+            Assert.Contains(savedCells, cell =>
+                request.PendingKey == RuntimeCellPendingKey.Deletion(
+                    cell.Id,
+                    cell.DesiredGeneration));
+        });
     }
 
     [Fact]

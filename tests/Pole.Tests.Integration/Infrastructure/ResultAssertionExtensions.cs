@@ -5,6 +5,23 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 public static class ResultAssertionExtensions
 {
+    public static void AssertSuccess(this Result result)
+    {
+        if (result is ISuccess)
+            return;
+
+        if (result is Failure failure)
+        {
+            throw new XunitException(
+                $"Expected a successful result, but received " +
+                $"{failure.GetType().Name}: {failure.Message}");
+        }
+
+        throw new XunitException(
+            $"Expected a successful result, but received unsupported result type " +
+            $"'{result.GetType().Name}'.");
+    }
+
     public static T AssertSuccess<T>(this Result<T> result)
         where T : notnull =>
         result switch
