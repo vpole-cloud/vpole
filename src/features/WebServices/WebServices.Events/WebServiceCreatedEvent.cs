@@ -12,10 +12,8 @@ public record WebServiceCreatedEvent(
     string ResourceGroupId,
     WebServiceSpecSnapshot Spec,
     DnsRecordShortInfo DnsRecord,
-    ServiceStatus Status,
     ImmutableHashSet<string> Tags
 ) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
-

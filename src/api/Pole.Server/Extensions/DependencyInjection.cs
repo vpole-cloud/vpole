@@ -49,6 +49,13 @@ using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Application.Services;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Kubernetes;
+using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Application.Jobs;
+using Pole.Features.ResourceDeployments.Application.Mutations;
+using Pole.Features.ResourceDeployments.Application.Placement;
+using Pole.Features.ResourceDeployments.Application.Reconciliation;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Jobs;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
@@ -202,11 +209,25 @@ public static class DependencyInjection
                 services.AddHostedService<FunctionUsageAggregatorWorker>();
             }
             services.TryAddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
-            services.AddSingleton<IPostgresClusterSecretStore, KubernetesPostgresClusterSecretStore>();
-            services.AddSingleton<IPostgresClusterDeploymentBackend, OperatorPostgresClusterDeploymentBackend>();
-            services.AddSingleton<IPostgresClusterDeploymentBackend, StatefulSetPostgresClusterDeploymentBackend>();
-            services.AddSingleton<IPostgresClusterDeploymentManager, PostgresClusterDeploymentManager>();
+            services.TryAddScoped<
+                IPostgresCredentialService,
+                PostgresCredentialService>();
+            services.TryAddScoped<
+                IPostgresResourceDeploymentReader,
+                MongoPostgresResourceDeploymentReader>();
+            services.TryAddScoped<PostgresResourceDeploymentAdapter>();
+            services.TryAddSingleton<
+                IPostgresClusterDeploymentManager,
+                PostgresClusterDeploymentManager>();
             services.TryAddScoped<IWebServiceDeploymentApplier, KubernetesWebServiceDeploymentApplier>();
+            services.TryAddScoped<
+                IWebServiceResourceDeploymentReader,
+                MongoWebServiceResourceDeploymentReader>();
+            services.TryAddScoped<WebServiceResourceDeploymentAdapter>();
+            services.TryAddScoped<
+                IRedisResourceDeploymentReader,
+                MongoRedisResourceDeploymentReader>();
+            services.TryAddScoped<RedisResourceDeploymentAdapter>();
             services.TryAddSingleton<IFunctionRevisionKubernetesManager, FunctionRevisionKubernetesManager>();
             services.TryAddSingleton<IFunctionEndpointSliceSource, KubernetesFunctionEndpointSliceSource>();
             services.TryAddSingleton<IFunctionEndpointRegistry, FunctionEndpointRegistry>();
@@ -241,7 +262,11 @@ public static class DependencyInjection
                 provider.GetRequiredService<KubernetesClientProvider>());
             services.TryAddSingleton<IDeploymentTargetBootstrapper, DeploymentTargetBootstrapper>();
             services.TryAddScoped<IDeploymentTargetLookup, DeploymentTargetLookup>();
-            services.TryAddScoped<IDeploymentTargetReferenceAdmission, DeploymentTargetReferenceAdmission>();
+            services.TryAddScoped<DeploymentTargetReferenceAdmission>();
+            services.TryAddScoped<IDeploymentTargetReferenceAdmission>(
+                provider => provider.GetRequiredService<DeploymentTargetReferenceAdmission>());
+            services.TryAddScoped<IDeploymentTargetWorkloadConfigurationFence>(
+                provider => provider.GetRequiredService<DeploymentTargetReferenceAdmission>());
             services.TryAddScoped<IDeploymentTargetDeletionGuard, DeploymentTargetDeletionGuard>();
             services.TryAddScoped<DeploymentTargetReader>();
             services.TryAddScoped<DeploymentTargetPersistence>();
@@ -282,6 +307,10 @@ public static class DependencyInjection
             services.TryAddSingleton<IEventDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IWebServiceDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IRedisDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.TryAddSingleton<IResourceDeploymentDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.TryAddScoped<
+                IResourceDeploymentReferenceLookup,
+                ResourceDeploymentReferenceLookup>();
             services.TryAddSingleton<ISearchDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IPostgresDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IQuotaDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
@@ -299,6 +328,37 @@ public static class DependencyInjection
             services.TryAddScoped<IDomainNameReservationService, DomainNameReservationService>();
             services.TryAddScoped<IResourceGroupLookup, ResourceGroupLookup>();
             services.TryAddScoped<IResourcePlacementService, ResourcePlacementService>();
+            services.TryAddScoped<ResourceDeploymentReconciler>();
+            services.TryAddSingleton<ResourceDeploymentMetrics>();
+            services.TryAddScoped<
+                IResourceDeploymentPlacementResolver,
+                ResourceDeploymentPlacementResolver>();
+            services.TryAddScoped<
+                IResourceDeploymentWriter,
+                ResourceDeploymentWriter>();
+            services.TryAddScoped<
+                IResourceDeploymentStorageConfigurationFence,
+                StorageProfileResolutionFence>();
+            services.TryAddScoped<
+                IResourceDeploymentMutationWriter,
+                ResourceDeploymentMutationWriter>();
+            services.TryAddScoped<
+                Pole.Features.ResourceDeployments.Contracts.IResourceDeploymentQueryService,
+                ResourceDeploymentQueryService>();
+            services.AddSingleton(
+                ResourceDeploymentAdapterDescriptor.Create<
+                    WebServiceResourceDeploymentAdapter>(
+                    Pole.Features.ResourceDeployments.Contracts
+                        .ResourceDeploymentResourceTypes.WebService,
+                    Pole.Features.ResourceDeployments.Contracts
+                        .ResourcePlacementCapability.SingleTarget));
+            services.AddSingleton(
+                RedisResourceDeploymentAdapterRegistration.Descriptor);
+            services.AddSingleton(
+                PostgresResourceDeploymentAdapterRegistration.Descriptor);
+            services.TryAddSingleton<ResourceDeploymentAdapterCatalog>();
+            services.TryAddSingleton<ResourceDeploymentRetryDelayPolicy>();
+            services.TryAddScoped<ResourceDeploymentRecoveryJob>();
             services.TryAddScoped<IResourceGroupDeletionFinalizer, ResourceGroupDeletionFinalizer>();
             services.TryAddSingleton<IRuntimeCellNamespaceNameGenerator, RuntimeCellNamespaceNameGenerator>();
             services.TryAddScoped<IRuntimeCellNamespaceManager, KubernetesRuntimeCellNamespaceManager>();
@@ -387,6 +447,14 @@ public static class DependencyInjection
                 .ValidateOnStart();
             services.AddSingleton(
                 sp => sp.GetRequiredService<IOptions<KubernetesOptions>>().Value);
+            services.AddSingleton<
+                IValidateOptions<ResourceDeploymentSettings>,
+                ResourceDeploymentSettingsValidator>();
+            services.AddOptions<ResourceDeploymentSettings>()
+                .Bind(configuration.GetSection(ResourceDeploymentSettings.SectionName))
+                .ValidateOnStart();
+            services.AddSingleton(
+                sp => sp.GetRequiredService<IOptions<ResourceDeploymentSettings>>().Value);
             services.AddSettingsSection<PostgresSettings>(PostgresSettings.SectionName, configuration);
             services.AddOptions<QuotaSettings>()
                 .Bind(configuration.GetSection(QuotaSettings.SectionName))
@@ -520,6 +588,11 @@ public static class DependencyInjection
 
             RecurringJob.AddOrUpdate<RuntimeCellRecoveryJob>(
                 "recover-runtime-cells",
+                job => job.RecoverAsync(CancellationToken.None),
+                Cron.Minutely);
+
+            RecurringJob.AddOrUpdate<ResourceDeploymentRecoveryJob>(
+                "recover-resource-deployments",
                 job => job.RecoverAsync(CancellationToken.None),
                 Cron.Minutely);
 

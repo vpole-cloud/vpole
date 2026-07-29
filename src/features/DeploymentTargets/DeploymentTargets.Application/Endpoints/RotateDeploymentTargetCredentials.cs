@@ -69,15 +69,15 @@ public sealed class RotateDeploymentTargetCredentialsHandler(
                     "Replacement credentials resolve to a different Kubernetes cluster.");
             }
 
-            var updated = target.ReplaceConnectionCredential(
-                    observation.ClusterIdentity,
-                    prepared.Connection,
-                    DeploymentTargetClock.UtcNowAfter(timeProvider, target.UpdatedAtUtc))
-                .ApplyValidationObservation(
-                    target.Revision + 1,
-                    prepared.Connection.Version,
-                    observation.Health,
-                    observation.Capabilities);
+            var credentialReplaced = target.ReplaceConnectionCredential(
+                observation.ClusterIdentity,
+                prepared.Connection,
+                DeploymentTargetClock.UtcNowAfter(timeProvider, target.UpdatedAtUtc));
+            var updated = credentialReplaced.ApplyValidationObservation(
+                credentialReplaced.Revision,
+                prepared.Connection.Version,
+                observation.Health,
+                observation.Capabilities);
             var persisted = await dbContext.DeploymentTargets.FindOneAndUpdateAsync(
                 Builders<DeploymentTarget>.Filter.And(
                     DeploymentTargetFilters.RevisionFilter(target),

@@ -173,6 +173,7 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
             DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
             health,
             DeploymentTargetCapabilities.Unknown(connectionVersion),
+            DeploymentTargetTestData.CreateWorkloadConfiguration(),
             enabled,
             acceptsWorkloads: enabled,
             new DeploymentTargetFactory.CreateOptions(id, createdAtUtc));

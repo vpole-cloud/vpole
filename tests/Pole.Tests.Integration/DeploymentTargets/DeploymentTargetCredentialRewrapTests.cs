@@ -149,6 +149,7 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
                     "Updated while rewrapping",
                     Enabled: true,
                     AcceptsWorkloads: true,
+                    original.WorkloadConfiguration.ToRequestBody(),
                     original.Revision)));
 
         var response = AssertSuccess(result);
@@ -188,6 +189,7 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
             connection,
             DeploymentTargetHealth.Unknown(connection.Version),
             DeploymentTargetCapabilities.Unknown(connection.Version),
+            DeploymentTargetTestData.CreateWorkloadConfiguration(),
             enabled: true,
             acceptsWorkloads: true,
             new DeploymentTargetFactory.CreateOptions(id, now));

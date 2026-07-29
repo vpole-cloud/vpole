@@ -1,19 +1,72 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using k8s.Models;
 using Pole.Features.RedisServices.Domain;
+using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
 
 namespace Pole.Features.RedisServices.Application.Kubernetes;
 
-public readonly record struct RedisInKubernetes(Redis Redis)
+public sealed record RedisResourceDeploymentMetadata(
+    string ResourceDeploymentId,
+    string RuntimeCellId,
+    string DeploymentTargetId,
+    long DesiredGeneration,
+    DateTime RequestedAtUtc)
 {
+    public static RedisResourceDeploymentMetadata Create(
+        string resourceDeploymentId,
+        string runtimeCellId,
+        string deploymentTargetId,
+        long desiredGeneration,
+        DateTime requestedAtUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(resourceDeploymentId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(runtimeCellId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(deploymentTargetId);
+        ArgumentOutOfRangeException.ThrowIfLessThan(desiredGeneration, 1);
+        if (requestedAtUtc == default)
+            throw new ArgumentException("The request time is required.", nameof(requestedAtUtc));
+
+        return new(
+            resourceDeploymentId.Trim(),
+            runtimeCellId.Trim(),
+            deploymentTargetId.Trim(),
+            desiredGeneration,
+            requestedAtUtc);
+    }
+}
+
+public readonly record struct RedisInKubernetes(
+    Redis Redis,
+    string Namespace,
+    ResolvedStorageConfiguration StorageConfiguration)
+{
+    public static RedisInKubernetes Create(
+        Redis redis,
+        string kubernetesNamespace,
+        ResolvedStorageConfiguration storageConfiguration)
+    {
+        ArgumentNullException.ThrowIfNull(redis);
+        ArgumentException.ThrowIfNullOrWhiteSpace(kubernetesNamespace);
+        ArgumentNullException.ThrowIfNull(storageConfiguration);
+
+        return new(
+            redis,
+            kubernetesNamespace.Trim(),
+            storageConfiguration);
+    }
+
     public string StatefulSetName => Redis.Name;
-    public string Namespace => Redis.Spec.KubernetesNamespace;
     public string ServiceName => BuildServiceName(Redis.Name);
     public static string BuildServiceName(string redisName) => $"{redisName}-svc";
-    
-    public V1StatefulSet ToStatefulSet() => new()
+
+    public string ClusterLocalHost =>
+        $"{ServiceName}.{Namespace}.svc.cluster.local";
+
+    public V1StatefulSet ToStatefulSet(
+        RedisResourceDeploymentMetadata? deploymentMetadata = null) => new()
     {
         ApiVersion = "apps/v1",
         Kind = "StatefulSet",
@@ -41,7 +94,7 @@ public readonly record struct RedisInKubernetes(Redis Redis)
                 {
                     Labels = new Dictionary<string, string>
                         (BuildLabels()),
-                    Annotations = _defaultAnnotations
+                    Annotations = BuildPodTemplateAnnotations(deploymentMetadata)
                 },
                 Spec = new V1PodSpec
                 {
@@ -96,7 +149,7 @@ public readonly record struct RedisInKubernetes(Redis Redis)
                     Spec = new V1PersistentVolumeClaimSpec
                     {
                         AccessModes = new List<string> { "ReadWriteOnce" },
-                        StorageClassName = Redis.Spec.Storage.StorageProfile.StorageClassName,
+                        StorageClassName = StorageConfiguration.StorageClassName,
                         Resources = new V1VolumeResourceRequirements
                         {
                             Requests = new Dictionary<string, ResourceQuantity>
@@ -150,6 +203,29 @@ public readonly record struct RedisInKubernetes(Redis Redis)
             { "pole.server/redisId", Redis.Id }
         }.ToImmutableDictionary();
 
+    private Dictionary<string, string> BuildPodTemplateAnnotations(
+        RedisResourceDeploymentMetadata? deploymentMetadata)
+    {
+        var annotations = new Dictionary<string, string>(_defaultAnnotations);
+        if (deploymentMetadata is null)
+            return annotations;
+
+        annotations["pole.server/resourceDeploymentId"] =
+            deploymentMetadata.ResourceDeploymentId;
+        annotations["pole.server/runtimeCellId"] =
+            deploymentMetadata.RuntimeCellId;
+        annotations["pole.server/deploymentTargetId"] =
+            deploymentMetadata.DeploymentTargetId;
+        annotations["pole.server/deploymentGeneration"] =
+            deploymentMetadata.DesiredGeneration.ToString(
+                CultureInfo.InvariantCulture);
+        annotations["pole.server/deploymentRequestedAtUtc"] =
+            deploymentMetadata.RequestedAtUtc.ToUniversalTime().ToString(
+                "O",
+                CultureInfo.InvariantCulture);
+        return annotations;
+    }
+
     private Dictionary<string, string> BuildLabels() => new()
     {
         { "app", Redis.Name },
@@ -161,4 +237,3 @@ public readonly record struct RedisInKubernetes(Redis Redis)
         { PoleStorageLabels.ResourceName, Redis.Name }
     };
 }
-

@@ -90,6 +90,7 @@ public sealed class DeploymentTargetBootstrapper(
                 prepared.Connection,
                 observation.Health,
                 observation.Capabilities,
+                CreateWorkloadConfiguration(),
                 enabled: true,
                 acceptsWorkloads: true,
                 new DeploymentTargetFactory.CreateOptions(targetId, createdAtUtc));
@@ -149,6 +150,17 @@ public sealed class DeploymentTargetBootstrapper(
         return new KubeconfigConnectionInput(
             kubeconfig,
             options.Bootstrap.KubeconfigContext);
+    }
+
+    private DeploymentTargetWorkloadConfiguration CreateWorkloadConfiguration()
+    {
+        var configuredIngress = options.Bootstrap.WorkloadConfiguration.Ingress;
+        var ingress = configuredIngress is null
+            ? null
+            : DeploymentTargetIngressConfiguration.Create(
+                configuredIngress.IngressClassName,
+                configuredIngress.ClusterIssuerName);
+        return DeploymentTargetWorkloadConfiguration.Create(ingress);
     }
 
     private static string ResolveKubeconfigPath(string? configuredPath)

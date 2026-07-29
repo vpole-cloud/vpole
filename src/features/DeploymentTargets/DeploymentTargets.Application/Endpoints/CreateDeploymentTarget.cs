@@ -18,6 +18,7 @@ public sealed record CreateDeploymentTargetRequestBody(
     string DisplayName,
     bool Enabled,
     bool AcceptsWorkloads,
+    DeploymentTargetWorkloadConfigurationRequestBody WorkloadConfiguration,
     DeploymentTargetConnectionRequestBody Connection);
 
 public sealed record CreateDeploymentTargetRequest(
@@ -63,6 +64,7 @@ public sealed class CreateDeploymentTargetHandler(
                 prepared.Connection,
                 observation.Health,
                 observation.Capabilities,
+                request.Body.WorkloadConfiguration.ToDomain(),
                 request.Body.Enabled,
                 request.Body.AcceptsWorkloads,
                 new DeploymentTargetFactory.CreateOptions(id, now));
@@ -101,6 +103,9 @@ public sealed class CreateDeploymentTargetRequestBodyValidator
             .Equal(false)
             .When(body => !body.Enabled)
             .WithMessage("A disabled deployment target cannot accept workloads.");
+        RuleFor(body => body.WorkloadConfiguration)
+            .NotNull()
+            .SetValidator(new DeploymentTargetWorkloadConfigurationRequestBodyValidator());
         RuleFor(body => body.Connection)
             .NotNull()
             .SetValidator(new DeploymentTargetConnectionRequestBodyValidator());

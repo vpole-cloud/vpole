@@ -10,6 +10,7 @@ using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -73,6 +74,7 @@ public sealed class DeleteIsolationScopeRequestValidator
 
 public sealed class DeleteIsolationScopeHandler(
     IResourceGroupDbContext dbContext,
+    IResourceDeploymentReferenceLookup deploymentReferences,
     TimeProvider timeProvider)
     : IMediatorHandler<DeleteIsolationScopeRequest, DeleteIsolationScopeResponse>
 {
@@ -94,6 +96,16 @@ public sealed class DeleteIsolationScopeHandler(
             cancellationToken);
         if (!contextResult.TryGetValue(out var context, out var loadFailure))
             return loadFailure;
+
+        var deploymentGuard =
+            await deploymentReferences.EnsureNoUnfinishedForIsolationScopeAsync(
+                context.ResourceGroup.TenantId,
+                context.ResourceGroup.Id,
+                context.Scope.Id,
+                session,
+                cancellationToken);
+        if (deploymentGuard is not ISuccess)
+            return (Failure)deploymentGuard;
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var fence = await FenceResourceGroupAsync(

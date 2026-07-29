@@ -16,7 +16,6 @@ internal static class WebServicesEventExtensions
                 webService.ResourceGroupId,
                 webService.Spec.ToSnapshot(),
                 webService.DnsRecord,
-                webService.Status,
                 webService.Tags
             )
             {
@@ -67,7 +66,6 @@ internal static class WebServicesEventExtensions
                 WebServiceFactory.DefaultOptions with
                 {
                     Id = createEvent.WebServiceId,
-                    Status = createEvent.Status,
                     Tags = createEvent.Tags
                 });
     }
@@ -92,7 +90,6 @@ internal static class WebServicesEventExtensions
     {
         internal WebServiceSpecSnapshot ToSnapshot()
             => new(
-                spec.KubernetesNamespace,
                 spec.Image.ToSnapshot(),
                 spec.Replicas,
                 spec.Resources,
@@ -136,7 +133,6 @@ internal static class WebServicesEventExtensions
     {
         internal WebServiceSpec ToDomain()
             => new(
-                spec.KubernetesNamespace,
                 spec.Image.ToDomain(),
                 spec.Replicas,
                 spec.Resources,
@@ -176,5 +172,3 @@ internal static class WebServicesEventExtensions
                     autoscaling.Metric.TargetAverageUtilization));
     }
 }
-
-

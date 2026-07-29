@@ -20,6 +20,7 @@ public sealed record ResourcePlacement(
     string RuntimeCellId,
     string DeploymentTargetId,
     string KubernetesNamespace,
+    long RuntimeCellGeneration,
     ResourcePlacementState State);
 
 public enum ResourcePlacementState

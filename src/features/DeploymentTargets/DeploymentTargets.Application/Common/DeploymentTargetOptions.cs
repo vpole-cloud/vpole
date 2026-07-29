@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Pole.Features.DeploymentTargets.Domain;
 
 namespace Pole.Features.DeploymentTargets.Application.Common;
 
@@ -24,6 +25,19 @@ public sealed class DeploymentTargetBootstrapOptions
     public DeploymentTargetBootstrapMode Mode { get; init; } = DeploymentTargetBootstrapMode.Auto;
     public string? KubeconfigPath { get; init; }
     public string? KubeconfigContext { get; init; }
+    public DeploymentTargetBootstrapWorkloadConfigurationOptions WorkloadConfiguration { get; init; } =
+        new();
+}
+
+public sealed class DeploymentTargetBootstrapWorkloadConfigurationOptions
+{
+    public DeploymentTargetBootstrapIngressOptions? Ingress { get; init; } = new();
+}
+
+public sealed class DeploymentTargetBootstrapIngressOptions
+{
+    public string IngressClassName { get; init; } = "traefik";
+    public string ClusterIssuerName { get; init; } = "letsencrypt-prod";
 }
 
 public sealed class DeploymentTargetOptionsValidator : IValidateOptions<DeploymentTargetOptions>
@@ -54,6 +68,33 @@ public sealed class DeploymentTargetOptionsValidator : IValidateOptions<Deployme
              !string.IsNullOrWhiteSpace(options.Bootstrap.KubeconfigContext)))
         {
             failures.Add("InCluster bootstrap cannot specify kubeconfig path or context.");
+        }
+
+        var workloadConfiguration = options.Bootstrap.WorkloadConfiguration;
+        if (workloadConfiguration is null)
+        {
+            failures.Add(
+                "DeploymentTargets:Bootstrap:WorkloadConfiguration is required.");
+        }
+        else
+        {
+            var ingress = workloadConfiguration.Ingress;
+            if (ingress is not null &&
+                !DeploymentTargetIngressConfiguration.IsValidKubernetesResourceName(
+                    ingress.IngressClassName))
+            {
+                failures.Add(
+                    "DeploymentTargets:Bootstrap:WorkloadConfiguration:Ingress:IngressClassName " +
+                    "must be a valid Kubernetes resource name.");
+            }
+            if (ingress is not null &&
+                !DeploymentTargetIngressConfiguration.IsValidKubernetesResourceName(
+                    ingress.ClusterIssuerName))
+            {
+                failures.Add(
+                    "DeploymentTargets:Bootstrap:WorkloadConfiguration:Ingress:ClusterIssuerName " +
+                    "must be a valid Kubernetes resource name.");
+            }
         }
 
         return failures.Count == 0

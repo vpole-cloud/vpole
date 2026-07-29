@@ -1,6 +1,7 @@
 // ReSharper disable MemberCanBePrivate.Global
 
 using System.Collections.Immutable;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Request;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Domain;
@@ -13,7 +14,8 @@ public sealed record WebServiceDto(
     string ResourceGroupId,
     int ActiveRevision,
     WebServiceSpecDto Spec,
-    DnsRecordShortInfoDto DnsRecordShortInfo
+    DnsRecordShortInfoDto DnsRecordShortInfo,
+    PlacementSummaryDto? Placement
 );
 
 public sealed record WebServiceReleaseDto(
@@ -122,13 +124,16 @@ public sealed record ImageInfoDto(
 
 public static class WebServiceDtoExtensions
 {
-    public static WebServiceDto ToDto(this WebService webService) => new(
+    public static WebServiceDto ToDto(
+        this WebService webService,
+        PlacementSummaryDto? placement = null) => new(
         webService.Id,
         webService.Name,
         webService.ResourceGroupId,
         webService.ActiveRevision,
         webService.Spec.ToDto(),
-        webService.DnsRecord.ToDto()
+        webService.DnsRecord.ToDto(),
+        placement
     );
     public static WebServiceReleaseDto ToDto(this WebServiceRelease release) => new(
         release.Id,
@@ -231,8 +236,7 @@ public static class WebServiceDtoExtensions
         image.Tag
     );
     
-    public static WebServiceSpec ToDomain(this WebServiceSpecDto dto, string kubernetesNamespace) => new(
-        kubernetesNamespace,
+    public static WebServiceSpec ToDomain(this WebServiceSpecDto dto) => new(
         dto.Image.ToDomain(),
         dto.Replicas,
         dto.Resources,
@@ -279,4 +283,3 @@ public static class WebServiceDtoExtensions
         shortInfoDto.Domain
     );
 }
-

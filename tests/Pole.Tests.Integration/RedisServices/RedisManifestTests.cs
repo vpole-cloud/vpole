@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Application.Kubernetes;
+using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -15,7 +16,13 @@ public sealed class RedisManifestTests
     {
         var manifest = CreateSubject();
 
-        var statefulSet = manifest.ToStatefulSet();
+        var statefulSet = manifest.ToStatefulSet(
+            RedisResourceDeploymentMetadata.Create(
+                "507f1f77bcf86cd799439031",
+                "507f1f77bcf86cd799439032",
+                "507f1f77bcf86cd799439033",
+                desiredGeneration: 4,
+                new DateTime(2026, 7, 29, 14, 0, 0, DateTimeKind.Utc)));
         var container = Assert.Single(statefulSet.Spec.Template.Spec.Containers);
         var volumeClaim = Assert.Single(statefulSet.Spec.VolumeClaimTemplates);
 
@@ -41,6 +48,18 @@ public sealed class RedisManifestTests
         Assert.Equal("512Mi", container.Resources.Limits["memory"].ToString());
         Assert.Equal("pole-server", statefulSet.Spec.Template.Metadata.Annotations["app.kubernetes.io/managed-by"]);
         Assert.Equal("redis-1", statefulSet.Spec.Template.Metadata.Annotations["pole.server/redisId"]);
+        Assert.Equal(
+            "507f1f77bcf86cd799439031",
+            statefulSet.Spec.Template.Metadata.Annotations["pole.server/resourceDeploymentId"]);
+        Assert.Equal(
+            "507f1f77bcf86cd799439032",
+            statefulSet.Spec.Template.Metadata.Annotations["pole.server/runtimeCellId"]);
+        Assert.Equal(
+            "507f1f77bcf86cd799439033",
+            statefulSet.Spec.Template.Metadata.Annotations["pole.server/deploymentTargetId"]);
+        Assert.Equal(
+            "4",
+            statefulSet.Spec.Template.Metadata.Annotations["pole.server/deploymentGeneration"]);
     }
 
     [Fact]
@@ -67,15 +86,22 @@ public sealed class RedisManifestTests
     }
 
     private static RedisInKubernetes CreateSubject() =>
-        new(BuildRedis(
-            "redis-1",
-            "redis-cache",
-            new RedisSpec(
-                "pole-cache",
-                new Storage(12, TestData.DefaultResolvedStorageProfile("fast-cache")),
-                new Resources(
-                    Requests: new Resource(1, 256),
-                    Limits: new Resource(2, 512)))));
+        RedisInKubernetes.Create(
+            BuildRedis(
+                "redis-1",
+                "redis-cache",
+                new RedisSpec(
+                    new Storage(
+                        12,
+                        "507f1f77bcf86cd799439034"),
+                    new Resources(
+                        Requests: new Resource(1, 256),
+                        Limits: new Resource(2, 512)))),
+            "pole-cache",
+            ResolvedStorageConfiguration.Create(
+                "507f1f77bcf86cd799439034",
+                storageProfileRevision: 7,
+                storageClassName: "fast-cache"));
 
     private static Redis BuildRedis(string id, string name, RedisSpec spec) =>
         RedisFactory.Create(
@@ -89,4 +115,3 @@ public sealed class RedisManifestTests
                 Tags = ImmutableHashSet.Create("cache")
             });
 }
-

@@ -7,6 +7,7 @@ using MongoDB.Driver.Linq;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.Request;
 using Pole.Mediator;
@@ -36,7 +37,8 @@ public static class GetRedisServices
 }
 
 public sealed class GetRedisServicesHandler(
-    IRedisDbContext dbContext)
+    IRedisDbContext dbContext,
+    IResourceDeploymentQueryService deploymentQuery)
     : IMediatorHandler<GetRedisServicesRequest, PaginatedResponse<RedisDto>>
 {
     public async Task<Result<PaginatedResponse<RedisDto>>> HandleAsync(
@@ -56,9 +58,15 @@ public sealed class GetRedisServicesHandler(
         var redisServices = await query
             .ApplyPagination(request)
             .ToListAsync(cancellationToken: cancellationToken);
+        var placements = await deploymentQuery.GetManyAsync(
+            request.TenantId,
+            ResourceDeploymentResourceTypes.Redis,
+            redisServices.Select(redis => redis.Id).ToArray(),
+            cancellationToken);
 
         return new PaginatedResponse<RedisDto>(
-            Items: redisServices.Select(x => x.ToDto()),
+            Items: redisServices.Select(redis => redis.ToDto(
+                placements.GetValueOrDefault(redis.Id))),
             TotalCount: totalCount,
             PageNumber: request.PageNumber,
             PageSize: request.PageSize);
@@ -71,4 +79,3 @@ public record GetRedisServicesRequest : PaginatedRequest<RedisDto>, ITenantReadO
     [FromQuery] public string? Search { get; init; }
     [FromQuery] public string? ResourceGroupId { get; init; }
 }
-

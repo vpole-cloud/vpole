@@ -13,6 +13,7 @@ open Pole.Database
 open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
+open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.Request
 open Pole.Mediator
 
@@ -30,7 +31,9 @@ type GetPostgresClustersRequest() =
     [<FromQuery; DefaultValue(10); Description("The number of items per page.")>]
     member val PageSize = 10 with get, set
 
-type GetPostgresClustersHandler(dbContext : IPostgresDbContext) =
+type GetPostgresClustersHandler(
+    dbContext : IPostgresDbContext,
+    deploymentQuery : IResourceDeploymentQueryService) =
     interface IMediatorHandler<GetPostgresClustersRequest, PaginatedResponse<PostgresClusterDto>> with
         member _.HandleAsync(request, cancellationToken) =
             task {
@@ -47,9 +50,28 @@ type GetPostgresClustersHandler(dbContext : IPostgresDbContext) =
                         .Limit(request.PageSize)
                         .ToListAsync(cancellationToken)
 
+                let clusterIds =
+                    clusters
+                    |> Seq.map _.Id
+                    |> Seq.toArray
+                let! placements =
+                    deploymentQuery.GetManyAsync(
+                        request.TenantId,
+                        ResourceDeploymentResourceTypes.PostgreSql,
+                        clusterIds,
+                        cancellationToken)
+
+                let toDto (cluster : PostgresCluster) =
+                    match placements.TryGetValue(cluster.Id) with
+                    | true, placement ->
+                        PostgresClusterDto.create cluster placement
+                    | false, _ ->
+                        invalidOp
+                            $"PostgreSQL cluster '{cluster.Id}' has no resource deployment."
+
                 return
                     PaginatedResponse<PostgresClusterDto>(
-                        Items = (clusters |> Seq.map PostgresCluster.toDto),
+                        Items = (clusters |> Seq.map toDto),
                         TotalCount = totalCount,
                         PageNumber = request.PageNumber,
                         PageSize = request.PageSize
@@ -74,4 +96,3 @@ type GetPostgresClusters =
             let! result = mediator.Send request
             return result.ToHttpResult(fun value -> Results.Ok(value))
         }
-

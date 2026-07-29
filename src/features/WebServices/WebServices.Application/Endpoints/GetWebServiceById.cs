@@ -6,6 +6,7 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
@@ -33,7 +34,8 @@ public static class GetWebServiceById
 }
 
 public sealed class GetWebServiceByIdHandler(
-    IWebServiceDbContext dbContext)
+    IWebServiceDbContext dbContext,
+    IResourceDeploymentQueryService deploymentQuery)
     : IMediatorHandler<GetWebServiceByIdRequest, WebServiceDto>
 {
     public async Task<Result<WebServiceDto>> HandleAsync(
@@ -51,7 +53,12 @@ public sealed class GetWebServiceByIdHandler(
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
 
-        return webService.ToDto();
+        var placement = await deploymentQuery.GetAsync(
+            webService.TenantId,
+            ResourceDeploymentResourceTypes.WebService,
+            webService.Id,
+            cancellationToken);
+        return webService.ToDto(placement);
     }
 }
 
@@ -59,4 +66,3 @@ public record GetWebServiceByIdRequest(
     [FromRoute] string Id,
     [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
 ) : IMediatorRequest<WebServiceDto>, ITenantReadOperation;
-

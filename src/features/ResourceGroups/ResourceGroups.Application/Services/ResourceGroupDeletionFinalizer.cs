@@ -2,6 +2,7 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.ResourceGroups.Application.Services;
@@ -17,6 +18,7 @@ public interface IResourceGroupDeletionFinalizer
 
 public sealed class ResourceGroupDeletionFinalizer(
     IResourceGroupDbContext dbContext,
+    IResourceDeploymentReferenceLookup deploymentReferences,
     TimeProvider timeProvider)
     : IResourceGroupDeletionFinalizer
 {
@@ -49,6 +51,16 @@ public sealed class ResourceGroupDeletionFinalizer(
             var scopeDeleting =
                 scope?.Lifecycle is DeletingIsolationScopeLifecycleState;
             if (!resourceGroupDeleting && !scopeDeleting)
+                return Result.Success();
+
+            var deploymentGuard =
+                await deploymentReferences.EnsureNoUnfinishedForIsolationScopeAsync(
+                    tenantId,
+                    resourceGroupId,
+                    isolationScopeId,
+                    session,
+                    ct);
+            if (deploymentGuard is not ISuccess)
                 return Result.Success();
 
             var fence = await dbContext.ResourceGroups.UpdateOneAsync(

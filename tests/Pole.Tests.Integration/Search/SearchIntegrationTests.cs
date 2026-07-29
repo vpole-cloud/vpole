@@ -266,7 +266,6 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             webService.ResourceGroupId,
             ToSnapshot(webService.Spec),
             webService.DnsRecord,
-            webService.Status,
             webService.Tags)
         {
             EventCore = EventCore.Create(webService.TenantId)
@@ -282,7 +281,6 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             redis.Name,
             redis.ResourceGroupId,
             ToSnapshot(redis.Spec),
-            redis.Status,
             redis.Tags)
         {
             EventCore = EventCore.Create(redis.TenantId)
@@ -303,7 +301,6 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
 
     private static WebServiceSpecSnapshot ToSnapshot(WebServiceSpec spec) =>
         new(
-            spec.KubernetesNamespace,
             new WebServiceImageInfoSnapshot(
                 spec.Image.Server,
                 spec.Image.Name,
@@ -332,8 +329,9 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
 
     private static RedisServiceSpecSnapshot ToSnapshot(RedisSpec spec) =>
         new(
-            spec.KubernetesNamespace,
-            new RedisServiceStorageSnapshot(spec.Storage.SizeGb, spec.Storage.StorageProfile),
+            new RedisServiceStorageSnapshot(
+                spec.Storage.SizeGb,
+                spec.Storage.StorageProfileId),
             spec.Resources);
 
     private static PostgresClusterSpecSnapshot ToSnapshot(PostgresClusterSpec spec) =>
@@ -341,8 +339,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             spec.Instances,
             spec.Storage,
             spec.Resources,
-            spec.StorageProfile,
-            spec.KubernetesNamespace,
+            spec.StorageProfileId,
             spec.Version,
             spec.DeploymentMode switch
             {
@@ -350,4 +347,3 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
                 _ => PostgresDeploymentModeSnapshot.Operator
             });
 }
-

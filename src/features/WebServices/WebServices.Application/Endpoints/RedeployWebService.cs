@@ -8,6 +8,9 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.ResourceDeployments.Application.Mutations;
+using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
@@ -38,9 +41,15 @@ public sealed record RedeployWebServiceRequest(
     [FromClaim(Claims.Email)] ClaimValue<string?> ActorEmail = default
 ) : IMediatorRequest<RedeployWebServiceResponse>, ITenantWriteOperation;
 
-public sealed record RedeployWebServiceResponse(string Id, int Revision, string ReleaseId);
+public sealed record RedeployWebServiceResponse(
+    string Id,
+    int Revision,
+    string ReleaseId,
+    PlacementSummaryDto Placement);
 
-public sealed class RedeployWebServiceHandler(IWebServiceDbContext dbContext)
+public sealed class RedeployWebServiceHandler(
+    IWebServiceDbContext dbContext,
+    IResourceDeploymentMutationWriter deploymentWriter)
     : IMediatorHandler<RedeployWebServiceRequest, RedeployWebServiceResponse>
 {
     public async Task<Result<RedeployWebServiceResponse>> HandleAsync(
@@ -57,36 +66,66 @@ public sealed class RedeployWebServiceHandler(IWebServiceDbContext dbContext)
 
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
+        if (webService.Lifecycle is not ActiveWebServiceLifecycle)
+            return Failures.Conflict("A deleting web service cannot be redeployed.");
 
         return await dbContext.RunInTransactionAsync<RedeployWebServiceResponse>(async (session, ct) =>
         {
-            var nextRevision = Math.Max(webService.ActiveRevision, 1) + 1;
+            var updatedWebService = webService.Redeploy();
             var deploymentEventCore = EventCore.Create(webService.TenantId);
+
+            var replace = await dbContext.WebServices.ReplaceOneAsync(
+                session,
+                Builders<WebService>.Filter.And(
+                    filter,
+                    Builders<WebService>.Filter.Eq(
+                        item => item.Revision,
+                        webService.Revision)),
+                updatedWebService,
+                cancellationToken: ct);
+            if (replace.ModifiedCount != 1)
+            {
+                return Failures.Conflict(
+                    "The web service changed while redeployment was being accepted.");
+            }
+
+            var deploymentResult = await deploymentWriter.RequestApplyAsync(
+                new ResourceDeploymentMutationCommand(
+                    webService.TenantId,
+                    ResourceDeploymentResourceTypes.WebService,
+                    webService.Id),
+                session,
+                ct);
+            if (!deploymentResult.TryGetValue(
+                    out var deployment,
+                    out var deploymentFailure))
+            {
+                return deploymentFailure;
+            }
+
             var release = WebServiceReleaseFactory.CreatePending(
                 webService.TenantId,
                 webService.Id,
-                nextRevision,
+                updatedWebService.ActiveRevision,
                 WebServiceReleaseAction.Redeploy,
                 request.ActorUserId.Value,
                 request.ActorEmail.Value,
                 webService.Spec.ToSnapshot(),
                 deploymentEventCore.TraceId,
                 deploymentEventCore.CorrelationId,
-                deploymentEventCore.OccurredOn);
-
-            await dbContext.WebServices.UpdateOneAsync(
+                deploymentEventCore.OccurredOn,
+                deploymentGeneration: deployment.DesiredGeneration);
+            await WebServiceReleasePersistence.InsertCurrentAsync(
+                dbContext,
                 session,
-                filter,
-                Builders<WebService>.Update.Set(service => service.ActiveRevision, nextRevision),
-                cancellationToken: ct);
-
-            await dbContext.WebServiceReleases.InsertOneAsync(session, release, cancellationToken: ct);
-            await dbContext.StoreEventAsync(
-                release.ToDeploymentRequestedEvent(webService, deploymentEventCore),
-                session,
+                release,
                 ct);
 
-            return new RedeployWebServiceResponse(webService.Id, nextRevision, release.Id);
+            return new RedeployWebServiceResponse(
+                webService.Id,
+                updatedWebService.ActiveRevision,
+                release.Id,
+                deployment.ToPlacementSummaryDto());
         }, cancellationToken: cancellationToken);
     }
 }

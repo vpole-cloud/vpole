@@ -7,11 +7,14 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Application.Mutations;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Events;
-using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.Quotas.Contracts;
 using Pole.Mediator;
@@ -27,7 +30,7 @@ public static class DeleteWebService
         app.MapDelete(Route, async (IMediator mediator, [AsParameters] DeleteWebServiceRequest request, CancellationToken ct) =>
             {
                 var result = await mediator.Send(request, ct);
-                return result.ToHttpResult(x => Results.Accepted(value: x.Id));
+                return result.ToHttpResult(x => Results.Accepted(value: x));
             })
             .WithName("DeleteWebService")
             .Produces(StatusCodes.Status202Accepted);
@@ -39,7 +42,10 @@ public static class DeleteWebService
 public sealed class DeleteWebServiceHandler(
     IWebServiceDbContext dbContext,
     ISourceBuildReferenceLookup sourceBuildReferences,
-    IQuotaAdmissionExecutor quotaAdmissionExecutor
+    IQuotaAdmissionExecutor quotaAdmissionExecutor,
+    IResourceDeploymentMutationWriter deploymentWriter,
+    IResourceDeploymentQueryService deploymentQuery,
+    TimeProvider timeProvider
     ) : IMediatorHandler<DeleteWebServiceRequest, DeleteWebServiceResponse>
 {
     public async Task<Result<DeleteWebServiceResponse>> HandleAsync(DeleteWebServiceRequest request,
@@ -60,6 +66,18 @@ public sealed class DeleteWebServiceHandler(
             .FirstOrDefaultAsync(cancellationToken);
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
+        if (webService.Lifecycle is DeletingWebServiceLifecycle)
+        {
+            var currentPlacement = await deploymentQuery.GetAsync(
+                request.TenantId,
+                ResourceDeploymentResourceTypes.WebService,
+                request.Id,
+                cancellationToken);
+            return currentPlacement is null
+                ? Failures.Conflict(
+                    "The deleting web service has no resource deployment.")
+                : new DeleteWebServiceResponse(request.Id, currentPlacement);
+        }
 
         return await quotaAdmissionExecutor.ExecuteAsync<WebServiceSpec, DeleteWebServiceResponse>(
             webService.TenantId,
@@ -67,38 +85,113 @@ public sealed class DeleteWebServiceHandler(
             new DeleteQuotaMutation<WebServiceSpec>(webService.Spec),
             async (session, transactionCancellationToken) =>
             {
-                var deleted = await dbContext.WebServices.FindOneAndDeleteAsync(
+                var deleting = webService.BeginDeletion(
+                    timeProvider.GetUtcNow().UtcDateTime);
+                var replace = await dbContext.WebServices.ReplaceOneAsync(
                     session,
-                    filter,
+                    Builders<WebService>.Filter.And(
+                        filter,
+                        Builders<WebService>.Filter.Eq(
+                            item => item.Revision,
+                            webService.Revision)),
+                    deleting,
                     cancellationToken: transactionCancellationToken);
-                if (deleted is null)
-                    return Failures.NotFound("Web service not found.", request.Id);
+                if (replace.ModifiedCount != 1)
+                {
+                    return Failures.Conflict(
+                        "The web service changed while deletion was being accepted.");
+                }
 
-                await dbContext.StoreEventAsync(
-                    deleted.ToDeleteEvent(),
+                var deploymentResult = await deploymentWriter.RequestDeletionAsync(
+                    new ResourceDeploymentMutationCommand(
+                        webService.TenantId,
+                        ResourceDeploymentResourceTypes.WebService,
+                        webService.Id),
                     session,
                     transactionCancellationToken);
-                return new DeleteWebServiceResponse(request.Id);
+                if (!deploymentResult.TryGetValue(
+                        out var deployment,
+                        out var deploymentFailure))
+                {
+                    return deploymentFailure;
+                }
+
+                return new DeleteWebServiceResponse(
+                    request.Id,
+                    deployment.ToPlacementSummaryDto());
             },
             cancellationToken);
     }
 }
 
-public class DeleteWebServiceFromKubernetesOnWebServiceDeletedConsumer(
-    IKubernetesClientProvider kubernetesClientProvider
-    ) : IConsumer<WebServiceDeletedEvent>
+public sealed class FinalizeWebServiceDeletionConsumer(
+    IWebServiceDbContext dbContext,
+    IResourceDeploymentDbContext deploymentDbContext)
+    : IConsumer<ResourceDeploymentDeletedEvent>
 {
-    public async Task Consume(ConsumeContext<WebServiceDeletedEvent> context)
+    public Task Consume(ConsumeContext<ResourceDeploymentDeletedEvent> context)
     {
         var message = context.Message;
-        var ct = context.CancellationToken;
-        var kubernetes = await kubernetesClientProvider.GetDefaultAsync(ct);
-        
-        await WebServiceKubernetesResourceManager.DeleteAsync(
-            kubernetes,
-            message.Name,
-            message.Spec.KubernetesNamespace,
-            ct);
+        if (!string.Equals(
+                message.ResourceType,
+                ResourceDeploymentResourceTypes.WebService.Value,
+                StringComparison.Ordinal))
+        {
+            return Task.CompletedTask;
+        }
+
+        return dbContext.RunInTransactionAsync(async (session, ct) =>
+        {
+            var webServiceFilter = Builders<WebService>.Filter.And(
+                Builders<WebService>.Filter.ForTenant(message.EventCore.TenantId),
+                Builders<WebService>.Filter.Eq(
+                    service => service.Id,
+                    message.ResourceId),
+                Builders<WebService>.Filter.OfType<
+                    WebServiceLifecycle,
+                    DeletingWebServiceLifecycle>(
+                    service => service.Lifecycle));
+            var webService = await dbContext.WebServices
+                .Find(session, webServiceFilter)
+                .FirstOrDefaultAsync(ct);
+            if (webService is null)
+                return Result.Success();
+
+            var deployments = await deploymentDbContext.ResourceDeployments
+                .Find(session, deployment =>
+                    deployment.TenantId == message.EventCore.TenantId &&
+                    deployment.ResourceType ==
+                        ResourceDeploymentResourceTypes.WebService.Value &&
+                    deployment.ResourceId == message.ResourceId)
+                .ToListAsync(ct);
+            if (deployments.Count == 0 ||
+                deployments.Any(deployment =>
+                    deployment.State is not DeletedResourceDeploymentState))
+            {
+                return Result.Success();
+            }
+
+            var deleted = await dbContext.WebServices.DeleteOneAsync(
+                session,
+                filter: webServiceFilter,
+                cancellationToken: ct);
+            if (deleted.DeletedCount != 1)
+                return Result.Success();
+
+            await deploymentDbContext.ResourceDeployments.DeleteManyAsync(
+                session,
+                filter: deployment =>
+                    deployment.TenantId == message.EventCore.TenantId &&
+                    deployment.ResourceType ==
+                        ResourceDeploymentResourceTypes.WebService.Value &&
+                    deployment.ResourceId == message.ResourceId,
+                cancellationToken: ct);
+            await dbContext.StoreEventAsync(
+                webService.ToDeleteEvent(),
+                session,
+                ct);
+            return Result.Success();
+        }, cancellationToken: context.CancellationToken);
     }
 }
 
@@ -108,7 +201,6 @@ public sealed record DeleteWebServiceRequest(
 ) : IMediatorRequest<DeleteWebServiceResponse>, ITenantWriteOperation;
 
 public sealed record DeleteWebServiceResponse(
-    string Id
+    string Id,
+    PlacementSummaryDto Placement
 );
-
-

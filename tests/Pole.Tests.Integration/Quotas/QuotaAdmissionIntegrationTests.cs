@@ -83,7 +83,6 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         var update = await Mediator.Send(new UpdateRedisServiceRequest(
             created.RedisId,
             new UpdateRedisServiceRequestBody(
-                resourceGroup.Id,
                 new RedisSpecDto(
                     new StorageDto(5, TestData.DefaultStorageProfileId),
                     new Resources(new Resource(2, 512), new Resource(4, 1024))),

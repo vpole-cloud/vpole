@@ -22,6 +22,7 @@
         <Compile Include="Consumers\WebServiceConsumers.fs" />
         <Compile Include="Consumers\RedisConsumers.fs" />
         <Compile Include="Consumers\PostgresConsumers.fs" />
+        <Compile Include="Consumers\ResourceDeploymentConsumers.fs" />
         <Compile Include="Endpoints\GetSearchResults.fs" />
         <Compile Include="Endpoints\AllSearchEndpoints.fs" />
     </ItemGroup>
@@ -44,12 +45,13 @@
       <ProjectReference Include="..\..\DnsRecords\DnsRecords.Events\DnsRecords.Events.csproj" />
       <ProjectReference Include="..\..\Postgres\Postgres.Events\Postgres.Events.fsproj" />
       <ProjectReference Include="..\..\RedisServices\RedisServices.Events\RedisServices.Events.csproj" />
+      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
+      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Events\ResourceGroups.Events.csproj" />
       <ProjectReference Include="..\..\WebServices\WebServices.Events\WebServices.Events.csproj" />
       <ProjectReference Include="..\Search.Domain\Search.Domain.fsproj" />
     </ItemGroup>
 </Project>
-
 
 
 

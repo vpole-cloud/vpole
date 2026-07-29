@@ -1,7 +1,6 @@
 ﻿using System.Collections.Immutable;
 using MassTransit;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Shared.Models;
 
 namespace Pole.Features.RedisServices.Events;
 
@@ -11,7 +10,6 @@ public record RedisServiceCreatedEvent(
     string Name,
     string ResourceGroupId,
     RedisServiceSpecSnapshot Spec,
-    ServiceStatus Status,
     ImmutableHashSet<string> Tags
 ) : IPoleEvent
 {

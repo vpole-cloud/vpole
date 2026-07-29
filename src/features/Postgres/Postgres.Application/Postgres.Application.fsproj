@@ -18,12 +18,14 @@
         <Compile Include="Common\PostgresClusterDto.fs" />
         <Compile Include="Common\MongoExtensions.fs" />
         <Compile Include="Common\ResultF.fs" />
-        <Compile Include="Common\PostgresClusterEventExtensions.fs" />
         <Compile Include="Common\IPostgresDbContext.fs" />
+        <Compile Include="Common\PostgresCredentialService.fs" />
+        <Compile Include="Common\PostgresCredentialMigration.fs" />
+        <Compile Include="Common\PostgresClusterEventExtensions.fs" />
         <Compile Include="Kubernetes\PostgresClusterKubernetesBuilder.fs" />
         <Compile Include="Kubernetes\PostgresStatefulSetKubernetesBuilder.fs" />
-        <Compile Include="Kubernetes\PostgresClusterSecretStore.fs" />
         <Compile Include="Kubernetes\PostgresClusterKubernetesResourceManager.fs" />
+        <Compile Include="Kubernetes\PostgresResourceDeploymentAdapter.fs" />
         <Compile Include="Endpoints\CreatePostgresCluster.fs" />
         <Compile Include="Endpoints\DeletePostgresCluster.fs" />
         <Compile Include="Endpoints\UpdatePostgresCluster.fs" />
@@ -46,6 +48,9 @@
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
       <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
       <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
+      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
+      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Domain\ResourceDeployments.Domain.csproj" />
+      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Application\ResourceDeployments.Application.csproj" />
       <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
       <ProjectReference Include="..\Postgres.Domain\Postgres.Domain.fsproj" />
       <ProjectReference Include="..\Postgres.Events\Postgres.Events.fsproj" />
@@ -54,9 +59,8 @@
       <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
       <ProjectReference Include="..\..\..\shared\Kubernetes\Kubernetes.csproj" />
       <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
+      <ProjectReference Include="..\..\..\shared\Encryption\Encryption.csproj" />
       <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
     </ItemGroup>
 </Project>
-
-

@@ -86,9 +86,7 @@ public sealed class QuotaCatalogTests
             new RamQuota(),
             new WorkloadInstancesQuota(),
             new RedisServiceCountQuota());
-        var spec = TestData.ValidRedisSpec().ToDomain(
-            "test-namespace",
-            TestData.DefaultResolvedStorageProfile());
+        var spec = TestData.ValidRedisSpec().ToDomain();
 
         var impact = profile.Calculate(spec);
 
@@ -113,7 +111,7 @@ public sealed class QuotaCatalogTests
                 5,
                 new AutoscalingMetricDto("cpu", 75))
         };
-        var spec = dto.ToDomain("test-namespace");
+        var spec = dto.ToDomain();
 
         var impact = profile.Calculate(spec);
 

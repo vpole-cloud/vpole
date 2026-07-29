@@ -14,14 +14,74 @@ public record WebService(
     string ResourceGroupId,
     WebServiceSpec Spec,
     DnsRecordShortInfo DnsRecord,
-    ServiceStatus Status,
     int ActiveRevision,
     ImmutableHashSet<string> Tags,
-    ImmutableList<ServiceEvent> Events
-);
+    ImmutableList<ServiceEvent> Events,
+    long Revision,
+    WebServiceLifecycle Lifecycle
+)
+{
+    public WebService UpdateDesiredState(
+        WebServiceSpec spec,
+        ImmutableHashSet<string> tags)
+    {
+        EnsureActive();
+        ArgumentNullException.ThrowIfNull(spec);
+        ArgumentNullException.ThrowIfNull(tags);
+
+        return this with
+        {
+            Spec = spec,
+            Tags = tags,
+            ActiveRevision = checked(ActiveRevision + 1),
+            Revision = checked(Revision + 1)
+        };
+    }
+
+    public WebService Redeploy()
+    {
+        EnsureActive();
+        return this with
+        {
+            ActiveRevision = checked(ActiveRevision + 1),
+            Revision = checked(Revision + 1)
+        };
+    }
+
+    public WebService BeginDeletion(DateTime requestedAtUtc)
+    {
+        if (Lifecycle is DeletingWebServiceLifecycle)
+            return this;
+
+        var normalizedRequestedAtUtc = requestedAtUtc.Kind switch
+        {
+            DateTimeKind.Utc => requestedAtUtc,
+            DateTimeKind.Local => requestedAtUtc.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(requestedAtUtc, DateTimeKind.Utc)
+        };
+        return this with
+        {
+            Lifecycle = new DeletingWebServiceLifecycle(normalizedRequestedAtUtc),
+            Revision = checked(Revision + 1)
+        };
+    }
+
+    private void EnsureActive()
+    {
+        if (Lifecycle is not ActiveWebServiceLifecycle)
+            throw new InvalidOperationException("A deleting web service cannot be updated.");
+    }
+}
+
+[BsonDiscriminator(RootClass = true)]
+[BsonKnownTypes(typeof(ActiveWebServiceLifecycle), typeof(DeletingWebServiceLifecycle))]
+public abstract record WebServiceLifecycle;
+
+public sealed record ActiveWebServiceLifecycle : WebServiceLifecycle;
+
+public sealed record DeletingWebServiceLifecycle(DateTime RequestedAtUtc) : WebServiceLifecycle;
 
 public record WebServiceSpec(
-    string KubernetesNamespace,
     ImageInfo Image,
     int Replicas,
     Resources Resources,
@@ -73,19 +133,21 @@ public static class WebServiceFactory
 {
     public sealed record CreateWebServiceOptions(
         string Id,
-        ServiceStatus Status,
         int ActiveRevision,
         ImmutableHashSet<string> Tags,
-        ImmutableList<ServiceEvent> Events
+        ImmutableList<ServiceEvent> Events,
+        long Revision,
+        WebServiceLifecycle Lifecycle
     );
     
     public static CreateWebServiceOptions DefaultOptions =>
         new CreateWebServiceOptions(
             Id: ObjectId.GenerateNewId().ToString(),
-            Status: new Provisioning(),
             ActiveRevision: 1,
             Tags: ImmutableHashSet<string>.Empty,
-            Events: ImmutableList<ServiceEvent>.Empty
+            Events: ImmutableList<ServiceEvent>.Empty,
+            Revision: 1,
+            Lifecycle: new ActiveWebServiceLifecycle()
         );
     
     public static WebService Create(
@@ -102,9 +164,10 @@ public static class WebServiceFactory
             ResourceGroupId: resourceGroupId,
             Spec: spec,
             DnsRecord: dnsRecord,
-            Status: options.Status,
             ActiveRevision: options.ActiveRevision,
             Tags: options.Tags,
-            Events: options.Events
+            Events: options.Events,
+            Revision: options.Revision,
+            Lifecycle: options.Lifecycle
         );
 }

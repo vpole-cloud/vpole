@@ -7,6 +7,7 @@ using k8s.Autorest;
 using k8s.Models;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
@@ -68,8 +69,11 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         var webService = BuildSourceBuildE2eWebService();
         var result = await WebServiceKubernetesResourceManager.ApplyAsync(
             Kubernetes,
-            webService.ToKubernetes(),
-            new WebServiceDeploymentMetadata("release-k8s", 1, DateTime.UtcNow));
+            ToKubernetes(webService),
+            WebServiceReleaseDeploymentMetadata.Create(
+                "release-k8s",
+                1,
+                DateTime.UtcNow));
 
         AssertResultSucceeded(result);
 
@@ -80,7 +84,6 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     private WebService BuildSourceBuildE2eWebService()
     {
         var spec = new WebServiceSpec(
-            NamespaceName,
             new ImageInfo("docker.io", "library/nginx", "1.27"),
             Replicas: 1,
             Resources: new Resources(new Resource(1, 64), new Resource(1, 128)),
@@ -103,7 +106,6 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     }
 
     private static WebServiceSpecSnapshot ToSnapshot(WebServiceSpec spec) => new(
-        spec.KubernetesNamespace,
         new WebServiceImageInfoSnapshot(
             spec.Image.Server,
             spec.Image.Name,
@@ -168,7 +170,9 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     {
         var webService = BuildTestWebService();
 
-        await WebServiceKubernetesResourceManager.CreateAsync(Kubernetes, webService.ToKubernetes());
+        await WebServiceKubernetesResourceManager.CreateAsync(
+            Kubernetes,
+            ToKubernetes(webService));
 
         var configMap = await Kubernetes.CoreV1.ReadNamespacedConfigMapAsync(
             WebServiceInKubernetes.BuildConfigMapName(webService.Name),
@@ -205,7 +209,9 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     {
         var webService = BuildTestWebService();
 
-        await WebServiceKubernetesResourceManager.CreateAsync(Kubernetes, webService.ToKubernetes());
+        await WebServiceKubernetesResourceManager.CreateAsync(
+            Kubernetes,
+            ToKubernetes(webService));
         await WebServiceKubernetesResourceManager.DeleteAsync(Kubernetes, webService.Name, NamespaceName);
 
         await AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedConfigMapAsync(
@@ -228,7 +234,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
 
     private WebService BuildTestWebService()
     {
-        var spec = TestData.ValidWebServiceSpec().ToDomain(NamespaceName) with
+        var spec = TestData.ValidWebServiceSpec().ToDomain() with
         {
             Image = new ImageInfo("docker.io", "nginx", "1.27"),
             Replicas = 1,
@@ -262,6 +268,13 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     }
 
     private string BuildIngressHost() => $"web-{NamespaceName}.example.test";
+
+    private WebServiceInKubernetes ToKubernetes(WebService webService) =>
+        webService.ToKubernetes(
+            NamespaceName,
+            ResolvedIngressConfiguration.Create(
+                "traefik",
+                "letsencrypt-prod"));
 
     private async Task WaitForDeploymentAvailableAsync(string deploymentName, int timeoutSeconds = 60)
     {
@@ -495,4 +508,3 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         throw new TimeoutException("Resource was not deleted before the timeout elapsed.");
     }
 }
-

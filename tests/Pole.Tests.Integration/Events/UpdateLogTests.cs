@@ -15,8 +15,8 @@ public sealed class UpdateLogTests
     [Fact]
     public void Of_ReturnsEqual_ForEquivalentWebServiceSpecsWithDifferentCollectionInstances()
     {
-        var previous = TestData.ValidWebServiceSpec().ToDomain("test-ns");
-        var next = TestData.ValidWebServiceSpec().ToDomain("test-ns");
+        var previous = TestData.ValidWebServiceSpec().ToDomain();
+        var next = TestData.ValidWebServiceSpec().ToDomain();
 
         var updateLog = UpdateLog<WebServiceSpec>.Of(previous, next);
 
@@ -26,7 +26,7 @@ public sealed class UpdateLogTests
     [Fact]
     public void Of_ReturnsDifferent_WhenWebServiceEnvironmentVariableChanges()
     {
-        var previous = TestData.ValidWebServiceSpec().ToDomain("test-ns");
+        var previous = TestData.ValidWebServiceSpec().ToDomain();
         var next = previous with
         {
             Config = previous.Config with
@@ -46,7 +46,7 @@ public sealed class UpdateLogTests
     [Fact]
     public void Of_ReturnsDifferent_WhenWebServicePortMappingOrderChanges()
     {
-        var previous = TestData.ValidWebServiceSpec().ToDomain("test-ns") with
+        var previous = TestData.ValidWebServiceSpec().ToDomain() with
         {
             Config = new WebServiceConfig(
                 EnvironmentVariables: ImmutableDictionary<string, string>.Empty,
@@ -87,11 +87,9 @@ public sealed class UpdateLogTests
     [Fact]
     public void Of_ReturnsEqual_ForEquivalentRedisSpecs()
     {
-        var storageProfile = TestData.DefaultResolvedStorageProfile();
-        var previous = TestData.ValidRedisSpec().ToDomain("test-ns", storageProfile);
+        var previous = TestData.ValidRedisSpec().ToDomain();
         var next = new RedisSpec(
-            KubernetesNamespace: "test-ns",
-            Storage: new Storage(5, storageProfile),
+            Storage: new Storage(5, TestData.DefaultStorageProfileId),
             Resources: new Resources(
                 Requests: new Resource(1, 128),
                 Limits: new Resource(2, 256)));
@@ -101,4 +99,3 @@ public sealed class UpdateLogTests
         Assert.True(updateLog.AreEqual);
     }
 }
-

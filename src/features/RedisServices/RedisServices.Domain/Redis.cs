@@ -1,12 +1,11 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using Pole.Features.Shared.Models;
-using Pole.Features.StorageProfiles.Contracts;
 
 namespace Pole.Features.RedisServices.Domain;
 
-public record Redis(
+public sealed record Redis(
     [property: BsonId]
     [property: BsonRepresentation(BsonType.ObjectId)]
     string Id,
@@ -14,50 +13,98 @@ public record Redis(
     string Name,
     string ResourceGroupId,
     RedisSpec Spec,
-    ServiceStatus Status,
     ImmutableHashSet<string> Tags,
-    ImmutableList<ServiceEvent> Events
-);
+    ImmutableList<ServiceEvent> Events,
+    long Revision,
+    RedisLifecycle Lifecycle)
+{
+    public Redis UpdateDesiredState(
+        RedisSpec spec,
+        ImmutableHashSet<string> tags)
+    {
+        EnsureActive();
+        ArgumentNullException.ThrowIfNull(spec);
+        ArgumentNullException.ThrowIfNull(tags);
+        return this with
+        {
+            Spec = spec,
+            Tags = tags,
+            Revision = checked(Revision + 1)
+        };
+    }
 
-public record RedisSpec(
-    string KubernetesNamespace,
+    public Redis BeginDeletion(DateTime requestedAtUtc)
+    {
+        if (Lifecycle is DeletingRedisLifecycle)
+            return this;
+
+        var normalizedRequestedAtUtc = requestedAtUtc.Kind switch
+        {
+            DateTimeKind.Utc => requestedAtUtc,
+            DateTimeKind.Local => requestedAtUtc.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(requestedAtUtc, DateTimeKind.Utc)
+        };
+        return this with
+        {
+            Lifecycle = new DeletingRedisLifecycle(normalizedRequestedAtUtc),
+            Revision = checked(Revision + 1)
+        };
+    }
+
+    private void EnsureActive()
+    {
+        if (Lifecycle is not ActiveRedisLifecycle)
+            throw new InvalidOperationException("A deleting Redis service cannot be updated.");
+    }
+}
+
+public sealed record RedisSpec(
     Storage Storage,
-    Resources Resources
-);
+    Resources Resources);
 
-public record Storage(
+public sealed record Storage(
     int SizeGb,
-    ResolvedStorageProfile StorageProfile
-);
+    string StorageProfileId);
+
+[BsonDiscriminator(RootClass = true)]
+[BsonKnownTypes(typeof(ActiveRedisLifecycle), typeof(DeletingRedisLifecycle))]
+public abstract record RedisLifecycle;
+
+public sealed record ActiveRedisLifecycle : RedisLifecycle;
+
+public sealed record DeletingRedisLifecycle(DateTime RequestedAtUtc) : RedisLifecycle;
 
 public static class RedisFactory
 {
     public sealed record RedisCreateOptions(
         string Id,
-        ServiceStatus Status,
         ImmutableHashSet<string> Tags,
         ImmutableList<ServiceEvent> Events,
-        string Version
-    );
-    
+        long Revision,
+        RedisLifecycle Lifecycle);
+
     public static RedisCreateOptions DefaultCreateOptions =>
         new(
             Id: ObjectId.GenerateNewId().ToString(),
-            Status: new Provisioning(),
             Tags: ImmutableHashSet<string>.Empty,
             Events: ImmutableList<ServiceEvent>.Empty,
-            Version: Guid.NewGuid().ToString()
-        );
-    
-    public static Redis Create(string tenantId, string name, string resourceGroupId, RedisSpec spec, RedisCreateOptions options) =>
+            Revision: 1,
+            Lifecycle: new ActiveRedisLifecycle());
+
+    public static Redis Create(
+        string tenantId,
+        string name,
+        string resourceGroupId,
+        RedisSpec spec,
+        RedisCreateOptions options) =>
         new(
             Id: options.Id,
             TenantId: tenantId,
             Name: name,
             ResourceGroupId: resourceGroupId,
             Spec: spec,
-            Status: options.Status,
             Tags: options.Tags,
-            Events: options.Events
-        );
+            Events: options.Events,
+            Revision: options.Revision,
+            Lifecycle: options.Lifecycle);
 }

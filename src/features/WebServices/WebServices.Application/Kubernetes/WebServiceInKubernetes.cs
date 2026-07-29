@@ -3,17 +3,94 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using k8s.Models;
+using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.WebServices.Domain;
 
 namespace Pole.Features.WebServices.Application.Kubernetes;
 
-public sealed record WebServiceDeploymentMetadata(
-    string ReleaseId,
+public abstract record WebServiceDeploymentMetadata(
     int Revision,
     DateTime RequestedAtUtc);
 
-public readonly record struct WebServiceInKubernetes(WebService WebService)
+public sealed record WebServiceReleaseDeploymentMetadata(
+    string ReleaseId,
+    int Revision,
+    DateTime RequestedAtUtc)
+    : WebServiceDeploymentMetadata(Revision, RequestedAtUtc)
 {
+    public static WebServiceReleaseDeploymentMetadata Create(
+        string releaseId,
+        int revision,
+        DateTime requestedAtUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(releaseId);
+        ArgumentOutOfRangeException.ThrowIfLessThan(revision, 1);
+        if (requestedAtUtc == default)
+            throw new ArgumentException("The request time is required.", nameof(requestedAtUtc));
+
+        return new(releaseId.Trim(), revision, requestedAtUtc);
+    }
+}
+
+public sealed record WebServiceResourceDeploymentMetadata(
+    string ReleaseId,
+    string ResourceDeploymentId,
+    string RuntimeCellId,
+    string DeploymentTargetId,
+    long DesiredGeneration,
+    int Revision,
+    DateTime RequestedAtUtc)
+    : WebServiceDeploymentMetadata(Revision, RequestedAtUtc)
+{
+    public static WebServiceResourceDeploymentMetadata Create(
+        string releaseId,
+        string resourceDeploymentId,
+        string runtimeCellId,
+        string deploymentTargetId,
+        long desiredGeneration,
+        int logicalRevision,
+        DateTime requestedAtUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(releaseId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(resourceDeploymentId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(runtimeCellId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(deploymentTargetId);
+        ArgumentOutOfRangeException.ThrowIfLessThan(desiredGeneration, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(logicalRevision, 1);
+        if (requestedAtUtc == default)
+            throw new ArgumentException("The request time is required.", nameof(requestedAtUtc));
+
+        return new(
+            releaseId.Trim(),
+            resourceDeploymentId.Trim(),
+            runtimeCellId.Trim(),
+            deploymentTargetId.Trim(),
+            desiredGeneration,
+            logicalRevision,
+            requestedAtUtc);
+    }
+}
+
+public readonly record struct WebServiceInKubernetes(
+    WebService WebService,
+    string Namespace,
+    ResolvedIngressConfiguration IngressConfiguration)
+{
+    public static WebServiceInKubernetes Create(
+        WebService webService,
+        string kubernetesNamespace,
+        ResolvedIngressConfiguration ingressConfiguration)
+    {
+        ArgumentNullException.ThrowIfNull(webService);
+        ArgumentException.ThrowIfNullOrWhiteSpace(kubernetesNamespace);
+        ArgumentNullException.ThrowIfNull(ingressConfiguration);
+
+        return new(
+            webService,
+            kubernetesNamespace.Trim(),
+            ingressConfiguration);
+    }
+
     public string ConfigMapName => BuildConfigMapName(WebService.Name);
     public static string BuildConfigMapName(string webServiceName) => $"{webServiceName}-config";
     public string IngressName => BuildIngressName(WebService.Name);
@@ -26,7 +103,6 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
     public static string BuildTlsSecretName(string webServiceName) => $"{webServiceName}-tls";
     public string ServiceMonitorName => BuildServiceMonitorName(WebService.Name);
     public static string BuildServiceMonitorName(string webServiceName) => $"{webServiceName}-sm";
-    public string Namespace => WebService.Spec.KubernetesNamespace;
     public V1Deployment ToDeployment(WebServiceDeploymentMetadata? deploymentMetadata = null) => new ()
     {
         ApiVersion = "apps/v1",
@@ -198,7 +274,7 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
         Data = WebService.Spec.Config.EnvironmentVariables.ToDictionary(),
     };
 
-    public V1Ingress ToIngress(string ingressClassName = "traefik") => new()
+    public V1Ingress ToIngress() => new()
     {
         ApiVersion = "networking.k8s.io/v1",
         Kind = "Ingress",
@@ -209,12 +285,12 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
             Labels = new Dictionary<string, string> { ["app"] = WebService.Name },
             Annotations = _defaultAnnotations.Concat(new Dictionary<string, string>
             {
-                ["cert-manager.io/cluster-issuer"] = "letsencrypt-prod",
+                ["cert-manager.io/cluster-issuer"] = IngressConfiguration.ClusterIssuerName,
             }).ToDictionary(),
         },
         Spec = new V1IngressSpec
         {
-            IngressClassName = ingressClassName,
+            IngressClassName = IngressConfiguration.IngressClassName,
             Rules = new List<V1IngressRule>
             {
                 new()
@@ -334,10 +410,42 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
         if (deploymentMetadata is null)
             return _defaultAnnotations;
 
-        return _defaultAnnotations
-            .SetItem("pole.server/releaseId", deploymentMetadata.ReleaseId)
+        var annotations = _defaultAnnotations
             .SetItem("pole.server/revision", deploymentMetadata.Revision.ToString(CultureInfo.InvariantCulture))
             .SetItem("pole.server/deploymentRequestedAt", deploymentMetadata.RequestedAtUtc.ToString("O", CultureInfo.InvariantCulture));
+
+        switch (deploymentMetadata)
+        {
+            case WebServiceReleaseDeploymentMetadata release:
+                annotations = annotations.SetItem(
+                    "pole.server/releaseId",
+                    release.ReleaseId);
+                break;
+            case WebServiceResourceDeploymentMetadata deployment:
+                annotations = annotations
+                    .SetItem(
+                        "pole.server/releaseId",
+                        deployment.ReleaseId)
+                    .SetItem(
+                        "pole.server/resourceDeploymentId",
+                        deployment.ResourceDeploymentId)
+                    .SetItem(
+                        "pole.server/runtimeCellId",
+                        deployment.RuntimeCellId)
+                    .SetItem(
+                        "pole.server/deploymentTargetId",
+                        deployment.DeploymentTargetId)
+                    .SetItem(
+                        "pole.server/deploymentGeneration",
+                        deployment.DesiredGeneration.ToString(
+                            CultureInfo.InvariantCulture));
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"Unsupported web service deployment metadata '{deploymentMetadata.GetType().Name}'.");
+        }
+
+        return annotations;
     }
         
     private static int GetIngressServicePort(WebService webService)
@@ -353,4 +461,3 @@ public readonly record struct WebServiceInKubernetes(WebService WebService)
         return $"p{index}-{portMapping.ServicePort}";
     }
 }
-

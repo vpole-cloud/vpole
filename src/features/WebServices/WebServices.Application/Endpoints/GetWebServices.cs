@@ -9,6 +9,7 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Request;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
@@ -39,7 +40,8 @@ public static class GetWebServices
 }
 
 public sealed class GetWebServicesHandler(
-    IWebServiceDbContext dbContext)
+    IWebServiceDbContext dbContext,
+    IResourceDeploymentQueryService deploymentQuery)
     : IMediatorHandler<GetWebServicesRequest, PaginatedResponse<WebServiceDto>>
 {
     public async Task<Result<PaginatedResponse<WebServiceDto>>> HandleAsync(
@@ -65,9 +67,15 @@ public sealed class GetWebServicesHandler(
         var webServices = await dbContext.WebServices.Find(filter)
             .ApplyPagination(request)
             .ToListAsync(cancellationToken);
+        var placements = await deploymentQuery.GetManyAsync(
+            request.TenantId,
+            ResourceDeploymentResourceTypes.WebService,
+            webServices.Select(service => service.Id).ToArray(),
+            cancellationToken);
 
         return new PaginatedResponse<WebServiceDto>(
-            Items: webServices.Select(x => x.ToDto()),
+            Items: webServices.Select(service => service.ToDto(
+                placements.GetValueOrDefault(service.Id))),
             TotalCount: totalCount,
             PageNumber: request.PageNumber,
             PageSize: request.PageSize);
@@ -80,4 +88,3 @@ public record GetWebServicesRequest : PaginatedRequest<WebServiceDto>, ITenantRe
     [FromQuery] public string? ResourceGroupId { get; init; }
     [FromQuery] public string? Search { get; init; }
 }
-

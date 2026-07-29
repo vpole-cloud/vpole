@@ -8,7 +8,9 @@ namespace Pole.Features.DeploymentTargets.Application.Common;
 
 public sealed class DeploymentTargetReferenceAdmission(
     IDeploymentTargetDbContext dbContext,
-    TimeProvider timeProvider) : IDeploymentTargetReferenceAdmission
+    TimeProvider timeProvider)
+    : IDeploymentTargetReferenceAdmission,
+      IDeploymentTargetWorkloadConfigurationFence
 {
     public async Task<Result> RegisterAsync(
         string deploymentTargetId,
@@ -90,6 +92,56 @@ public sealed class DeploymentTargetReferenceAdmission(
             referenceFilter,
             cancellationToken: cancellationToken);
         return Result.Success();
+    }
+
+    public async Task<Result> FenceAsync(
+        string deploymentTargetId,
+        long expectedWorkloadConfigurationRevision,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureTransaction(session);
+        if (!ObjectId.TryParse(deploymentTargetId, out _) ||
+            expectedWorkloadConfigurationRevision < 1)
+        {
+            return Failures.ValidationFailure(new Dictionary<string, string[]>
+            {
+                ["DeploymentTargetId"] =
+                [
+                    "A valid deployment target and workload configuration revision are required."
+                ]
+            });
+        }
+
+        var update = await dbContext.DeploymentTargets.UpdateOneAsync(
+            session,
+            Builders<DeploymentTarget>.Filter.And(
+                Builders<DeploymentTarget>.Filter.Eq(
+                    target => target.Id,
+                    deploymentTargetId),
+                Builders<DeploymentTarget>.Filter.Eq(
+                    target => target.Enabled,
+                    true),
+                Builders<DeploymentTarget>.Filter.Eq(
+                    target => target.AcceptsWorkloads,
+                    true),
+                Builders<DeploymentTarget>.Filter.Eq(
+                    target => target.DeletionRequestedAtUtc,
+                    null),
+                Builders<DeploymentTarget>.Filter.Eq(
+                    target => target.WorkloadConfiguration.Revision,
+                    expectedWorkloadConfigurationRevision),
+                Builders<DeploymentTarget>.Filter.Lt(
+                    target => target.ReferenceFence,
+                    long.MaxValue)),
+            Builders<DeploymentTarget>.Update.Inc(
+                target => target.ReferenceFence,
+                1),
+            cancellationToken: cancellationToken);
+        return update.ModifiedCount == 1
+            ? Result.Success()
+            : Failures.Conflict(
+                "The deployment target workload configuration changed or no longer accepts workloads.");
     }
 
     private Result<DeploymentTargetReference> CreateReference(

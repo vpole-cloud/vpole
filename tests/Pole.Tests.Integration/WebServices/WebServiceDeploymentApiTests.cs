@@ -3,9 +3,13 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Domain;
@@ -49,7 +53,9 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             }
         });
 
-        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.True(
+            response.StatusCode == HttpStatusCode.Accepted,
+            await response.Content.ReadAsStringAsync());
         var created = await response.Content.ReadFromJsonAsync<CreateWebServiceResponse>(JsonOptions);
         Assert.NotNull(created);
 
@@ -91,7 +97,9 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
 
         var response = await Client.PostAsync($"/api/v1/web-services/{webService.Id}/redeploy", null);
 
-        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.True(
+            response.StatusCode == HttpStatusCode.Accepted,
+            await response.Content.ReadAsStringAsync());
         var saved = await Fixture.DbContext.WebServices
             .Find(service => service.Id == webService.Id)
             .SingleAsync();
@@ -144,7 +152,9 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
 
         var updateResponse = await Client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.Accepted, updateResponse.StatusCode);
+        Assert.True(
+            updateResponse.StatusCode == HttpStatusCode.Accepted,
+            await updateResponse.Content.ReadAsStringAsync());
         var response = await updateResponse.Content.ReadFromJsonAsync<UpdateImageTagResponse>(JsonOptions);
         Assert.NotNull(response);
         Assert.Equal(2, response.Revision);
@@ -178,7 +188,8 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.NotNull(usedToken.LastUsedAtUtc);
         Assert.Equal("github-actions", usedToken.LastUsedSource);
         Assert.Equal(1L, await Fixture.DbContext.CountOutboxMessagesAsync("web-service-updated"));
-        Assert.Equal(1L, await Fixture.DbContext.CountOutboxMessagesAsync("web-service-deployment-requested"));
+        Assert.Equal(1L, await Fixture.DbContext.CountOutboxMessagesAsync(
+            "resource-deployment-reconciliation-requested"));
     }
 
     [Fact]
@@ -251,8 +262,49 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
 
     private async Task<WebService> InsertWebServiceAsync()
     {
-        var webService = TestData.SeedWebService("resource-group-api");
+        var resourceGroupId = ObjectId.GenerateNewId().ToString();
+        var isolationScopeId = ObjectId.GenerateNewId().ToString();
+        var runtimeCellId = ObjectId.GenerateNewId().ToString();
+        var createdAtUtc = DateTime.UtcNow.AddMinutes(-1);
+        var webService = TestData.SeedWebService(resourceGroupId);
+        var runtimeCell = RuntimeCellFactory.Create(
+                TestData.TenantId,
+                resourceGroupId,
+                isolationScopeId,
+                TestData.DefaultDeploymentTargetId,
+                "test-api-deployment",
+                new RuntimeCellFactory.CreateOptions(
+                    runtimeCellId,
+                    createdAtUtc))
+            .MarkReady(
+                expectedGeneration: 1,
+                createdAtUtc.AddSeconds(1));
+        var deployment = ResourceDeploymentFactory.Create(
+            TestData.TenantId,
+            ResourceDeploymentResourceTypes.WebService,
+            webService.Id,
+            resourceGroupId,
+            isolationScopeId,
+            ResolvedResourcePlacement.Create(
+                runtimeCell.Id,
+                runtimeCell.DeploymentTargetId,
+                runtimeCell.KubernetesNamespace,
+                runtimeCellGeneration: runtimeCell.DesiredGeneration,
+                targetWorkloadConfigurationRevision: 1,
+                ResolvedIngressConfiguration.Create(
+                    "traefik",
+                    "letsencrypt-prod"),
+                storage: null,
+                createdAtUtc.AddSeconds(1)),
+            ResourcePlacementCapability.SingleTarget,
+            runtimeCellReady: true,
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                CreatedAtUtc = createdAtUtc.AddSeconds(1)
+            });
         await Fixture.DbContext.WebServices.InsertOneAsync(webService);
+        await Fixture.DbContext.RuntimeCells.InsertOneAsync(runtimeCell);
+        await Fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
         return webService;
     }
 

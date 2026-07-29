@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using FluentValidation;
-using MassTransit;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -11,13 +10,12 @@ using Pole.Database;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.ResourceDeployments.Application.Mutations;
+using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Events;
-using Pole.Features.RedisServices.Application.Kubernetes;
-using Pole.Features.Shared.Models;
-using Pole.Features.StorageProfiles.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -49,17 +47,18 @@ public sealed record UpdateRedisServiceRequest(
 ) : IMediatorRequest<UpdateRedisServiceResponse>, ITenantWriteOperation;
 
 public sealed record UpdateRedisServiceRequestBody(
-    string ResourceGroupId,
     RedisSpecDto Spec,
     ImmutableHashSet<string> Tags
 );
 
-public sealed record UpdateRedisServiceResponse(string Id);
+public sealed record UpdateRedisServiceResponse(
+    string Id,
+    PlacementSummaryDto Placement);
 
 public sealed class UpdateRedisServiceHandler(
     IRedisDbContext dbContext,
-    IStorageProfileResolver storageProfileResolver,
-    IQuotaAdmissionExecutor quotaAdmissionExecutor)
+    IQuotaAdmissionExecutor quotaAdmissionExecutor,
+    IResourceDeploymentMutationWriter deploymentWriter)
     : IMediatorHandler<UpdateRedisServiceRequest, UpdateRedisServiceResponse>
 {
     public async Task<Result<UpdateRedisServiceResponse>> HandleAsync(
@@ -76,10 +75,12 @@ public sealed class UpdateRedisServiceHandler(
 
         if (redis is null)
             return Failures.NotFound("Redis service not found.", request.Id);
+        if (redis.Lifecycle is not ActiveRedisLifecycle)
+            return Failures.Conflict("A deleting Redis service cannot be updated.");
 
         if (!string.Equals(
                 request.Body.Spec.Storage.StorageProfileId,
-                redis.Spec.Storage.StorageProfile.ProfileId,
+                redis.Spec.Storage.StorageProfileId,
                 StringComparison.Ordinal))
         {
             return Failures.ValidationFailure(new Dictionary<string, string[]>
@@ -88,31 +89,44 @@ public sealed class UpdateRedisServiceHandler(
             });
         }
 
-        var storageProfileResult = await storageProfileResolver.ResolveAsync(
-            new StorageProfileResolutionRequest(
-                redis.Spec.Storage.StorageProfile.ProfileId,
-                redis.TenantId,
-                ResourceType.Redis,
-                request.Body.Spec.Storage.SizeGb),
-            cancellationToken);
-        if (!storageProfileResult.TryGetValue(out var storageProfile, out var storageProfileFailure))
-            return storageProfileFailure;
-
-        var nextSpec = request.Body.Spec.ToDomain(redis.Spec.KubernetesNamespace, storageProfile);
+        var nextSpec = request.Body.Spec.ToDomain();
         return await quotaAdmissionExecutor.ExecuteAsync<RedisSpec, UpdateRedisServiceResponse>(
             redis.TenantId,
             RedisQuotaResourceKey.Create(redis.Id),
             new UpdateQuotaMutation<RedisSpec>(redis.Spec, nextSpec),
             async (session, transactionCancellationToken) =>
             {
-                var changes = GetChanges(redis, request.Body, storageProfile);
-                if (HasChanges(changes))
-                {
-                    await dbContext.RedisServices.UpdateOneAsync(
-                        session,
+                var updatedRedis = redis.UpdateDesiredState(
+                    nextSpec,
+                    request.Body.Tags);
+                var changes = GetChanges(redis, updatedRedis);
+                var replace = await dbContext.RedisServices.ReplaceOneAsync(
+                    session,
+                    Builders<Redis>.Filter.And(
                         filter,
-                        GetUpdateDefinition(changes),
-                        cancellationToken: transactionCancellationToken);
+                        Builders<Redis>.Filter.Eq(
+                            item => item.Revision,
+                            redis.Revision)),
+                    updatedRedis,
+                    cancellationToken: transactionCancellationToken);
+                if (replace.ModifiedCount != 1)
+                {
+                    return Failures.Conflict(
+                        "The Redis service changed while the update was being accepted.");
+                }
+
+                var deploymentResult = await deploymentWriter.RequestApplyAsync(
+                    new ResourceDeploymentMutationCommand(
+                        redis.TenantId,
+                        ResourceDeploymentResourceTypes.Redis,
+                        redis.Id),
+                    session,
+                    transactionCancellationToken);
+                if (!deploymentResult.TryGetValue(
+                        out var deployment,
+                        out var deploymentFailure))
+                {
+                    return deploymentFailure;
                 }
 
                 await dbContext.StoreEventAsync(
@@ -127,54 +141,22 @@ public sealed class UpdateRedisServiceHandler(
                     session,
                     transactionCancellationToken);
 
-                return new UpdateRedisServiceResponse(redis.Id);
+                return new UpdateRedisServiceResponse(
+                    redis.Id,
+                    deployment.ToPlacementSummaryDto());
             },
             cancellationToken);
     }
 
     private static RedisServiceUpdatedEventChanges GetChanges(
         Redis redis,
-        UpdateRedisServiceRequestBody body,
-        ResolvedStorageProfile storageProfile) =>
+        Redis updatedRedis) =>
         new(UpdateLog<RedisServiceSpecSnapshot>.Of(
                 redis.Spec.ToSnapshot(),
-                body.Spec.ToDomain(redis.Spec.KubernetesNamespace, storageProfile).ToSnapshot()),
+                updatedRedis.Spec.ToSnapshot()),
             UpdateLog<ImmutableHashSet<string>>.Of(
                 redis.Tags,
-                body.Tags));
-
-    private static UpdateDefinition<Redis> GetUpdateDefinition(RedisServiceUpdatedEventChanges changes)
-    {
-        var updates = new Queue<UpdateDefinition<Redis>>();
-        if (!changes.RedisSpec.AreEqual)
-            updates.Enqueue(Builders<Redis>.Update.Set(redis => redis.Spec, changes.RedisSpec.New.ToDomain()));
-        if (!changes.Tags.AreEqual)
-            updates.Enqueue(Builders<Redis>.Update.Set(redis => redis.Tags, changes.Tags.New));
-        return Builders<Redis>.Update.Combine(updates);
-    }
-
-    private static bool HasChanges(RedisServiceUpdatedEventChanges changes) =>
-        !changes.RedisSpec.AreEqual || !changes.Tags.AreEqual;
-}
-
-public class UpdateRedisServiceInKubernetesOnRedisServiceUpdatedConsumer(
-    IRedisDbContext dbContext,
-    IKubernetesClientProvider kubernetesClientProvider)
-    : IConsumer<RedisServiceUpdatedEvent>
-{
-    public async Task Consume(ConsumeContext<RedisServiceUpdatedEvent> context)
-    {
-        var ct = context.CancellationToken;
-        var redis = await dbContext.RedisServices
-            .Find(r => r.Id == context.Message.RedisId && r.TenantId == context.Message.EventCore.TenantId)
-            .FirstOrDefaultAsync(ct);
-        if (redis is null) return;
-
-        var inKuber = redis.ToKubernetes();
-        var kubernetes = await kubernetesClientProvider.GetDefaultAsync(ct);
-
-        await RedisKubernetesResourceManager.ReplaceAsync(kubernetes, inKuber, ct);
-    }
+                updatedRedis.Tags));
 }
 
 public sealed class UpdateRedisServiceValidator : AbstractValidator<UpdateRedisServiceRequest>
@@ -184,12 +166,8 @@ public sealed class UpdateRedisServiceValidator : AbstractValidator<UpdateRedisS
         RuleFor(x => x.Id)
             .NotEmpty().WithMessage("Redis service ID is required.");
 
-        RuleFor(x => x.Body.ResourceGroupId)
-            .NotEmpty().WithMessage("Resource group ID is required.");
-
         RuleFor(x => x.Body.Spec)
             .NotNull().WithMessage("Redis service specification is required.")
             .SetValidator(new RedisSpecDtoValidator());
     }
 }
-

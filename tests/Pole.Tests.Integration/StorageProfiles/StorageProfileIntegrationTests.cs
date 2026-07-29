@@ -4,7 +4,9 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Endpoints;
+using Pole.Features.StorageProfiles.Application.Migrations;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.ResultType;
@@ -16,200 +18,416 @@ namespace Pole.Tests.Integration.StorageProfiles;
 public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
+    private const string SecondDeploymentTargetId = "507f1f77bcf86cd799439097";
+
     [Fact]
     public async Task GetStorageProfiles_ReturnsProfiles_DefaultFirstThenDisplayName()
     {
-        await DbContext.StorageProfiles.DeleteManyAsync(Builders<StorageProfile>.Filter.Empty);
+        await DbContext.StorageProfiles.DeleteManyAsync(
+            Builders<StorageProfile>.Filter.Empty);
         var archiveId = ObjectId.GenerateNewId().ToString();
         var defaultId = ObjectId.GenerateNewId().ToString();
         var bulkId = ObjectId.GenerateNewId().ToString();
-
         await DbContext.StorageProfiles.InsertManyAsync(
         [
-            CreateProfile(archiveId, "Archive HDD", "bulk", ImmutableHashSet.Create(ResourceType.Postgres), isEnabled: false),
-            CreateProfile(defaultId, "Default SSD", "standard", ImmutableHashSet.Create(ResourceType.Redis), isDefault: true),
-            CreateProfile(bulkId, "Bulk SSD", "fast", ImmutableHashSet.Create(ResourceType.Redis))
+            CreateProfile(
+                archiveId,
+                "Archive HDD",
+                "bulk",
+                [ResourceType.Postgres],
+                isEnabled: false),
+            CreateProfile(
+                defaultId,
+                "Default SSD",
+                "standard",
+                [ResourceType.Redis],
+                isDefault: true),
+            CreateProfile(
+                bulkId,
+                "Bulk SSD",
+                "fast",
+                [ResourceType.Redis])
         ]);
 
-        var result = await Mediator.Send(new GetStorageProfilesRequest());
+        var response = (await Mediator.Send(
+            new GetStorageProfilesRequest())).AssertSuccess();
 
-        Assert.True(result.TryGetValue(out var response, out var error));
-        Assert.Null(error);
-        Assert.NotNull(response);
-        Assert.Equal([defaultId, archiveId, bulkId], response.Select(profile => profile.Id).ToArray());
-        Assert.Contains(response, profile => profile.Id == archiveId && !profile.IsEnabled);
+        Assert.Equal(
+            [defaultId, archiveId, bulkId],
+            response.Select(profile => profile.Id).ToArray());
+        Assert.All(response, profile => Assert.Equal(1, profile.Revision));
+        Assert.Contains(
+            response,
+            profile =>
+                profile.Id == archiveId &&
+                !profile.IsEnabled &&
+                Assert.Single(profile.TargetMappings).DeploymentTargetId ==
+                TestData.DefaultDeploymentTargetId);
     }
 
     [Fact]
-    public async Task Create_ReturnsValidationFailure_ForUnknownStorageClass()
+    public async Task Create_ReturnsValidationFailure_ForUnknownTargetStorageClass()
     {
         var result = await Mediator.Send(new CreateStorageProfileRequest(
-            ValidBody(storageClassNames: ["missing-class"])));
+            ValidCreateBody(targetMappings:
+            [
+                new StorageProfileTargetMappingRequestBody(
+                    TestData.DefaultDeploymentTargetId,
+                    "missing-class")
+            ])));
 
-        Assert.False(result.TryGetValue(out _, out var error));
-        var validation = Assert.IsType<ValidationFailure>(error);
-        Assert.Contains("Body.StorageClassNames", validation.ValidationErrors.Keys);
+        var validation = Assert.IsType<ValidationFailure>(result.AssertFailure());
+        Assert.Contains(
+            "Body.TargetMappings[0].StorageClassName",
+            validation.ValidationErrors.Keys);
     }
 
     [Fact]
-    public async Task Create_ReturnsValidationFailure_ForBlankSelectedTenantIds()
+    public async Task Create_RequestValidationRejectsDuplicateTargetsAndBlankSelectedTenantIds()
     {
-        var result = await Mediator.Send(new CreateStorageProfileRequest(
-            ValidBody(tenantAccess: new StorageProfileTenantAccessDto("SelectedTenants", ["   "]))));
+        var duplicateResult = await Mediator.Send(new CreateStorageProfileRequest(
+            ValidCreateBody(targetMappings:
+            [
+                new StorageProfileTargetMappingRequestBody(
+                    TestData.DefaultDeploymentTargetId,
+                    "standard"),
+                new StorageProfileTargetMappingRequestBody(
+                    TestData.DefaultDeploymentTargetId,
+                    "fast")
+            ])));
+        var duplicateValidation = Assert.IsType<ValidationFailure>(
+            duplicateResult.AssertFailure());
+        Assert.Contains(
+            "Body.TargetMappings",
+            duplicateValidation.ValidationErrors.Keys);
 
-        Assert.False(result.TryGetValue(out _, out var error));
-        var validation = Assert.IsType<ValidationFailure>(error);
-        Assert.Contains("Body.TenantAccess.TenantIds", validation.ValidationErrors.Keys);
+        var tenantResult = await Mediator.Send(new CreateStorageProfileRequest(
+            ValidCreateBody(tenantAccess:
+                new StorageProfileTenantAccessDto(
+                    "SelectedTenants",
+                    ["   "]))));
+        var tenantValidation = Assert.IsType<ValidationFailure>(
+            tenantResult.AssertFailure());
+        Assert.Contains(
+            "Body.TenantAccess.TenantIds[0]",
+            tenantValidation.ValidationErrors.Keys);
     }
 
     [Fact]
-    public async Task Update_ReplacesProfileAndUnsetsPreviousDefault()
+    public async Task Create_PersistsTargetMappingsAndInitialRevision()
     {
-        await DbContext.StorageProfiles.DeleteManyAsync(Builders<StorageProfile>.Filter.Empty);
+        var response = (await Mediator.Send(new CreateStorageProfileRequest(
+            ValidCreateBody()))).AssertSuccess();
+
+        Assert.Equal(1, response.Revision);
+        var mapping = Assert.Single(response.TargetMappings);
+        Assert.Equal(TestData.DefaultDeploymentTargetId, mapping.DeploymentTargetId);
+        Assert.Equal("fast", mapping.StorageClassName);
+        var persisted = await DbContext.StorageProfiles
+            .Find(profile => profile.Id == response.Id)
+            .SingleAsync();
+        Assert.Equal(1, persisted.Revision);
+        Assert.Equal(
+            StorageProfileTargetMapping.Create(
+                TestData.DefaultDeploymentTargetId,
+                "fast"),
+            Assert.Single(persisted.TargetMappings));
+    }
+
+    [Fact]
+    public async Task Update_IsRevisionFenced_AndRevisionizesPreviousDefaultDemotion()
+    {
+        await DbContext.StorageProfiles.DeleteManyAsync(
+            Builders<StorageProfile>.Filter.Empty);
         var previousDefaultId = ObjectId.GenerateNewId().ToString();
         var targetId = ObjectId.GenerateNewId().ToString();
         await DbContext.StorageProfiles.InsertManyAsync(
         [
-            CreateProfile(previousDefaultId, "Previous Default", "standard", ImmutableHashSet.Create(ResourceType.Redis), isDefault: true),
-            CreateProfile(targetId, "Fast Redis", "fast", ImmutableHashSet.Create(ResourceType.Redis))
+            CreateProfile(
+                previousDefaultId,
+                "Previous Default",
+                "standard",
+                [ResourceType.Redis],
+                isDefault: true),
+            CreateProfile(
+                targetId,
+                "Fast Redis",
+                "fast",
+                [ResourceType.Redis])
         ]);
 
-        var result = await Mediator.Send(new UpdateStorageProfileRequest(
+        var response = (await Mediator.Send(new UpdateStorageProfileRequest(
             targetId,
-            ValidBody(
+            ValidUpdateBody(
+                revision: 1,
                 displayName: "Fast Redis Updated",
-                storageClassNames: ["fast"],
                 isDefault: true,
                 allowedResourceTypes: ["Redis"],
-                sizeLimits: new StorageProfileSizeLimitsDto(2, 50))));
+                sizeLimits: new StorageProfileSizeLimitsDto(2, 50)))))
+            .AssertSuccess();
 
-        Assert.True(result.TryGetValue(out var response, out var error));
-        Assert.Null(error);
-        Assert.NotNull(response);
         Assert.Equal(targetId, response.Id);
         Assert.Equal("Fast Redis Updated", response.DisplayName);
         Assert.True(response.IsDefault);
+        Assert.Equal(2, response.Revision);
         Assert.Equal(new StorageProfileSizeLimitsDto(2, 50), response.SizeLimits);
 
         var previousDefault = await DbContext.StorageProfiles
             .Find(profile => profile.Id == previousDefaultId)
-            .FirstOrDefaultAsync();
-        var updated = await DbContext.StorageProfiles
-            .Find(profile => profile.Id == targetId)
-            .FirstOrDefaultAsync();
-
-        Assert.NotNull(previousDefault);
+            .SingleAsync();
         Assert.False(previousDefault.IsDefault);
-        Assert.NotNull(updated);
-        Assert.True(updated.IsDefault);
-        Assert.Equal(StoragePerformanceTier.Fast, updated.PerformanceTier);
+        Assert.Equal(2, previousDefault.Revision);
+
+        var stale = await Mediator.Send(new UpdateStorageProfileRequest(
+            targetId,
+            ValidUpdateBody(
+                revision: 1,
+                displayName: "Stale update")));
+        Assert.IsType<ConflictFailure>(stale.AssertFailure());
     }
 
     [Fact]
-    public async Task GetAvailable_FiltersByTenantResourceTypeEnabledStateAndKnownStorageClass()
+    public async Task Update_NoOpPreservesRevision()
     {
-        await DbContext.StorageProfiles.DeleteManyAsync(Builders<StorageProfile>.Filter.Empty);
-        var redisDefaultId = ObjectId.GenerateNewId().ToString();
-        var redisSelectedId = ObjectId.GenerateNewId().ToString();
+        var existing = await DbContext.StorageProfiles
+            .Find(profile => profile.Id == TestData.DefaultStorageProfileId)
+            .SingleAsync();
 
+        var response = (await Mediator.Send(new UpdateStorageProfileRequest(
+            existing.Id,
+            new UpdateStorageProfileRequestBody(
+                existing.DisplayName,
+                existing.Description,
+                existing.MediaType.ToString(),
+                existing.PerformanceTier.ToString(),
+                existing.IsEnabled,
+                existing.IsDefault,
+                existing.TargetMappings
+                    .Select(mapping => new StorageProfileTargetMappingRequestBody(
+                        mapping.DeploymentTargetId,
+                        mapping.StorageClassName))
+                    .ToArray(),
+                existing.AllowedResourceTypes
+                    .Select(type => type.ToString())
+                    .ToArray(),
+                new StorageProfileTenantAccessDto(
+                    existing.TenantAccess.Mode.ToString(),
+                    existing.TenantAccess.TenantIds.ToArray()),
+                new StorageProfileSizeLimitsDto(
+                    existing.SizeLimits!.MinSizeGb,
+                    existing.SizeLimits.MaxSizeGb),
+                existing.Revision))))
+            .AssertSuccess();
+
+        Assert.Equal(existing.Revision, response.Revision);
+        var persisted = await DbContext.StorageProfiles
+            .Find(profile => profile.Id == existing.Id)
+            .SingleAsync();
+        Assert.Equal(existing.UpdatedAtUtc, persisted.UpdatedAtUtc);
+    }
+
+    [Fact]
+    public async Task GetAvailable_UsesOnlyTheSelectedTargetMapping()
+    {
+        await DbContext.StorageProfiles.DeleteManyAsync(
+            Builders<StorageProfile>.Filter.Empty);
+        var bothTargetsId = ObjectId.GenerateNewId().ToString();
+        var defaultOnlyId = ObjectId.GenerateNewId().ToString();
         await DbContext.StorageProfiles.InsertManyAsync(
         [
-            CreateProfile(redisDefaultId, "Default Redis", "standard", ImmutableHashSet.Create(ResourceType.Redis), isDefault: true),
             CreateProfile(
-                redisSelectedId,
-                "Tenant Fast Redis",
-                "fast",
-                ImmutableHashSet.Create(ResourceType.Redis),
-                tenantAccess: SelectedTenantAccess(TestData.TenantId)),
-            CreateProfile("507f1f77bcf86cd799439201", "Web Only", "bulk", ImmutableHashSet.Create(ResourceType.WebService)),
+                bothTargetsId,
+                "Both targets",
+                "standard",
+                [ResourceType.Redis],
+                additionalMappings:
+                [
+                    StorageProfileTargetMapping.Create(
+                        SecondDeploymentTargetId,
+                        "second-fast")
+                ]),
             CreateProfile(
-                "507f1f77bcf86cd799439202",
-                "Other Tenant",
+                defaultOnlyId,
+                "Default only",
                 "fast",
-                ImmutableHashSet.Create(ResourceType.Redis),
-                tenantAccess: SelectedTenantAccess("507f1f77bcf86cd799439202")),
-            CreateProfile("507f1f77bcf86cd799439203", "Stale Class", "retired", ImmutableHashSet.Create(ResourceType.Redis)),
-            CreateProfile("507f1f77bcf86cd799439204", "Disabled", "standard", ImmutableHashSet.Create(ResourceType.Redis), isEnabled: false)
+                [ResourceType.Redis])
         ]);
+        var discovery = new TestStorageDiscoveryService(
+            new Dictionary<string, IReadOnlyCollection<string>>
+            {
+                [TestData.DefaultDeploymentTargetId] = ["standard", "fast"],
+                [SecondDeploymentTargetId] = ["second-fast"]
+            });
+        var handler = new GetAvailableStorageProfilesHandler(
+            DbContext,
+            discovery);
 
-        var result = await Mediator.Send(new GetAvailableStorageProfilesRequest("Redis", TestData.TenantId));
+        var response = (await handler.HandleAsync(
+            new GetAvailableStorageProfilesRequest(
+                "Redis",
+                SecondDeploymentTargetId,
+                TestData.TenantId))).AssertSuccess();
 
-        Assert.True(result.TryGetValue(out var response, out var error));
-        Assert.Null(error);
-        Assert.NotNull(response);
-        var ids = response.Select(profile => profile.Id).ToArray();
-        Assert.Equal([redisDefaultId, redisSelectedId], ids);
+        Assert.Equal([bothTargetsId], response.Select(profile => profile.Id).ToArray());
+        Assert.Equal(
+            [SecondDeploymentTargetId],
+            discovery.RequestedDeploymentTargetIds);
     }
 
     [Fact]
-    public async Task GetKubernetesStorageClasses_ReturnsDiscoveredClasses()
+    public async Task InventoryEndpoints_RouteEveryQueryToTheRequestedTarget()
     {
-        var result = await Mediator.Send(new GetKubernetesStorageClassesRequest());
+        var discovery = Assert.IsType<TestStorageDiscoveryService>(
+            Services.GetRequiredService<IStorageDiscoveryService>());
 
-        Assert.True(result.TryGetValue(out var response, out var error));
-        Assert.Null(error);
-        Assert.NotNull(response);
-        Assert.Equal(["standard", "fast", "bulk"], response.Select(storageClass => storageClass.Name).ToArray());
-        Assert.True(response.First().IsDefault);
+        var classes = (await Mediator.Send(
+            new GetKubernetesStorageClassesRequest(
+                TestData.DefaultDeploymentTargetId))).AssertSuccess();
+        var volumes = (await Mediator.Send(
+            new GetKubernetesPersistentVolumesRequest(
+                TestData.DefaultDeploymentTargetId))).AssertSuccess();
+        var claims = (await Mediator.Send(
+            new GetKubernetesPersistentVolumeClaimsRequest(
+                TestData.DefaultDeploymentTargetId))).AssertSuccess();
+
+        Assert.Equal(["bulk", "fast", "standard"], classes.Select(item => item.Name).ToArray());
+        Assert.Equal("pv-standard-1", Assert.Single(volumes).Name);
+        Assert.Equal(
+            TestData.TenantId,
+            Assert.Single(claims).Owner.TenantId);
+        Assert.Equal(
+            Enumerable.Repeat(TestData.DefaultDeploymentTargetId, 3),
+            discovery.RequestedDeploymentTargetIds);
     }
 
     [Fact]
-    public async Task GetKubernetesPersistentVolumes_ReturnsDiscoveredVolumes()
+    public async Task InventoryRequestValidation_RejectsInvalidTargetId()
     {
-        var result = await Mediator.Send(new GetKubernetesPersistentVolumesRequest());
+        var result = await Mediator.Send(
+            new GetKubernetesStorageClassesRequest("not-an-object-id"));
 
-        Assert.True(result.TryGetValue(out var response, out var error));
-        Assert.Null(error);
-        Assert.NotNull(response);
-        var volume = Assert.Single(response);
-        Assert.Equal("pv-standard-1", volume.Name);
-        Assert.Equal("standard", volume.StorageClassName);
-        Assert.Equal("20Gi", volume.Capacity);
+        var validation = Assert.IsType<ValidationFailure>(result.AssertFailure());
+        Assert.Contains("DeploymentTargetId", validation.ValidationErrors.Keys);
     }
 
     [Fact]
-    public async Task GetKubernetesPersistentVolumeClaims_ReturnsDiscoveredClaimsWithOwner()
+    public async Task Resolve_ReturnsExactTargetMappingAndProfileRevision()
     {
-        var result = await Mediator.Send(new GetKubernetesPersistentVolumeClaimsRequest());
+        await DbContext.StorageProfiles.DeleteManyAsync(
+            Builders<StorageProfile>.Filter.Empty);
+        var profile = CreateProfile(
+            ObjectId.GenerateNewId().ToString(),
+            "Multi-target Redis",
+            "standard",
+            [ResourceType.Redis],
+            additionalMappings:
+            [
+                StorageProfileTargetMapping.Create(
+                    SecondDeploymentTargetId,
+                    "second-fast")
+            ]);
+        await DbContext.StorageProfiles.InsertOneAsync(profile);
+        var discovery = new TestStorageDiscoveryService(
+            new Dictionary<string, IReadOnlyCollection<string>>
+            {
+                [TestData.DefaultDeploymentTargetId] = ["standard"],
+                [SecondDeploymentTargetId] = ["second-fast"]
+            });
+        var resolver = new StorageProfileResolver(DbContext, discovery);
 
-        Assert.True(result.TryGetValue(out var response, out var error));
-        Assert.Null(error);
-        Assert.NotNull(response);
-        var claim = Assert.Single(response);
-        Assert.Equal("redis-data-redis-main-0", claim.Name);
-        Assert.Equal("test-alpha", claim.Namespace);
-        Assert.Equal("standard", claim.StorageClassName);
-        Assert.Equal(TestData.TenantId, claim.Owner.TenantId);
-        Assert.Equal("Redis", claim.Owner.ResourceType);
+        var resolved = (await resolver.ResolveAsync(
+            new StorageProfileResolutionRequest(
+                profile.Id,
+                SecondDeploymentTargetId,
+                TestData.TenantId,
+                ResourceType.Redis,
+                SizeGb: 5))).AssertSuccess();
+
+        Assert.Equal(profile.Id, resolved.ProfileId);
+        Assert.Equal(profile.Revision, resolved.ProfileRevision);
+        Assert.Equal(SecondDeploymentTargetId, resolved.DeploymentTargetId);
+        Assert.Equal("second-fast", resolved.StorageClassName);
+        Assert.Equal(
+            [SecondDeploymentTargetId],
+            discovery.RequestedDeploymentTargetIds);
+    }
+
+    [Fact]
+    public async Task Resolve_RejectsMissingTargetMappingWithoutQueryingAnotherTarget()
+    {
+        var resolver = Services.GetRequiredService<IStorageProfileResolver>();
+        var discovery = Assert.IsType<TestStorageDiscoveryService>(
+            Services.GetRequiredService<IStorageDiscoveryService>());
+
+        var result = await resolver.ResolveAsync(
+            new StorageProfileResolutionRequest(
+                TestData.DefaultStorageProfileId,
+                SecondDeploymentTargetId,
+                TestData.TenantId,
+                ResourceType.Redis,
+                SizeGb: 5));
+
+        var validation = Assert.IsType<ValidationFailure>(result.AssertFailure());
+        Assert.Contains("StorageProfileId", validation.ValidationErrors.Keys);
+        Assert.Empty(discovery.RequestedDeploymentTargetIds);
     }
 
     [Fact]
     public async Task Resolve_ReturnsValidationFailure_ForCrossTenantProfile()
     {
-        await DbContext.StorageProfiles.DeleteManyAsync(Builders<StorageProfile>.Filter.Empty);
+        await DbContext.StorageProfiles.DeleteManyAsync(
+            Builders<StorageProfile>.Filter.Empty);
         var profileId = ObjectId.GenerateNewId().ToString();
         await DbContext.StorageProfiles.InsertOneAsync(CreateProfile(
             profileId,
             "Other Tenant Redis",
             "standard",
-            ImmutableHashSet.Create(ResourceType.Redis),
-            tenantAccess: SelectedTenantAccess("507f1f77bcf86cd799439205")));
+            [ResourceType.Redis],
+            tenantAccess: StorageProfileTenantAccess.Create(
+                StorageProfileTenantAccessMode.SelectedTenants,
+                ["507f1f77bcf86cd799439205"])));
         var resolver = Services.GetRequiredService<IStorageProfileResolver>();
 
         var result = await resolver.ResolveAsync(new StorageProfileResolutionRequest(
             profileId,
+            TestData.DefaultDeploymentTargetId,
             TestData.TenantId,
             ResourceType.Redis,
             SizeGb: 5));
 
-        Assert.False(result.TryGetValue(out _, out var error));
-        var validation = Assert.IsType<ValidationFailure>(error);
+        var validation = Assert.IsType<ValidationFailure>(result.AssertFailure());
         Assert.Contains("StorageProfileId", validation.ValidationErrors.Keys);
     }
 
-    private static UpsertStorageProfileRequestBody ValidBody(
+    [Fact]
+    public async Task Migration_CreatesTargetAvailabilityAndSingleDefaultIndexes()
+    {
+        await new StorageProfileMigration().Up(Fixture.Database);
+        var indexes = await Fixture.Database
+            .GetCollection<BsonDocument>("StorageProfiles")
+            .Indexes
+            .List()
+            .ToListAsync();
+
+        Assert.Contains(
+            indexes,
+            index => index["name"] == "UX_StorageProfiles_Default");
+        Assert.Contains(
+            indexes,
+            index => index["name"] == "IX_StorageProfiles_Target_Availability");
+
+        await Assert.ThrowsAsync<MongoWriteException>(() =>
+            DbContext.StorageProfiles.InsertOneAsync(CreateProfile(
+                ObjectId.GenerateNewId().ToString(),
+                "Second default",
+                "fast",
+                [ResourceType.Redis],
+                isDefault: true)));
+    }
+
+    private static CreateStorageProfileRequestBody ValidCreateBody(
         string displayName = "Fast SSD",
-        IReadOnlyCollection<string>? storageClassNames = null,
+        IReadOnlyCollection<StorageProfileTargetMappingRequestBody>? targetMappings = null,
         IReadOnlyCollection<string>? allowedResourceTypes = null,
         StorageProfileTenantAccessDto? tenantAccess = null,
         StorageProfileSizeLimitsDto? sizeLimits = null,
@@ -221,39 +439,77 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             PerformanceTier: "Fast",
             IsEnabled: true,
             IsDefault: isDefault,
-            StorageClassNames: storageClassNames ?? ["fast"],
+            TargetMappings: targetMappings ??
+            [
+                new StorageProfileTargetMappingRequestBody(
+                    TestData.DefaultDeploymentTargetId,
+                    "fast")
+            ],
             AllowedResourceTypes: allowedResourceTypes ?? ["Redis", "Postgres"],
-            TenantAccess: tenantAccess ?? new StorageProfileTenantAccessDto("AllTenants", []),
+            TenantAccess: tenantAccess ??
+                new StorageProfileTenantAccessDto("AllTenants", []),
             SizeLimits: sizeLimits ?? new StorageProfileSizeLimitsDto(1, 100));
+
+    private static UpdateStorageProfileRequestBody ValidUpdateBody(
+        long revision,
+        string displayName = "Fast SSD",
+        IReadOnlyCollection<StorageProfileTargetMappingRequestBody>? targetMappings = null,
+        IReadOnlyCollection<string>? allowedResourceTypes = null,
+        StorageProfileTenantAccessDto? tenantAccess = null,
+        StorageProfileSizeLimitsDto? sizeLimits = null,
+        bool isDefault = false) =>
+        new(
+            DisplayName: displayName,
+            Description: "Fast tenant storage",
+            MediaType: "SSD",
+            PerformanceTier: "Fast",
+            IsEnabled: true,
+            IsDefault: isDefault,
+            TargetMappings: targetMappings ??
+            [
+                new StorageProfileTargetMappingRequestBody(
+                    TestData.DefaultDeploymentTargetId,
+                    "fast")
+            ],
+            AllowedResourceTypes: allowedResourceTypes ?? ["Redis", "Postgres"],
+            TenantAccess: tenantAccess ??
+                new StorageProfileTenantAccessDto("AllTenants", []),
+            SizeLimits: sizeLimits ?? new StorageProfileSizeLimitsDto(1, 100),
+            Revision: revision);
 
     private static StorageProfile CreateProfile(
         string id,
         string displayName,
         string storageClassName,
-        ImmutableHashSet<ResourceType> allowedResourceTypes,
+        IEnumerable<ResourceType> allowedResourceTypes,
         StorageProfileTenantAccess? tenantAccess = null,
         bool isEnabled = true,
-        bool isDefault = false) =>
-        StorageProfileFactory.Create(
+        bool isDefault = false,
+        IEnumerable<StorageProfileTargetMapping>? additionalMappings = null)
+    {
+        var mappings = new[]
+            {
+                StorageProfileTargetMapping.Create(
+                    TestData.DefaultDeploymentTargetId,
+                    storageClassName)
+            }
+            .Concat(additionalMappings ?? []);
+        return StorageProfileFactory.Create(
             displayName,
             description: displayName,
             StorageMediaType.SSD,
             StoragePerformanceTier.Standard,
             isEnabled,
             isDefault,
-            ImmutableList.Create(storageClassName),
+            mappings,
             allowedResourceTypes,
-            tenantAccess ?? new StorageProfileTenantAccess(
+            tenantAccess ?? StorageProfileTenantAccess.Create(
                 StorageProfileTenantAccessMode.AllTenants,
-                ImmutableHashSet<string>.Empty),
-            new StorageProfileSizeLimits(1, 100),
-            StorageProfileFactory.DefaultCreateOptions with
+                []),
+            StorageProfileSizeLimits.Create(1, 100),
+            StorageProfileFactory.DefaultOptions with
             {
                 Id = id
             });
-
-    private static StorageProfileTenantAccess SelectedTenantAccess(string tenantId) =>
-        new(
-            StorageProfileTenantAccessMode.SelectedTenants,
-            ImmutableHashSet.Create(tenantId));
+    }
 }

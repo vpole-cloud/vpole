@@ -16,6 +16,7 @@ using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
@@ -45,6 +46,7 @@ Assembly[] assemblies = [
     typeof(OutboxProcessorJob).Assembly,
     typeof(ResourceGroupEndpoints).Assembly,
     typeof(RedisServiceEndpoints).Assembly,
+    typeof(ResourceDeploymentFeature).Assembly,
     typeof(SearchEndpoints).Assembly,
     typeof(StorageProfileEndpoints).Assembly,
     typeof(TenantEndpoints).Assembly,
@@ -56,6 +58,7 @@ Assembly[] outboxEventAssemblies = [
     typeof(Pole.Features.DnsRecords.Events.CommitDomainNameEvent).Assembly,
     typeof(Pole.Features.Postgres.Events.PostgresClusterCreatedEvent).Assembly,
     typeof(Pole.Features.RedisServices.Events.RedisServiceCreatedEvent).Assembly,
+    typeof(Pole.Features.ResourceDeployments.Events.ResourceDeploymentAppliedEvent).Assembly,
     typeof(Pole.Features.ResourceGroups.Events.ResourceGroupCreatedEvent).Assembly,
     typeof(Pole.Features.SourceBuilds.Events.SourceBuildRequestedEvent).Assembly,
     typeof(Pole.Features.Users.Contracts.UserCreatedEvent).Assembly

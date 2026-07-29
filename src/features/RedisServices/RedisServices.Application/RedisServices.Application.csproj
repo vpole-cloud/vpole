@@ -13,6 +13,9 @@
       <ProjectReference Include="..\RedisServices.Domain\RedisServices.Domain.csproj" />
       <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
+      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Application\ResourceDeployments.Application.csproj" />
+      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
+      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Domain\ResourceDeployments.Domain.csproj" />
       <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
       <ProjectReference Include="..\RedisServices.Events\RedisServices.Events.csproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
@@ -31,5 +34,3 @@
     </ItemGroup>
 
 </Project>
-
-

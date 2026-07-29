@@ -1,109 +1,143 @@
 using MassTransit;
-using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Events.Abstractions;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
-using Pole.ResultType;
 
 namespace Pole.Features.WebServices.Application.Consumers;
 
 public sealed class WebServiceDeploymentConsumer(
     IWebServiceDbContext dbContext,
-    IWebServiceDeploymentApplier deploymentApplier,
-    ILogger<WebServiceDeploymentConsumer> logger)
-    : IConsumer<WebServiceDeploymentRequestedEvent>
+    TimeProvider timeProvider)
+    : IConsumer<ResourceDeploymentAppliedEvent>,
+      IConsumer<ResourceDeploymentFailedEvent>
 {
-    public Task Consume(ConsumeContext<WebServiceDeploymentRequestedEvent> context) =>
+    public Task Consume(ConsumeContext<ResourceDeploymentAppliedEvent> context) =>
         Handle(context.Message, context.CancellationToken);
 
-    public async Task Handle(WebServiceDeploymentRequestedEvent deploymentEvent, CancellationToken cancellationToken = default)
-    {
-        var applyResult = await deploymentApplier.ApplyAsync(deploymentEvent, cancellationToken);
+    public Task Consume(ConsumeContext<ResourceDeploymentFailedEvent> context) =>
+        Handle(context.Message, context.CancellationToken);
 
-        if (applyResult is Failure failure)
+    public Task Handle(
+        ResourceDeploymentAppliedEvent deploymentEvent,
+        CancellationToken cancellationToken = default)
+    {
+        if (!string.Equals(
+                deploymentEvent.ResourceType,
+                ResourceDeploymentResourceTypes.WebService.Value,
+                StringComparison.Ordinal))
         {
-            if (failure is ExternalServiceFailure { ServiceName: "Kubernetes" })
-            {
-                logger.LogError(
-                    "[web-service-deployment-failed] Kubernetes could not apply release {ReleaseId} for web service {WebServiceId}: {Reason}",
-                    deploymentEvent.ReleaseId,
-                    deploymentEvent.WebServiceId,
-                    failure.Message);
-            }
-
-            var completion = await MarkReleaseAsync(
-                deploymentEvent,
-                WebServiceReleaseOutcome.Failed,
-                failure.Message,
-                cancellationToken);
-            if (completion is Failure completionFailure)
-                throw new InvalidOperationException(completionFailure.Message);
-            throw new InvalidOperationException(failure.Message);
+            return Task.CompletedTask;
         }
-
-        var succeeded = await MarkReleaseAsync(
-            deploymentEvent,
-            WebServiceReleaseOutcome.Succeeded,
-            failureMessage: null,
-            cancellationToken);
-        if (succeeded is Failure succeededFailure)
-            throw new InvalidOperationException(succeededFailure.Message);
-    }
-
-    private Task<Result> MarkReleaseAsync(
-        WebServiceDeploymentRequestedEvent deploymentEvent,
-        WebServiceReleaseOutcome outcome,
-        string? failureMessage,
-        CancellationToken cancellationToken)
-    {
-        var filter = Builders<WebServiceRelease>.Filter.And(
-            Builders<WebServiceRelease>.Filter.ForTenant(deploymentEvent.EventCore.TenantId),
-            Builders<WebServiceRelease>.Filter.Eq(release => release.WebServiceId, deploymentEvent.WebServiceId),
-            Builders<WebServiceRelease>.Filter.Eq(release => release.Id, deploymentEvent.ReleaseId));
 
         return dbContext.RunInTransactionAsync(async (session, ct) =>
         {
-            var update = Builders<WebServiceRelease>.Update
-                .Set(release => release.Outcome, outcome)
-                .Set(release => release.CompletedAtUtc, DateTime.UtcNow)
-                .Set(release => release.FailureMessage, failureMessage);
-            var updated = await dbContext.WebServiceReleases.UpdateOneAsync(
+            var pendingReleaseFilter = Builders<WebServiceRelease>.Filter.And(
+                Builders<WebServiceRelease>.Filter.ForTenant(
+                    deploymentEvent.EventCore.TenantId),
+                Builders<WebServiceRelease>.Filter.Eq(
+                    release => release.WebServiceId,
+                    deploymentEvent.ResourceId),
+                Builders<WebServiceRelease>.Filter.Eq(
+                    release => release.DeploymentGeneration,
+                    deploymentEvent.Generation),
+                Builders<WebServiceRelease>.Filter.Eq(
+                    release => release.Outcome,
+                    WebServiceReleaseOutcome.Pending));
+
+            var completedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
+            var release = await dbContext.WebServiceReleases.FindOneAndUpdateAsync(
                 session,
-                Builders<WebServiceRelease>.Filter.And(
-                    filter,
-                    Builders<WebServiceRelease>.Filter.Eq(
-                        release => release.Outcome,
-                        WebServiceReleaseOutcome.Pending)),
-                update,
-                cancellationToken: ct);
-            if (updated.MatchedCount != 1)
-            {
-                var existing = await dbContext.WebServiceReleases
-                    .Find(session, filter)
-                    .FirstOrDefaultAsync(ct);
-                if (existing is null)
-                    return Failures.NotFound("Web service release not found.", deploymentEvent.ReleaseId);
-                return existing.Outcome == outcome
-                    ? Result.Success()
-                    : Failures.Conflict("The web service release already has a different outcome.");
-            }
+                pendingReleaseFilter,
+                Builders<WebServiceRelease>.Update
+                    .Set(item => item.Outcome, WebServiceReleaseOutcome.Succeeded)
+                    .Set(item => item.CompletedAtUtc, completedAtUtc)
+                    .Set(item => item.FailureMessage, null),
+                new FindOneAndUpdateOptions<WebServiceRelease>
+                {
+                    ReturnDocument = ReturnDocument.After
+                },
+                ct);
+            if (release is null)
+                return Pole.ResultType.Result.Success();
 
             await dbContext.StoreEventAsync(
                 new WebServiceDeploymentCompletedEvent(
-                    deploymentEvent.ReleaseId,
-                    deploymentEvent.WebServiceId,
-                    outcome == WebServiceReleaseOutcome.Succeeded,
+                    release.Id,
+                    release.WebServiceId,
+                    Succeeded: true,
+                    FailureMessage: null)
+                {
+                    EventCore = deploymentEvent.EventCore
+                },
+                session,
+                ct);
+            return Pole.ResultType.Result.Success();
+        }, cancellationToken: cancellationToken);
+    }
+
+    public Task Handle(
+        ResourceDeploymentFailedEvent deploymentEvent,
+        CancellationToken cancellationToken = default)
+    {
+        if (deploymentEvent.Retryable ||
+            !string.Equals(
+                deploymentEvent.ResourceType,
+                ResourceDeploymentResourceTypes.WebService.Value,
+                StringComparison.Ordinal))
+        {
+            return Task.CompletedTask;
+        }
+
+        return dbContext.RunInTransactionAsync(async (session, ct) =>
+        {
+            var pendingReleaseFilter = Builders<WebServiceRelease>.Filter.And(
+                Builders<WebServiceRelease>.Filter.ForTenant(
+                    deploymentEvent.EventCore.TenantId),
+                Builders<WebServiceRelease>.Filter.Eq(
+                    release => release.WebServiceId,
+                    deploymentEvent.ResourceId),
+                Builders<WebServiceRelease>.Filter.Eq(
+                    release => release.DeploymentGeneration,
+                    deploymentEvent.Generation),
+                Builders<WebServiceRelease>.Filter.Eq(
+                    release => release.Outcome,
+                    WebServiceReleaseOutcome.Pending));
+
+            var failureMessage =
+                $"Deployment failed ({deploymentEvent.FailureCode}).";
+            var release = await dbContext.WebServiceReleases.FindOneAndUpdateAsync(
+                session,
+                pendingReleaseFilter,
+                Builders<WebServiceRelease>.Update
+                    .Set(item => item.Outcome, WebServiceReleaseOutcome.Failed)
+                    .Set(
+                        item => item.CompletedAtUtc,
+                        timeProvider.GetUtcNow().UtcDateTime)
+                    .Set(item => item.FailureMessage, failureMessage),
+                new FindOneAndUpdateOptions<WebServiceRelease>
+                {
+                    ReturnDocument = ReturnDocument.After
+                },
+                ct);
+            if (release is null)
+                return Pole.ResultType.Result.Success();
+
+            await dbContext.StoreEventAsync(
+                new WebServiceDeploymentCompletedEvent(
+                    release.Id,
+                    release.WebServiceId,
+                    Succeeded: false,
                     failureMessage)
                 {
                     EventCore = deploymentEvent.EventCore
                 },
                 session,
                 ct);
-            return Result.Success();
+            return Pole.ResultType.Result.Success();
         }, cancellationToken: cancellationToken);
     }
 }

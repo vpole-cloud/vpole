@@ -9,6 +9,9 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.ResourceDeployments.Application.Mutations;
+using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
@@ -54,11 +57,13 @@ public sealed record UpdateWebServiceImageTagResponse(
     string Id,
     int Revision,
     string ReleaseId,
-    string Tag);
+    string Tag,
+    PlacementSummaryDto Placement);
 
 public sealed class UpdateWebServiceImageTagHandler(
     IWebServiceDbContext dbContext,
-    ITenantContextAccessor tenantContextAccessor)
+    ITenantContextAccessor tenantContextAccessor,
+    IResourceDeploymentMutationWriter deploymentWriter)
     : IMediatorHandler<UpdateWebServiceImageTagRequest, UpdateWebServiceImageTagResponse>
 {
     public async Task<Result<UpdateWebServiceImageTagResponse>> HandleAsync(
@@ -79,10 +84,11 @@ public sealed class UpdateWebServiceImageTagHandler(
 
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
+        if (webService.Lifecycle is not ActiveWebServiceLifecycle)
+            return Failures.Conflict("A deleting web service cannot be updated.");
 
         return await dbContext.RunInTransactionAsync<UpdateWebServiceImageTagResponse>(async (session, ct) =>
         {
-            var nextRevision = Math.Max(webService.ActiveRevision, 1) + 1;
             var previousSpec = webService.Spec.ToSnapshot();
             var nextSpec = webService.Spec with
             {
@@ -91,12 +97,58 @@ public sealed class UpdateWebServiceImageTagHandler(
                     Tag = request.Body.Tag
                 }
             };
+            var updatedWebService = webService.UpdateDesiredState(
+                nextSpec,
+                webService.Tags);
             var nextSpecSnapshot = nextSpec.ToSnapshot();
             var deploymentEventCore = EventCore.Create(webService.TenantId);
+
+            var replace = await dbContext.WebServices.ReplaceOneAsync(
+                session,
+                Builders<WebService>.Filter.And(
+                    webServiceFilter,
+                    Builders<WebService>.Filter.Eq(
+                        item => item.Revision,
+                        webService.Revision)),
+                updatedWebService,
+                cancellationToken: ct);
+            if (replace.ModifiedCount != 1)
+            {
+                return Failures.Conflict(
+                    "The web service changed while the image update was being accepted.");
+            }
+
+            if (authorization.DeploymentTokenId is not null)
+            {
+                await dbContext.WebServiceDeploymentTokens.UpdateOneAsync(
+                    session,
+                    Builders<WebServiceDeploymentToken>.Filter.And(
+                        Builders<WebServiceDeploymentToken>.Filter.ForTenant(authorization.TenantId),
+                        Builders<WebServiceDeploymentToken>.Filter.Eq(token => token.Id, authorization.DeploymentTokenId)),
+                    Builders<WebServiceDeploymentToken>.Update
+                        .Set(token => token.LastUsedAtUtc, deploymentEventCore.OccurredOn)
+                        .Set(token => token.LastUsedSource, request.Body.Source),
+                    cancellationToken: ct);
+            }
+
+            var deploymentResult = await deploymentWriter.RequestApplyAsync(
+                new ResourceDeploymentMutationCommand(
+                    webService.TenantId,
+                    ResourceDeploymentResourceTypes.WebService,
+                    webService.Id),
+                session,
+                ct);
+            if (!deploymentResult.TryGetValue(
+                    out var deployment,
+                    out var deploymentFailure))
+            {
+                return deploymentFailure;
+            }
+
             var release = WebServiceReleaseFactory.CreatePending(
                 webService.TenantId,
                 webService.Id,
-                nextRevision,
+                updatedWebService.ActiveRevision,
                 WebServiceReleaseAction.ImageTagUpdate,
                 authorization.ActorUserId,
                 authorization.ActorEmail,
@@ -113,56 +165,37 @@ public sealed class UpdateWebServiceImageTagHandler(
                     request.Body.Tag,
                     authorization.ActorType,
                     authorization.DeploymentTokenId,
-                    authorization.DeploymentTokenName));
-
-            await dbContext.WebServices.UpdateOneAsync(
+                    authorization.DeploymentTokenName),
+                deployment.DesiredGeneration);
+            await WebServiceReleasePersistence.InsertCurrentAsync(
+                dbContext,
                 session,
-                webServiceFilter,
-                Builders<WebService>.Update
-                    .Set(service => service.ActiveRevision, nextRevision)
-                    .Set(service => service.Spec, nextSpec),
-                cancellationToken: ct);
-
-            if (authorization.DeploymentTokenId is not null)
-            {
-                await dbContext.WebServiceDeploymentTokens.UpdateOneAsync(
-                    session,
-                    Builders<WebServiceDeploymentToken>.Filter.And(
-                        Builders<WebServiceDeploymentToken>.Filter.ForTenant(authorization.TenantId),
-                        Builders<WebServiceDeploymentToken>.Filter.Eq(token => token.Id, authorization.DeploymentTokenId)),
-                    Builders<WebServiceDeploymentToken>.Update
-                        .Set(token => token.LastUsedAtUtc, deploymentEventCore.OccurredOn)
-                        .Set(token => token.LastUsedSource, request.Body.Source),
-                    cancellationToken: ct);
-            }
-
-            await dbContext.WebServiceReleases.InsertOneAsync(session, release, cancellationToken: ct);
+                release,
+                ct);
 
             var changes = new WebServiceUpdatedEventChanges(
                 UpdateLog<WebServiceSpecSnapshot>.Of(previousSpec, nextSpecSnapshot),
                 UpdateLog<ImmutableHashSet<string>>.Of(webService.Tags, webService.Tags));
 
             await dbContext.StoreEventAsync(
-                [
-                    new WebServiceUpdatedEvent(
-                        webService.Id,
-                        webService.Name,
-                        webService.ResourceGroupId,
-                        webService.DnsRecord,
-                        changes)
-                    {
-                        EventCore = EventCore.Create(webService.TenantId)
-                    },
-                    release.ToDeploymentRequestedEvent(webService, deploymentEventCore)
-                ],
+                new WebServiceUpdatedEvent(
+                    webService.Id,
+                    webService.Name,
+                    webService.ResourceGroupId,
+                    webService.DnsRecord,
+                    changes)
+                {
+                    EventCore = EventCore.Create(webService.TenantId)
+                },
                 session,
                 ct);
 
             return new UpdateWebServiceImageTagResponse(
                 webService.Id,
-                nextRevision,
+                updatedWebService.ActiveRevision,
                 release.Id,
-                request.Body.Tag);
+                request.Body.Tag,
+                deployment.ToPlacementSummaryDto());
         }, cancellationToken: cancellationToken);
     }
 

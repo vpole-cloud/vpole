@@ -13,6 +13,7 @@ open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Kubernetes
+open Pole.Features.ResourceDeployments.Contracts
 open Pole.Mediator
 open Pole.ResultType
 
@@ -25,40 +26,78 @@ type GetPostgresClusterConnectionStringRequest =
       [<FromHeader(Name = TenantHeaders.TenantId)>]
       TenantId : string }
     interface IMediatorRequest<GetPostgresClusterConnectionStringResponse>
-    interface ITenantReadOperation with
+    interface ITenantWriteOperation with
         member this.TenantId = this.TenantId
 
 type GetPostgresClusterConnectionStringHandler(
     dbContext : IPostgresDbContext,
-    secretStore : IPostgresClusterSecretStore) =
+    credentialService : IPostgresCredentialService,
+    deploymentQuery : IResourceDeploymentQueryService) =
     interface IMediatorHandler<GetPostgresClusterConnectionStringRequest, GetPostgresClusterConnectionStringResponse> with
         member _.HandleAsync(request, cancellationToken) =
             task {
                 let filter =
                     Builders<PostgresCluster>.Filter.And(
                         Builders<PostgresCluster>.Filter.ForTenant(request.TenantId),
-                        Builders<PostgresCluster>.Filter.Eq(_.Id, request.ClusterId))
-                let! postgresCluster =
+                        Builders<PostgresCluster>.Filter.Eq((fun cluster -> cluster.Id), request.ClusterId))
+                let! cluster =
                     dbContext.Postgres
                         .Find(filter)
                         .FirstOrNoneAsync(cancellationToken)
 
-                match postgresCluster with
+                match cluster with
                 | None ->
-                    return Failures.NotFound("Postgres cluster not found.", request.ClusterId)
-                           |> ResultF.ofFailure
+                    return
+                        Failures.NotFound("PostgreSQL cluster not found.", request.ClusterId)
+                        |> ResultF.ofFailure
+                | Some cluster when (cluster.Lifecycle :? DeletingPostgresClusterLifecycle) ->
+                    return
+                        Failures.Conflict(
+                            "A connection string is unavailable while the PostgreSQL cluster is being deleted.")
+                        |> ResultF.ofFailure
                 | Some cluster ->
-                    let! credentials = secretStore.GetAsync(cluster.Spec.KubernetesNamespace, cluster.Id, cancellationToken)
+                    let! placement =
+                        deploymentQuery.GetAsync(
+                            cluster.TenantId,
+                            ResourceDeploymentResourceTypes.PostgreSql,
+                            cluster.Id,
+                            cancellationToken)
 
-                    match credentials with
-                    | None ->
-                        return Failures.NotFound("Credentials secret for Postgres cluster was not found.", cluster.Id)
-                               |> ResultF.ofFailure
-                    | Some credentials ->
-                        let connectionString =
-                            $"Host={PostgresClusterKubernetesBuilder.buildReadWriteServiceName cluster.Id}.{cluster.Spec.KubernetesNamespace}.svc.cluster.local;Port=5432;Database={PostgresClusterKubernetesBuilder.buildDatabaseName cluster.Id};Username={credentials.Username};Password={credentials.Password};SSL Mode=Disable"
+                    if isNull placement ||
+                       placement.Status <> "Applied" ||
+                       placement.ObservedGeneration <> placement.DesiredGeneration then
+                        return
+                            Failures.Conflict(
+                                "The PostgreSQL deployment has not applied its current desired generation.")
+                            |> ResultF.ofFailure
+                    else
+                        let endpoint =
+                            placement.Endpoints
+                            |> Seq.tryFind (fun item -> item.Kind = "PostgreSql")
 
-                        return { ConnectionString = connectionString } |> ResultF.ofValue
+                        match endpoint with
+                        | None ->
+                            return
+                                Failures.Conflict(
+                                    "The applied PostgreSQL deployment has no connection endpoint.")
+                                |> ResultF.ofFailure
+                        | Some endpoint ->
+                            let! credentialResult =
+                                credentialService.ResolveAsync(
+                                    cluster.TenantId,
+                                    cluster.Id,
+                                    cancellationToken)
+
+                            match credentialResult.TryGetValue() with
+                            | struct (false, _, failure) ->
+                                return failure |> ResultF.ofFailure
+                            | struct (true, credentials, _) ->
+                                let connectionString =
+                                    $"Host={endpoint.Host};Port={endpoint.Port};Database={PostgresClusterKubernetesBuilder.buildDatabaseName cluster.Id};Username={credentials.Username};Password={credentials.Password};SSL Mode=Disable"
+
+                                return
+                                    { ConnectionString = connectionString }
+                                    |> ResultF.ofValue
             }
 
 type GetPostgresClusterConnectionStringRequestValidator() as this =
@@ -69,15 +108,20 @@ type GetPostgresClusterConnectionStringRequestValidator() as this =
 [<AbstractClass; Sealed>]
 type GetPostgresClusterConnectionString =
     [<Extension>]
-    static member MapGetPostgresClusterConnectionStringEndpoint(endpoints: IEndpointRouteBuilder) =
-        endpoints.MapMethod<GetPostgresClusterConnectionString>("/{ClusterId}/connection-string", nameof GetPostgresClusterConnectionString.Handle, EndpointHttpMethod.Get)
+    static member MapGetPostgresClusterConnectionStringEndpoint(endpoints : IEndpointRouteBuilder) =
+        endpoints.MapMethod<GetPostgresClusterConnectionString>(
+            "/{ClusterId}/connection-string",
+            nameof GetPostgresClusterConnectionString.Handle,
+            EndpointHttpMethod.Get)
             .WithName("GetPostgresClusterConnectionString")
-            |> ignore
+        |> ignore
         endpoints
 
-    static member Handle([<AsParameters>] request: GetPostgresClusterConnectionStringRequest, [<FromServices>] mediator: IMediator) =
+    static member Handle(
+        [<AsParameters>] request : GetPostgresClusterConnectionStringRequest,
+        [<FromServices>] mediator : IMediator,
+        cancellationToken : System.Threading.CancellationToken) =
         task {
-            let! result = mediator.Send request
+            let! result = mediator.Send(request, cancellationToken)
             return result.ToHttpResult(fun value -> Results.Ok(value))
         }
-

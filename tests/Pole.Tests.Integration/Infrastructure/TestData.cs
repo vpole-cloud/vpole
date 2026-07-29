@@ -5,6 +5,7 @@ using Pole.Features.DnsRecords.Domain;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Endpoints;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.ResourceGroups.Application.Services;
@@ -21,6 +22,7 @@ namespace Pole.Tests.Integration.Infrastructure;
 public static class TestData
 {
     public const string TenantId = "507f1f77bcf86cd799439011";
+    public const string DefaultDeploymentTargetId = "507f1f77bcf86cd799439098";
     public const string DefaultStorageProfileId = "507f1f77bcf86cd799439099";
     public const string UserId = "test-user";
     public const string UserEmail = "test-user@example.test";
@@ -81,7 +83,8 @@ public static class TestData
                 Limits: new Resource(2, 512)),
             DefaultStorageProfileId,
             username,
-            password),
+            password,
+            FSharpOption<PlacementRequest>.None),
             tenantId ?? TenantId);
 
     public static WebServiceSpecDto ValidWebServiceSpec() => new(
@@ -112,6 +115,8 @@ public static class TestData
     public static ResolvedStorageProfile DefaultResolvedStorageProfile(string storageClassName = "standard") =>
         new(
             DefaultStorageProfileId,
+            ProfileRevision: 1,
+            DefaultDeploymentTargetId,
             "Standard",
             storageClassName,
             StorageMediaType.SSD,
@@ -131,13 +136,18 @@ public static class TestData
             performanceTier: StoragePerformanceTier.Standard,
             isEnabled: isEnabled,
             isDefault: isDefault,
-            storageClassNames: ImmutableList.Create(storageClassName),
+            targetMappings:
+            [
+                StorageProfileTargetMapping.Create(
+                    DefaultDeploymentTargetId,
+                    storageClassName)
+            ],
             allowedResourceTypes: ImmutableHashSet.Create(ResourceType.Redis, ResourceType.Postgres),
-            tenantAccess: tenantAccess ?? new StorageProfileTenantAccess(
+            tenantAccess: tenantAccess ?? StorageProfileTenantAccess.Create(
                 StorageProfileTenantAccessMode.AllTenants,
-                ImmutableHashSet<string>.Empty),
-            sizeLimits: new StorageProfileSizeLimits(1, 100),
-            options: StorageProfileFactory.DefaultCreateOptions with
+                []),
+            sizeLimits: StorageProfileSizeLimits.Create(1, 100),
+            options: StorageProfileFactory.DefaultOptions with
             {
                 Id = id
             });
@@ -186,16 +196,15 @@ public static class TestData
             name,
             tenantId,
             resourceGroupId,
-            ValidWebServiceSpec().ToDomain("test-apps"),
+            ValidWebServiceSpec().ToDomain(),
             new DnsRecordShortInfo("dns-1", domain),
             options);
     }
 
-    public static WebServiceSpecSnapshot ValidWebServiceSpecSnapshot(string kubernetesNamespace = "test-apps")
+    public static WebServiceSpecSnapshot ValidWebServiceSpecSnapshot()
     {
         var spec = ValidWebServiceSpec();
         return new WebServiceSpecSnapshot(
-            kubernetesNamespace,
             new WebServiceImageInfoSnapshot(spec.Image.Server, spec.Image.Name, spec.Image.Tag),
             spec.Replicas,
             spec.Resources,
@@ -229,4 +238,3 @@ public static class TestData
             groupId: groupId,
             options: DnsRecordFactory.DefaultCreateOptions);
 }
-

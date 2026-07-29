@@ -41,6 +41,7 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
                 "Invalid admission",
                 Enabled: false,
                 AcceptsWorkloads: true,
+                DeploymentTargetTestData.CreateWorkloadConfigurationBody(),
                 new DeploymentTargetConnectionRequestBody("InCluster")));
         Assert.Equal(HttpStatusCode.BadRequest, invalidBodyResponse.StatusCode);
         Assert.Equal(0, await Fixture.DbContext.DeploymentTargets.CountDocumentsAsync(
@@ -62,6 +63,11 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal("ServiceAccount", created.Connection.Kind);
         Assert.True(created.Enabled);
         Assert.True(created.AcceptsWorkloads);
+        Assert.Equal(1, created.WorkloadConfiguration.Revision);
+        Assert.Equal(
+            "traefik",
+            Assert.IsType<DeploymentTargetIngressConfigurationDto>(
+                created.WorkloadConfiguration.Ingress).IngressClassName);
         var responseJson = await firstResponse.Content.ReadAsStringAsync();
         Assert.DoesNotContain(FirstToken, responseJson, StringComparison.Ordinal);
         Assert.DoesNotContain("encryptedCredential", responseJson, StringComparison.OrdinalIgnoreCase);
@@ -97,6 +103,7 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
                 created.DisplayName,
                 Enabled: true,
                 AcceptsWorkloads: false,
+                created.WorkloadConfiguration.ToRequestBody(),
                 created.Revision));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -116,6 +123,7 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
                 "Stale update",
                 Enabled: true,
                 AcceptsWorkloads: true,
+                created.WorkloadConfiguration.ToRequestBody(),
                 created.Revision));
         Assert.Equal(HttpStatusCode.Conflict, staleResponse.StatusCode);
     }
@@ -132,12 +140,125 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
                 created.DisplayName,
                 created.Enabled,
                 created.AcceptsWorkloads,
+                created.WorkloadConfiguration.ToRequestBody(),
                 created.Revision));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var unchanged = await response.Content.ReadFromJsonAsync<DeploymentTargetDto>();
         Assert.NotNull(unchanged);
         Assert.Equal(created.Revision, unchanged.Revision);
+        Assert.Equal(
+            created.WorkloadConfiguration.Revision,
+            unchanged.WorkloadConfiguration.Revision);
+    }
+
+    [Fact]
+    public async Task WorkloadConfigurationUpdate_AdvancesItsRevision_WhileMetadataUpdateDoesNot()
+    {
+        SetPlatformAdmin();
+        var created = await CreateTargetAsync();
+
+        var configurationResponse = await Client.PutAsJsonAsync(
+            $"/api/v1/platform/deployment-targets/{created.Id}",
+            new UpdateDeploymentTargetRequestBody(
+                created.DisplayName,
+                created.Enabled,
+                created.AcceptsWorkloads,
+                DeploymentTargetTestData.CreateWorkloadConfigurationBody(
+                    "nginx",
+                    "internal-ca"),
+                created.Revision));
+
+        Assert.Equal(HttpStatusCode.OK, configurationResponse.StatusCode);
+        var configured = Assert.IsType<DeploymentTargetDto>(
+            await configurationResponse.Content.ReadFromJsonAsync<DeploymentTargetDto>());
+        Assert.Equal(created.Revision + 1, configured.Revision);
+        Assert.Equal(
+            created.WorkloadConfiguration.Revision + 1,
+            configured.WorkloadConfiguration.Revision);
+        var ingress = Assert.IsType<DeploymentTargetIngressConfigurationDto>(
+            configured.WorkloadConfiguration.Ingress);
+        Assert.Equal("nginx", ingress.IngressClassName);
+        Assert.Equal("internal-ca", ingress.ClusterIssuerName);
+
+        var metadataResponse = await Client.PutAsJsonAsync(
+            $"/api/v1/platform/deployment-targets/{created.Id}",
+            new UpdateDeploymentTargetRequestBody(
+                "Renamed target",
+                configured.Enabled,
+                configured.AcceptsWorkloads,
+                configured.WorkloadConfiguration.ToRequestBody(),
+                configured.Revision));
+
+        Assert.Equal(HttpStatusCode.OK, metadataResponse.StatusCode);
+        var renamed = Assert.IsType<DeploymentTargetDto>(
+            await metadataResponse.Content.ReadFromJsonAsync<DeploymentTargetDto>());
+        Assert.Equal(configured.Revision + 1, renamed.Revision);
+        Assert.Equal(
+            configured.WorkloadConfiguration.Revision,
+            renamed.WorkloadConfiguration.Revision);
+
+        var disabledIngressResponse = await Client.PutAsJsonAsync(
+            $"/api/v1/platform/deployment-targets/{created.Id}",
+            new UpdateDeploymentTargetRequestBody(
+                renamed.DisplayName,
+                renamed.Enabled,
+                renamed.AcceptsWorkloads,
+                new DeploymentTargetWorkloadConfigurationRequestBody(Ingress: null),
+                renamed.Revision));
+
+        Assert.Equal(HttpStatusCode.OK, disabledIngressResponse.StatusCode);
+        var withoutIngress = Assert.IsType<DeploymentTargetDto>(
+            await disabledIngressResponse.Content.ReadFromJsonAsync<DeploymentTargetDto>());
+        Assert.Equal(renamed.Revision + 1, withoutIngress.Revision);
+        Assert.Equal(
+            renamed.WorkloadConfiguration.Revision + 1,
+            withoutIngress.WorkloadConfiguration.Revision);
+        Assert.Null(withoutIngress.WorkloadConfiguration.Ingress);
+    }
+
+    [Fact]
+    public async Task RequestValidation_RejectsInvalidIngressConfigurationOnCreateAndUpdate()
+    {
+        SetPlatformAdmin();
+
+        var response = await Client.PostAsJsonAsync(
+            "/api/v1/platform/deployment-targets/",
+            new CreateDeploymentTargetRequestBody(
+                "Invalid ingress",
+                Enabled: true,
+                AcceptsWorkloads: true,
+                DeploymentTargetTestData.CreateWorkloadConfigurationBody(
+                    "Invalid_Ingress",
+                    "letsencrypt-prod"),
+                new DeploymentTargetConnectionRequestBody("InCluster")));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(
+            0,
+            await Fixture.DbContext.DeploymentTargets.CountDocumentsAsync(
+                Builders<DeploymentTarget>.Filter.Empty));
+
+        var created = await CreateTargetAsync();
+        var updateResponse = await Client.PutAsJsonAsync(
+            $"/api/v1/platform/deployment-targets/{created.Id}",
+            new UpdateDeploymentTargetRequestBody(
+                created.DisplayName,
+                created.Enabled,
+                created.AcceptsWorkloads,
+                DeploymentTargetTestData.CreateWorkloadConfigurationBody(
+                    "nginx",
+                    "Invalid_Issuer"),
+                created.Revision));
+
+        Assert.Equal(HttpStatusCode.BadRequest, updateResponse.StatusCode);
+        var persisted = await Fixture.DbContext.DeploymentTargets
+            .Find(target => target.Id == created.Id)
+            .SingleAsync();
+        Assert.Equal(created.Revision, persisted.Revision);
+        Assert.Equal(
+            created.WorkloadConfiguration.Revision,
+            persisted.WorkloadConfiguration.Revision);
     }
 
     [Fact]
@@ -166,6 +287,9 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(created.ClusterIdentity, rotated.ClusterIdentity);
         Assert.Equal(created.Connection.Version + 1, rotated.Connection.Version);
         Assert.Equal(created.Revision + 1, rotated.Revision);
+        Assert.Equal(
+            created.WorkloadConfiguration.Revision,
+            rotated.WorkloadConfiguration.Revision);
         Assert.DoesNotContain(
             RotatedToken,
             await response.Content.ReadAsStringAsync(),
@@ -216,6 +340,7 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
             displayName,
             Enabled: true,
             AcceptsWorkloads: true,
+            DeploymentTargetTestData.CreateWorkloadConfigurationBody(),
             ServiceAccountConnection(serverUrl, certificateAuthorityData, token));
 
     private static DeploymentTargetConnectionRequestBody ServiceAccountConnection(
