@@ -28,6 +28,8 @@ public enum StorageProfileTenantAccessMode
 
 public sealed record ResolvedStorageProfile(
     string ProfileId,
+    long ProfileRevision,
+    string DeploymentTargetId,
     string DisplayName,
     string StorageClassName,
     StorageMediaType MediaType,
@@ -36,6 +38,8 @@ public sealed record ResolvedStorageProfile(
 
 public sealed record ResolvedStorageProfileDto(
     string ProfileId,
+    long ProfileRevision,
+    string DeploymentTargetId,
     string DisplayName,
     string StorageClassName,
     string MediaType,
@@ -47,6 +51,8 @@ public static class ResolvedStorageProfileExtensions
     public static ResolvedStorageProfileDto ToDto(this ResolvedStorageProfile profile) =>
         new(
             profile.ProfileId,
+            profile.ProfileRevision,
+            profile.DeploymentTargetId,
             profile.DisplayName,
             profile.StorageClassName,
             profile.MediaType.ToString(),
@@ -55,6 +61,7 @@ public static class ResolvedStorageProfileExtensions
 
 public sealed record StorageProfileResolutionRequest(
     string StorageProfileId,
+    string DeploymentTargetId,
     string TenantId,
     ResourceType ResourceType,
     int SizeGb

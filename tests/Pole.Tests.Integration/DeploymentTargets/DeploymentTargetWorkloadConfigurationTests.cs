@@ -1,0 +1,143 @@
+using MongoDB.Bson;
+using Pole.Features.DeploymentTargets.Domain;
+using Xunit;
+
+namespace Pole.Tests.Integration.DeploymentTargets;
+
+public sealed class DeploymentTargetWorkloadConfigurationTests
+{
+    private static readonly DateTime CreatedAtUtc =
+        new(2026, 7, 29, 12, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public void Reconfigure_IngressChangeAdvancesAggregateAndWorkloadConfigurationRevisions()
+    {
+        var target = CreateTarget();
+        var replacement = DeploymentTargetIngressConfiguration.Create(
+            "nginx",
+            "private-ca");
+
+        var updated = target.Reconfigure(
+            target.DisplayName,
+            target.Enabled,
+            target.AcceptsWorkloads,
+            replacement,
+            CreatedAtUtc.AddMinutes(1));
+
+        Assert.Equal(target.Revision + 1, updated.Revision);
+        Assert.Equal(
+            target.WorkloadConfiguration.Revision + 1,
+            updated.WorkloadConfiguration.Revision);
+        Assert.Equal(replacement, updated.WorkloadConfiguration.Ingress);
+    }
+
+    [Fact]
+    public void Reconfigure_MetadataChangePreservesWorkloadConfigurationRevision()
+    {
+        var target = CreateTarget();
+
+        var updated = target.Reconfigure(
+            "Renamed target",
+            target.Enabled,
+            target.AcceptsWorkloads,
+            target.WorkloadConfiguration.Ingress,
+            CreatedAtUtc.AddMinutes(1));
+
+        Assert.Equal(target.Revision + 1, updated.Revision);
+        Assert.Equal(
+            target.WorkloadConfiguration.Revision,
+            updated.WorkloadConfiguration.Revision);
+        Assert.Equal(
+            target.WorkloadConfiguration.Ingress,
+            updated.WorkloadConfiguration.Ingress);
+    }
+
+    [Fact]
+    public void Reconfigure_NoOpPreservesBothRevisions()
+    {
+        var target = CreateTarget();
+
+        var unchanged = target.Reconfigure(
+            target.DisplayName,
+            target.Enabled,
+            target.AcceptsWorkloads,
+            target.WorkloadConfiguration.Ingress,
+            CreatedAtUtc.AddMinutes(1));
+
+        Assert.Equal(target.Revision, unchanged.Revision);
+        Assert.Equal(
+            target.WorkloadConfiguration.Revision,
+            unchanged.WorkloadConfiguration.Revision);
+        Assert.Equal(target.UpdatedAtUtc, unchanged.UpdatedAtUtc);
+    }
+
+    [Fact]
+    public void Reconfigure_RemovingIngressAdvancesBothRevisions()
+    {
+        var target = CreateTarget();
+
+        var updated = target.Reconfigure(
+            target.DisplayName,
+            target.Enabled,
+            target.AcceptsWorkloads,
+            ingress: null,
+            CreatedAtUtc.AddMinutes(1));
+
+        Assert.Equal(target.Revision + 1, updated.Revision);
+        Assert.Equal(
+            target.WorkloadConfiguration.Revision + 1,
+            updated.WorkloadConfiguration.Revision);
+        Assert.Null(updated.WorkloadConfiguration.Ingress);
+    }
+
+    [Fact]
+    public void ReplaceConnectionCredential_PreservesWorkloadConfigurationRevision()
+    {
+        var target = CreateTarget();
+        var replacement = DeploymentTargetConnectionFactory.CreateInCluster(
+            target.NextConnectionVersion);
+
+        var updated = target.ReplaceConnectionCredential(
+            target.ClusterIdentity,
+            replacement,
+            CreatedAtUtc.AddMinutes(1));
+
+        Assert.Equal(target.Revision + 1, updated.Revision);
+        Assert.Equal(
+            target.WorkloadConfiguration.Revision,
+            updated.WorkloadConfiguration.Revision);
+        Assert.Equal(
+            target.WorkloadConfiguration.Ingress,
+            updated.WorkloadConfiguration.Ingress);
+    }
+
+    [Theory]
+    [InlineData("UPPERCASE")]
+    [InlineData("invalid_name")]
+    [InlineData("-leading")]
+    [InlineData("trailing-")]
+    [InlineData("two..labels")]
+    public void IngressConfigurationFactory_RejectsInvalidKubernetesNames(string value)
+    {
+        Assert.Throws<ArgumentException>(
+            () => DeploymentTargetIngressConfiguration.Create(
+                value,
+                "letsencrypt-prod"));
+    }
+
+    private static DeploymentTarget CreateTarget()
+    {
+        var id = ObjectId.GenerateNewId().ToString();
+        const long connectionVersion = 1;
+        return DeploymentTargetFactory.Create(
+            "Workload configuration target",
+            $"kubernetes:kube-system:{id}",
+            DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
+            DeploymentTargetHealth.Healthy(connectionVersion, CreatedAtUtc),
+            DeploymentTargetCapabilities.Unknown(connectionVersion),
+            DeploymentTargetTestData.CreateWorkloadConfiguration(),
+            enabled: true,
+            acceptsWorkloads: true,
+            new DeploymentTargetFactory.CreateOptions(id, CreatedAtUtc));
+    }
+}

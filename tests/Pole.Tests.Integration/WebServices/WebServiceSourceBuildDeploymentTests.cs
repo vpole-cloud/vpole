@@ -1,12 +1,14 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Microsoft.Extensions.Logging.Abstractions;
+using Pole.Features.Events.Abstractions;
+using Pole.Features.ResourceDeployments.Application.Mutations;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Consumers;
-using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Domain;
-using Pole.Features.WebServices.Events;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -21,7 +23,10 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
     {
         var webService = TestData.SeedWebService(ObjectId.GenerateNewId().ToString());
         await Fixture.DbContext.WebServices.InsertOneAsync(webService);
-        var service = new WebServiceSourceBuildDeploymentService(Fixture.DbContext);
+        var mutationWriter = new SuccessfulMutationWriter(webService);
+        var service = new WebServiceSourceBuildDeploymentService(
+            Fixture.DbContext,
+            mutationWriter);
         var request = new SourceBuildDeploymentRequest(
             TestData.TenantId,
             webService.Id,
@@ -39,7 +44,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
 
         var result = await service.DeployAsync(request);
 
-        Assert.True(result.TryGetValue(out var deployment, out _));
+        var deployment = result.AssertSuccess();
         var updated = await Fixture.DbContext.WebServices.Find(item => item.Id == webService.Id).SingleAsync();
         Assert.Equal("harbor.test", updated.Spec.Image.Server);
         Assert.Equal("pole-registry-project-1", updated.Spec.Image.SecretName);
@@ -51,23 +56,20 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
         Assert.Equal("build-1", provenance.BuildJobId);
         Assert.Equal(request.Image.Digest, provenance.ImageDigest);
 
-        var requested = new WebServiceDeploymentRequestedEvent(
-            release.Id,
-            release.Revision,
-            release.Action.ToString(),
+        Assert.Equal(1, mutationWriter.ApplyCallCount);
+        var applied = new ResourceDeploymentAppliedEvent(
+            mutationWriter.Deployment.Id,
+            ResourceDeploymentResourceTypes.WebService.Value,
             updated.Id,
-            updated.Name,
-            updated.ResourceGroupId,
-            updated.DnsRecord,
-            release.Spec)
+            mutationWriter.Deployment.RuntimeCellId,
+            release.DeploymentGeneration)
         {
-            EventCore = Pole.Features.Events.Abstractions.EventCore.Create(TestData.TenantId)
+            EventCore = EventCore.Create(TestData.TenantId)
         };
         var consumer = new WebServiceDeploymentConsumer(
             Fixture.DbContext,
-            new SuccessfulDeploymentApplier(),
-            NullLogger<WebServiceDeploymentConsumer>.Instance);
-        await consumer.Handle(requested);
+            TimeProvider.System);
+        await consumer.Handle(applied);
 
         var completedRelease = await Fixture.DbContext.WebServiceReleases
             .Find(item => item.Id == release.Id)
@@ -78,11 +80,54 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             .AnyAsync());
     }
 
-    private sealed class SuccessfulDeploymentApplier : IWebServiceDeploymentApplier
+    private sealed class SuccessfulMutationWriter
+        : IResourceDeploymentMutationWriter
     {
-        public Task<Result> ApplyAsync(
-            WebServiceDeploymentRequestedEvent deploymentEvent,
+        public SuccessfulMutationWriter(WebService webService)
+        {
+            var now = DateTime.UtcNow;
+            var runtimeCellId = ObjectId.GenerateNewId().ToString();
+            Deployment = ResourceDeploymentFactory.Create(
+                webService.TenantId,
+                ResourceDeploymentResourceTypes.WebService,
+                webService.Id,
+                webService.ResourceGroupId,
+                ObjectId.GenerateNewId().ToString(),
+                ResolvedResourcePlacement.Create(
+                    runtimeCellId,
+                    TestData.DefaultDeploymentTargetId,
+                    "test-apps",
+                    runtimeCellGeneration: 1,
+                    targetWorkloadConfigurationRevision: 1,
+                    ResolvedIngressConfiguration.Create(
+                        "traefik",
+                        "letsencrypt-prod"),
+                    storage: null,
+                    now),
+                ResourcePlacementCapability.SingleTarget,
+                runtimeCellReady: true,
+                ResourceDeploymentFactory.DefaultOptions with
+                {
+                    CreatedAtUtc = now
+                });
+        }
+
+        public ResourceDeployment Deployment { get; }
+        public int ApplyCallCount { get; private set; }
+
+        public Task<Result<ResourceDeployment>> RequestApplyAsync(
+            ResourceDeploymentMutationCommand command,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
+        {
+            ApplyCallCount++;
+            return Task.FromResult<Result<ResourceDeployment>>(Deployment);
+        }
+
+        public Task<Result<ResourceDeployment>> RequestDeletionAsync(
+            ResourceDeploymentMutationCommand command,
+            IClientSessionHandle session,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result>(Result.Success());
+            Task.FromResult<Result<ResourceDeployment>>(Deployment);
     }
 }

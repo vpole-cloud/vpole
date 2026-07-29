@@ -9,6 +9,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
 using Pole.Encryption;
 using Pole.ASP.Helpers;
+using Pole.Database;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Common;
@@ -27,6 +28,9 @@ using Pole.Features.Outbox.Application.Migrations;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.ResourceDeployments.Application;
+using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Application.Migrations;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Migrations;
 using Pole.Features.ResourceGroups.Application.Services;
@@ -34,6 +38,7 @@ using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
+using Pole.Features.StorageProfiles.Application.Migrations;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.WebServices.Application.Common;
@@ -59,6 +64,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         typeof(QuotaEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,
         typeof(RedisServiceEndpoints).Assembly,
+        typeof(ResourceDeploymentFeature).Assembly,
         typeof(DnsRecordEndpoints).Assembly,
         typeof(GitProviderEndpoints).Assembly,
         typeof(ContainerRegistryFeature).Assembly,
@@ -135,24 +141,30 @@ public sealed class TestApiApplication : IAsyncDisposable
             SupportedVersions = new PostgresSupportedVersionsSettings { From = 16, To = 17 }
         });
         builder.Services.AddSingleton(new QuotaSettings());
+        builder.Services.AddSingleton(new ResourceDeploymentSettings());
         builder.Services.AddQuotaFramework(
             typeof(RedisQuotaProfile).Assembly,
             typeof(FunctionAppQuotaProfile).Assembly,
             typeof(WebServiceQuotaProfile).Assembly,
             typeof(PostgresQuotaProfile).Assembly);
         builder.Services.AddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
-        builder.Services.AddSingleton<InMemoryPostgresClusterSecretStore>();
-        builder.Services.AddSingleton<IPostgresClusterSecretStore>(sp => sp.GetRequiredService<InMemoryPostgresClusterSecretStore>());
         builder.Services.AddMigrations(Assemblies);
         builder.Services.AddSearchFeature();
         builder.Services.AddGitProvidersFeature();
         builder.Services.AddEnvelopeEncryption(builder.Configuration);
+        builder.Services.AddScoped<IPostgresCredentialService, PostgresCredentialService>();
         builder.Services.AddDeploymentTargetsFeature(builder.Configuration);
         builder.Services.RemoveAll<IDeploymentTargetProbe>();
         builder.Services.AddSingleton<IDeploymentTargetProbe, TestDeploymentTargetProbe>();
         builder.Services.RemoveAll<IDeploymentTargetLookup>();
+        builder.Services.RemoveAll<IDeploymentTargetReferenceAdmission>();
+        builder.Services.RemoveAll<IDeploymentTargetWorkloadConfigurationFence>();
         var deploymentTargetLookup = new TestDeploymentTargetLookup();
         builder.Services.AddSingleton<IDeploymentTargetLookup>(deploymentTargetLookup);
+        builder.Services.AddSingleton<IDeploymentTargetReferenceAdmission>(
+            deploymentTargetLookup);
+        builder.Services.AddSingleton<IDeploymentTargetWorkloadConfigurationFence>(
+            deploymentTargetLookup);
         builder.Services.AddSingleton(new HarborOptions());
         builder.Services.AddContainerRegistriesFeature();
         builder.Services.AddSingleton<ISourceBuildJobDispatcher, TestSourceBuildJobDispatcher>();
@@ -197,6 +209,9 @@ public sealed class TestApiApplication : IAsyncDisposable
         await new DeploymentTargetMigration().Up(fixture.Database);
         await new DeploymentTargetReferenceMigration().Up(fixture.Database);
         await new ResourceGroupPlacementMigration().Up(fixture.Database);
+        await new ResourceDeploymentMigration().Up(fixture.Database);
+        await ((IMigration)new PostgresCredentialMigration()).Up(fixture.Database);
+        await new StorageProfileMigration().Up(fixture.Database);
         await new OutboxMessageMigration().Up(fixture.Database);
         app.UseTraceContext();
         app.UseCors("frontend-dev");
@@ -212,6 +227,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapDeploymentTargetEncryptionEndpoints()
             .MapWebServiceEndpoints()
             .MapRedisServiceEndpoints()
+            .MapResourceDeploymentEndpoints()
             .MapFunctionAppEndpoints()
             .MapPostgresClusterEndpoints()
             .MapQuotaEndpoints()

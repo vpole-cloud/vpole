@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.ResourceDeployments.Domain</AssemblyName>
+        <RootNamespace>Pole.Features.ResourceDeployments.Domain</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
+      <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
+    </ItemGroup>
+
+</Project>

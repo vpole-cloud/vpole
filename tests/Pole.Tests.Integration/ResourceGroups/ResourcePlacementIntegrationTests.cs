@@ -217,6 +217,14 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
                 : Task.FromResult<Result<DeploymentTargetLookupDto>>(
                     CreateTarget(deploymentTargetId ?? DefaultTargetId));
 
+        public Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>>
+            ListEligibleForNewWorkloadAsync(
+                CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result<IReadOnlyList<DeploymentTargetLookupDto>>>(
+                RejectNewWorkloads
+                    ? Array.Empty<DeploymentTargetLookupDto>()
+                    : [CreateTarget(DefaultTargetId)]);
+
         private static DeploymentTargetLookupDto CreateTarget(string id) =>
             new(
                 id,
@@ -224,6 +232,11 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
                 $"test:kubernetes:{id}",
                 "InCluster",
                 ConnectionVersion: 1,
+                new DeploymentTargetWorkloadConfigurationLookupDto(
+                    Revision: 1,
+                    new DeploymentTargetIngressConfigurationLookupDto(
+                        "traefik",
+                        "letsencrypt-prod")),
                 Revision: 1,
                 Enabled: true,
                 AcceptsWorkloads: true,

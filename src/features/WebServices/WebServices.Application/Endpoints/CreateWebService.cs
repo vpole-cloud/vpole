@@ -5,14 +5,17 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
+using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.DnsRecords.Contracts;
-using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DnsRecords.Events;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceDeployments.Application.Placement;
+using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
@@ -45,55 +48,73 @@ public static class CreateWebService
 public sealed class CreateWebServiceHandler(
     IWebServiceDbContext dbContext,
     IDomainNameReservationService domainNameReservationService,
-    IResourceGroupLookup resourceGroupLookup,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    IDeploymentTargetLookup deploymentTargetLookup)
+    IResourceDeploymentPlacementResolver placementResolver,
+    IResourceDeploymentWriter deploymentWriter)
     : IMediatorHandler<CreateWebServiceRequest, CreateWebServiceResponse>
 {
     public async Task<Result<CreateWebServiceResponse>> HandleAsync(CreateWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var targetAdmission = await deploymentTargetLookup.ResolveForNewWorkloadAsync(
-            deploymentTargetId: null,
-            cancellationToken);
-        if (!targetAdmission.TryGetValue(out _, out var targetAdmissionFailure))
-            return targetAdmissionFailure;
-
-        var placementResult = await resourceGroupLookup.GetPlacementAsync(
-            request.TenantId,
-            request.Body.ResourceGroupId,
-            cancellationToken);
-        if (!placementResult.TryGetValue(out var placement, out var placementFailure))
-            return placementFailure;
-
         var createWebServiceOptions = WebServiceFactory.DefaultOptions with
         {
             Tags = request.Body.Tags,
         };
-        var spec = request.Body.Spec.ToDomain(placement.KubernetesNamespace);
-        return await quotaAdmissionExecutor.ExecuteAsync<WebServiceSpec, DnsRecordShortInfo, CreateWebServiceResponse>(
+        var deploymentId = ObjectId.GenerateNewId().ToString();
+        var spec = request.Body.Spec.ToDomain();
+        var targetResult = await placementResolver.ResolveTargetAsync(
+            request.Body.Placement?.DeploymentTargetId,
+            requiresIngress: true,
+            cancellationToken);
+        if (!targetResult.TryGetValue(out var target, out var targetFailure))
+            return targetFailure;
+
+        return await quotaAdmissionExecutor.ExecuteAsync<
+            WebServiceSpec,
+            WebServiceCreatePreparation,
+            CreateWebServiceResponse>(
             request.TenantId,
             WebServiceQuotaResourceKey.Create(createWebServiceOptions.Id),
             new CreateQuotaMutation<WebServiceSpec>(spec),
-            transactionCancellationToken => domainNameReservationService.ReserveAsync(
-                new ReserveDomainNameRequest(
-                    TenantId: request.TenantId,
-                    DomainName: request.Body.DomainName,
-                    ResourceType: ResourceType.WebService,
-                    ResourceId: createWebServiceOptions.Id,
-                    ResourceName: request.Body.Name,
-                    ResourceGroupId: request.Body.ResourceGroupId),
+            transactionCancellationToken => PrepareAsync(
+                request,
+                createWebServiceOptions.Id,
+                target,
                 transactionCancellationToken),
-            async (dnsRecord, session, transactionCancellationToken) =>
+            async (preparation, session, transactionCancellationToken) =>
             {
                 var newWebService = WebServiceFactory.Create(
                     name: request.Body.Name,
                     tenantId: request.TenantId,
                     resourceGroupId: request.Body.ResourceGroupId,
                     spec: spec,
-                    dnsRecord: dnsRecord,
+                    dnsRecord: preparation.DnsRecord,
                     options: createWebServiceOptions);
                 var deploymentEventCore = EventCore.Create(request.TenantId);
+                await dbContext.WebServices.InsertOneAsync(
+                    session,
+                    newWebService,
+                    cancellationToken: transactionCancellationToken);
+                var deploymentResult = await deploymentWriter.CreateAsync(
+                    new CreateResourceDeploymentCommand(
+                        deploymentId,
+                        request.TenantId,
+                        ResourceDeploymentResourceTypes.WebService,
+                        newWebService.Id,
+                        newWebService.ResourceGroupId,
+                        request.Body.Placement?.IsolationScopeId,
+                        preparation.Target,
+                        Storage: null,
+                        ResourcePlacementCapability.SingleTarget),
+                    session,
+                    transactionCancellationToken);
+                if (!deploymentResult.TryGetValue(
+                        out var deployment,
+                        out var deploymentFailure))
+                {
+                    return deploymentFailure;
+                }
+
                 var release = WebServiceReleaseFactory.CreatePending(
                     request.TenantId,
                     newWebService.Id,
@@ -104,32 +125,55 @@ public sealed class CreateWebServiceHandler(
                     newWebService.Spec.ToSnapshot(),
                     deploymentEventCore.TraceId,
                     deploymentEventCore.CorrelationId,
-                    deploymentEventCore.OccurredOn);
-
-                await dbContext.WebServices.InsertOneAsync(
-                    session,
-                    newWebService,
-                    cancellationToken: transactionCancellationToken);
-                await dbContext.WebServiceReleases.InsertOneAsync(
+                    deploymentEventCore.OccurredOn,
+                    deploymentGeneration: deployment.DesiredGeneration);
+                await WebServiceReleasePersistence.InsertCurrentAsync(
+                    dbContext,
                     session,
                     release,
-                    cancellationToken: transactionCancellationToken);
+                    transactionCancellationToken);
+
                 await dbContext.StoreEventAsync(
                     [
                         newWebService.ToCreateEvent(),
                         new CommitDomainNameEvent(
-                            DnsRecordId: dnsRecord.Id,
+                            DnsRecordId: preparation.DnsRecord.Id,
                             ResourceId: newWebService.Id,
-                            EventCore: EventCore.Create(request.TenantId)),
-                        release.ToDeploymentRequestedEvent(newWebService, deploymentEventCore)
+                            EventCore: EventCore.Create(request.TenantId))
                     ],
                     session,
                     transactionCancellationToken);
 
-                return new CreateWebServiceResponse(newWebService.Id);
+                return new CreateWebServiceResponse(
+                    newWebService.Id,
+                    deployment.ToPlacementSummaryDto());
             },
             cancellationToken);
     }
+
+    private async Task<Result<WebServiceCreatePreparation>> PrepareAsync(
+        CreateWebServiceRequest request,
+        string webServiceId,
+        ResolvedDeploymentTarget target,
+        CancellationToken cancellationToken)
+    {
+        var dnsResult = await domainNameReservationService.ReserveAsync(
+            new ReserveDomainNameRequest(
+                TenantId: request.TenantId,
+                DomainName: request.Body.DomainName,
+                ResourceType: ResourceType.WebService,
+                ResourceId: webServiceId,
+                ResourceName: request.Body.Name,
+                ResourceGroupId: request.Body.ResourceGroupId),
+            cancellationToken);
+        return dnsResult.TryGetValue(out var dnsRecord, out var dnsFailure)
+            ? new WebServiceCreatePreparation(dnsRecord, target)
+            : dnsFailure;
+    }
+
+    private sealed record WebServiceCreatePreparation(
+        DnsRecordShortInfo DnsRecord,
+        ResolvedDeploymentTarget Target);
 }
 
 public sealed record CreateWebServiceRequest(
@@ -144,9 +188,11 @@ public sealed record CreateWebServiceRequestBody(
     string ResourceGroupId,
     WebServiceSpecDto Spec,
     string DomainName,
-    ImmutableHashSet<string> Tags);
+    ImmutableHashSet<string> Tags,
+    PlacementRequest? Placement = null);
 public sealed record CreateWebServiceResponse(
-    string WebServiceId);
+    string WebServiceId,
+    PlacementSummaryDto Placement);
 
 
 public sealed class CreateWebServiceRequestValidator : AbstractValidator<CreateWebServiceRequest>
@@ -173,6 +219,17 @@ public sealed class CreateWebServiceRequestBodyValidator : AbstractValidator<Cre
         RuleFor(x => x.DomainName)
             .NotEmpty()
             .MaximumLength(100);
+        When(body => body.Placement is not null, () =>
+        {
+            RuleFor(body => body.Placement!.IsolationScopeId)
+                .Must(id => string.IsNullOrWhiteSpace(id) ||
+                            ObjectId.TryParse(id, out _))
+                .WithMessage("Isolation scope ID must be a MongoDB ObjectId.");
+            RuleFor(body => body.Placement!.DeploymentTargetId)
+                .Must(id => string.IsNullOrWhiteSpace(id) ||
+                            ObjectId.TryParse(id, out _))
+                .WithMessage("Deployment target ID must be a MongoDB ObjectId.");
+        });
     }
 }
 
@@ -316,6 +373,3 @@ public sealed class PortMappingDtoValidator : AbstractValidator<PortMappingDto>
             .WithMessage("Protocol must be either 'TCP' or 'UDP'.");
     }
 }
-
-
-

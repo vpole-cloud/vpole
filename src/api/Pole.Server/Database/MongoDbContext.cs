@@ -14,6 +14,8 @@ using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Domain;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
+using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Search.Application.Common;
@@ -51,7 +53,8 @@ public class MongoDbContext(
     IContainerRegistryDbContext,
     IDeploymentTargetDbContext,
     ISourceBuildDbContext,
-    IFunctionAppDbContext
+    IFunctionAppDbContext,
+    IResourceDeploymentDbContext
 {
     public IMongoDatabase Database { get; } = database;
     public IMongoClient Client { get; } = client;
@@ -63,6 +66,7 @@ public class MongoDbContext(
     public IMongoCollection<ResourceGroup> ResourceGroups { get; } = database.GetCollection<ResourceGroup>("ResourceGroups");
     public IMongoCollection<IsolationScope> IsolationScopes { get; } = database.GetCollection<IsolationScope>("IsolationScopes");
     public IMongoCollection<RuntimeCell> RuntimeCells { get; } = database.GetCollection<RuntimeCell>("RuntimeCells");
+    public IMongoCollection<ResourceDeployment> ResourceDeployments { get; } = database.GetCollection<ResourceDeployment>("ResourceDeployments");
     public IMongoCollection<DnsRecord> DnsRecords { get; } = database.GetCollection<DnsRecord>("DnsRecords");
     public IMongoCollection<PostgresCluster>  Postgres { get; } = database.GetCollection<PostgresCluster>("Postgres");
     public IMongoCollection<TenantQuotaPolicy> TenantQuotaPolicies { get; } = database.GetCollection<TenantQuotaPolicy>("TenantQuotaPolicies");

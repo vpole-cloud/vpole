@@ -10,6 +10,9 @@ using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Quotas.Contracts;
+using Pole.Features.ResourceDeployments.Application.Mutations;
+using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
@@ -46,16 +49,18 @@ public sealed record UpdateWebServiceRequest(
 ) : IMediatorRequest<UpdateWebServiceResponse>, ITenantWriteOperation;
 
 public sealed record UpdateWebServiceRequestBody(
-    string ResourceGroupId,
     WebServiceSpecDto Spec,
     ImmutableHashSet<string> Tags
 );
 
-public sealed record UpdateWebServiceResponse(string Id);
+public sealed record UpdateWebServiceResponse(
+    string Id,
+    PlacementSummaryDto Placement);
 
 public sealed class UpdateWebServiceHandler(
     IWebServiceDbContext dbContext,
-    IQuotaAdmissionExecutor quotaAdmissionExecutor)
+    IQuotaAdmissionExecutor quotaAdmissionExecutor,
+    IResourceDeploymentMutationWriter deploymentWriter)
     : IMediatorHandler<UpdateWebServiceRequest, UpdateWebServiceResponse>
 {
     public async Task<Result<UpdateWebServiceResponse>> HandleAsync(
@@ -73,37 +78,68 @@ public sealed class UpdateWebServiceHandler(
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
 
-        var nextSpec = request.Body.Spec.ToDomain(webService.Spec.KubernetesNamespace);
+        if (webService.Lifecycle is not ActiveWebServiceLifecycle)
+            return Failures.Conflict("A deleting web service cannot be updated.");
+
+        var nextSpec = request.Body.Spec.ToDomain();
         return await quotaAdmissionExecutor.ExecuteAsync<WebServiceSpec, UpdateWebServiceResponse>(
             webService.TenantId,
             WebServiceQuotaResourceKey.Create(webService.Id),
             new UpdateQuotaMutation<WebServiceSpec>(webService.Spec, nextSpec),
             async (session, transactionCancellationToken) =>
             {
-                var changes = GetChanges(webService, request.Body);
-                var nextRevision = Math.Max(webService.ActiveRevision, 1) + 1;
+                var updatedWebService = webService.UpdateDesiredState(
+                    nextSpec,
+                    request.Body.Tags);
+                var changes = GetChanges(webService, updatedWebService);
                 var deploymentEventCore = EventCore.Create(webService.TenantId);
+
+                var replace = await dbContext.WebServices.ReplaceOneAsync(
+                    session,
+                    Builders<WebService>.Filter.And(
+                        filter,
+                        Builders<WebService>.Filter.Eq(
+                            item => item.Revision,
+                            webService.Revision)),
+                    updatedWebService,
+                    cancellationToken: transactionCancellationToken);
+                if (replace.ModifiedCount != 1)
+                {
+                    return Failures.Conflict(
+                        "The web service changed while the update was being accepted.");
+                }
+
+                var deploymentResult = await deploymentWriter.RequestApplyAsync(
+                    new ResourceDeploymentMutationCommand(
+                        webService.TenantId,
+                        ResourceDeploymentResourceTypes.WebService,
+                        webService.Id),
+                    session,
+                    transactionCancellationToken);
+                if (!deploymentResult.TryGetValue(
+                        out var deployment,
+                        out var deploymentFailure))
+                {
+                    return deploymentFailure;
+                }
+
                 var release = WebServiceReleaseFactory.CreatePending(
                     webService.TenantId,
                     webService.Id,
-                    nextRevision,
+                    updatedWebService.ActiveRevision,
                     WebServiceReleaseAction.Update,
                     request.ActorUserId.Value,
                     request.ActorEmail.Value,
                     changes.WebServiceSpec.New,
                     deploymentEventCore.TraceId,
                     deploymentEventCore.CorrelationId,
-                    deploymentEventCore.OccurredOn);
-
-                await dbContext.WebServices.UpdateOneAsync(
-                    session,
-                    filter,
-                    GetUpdateDefinition(changes, nextRevision),
-                    cancellationToken: transactionCancellationToken);
-                await dbContext.WebServiceReleases.InsertOneAsync(
+                    deploymentEventCore.OccurredOn,
+                    deploymentGeneration: deployment.DesiredGeneration);
+                await WebServiceReleasePersistence.InsertCurrentAsync(
+                    dbContext,
                     session,
                     release,
-                    cancellationToken: transactionCancellationToken);
+                    transactionCancellationToken);
                 await dbContext.StoreEventAsync(
                     new WebServiceUpdatedEvent(
                         request.Id,
@@ -116,35 +152,22 @@ public sealed class UpdateWebServiceHandler(
                     },
                     session,
                     transactionCancellationToken);
-                await dbContext.StoreEventAsync(
-                    release.ToDeploymentRequestedEvent(webService, deploymentEventCore),
-                    session,
-                    transactionCancellationToken);
 
-                return new UpdateWebServiceResponse(webService.Id);
+                return new UpdateWebServiceResponse(
+                    webService.Id,
+                    deployment.ToPlacementSummaryDto());
             },
             cancellationToken);
     }
 
-    private static WebServiceUpdatedEventChanges GetChanges(WebService webService, UpdateWebServiceRequestBody body) =>
+    private static WebServiceUpdatedEventChanges GetChanges(
+        WebService webService,
+        WebService updatedWebService) =>
         new(UpdateLog<WebServiceSpecSnapshot>.Of(
                 webService.Spec.ToSnapshot(),
-                body.Spec.ToDomain(webService.Spec.KubernetesNamespace).ToSnapshot()),
+                updatedWebService.Spec.ToSnapshot()),
             UpdateLog<ImmutableHashSet<string>>.Of(webService.Tags,
-                body.Tags));
-
-    private static UpdateDefinition<WebService> GetUpdateDefinition(
-        WebServiceUpdatedEventChanges changes,
-        int nextRevision)
-    {
-        var updates = new Queue<UpdateDefinition<WebService>>();
-        updates.Enqueue(Builders<WebService>.Update.Set(ws => ws.ActiveRevision, nextRevision));
-        if (!changes.Tags.AreEqual)
-            updates.Enqueue(Builders<WebService>.Update.Set(ws => ws.Tags, changes.Tags.New));
-        if (!changes.WebServiceSpec.AreEqual)
-            updates.Enqueue(Builders<WebService>.Update.Set(ws => ws.Spec, changes.WebServiceSpec.New.ToDomain()));
-        return Builders<WebService>.Update.Combine(updates);
-    }
+                updatedWebService.Tags));
 }
 
 public sealed class UpdateWebServiceValidator : AbstractValidator<UpdateWebServiceRequest>
@@ -154,13 +177,8 @@ public sealed class UpdateWebServiceValidator : AbstractValidator<UpdateWebServi
         RuleFor(x => x.Id)
             .NotEmpty().WithMessage("Web service ID is required.");
 
-        RuleFor(x => x.Body.ResourceGroupId)
-            .NotEmpty().WithMessage("Resource group ID is required.");
-
         RuleFor(x => x.Body.Spec)
             .NotNull().WithMessage("Web service specification is required.")
             .SetValidator(new WebServiceSpecDtoValidator());
     }
 }
-
-

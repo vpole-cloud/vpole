@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.ResourceDeployments.Application</AssemblyName>
+        <RootNamespace>Pole.Features.ResourceDeployments.Application</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
+      <ProjectReference Include="..\ResourceDeployments.Domain\ResourceDeployments.Domain.csproj" />
+      <ProjectReference Include="..\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />
+      <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
+      <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
+      <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Domain\ResourceGroups.Domain.csproj" />
+      <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Events\ResourceGroups.Events.csproj" />
+      <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
+      <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
+      <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
+      <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
+      <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
+      <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="FluentValidation" />
+      <PackageReference Include="Hangfire.Core" />
+      <PackageReference Include="KubernetesClient" />
+      <PackageReference Include="MassTransit" />
+    </ItemGroup>
+
+</Project>

@@ -1,6 +1,7 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Pole.Encryption;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -69,9 +70,16 @@ public static class TestServiceProviderFactory
             typeof(WebServiceQuotaProfile).Assembly,
             typeof(PostgresQuotaProfile).Assembly);
         services.AddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
-        services.AddSingleton<IDeploymentTargetLookup, TestDeploymentTargetLookup>();
-        services.AddSingleton<InMemoryPostgresClusterSecretStore>();
-        services.AddSingleton<IPostgresClusterSecretStore>(sp => sp.GetRequiredService<InMemoryPostgresClusterSecretStore>());
+        var deploymentTargetLookup = new TestDeploymentTargetLookup();
+        services.AddSingleton(deploymentTargetLookup);
+        services.AddSingleton<IDeploymentTargetLookup>(deploymentTargetLookup);
+        services.AddSingleton<IDeploymentTargetReferenceAdmission>(
+            deploymentTargetLookup);
+        services.AddSingleton<IDeploymentTargetWorkloadConfigurationFence>(
+            deploymentTargetLookup);
+        services.AddSingleton<IEnvelopeEncryptionService>(
+            TestPostgresEnvelopeEncryption.Create());
+        services.AddScoped<IPostgresCredentialService, PostgresCredentialService>();
         services.AddMigrations(Assemblies);
         services.AddSearchFeature();
         services.AddScoped<ISourceBuildReferenceLookup, SourceBuildReferenceLookup>();

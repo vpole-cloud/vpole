@@ -2,6 +2,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Application.Consumers;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Jobs;
@@ -81,9 +82,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
             DbContext,
             manager,
             admission,
-            new ResourceGroupDeletionFinalizer(
-                DbContext,
-                new FixedTimeProvider(InitialTime.AddMinutes(2))),
+            CreateDeletionFinalizer(InitialTime.AddMinutes(2)),
             new FixedTimeProvider(InitialTime.AddMinutes(2)));
         var message = new RuntimeCellDeletionRequestedEvent(
             deleting.Id,
@@ -122,9 +121,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
             DbContext,
             manager,
             admission,
-            new ResourceGroupDeletionFinalizer(
-                DbContext,
-                new FixedTimeProvider(InitialTime.AddMinutes(2))),
+            CreateDeletionFinalizer(InitialTime.AddMinutes(2)),
             new FixedTimeProvider(InitialTime.AddMinutes(2)));
         var message = new RuntimeCellDeletionRequestedEvent(
             deleting.Id,
@@ -175,9 +172,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
             DbContext,
             new RecordingNamespaceManager(Result.Success(), Result.Success()),
             new RecordingReferenceAdmission(),
-            new ResourceGroupDeletionFinalizer(
-                DbContext,
-                new FixedTimeProvider(completedAt)),
+            CreateDeletionFinalizer(completedAt),
             new FixedTimeProvider(completedAt));
         var message = new RuntimeCellDeletionRequestedEvent(
             cell.Id,
@@ -216,9 +211,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         await DbContext.RuntimeCells.ReplaceOneAsync(item => item.Id == cell.Id, failed);
         var job = new RuntimeCellRecoveryJob(
             DbContext,
-            new ResourceGroupDeletionFinalizer(
-                DbContext,
-                new FixedTimeProvider(InitialTime.AddMinutes(2))),
+            CreateDeletionFinalizer(InitialTime.AddMinutes(2)),
             new FixedTimeProvider(InitialTime.AddMinutes(2)));
 
         await job.RecoverAsync();
@@ -245,9 +238,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
 
         var laterJob = new RuntimeCellRecoveryJob(
             DbContext,
-            new ResourceGroupDeletionFinalizer(
-                DbContext,
-                new FixedTimeProvider(InitialTime.AddMinutes(3))),
+            CreateDeletionFinalizer(InitialTime.AddMinutes(3)),
             new FixedTimeProvider(InitialTime.AddMinutes(3)));
         await laterJob.RecoverAsync();
 
@@ -287,9 +278,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         var recoveryTime = requestedAt.AddMinutes(3);
         var job = new RuntimeCellRecoveryJob(
             DbContext,
-            new ResourceGroupDeletionFinalizer(
-                DbContext,
-                new FixedTimeProvider(recoveryTime)),
+            CreateDeletionFinalizer(recoveryTime),
             new FixedTimeProvider(recoveryTime));
 
         await job.RecoverAsync();
@@ -316,6 +305,12 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         await DbContext.RuntimeCells.InsertOneAsync(cell);
         return cell;
     }
+
+    private ResourceGroupDeletionFinalizer CreateDeletionFinalizer(DateTime utcNow) =>
+        new(
+            DbContext,
+            new NoUnfinishedDeploymentReferences(),
+            new FixedTimeProvider(utcNow));
 
     private static RuntimeCellReconciliationRequestedEvent ReconciliationEvent(RuntimeCell cell) =>
         new(cell.Id, cell.DesiredGeneration)
@@ -369,6 +364,25 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
             UnregisterCallCount++;
             return Task.FromResult<Result>(Result.Success());
         }
+    }
+
+    private sealed class NoUnfinishedDeploymentReferences
+        : IResourceDeploymentReferenceLookup
+    {
+        public Task<Result> EnsureNoUnfinishedForResourceGroupAsync(
+            string tenantId,
+            string resourceGroupId,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result>(Result.Success());
+
+        public Task<Result> EnsureNoUnfinishedForIsolationScopeAsync(
+            string tenantId,
+            string resourceGroupId,
+            string isolationScopeId,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result>(Result.Success());
     }
 
     private sealed class FixedTimeProvider(DateTime utcNow) : TimeProvider

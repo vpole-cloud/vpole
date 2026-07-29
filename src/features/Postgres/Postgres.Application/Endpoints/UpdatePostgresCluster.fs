@@ -12,9 +12,10 @@ open Pole.Database
 open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.Postgres.Events
-open Pole.Features.Postgres.Application.Kubernetes
 open Pole.Features.Quotas.Contracts
+open Pole.Features.ResourceDeployments.Application.Common
+open Pole.Features.ResourceDeployments.Application.Mutations
+open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.Shared.Models
 open Pole.Features.StorageProfiles.Contracts
 open Pole.Mediator
@@ -26,7 +27,8 @@ type UpdatePostgresClusterRequestBody =
       Resources : Resources option }
 
 type UpdatePostgresClusterResponse =
-    { Id : string }
+    { Id : string
+      Placement : PlacementSummaryDto }
 
 type UpdatePostgresClusterRequest =
     { [<FromRoute>]
@@ -42,87 +44,142 @@ type UpdatePostgresClusterRequest =
 type UpdatePostgresClusterHandler(
     dbContext : IPostgresDbContext,
     storageProfileResolver : IStorageProfileResolver,
-    quotaAdmissionExecutor : IQuotaAdmissionExecutor) =
+    quotaAdmissionExecutor : IQuotaAdmissionExecutor,
+    deploymentQuery : IResourceDeploymentQueryService,
+    deploymentWriter : IResourceDeploymentMutationWriter) =
     interface IMediatorHandler<UpdatePostgresClusterRequest, UpdatePostgresClusterResponse> with
         member _.HandleAsync(request, cancellationToken) =
             task {
                 let filter =
                     Builders<PostgresCluster>.Filter.And(
                         Builders<PostgresCluster>.Filter.ForTenant(request.TenantId),
-                        Builders<PostgresCluster>.Filter.Eq(_.Id, request.ClusterId))
+                        Builders<PostgresCluster>.Filter.Eq((fun cluster -> cluster.Id), request.ClusterId))
 
-                let! postgresCluster =
+                let! cluster =
                     dbContext.Postgres
                         .Find(filter)
                         .FirstOrNoneAsync(cancellationToken)
 
-                match postgresCluster with
+                match cluster with
                 | None ->
-                    return Failures.NotFound("Postgres cluster not found.", request.ClusterId)
-                           |> ResultF.ofFailure
+                    return
+                        Failures.NotFound("PostgreSQL cluster not found.", request.ClusterId)
+                        |> ResultF.ofFailure
+                | Some cluster when (cluster.Lifecycle :? DeletingPostgresClusterLifecycle) ->
+                    return
+                        Failures.Conflict("A deleting PostgreSQL cluster cannot be updated.")
+                        |> ResultF.ofFailure
                 | Some cluster ->
-                    let updatedInstances = defaultArg request.Body.Instances cluster.Spec.Instances
-                    let updatedStorage = defaultArg request.Body.Storage cluster.Spec.Storage
-                    let updatedResources = defaultArg request.Body.Resources cluster.Spec.Resources
+                    let updatedInstances =
+                        defaultArg request.Body.Instances cluster.Spec.Instances
+                    let updatedStorage =
+                        defaultArg request.Body.Storage cluster.Spec.Storage
+                    let updatedResources =
+                        defaultArg request.Body.Resources cluster.Spec.Resources
 
-                    if cluster.Spec.DeploymentMode = PostgresDeploymentMode.StatefulSet && updatedInstances <> 1 then
-                        let validationErrors = System.Collections.Generic.Dictionary<string, string[]>()
-                        validationErrors["Body.Instances"] <- [| "StatefulSet PostgreSQL supports exactly one instance." |]
-                        return Failures.ValidationFailure(validationErrors) |> ResultF.ofFailure
+                    if cluster.Spec.DeploymentMode = PostgresDeploymentMode.StatefulSet &&
+                       updatedInstances <> 1 then
+                        let errors =
+                            System.Collections.Generic.Dictionary<string, string[]>()
+                        errors["Body.Instances"] <-
+                            [| "StatefulSet PostgreSQL supports exactly one instance." |]
+                        return
+                            Failures.ValidationFailure(errors)
+                            |> ResultF.ofFailure
                     else
-                        let! storageProfileResult =
-                            storageProfileResolver.ResolveAsync(
-                                StorageProfileResolutionRequest(
-                                    cluster.Spec.StorageProfile.ProfileId,
-                                    cluster.TenantId,
-                                    ResourceType.Postgres,
-                                    updatedStorage),
+                        let! placement =
+                            deploymentQuery.GetAsync(
+                                cluster.TenantId,
+                                ResourceDeploymentResourceTypes.PostgreSql,
+                                cluster.Id,
                                 cancellationToken)
 
-                        match storageProfileResult.TryGetValue() with
-                        | struct (false, _, storageProfileFailure) ->
-                            return storageProfileFailure |> ResultF.ofFailure
-                        | struct (true, _, _) ->
-                            let updatedCluster =
-                                { cluster with
-                                    GroupId = cluster.GroupId
-                                    Spec =
-                                        { Instances = updatedInstances
-                                          Storage = updatedStorage
-                                          Resources = updatedResources
-                                          StorageProfile = cluster.Spec.StorageProfile
-                                          KubernetesNamespace = cluster.Spec.KubernetesNamespace
-                                          Version = cluster.Spec.Version
-                                          DeploymentMode = cluster.Spec.DeploymentMode } }
-
-                            return!
-                                quotaAdmissionExecutor.ExecuteAsync<PostgresClusterSpec, UpdatePostgresClusterResponse>(
-                                    cluster.TenantId,
-                                    PostgresQuotaResourceKey.create cluster.Id,
-                                    UpdateQuotaMutation<PostgresClusterSpec>(cluster.Spec, updatedCluster.Spec),
-                                    (fun session ct ->
-                                        task {
-                                            let! _ =
-                                                dbContext.Postgres.ReplaceOneAsync(
-                                                    session,
-                                                    filter,
-                                                    updatedCluster,
-                                                    cancellationToken = ct)
-
-                                            let event = PostgresClusterEvents.updated cluster updatedCluster
-                                            do! dbContext.StoreEventAsync(event, session, ct)
-                                            return { Id = request.ClusterId } |> ResultF.ofValue
-                                        }),
+                        if isNull placement then
+                            return
+                                Failures.Conflict(
+                                    "The PostgreSQL resource deployment is unavailable.")
+                                |> ResultF.ofFailure
+                        else
+                            let! storageProfileResult =
+                                storageProfileResolver.ResolveAsync(
+                                    StorageProfileResolutionRequest(
+                                        cluster.Spec.StorageProfileId,
+                                        placement.DeploymentTargetId,
+                                        cluster.TenantId,
+                                        ResourceType.Postgres,
+                                        updatedStorage),
                                     cancellationToken)
+
+                            match storageProfileResult.TryGetValue() with
+                            | struct (false, _, failure) ->
+                                return failure |> ResultF.ofFailure
+                            | struct (true, _, _) ->
+                                let updatedCluster =
+                                    cluster.UpdateDesiredState(
+                                        updatedInstances,
+                                        updatedStorage,
+                                        updatedResources)
+
+                                return!
+                                    quotaAdmissionExecutor.ExecuteAsync<PostgresClusterSpec, UpdatePostgresClusterResponse>(
+                                        cluster.TenantId,
+                                        PostgresQuotaResourceKey.create cluster.Id,
+                                        UpdateQuotaMutation<PostgresClusterSpec>(
+                                            cluster.Spec,
+                                            updatedCluster.Spec),
+                                        (fun session ct ->
+                                            task {
+                                                let! replacement =
+                                                    dbContext.Postgres.ReplaceOneAsync(
+                                                        session,
+                                                        Builders<PostgresCluster>.Filter.And(
+                                                            filter,
+                                                            Builders<PostgresCluster>.Filter.Eq(
+                                                                (fun item -> item.Revision),
+                                                                cluster.Revision)),
+                                                        updatedCluster,
+                                                        cancellationToken = ct)
+
+                                                if replacement.ModifiedCount <> 1L then
+                                                    return
+                                                        Failures.Conflict(
+                                                            "The PostgreSQL cluster changed while the update was being accepted.")
+                                                        |> ResultF.ofFailure
+                                                else
+                                                    let! deploymentResult =
+                                                        deploymentWriter.RequestApplyAsync(
+                                                            ResourceDeploymentMutationCommand(
+                                                                cluster.TenantId,
+                                                                ResourceDeploymentResourceTypes.PostgreSql,
+                                                                cluster.Id),
+                                                            session,
+                                                            ct)
+
+                                                    match deploymentResult.TryGetValue() with
+                                                    | struct (false, _, failure) ->
+                                                        return failure |> ResultF.ofFailure
+                                                    | struct (true, deployment, _) ->
+                                                        do!
+                                                            dbContext.StoreEventAsync(
+                                                                PostgresClusterEvents.updated
+                                                                    cluster
+                                                                    updatedCluster,
+                                                                session,
+                                                                ct)
+                                                        return
+                                                            { Id = cluster.Id
+                                                              Placement =
+                                                                ResourceDeploymentDtoExtensions.ToPlacementSummaryDto(
+                                                                    deployment) }
+                                                            |> ResultF.ofValue
+                                            }),
+                                        cancellationToken)
             }
 
 type UpdatePostgresClusterRequestValidator() as this =
     inherit AbstractValidator<UpdatePostgresClusterRequest>()
     do
-        this.RuleFor(_.ClusterId)
-            .NotEmpty()
-        |> ignore
-
+        this.RuleFor(_.ClusterId).NotEmpty() |> ignore
         this.When(
             (fun request -> Option.isSome request.Body.Resources),
             (fun () ->
@@ -134,29 +191,21 @@ type UpdatePostgresClusterRequestValidator() as this =
 [<AbstractClass; Sealed>]
 type UpdatePostgresCluster =
     [<Extension>]
-    static member MapUpdatePostgresClusterEndpoint(endpoints: IEndpointRouteBuilder) =
-        endpoints.MapMethod<UpdatePostgresCluster>("/{ClusterId}", nameof UpdatePostgresCluster.Handle, EndpointHttpMethod.Put)
+    static member MapUpdatePostgresClusterEndpoint(endpoints : IEndpointRouteBuilder) =
+        endpoints.MapMethod<UpdatePostgresCluster>(
+            "/{ClusterId}",
+            nameof UpdatePostgresCluster.Handle,
+            EndpointHttpMethod.Put)
             .WithName("UpdatePostgresCluster")
-            |> ignore
+            .Produces<UpdatePostgresClusterResponse>(StatusCodes.Status202Accepted)
+        |> ignore
         endpoints
-        
-    static member Handle([<AsParameters>] request: UpdatePostgresClusterRequest, [<FromServices>] mediator: IMediator) =
+
+    static member Handle(
+        [<AsParameters>] request : UpdatePostgresClusterRequest,
+        [<FromServices>] mediator : IMediator,
+        cancellationToken : System.Threading.CancellationToken) =
         task {
-            let! result = mediator.Send request
-            return result.ToHttpResult(fun value -> Results.Ok(value))
+            let! result = mediator.Send(request, cancellationToken)
+            return result.ToHttpResult(fun value -> Results.Accepted(value = value))
         }
-
-type UpdatePostgresClusterDeploymentOnPostgresClusterUpdatedConsumer(
-    secretStore : IPostgresClusterSecretStore,
-    deploymentManager : IPostgresClusterDeploymentManager) =
-    interface MassTransit.IConsumer<PostgresClusterUpdatedEvent> with
-        member _.Consume(context) =
-            task {
-                let cluster = PostgresClusterEvents.fromUpdated context.Message
-                let! credentials = secretStore.GetAsync(cluster.Spec.KubernetesNamespace, cluster.Id, context.CancellationToken)
-                match credentials with
-                | None -> ()
-                | Some credentials ->
-                    do! deploymentManager.UpdateAsync(cluster, credentials.Username, context.CancellationToken)
-            }
-

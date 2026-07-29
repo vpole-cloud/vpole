@@ -49,7 +49,6 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
         var updateRequest = new UpdateRedisServiceRequest(
             Id: created.RedisId,
             Body: new UpdateRedisServiceRequestBody(
-                ResourceGroupId: resourceGroup.Id,
                 Spec: new(
                     Storage: new(10, TestData.DefaultStorageProfileId),
                     Resources: new(
@@ -67,8 +66,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
         var updated = await DbContext.RedisServices.Find(redis => redis.Id == created.RedisId).FirstOrDefaultAsync();
         Assert.NotNull(updated);
         Assert.Equal(10, updated.Spec.Storage.SizeGb);
-        Assert.Equal(TestData.DefaultStorageProfileId, updated.Spec.Storage.StorageProfile.ProfileId);
-        Assert.Equal("standard", updated.Spec.Storage.StorageProfile.StorageClassName);
+        Assert.Equal(TestData.DefaultStorageProfileId, updated.Spec.Storage.StorageProfileId);
         Assert.Equal(["cache", "prod"], updated.Tags.Order());
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("redis-service-updated"));
     }
@@ -88,7 +86,6 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
         var updateRequest = new UpdateRedisServiceRequest(
             Id: created.RedisId,
             Body: new UpdateRedisServiceRequestBody(
-                ResourceGroupId: resourceGroup.Id,
                 Spec: new(
                     Storage: new(5, otherProfileId),
                     Resources: new(
@@ -128,7 +125,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
-    public async Task Delete_RemovesRedisAndStoresOutboxEvent()
+    public async Task Delete_MarksRedisDeleting_AndRequestsDeploymentDeletion()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var createResult = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id));
@@ -140,9 +137,15 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Null(error);
         Assert.Equal(created.RedisId, response.Id);
 
-        var deleted = await DbContext.RedisServices.Find(redis => redis.Id == created.RedisId).FirstOrDefaultAsync();
-        Assert.Null(deleted);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("redis-service-deleted"));
+        var deleting = await DbContext.RedisServices
+            .Find(redis => redis.Id == created.RedisId)
+            .SingleAsync();
+        Assert.IsType<Pole.Features.RedisServices.Domain.DeletingRedisLifecycle>(
+            deleting.Lifecycle);
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+            "resource-deployment-deletion-requested"));
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
+            "redis-service-deleted"));
     }
 
     [Fact]
@@ -154,4 +157,3 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.IsType<NotFoundFailure>(error);
     }
 }
-

@@ -10,6 +10,9 @@ using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Quotas.Contracts;
+using Pole.Features.ResourceDeployments.Application.Mutations;
+using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
@@ -44,11 +47,16 @@ public sealed record RollbackWebServiceRequest(
 
 public sealed record RollbackWebServiceRequestBody(int TargetRevision);
 
-public sealed record RollbackWebServiceResponse(string Id, int Revision, string ReleaseId);
+public sealed record RollbackWebServiceResponse(
+    string Id,
+    int Revision,
+    string ReleaseId,
+    PlacementSummaryDto Placement);
 
 public sealed class RollbackWebServiceHandler(
     IWebServiceDbContext dbContext,
-    IQuotaAdmissionExecutor quotaAdmissionExecutor)
+    IQuotaAdmissionExecutor quotaAdmissionExecutor,
+    IResourceDeploymentMutationWriter deploymentWriter)
     : IMediatorHandler<RollbackWebServiceRequest, RollbackWebServiceResponse>
 {
     public async Task<Result<RollbackWebServiceResponse>> HandleAsync(
@@ -65,6 +73,8 @@ public sealed class RollbackWebServiceHandler(
 
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
+        if (webService.Lifecycle is not ActiveWebServiceLifecycle)
+            return Failures.Conflict("A deleting web service cannot be rolled back.");
 
         var targetReleaseFilter = Builders<WebServiceRelease>.Filter.And(
             Builders<WebServiceRelease>.Filter.ForTenant(request.TenantId),
@@ -86,51 +96,78 @@ public sealed class RollbackWebServiceHandler(
             new UpdateQuotaMutation<WebServiceSpec>(webService.Spec, targetSpec),
             async (session, transactionCancellationToken) =>
             {
-                var nextRevision = Math.Max(webService.ActiveRevision, 1) + 1;
+                var updatedWebService = webService.UpdateDesiredState(
+                    targetSpec,
+                    webService.Tags);
                 var deploymentEventCore = EventCore.Create(webService.TenantId);
+                var changes = new WebServiceUpdatedEventChanges(
+                    UpdateLog<WebServiceSpecSnapshot>.Of(webService.Spec.ToSnapshot(), targetRelease.Spec),
+                    UpdateLog<ImmutableHashSet<string>>.Of(webService.Tags, webService.Tags));
+
+                var replace = await dbContext.WebServices.ReplaceOneAsync(
+                    session,
+                    Builders<WebService>.Filter.And(
+                        webServiceFilter,
+                        Builders<WebService>.Filter.Eq(
+                            item => item.Revision,
+                            webService.Revision)),
+                    updatedWebService,
+                    cancellationToken: transactionCancellationToken);
+                if (replace.ModifiedCount != 1)
+                {
+                    return Failures.Conflict(
+                        "The web service changed while rollback was being accepted.");
+                }
+
+                var deploymentResult = await deploymentWriter.RequestApplyAsync(
+                    new ResourceDeploymentMutationCommand(
+                        webService.TenantId,
+                        ResourceDeploymentResourceTypes.WebService,
+                        webService.Id),
+                    session,
+                    transactionCancellationToken);
+                if (!deploymentResult.TryGetValue(
+                        out var deployment,
+                        out var deploymentFailure))
+                {
+                    return deploymentFailure;
+                }
+
                 var release = WebServiceReleaseFactory.CreatePending(
                     webService.TenantId,
                     webService.Id,
-                    nextRevision,
+                    updatedWebService.ActiveRevision,
                     WebServiceReleaseAction.Rollback,
                     request.ActorUserId.Value,
                     request.ActorEmail.Value,
                     targetRelease.Spec,
                     deploymentEventCore.TraceId,
                     deploymentEventCore.CorrelationId,
-                    deploymentEventCore.OccurredOn);
-                var changes = new WebServiceUpdatedEventChanges(
-                    UpdateLog<WebServiceSpecSnapshot>.Of(webService.Spec.ToSnapshot(), targetRelease.Spec),
-                    UpdateLog<ImmutableHashSet<string>>.Of(webService.Tags, webService.Tags));
-
-                await dbContext.WebServices.UpdateOneAsync(
-                    session,
-                    webServiceFilter,
-                    Builders<WebService>.Update
-                        .Set(service => service.Spec, targetSpec)
-                        .Set(service => service.ActiveRevision, nextRevision),
-                    cancellationToken: transactionCancellationToken);
-                await dbContext.WebServiceReleases.InsertOneAsync(
+                    deploymentEventCore.OccurredOn,
+                    deploymentGeneration: deployment.DesiredGeneration);
+                await WebServiceReleasePersistence.InsertCurrentAsync(
+                    dbContext,
                     session,
                     release,
-                    cancellationToken: transactionCancellationToken);
+                    transactionCancellationToken);
                 await dbContext.StoreEventAsync(
-                    [
-                        new WebServiceUpdatedEvent(
-                            webService.Id,
-                            webService.Name,
-                            webService.ResourceGroupId,
-                            webService.DnsRecord,
-                            changes)
-                        {
-                            EventCore = EventCore.Create(webService.TenantId)
-                        },
-                        release.ToDeploymentRequestedEvent(webService, deploymentEventCore)
-                    ],
+                    new WebServiceUpdatedEvent(
+                        webService.Id,
+                        webService.Name,
+                        webService.ResourceGroupId,
+                        webService.DnsRecord,
+                        changes)
+                    {
+                        EventCore = EventCore.Create(webService.TenantId)
+                    },
                     session,
                     transactionCancellationToken);
 
-                return new RollbackWebServiceResponse(webService.Id, nextRevision, release.Id);
+                return new RollbackWebServiceResponse(
+                    webService.Id,
+                    updatedWebService.ActiveRevision,
+                    release.Id,
+                    deployment.ToPlacementSummaryDto());
             },
             cancellationToken);
     }

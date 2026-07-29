@@ -1,33 +1,43 @@
 namespace Pole.Features.Postgres.Application.Common
 
 open Pole.Features.Postgres.Domain
+open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.Shared.Models
-open Pole.Features.StorageProfiles.Contracts
 
 type PostgresClusterSpecDto =
     { Instances : int
       Storage : int
       Resources : Resources
-      StorageProfile : ResolvedStorageProfileDto
+      StorageProfileId : string
       Version : int
       DeploymentMode : string }
-    
+
 type PostgresClusterDto =
     { Id : string
       Name : string
       GroupId : string
-      Spec : PostgresClusterSpecDto }
+      Revision : int64
+      Lifecycle : string
+      Spec : PostgresClusterSpecDto
+      Placement : PlacementSummaryDto }
 
-module PostgresCluster =
-    let toDto (cluster : PostgresCluster) : PostgresClusterDto =
+[<RequireQualifiedAccess>]
+module PostgresClusterDto =
+    let create (cluster : PostgresCluster) (placement : PlacementSummaryDto) : PostgresClusterDto =
         { Id = cluster.Id
           Name = cluster.Name
           GroupId = cluster.GroupId
+          Revision = cluster.Revision
+          Lifecycle =
+            match cluster.Lifecycle with
+            | :? ActivePostgresClusterLifecycle -> "Active"
+            | :? DeletingPostgresClusterLifecycle -> "Deleting"
+            | lifecycle -> invalidOp $"Unsupported PostgreSQL lifecycle '{lifecycle.GetType().Name}'."
           Spec =
             { Instances = cluster.Spec.Instances
               Storage = cluster.Spec.Storage
               Resources = cluster.Spec.Resources
-              StorageProfile = ResolvedStorageProfileExtensions.ToDto cluster.Spec.StorageProfile
+              StorageProfileId = cluster.Spec.StorageProfileId
               Version = cluster.Spec.Version
-              DeploymentMode = cluster.Spec.DeploymentMode.ToString() } }
-
+              DeploymentMode = cluster.Spec.DeploymentMode.ToString() }
+          Placement = placement }

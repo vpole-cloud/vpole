@@ -81,6 +81,12 @@
     <Project Path="src/features/ResourceGroups/ResourceGroups.Domain/ResourceGroups.Domain.csproj" />
     <Project Path="src/features/ResourceGroups/ResourceGroups.Events/ResourceGroups.Events.csproj" />
   </Folder>
+  <Folder Name="/features/ResourceDeployments/">
+    <Project Path="src/features/ResourceDeployments/ResourceDeployments.Application/ResourceDeployments.Application.csproj" />
+    <Project Path="src/features/ResourceDeployments/ResourceDeployments.Contracts/ResourceDeployments.Contracts.csproj" />
+    <Project Path="src/features/ResourceDeployments/ResourceDeployments.Domain/ResourceDeployments.Domain.csproj" />
+    <Project Path="src/features/ResourceDeployments/ResourceDeployments.Events/ResourceDeployments.Events.csproj" />
+  </Folder>
   <Folder Name="/features/WebServices/">
     <Project Path="src/features/WebServices/WebServices.Application/WebServices.Application.csproj" />
     <Project Path="src/features/WebServices/WebServices.Contracts/WebServices.Contracts.csproj" />
@@ -117,7 +123,6 @@
     <Project Path="tests/Pole.Tests.E2E/Pole.Tests.E2E.csproj" />
   </Folder>
 </Solution>
-
 
 
 

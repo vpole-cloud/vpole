@@ -2,25 +2,12 @@ namespace Pole.Features.Postgres.Application.Kubernetes
 
 open System.Collections.Generic
 open k8s.Models
-open Pole.Features.Shared.Models
-open Pole.Features.StorageProfiles.Contracts
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
 
 [<RequireQualifiedAccess>]
 module PostgresStatefulSetKubernetesBuilder =
     let buildHeadlessServiceName (clusterId : string) = $"{clusterId}-headless"
-
-    let private buildLabels (cluster : PostgresCluster) =
-        dict [
-            "app", cluster.Id
-            "component", "postgres"
-            PoleStorageLabels.TenantId, cluster.TenantId
-            PoleStorageLabels.ResourceGroupId, cluster.GroupId
-            PoleStorageLabels.ResourceType, ResourceType.Postgres.ToString()
-            PoleStorageLabels.ResourceId, cluster.Id
-            PoleStorageLabels.ResourceName, cluster.Name
-        ]
 
     let private buildSecretKeyReference secretName key =
         V1EnvVarSource(SecretKeyRef = V1SecretKeySelector(Name = secretName, Key = key))
@@ -41,9 +28,13 @@ module PostgresStatefulSetKubernetesBuilder =
 
         V1ResourceRequirements(Requests = requests, Limits = limits)
 
-    let buildStatefulSet (cluster : PostgresCluster) (settings : PostgresSettings) =
-        let labels = buildLabels cluster
-        let namespaceName = cluster.Spec.KubernetesNamespace
+    let buildStatefulSet
+        (cluster : PostgresCluster)
+        (namespaceName : string)
+        (storageClassName : string)
+        (metadata : PostgresResourceDeploymentMetadata)
+        (settings : PostgresSettings) =
+        let labels = PostgresClusterKubernetesBuilder.buildLabels cluster metadata
         let secretName = PostgresClusterKubernetesBuilder.buildSecretName cluster.Id
         let databaseName = PostgresClusterKubernetesBuilder.buildDatabaseName cluster.Id
         let image = PostgresSettings.buildImageReference settings.StatefulSetImage cluster.Spec.Version
@@ -82,17 +73,20 @@ module PostgresStatefulSetKubernetesBuilder =
                                   Spec =
                                       V1PersistentVolumeClaimSpec(
                                           AccessModes = ResizeArray([ "ReadWriteOnce" ]),
-                                          StorageClassName = cluster.Spec.StorageProfile.StorageClassName,
+                                          StorageClassName = storageClassName,
                                           Resources =
                                               V1VolumeResourceRequirements(Requests = buildStorageRequests cluster))) ])))
 
-    let buildHeadlessService (cluster : PostgresCluster) =
-        let labels = buildLabels cluster
+    let buildHeadlessService
+        (cluster : PostgresCluster)
+        (namespaceName : string)
+        (metadata : PostgresResourceDeploymentMetadata) =
+        let labels = PostgresClusterKubernetesBuilder.buildLabels cluster metadata
 
         V1Service(
             ApiVersion = "v1",
             Kind = "Service",
-            Metadata = V1ObjectMeta(Name = buildHeadlessServiceName cluster.Id, NamespaceProperty = cluster.Spec.KubernetesNamespace, Labels = labels),
+            Metadata = V1ObjectMeta(Name = buildHeadlessServiceName cluster.Id, NamespaceProperty = namespaceName, Labels = labels),
             Spec =
                 V1ServiceSpec(
                     Type = "ClusterIP",
@@ -100,8 +94,11 @@ module PostgresStatefulSetKubernetesBuilder =
                     Selector = labels,
                     Ports = ResizeArray([ V1ServicePort(Name = "postgres", Port = 5432, Protocol = "TCP") ])))
 
-    let buildReadWriteService (cluster : PostgresCluster) =
-        let labels = buildLabels cluster
+    let buildReadWriteService
+        (cluster : PostgresCluster)
+        (namespaceName : string)
+        (metadata : PostgresResourceDeploymentMetadata) =
+        let labels = PostgresClusterKubernetesBuilder.buildLabels cluster metadata
 
         V1Service(
             ApiVersion = "v1",
@@ -109,11 +106,10 @@ module PostgresStatefulSetKubernetesBuilder =
             Metadata =
                 V1ObjectMeta(
                     Name = PostgresClusterKubernetesBuilder.buildReadWriteServiceName cluster.Id,
-                    NamespaceProperty = cluster.Spec.KubernetesNamespace,
+                    NamespaceProperty = namespaceName,
                     Labels = labels),
             Spec =
                 V1ServiceSpec(
                     Type = "ClusterIP",
                     Selector = labels,
                     Ports = ResizeArray([ V1ServicePort(Name = "postgres", Port = 5432, Protocol = "TCP") ])))
-

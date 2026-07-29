@@ -29,6 +29,7 @@ type SearchDocumentIndexesMigration() =
                     [|
                         CreateIndexModel<BsonDocument>(
                             Builders<BsonDocument>.IndexKeys
+                                .Ascending("TenantId")
                                 .Ascending("SourceType")
                                 .Ascending("SourceId")
                                 .Ascending("KeyType")
@@ -56,6 +57,7 @@ type SearchDocumentIndexesMigration() =
                     [|
                         CreateIndexModel<BsonDocument>(
                             Builders<BsonDocument>.IndexKeys
+                                .Ascending("TenantId")
                                 .Ascending("SourceType")
                                 .Ascending("SourceId"),
                             CreateIndexOptions(Unique = true, Name = "IX_SearchSourceDocuments_Source")
@@ -76,4 +78,3 @@ type SearchDocumentIndexesMigration() =
                 let! _ = sourceCollection.Indexes.CreateManyAsync(sourceIndexModels, cancellationToken)
                 return ()
             }
-

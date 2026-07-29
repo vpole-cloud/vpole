@@ -59,11 +59,20 @@ public sealed record DeploymentTargetLookupDto(
     string ClusterIdentity,
     string ConnectionKind,
     long ConnectionVersion,
+    DeploymentTargetWorkloadConfigurationLookupDto WorkloadConfiguration,
     long Revision,
     bool Enabled,
     bool AcceptsWorkloads,
     bool DeletionRequested,
     string HealthStatus);
+
+public sealed record DeploymentTargetWorkloadConfigurationLookupDto(
+    long Revision,
+    DeploymentTargetIngressConfigurationLookupDto? Ingress);
+
+public sealed record DeploymentTargetIngressConfigurationLookupDto(
+    string IngressClassName,
+    string ClusterIssuerName);
 
 public interface IDeploymentTargetLookup
 {
@@ -80,6 +89,9 @@ public interface IDeploymentTargetLookup
     /// </summary>
     Task<Result<DeploymentTargetLookupDto>> ResolveForNewWorkloadAsync(
         string? deploymentTargetId,
+        CancellationToken cancellationToken = default);
+
+    Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>> ListEligibleForNewWorkloadAsync(
         CancellationToken cancellationToken = default);
 }
 
@@ -101,6 +113,16 @@ public interface IDeploymentTargetReferenceAdmission
     Task<Result> UnregisterAsync(
         string deploymentTargetId,
         DeploymentTargetReferenceOwner owner,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);
+
+}
+
+public interface IDeploymentTargetWorkloadConfigurationFence
+{
+    Task<Result> FenceAsync(
+        string deploymentTargetId,
+        long expectedWorkloadConfigurationRevision,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 }

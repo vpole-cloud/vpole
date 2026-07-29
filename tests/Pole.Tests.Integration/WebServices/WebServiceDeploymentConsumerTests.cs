@@ -1,12 +1,9 @@
 using MongoDB.Driver;
-using Microsoft.Extensions.Logging.Abstractions;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Shared.Models;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.WebServices.Application.Consumers;
-using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Domain;
-using Pole.Features.WebServices.Events;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -19,43 +16,43 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
     public async Task Handle_MarksReleaseSucceeded_WhenDeploymentApplySucceeds()
     {
         var release = await InsertPendingReleaseAsync();
-        var applier = new FakeDeploymentApplier();
         var consumer = new WebServiceDeploymentConsumer(
             DbContext,
-            applier,
-            NullLogger<WebServiceDeploymentConsumer>.Instance);
+            TimeProvider.System);
 
         await consumer.Handle(CreateDeploymentEvent(release));
 
         var saved = await DbContext.WebServiceReleases
             .Find(r => r.Id == release.Id)
             .SingleAsync();
-        Assert.Equal(1, applier.CallCount);
         Assert.Equal(WebServiceReleaseOutcome.Succeeded, saved.Outcome);
         Assert.NotNull(saved.CompletedAtUtc);
         Assert.Null(saved.FailureMessage);
     }
 
     [Fact]
-    public async Task Handle_MarksReleaseFailed_AndRethrows_WhenDeploymentApplyFails()
+    public async Task Handle_LeavesReleasePending_WhenAppliedGenerationDoesNotMatch()
     {
         var release = await InsertPendingReleaseAsync();
-        var applier = new FakeDeploymentApplier("apply failed");
         var consumer = new WebServiceDeploymentConsumer(
             DbContext,
-            applier,
-            NullLogger<WebServiceDeploymentConsumer>.Instance);
+            TimeProvider.System);
+        var applied = CreateDeploymentEvent(release) with
+        {
+            Generation = release.DeploymentGeneration + 1
+        };
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            consumer.Handle(CreateDeploymentEvent(release)));
+        await consumer.Handle(applied);
 
         var saved = await DbContext.WebServiceReleases
             .Find(r => r.Id == release.Id)
             .SingleAsync();
-        Assert.Equal("apply failed", exception.Message);
-        Assert.Equal(WebServiceReleaseOutcome.Failed, saved.Outcome);
-        Assert.NotNull(saved.CompletedAtUtc);
-        Assert.Equal("apply failed", saved.FailureMessage);
+        Assert.Equal(WebServiceReleaseOutcome.Pending, saved.Outcome);
+        Assert.Null(saved.CompletedAtUtc);
+        Assert.Equal(
+            0L,
+            await DbContext.CountOutboxMessagesAsync(
+                "web-service-deployment-completed"));
     }
 
     [Fact]
@@ -64,8 +61,7 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
         var release = await InsertPendingReleaseAsync();
         var consumer = new WebServiceDeploymentConsumer(
             DbContext,
-            new FakeDeploymentApplier(),
-            NullLogger<WebServiceDeploymentConsumer>.Instance);
+            TimeProvider.System);
         var deployment = CreateDeploymentEvent(release);
 
         await consumer.Handle(deployment);
@@ -75,6 +71,52 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
             .Find(message => message.EventType == "web-service-deployment-completed")
             .ToListAsync();
         Assert.Single(completionEvents);
+    }
+
+    [Fact]
+    public async Task Handle_MarksReleaseFailed_WhenDeploymentFailureIsTerminal()
+    {
+        var release = await InsertPendingReleaseAsync();
+        var consumer = new WebServiceDeploymentConsumer(
+            DbContext,
+            TimeProvider.System);
+
+        await consumer.Handle(CreateFailureEvent(release, retryable: false));
+
+        var saved = await DbContext.WebServiceReleases
+            .Find(item => item.Id == release.Id)
+            .SingleAsync();
+        Assert.Equal(WebServiceReleaseOutcome.Failed, saved.Outcome);
+        Assert.NotNull(saved.CompletedAtUtc);
+        Assert.Contains(
+            "ManifestInvalid",
+            saved.FailureMessage,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            1L,
+            await DbContext.CountOutboxMessagesAsync(
+                "web-service-deployment-completed"));
+    }
+
+    [Fact]
+    public async Task Handle_LeavesReleasePending_WhenDeploymentFailureIsRetryable()
+    {
+        var release = await InsertPendingReleaseAsync();
+        var consumer = new WebServiceDeploymentConsumer(
+            DbContext,
+            TimeProvider.System);
+
+        await consumer.Handle(CreateFailureEvent(release, retryable: true));
+
+        var saved = await DbContext.WebServiceReleases
+            .Find(item => item.Id == release.Id)
+            .SingleAsync();
+        Assert.Equal(WebServiceReleaseOutcome.Pending, saved.Outcome);
+        Assert.Null(saved.CompletedAtUtc);
+        Assert.Equal(
+            0L,
+            await DbContext.CountOutboxMessagesAsync(
+                "web-service-deployment-completed"));
     }
 
     private async Task<WebServiceRelease> InsertPendingReleaseAsync()
@@ -94,36 +136,30 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
         return release;
     }
 
-    private static WebServiceDeploymentRequestedEvent CreateDeploymentEvent(WebServiceRelease release) =>
+    private static ResourceDeploymentAppliedEvent CreateDeploymentEvent(WebServiceRelease release) =>
         new(
-            release.Id,
-            release.Revision,
-            release.Action.ToString(),
+            "507f1f77bcf86cd799439051",
+            ResourceDeploymentResourceTypes.WebService.Value,
             release.WebServiceId,
-            "web-api",
-            "resource-group-1",
-            new DnsRecordShortInfo("dns-1", "api.example.com"),
-            release.Spec)
+            "507f1f77bcf86cd799439052",
+            release.DeploymentGeneration)
         {
             EventCore = EventCore.Create(release.TenantId)
         };
 
-    private sealed class FakeDeploymentApplier(string? failureMessage = null) : IWebServiceDeploymentApplier
-    {
-        public int CallCount { get; private set; }
-
-        public Task<Result> ApplyAsync(WebServiceDeploymentRequestedEvent deploymentEvent, CancellationToken cancellationToken = default)
+    private static ResourceDeploymentFailedEvent CreateFailureEvent(
+        WebServiceRelease release,
+        bool retryable) =>
+        new(
+            "507f1f77bcf86cd799439051",
+            ResourceDeploymentResourceTypes.WebService.Value,
+            release.WebServiceId,
+            "507f1f77bcf86cd799439052",
+            release.DeploymentGeneration,
+            "Apply",
+            "ManifestInvalid",
+            retryable)
         {
-            CallCount++;
-            if (failureMessage is not null)
-            {
-                return Task.FromResult<Result>(Failures.ExternalService(
-                    failureMessage,
-                    "Kubernetes",
-                    failureMessage));
-            }
-
-            return Task.FromResult<Result>(Result.Success());
-        }
-    }
+            EventCore = EventCore.Create(release.TenantId)
+        };
 }

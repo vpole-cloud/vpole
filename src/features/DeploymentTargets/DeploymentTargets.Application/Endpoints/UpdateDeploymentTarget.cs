@@ -18,6 +18,7 @@ public sealed record UpdateDeploymentTargetRequestBody(
     string DisplayName,
     bool Enabled,
     bool AcceptsWorkloads,
+    DeploymentTargetWorkloadConfigurationRequestBody WorkloadConfiguration,
     long Revision);
 
 public sealed record UpdateDeploymentTargetRequest(
@@ -48,6 +49,7 @@ public sealed class UpdateDeploymentTargetHandler(
             request.Body.DisplayName,
             request.Body.Enabled,
             request.Body.AcceptsWorkloads,
+            request.Body.WorkloadConfiguration.Ingress?.ToDomain(),
             DeploymentTargetClock.UtcNowAfter(timeProvider, target.UpdatedAtUtc));
 
         if (updated.Revision == target.Revision)
@@ -64,6 +66,9 @@ public sealed class UpdateDeploymentTargetHandler(
                 Builders<DeploymentTarget>.Update.Set(
                     item => item.AcceptsWorkloads,
                     updated.AcceptsWorkloads),
+                Builders<DeploymentTarget>.Update.Set(
+                    item => item.WorkloadConfiguration,
+                    updated.WorkloadConfiguration),
                 Builders<DeploymentTarget>.Update.Set(item => item.Revision, updated.Revision),
                 Builders<DeploymentTarget>.Update.Set(item => item.UpdatedAtUtc, updated.UpdatedAtUtc)),
             new FindOneAndUpdateOptions<DeploymentTarget>
@@ -108,6 +113,9 @@ public sealed class UpdateDeploymentTargetRequestBodyValidator
             .Equal(false)
             .When(body => !body.Enabled)
             .WithMessage("A disabled deployment target cannot accept workloads.");
+        RuleFor(body => body.WorkloadConfiguration)
+            .NotNull()
+            .SetValidator(new DeploymentTargetWorkloadConfigurationRequestBodyValidator());
     }
 }
 

@@ -6,6 +6,7 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Mediator;
@@ -33,7 +34,8 @@ public static class GetRedisServiceById
 }
 
 public sealed class GetRedisServiceByIdHandler(
-    IRedisDbContext dbContext)
+    IRedisDbContext dbContext,
+    IResourceDeploymentQueryService deploymentQuery)
     : IMediatorHandler<GetRedisServiceByIdRequest, RedisDto>
 {
     public async Task<Result<RedisDto>> HandleAsync(
@@ -51,7 +53,12 @@ public sealed class GetRedisServiceByIdHandler(
         if (redis is null)
             return Failures.NotFound("Redis service not found.", request.Id);
 
-        return redis.ToDto();
+        var placement = await deploymentQuery.GetAsync(
+            redis.TenantId,
+            ResourceDeploymentResourceTypes.Redis,
+            redis.Id,
+            cancellationToken);
+        return redis.ToDto(placement);
     }
 }
 
@@ -59,4 +66,3 @@ public record GetRedisServiceByIdRequest(
     [FromRoute] string Id,
     [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
 ) : IMediatorRequest<RedisDto>, ITenantReadOperation;
-

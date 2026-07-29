@@ -40,6 +40,24 @@ type SearchSourceKey =
     { Value : string
       Weight : int }
 
+type SearchPlacementEndpoint =
+    { Kind : string
+      Host : string
+      Port : int
+      Scheme : string }
+
+type SearchPlacementSummary =
+    { DeploymentId : string
+      IsolationScopeId : string
+      RuntimeCellId : string
+      DeploymentTargetId : string
+      DesiredGeneration : int64
+      ObservedGeneration : int64
+      Status : string
+      FailureCode : string option
+      Endpoints : SearchPlacementEndpoint array
+      EventOccurredAtUtc : System.DateTime }
+
 [<BsonIgnoreExtraElements>]
 type SearchSourceDocument =
     { [<BsonId>]
@@ -51,7 +69,8 @@ type SearchSourceDocument =
       Title : string
       ResourceGroupId : string option
       ResourceGroupName : string option
-      SearchKeys : SearchSourceKey array }
+      SearchKeys : SearchSourceKey array
+      Placement : SearchPlacementSummary option }
 
 [<RequireQualifiedAccess>]
 module SearchDocument =

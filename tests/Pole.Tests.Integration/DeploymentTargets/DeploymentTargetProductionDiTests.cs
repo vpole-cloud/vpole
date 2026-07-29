@@ -39,7 +39,7 @@ public sealed class DeploymentTargetProductionDiTests
             typeof(ProvisionResourceGroupOnResourceGroupCreatedConsumer).Assembly,
             typeof(CreateRedisServiceHandler).Assembly,
             typeof(KubernetesWebServiceDeploymentApplier).Assembly,
-            typeof(KubernetesPostgresClusterSecretStore).Assembly,
+            typeof(PostgresResourceDeploymentAdapter).Assembly,
             typeof(FunctionRevisionKubernetesManager).Assembly,
             typeof(KubernetesStorageDiscoveryService).Assembly
         };
@@ -63,28 +63,34 @@ public sealed class DeploymentTargetProductionDiTests
         var provider = new ThrowingKubernetesClientProvider(expected);
 
         var storageFailure = await Assert.ThrowsAsync<TestProviderInfrastructureException>(
-            () => new KubernetesStorageDiscoveryService(provider).GetStorageClassesAsync());
+            () => new KubernetesStorageDiscoveryService(provider).GetStorageClassesAsync(
+                DeploymentTargetId));
         var functionFailure = await Assert.ThrowsAsync<TestProviderInfrastructureException>(
             () => new FunctionRevisionKubernetesManager(provider, []).ApplyAsync(default));
-        var webServiceFailure = await Assert.ThrowsAsync<TestProviderInfrastructureException>(
-            () => new KubernetesWebServiceDeploymentApplier(provider, null!).ApplyAsync(null!));
 
         Assert.Same(expected, storageFailure);
+        Assert.Equal([DeploymentTargetId], provider.RequestedTargetIds);
         Assert.Same(expected, functionFailure);
-        Assert.Same(expected, webServiceFailure);
     }
 
     private sealed class ThrowingKubernetesClientProvider(Exception exception)
         : IKubernetesClientProvider
     {
+        public List<string> RequestedTargetIds { get; } = [];
+
         public Task<IKubernetes> GetAsync(
             string deploymentTargetId,
-            CancellationToken cancellationToken = default) =>
-            Task.FromException<IKubernetes>(exception);
+            CancellationToken cancellationToken = default)
+        {
+            RequestedTargetIds.Add(deploymentTargetId);
+            return Task.FromException<IKubernetes>(exception);
+        }
 
         public Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default) =>
             Task.FromException<IKubernetes>(exception);
     }
+
+    private const string DeploymentTargetId = "507f1f77bcf86cd799439098";
 
     private sealed class TestProviderInfrastructureException : Exception;
 }

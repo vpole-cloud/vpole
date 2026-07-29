@@ -17,6 +17,9 @@
       <ProjectReference Include="..\..\ContainerRegistries\ContainerRegistries.Contracts\ContainerRegistries.Contracts.csproj" />
       <ProjectReference Include="..\..\DnsRecords\DnsRecords.Events\DnsRecords.Events.csproj" />
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
+      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Application\ResourceDeployments.Application.csproj" />
+      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
+      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Domain\ResourceDeployments.Domain.csproj" />
       <ProjectReference Include="..\..\SourceBuilds\SourceBuilds.Contracts\SourceBuilds.Contracts.csproj" />
       <ProjectReference Include="..\WebServices.Events\WebServices.Events.csproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
@@ -33,5 +36,4 @@
       <PackageReference Include="KubernetesClient" />
     </ItemGroup>
 </Project>
-
 

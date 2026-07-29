@@ -14,6 +14,7 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -64,6 +65,7 @@ public sealed record DeleteResourceGroupResponse(
 
 public sealed class DeleteResourceGroupHandler(
     IResourceGroupDbContext dbContext,
+    IResourceDeploymentReferenceLookup deploymentReferences,
     TimeProvider timeProvider)
     : IMediatorHandler<DeleteResourceGroupRequest, DeleteResourceGroupResponse>
 {
@@ -85,6 +87,15 @@ public sealed class DeleteResourceGroupHandler(
             cancellationToken);
         if (!contextResult.TryGetValue(out var context, out var loadFailure))
             return loadFailure;
+
+        var deploymentGuard =
+            await deploymentReferences.EnsureNoUnfinishedForResourceGroupAsync(
+                context.ResourceGroup.TenantId,
+                context.ResourceGroup.Id,
+                session,
+                cancellationToken);
+        if (deploymentGuard is not ISuccess)
+            return (Failure)deploymentGuard;
 
         if (context.Cells.All(cell => cell.State is DeletedRuntimeCellState))
         {

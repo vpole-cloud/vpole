@@ -10,34 +10,15 @@ module PostgresClusterEvents =
         match mode with
         | PostgresDeploymentMode.Operator -> PostgresDeploymentModeSnapshot.Operator
         | PostgresDeploymentMode.StatefulSet -> PostgresDeploymentModeSnapshot.StatefulSet
-        | _ -> PostgresDeploymentModeSnapshot.Operator
-
-    let private toDomainDeploymentMode mode =
-        match mode with
-        | PostgresDeploymentModeSnapshot.Operator -> PostgresDeploymentMode.Operator
-        | PostgresDeploymentModeSnapshot.StatefulSet -> PostgresDeploymentMode.StatefulSet
-        | _ -> PostgresDeploymentMode.Operator
-
-    let deploymentModeFromSnapshot mode =
-        toDomainDeploymentMode mode
+        | _ -> invalidArg (nameof mode) $"Unsupported PostgreSQL deployment mode '{mode}'."
 
     let private toSnapshotSpec (spec : PostgresClusterSpec) : PostgresClusterSpecSnapshot =
         { Instances = spec.Instances
           Storage = spec.Storage
           Resources = spec.Resources
-          StorageProfile = spec.StorageProfile
-          KubernetesNamespace = spec.KubernetesNamespace
+          StorageProfileId = spec.StorageProfileId
           Version = spec.Version
           DeploymentMode = toSnapshotDeploymentMode spec.DeploymentMode }
-
-    let private toDomainSpec (spec : PostgresClusterSpecSnapshot) : PostgresClusterSpec =
-        { Instances = spec.Instances
-          Storage = spec.Storage
-          Resources = spec.Resources
-          StorageProfile = spec.StorageProfile
-          KubernetesNamespace = spec.KubernetesNamespace
-          Version = spec.Version
-          DeploymentMode = toDomainDeploymentMode spec.DeploymentMode }
 
     let created (cluster : PostgresCluster) : PostgresClusterCreatedEvent =
         { EventCore = EventCore.Create(cluster.TenantId)
@@ -59,18 +40,7 @@ module PostgresClusterEvents =
           Name = next.Name
           GroupId = next.GroupId
           Changes =
-            { Spec = UpdateLog<PostgresClusterSpecSnapshot>.Of(toSnapshotSpec previous.Spec, toSnapshotSpec next.Spec) } }
-
-    let fromCreated (event : PostgresClusterCreatedEvent) : PostgresCluster =
-        { Id = event.ClusterId
-          TenantId = event.EventCore.TenantId
-          Name = event.Name
-          GroupId = event.GroupId
-          Spec = toDomainSpec event.Spec }
-
-    let fromUpdated (event : PostgresClusterUpdatedEvent) : PostgresCluster =
-        { Id = event.ClusterId
-          TenantId = event.EventCore.TenantId
-          Name = event.Name
-          GroupId = event.GroupId
-          Spec = toDomainSpec event.Changes.Spec.New }
+            { Spec =
+                UpdateLog<PostgresClusterSpecSnapshot>.Of(
+                    toSnapshotSpec previous.Spec,
+                    toSnapshotSpec next.Spec) } }

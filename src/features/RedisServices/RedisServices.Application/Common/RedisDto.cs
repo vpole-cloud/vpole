@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
@@ -10,7 +11,8 @@ public sealed record RedisDto(
     string Name,
     string ResourceGroupId,
     RedisSpecDto Spec,
-    ImmutableHashSet<string> Tags
+    ImmutableHashSet<string> Tags,
+    PlacementSummaryDto? Placement
 );
 
 public sealed record RedisSpecDto(
@@ -26,12 +28,15 @@ public sealed record StorageDto(
 
 public static class RedisDtoExtensions
 {
-    public static RedisDto ToDto(this Redis redis) => new(
+    public static RedisDto ToDto(
+        this Redis redis,
+        PlacementSummaryDto? placement = null) => new(
         redis.Id,
         redis.Name,
         redis.ResourceGroupId,
         redis.Spec.ToDto(),
-        redis.Tags
+        redis.Tags,
+        placement
     );
 
     private static RedisSpecDto ToDto(this RedisSpec spec) => new(
@@ -41,19 +46,16 @@ public static class RedisDtoExtensions
 
     private static StorageDto ToDto(this Storage storage) => new(
         storage.SizeGb,
-        storage.StorageProfile.ProfileId,
-        storage.StorageProfile.ToDto()
+        storage.StorageProfileId
     );
     
-    public static RedisSpec ToDomain(this RedisSpecDto dto, string @namespace, ResolvedStorageProfile storageProfile) => new(
-        @namespace,
-        dto.Storage.ToDomain(storageProfile),
+    public static RedisSpec ToDomain(this RedisSpecDto dto) => new(
+        dto.Storage.ToDomain(),
         dto.Resources
     );
     
-    private static Storage ToDomain(this StorageDto dto, ResolvedStorageProfile storageProfile) => new(
+    private static Storage ToDomain(this StorageDto dto) => new(
         dto.SizeGb,
-        storageProfile
+        dto.StorageProfileId
     );
 }
-

@@ -10,6 +10,7 @@ public sealed record DeploymentTargetDto(
     DeploymentTargetConnectionDto Connection,
     DeploymentTargetHealthDto Health,
     DeploymentTargetCapabilitiesDto Capabilities,
+    DeploymentTargetWorkloadConfigurationDto WorkloadConfiguration,
     long Revision,
     bool Enabled,
     bool AcceptsWorkloads,
@@ -46,6 +47,14 @@ public sealed record DeploymentTargetNamespaceCapabilitiesDto(
     bool CanPatch,
     bool CanDelete);
 
+public sealed record DeploymentTargetWorkloadConfigurationDto(
+    long Revision,
+    DeploymentTargetIngressConfigurationDto? Ingress);
+
+public sealed record DeploymentTargetIngressConfigurationDto(
+    string IngressClassName,
+    string ClusterIssuerName);
+
 public static class DeploymentTargetDtoExtensions
 {
     public static DeploymentTargetDto ToDto(this DeploymentTarget target, bool isDefault = false) =>
@@ -63,6 +72,13 @@ public static class DeploymentTargetDtoExtensions
                 target.Health.FailureCode,
                 target.Health.FailureMessage),
             target.Capabilities.ToDto(),
+            new DeploymentTargetWorkloadConfigurationDto(
+                target.WorkloadConfiguration.Revision,
+                target.WorkloadConfiguration.Ingress is { } ingress
+                    ? new DeploymentTargetIngressConfigurationDto(
+                        ingress.IngressClassName,
+                        ingress.ClusterIssuerName)
+                    : null),
             target.Revision,
             target.Enabled,
             target.AcceptsWorkloads,
@@ -78,6 +94,13 @@ public static class DeploymentTargetDtoExtensions
             target.ClusterIdentity,
             target.Connection.Kind.ToString(),
             target.Connection.Version,
+            new DeploymentTargetWorkloadConfigurationLookupDto(
+                target.WorkloadConfiguration.Revision,
+                target.WorkloadConfiguration.Ingress is { } ingress
+                    ? new DeploymentTargetIngressConfigurationLookupDto(
+                        ingress.IngressClassName,
+                        ingress.ClusterIssuerName)
+                    : null),
             target.Revision,
             target.Enabled,
             target.AcceptsWorkloads,

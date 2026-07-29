@@ -12,6 +12,7 @@ public sealed record DeploymentTarget(
     DeploymentTargetConnection Connection,
     DeploymentTargetHealth Health,
     DeploymentTargetCapabilities Capabilities,
+    DeploymentTargetWorkloadConfiguration WorkloadConfiguration,
     long Revision,
     long ReferenceFence,
     bool Enabled,
@@ -39,6 +40,7 @@ public sealed record DeploymentTarget(
             AcceptsWorkloads,
             Health,
             Capabilities,
+            WorkloadConfiguration,
             updatedAtUtc);
     }
 
@@ -58,6 +60,7 @@ public sealed record DeploymentTarget(
             acceptsWorkloads,
             Health,
             Capabilities,
+            WorkloadConfiguration,
             updatedAtUtc);
     }
 
@@ -74,6 +77,7 @@ public sealed record DeploymentTarget(
             acceptsWorkloads,
             Health,
             Capabilities,
+            WorkloadConfiguration,
             updatedAtUtc);
     }
 
@@ -81,6 +85,7 @@ public sealed record DeploymentTarget(
         string displayName,
         bool enabled,
         bool acceptsWorkloads,
+        DeploymentTargetIngressConfiguration? ingress,
         DateTime updatedAtUtc)
     {
         var normalizedDisplayName = DeploymentTargetValueGuard.Required(
@@ -91,9 +96,11 @@ public sealed record DeploymentTarget(
             throw new InvalidOperationException("A disabled deployment target cannot accept new workloads.");
         if (acceptsWorkloads && DeletionRequestedAtUtc is not null)
             throw new InvalidOperationException("A deployment target pending deletion cannot accept new workloads.");
+        var workloadConfiguration = WorkloadConfiguration.Reconfigure(ingress);
         if (string.Equals(DisplayName, normalizedDisplayName, StringComparison.Ordinal) &&
             Enabled == enabled &&
-            AcceptsWorkloads == acceptsWorkloads)
+            AcceptsWorkloads == acceptsWorkloads &&
+            Equals(WorkloadConfiguration, workloadConfiguration))
         {
             return this;
         }
@@ -105,6 +112,7 @@ public sealed record DeploymentTarget(
             acceptsWorkloads,
             Health,
             Capabilities,
+            workloadConfiguration,
             updatedAtUtc);
     }
 
@@ -125,6 +133,7 @@ public sealed record DeploymentTarget(
             Connection,
             Health,
             Capabilities,
+            WorkloadConfiguration,
             checked(Revision + 1),
             ReferenceFence,
             Enabled,
@@ -164,6 +173,7 @@ public sealed record DeploymentTarget(
             AcceptsWorkloads,
             DeploymentTargetHealth.Unknown(replacement.Version),
             DeploymentTargetCapabilities.Unknown(replacement.Version),
+            WorkloadConfiguration,
             updatedAtUtc);
     }
 
@@ -200,6 +210,7 @@ public sealed record DeploymentTarget(
             Connection,
             health,
             capabilities,
+            WorkloadConfiguration,
             Revision,
             ReferenceFence,
             Enabled,
@@ -216,6 +227,7 @@ public sealed record DeploymentTarget(
         bool acceptsWorkloads,
         DeploymentTargetHealth health,
         DeploymentTargetCapabilities capabilities,
+        DeploymentTargetWorkloadConfiguration workloadConfiguration,
         DateTime updatedAtUtc)
     {
         var normalizedUpdatedAtUtc = DeploymentTargetValueGuard.Utc(updatedAtUtc, nameof(updatedAtUtc));
@@ -229,6 +241,7 @@ public sealed record DeploymentTarget(
             connection,
             health,
             capabilities,
+            workloadConfiguration,
             checked(Revision + 1),
             ReferenceFence,
             enabled,
@@ -252,6 +265,7 @@ public static class DeploymentTargetFactory
         DeploymentTargetConnection connection,
         DeploymentTargetHealth health,
         DeploymentTargetCapabilities capabilities,
+        DeploymentTargetWorkloadConfiguration workloadConfiguration,
         bool enabled,
         bool acceptsWorkloads,
         CreateOptions options)
@@ -259,6 +273,13 @@ public static class DeploymentTargetFactory
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(health);
         ArgumentNullException.ThrowIfNull(capabilities);
+        ArgumentNullException.ThrowIfNull(workloadConfiguration);
+        if (workloadConfiguration.Revision != 1)
+        {
+            throw new ArgumentException(
+                "A new deployment target workload configuration must start at revision 1.",
+                nameof(workloadConfiguration));
+        }
 
         var normalizedId = DeploymentTargetValueGuard.ObjectId(options.Id, nameof(options.Id));
         var normalizedDisplayName = DeploymentTargetValueGuard.Required(
@@ -272,6 +293,8 @@ public static class DeploymentTargetFactory
         var normalizedCreatedAtUtc = DeploymentTargetValueGuard.Utc(
             options.CreatedAtUtc,
             nameof(options.CreatedAtUtc));
+        var normalizedWorkloadConfiguration = DeploymentTargetWorkloadConfiguration.Create(
+            workloadConfiguration.Ingress);
 
         if (!enabled && acceptsWorkloads)
         {
@@ -294,6 +317,7 @@ public static class DeploymentTargetFactory
             connection,
             health,
             capabilities,
+            normalizedWorkloadConfiguration,
             Revision: 1,
             ReferenceFence: 0,
             enabled,
@@ -338,6 +362,22 @@ internal static class DeploymentTargetValueGuard
         var normalized = Required(value, parameterName, 24);
         if (!MongoDB.Bson.ObjectId.TryParse(normalized, out _))
             throw new ArgumentException("The value must be a MongoDB ObjectId.", parameterName);
+        return normalized;
+    }
+
+    public static string KubernetesResourceName(string? value, string parameterName)
+    {
+        var normalized = Required(
+            value,
+            parameterName,
+            DeploymentTargetIngressConfiguration.MaximumNameLength);
+        if (!DeploymentTargetIngressConfiguration.IsValidKubernetesResourceName(normalized))
+        {
+            throw new ArgumentException(
+                "The value must be a valid Kubernetes resource name.",
+                parameterName);
+        }
+
         return normalized;
     }
 

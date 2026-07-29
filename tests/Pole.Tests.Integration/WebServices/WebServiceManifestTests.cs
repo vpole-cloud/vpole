@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Collections.Immutable;
+using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
@@ -56,13 +57,42 @@ public sealed class WebServiceManifestTests
         var manifest = CreateSubject();
         var requestedAt = new DateTime(2026, 7, 7, 12, 30, 0, DateTimeKind.Utc);
 
-        var deployment = manifest.ToDeployment(new WebServiceDeploymentMetadata("release-7", 7, requestedAt));
+        var deployment = manifest.ToDeployment(
+            WebServiceReleaseDeploymentMetadata.Create(
+                "release-7",
+                7,
+                requestedAt));
 
         var annotations = deployment.Spec.Template.Metadata.Annotations;
         Assert.Equal("web-service-1", annotations["pole.server/webServiceId"]);
         Assert.Equal("release-7", annotations["pole.server/releaseId"]);
         Assert.Equal("7", annotations["pole.server/revision"]);
         Assert.Equal("2026-07-07T12:30:00.0000000Z", annotations["pole.server/deploymentRequestedAt"]);
+    }
+
+    [Fact]
+    public void ToDeployment_WithResourceDeploymentMetadata_AddsPlacementAnnotations()
+    {
+        var manifest = CreateSubject();
+        var requestedAt = new DateTime(2026, 7, 7, 12, 30, 0, DateTimeKind.Utc);
+        var metadata = WebServiceResourceDeploymentMetadata.Create(
+            "release-4",
+            "deployment-7",
+            "runtime-cell-7",
+            "target-7",
+            desiredGeneration: 9,
+            logicalRevision: 4,
+            requestedAt);
+
+        var deployment = manifest.ToDeployment(metadata);
+
+        var annotations = deployment.Spec.Template.Metadata.Annotations;
+        Assert.Equal("deployment-7", annotations["pole.server/resourceDeploymentId"]);
+        Assert.Equal("release-4", annotations["pole.server/releaseId"]);
+        Assert.Equal("runtime-cell-7", annotations["pole.server/runtimeCellId"]);
+        Assert.Equal("target-7", annotations["pole.server/deploymentTargetId"]);
+        Assert.Equal("9", annotations["pole.server/deploymentGeneration"]);
+        Assert.Equal("4", annotations["pole.server/revision"]);
     }
 
     [Fact]
@@ -90,7 +120,7 @@ public sealed class WebServiceManifestTests
     }
 
     [Fact]
-    public void ToIngress_UsesDomainTlsAndFirstServicePort()
+    public void ToIngress_UsesResolvedTargetConfigurationAndFirstServicePort()
     {
         var manifest = CreateSubject();
 
@@ -101,11 +131,11 @@ public sealed class WebServiceManifestTests
 
         Assert.Equal("api-gateway-ing", ingress.Metadata.Name);
         Assert.Equal("pole-apps", ingress.Metadata.NamespaceProperty);
-        Assert.Equal("traefik", ingress.Spec.IngressClassName);
+        Assert.Equal("nginx-private", ingress.Spec.IngressClassName);
         Assert.Equal("api.example.com", rule.Host);
         Assert.Equal("api-gateway-svc", path.Backend.Service.Name);
         Assert.Equal(80, path.Backend.Service.Port.Number);
-        Assert.Equal("letsencrypt-prod", ingress.Metadata.Annotations["cert-manager.io/cluster-issuer"]);
+        Assert.Equal("pole-private-issuer", ingress.Metadata.Annotations["cert-manager.io/cluster-issuer"]);
         Assert.Equal("api.example.com", Assert.Single(tls.Hosts));
         Assert.Equal("api-gateway-tls", tls.SecretName);
     }
@@ -188,7 +218,7 @@ public sealed class WebServiceManifestTests
         string? imageSecretName = "regcred",
         AutoscalingSpec? autoscaling = null)
     {
-        var spec = TestData.ValidWebServiceSpec().ToDomain("pole-apps") with
+        var spec = TestData.ValidWebServiceSpec().ToDomain() with
         {
             Image = new ImageInfo("registry.example.com", "platform/api-gateway", "2026.04.1", imageSecretName),
             Config = new WebServiceConfig(
@@ -214,13 +244,17 @@ public sealed class WebServiceManifestTests
             Id = "web-service-1"
         };
 
-        return new WebServiceInKubernetes(WebServiceFactory.Create(
+        var webService = WebServiceFactory.Create(
             name: "api-gateway",
             tenantId: TestData.TenantId,
             resourceGroupId: "rg-1",
             spec: spec,
             dnsRecord: new DnsRecordShortInfo("dns-1", "api.example.com"),
-            options: options));
+            options: options);
+        return webService.ToKubernetes(
+            "pole-apps",
+            ResolvedIngressConfiguration.Create(
+                "nginx-private",
+                "pole-private-issuer"));
     }
 }
-

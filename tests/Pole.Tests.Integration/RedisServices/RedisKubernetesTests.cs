@@ -6,6 +6,7 @@ using k8s;
 using k8s.Autorest;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Application.Kubernetes;
+using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
 using StackExchange.Redis;
@@ -20,8 +21,8 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
     [KubernetesFact]
     public async Task CreateAsync_WaitsForPodReadiness_AndRespondsToPing()
     {
-        var redis = await BuildTestRedisAsync("redis-k8s");
-        var redisInKubernetes = redis.ToKubernetes();
+        var (redis, storage) = await BuildTestRedisAsync("redis-k8s");
+        var redisInKubernetes = redis.ToKubernetes(NamespaceName, storage);
 
         await RedisKubernetesResourceManager.CreateAsync(Kubernetes, redisInKubernetes);
 
@@ -50,8 +51,10 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
     [KubernetesFact]
     public async Task ReplaceAsync_UpdatesStatefulSetAndService()
     {
-        var redis = await BuildTestRedisAsync("redis-k8s-replace");
-        await RedisKubernetesResourceManager.CreateAsync(Kubernetes, redis.ToKubernetes());
+        var (redis, storage) = await BuildTestRedisAsync("redis-k8s-replace");
+        await RedisKubernetesResourceManager.CreateAsync(
+            Kubernetes,
+            redis.ToKubernetes(NamespaceName, storage));
 
         var updated = redis with
         {
@@ -63,7 +66,9 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
             }
         };
 
-        await RedisKubernetesResourceManager.ReplaceAsync(Kubernetes, updated.ToKubernetes());
+        await RedisKubernetesResourceManager.ReplaceAsync(
+            Kubernetes,
+            updated.ToKubernetes(NamespaceName, storage));
 
         var statefulSet = await Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(redis.Name, NamespaceName);
         var service = await Kubernetes.CoreV1.ReadNamespacedServiceAsync(
@@ -81,9 +86,11 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
     [KubernetesFact]
     public async Task DeleteAsync_RemovesResources()
     {
-        var redis = await BuildTestRedisAsync("redis-k8s-delete");
+        var (redis, storage) = await BuildTestRedisAsync("redis-k8s-delete");
 
-        await RedisKubernetesResourceManager.CreateAsync(Kubernetes, redis.ToKubernetes());
+        await RedisKubernetesResourceManager.CreateAsync(
+            Kubernetes,
+            redis.ToKubernetes(NamespaceName, storage));
         await RedisKubernetesResourceManager.DeleteAsync(Kubernetes, redis.Name, NamespaceName);
 
         await AssertResourceDeletedAsync(() => Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(redis.Name, NamespaceName));
@@ -92,17 +99,17 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
             NamespaceName));
     }
 
-    private async Task<RedisEntity> BuildTestRedisAsync(string name)
+    private async Task<(RedisEntity Redis, ResolvedStorageConfiguration Storage)>
+        BuildTestRedisAsync(string name)
     {
         var storageClassName = await ResolveStorageClassNameAsync();
         var spec = new RedisSpec(
-            NamespaceName,
-            new Storage(1, TestData.DefaultResolvedStorageProfile(storageClassName)),
+            new Storage(1, TestData.DefaultStorageProfileId),
             new Resources(
                 Requests: new Resource(1, 128),
                 Limits: new Resource(2, 256)));
 
-        return RedisFactory.Create(
+        var redis = RedisFactory.Create(
             tenantId: TestData.TenantId,
             name: name,
             resourceGroupId: "rg-k8s",
@@ -112,6 +119,11 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
                 Id = name,
                 Tags = ImmutableHashSet.Create("cache")
             });
+        var storage = ResolvedStorageConfiguration.Create(
+            TestData.DefaultStorageProfileId,
+            storageProfileRevision: 1,
+            storageClassName);
+        return (redis, storage);
     }
 
     private async Task<string> ResolveStorageClassNameAsync()
@@ -274,4 +286,3 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
         }
     }
 }
-

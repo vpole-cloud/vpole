@@ -41,7 +41,10 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         var outboxCount = await DbContext.CountOutboxMessagesAsync("web-service-created");
         Assert.Equal(1L, outboxCount);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("commit-domain-name"));
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("web-service-deployment-requested"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+            "runtime-cell-reconciliation-requested"));
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
+            "resource-deployment-reconciliation-requested"));
 
         var release = await DbContext.WebServiceReleases
             .Find(r => r.WebServiceId == response.WebServiceId && r.TenantId == TestData.TenantId)
@@ -79,7 +82,6 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         var updateResult = await Mediator.Send(new UpdateWebServiceRequest(
             created.WebServiceId,
             new UpdateWebServiceRequestBody(
-                resourceGroup.Id,
                 updatedSpec,
                 ["stable"]),
             TestData.TenantId,
@@ -102,7 +104,10 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(WebServiceReleaseAction.Update, release.Action);
         Assert.Equal(WebServiceReleaseOutcome.Pending, release.Outcome);
         Assert.Equal("1.28", release.Spec.Image.Tag);
-        Assert.Equal(2L, await DbContext.CountOutboxMessagesAsync("web-service-deployment-requested"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+            "runtime-cell-reconciliation-requested"));
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
+            "resource-deployment-reconciliation-requested"));
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("web-service-updated"));
 
         var historyResult = await Mediator.Send(new GetWebServiceDeploymentsRequest
@@ -144,7 +149,10 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseAction.Redeploy, release.Action);
         Assert.Equal(saved.Spec.Image.Tag, release.Spec.Image.Tag);
-        Assert.Equal(2L, await DbContext.CountOutboxMessagesAsync("web-service-deployment-requested"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+            "runtime-cell-reconciliation-requested"));
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
+            "resource-deployment-reconciliation-requested"));
     }
 
     [Fact]
@@ -166,7 +174,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         };
         await Mediator.Send(new UpdateWebServiceRequest(
             created.WebServiceId,
-            new UpdateWebServiceRequestBody(resourceGroup.Id, updatedSpec, []),
+            new UpdateWebServiceRequestBody(updatedSpec, []),
             TestData.TenantId,
             new ClaimValue<string?>(TestData.UserId),
             new ClaimValue<string?>(TestData.UserEmail)));
@@ -259,8 +267,8 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         var result = await Mediator.Send(request);
 
         Assert.False(result.TryGetValue(out _, out var error));
-        Assert.IsType<NotFoundFailure>(error);
-        Assert.Contains("507f1f77bcf86cd799439011", error.Message);
+        var notFound = Assert.IsType<NotFoundFailure>(error);
+        Assert.Equal("507f1f77bcf86cd799439011", notFound.Id);
     }
 
     [Fact]
@@ -301,7 +309,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
-    public async Task Delete_RemovesWebService_AndDnsRecord()
+    public async Task Delete_MarksWebServiceDeleting_AndRetainsDnsUntilFinalization()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id));
@@ -316,22 +324,16 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.NotNull(response);
         Assert.Equal(created.WebServiceId, response.Id);
 
-        var deletedService = await DbContext.WebServices.Find(service => service.Id == created.WebServiceId).FirstOrDefaultAsync();
+        var deletingService = await DbContext.WebServices
+            .Find(service => service.Id == created.WebServiceId)
+            .SingleAsync();
         var retainedDns = await DbContext.DnsRecords.Find(record => record.Resource.Id == created.WebServiceId).FirstOrDefaultAsync();
 
-        Assert.Null(deletedService);
+        Assert.IsType<DeletingWebServiceLifecycle>(deletingService.Lifecycle);
         Assert.NotNull(retainedDns);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("web-service-deleted"));
-
-        var reservationService = Services.GetRequiredService<IDomainNameReservationService>();
-        var deleteDnsConsumer = new ReleaseDomainNameReservationOnDeleteDnsRecordEventConsumer(reservationService);
-        await deleteDnsConsumer.Handle(new DeleteDnsRecordEvent(
-            savedDns.Id,
-            EventCore.Create(TestData.TenantId)));
-
-        var deletedDns = await DbContext.DnsRecords.Find(record => record.Resource.Id == created.WebServiceId).FirstOrDefaultAsync();
-        Assert.Null(deletedDns);
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+            "resource-deployment-deletion-requested"));
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
+            "web-service-deleted"));
     }
 }
-
-

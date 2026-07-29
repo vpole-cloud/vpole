@@ -363,6 +363,7 @@ public sealed class DeploymentTargetConnectionSecurityTests
             connection,
             DeploymentTargetHealth.Unknown(connection.Version),
             DeploymentTargetCapabilities.Unknown(connection.Version),
+            DeploymentTargetTestData.CreateWorkloadConfiguration(),
             enabled: true,
             acceptsWorkloads: true,
             new DeploymentTargetFactory.CreateOptions(id, createdAtUtc));

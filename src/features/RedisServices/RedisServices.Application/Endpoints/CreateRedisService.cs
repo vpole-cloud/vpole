@@ -1,20 +1,21 @@
 using System.Collections.Immutable;
 using FluentValidation;
-using MassTransit;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceDeployments.Application.Placement;
+using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Events;
-using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
@@ -44,31 +45,26 @@ public static class CreateRedisService
 
 public sealed class CreateRedisServiceHandler(
     IRedisDbContext dbContext,
-    IResourceGroupLookup resourceGroupLookup,
     IStorageProfileResolver storageProfileResolver,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    IDeploymentTargetLookup deploymentTargetLookup)
+    IResourceDeploymentPlacementResolver placementResolver,
+    IResourceDeploymentWriter deploymentWriter)
     : IMediatorHandler<CreateRedisServiceRequest, CreateRedisServiceResponse>
 {
     public async Task<Result<CreateRedisServiceResponse>> HandleAsync(CreateRedisServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var targetAdmission = await deploymentTargetLookup.ResolveForNewWorkloadAsync(
-            deploymentTargetId: null,
+        var targetResult = await placementResolver.ResolveTargetAsync(
+            request.Body.Placement?.DeploymentTargetId,
+            requiresIngress: false,
             cancellationToken);
-        if (!targetAdmission.TryGetValue(out _, out var targetAdmissionFailure))
-            return targetAdmissionFailure;
-
-        var placementResult = await resourceGroupLookup.GetPlacementAsync(
-            request.TenantId,
-            request.Body.ResourceGroupId,
-            cancellationToken);
-        if (!placementResult.TryGetValue(out var placement, out var placementFailure))
-            return placementFailure;
+        if (!targetResult.TryGetValue(out var target, out var targetFailure))
+            return targetFailure;
 
         var storageProfileResult = await storageProfileResolver.ResolveAsync(
             new StorageProfileResolutionRequest(
                 request.Body.Spec.Storage.StorageProfileId,
+                target.DeploymentTargetId,
                 request.TenantId,
                 ResourceType.Redis,
                 request.Body.Spec.Storage.SizeGb),
@@ -76,16 +72,21 @@ public sealed class CreateRedisServiceHandler(
         if (!storageProfileResult.TryGetValue(out var storageProfile, out var storageProfileFailure))
             return storageProfileFailure;
 
+        var createOptions = RedisFactory.DefaultCreateOptions with
+        {
+            Tags = request.Body.Tags
+        };
         var newRedis = RedisFactory.Create(
             tenantId: request.TenantId,
             name: request.Body.Name,
             resourceGroupId: request.Body.ResourceGroupId,
-            spec: request.Body.Spec.ToDomain(placement.KubernetesNamespace, storageProfile),
-            options: RedisFactory.DefaultCreateOptions with
-            {
-                Tags = request.Body.Tags
-            }
-        );
+            spec: request.Body.Spec.ToDomain(),
+            options: createOptions);
+        var deploymentId = ObjectId.GenerateNewId().ToString();
+        var resolvedStorage = ResolvedStorageConfiguration.Create(
+            storageProfile.ProfileId,
+            storageProfile.ProfileRevision,
+            storageProfile.StorageClassName);
 
         return await quotaAdmissionExecutor.ExecuteAsync<RedisSpec, CreateRedisServiceResponse>(
             request.TenantId,
@@ -97,29 +98,37 @@ public sealed class CreateRedisServiceHandler(
                     session,
                     newRedis,
                     cancellationToken: transactionCancellationToken);
+
+                var deploymentResult = await deploymentWriter.CreateAsync(
+                    new CreateResourceDeploymentCommand(
+                        deploymentId,
+                        request.TenantId,
+                        ResourceDeploymentResourceTypes.Redis,
+                        newRedis.Id,
+                        newRedis.ResourceGroupId,
+                        request.Body.Placement?.IsolationScopeId,
+                        target,
+                        resolvedStorage,
+                        ResourcePlacementCapability.SingleTarget),
+                    session,
+                    transactionCancellationToken);
+                if (!deploymentResult.TryGetValue(
+                        out var deployment,
+                        out var deploymentFailure))
+                {
+                    return deploymentFailure;
+                }
+
                 await dbContext.StoreEventAsync(
                     newRedis.ToCreateEvent(),
                     session,
                     transactionCancellationToken);
 
-                return new CreateRedisServiceResponse(newRedis.Id);
+                return new CreateRedisServiceResponse(
+                    newRedis.Id,
+                    deployment.ToPlacementSummaryDto());
             },
             cancellationToken);
-    }
-}
-
-public class ProvisionRedisServiceOnRedisServiceCreatedConsumer(
-    IKubernetesClientProvider kubernetesClientProvider)
-    : IConsumer<RedisServiceCreatedEvent>
-{
-    public async Task Consume(ConsumeContext<RedisServiceCreatedEvent> context)
-    {
-        var ct = context.CancellationToken;
-        var redis = context.Message.ToRedis();
-        var inKuber = redis.ToKubernetes();
-        var kubernetes = await kubernetesClientProvider.GetDefaultAsync(ct);
-
-        await RedisKubernetesResourceManager.CreateAsync(kubernetes, inKuber, ct);
     }
 }
 
@@ -132,11 +141,13 @@ public sealed record CreateRedisServiceRequestBody(
     string Name,
     string ResourceGroupId,
     RedisSpecDto Spec,
-    ImmutableHashSet<string> Tags
+    ImmutableHashSet<string> Tags,
+    PlacementRequest? Placement = null
 );
 
 public sealed record CreateRedisServiceResponse(
-    string RedisId
+    string RedisId,
+    PlacementSummaryDto Placement
 );
 
 public sealed class CreateRedisServiceRequestValidator : AbstractValidator<CreateRedisServiceRequest>
@@ -160,6 +171,16 @@ public sealed class CreateRedisServiceRequestBodyValidator : AbstractValidator<C
             .NotEmpty();
         RuleFor(x => x.Spec)
             .SetValidator(new RedisSpecDtoValidator());
+        When(body => body.Placement is not null, () =>
+        {
+            RuleFor(body => body.Placement!.IsolationScopeId)
+                .Must(id => string.IsNullOrWhiteSpace(id) ||
+                            ObjectId.TryParse(id, out _))
+                .WithMessage("Isolation scope ID must be a MongoDB ObjectId.");
+            RuleFor(body => body.Placement!.DeploymentTargetId)
+                .Must(id => string.IsNullOrWhiteSpace(id) ||
+                            ObjectId.TryParse(id, out _))
+                .WithMessage("Deployment target ID must be a MongoDB ObjectId.");
+        });
     }
 }
-

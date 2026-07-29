@@ -40,6 +40,11 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         Assert.IsType<InClusterConnectionInput>(Assert.Single(preparer.Inputs));
         var (target, settings) = await LoadSingleStateAsync();
         Assert.IsType<InClusterDeploymentTargetConnection>(target.Connection);
+        var ingress = Assert.IsType<DeploymentTargetIngressConfiguration>(
+            target.WorkloadConfiguration.Ingress);
+        Assert.Equal("traefik", ingress.IngressClassName);
+        Assert.Equal("letsencrypt-prod", ingress.ClusterIssuerName);
+        Assert.Equal(1, target.WorkloadConfiguration.Revision);
         Assert.Equal(target.Id, settings.DefaultDeploymentTargetId);
     }
 
@@ -208,6 +213,57 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
     }
 
     [Fact]
+    public async Task Bootstrap_PersistsConfiguredWorkloadConfiguration()
+    {
+        var options = CreateOptions(new DeploymentTargetBootstrapOptions
+        {
+            WorkloadConfiguration = new DeploymentTargetBootstrapWorkloadConfigurationOptions
+            {
+                Ingress = new DeploymentTargetBootstrapIngressOptions
+                {
+                    IngressClassName = "nginx",
+                    ClusterIssuerName = "private-ca"
+                }
+            }
+        });
+        var bootstrapper = CreateBootstrapper(
+            new RecordingConnectionPreparer(),
+            Environments.Production,
+            options);
+
+        await bootstrapper.BootstrapAsync();
+
+        var (target, _) = await LoadSingleStateAsync();
+        var ingress = Assert.IsType<DeploymentTargetIngressConfiguration>(
+            target.WorkloadConfiguration.Ingress);
+        Assert.Equal("nginx", ingress.IngressClassName);
+        Assert.Equal("private-ca", ingress.ClusterIssuerName);
+    }
+
+    [Fact]
+    public void OptionsValidator_RejectsInvalidIngressConfiguration()
+    {
+        var options = CreateOptions(new DeploymentTargetBootstrapOptions
+        {
+            WorkloadConfiguration = new DeploymentTargetBootstrapWorkloadConfigurationOptions
+            {
+                Ingress = new DeploymentTargetBootstrapIngressOptions
+                {
+                    IngressClassName = "Invalid_Ingress"
+                }
+            }
+        });
+
+        var result = new DeploymentTargetOptionsValidator().Validate(Options.DefaultName, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            "DeploymentTargets:Bootstrap:WorkloadConfiguration:Ingress:IngressClassName " +
+            "must be a valid Kubernetes resource name.",
+            result.Failures);
+    }
+
+    [Fact]
     public async Task DefaultBindingRacingDeletion_CannotLeaveDanglingSettings()
     {
         var existing = CreateExistingTarget();
@@ -287,6 +343,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
             DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
             DeploymentTargetHealth.Healthy(connectionVersion, Now.UtcDateTime),
             DeploymentTargetCapabilities.Unknown(connectionVersion),
+            DeploymentTargetTestData.CreateWorkloadConfiguration(),
             enabled: true,
             acceptsWorkloads: true,
             new DeploymentTargetFactory.CreateOptions(id, Now.UtcDateTime));

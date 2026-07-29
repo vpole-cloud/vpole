@@ -246,6 +246,7 @@ internal static class ResourcePlacementExtensions
             runtimeCell.Id,
             runtimeCell.DeploymentTargetId,
             runtimeCell.KubernetesNamespace,
+            runtimeCell.DesiredGeneration,
             runtimeCell.State switch
             {
                 ProvisioningRuntimeCellState => ResourcePlacementState.Provisioning,

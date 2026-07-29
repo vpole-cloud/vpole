@@ -62,6 +62,22 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
         return target;
     }
 
+    public async Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>>
+        ListEligibleForNewWorkloadAsync(
+            CancellationToken cancellationToken = default)
+    {
+        var targets = await dbContext.DeploymentTargets
+            .Find(target =>
+                target.Enabled &&
+                target.AcceptsWorkloads &&
+                target.DeletionRequestedAtUtc == null)
+            .SortBy(target => target.Id)
+            .ToListAsync(cancellationToken);
+        return targets
+            .Select(target => target.ToLookupDto())
+            .ToArray();
+    }
+
     private static ValidationFailure? ValidateId(string? deploymentTargetId)
     {
         if (!string.IsNullOrWhiteSpace(deploymentTargetId) &&

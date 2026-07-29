@@ -12,6 +12,7 @@ open Pole.Database
 open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
+open Pole.Features.ResourceDeployments.Contracts
 open Pole.Mediator
 open Pole.ResultType
 
@@ -24,7 +25,9 @@ type GetPostgresClusterByIdRequest =
     interface ITenantReadOperation with
         member this.TenantId = this.TenantId
     
-type GetPostgresClusterHandler(dbContext : IPostgresDbContext) =
+type GetPostgresClusterHandler(
+    dbContext : IPostgresDbContext,
+    deploymentQuery : IResourceDeploymentQueryService) =
     interface IMediatorHandler<GetPostgresClusterByIdRequest, PostgresClusterDto> with
         member this.HandleAsync(request, cancellationToken) =
             task {
@@ -43,7 +46,22 @@ type GetPostgresClusterHandler(dbContext : IPostgresDbContext) =
                     return Failures.NotFound("Postgres cluster not found.", request.ClusterId)
                            |> ResultF.ofFailure
                 | Some cluster ->
-                    return PostgresCluster.toDto cluster |> ResultF.ofValue
+                    let! placement =
+                        deploymentQuery.GetAsync(
+                            cluster.TenantId,
+                            ResourceDeploymentResourceTypes.PostgreSql,
+                            cluster.Id,
+                            cancellationToken)
+
+                    if isNull placement then
+                        return
+                            Failures.Conflict(
+                                "The PostgreSQL resource deployment is unavailable.")
+                            |> ResultF.ofFailure
+                    else
+                        return
+                            PostgresClusterDto.create cluster placement
+                            |> ResultF.ofValue
             }
             
 type GetPostgresClusterByIdRequestValidator() as this =
@@ -65,4 +83,3 @@ type GetPostgresClusterById =
             let! result = mediator.Send request
             return result.ToHttpResult(fun value -> Results.Ok(value))
         }
-

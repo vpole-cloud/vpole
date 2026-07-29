@@ -1,8 +1,14 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Pole.Features.Core.Multitenancy;
+using Pole.Features.Postgres.Application.Common;
+using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Endpoints;
+using Pole.Features.Request;
 using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application.Endpoints;
+using Pole.Features.WebServices.Application.Common;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -95,14 +101,19 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
 
         var response = await Client.PostAsJsonAsync(
             "/api/v1/platform/storage/profiles",
-            new UpsertStorageProfileRequestBody(
+            new CreateStorageProfileRequestBody(
                 DisplayName: "Fast SSD",
                 Description: "Fast tenant storage",
                 MediaType: "SSD",
                 PerformanceTier: "Fast",
                 IsEnabled: true,
                 IsDefault: false,
-                StorageClassNames: ["fast"],
+                TargetMappings:
+                [
+                    new StorageProfileTargetMappingRequestBody(
+                        TestData.DefaultDeploymentTargetId,
+                        "fast")
+                ],
                 AllowedResourceTypes: ["Redis", "Postgres"],
                 TenantAccess: new StorageProfileTenantAccessDto("AllTenants", []),
                 SizeLimits: new StorageProfileSizeLimitsDto(1, 100)));
@@ -111,10 +122,85 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         var payload = await response.Content.ReadFromJsonAsync<StorageProfileDto>();
         Assert.NotNull(payload);
         Assert.Equal("Fast SSD", payload.DisplayName);
-        Assert.Contains("fast", payload.StorageClassNames);
+        Assert.Equal(
+            "fast",
+            Assert.Single(payload.TargetMappings).StorageClassName);
+    }
+
+    [Fact]
+    public async Task PlatformAdminListsResourcesWithoutTenantHeader_WithPlacement()
+    {
+        var resourceGroupResponse = await Client.PostAsJsonAsync(
+            "/api/v1/resource-groups/",
+            TestData.CreateResourceGroupRequest("platform-list").Body);
+        var resourceGroup =
+            await resourceGroupResponse.Content.ReadFromJsonAsync<ResourceGroupCreatedResponse>();
+        Assert.NotNull(resourceGroup);
+
+        var webCreate = await Client.PostAsJsonAsync(
+            "/api/v1/web-services/",
+            TestData.CreateWebServiceRequest(
+                resourceGroup.Id,
+                "platform-web",
+                "platform-web.example.test").Body);
+        var redisCreate = await Client.PostAsJsonAsync(
+            "/api/v1/redis-services/",
+            TestData.CreateRedisServiceRequest(
+                resourceGroup.Id,
+                "platform-redis").Body);
+        var postgresCreate = await Client.PostAsJsonAsync(
+            "/api/v1/postgres/",
+            TestData.CreatePostgresClusterRequest(
+                resourceGroup.Id,
+                "platform-postgres").Body);
+        Assert.Equal(HttpStatusCode.Accepted, webCreate.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, redisCreate.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, postgresCreate.StatusCode);
+
+        Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+
+        var webResponse = await Client.GetAsync(
+            "/api/v1/web-services/?pageNumber=1&pageSize=10");
+        var redisResponse = await Client.GetAsync(
+            "/api/v1/redis-services/?pageNumber=1&pageSize=10");
+        var postgresResponse = await Client.GetAsync(
+            "/api/v1/postgres/?pageNumber=1&pageSize=10");
+        Assert.True(
+            webResponse.IsSuccessStatusCode,
+            await webResponse.Content.ReadAsStringAsync());
+        Assert.True(
+            redisResponse.IsSuccessStatusCode,
+            await redisResponse.Content.ReadAsStringAsync());
+        Assert.True(
+            postgresResponse.IsSuccessStatusCode,
+            await postgresResponse.Content.ReadAsStringAsync());
+        var web =
+            await webResponse.Content.ReadFromJsonAsync<PaginatedResponse<WebServiceDto>>();
+        var redis =
+            await redisResponse.Content.ReadFromJsonAsync<PaginatedResponse<RedisDto>>();
+        var postgres =
+            await postgresResponse.Content.ReadFromJsonAsync<
+                PaginatedResponse<PostgresClusterDto>>();
+
+        var webItem = Assert.Single(web!.Items);
+        var redisItem = Assert.Single(redis!.Items);
+        var postgresItem = Assert.Single(postgres!.Items);
+        Assert.NotNull(webItem.Placement);
+        Assert.NotNull(redisItem.Placement);
+        Assert.NotNull(postgresItem.Placement);
+
+        var webDetail = await Client.GetFromJsonAsync<WebServiceDto>(
+            $"/api/v1/web-services/{webItem.Id}");
+        var redisDetail = await Client.GetFromJsonAsync<RedisDto>(
+            $"/api/v1/redis-services/{redisItem.Id}");
+        var postgresDetail = await Client.GetFromJsonAsync<PostgresClusterDto>(
+            $"/api/v1/postgres/{postgresItem.Id}");
+        Assert.NotNull(webDetail!.Placement);
+        Assert.NotNull(redisDetail!.Placement);
+        Assert.NotNull(postgresDetail!.Placement);
     }
 
     private sealed record ResourceGroupCreatedResponse(string Id, string Name, string Description, IReadOnlyCollection<string> Tags);
     private sealed record SupportedPostgresVersionsResponse(int From, int To);
 }
-

@@ -4,7 +4,6 @@ using Pole.Features.Shared.Models;
 namespace Pole.Features.WebServices.Events;
 
 public sealed record WebServiceSpecSnapshot(
-    string KubernetesNamespace,
     WebServiceImageInfoSnapshot Image,
     int Replicas,
     Resources Resources,

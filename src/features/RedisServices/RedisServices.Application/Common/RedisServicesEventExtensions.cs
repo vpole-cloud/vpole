@@ -14,7 +14,6 @@ internal static class RedisServicesEventExtensions
                 redis.Name,
                 redis.ResourceGroupId,
                 redis.Spec.ToSnapshot(),
-                redis.Status,
                 redis.Tags)
             {
             EventCore = EventCore.Create(redis.TenantId)
@@ -43,7 +42,6 @@ internal static class RedisServicesEventExtensions
                 RedisFactory.DefaultCreateOptions with
                 {
                     Id = createEvent.RedisId,
-                    Status = createEvent.Status,
                     Tags = createEvent.Tags
                 });
     }
@@ -52,8 +50,9 @@ internal static class RedisServicesEventExtensions
     {
         internal RedisServiceSpecSnapshot ToSnapshot()
             => new(
-                spec.KubernetesNamespace,
-                new RedisServiceStorageSnapshot(spec.Storage.SizeGb, spec.Storage.StorageProfile),
+                new RedisServiceStorageSnapshot(
+                    spec.Storage.SizeGb,
+                    spec.Storage.StorageProfileId),
                 spec.Resources);
     }
 
@@ -61,9 +60,9 @@ internal static class RedisServicesEventExtensions
     {
         internal RedisSpec ToDomain()
             => new(
-                spec.KubernetesNamespace,
-                new Storage(spec.Storage.SizeGb, spec.Storage.StorageProfile),
+                new Storage(
+                    spec.Storage.SizeGb,
+                    spec.Storage.StorageProfileId),
                 spec.Resources);
     }
 }
-

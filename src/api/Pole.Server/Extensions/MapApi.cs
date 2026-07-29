@@ -6,6 +6,7 @@ using Pole.Features.Functions.Application.Common;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.StorageProfiles.Application.Common;
@@ -34,6 +35,7 @@ public static class MapApi
             .MapUserEndpoints()
             .MapWebServiceEndpoints()
             .MapRedisServiceEndpoints()
+            .MapResourceDeploymentEndpoints()
             .MapPostgresClusterEndpoints()
             .MapQuotaEndpoints()
             .MapStorageProfileEndpoints()
@@ -44,4 +46,3 @@ public static class MapApi
     }
     
 }
-

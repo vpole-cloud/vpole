@@ -19,7 +19,8 @@ public enum WebServiceReleaseOutcome
 {
     Pending,
     Succeeded,
-    Failed
+    Failed,
+    Superseded
 }
 
 public sealed record WebServiceRelease(
@@ -41,6 +42,7 @@ public sealed record WebServiceRelease(
     string? TraceId,
     string? CorrelationId,
     WebServiceReleaseProvenance? Provenance,
+    long DeploymentGeneration,
     WebServiceSpecSnapshot Spec
 );
 
@@ -80,7 +82,8 @@ public static class WebServiceReleaseFactory
         string? traceId,
         string? correlationId,
         DateTime? requestedAtUtc = null,
-        WebServiceReleaseProvenance? provenance = null) =>
+        WebServiceReleaseProvenance? provenance = null,
+        long deploymentGeneration = 1) =>
         new(
             Id: ObjectId.GenerateNewId().ToString(),
             TenantId: tenantId,
@@ -96,5 +99,6 @@ public static class WebServiceReleaseFactory
             TraceId: traceId,
             CorrelationId: correlationId,
             Provenance: provenance,
+            DeploymentGeneration: deploymentGeneration,
             Spec: spec);
 }

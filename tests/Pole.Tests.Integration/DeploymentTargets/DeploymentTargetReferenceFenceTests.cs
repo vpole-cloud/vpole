@@ -205,6 +205,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
             DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
             DeploymentTargetHealth.Healthy(connectionVersion, now),
             DeploymentTargetCapabilities.Unknown(connectionVersion),
+            DeploymentTargetTestData.CreateWorkloadConfiguration(),
             enabled: true,
             acceptsWorkloads: true,
             new DeploymentTargetFactory.CreateOptions(id, now));
