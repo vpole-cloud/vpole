@@ -243,4 +243,4 @@ module SearchDocumentFactory =
           ResourceGroupId = resourceGroupId
           ResourceGroupName = resourceGroupName
           SearchKeys = searchKeys
-          Placement = None }
+          OperationalStatus = None }

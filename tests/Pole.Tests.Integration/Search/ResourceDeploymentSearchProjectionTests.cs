@@ -28,7 +28,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             "SearchSourceDocuments");
 
     [Fact]
-    public async Task AppliedProjection_PreservesLogicalMetadata_AndReturnsSafePlacement()
+    public async Task AppliedProjection_PreservesLogicalMetadata_AndReturnsOperationalStatus()
     {
         var tenantId = ObjectId.GenerateNewId().ToString();
         var resourceId = ObjectId.GenerateNewId().ToString();
@@ -59,28 +59,23 @@ public sealed class ResourceDeploymentSearchProjectionTests(
 
         Assert.Equal("portal", projected.Title);
         Assert.Contains(projected.SearchKeys, key => key.Value == "portal");
-        Assert.NotNull(projected.Placement);
-        Assert.Equal("Applied", projected.Placement.Value.Status);
-        Assert.Equal(placement.DeploymentTargetId, projected.Placement.Value.DeploymentTargetId);
-        Assert.Equal(placement.IsolationScopeId, projected.Placement.Value.IsolationScopeId);
-        Assert.Equal(placement.RuntimeCellId, projected.Placement.Value.RuntimeCellId);
-        Assert.Equal(2, projected.Placement.Value.DesiredGeneration);
-        Assert.Equal(2, projected.Placement.Value.ObservedGeneration);
-        Assert.Null(projected.Placement.Value.FailureCode);
-        Assert.Collection(
-            projected.Placement.Value.Endpoints,
-            endpoint =>
-            {
-                Assert.Equal("Ingress", endpoint.Kind);
-                Assert.Equal("portal.example.com", endpoint.Host);
-                Assert.Equal(443, endpoint.Port);
-                Assert.Equal("https", endpoint.Scheme);
-            });
+        Assert.NotNull(projected.OperationalStatus);
+        Assert.Equal("Applied", projected.OperationalStatus.Value.Status);
+        Assert.Equal(2, projected.OperationalStatus.Value.DesiredGeneration);
+        Assert.Equal(2, projected.OperationalStatus.Value.ObservedGeneration);
+        Assert.Null(projected.OperationalStatus.Value.FailureCode);
+
+        var persistedStatus = projected.OperationalStatus.Value.ToBsonDocument();
+        Assert.DoesNotContain("DeploymentId", persistedStatus.Names);
+        Assert.DoesNotContain("DeploymentTargetId", persistedStatus.Names);
+        Assert.DoesNotContain("IsolationScopeId", persistedStatus.Names);
+        Assert.DoesNotContain("RuntimeCellId", persistedStatus.Names);
+        Assert.DoesNotContain("Endpoints", persistedStatus.Names);
 
         var result = await SearchService.Get(
             SearchQueryModule.FromRequest(new GetSearchRequest
             {
-                TenantId = TestData.TenantId,
+                TenantId = tenantId,
                 Query = "port",
                 PageNumber = 1,
                 PageSize = 10
@@ -88,11 +83,9 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             CancellationToken.None);
 
         var hit = Assert.Single(result.Items);
-        Assert.NotNull(hit.Placement);
-        Assert.Equal("Applied", hit.Placement.Value.Status);
-        Assert.Equal(
-            "portal.example.com",
-            Assert.Single(hit.Placement.Value.Endpoints).Host);
+        Assert.NotNull(hit.OperationalStatus);
+        Assert.Equal("Applied", hit.OperationalStatus.Value.Status);
+        Assert.Null(hit.OperationalStatus.Value.FailureCode);
     }
 
     [Fact]
@@ -156,22 +149,22 @@ public sealed class ResourceDeploymentSearchProjectionTests(
                 document.SourceId == resourceId)
             .SingleAsync();
 
-        Assert.NotNull(projected.Placement);
-        Assert.Equal(3, projected.Placement.Value.DesiredGeneration);
-        Assert.Equal(3, projected.Placement.Value.ObservedGeneration);
-        Assert.Equal("Applied", projected.Placement.Value.Status);
-        Assert.Null(projected.Placement.Value.FailureCode);
+        Assert.NotNull(projected.OperationalStatus);
+        Assert.Equal(3, projected.OperationalStatus.Value.DesiredGeneration);
+        Assert.Equal(3, projected.OperationalStatus.Value.ObservedGeneration);
+        Assert.Equal("Applied", projected.OperationalStatus.Value.Status);
+        Assert.Null(projected.OperationalStatus.Value.FailureCode);
 
         var otherTenantProjection = await SourceDocuments
             .Find(document =>
                 document.TenantId == otherTenantId &&
                 document.SourceId == resourceId)
             .SingleAsync();
-        Assert.NotNull(otherTenantProjection.Placement);
-        Assert.Equal("Failed", otherTenantProjection.Placement.Value.Status);
+        Assert.NotNull(otherTenantProjection.OperationalStatus);
+        Assert.Equal("Failed", otherTenantProjection.OperationalStatus.Value.Status);
         Assert.Equal(
             "ProviderUnavailable",
-            otherTenantProjection.Placement.Value.FailureCode);
+            otherTenantProjection.OperationalStatus.Value.FailureCode);
     }
 
     [Theory]
@@ -207,18 +200,18 @@ public sealed class ResourceDeploymentSearchProjectionTests(
                 document.SourceId == resourceId)
             .SingleAsync();
 
-        Assert.NotNull(projected.Placement);
-        Assert.Equal(status, projected.Placement.Value.Status);
+        Assert.NotNull(projected.OperationalStatus);
+        Assert.Equal(status, projected.OperationalStatus.Value.Status);
         if (failureCode is null)
         {
-            Assert.Null(projected.Placement.Value.FailureCode);
+            Assert.Null(projected.OperationalStatus.Value.FailureCode);
         }
         else
         {
-            Assert.NotNull(projected.Placement.Value.FailureCode);
+            Assert.NotNull(projected.OperationalStatus.Value.FailureCode);
             Assert.Equal(
                 failureCode,
-                projected.Placement.Value.FailureCode.Value);
+                projected.OperationalStatus.Value.FailureCode.Value);
         }
         Assert.DoesNotContain(
             projected.ToBsonDocument().Names,
@@ -228,7 +221,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
     }
 
     [Fact]
-    public async Task LogicalProjectionRebuild_PreservesExistingPlacement()
+    public async Task LogicalProjectionRebuild_PreservesExistingOperationalStatus()
     {
         var tenantId = ObjectId.GenerateNewId().ToString();
         var resourceId = ObjectId.GenerateNewId().ToString();
@@ -277,9 +270,8 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             .SingleAsync();
 
         Assert.Equal("new-name", projected.Title);
-        Assert.NotNull(projected.Placement);
-        Assert.Equal(deploymentId, projected.Placement.Value.DeploymentId);
-        Assert.Equal("Applied", projected.Placement.Value.Status);
+        Assert.NotNull(projected.OperationalStatus);
+        Assert.Equal("Applied", projected.OperationalStatus.Value.Status);
     }
 
     private ResourceDeploymentSearchProjectionConsumer CreateConsumer(
