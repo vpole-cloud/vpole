@@ -219,7 +219,6 @@ public static class DependencyInjection
             services.TryAddSingleton<
                 IPostgresClusterDeploymentManager,
                 PostgresClusterDeploymentManager>();
-            services.TryAddScoped<IWebServiceDeploymentApplier, KubernetesWebServiceDeploymentApplier>();
             services.TryAddScoped<
                 IWebServiceResourceDeploymentReader,
                 MongoWebServiceResourceDeploymentReader>();

@@ -295,6 +295,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(new GetWebServicesRequest
         {
+            TenantId = TestData.TenantId,
             Search = "beta",
             PageNumber = 1,
             PageSize = 1
