@@ -9,6 +9,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Failures\Failures.csproj" />
       <ProjectReference Include="..\Multitenancy\Multitenancy.csproj" />
       <ProjectReference Include="..\Events\Events.csproj" />
       <ProjectReference Include="..\Observability\Observability.csproj" />
