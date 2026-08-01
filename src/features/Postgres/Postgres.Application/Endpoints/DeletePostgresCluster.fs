@@ -64,7 +64,7 @@ type DeletePostgresClusterHandler(
                     let! placement =
                         deploymentQuery.FindOptionAsync(
                             cluster.TenantId,
-                            ResourceDeploymentResourceTypes.PostgreSql,
+                            PostgresResourceDeployment.ResourceType,
                             cluster.Id,
                             cancellationToken)
 
@@ -111,7 +111,7 @@ type DeletePostgresClusterHandler(
                                             deploymentWriter.RequestDeletionAsync(
                                                 ResourceDeploymentMutationCommand(
                                                     cluster.TenantId,
-                                                    ResourceDeploymentResourceTypes.PostgreSql,
+                                                    PostgresResourceDeployment.ResourceType,
                                                     cluster.Id),
                                                 session,
                                                 ct)
@@ -136,7 +136,7 @@ type FinalizePostgresClusterDeletionConsumer(
     interface IConsumer<ResourceDeploymentDeletedEvent> with
         member _.Consume(context) =
             let message = context.Message
-            if message.ResourceType <> ResourceDeploymentResourceTypes.PostgreSql.Value then
+            if message.ResourceType <> PostgresResourceDeployment.ResourceType.Value then
                 Task.CompletedTask
             else
                 dbContext.RunInTransactionAsync(
@@ -165,7 +165,7 @@ type FinalizePostgresClusterDeletionConsumer(
                                             fun deployment ->
                                                 deployment.TenantId = message.EventCore.TenantId &&
                                                 deployment.ResourceType =
-                                                    ResourceDeploymentResourceTypes.PostgreSql.Value &&
+                                                    PostgresResourceDeployment.ResourceType.Value &&
                                                 deployment.ResourceId = message.ResourceId)
                                         .ToListAsync(ct)
 
@@ -206,7 +206,7 @@ type FinalizePostgresClusterDeletionConsumer(
                                                         deployment.TenantId =
                                                             message.EventCore.TenantId &&
                                                         deployment.ResourceType =
-                                                            ResourceDeploymentResourceTypes.PostgreSql.Value &&
+                                                            PostgresResourceDeployment.ResourceType.Value &&
                                                         deployment.ResourceId =
                                                             message.ResourceId),
                                                     cancellationToken = ct)

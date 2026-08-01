@@ -69,7 +69,7 @@ public sealed class GetWebServicesHandler(
             .ToListAsync(cancellationToken);
         var placements = await deploymentQuery.GetManyAsync(
             request.TenantId,
-            ResourceDeploymentResourceTypes.WebService,
+            WebServiceResourceDeployment.ResourceType,
             webServices.Select(service => service.Id).ToArray(),
             cancellationToken);
 

@@ -57,7 +57,7 @@ type GetPostgresClustersHandler(
                 let! placements =
                     deploymentQuery.GetManyAsync(
                         request.TenantId,
-                        ResourceDeploymentResourceTypes.PostgreSql,
+                        PostgresResourceDeployment.ResourceType,
                         clusterIds,
                         cancellationToken)
 

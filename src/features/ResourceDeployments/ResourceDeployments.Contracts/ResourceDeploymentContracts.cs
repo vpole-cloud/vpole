@@ -44,18 +44,6 @@ public readonly partial record struct ResourceTypeId
     private static partial Regex ResourceTypePattern();
 }
 
-public static class ResourceDeploymentResourceTypes
-{
-    public static ResourceTypeId WebService { get; } =
-        ResourceTypeId.Create("pole/web-service");
-
-    public static ResourceTypeId Redis { get; } =
-        ResourceTypeId.Create("pole/redis");
-
-    public static ResourceTypeId PostgreSql { get; } =
-        ResourceTypeId.Create("pole/postgresql");
-}
-
 public enum ResourcePlacementCapability
 {
     SingleTarget,

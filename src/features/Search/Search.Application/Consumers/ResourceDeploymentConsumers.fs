@@ -14,23 +14,11 @@ type ResourceDeploymentSearchProjectionConsumer(
     deploymentQueryService : IResourceDeploymentQueryService) =
 
     let trySourceType (resourceType : string) =
-        if String.Equals(
-            resourceType,
-            ResourceDeploymentResourceTypes.WebService.Value,
-            StringComparison.Ordinal) then
-            Some(SearchDocumentType.WebService, ResourceDeploymentResourceTypes.WebService)
-        elif String.Equals(
-            resourceType,
-            ResourceDeploymentResourceTypes.Redis.Value,
-            StringComparison.Ordinal) then
-            Some(SearchDocumentType.RedisService, ResourceDeploymentResourceTypes.Redis)
-        elif String.Equals(
-            resourceType,
-            ResourceDeploymentResourceTypes.PostgreSql.Value,
-            StringComparison.Ordinal) then
-            Some(SearchDocumentType.PostgresCluster, ResourceDeploymentResourceTypes.PostgreSql)
-        else
-            None
+        match resourceType with
+        | "pole/web-service" -> Some SearchDocumentType.WebService
+        | "pole/redis" -> Some SearchDocumentType.RedisService
+        | "pole/postgresql" -> Some SearchDocumentType.PostgresCluster
+        | _ -> None
 
     member _.Handle(
         tenantId : string,
@@ -43,11 +31,11 @@ type ResourceDeploymentSearchProjectionConsumer(
         task {
             match trySourceType resourceType with
             | None -> ()
-            | Some(sourceType, typedResourceType) ->
+            | Some sourceType ->
                 let! placement =
                     deploymentQueryService.GetAsync(
                         tenantId,
-                        typedResourceType,
+                        ResourceTypeId.Create(resourceType),
                         resourceId,
                         cancellationToken)
 

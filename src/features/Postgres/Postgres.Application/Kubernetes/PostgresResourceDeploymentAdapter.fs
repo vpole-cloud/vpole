@@ -42,7 +42,7 @@ type PostgresResourceDeploymentAdapter(
     deploymentManager : IPostgresClusterDeploymentManager) =
 
     let validateContext (context : ResourceDeploymentReconciliationContext) =
-        if context.Deployment.ResourceType <> ResourceDeploymentResourceTypes.PostgreSql.Value then
+        if context.Deployment.ResourceType <> PostgresResourceDeployment.ResourceType.Value then
             Some(
                 ResourceDeploymentAdapterResult.Failed.Create(
                     "ResourceTypeMismatch",
@@ -158,5 +158,5 @@ type PostgresResourceDeploymentAdapter(
 type PostgresResourceDeploymentAdapterRegistration =
     static member Descriptor =
         ResourceDeploymentAdapterDescriptor.Create<PostgresResourceDeploymentAdapter>(
-            ResourceDeploymentResourceTypes.PostgreSql,
+            PostgresResourceDeployment.ResourceType,
             ResourcePlacementCapability.SingleTarget)

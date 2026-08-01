@@ -24,6 +24,8 @@ public sealed class ResourceDeploymentRecoveryJobTests(
     private const string TargetId = "507f1f77bcf86cd799439076";
     private const string DeploymentId = "507f1f77bcf86cd799439077";
     private const string ClaimId = "507f1f77bcf86cd799439078";
+    private static readonly ResourceTypeId TestResourceType =
+        ResourceTypeId.Create("pole/test-resource");
 
     public Task InitializeAsync() => fixture.ResetDatabaseAsync();
 
@@ -46,7 +48,7 @@ public sealed class ResourceDeploymentRecoveryJobTests(
             .MarkReady(expectedGeneration: 1, createdAtUtc.AddSeconds(1));
         var deployment = ResourceDeploymentFactory.Create(
                 TenantId,
-                ResourceDeploymentResourceTypes.Redis,
+                TestResourceType,
                 ResourceId,
                 ResourceGroupId,
                 ScopeId,

@@ -346,12 +346,7 @@ public static class DependencyInjection
                 Pole.Features.ResourceDeployments.Contracts.IResourceDeploymentQueryService,
                 ResourceDeploymentQueryService>();
             services.AddSingleton(
-                ResourceDeploymentAdapterDescriptor.Create<
-                    WebServiceResourceDeploymentAdapter>(
-                    Pole.Features.ResourceDeployments.Contracts
-                        .ResourceDeploymentResourceTypes.WebService,
-                    Pole.Features.ResourceDeployments.Contracts
-                        .ResourcePlacementCapability.SingleTarget));
+                WebServiceResourceDeploymentAdapterRegistration.Descriptor);
             services.AddSingleton(
                 RedisResourceDeploymentAdapterRegistration.Descriptor);
             services.AddSingleton(

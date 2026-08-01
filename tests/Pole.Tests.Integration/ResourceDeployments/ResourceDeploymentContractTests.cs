@@ -16,13 +16,14 @@ public sealed class ResourceDeploymentContractTests
     private const string TenantId = "507f1f77bcf86cd799439011";
     private const string DeploymentId = "507f1f77bcf86cd799439012";
     private const string RuntimeCellId = "507f1f77bcf86cd799439013";
+    private static readonly ResourceTypeId TestResourceType =
+        ResourceTypeId.Create("pole/test-resource");
 
     [Fact]
-    public void ResourceTypes_AreStableValidatedStrings()
+    public void ResourceTypeId_ValidatesAndNormalizesStrings()
     {
-        Assert.Equal("pole/web-service", ResourceDeploymentResourceTypes.WebService.Value);
-        Assert.Equal("pole/redis", ResourceDeploymentResourceTypes.Redis.Value);
-        Assert.Equal("pole/postgresql", ResourceDeploymentResourceTypes.PostgreSql.Value);
+        Assert.Equal("pole/test-resource", TestResourceType.Value);
+        Assert.Equal("pole/test-resource", ResourceTypeId.Create(" pole/test-resource ").Value);
         Assert.Throws<ArgumentException>(() => ResourceTypeId.Create("WebService"));
         Assert.Throws<ArgumentException>(() => ResourceTypeId.Create("pole/"));
     }
@@ -31,14 +32,14 @@ public sealed class ResourceDeploymentContractTests
     public void AdapterCatalog_RejectsDuplicateResourceTypes()
     {
         var descriptor = ResourceDeploymentAdapterDescriptor.Create<FakeAdapter>(
-            ResourceDeploymentResourceTypes.WebService,
+            TestResourceType,
             ResourcePlacementCapability.SingleTarget);
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
             new ResourceDeploymentAdapterCatalog([descriptor, descriptor]));
 
         Assert.Contains(
-            ResourceDeploymentResourceTypes.WebService.Value,
+            TestResourceType.Value,
             exception.Message,
             StringComparison.Ordinal);
     }

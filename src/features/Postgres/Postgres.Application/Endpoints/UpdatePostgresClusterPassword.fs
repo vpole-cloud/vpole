@@ -118,7 +118,7 @@ type UpdatePostgresClusterPasswordHandler(
                                                     deploymentWriter.RequestApplyAsync(
                                                         ResourceDeploymentMutationCommand(
                                                             cluster.TenantId,
-                                                            ResourceDeploymentResourceTypes.PostgreSql,
+                                                            PostgresResourceDeployment.ResourceType,
                                                             cluster.Id),
                                                         session,
                                                         ct)

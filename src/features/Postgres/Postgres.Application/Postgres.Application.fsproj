@@ -19,6 +19,7 @@
         <Compile Include="Common\MongoExtensions.fs" />
         <Compile Include="Common\ResultF.fs" />
         <Compile Include="Common\ResourceDeploymentQueryExtensions.fs" />
+        <Compile Include="Common\PostgresResourceDeployment.fs" />
         <Compile Include="Common\IPostgresDbContext.fs" />
         <Compile Include="Common\PostgresCredentialService.fs" />
         <Compile Include="Common\PostgresCredentialMigration.fs" />

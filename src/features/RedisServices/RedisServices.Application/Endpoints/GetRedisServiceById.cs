@@ -55,7 +55,7 @@ public sealed class GetRedisServiceByIdHandler(
 
         var placement = await deploymentQuery.GetAsync(
             redis.TenantId,
-            ResourceDeploymentResourceTypes.Redis,
+            RedisResourceDeployment.ResourceType,
             redis.Id,
             cancellationToken);
         return redis.ToDto(placement);

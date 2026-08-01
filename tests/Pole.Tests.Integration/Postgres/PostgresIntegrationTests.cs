@@ -2,6 +2,7 @@ using Microsoft.FSharp.Core;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -57,7 +58,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             .Find(item =>
                 item.TenantId == TestData.TenantId &&
                 item.ResourceType ==
-                    ResourceDeploymentResourceTypes.PostgreSql.Value &&
+                    PostgresResourceDeployment.ResourceType.Value &&
                 item.ResourceId == savedCluster.Id)
             .SingleAsync();
         Assert.Equal(TestData.DefaultDeploymentTargetId,
@@ -288,7 +289,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             .Find(item =>
                 item.TenantId == TestData.TenantId &&
                 item.ResourceType ==
-                    ResourceDeploymentResourceTypes.PostgreSql.Value &&
+                    PostgresResourceDeployment.ResourceType.Value &&
                 item.ResourceId == cluster.Id)
             .SingleAsync();
         return (cluster, deployment);

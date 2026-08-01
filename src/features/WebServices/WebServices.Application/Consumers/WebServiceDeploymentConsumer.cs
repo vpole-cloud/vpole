@@ -27,7 +27,7 @@ public sealed class WebServiceDeploymentConsumer(
     {
         if (!string.Equals(
                 deploymentEvent.ResourceType,
-                ResourceDeploymentResourceTypes.WebService.Value,
+                WebServiceResourceDeployment.ResourceType.Value,
                 StringComparison.Ordinal))
         {
             return Task.CompletedTask;
@@ -86,7 +86,7 @@ public sealed class WebServiceDeploymentConsumer(
         if (deploymentEvent.Retryable ||
             !string.Equals(
                 deploymentEvent.ResourceType,
-                ResourceDeploymentResourceTypes.WebService.Value,
+                WebServiceResourceDeployment.ResourceType.Value,
                 StringComparison.Ordinal))
         {
             return Task.CompletedTask;

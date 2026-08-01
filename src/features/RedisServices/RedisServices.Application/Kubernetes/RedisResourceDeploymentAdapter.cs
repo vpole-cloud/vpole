@@ -120,7 +120,7 @@ public sealed class RedisResourceDeploymentAdapter(
         ArgumentNullException.ThrowIfNull(context);
         if (!string.Equals(
                 context.Deployment.ResourceType,
-                ResourceDeploymentResourceTypes.Redis.Value,
+                RedisResourceDeployment.ResourceType.Value,
                 StringComparison.Ordinal))
         {
             return ResourceDeploymentAdapterResult.Failed.Create(
@@ -145,6 +145,6 @@ public static class RedisResourceDeploymentAdapterRegistration
 {
     public static ResourceDeploymentAdapterDescriptor Descriptor { get; } =
         ResourceDeploymentAdapterDescriptor.Create<RedisResourceDeploymentAdapter>(
-            ResourceDeploymentResourceTypes.Redis,
+            RedisResourceDeployment.ResourceType,
             ResourcePlacementCapability.SingleTarget);
 }
