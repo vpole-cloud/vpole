@@ -57,20 +57,26 @@ type GetPostgresClusterConnectionStringHandler(
                         |> ResultF.ofFailure
                 | Some cluster ->
                     let! placement =
-                        deploymentQuery.GetAsync(
+                        deploymentQuery.FindOptionAsync(
                             cluster.TenantId,
                             ResourceDeploymentResourceTypes.PostgreSql,
                             cluster.Id,
                             cancellationToken)
 
-                    if isNull placement ||
-                       placement.Status <> "Applied" ||
-                       placement.ObservedGeneration <> placement.DesiredGeneration then
+                    match placement with
+                    | None ->
                         return
                             Failures.Conflict(
                                 "The PostgreSQL deployment has not applied its current desired generation.")
                             |> ResultF.ofFailure
-                    else
+                    | Some placement when
+                        placement.Status <> "Applied" ||
+                        placement.ObservedGeneration <> placement.DesiredGeneration ->
+                        return
+                            Failures.Conflict(
+                                "The PostgreSQL deployment has not applied its current desired generation.")
+                            |> ResultF.ofFailure
+                    | Some placement ->
                         let endpoint =
                             placement.Endpoints
                             |> Seq.tryFind (fun item -> item.Kind = "PostgreSql")

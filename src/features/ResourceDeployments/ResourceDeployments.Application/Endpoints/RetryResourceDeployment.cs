@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
@@ -13,6 +12,7 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.ResourceDeployments.Application.Endpoints;
 
@@ -89,8 +89,7 @@ public sealed class RetryResourceDeploymentRequestValidator
     public RetryResourceDeploymentRequestValidator()
     {
         RuleFor(request => request.DeploymentId)
-            .Must(id => ObjectId.TryParse(id, out _))
-            .WithMessage("Resource deployment ID must be a MongoDB ObjectId.");
+            .MongoObjectId("Resource deployment ID");
     }
 }
 

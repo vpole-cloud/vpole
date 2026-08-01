@@ -62,18 +62,19 @@ type DeletePostgresClusterHandler(
                         |> ResultF.ofFailure
                 | Some cluster when (cluster.Lifecycle :? DeletingPostgresClusterLifecycle) ->
                     let! placement =
-                        deploymentQuery.GetAsync(
+                        deploymentQuery.FindOptionAsync(
                             cluster.TenantId,
                             ResourceDeploymentResourceTypes.PostgreSql,
                             cluster.Id,
                             cancellationToken)
 
-                    if isNull placement then
+                    match placement with
+                    | None ->
                         return
                             Failures.Conflict(
                                 "The deleting PostgreSQL cluster has no resource deployment.")
                             |> ResultF.ofFailure
-                    else
+                    | Some placement ->
                         return
                             { Id = cluster.Id
                               Placement = placement }
