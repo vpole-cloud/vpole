@@ -18,6 +18,7 @@
         <Compile Include="Common\PostgresClusterDto.fs" />
         <Compile Include="Common\MongoExtensions.fs" />
         <Compile Include="Common\ResultF.fs" />
+        <Compile Include="Common\ResourceDeploymentQueryExtensions.fs" />
         <Compile Include="Common\IPostgresDbContext.fs" />
         <Compile Include="Common\PostgresCredentialService.fs" />
         <Compile Include="Common\PostgresCredentialMigration.fs" />
@@ -62,5 +63,6 @@
       <ProjectReference Include="..\..\..\shared\Encryption\Encryption.csproj" />
       <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
+      <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj" />
     </ItemGroup>
 </Project>

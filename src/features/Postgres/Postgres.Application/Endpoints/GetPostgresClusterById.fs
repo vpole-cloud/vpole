@@ -47,18 +47,19 @@ type GetPostgresClusterHandler(
                            |> ResultF.ofFailure
                 | Some cluster ->
                     let! placement =
-                        deploymentQuery.GetAsync(
+                        deploymentQuery.FindOptionAsync(
                             cluster.TenantId,
                             ResourceDeploymentResourceTypes.PostgreSql,
                             cluster.Id,
                             cancellationToken)
 
-                    if isNull placement then
+                    match placement with
+                    | None ->
                         return
                             Failures.Conflict(
                                 "The PostgreSQL resource deployment is unavailable.")
                             |> ResultF.ofFailure
-                    else
+                    | Some placement ->
                         return
                             PostgresClusterDto.create cluster placement
                             |> ResultF.ofValue

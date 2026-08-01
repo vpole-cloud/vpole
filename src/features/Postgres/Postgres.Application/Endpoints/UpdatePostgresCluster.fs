@@ -88,18 +88,19 @@ type UpdatePostgresClusterHandler(
                             |> ResultF.ofFailure
                     else
                         let! placement =
-                            deploymentQuery.GetAsync(
+                            deploymentQuery.FindOptionAsync(
                                 cluster.TenantId,
                                 ResourceDeploymentResourceTypes.PostgreSql,
                                 cluster.Id,
                                 cancellationToken)
 
-                        if isNull placement then
+                        match placement with
+                        | None ->
                             return
                                 Failures.Conflict(
                                     "The PostgreSQL resource deployment is unavailable.")
                                 |> ResultF.ofFailure
-                        else
+                        | Some placement ->
                             let! storageProfileResult =
                                 storageProfileResolver.ResolveAsync(
                                     StorageProfileResolutionRequest(

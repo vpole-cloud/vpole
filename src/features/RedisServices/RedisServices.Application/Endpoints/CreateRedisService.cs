@@ -21,6 +21,7 @@ using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.RedisServices.Application.Endpoints;
 
@@ -174,13 +175,9 @@ public sealed class CreateRedisServiceRequestBodyValidator : AbstractValidator<C
         When(body => body.Placement is not null, () =>
         {
             RuleFor(body => body.Placement!.IsolationScopeId)
-                .Must(id => string.IsNullOrWhiteSpace(id) ||
-                            ObjectId.TryParse(id, out _))
-                .WithMessage("Isolation scope ID must be a MongoDB ObjectId.");
+                .OptionalMongoObjectId("Isolation scope ID");
             RuleFor(body => body.Placement!.DeploymentTargetId)
-                .Must(id => string.IsNullOrWhiteSpace(id) ||
-                            ObjectId.TryParse(id, out _))
-                .WithMessage("Deployment target ID must be a MongoDB ObjectId.");
+                .OptionalMongoObjectId("Deployment target ID");
         });
     }
 }

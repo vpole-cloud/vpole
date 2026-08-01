@@ -593,9 +593,6 @@ public static class ResourceDeploymentFactory
 {
     public sealed record CreateOptions(string Id, DateTime CreatedAtUtc);
 
-    public static CreateOptions DefaultOptions =>
-        new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
-
     public static ResourceDeployment Create(
         string tenantId,
         ResourceTypeId resourceType,

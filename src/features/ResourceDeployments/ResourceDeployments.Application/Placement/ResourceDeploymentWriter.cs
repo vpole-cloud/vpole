@@ -51,7 +51,6 @@ public sealed class ResourceDeploymentWriter(
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
-        ArgumentNullException.ThrowIfNull(command);
 
         var targetFence = await targetConfigurationFence
             .FenceAsync(

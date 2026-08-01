@@ -22,6 +22,7 @@ open Pole.Features.Shared.Models
 open Pole.Features.StorageProfiles.Contracts
 open Pole.Mediator
 open Pole.ResultType
+open Pole.Validation
 
 type CreatePostgresClusterRequestBody =
     { Name : string
@@ -214,16 +215,10 @@ type CreatePostgresClusterValidator(settings : PostgresSettings) as this =
             (fun request -> Option.isSome request.Body.Placement),
             (fun () ->
                 this.RuleFor(fun request -> request.Body.Placement.Value.IsolationScopeId)
-                    .Must(fun value ->
-                        System.String.IsNullOrWhiteSpace value ||
-                        ObjectId.TryParse(value) |> fst)
-                    .WithMessage("Isolation scope ID must be a MongoDB ObjectId.")
+                    .OptionalMongoObjectId("Isolation scope ID")
                 |> ignore
                 this.RuleFor(fun request -> request.Body.Placement.Value.DeploymentTargetId)
-                    .Must(fun value ->
-                        System.String.IsNullOrWhiteSpace value ||
-                        ObjectId.TryParse(value) |> fst)
-                    .WithMessage("Deployment target ID must be a MongoDB ObjectId.")
+                    .OptionalMongoObjectId("Deployment target ID")
                 |> ignore))
         |> ignore
 

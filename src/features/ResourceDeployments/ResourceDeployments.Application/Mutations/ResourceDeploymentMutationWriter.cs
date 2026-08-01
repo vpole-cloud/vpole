@@ -37,7 +37,6 @@ public sealed class ResourceDeploymentMutationWriter(
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
-        ArgumentNullException.ThrowIfNull(command);
 
         var loadResult = await LoadSingleAsync(command, session, cancellationToken);
         if (!loadResult.TryGetValue(out var current, out var loadFailure))
@@ -86,7 +85,6 @@ public sealed class ResourceDeploymentMutationWriter(
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
-        ArgumentNullException.ThrowIfNull(command);
 
         var loadResult = await LoadSingleAsync(command, session, cancellationToken);
         if (!loadResult.TryGetValue(out var current, out var loadFailure))

@@ -106,10 +106,9 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
                     now),
                 ResourcePlacementCapability.SingleTarget,
                 runtimeCellReady: true,
-                ResourceDeploymentFactory.DefaultOptions with
-                {
-                    CreatedAtUtc = now
-                });
+                new ResourceDeploymentFactory.CreateOptions(
+                    ObjectId.GenerateNewId().ToString(),
+                    now));
         }
 
         public ResourceDeployment Deployment { get; }
