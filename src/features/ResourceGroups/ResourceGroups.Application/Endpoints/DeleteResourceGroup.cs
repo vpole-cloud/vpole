@@ -1,4 +1,5 @@
 using FluentValidation;
+using Pole.Validation;
 using k8s;
 using MassTransit;
 using Microsoft.AspNetCore.Builder;
@@ -55,8 +56,7 @@ public sealed class DeleteResourceGroupRequestValidator
 {
     public DeleteResourceGroupRequestValidator() =>
         RuleFor(request => request.Id)
-            .Must(id => ObjectId.TryParse(id, out _))
-            .WithMessage("Resource group ID must be a MongoDB ObjectId.");
+            .MongoObjectId("Resource group ID");
 }
 
 public sealed record DeleteResourceGroupResponse(

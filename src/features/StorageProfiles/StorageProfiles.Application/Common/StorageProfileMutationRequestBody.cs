@@ -1,4 +1,5 @@
 using FluentValidation;
+using Pole.Validation;
 using MongoDB.Bson;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
@@ -91,8 +92,7 @@ public sealed class StorageProfileTargetMappingRequestBodyValidator
     {
         RuleFor(mapping => mapping.DeploymentTargetId)
             .NotEmpty()
-            .Must(id => ObjectId.TryParse(id?.Trim(), out _))
-            .WithMessage("Deployment target ID must be a MongoDB ObjectId.");
+            .MongoObjectId("Deployment target ID");
         RuleFor(mapping => mapping.StorageClassName)
             .Cascade(CascadeMode.Stop)
             .NotEmpty()
@@ -132,8 +132,7 @@ public sealed class StorageProfileTenantAccessDtoValidator
                 StringComparison.OrdinalIgnoreCase))
             .WithMessage("Tenant IDs must be empty when access is granted to all tenants.");
         RuleForEach(access => access.TenantIds)
-            .Must(id => ObjectId.TryParse(id?.Trim(), out _))
-            .WithMessage("Tenant ID must be a MongoDB ObjectId.");
+            .MongoObjectId("Tenant ID");
     }
 }
 

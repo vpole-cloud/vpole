@@ -1,4 +1,5 @@
 using FluentValidation;
+using Pole.Validation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -130,8 +131,7 @@ public sealed class DeleteDeploymentTargetRequestValidator
 {
     public DeleteDeploymentTargetRequestValidator() =>
         RuleFor(request => request.Id)
-            .Must(id => ObjectId.TryParse(id, out _))
-            .WithMessage("Deployment target ID must be a MongoDB ObjectId.");
+            .MongoObjectId("Deployment target ID");
 }
 
 public static class DeleteDeploymentTargetEndpoint
