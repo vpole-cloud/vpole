@@ -13,6 +13,7 @@
     <Project Path="src/shared/Mediator.Logging/Mediator.Logging.csproj" />
     <Project Path="src/shared/Mediator.Validation/Mediator.Validation.csproj" />
     <Project Path="src/shared/Mediator.Multitenancy/Mediator.Multitenancy.csproj" />
+    <Project Path="src/shared/Failures/Failures.csproj" />
     <Project Path="src/shared/ResultType/ResultType.csproj" />
     <Project Path="src/shared/Database/Database.csproj" />
     <Project Path="src/shared/Multitenancy/Multitenancy.csproj" />
@@ -123,7 +124,6 @@
     <Project Path="tests/Pole.Tests.E2E/Pole.Tests.E2E.csproj" />
   </Folder>
 </Solution>
-
 
 
 

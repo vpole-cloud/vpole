@@ -15,13 +15,14 @@ public static class ResultExtensions
         return error switch
         {
             NotFoundFailure => Results.NotFound(ToErrorResponse(error)),
+            SemanticValidationFailure => Results.UnprocessableEntity(ToErrorResponse(error)),
             ValidationFailure => Results.BadRequest(ToErrorResponse(error)),
             UnauthorizedFailure => Results.Json(ToErrorResponse(error), statusCode: StatusCodes.Status401Unauthorized),
             ForbiddenFailure => Results.Json(ToErrorResponse(error), statusCode: StatusCodes.Status403Forbidden),
             ConflictFailure => Results.Conflict(ToErrorResponse(error)),
-            InternalFailure => Results.Json(ToErrorResponse(error), statusCode: StatusCodes.Status500InternalServerError),
+            InternalFailure => UnexpectedFailure(),
             ExternalServiceFailure => Results.Json(ToErrorResponse(error), statusCode: StatusCodes.Status502BadGateway),
-            _ => Results.Json(ToErrorResponse(error), statusCode: StatusCodes.Status500InternalServerError)
+            _ => UnexpectedFailure()
         };
     }
 
@@ -32,7 +33,7 @@ public static class ResultExtensions
             message = notFoundFailure.Message,
             id = notFoundFailure.Id
         },
-        ValidationFailure validationFailure => new
+        FieldValidationFailure validationFailure => new
         {
             message = validationFailure.Message,
             errors = validationFailure.ValidationErrors
@@ -47,20 +48,18 @@ public static class ResultExtensions
             message = forbiddenFailure.Message,
             action = forbiddenFailure.Action
         },
-        InternalFailure { Details: not "" } internalFailure => new
-        {
-            message = internalFailure.Message,
-            details = internalFailure.Details
-        },
         ExternalServiceFailure externalServiceFailure => new
         {
             message = externalServiceFailure.Message,
-            serviceName = externalServiceFailure.ServiceName,
-            details = externalServiceFailure.Details
+            serviceName = externalServiceFailure.ServiceName
         },
         _ => new
         {
             message = failure.Message
         }
     };
+
+    private static IResult UnexpectedFailure() => Results.Json(
+        new { message = "An unexpected error occurred." },
+        statusCode: StatusCodes.Status500InternalServerError);
 }

@@ -19,6 +19,7 @@
         <ProjectReference Include="..\Functions.Domain\Functions.Domain.csproj" />
         <ProjectReference Include="..\Functions.Events\Functions.Events.csproj" />
         <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
+        <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
         <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
         <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
         <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />

@@ -24,6 +24,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <PackageReference Include="FluentValidation" />
       <PackageReference Include="Hangfire.Core" />
       <PackageReference Include="KubernetesClient" />
       <PackageReference Include="MassTransit" />

@@ -48,7 +48,7 @@ public sealed class ResourceDeploymentPlacementResolver(
                 return Failures.Conflict("No deployment target accepts new workloads.");
             if (eligible.Count > 1)
             {
-                return Failures.ValidationFailure(new Dictionary<string, string[]>
+                return Failures.SemanticValidation(new Dictionary<string, string[]>
                 {
                     ["Placement.DeploymentTargetId"] =
                     [
