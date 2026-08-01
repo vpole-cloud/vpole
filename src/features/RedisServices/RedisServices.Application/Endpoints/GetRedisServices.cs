@@ -45,9 +45,9 @@ public sealed class GetRedisServicesHandler(
         GetRedisServicesRequest request,
         CancellationToken cancellationToken = default)
     {
-        var query = dbContext.RedisServices.AsQueryable();
-        if (request.TenantId is not null)
-            query = query.Where(rs => rs.TenantId == request.TenantId);
+        var query = dbContext.RedisServices
+            .AsQueryable()
+            .Where(redis => redis.TenantId == request.TenantId);
         if (!string.IsNullOrWhiteSpace(request.Search))
             query = query.Where(rs => rs.Name.Contains(request.Search, StringComparison.OrdinalIgnoreCase));
         if (!string.IsNullOrWhiteSpace(request.ResourceGroupId))
@@ -75,7 +75,7 @@ public sealed class GetRedisServicesHandler(
 
 public record GetRedisServicesRequest : PaginatedRequest<RedisDto>, ITenantReadOperation
 {
-    [FromHeader(Name = TenantHeaders.TenantId)] public string? TenantId { get; init; }
+    [FromHeader(Name = TenantHeaders.TenantId)] public string TenantId { get; init; } = string.Empty;
     [FromQuery] public string? Search { get; init; }
     [FromQuery] public string? ResourceGroupId { get; init; }
 }

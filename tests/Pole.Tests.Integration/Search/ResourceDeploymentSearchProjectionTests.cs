@@ -78,6 +78,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         var result = await SearchService.Get(
             SearchQueryModule.FromRequest(new GetSearchRequest
             {
+                TenantId = TestData.TenantId,
                 Query = "port",
                 PageNumber = 1,
                 PageSize = 10
@@ -350,7 +351,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             Task.FromResult<PlacementSummaryDto?>(Current);
 
         public Task<IReadOnlyDictionary<string, PlacementSummaryDto>> GetManyAsync(
-            string? tenantId,
+            string tenantId,
             ResourceTypeId resourceType,
             IReadOnlyCollection<string> resourceIds,
             CancellationToken cancellationToken = default) =>

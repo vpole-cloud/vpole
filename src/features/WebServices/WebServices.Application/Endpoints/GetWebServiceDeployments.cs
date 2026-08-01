@@ -34,7 +34,7 @@ public static class GetWebServiceDeployments
 public sealed record GetWebServiceDeploymentsRequest : IMediatorRequest<WebServiceReleaseHistoryDto>, ITenantReadOperation
 {
     [FromRoute] public string Id { get; init; } = string.Empty;
-    [FromHeader(Name = TenantHeaders.TenantId)] public string? TenantId { get; init; }
+    [FromHeader(Name = TenantHeaders.TenantId)] public string TenantId { get; init; } = string.Empty;
     [FromQuery] public int? PageNumber { get; init; }
     [FromQuery] public int? PageSize { get; init; }
     public int EffectivePageNumber => PageNumber.GetValueOrDefault(1);

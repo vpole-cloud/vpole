@@ -58,6 +58,5 @@ public sealed class GetDomainNameByIdHandler(
 
 public record GetDomainNameByIdRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
 ) : IMediatorRequest<DnsRecordDto>, ITenantReadOperation;
-

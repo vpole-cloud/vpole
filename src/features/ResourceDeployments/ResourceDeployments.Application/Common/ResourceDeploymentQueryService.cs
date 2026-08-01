@@ -22,7 +22,7 @@ public sealed class ResourceDeploymentQueryService(
     }
 
     public async Task<IReadOnlyDictionary<string, PlacementSummaryDto>> GetManyAsync(
-        string? tenantId,
+        string tenantId,
         ResourceTypeId resourceType,
         IReadOnlyCollection<string> resourceIds,
         CancellationToken cancellationToken = default)
@@ -50,7 +50,7 @@ public sealed class ResourceDeploymentQueryService(
     }
 
     private static FilterDefinition<ResourceDeployment> BuildFilter(
-        string? tenantId,
+        string tenantId,
         ResourceTypeId resourceType,
         IReadOnlyCollection<string> resourceIds) =>
         Builders<ResourceDeployment>.Filter.And(

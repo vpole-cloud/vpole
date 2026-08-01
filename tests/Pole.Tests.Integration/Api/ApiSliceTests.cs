@@ -128,7 +128,7 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
-    public async Task PlatformAdminListsResourcesWithoutTenantHeader_WithPlacement()
+    public async Task PlatformAdminMustSelectTenantBeforeListingResources()
     {
         var resourceGroupResponse = await Client.PostAsJsonAsync(
             "/api/v1/resource-groups/",
@@ -165,6 +165,19 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         var redisResponse = await Client.GetAsync(
             "/api/v1/redis-services/?pageNumber=1&pageSize=10");
         var postgresResponse = await Client.GetAsync(
+            "/api/v1/postgres/?pageNumber=1&pageSize=10");
+
+        Assert.Equal(HttpStatusCode.BadRequest, webResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, redisResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, postgresResponse.StatusCode);
+
+        Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, TestData.TenantId);
+
+        webResponse = await Client.GetAsync(
+            "/api/v1/web-services/?pageNumber=1&pageSize=10");
+        redisResponse = await Client.GetAsync(
+            "/api/v1/redis-services/?pageNumber=1&pageSize=10");
+        postgresResponse = await Client.GetAsync(
             "/api/v1/postgres/?pageNumber=1&pageSize=10");
         Assert.True(
             webResponse.IsSuccessStatusCode,

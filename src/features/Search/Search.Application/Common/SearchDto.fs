@@ -33,7 +33,7 @@ type SearchHitDto =
 
 type SearchQuery =
     { Query : string
-      TenantId : string option
+      TenantId : string
       PageNumber : int
       PageSize : int
       Types : SearchDocumentType list option }
@@ -53,7 +53,7 @@ type GetSearchRequest() =
     interface Pole.Features.Core.Multitenancy.ITenantReadOperation with
         member this.TenantId = this.TenantId
     [<FromHeader(Name = Pole.Features.Core.Multitenancy.TenantHeaders.TenantId)>]
-    member val TenantId : string = null with get, set
+    member val TenantId = "" with get, set
     [<FromQuery>]
     member val Query = "" with get, set
     [<FromQuery>]
@@ -85,7 +85,7 @@ type GetSearchRequestValidator() =
 [<RequireQualifiedAccess>]
 module SearchQuery =
     [<CompiledName("FromRequest")>]
-    let ofRequest tenantId (request : GetSearchRequest) =
+    let ofRequest (request : GetSearchRequest) =
         let parsedTypes =
             request.Types
             |> Array.toList
@@ -97,11 +97,7 @@ module SearchQuery =
                     None)
 
         { Query = request.Query
-          TenantId = tenantId
+          TenantId = request.TenantId
           PageNumber = request.PageNumber
           PageSize = request.PageSize
           Types = if List.isEmpty parsedTypes then None else Some parsedTypes }
-
-    [<CompiledName("FromRequest")>]
-    let ofRequestWithoutTenant (request : GetSearchRequest) =
-        ofRequest None request

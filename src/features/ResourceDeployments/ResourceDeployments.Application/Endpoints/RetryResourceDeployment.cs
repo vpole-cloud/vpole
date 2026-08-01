@@ -18,7 +18,7 @@ namespace Pole.Features.ResourceDeployments.Application.Endpoints;
 
 public sealed record RetryResourceDeploymentRequest(
     [FromRoute] string DeploymentId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null)
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
     : IMediatorRequest<ResourceDeploymentDto>, ITenantWriteOperation;
 
 public sealed class RetryResourceDeploymentHandler(

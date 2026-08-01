@@ -82,6 +82,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(new GetSearchRequest
         {
+            TenantId = TestData.TenantId,
             Query = "alp",
             PageNumber = 1,
             PageSize = 20
@@ -98,6 +99,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
 
         var filtered = await Mediator.Send(new GetSearchRequest
         {
+            TenantId = TestData.TenantId,
             Query = "alp",
             PageNumber = 1,
             PageSize = 20,
@@ -112,6 +114,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
 
         var serviceQuery = SearchQueryModule.FromRequest(new GetSearchRequest
         {
+            TenantId = TestData.TenantId,
             Query = "alp",
             PageNumber = 1,
             PageSize = 20
@@ -140,6 +143,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(new GetSearchRequest
         {
+            TenantId = TestData.TenantId,
             Query = created.WebServiceId[..8].ToLowerInvariant(),
             PageNumber = 1,
             PageSize = 10
@@ -163,7 +167,8 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             created.Id,
             new UpdateResourceGroupRequestBody(
                 Description: "Updated for search",
-                Tags: ["team-blue", "prod"])));
+                Tags: ["team-blue", "prod"]),
+            TestData.TenantId));
 
         Assert.True(updateResult.TryGetValue(out _, out var error));
         Assert.Null(error);
@@ -180,6 +185,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
 
         var searchResult = await Mediator.Send(new GetSearchRequest
         {
+            TenantId = TestData.TenantId,
             Query = "team",
             PageNumber = 1,
             PageSize = 10

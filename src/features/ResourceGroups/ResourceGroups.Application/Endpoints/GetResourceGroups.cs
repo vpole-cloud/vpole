@@ -37,7 +37,7 @@ public static class GetResourceGroups
 
 public record GetResourceGroupsRequest : PaginatedRequest<ResourceGroupDto>, ITenantReadOperation
 {
-    [FromHeader(Name = TenantHeaders.TenantId)] public string? TenantId { get; init; }
+    [FromHeader(Name = TenantHeaders.TenantId)] public string TenantId { get; init; } = string.Empty;
     [FromQuery] public string? Search { get; init; }
 }
 
@@ -76,4 +76,3 @@ public class GetResourceGroupsRequestValidator : AbstractValidator<GetResourceGr
     {
     }
 }
-

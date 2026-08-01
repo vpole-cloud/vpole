@@ -38,7 +38,7 @@ public static class UpdateResourceGroup
 public sealed record UpdateResourceGroupRequest(
     [FromRoute] string Id,
     [FromBody] UpdateResourceGroupRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
 ) : IMediatorRequest<ResourceGroupDto>, ITenantWriteOperation;
 
 public sealed record UpdateResourceGroupRequestBody(

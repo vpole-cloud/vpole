@@ -62,7 +62,16 @@ For those routes, the middleware:
 4. Allows platform admins even when they are not tenant members.
 5. Stores a `TenantContext` with tenant id, tenant name, role, and platform-admin status.
 
-If the header is missing, the request reaches the mediator without a `TenantContext`. Tenant-scoped create operations fail because they require a concrete tenant id. Platform admins can run tenant-wide read/update operations without a tenant context, so handlers must still be careful to use tenant filters consistently.
+If the header is missing, every request marked with `ITenantReadOperation` or
+`ITenantWriteOperation` fails validation. This also applies to platform
+administrators: elevated authorization bypasses tenant membership checks, but
+it does not select a tenant. A platform administrator must provide
+`X-Pole-Tenant-ID` when using a normal tenant-owned resource endpoint.
+
+Global fleet operations must use an explicit platform endpoint and must not be
+implemented by treating a missing tenant id as an empty MongoDB filter. Internal
+workers may still scan tenant-owned collections globally when their workflow
+requires it, but events and mutations remain fenced by the document tenant id.
 
 ## Resource Scoping
 
@@ -85,7 +94,11 @@ Handlers mark tenant-scoped requests with one of:
 * `ITenantWriteOperation`
 * `ITenantCreateOperation`
 
-`TenantAuthorizationBehavior` uses these marker interfaces to enforce role checks. Handlers should still take tenant id from the request and must combine resource identity filters with tenant filters. Prefer `Builders<T>.Filter.ForTenant(request.TenantId)` or explicit `TenantId` predicates.
+`TenantAuthorizationBehavior` uses these marker interfaces to enforce role
+checks and require explicit tenant selection. Handlers take tenant id from the
+request and must combine resource identity filters with tenant filters.
+`Builders<T>.Filter.ForTenant(request.TenantId)` rejects a missing tenant id
+instead of producing an unscoped filter.
 
 When creating a resource that references another resource, the referenced resource must be loaded from the same tenant. For example, web service, Redis, and Postgres creation must validate that the target resource group has the same `TenantId` as the active tenant.
 
@@ -158,7 +171,8 @@ For a new tenant-owned feature:
 
 1. Add `TenantId` to the domain document.
 2. Add `TenantId` to create/update/delete events through `EventCore.Create(tenantId)`.
-3. Add `[FromHeader(Name = TenantHeaders.TenantId)]` to request models.
+3. Add a non-nullable `[FromHeader(Name = TenantHeaders.TenantId)]` member to
+   request models.
 4. Implement the correct tenant marker interface on request models.
 5. Validate all cross-resource references with both id and tenant id.
 6. Filter reads, updates, deletes, and consumer lookups by tenant id.

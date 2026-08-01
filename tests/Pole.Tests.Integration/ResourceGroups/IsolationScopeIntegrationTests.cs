@@ -103,7 +103,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
     }
 
     [Fact]
-    public async Task PlatformAdminReads_ResolveChildTenantFromOwningResourceGroup()
+    public async Task PlatformAdminReads_UseExplicitTenantFromRequest()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var scope = IsolationScopeFactory.CreateAdditional(
@@ -122,13 +122,19 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
         await DbContext.RuntimeCells.InsertOneAsync(cell);
 
         var scopesResult = await Mediator.Send(
-            new GetIsolationScopesRequest(resourceGroup.Id));
+            new GetIsolationScopesRequest(resourceGroup.Id, resourceGroup.TenantId));
         var scopeResult = await Mediator.Send(
-            new GetIsolationScopeRequest(resourceGroup.Id, scope.Id));
+            new GetIsolationScopeRequest(
+                resourceGroup.Id,
+                scope.Id,
+                resourceGroup.TenantId));
         var cellsResult = await Mediator.Send(
-            new GetRuntimeCellsRequest(resourceGroup.Id));
+            new GetRuntimeCellsRequest(resourceGroup.Id, resourceGroup.TenantId));
         var cellResult = await Mediator.Send(
-            new GetRuntimeCellRequest(resourceGroup.Id, cell.Id));
+            new GetRuntimeCellRequest(
+                resourceGroup.Id,
+                cell.Id,
+                resourceGroup.TenantId));
 
         var scopes = scopesResult.AssertSuccess();
         Assert.Contains(scopes, item => item.Id == scope.Id);
