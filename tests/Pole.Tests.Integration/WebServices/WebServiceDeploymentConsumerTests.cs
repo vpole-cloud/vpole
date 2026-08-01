@@ -2,6 +2,7 @@ using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Events;
+using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Consumers;
 using Pole.Features.WebServices.Domain;
 using Pole.Tests.Integration.Infrastructure;
@@ -139,7 +140,7 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
     private static ResourceDeploymentAppliedEvent CreateDeploymentEvent(WebServiceRelease release) =>
         new(
             "507f1f77bcf86cd799439051",
-            ResourceDeploymentResourceTypes.WebService.Value,
+            WebServiceResourceDeployment.ResourceType.Value,
             release.WebServiceId,
             "507f1f77bcf86cd799439052",
             release.DeploymentGeneration)
@@ -152,7 +153,7 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
         bool retryable) =>
         new(
             "507f1f77bcf86cd799439051",
-            ResourceDeploymentResourceTypes.WebService.Value,
+            WebServiceResourceDeployment.ResourceType.Value,
             release.WebServiceId,
             "507f1f77bcf86cd799439052",
             release.DeploymentGeneration,

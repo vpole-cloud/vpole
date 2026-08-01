@@ -118,7 +118,7 @@ public sealed class UpdateRedisServiceHandler(
                 var deploymentResult = await deploymentWriter.RequestApplyAsync(
                     new ResourceDeploymentMutationCommand(
                         redis.TenantId,
-                        ResourceDeploymentResourceTypes.Redis,
+                        RedisResourceDeployment.ResourceType,
                         redis.Id),
                     session,
                     transactionCancellationToken);

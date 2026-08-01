@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using k8s;
+using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
@@ -153,7 +154,7 @@ public sealed class RedisResourceDeploymentAdapterTests
             NowUtc);
         var deployment = ResourceDeploymentFactory.Create(
             TenantId,
-            ResourceDeploymentResourceTypes.Redis,
+            RedisResourceDeployment.ResourceType,
             ResourceId,
             ResourceGroupId,
             IsolationScopeId,

@@ -59,7 +59,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
         Assert.Equal(1, mutationWriter.ApplyCallCount);
         var applied = new ResourceDeploymentAppliedEvent(
             mutationWriter.Deployment.Id,
-            ResourceDeploymentResourceTypes.WebService.Value,
+            WebServiceResourceDeployment.ResourceType.Value,
             updated.Id,
             mutationWriter.Deployment.RuntimeCellId,
             release.DeploymentGeneration)
@@ -89,7 +89,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             var runtimeCellId = ObjectId.GenerateNewId().ToString();
             Deployment = ResourceDeploymentFactory.Create(
                 webService.TenantId,
-                ResourceDeploymentResourceTypes.WebService,
+                WebServiceResourceDeployment.ResourceType,
                 webService.Id,
                 webService.ResourceGroupId,
                 ObjectId.GenerateNewId().ToString(),

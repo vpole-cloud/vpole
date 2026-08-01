@@ -190,7 +190,7 @@ public sealed class WebServiceResourceDeploymentAdapter(
         ArgumentNullException.ThrowIfNull(context);
         if (!string.Equals(
                 context.Deployment.ResourceType,
-                ResourceDeploymentResourceTypes.WebService.Value,
+                WebServiceResourceDeployment.ResourceType.Value,
                 StringComparison.Ordinal))
         {
             return ResourceDeploymentAdapterResult.Failed.Create(
@@ -257,4 +257,12 @@ public sealed class WebServiceResourceDeploymentAdapter(
             : null;
     }
 
+}
+
+public static class WebServiceResourceDeploymentAdapterRegistration
+{
+    public static ResourceDeploymentAdapterDescriptor Descriptor { get; } =
+        ResourceDeploymentAdapterDescriptor.Create<WebServiceResourceDeploymentAdapter>(
+            WebServiceResourceDeployment.ResourceType,
+            ResourcePlacementCapability.SingleTarget);
 }

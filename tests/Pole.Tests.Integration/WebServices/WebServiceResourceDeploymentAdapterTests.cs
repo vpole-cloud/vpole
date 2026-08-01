@@ -9,6 +9,7 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Shared.Models;
+using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
@@ -167,7 +168,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             NowUtc);
         var deployment = ResourceDeploymentFactory.Create(
             TenantId,
-            ResourceDeploymentResourceTypes.WebService,
+            WebServiceResourceDeployment.ResourceType,
             ResourceId,
             ResourceGroupId,
             IsolationScopeId,

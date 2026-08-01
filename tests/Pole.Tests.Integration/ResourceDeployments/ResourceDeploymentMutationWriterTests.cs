@@ -22,6 +22,8 @@ public sealed class ResourceDeploymentMutationWriterTests(
     private const string ResourceId = "507f1f77bcf86cd799439013";
     private const string ResourceGroupId = "507f1f77bcf86cd799439014";
     private const string ScopeId = "507f1f77bcf86cd799439015";
+    private static readonly ResourceTypeId TestResourceType =
+        ResourceTypeId.Create("pole/test-resource");
     private const string RuntimeCellId = "507f1f77bcf86cd799439016";
     private const string TargetId = "507f1f77bcf86cd799439017";
     private const string DeploymentId = "507f1f77bcf86cd799439018";
@@ -190,7 +192,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
     private static ResourceDeploymentMutationCommand CreateCommand() =>
         new(
             TenantId,
-            ResourceDeploymentResourceTypes.WebService,
+            TestResourceType,
             ResourceId);
 
     private async Task InsertAsync(
@@ -233,7 +235,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
             CreatedAtUtc);
         var deployment = ResourceDeploymentFactory.Create(
             TenantId,
-            ResourceDeploymentResourceTypes.WebService,
+            TestResourceType,
             ResourceId,
             ResourceGroupId,
             ScopeId,

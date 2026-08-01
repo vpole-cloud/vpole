@@ -60,7 +60,7 @@ public sealed class GetRedisServicesHandler(
             .ToListAsync(cancellationToken: cancellationToken);
         var placements = await deploymentQuery.GetManyAsync(
             request.TenantId,
-            ResourceDeploymentResourceTypes.Redis,
+            RedisResourceDeployment.ResourceType,
             redisServices.Select(redis => redis.Id).ToArray(),
             cancellationToken);
 

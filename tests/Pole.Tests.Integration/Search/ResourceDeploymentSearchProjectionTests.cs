@@ -18,6 +18,8 @@ public sealed class ResourceDeploymentSearchProjectionTests(
     MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
+    private const string WebServiceResourceType = "pole/web-service";
+
     private ISearchService SearchService =>
         Services.GetRequiredService<ISearchService>();
 
@@ -43,7 +45,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         await consumer.Handle(
             tenantId,
             deploymentId,
-            ResourceDeploymentResourceTypes.WebService.Value,
+            WebServiceResourceType,
             resourceId,
             generation: 2,
             DateTime.UtcNow,
@@ -118,7 +120,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         await consumer.Handle(
             tenantId,
             deploymentId,
-            ResourceDeploymentResourceTypes.WebService.Value,
+            WebServiceResourceType,
             resourceId,
             generation: 3,
             currentEventTime,
@@ -133,7 +135,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         await consumer.Handle(
             tenantId,
             deploymentId,
-            ResourceDeploymentResourceTypes.WebService.Value,
+            WebServiceResourceType,
             resourceId,
             generation: 2,
             currentEventTime.AddMinutes(-1),
@@ -142,7 +144,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         await consumer.Handle(
             otherTenantId,
             deploymentId,
-            ResourceDeploymentResourceTypes.WebService.Value,
+            WebServiceResourceType,
             resourceId,
             generation: 2,
             currentEventTime.AddMinutes(1),
@@ -193,7 +195,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         await consumer.Handle(
             tenantId,
             deploymentId,
-            ResourceDeploymentResourceTypes.WebService.Value,
+            WebServiceResourceType,
             resourceId,
             generation: 4,
             DateTime.UtcNow,
@@ -243,7 +245,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         await consumer.Handle(
             tenantId,
             deploymentId,
-            ResourceDeploymentResourceTypes.WebService.Value,
+            WebServiceResourceType,
             resourceId,
             generation: 1,
             DateTime.UtcNow,

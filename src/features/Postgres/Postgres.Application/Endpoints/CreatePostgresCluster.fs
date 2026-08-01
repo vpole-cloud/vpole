@@ -155,7 +155,7 @@ type CreatePostgresClusterHandler(
                                                         CreateResourceDeploymentCommand(
                                                             deploymentId,
                                                             cluster.TenantId,
-                                                            ResourceDeploymentResourceTypes.PostgreSql,
+                                                            PostgresResourceDeployment.ResourceType,
                                                             cluster.Id,
                                                             cluster.GroupId,
                                                             Option.toObj isolationScopeId,

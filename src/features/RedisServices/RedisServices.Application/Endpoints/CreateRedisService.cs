@@ -104,7 +104,7 @@ public sealed class CreateRedisServiceHandler(
                     new CreateResourceDeploymentCommand(
                         deploymentId,
                         request.TenantId,
-                        ResourceDeploymentResourceTypes.Redis,
+                        RedisResourceDeployment.ResourceType,
                         newRedis.Id,
                         newRedis.ResourceGroupId,
                         request.Body.Placement?.IsolationScopeId,

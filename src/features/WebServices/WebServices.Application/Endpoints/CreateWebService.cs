@@ -100,7 +100,7 @@ public sealed class CreateWebServiceHandler(
                     new CreateResourceDeploymentCommand(
                         deploymentId,
                         request.TenantId,
-                        ResourceDeploymentResourceTypes.WebService,
+                        WebServiceResourceDeployment.ResourceType,
                         newWebService.Id,
                         newWebService.ResourceGroupId,
                         request.Body.Placement?.IsolationScopeId,

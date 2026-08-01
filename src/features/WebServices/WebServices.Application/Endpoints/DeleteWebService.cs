@@ -70,7 +70,7 @@ public sealed class DeleteWebServiceHandler(
         {
             var currentPlacement = await deploymentQuery.GetAsync(
                 request.TenantId,
-                ResourceDeploymentResourceTypes.WebService,
+                WebServiceResourceDeployment.ResourceType,
                 request.Id,
                 cancellationToken);
             return currentPlacement is null
@@ -105,7 +105,7 @@ public sealed class DeleteWebServiceHandler(
                 var deploymentResult = await deploymentWriter.RequestDeletionAsync(
                     new ResourceDeploymentMutationCommand(
                         webService.TenantId,
-                        ResourceDeploymentResourceTypes.WebService,
+                        WebServiceResourceDeployment.ResourceType,
                         webService.Id),
                     session,
                     transactionCancellationToken);
@@ -134,7 +134,7 @@ public sealed class FinalizeWebServiceDeletionConsumer(
         var message = context.Message;
         if (!string.Equals(
                 message.ResourceType,
-                ResourceDeploymentResourceTypes.WebService.Value,
+                WebServiceResourceDeployment.ResourceType.Value,
                 StringComparison.Ordinal))
         {
             return Task.CompletedTask;
@@ -161,7 +161,7 @@ public sealed class FinalizeWebServiceDeletionConsumer(
                 .Find(session, deployment =>
                     deployment.TenantId == message.EventCore.TenantId &&
                     deployment.ResourceType ==
-                        ResourceDeploymentResourceTypes.WebService.Value &&
+                        WebServiceResourceDeployment.ResourceType.Value &&
                     deployment.ResourceId == message.ResourceId)
                 .ToListAsync(ct);
             if (deployments.Count == 0 ||
@@ -183,7 +183,7 @@ public sealed class FinalizeWebServiceDeletionConsumer(
                 filter: deployment =>
                     deployment.TenantId == message.EventCore.TenantId &&
                     deployment.ResourceType ==
-                        ResourceDeploymentResourceTypes.WebService.Value &&
+                        WebServiceResourceDeployment.ResourceType.Value &&
                     deployment.ResourceId == message.ResourceId,
                 cancellationToken: ct);
             await dbContext.StoreEventAsync(

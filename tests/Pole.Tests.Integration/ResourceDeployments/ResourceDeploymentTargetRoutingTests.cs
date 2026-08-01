@@ -23,6 +23,8 @@ public sealed class ResourceDeploymentTargetRoutingTests(
     private const string ResourceGroupId = "507f1f77bcf86cd799439063";
     private const string ScopeId = "507f1f77bcf86cd799439064";
     private const string RuntimeCellId = "507f1f77bcf86cd799439065";
+    private static readonly ResourceTypeId TestResourceType =
+        ResourceTypeId.Create("pole/test-resource");
     private const string TargetAId = "507f1f77bcf86cd799439066";
     private const string TargetBId = "507f1f77bcf86cd799439067";
     private const string DeploymentId = "507f1f77bcf86cd799439068";
@@ -57,7 +59,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             now);
         var deployment = ResourceDeploymentFactory.Create(
             TenantId,
-            ResourceDeploymentResourceTypes.Redis,
+            TestResourceType,
             ResourceId,
             ResourceGroupId,
             ScopeId,
@@ -93,7 +95,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             new ResourceDeploymentAdapterCatalog(
             [
                 ResourceDeploymentAdapterDescriptor.Create<RecordingAdapter>(
-                    ResourceDeploymentResourceTypes.Redis,
+                    TestResourceType,
                     ResourcePlacementCapability.SingleTarget)
             ]),
             services,
@@ -134,7 +136,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             .MarkReady(expectedGeneration: 1, now.AddSeconds(1));
         var deployment = ResourceDeploymentFactory.Create(
             TenantId,
-            ResourceDeploymentResourceTypes.Redis,
+            TestResourceType,
             ResourceId,
             ResourceGroupId,
             ScopeId,
@@ -180,7 +182,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             new ResourceDeploymentAdapterCatalog(
             [
                 ResourceDeploymentAdapterDescriptor.Create<ThrowingTransportAdapter>(
-                    ResourceDeploymentResourceTypes.Redis,
+                    TestResourceType,
                     ResourcePlacementCapability.SingleTarget)
             ]),
             services,

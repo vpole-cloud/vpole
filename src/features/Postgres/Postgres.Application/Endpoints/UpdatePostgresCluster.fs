@@ -90,7 +90,7 @@ type UpdatePostgresClusterHandler(
                         let! placement =
                             deploymentQuery.FindOptionAsync(
                                 cluster.TenantId,
-                                ResourceDeploymentResourceTypes.PostgreSql,
+                                PostgresResourceDeployment.ResourceType,
                                 cluster.Id,
                                 cancellationToken)
 
@@ -151,7 +151,7 @@ type UpdatePostgresClusterHandler(
                                                         deploymentWriter.RequestApplyAsync(
                                                             ResourceDeploymentMutationCommand(
                                                                 cluster.TenantId,
-                                                                ResourceDeploymentResourceTypes.PostgreSql,
+                                                                PostgresResourceDeployment.ResourceType,
                                                                 cluster.Id),
                                                             session,
                                                             ct)

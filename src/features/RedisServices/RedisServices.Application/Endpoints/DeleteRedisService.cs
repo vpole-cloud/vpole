@@ -61,7 +61,7 @@ public sealed class DeleteRedisServiceHandler(
         {
             var currentPlacement = await deploymentQuery.GetAsync(
                 request.TenantId,
-                ResourceDeploymentResourceTypes.Redis,
+                RedisResourceDeployment.ResourceType,
                 request.Id,
                 cancellationToken);
             return currentPlacement is null
@@ -96,7 +96,7 @@ public sealed class DeleteRedisServiceHandler(
                 var deploymentResult = await deploymentWriter.RequestDeletionAsync(
                     new ResourceDeploymentMutationCommand(
                         redis.TenantId,
-                        ResourceDeploymentResourceTypes.Redis,
+                        RedisResourceDeployment.ResourceType,
                         redis.Id),
                     session,
                     transactionCancellationToken);
@@ -125,7 +125,7 @@ public sealed class FinalizeRedisServiceDeletionConsumer(
         var message = context.Message;
         if (!string.Equals(
                 message.ResourceType,
-                ResourceDeploymentResourceTypes.Redis.Value,
+                RedisResourceDeployment.ResourceType.Value,
                 StringComparison.Ordinal))
         {
             return Task.CompletedTask;
@@ -152,7 +152,7 @@ public sealed class FinalizeRedisServiceDeletionConsumer(
                 .Find(session, deployment =>
                     deployment.TenantId == message.EventCore.TenantId &&
                     deployment.ResourceType ==
-                        ResourceDeploymentResourceTypes.Redis.Value &&
+                        RedisResourceDeployment.ResourceType.Value &&
                     deployment.ResourceId == message.ResourceId)
                 .ToListAsync(ct);
             if (deployments.Count == 0 ||
@@ -174,7 +174,7 @@ public sealed class FinalizeRedisServiceDeletionConsumer(
                 filter: deployment =>
                     deployment.TenantId == message.EventCore.TenantId &&
                     deployment.ResourceType ==
-                        ResourceDeploymentResourceTypes.Redis.Value &&
+                        RedisResourceDeployment.ResourceType.Value &&
                     deployment.ResourceId == message.ResourceId,
                 cancellationToken: ct);
             await dbContext.StoreEventAsync(

@@ -11,6 +11,7 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Tenants.Domain;
+using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Domain;
 using Pole.Tests.Integration.Infrastructure;
@@ -281,7 +282,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
                 createdAtUtc.AddSeconds(1));
         var deployment = ResourceDeploymentFactory.Create(
             TestData.TenantId,
-            ResourceDeploymentResourceTypes.WebService,
+            WebServiceResourceDeployment.ResourceType,
             webService.Id,
             resourceGroupId,
             isolationScopeId,

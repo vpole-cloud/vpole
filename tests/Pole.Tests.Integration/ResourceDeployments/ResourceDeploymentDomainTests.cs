@@ -16,6 +16,8 @@ public sealed class ResourceDeploymentDomainTests
     private const string TargetId = "507f1f77bcf86cd799439016";
     private const string DeploymentId = "507f1f77bcf86cd799439017";
     private const string ClaimId = "507f1f77bcf86cd799439018";
+    private static readonly ResourceTypeId TestResourceType =
+        ResourceTypeId.Create("pole/test-resource");
     private static readonly DateTime CreatedAtUtc =
         new(2026, 7, 29, 12, 0, 0, DateTimeKind.Utc);
 
@@ -25,7 +27,7 @@ public sealed class ResourceDeploymentDomainTests
         var deployment = CreateDeployment(runtimeCellReady: false);
 
         Assert.Equal(
-            $"{ResourceDeploymentResourceTypes.WebService.Value}:{ResourceId}:single",
+            $"{TestResourceType.Value}:{ResourceId}:single",
             deployment.PlacementKey);
         Assert.Equal(ResourcePlacementCapability.SingleTarget, deployment.PlacementCapability);
         Assert.Equal(1, deployment.DesiredGeneration);
@@ -153,7 +155,7 @@ public sealed class ResourceDeploymentDomainTests
 
         return ResourceDeploymentFactory.Create(
             TenantId,
-            ResourceDeploymentResourceTypes.WebService,
+            TestResourceType,
             ResourceId,
             ResourceGroupId,
             ScopeId,

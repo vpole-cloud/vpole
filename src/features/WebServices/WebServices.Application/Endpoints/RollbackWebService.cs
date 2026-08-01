@@ -122,7 +122,7 @@ public sealed class RollbackWebServiceHandler(
                 var deploymentResult = await deploymentWriter.RequestApplyAsync(
                     new ResourceDeploymentMutationCommand(
                         webService.TenantId,
-                        ResourceDeploymentResourceTypes.WebService,
+                        WebServiceResourceDeployment.ResourceType,
                         webService.Id),
                     session,
                     transactionCancellationToken);

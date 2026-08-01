@@ -55,7 +55,7 @@ public sealed class GetWebServiceByIdHandler(
 
         var placement = await deploymentQuery.GetAsync(
             webService.TenantId,
-            ResourceDeploymentResourceTypes.WebService,
+            WebServiceResourceDeployment.ResourceType,
             webService.Id,
             cancellationToken);
         return webService.ToDto(placement);

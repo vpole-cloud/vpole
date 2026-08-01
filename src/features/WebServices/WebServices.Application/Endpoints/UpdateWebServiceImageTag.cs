@@ -134,7 +134,7 @@ public sealed class UpdateWebServiceImageTagHandler(
             var deploymentResult = await deploymentWriter.RequestApplyAsync(
                 new ResourceDeploymentMutationCommand(
                     webService.TenantId,
-                    ResourceDeploymentResourceTypes.WebService,
+                    WebServiceResourceDeployment.ResourceType,
                     webService.Id),
                 session,
                 ct);
