@@ -38,7 +38,7 @@ public sealed class DeploymentTargetProductionDiTests
         {
             typeof(ProvisionResourceGroupOnResourceGroupCreatedConsumer).Assembly,
             typeof(CreateRedisServiceHandler).Assembly,
-            typeof(KubernetesWebServiceDeploymentApplier).Assembly,
+            typeof(WebServiceResourceDeploymentAdapter).Assembly,
             typeof(PostgresResourceDeploymentAdapter).Assembly,
             typeof(FunctionRevisionKubernetesManager).Assembly,
             typeof(KubernetesStorageDiscoveryService).Assembly

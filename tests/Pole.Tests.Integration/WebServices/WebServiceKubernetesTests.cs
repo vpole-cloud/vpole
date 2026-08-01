@@ -5,14 +5,11 @@ using System.Text.Json;
 using k8s;
 using k8s.Autorest;
 using k8s.Models;
-using Pole.Features.ContainerRegistries.Contracts;
-using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Application.Kubernetes;
-using Pole.Features.WebServices.Events;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -22,47 +19,6 @@ namespace Pole.Tests.Integration.WebServices;
 public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     : KubernetesIntegrationTestBase(fixture)
 {
-    [KubernetesFact]
-    public async Task DeploymentApplier_AppliesTheProductionDeploymentEventSnapshot()
-    {
-        var webService = BuildSourceBuildE2eWebService();
-        var deploymentEvent = CreateDeploymentEvent(webService, "release-k8s");
-        var applier = new KubernetesWebServiceDeploymentApplier(
-            new FixedKubernetesClientProvider(Kubernetes),
-            new UnexpectedRegistryAccessProvider());
-
-        var result = await applier.ApplyAsync(deploymentEvent);
-
-        AssertResultSucceeded(result);
-        var deployment = await Kubernetes.AppsV1.ReadNamespacedDeploymentAsync(webService.Name, NamespaceName);
-        Assert.Equal("release-k8s", deployment.Spec.Template.Metadata.Annotations["pole.server/releaseId"]);
-    }
-
-    [KubernetesFact]
-    public async Task DeploymentApplier_AppliesTheOutboxRoundTrippedEventSnapshot()
-    {
-        var webService = BuildSourceBuildE2eWebService();
-        var payload = JsonSerializer.Serialize(
-            CreateDeploymentEvent(webService, "release-k8s-roundtrip"),
-            EventExtensions.SerializerOptions);
-        var deploymentEvent = JsonSerializer.Deserialize<WebServiceDeploymentRequestedEvent>(
-            payload,
-            EventExtensions.SerializerOptions);
-
-        Assert.NotNull(deploymentEvent);
-        Assert.NotNull(deploymentEvent.Spec.Config.EnvironmentVariables);
-        Assert.NotNull(deploymentEvent.Spec.Config.PortMappings);
-
-        var applier = new KubernetesWebServiceDeploymentApplier(
-            new FixedKubernetesClientProvider(Kubernetes),
-            new UnexpectedRegistryAccessProvider());
-        var result = await applier.ApplyAsync(deploymentEvent);
-
-        AssertResultSucceeded(result);
-        var deployment = await Kubernetes.AppsV1.ReadNamespacedDeploymentAsync(webService.Name, NamespaceName);
-        Assert.Equal("release-k8s-roundtrip", deployment.Spec.Template.Metadata.Annotations["pole.server/releaseId"]);
-    }
-
     [KubernetesFact]
     public async Task ApplyAsync_CreatesWebServiceResourcesWithReleaseMetadata()
     {
@@ -105,47 +61,6 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
             options: WebServiceFactory.DefaultOptions with { Id = "source-build-e2e" });
     }
 
-    private static WebServiceSpecSnapshot ToSnapshot(WebServiceSpec spec) => new(
-        new WebServiceImageInfoSnapshot(
-            spec.Image.Server,
-            spec.Image.Name,
-            spec.Image.Tag,
-            spec.Image.SecretName),
-        spec.Replicas,
-        spec.Resources,
-        new WebServiceConfigSnapshot(
-            spec.Config.EnvironmentVariables,
-            spec.Config.PortMappings
-                .Select(mapping => new PortMappingSnapshot(
-                    mapping.ServicePort,
-                    mapping.TargetPort,
-                    mapping.Protocol,
-                    mapping.Name))
-                .ToImmutableList()),
-        spec.Autoscaling is null
-            ? null
-            : new AutoscalingSpecSnapshot(
-                spec.Autoscaling.MinReplicas,
-                spec.Autoscaling.MaxReplicas,
-                new AutoscalingMetricSnapshot(
-                    spec.Autoscaling.Metric.Type,
-                    spec.Autoscaling.Metric.TargetAverageUtilization)),
-        spec.Probes);
-
-    private static WebServiceDeploymentRequestedEvent CreateDeploymentEvent(WebService webService, string releaseId) =>
-        new(
-            ReleaseId: releaseId,
-            Revision: 1,
-            Action: "Create",
-            WebServiceId: webService.Id,
-            Name: webService.Name,
-            ResourceGroupId: webService.ResourceGroupId,
-            DnsRecord: webService.DnsRecord,
-            Spec: ToSnapshot(webService.Spec))
-        {
-            EventCore = EventCore.Create(webService.TenantId)
-        };
-
     private static void AssertResultSucceeded(Result result)
     {
         if (result is not Failure failure)
@@ -155,14 +70,6 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
             ? externalFailure.Details
             : failure.Message;
         throw new Xunit.Sdk.XunitException($"Kubernetes deployment apply failed: {details}");
-    }
-
-    private sealed class UnexpectedRegistryAccessProvider : IRuntimeRegistryAccessProvider
-    {
-        public Task<Result<RuntimeRegistryAccess>> ResolveAsync(
-            string tenantId,
-            CancellationToken cancellationToken = default) =>
-            throw new Xunit.Sdk.XunitException("The bootstrap image must not request registry credentials.");
     }
 
     [KubernetesFact]
