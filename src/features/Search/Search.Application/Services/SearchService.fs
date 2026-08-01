@@ -178,10 +178,9 @@ type SearchService(database : IMongoDatabase) =
                     bsonDoc [ BsonElement("$regex", regex) ])
               ] :> BsonValue ]
 
-        match query.TenantId with
-        | Some tenantId ->
-            conditions <- conditions @ [ bsonDoc [ BsonElement("TenantId", BsonString(tenantId)) ] :> BsonValue ]
-        | None -> ()
+        conditions <-
+            conditions @
+            [ bsonDoc [ BsonElement("TenantId", BsonString(query.TenantId)) ] :> BsonValue ]
 
         match query.Types with
         | Some types when not (List.isEmpty types) ->

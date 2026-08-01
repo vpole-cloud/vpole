@@ -117,7 +117,7 @@ public interface IResourceDeploymentQueryService
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyDictionary<string, PlacementSummaryDto>> GetManyAsync(
-        string? tenantId,
+        string tenantId,
         ResourceTypeId resourceType,
         IReadOnlyCollection<string> resourceIds,
         CancellationToken cancellationToken = default);

@@ -40,12 +40,11 @@ public static class MongoFilterExtensions
 
     public static FilterDefinition<TDocument> ForTenant<TDocument>(
         this FilterDefinitionBuilder<TDocument> builder,
-        string? tenantId)
+        string tenantId)
     {
         ArgumentNullException.ThrowIfNull(builder);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
 
-        return tenantId is null
-            ? builder.Empty
-            : builder.Eq("TenantId", tenantId);
+        return builder.Eq("TenantId", tenantId);
     }
 }

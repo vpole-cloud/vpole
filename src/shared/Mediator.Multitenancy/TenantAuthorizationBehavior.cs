@@ -33,6 +33,18 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
 
     private Failure? Authorize(TRequest request)
     {
+        if (request is ITenantOperation operation &&
+            string.IsNullOrWhiteSpace(operation.TenantId))
+        {
+            return Failures.ValidationFailure(new Dictionary<string, string[]>
+            {
+                [TenantHeaders.TenantId] =
+                [
+                    $"{TenantHeaders.TenantId} is required for tenant-scoped operations."
+                ]
+            });
+        }
+
         var tenantContext = tenantContextAccessor.Current;
         var httpContext = httpContextAccessor.HttpContext;
         var isPlatformAdmin = tenantContext?.IsPlatformAdmin == true || httpContext?.User.Roles.Contains(Roles.Admin) is true;
@@ -41,9 +53,6 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
         {
             if (!isPlatformAdmin)
                 return Forbidden("Platform admin role is required for tenant-wide operations.");
-
-            if (request is ITenantCreateOperation)
-                return Forbidden($"Tenant-scoped create operations require {TenantHeaders.TenantId}.");
 
             return null;
         }

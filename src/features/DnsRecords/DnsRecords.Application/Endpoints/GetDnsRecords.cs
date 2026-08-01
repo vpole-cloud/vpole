@@ -70,7 +70,6 @@ public sealed class GetDomainNamesHandler(
 
 public record GetDomainNamesRequest : PaginatedRequest<DnsRecordDto>, ITenantReadOperation
 {
-    [FromHeader(Name = TenantHeaders.TenantId)] public string? TenantId { get; init; }
+    [FromHeader(Name = TenantHeaders.TenantId)] public string TenantId { get; init; } = string.Empty;
     [FromQuery] public string? Search { get; init; }
 }
-

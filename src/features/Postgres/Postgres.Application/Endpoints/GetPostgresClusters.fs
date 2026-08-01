@@ -23,7 +23,7 @@ type GetPostgresClustersRequest() =
         member this.TenantId = this.TenantId
 
     [<FromHeader(Name = TenantHeaders.TenantId)>]
-    member val TenantId : string = null with get, set
+    member val TenantId = "" with get, set
 
     [<FromQuery; DefaultValue(1); Description("The page number to retrieve (1-based).")>]
     member val PageNumber = 1 with get, set

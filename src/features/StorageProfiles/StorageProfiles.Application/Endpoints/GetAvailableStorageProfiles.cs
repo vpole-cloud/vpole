@@ -19,7 +19,7 @@ namespace Pole.Features.StorageProfiles.Application.Endpoints;
 public sealed record GetAvailableStorageProfilesRequest(
     [FromQuery] string ResourceType,
     [FromQuery] string DeploymentTargetId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null)
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
     : IMediatorRequest<IReadOnlyCollection<StorageProfileDto>>, ITenantReadOperation;
 
 public sealed class GetAvailableStorageProfilesHandler(
@@ -60,7 +60,7 @@ public sealed class GetAvailableStorageProfilesHandler(
         return profiles
             .Where(profile => StorageProfileResolver.AllowsTenant(
                 profile,
-                request.TenantId!))
+                request.TenantId))
             .Where(profile => StorageProfileResolver.AllowsResourceType(
                 profile,
                 resourceType))

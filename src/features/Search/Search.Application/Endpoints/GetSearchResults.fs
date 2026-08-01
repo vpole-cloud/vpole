@@ -16,7 +16,7 @@ type GetSearchHandler(searchService : ISearchService) =
     interface IMediatorHandler<GetSearchRequest, PaginatedResponse<SearchHitDto>> with
         member _.HandleAsync(request, cancellationToken) =
             task {
-                let response = SearchQuery.ofRequest (Option.ofObj request.TenantId) request
+                let response = SearchQuery.ofRequest request
                 let! result = searchService.Get response cancellationToken
                 return Result<PaginatedResponse<SearchHitDto>>.op_Implicit(result)
             }
@@ -37,4 +37,3 @@ type GetSearchResults =
             let! result = mediator.Send request
             return result.ToHttpResult(fun value -> Results.Ok(value))
         }
-

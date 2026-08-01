@@ -17,7 +17,7 @@ namespace Pole.Features.ResourceGroups.Application.Endpoints;
 
 public sealed record GetIsolationScopesRequest(
     [FromRoute] string ResourceGroupId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null)
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
     : IMediatorRequest<IReadOnlyList<IsolationScopeDto>>, ITenantReadOperation;
 
 public sealed class GetIsolationScopesHandler(IResourceGroupDbContext dbContext)

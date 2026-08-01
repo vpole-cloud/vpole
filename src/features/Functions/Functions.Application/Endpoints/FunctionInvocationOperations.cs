@@ -74,7 +74,7 @@ public sealed record FunctionInvocationDto(
 public sealed record GetFunctionInvocationsRequest(
     [FromRoute] string Id,
     [FromQuery] int Take,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId)
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
     : IMediatorRequest<IReadOnlyList<FunctionInvocationDto>>, ITenantReadOperation;
 
 public sealed class GetFunctionInvocationsHandler(IFunctionAppDbContext dbContext)
@@ -255,7 +255,7 @@ public sealed record GetFunctionUsageRequest(
     [FromRoute] string Id,
     [FromQuery] DateTimeOffset? FromUtc,
     [FromQuery] DateTimeOffset? ToUtc,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId)
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
     : IMediatorRequest<FunctionUsageResponse>, ITenantReadOperation;
 
 public sealed class GetFunctionUsageHandler(IFunctionAppDbContext dbContext)
@@ -318,7 +318,7 @@ file static class FunctionInvocationAppLookup
 {
     public static async Task<FunctionApp?> FindAppAsync(
         IFunctionAppDbContext dbContext,
-        string? tenantId,
+        string tenantId,
         string appId,
         CancellationToken cancellationToken) =>
         await dbContext.FunctionApps.Find(Builders<FunctionApp>.Filter.And(

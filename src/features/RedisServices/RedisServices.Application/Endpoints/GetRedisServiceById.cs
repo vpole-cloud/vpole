@@ -64,5 +64,5 @@ public sealed class GetRedisServiceByIdHandler(
 
 public record GetRedisServiceByIdRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
 ) : IMediatorRequest<RedisDto>, ITenantReadOperation;

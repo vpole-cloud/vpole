@@ -84,7 +84,7 @@ public sealed class GetWebServicesHandler(
 
 public record GetWebServicesRequest : PaginatedRequest<WebServiceDto>, ITenantReadOperation
 {
-    [FromHeader(Name = TenantHeaders.TenantId)] public string? TenantId { get; init; }
+    [FromHeader(Name = TenantHeaders.TenantId)] public string TenantId { get; init; } = string.Empty;
     [FromQuery] public string? ResourceGroupId { get; init; }
     [FromQuery] public string? Search { get; init; }
 }

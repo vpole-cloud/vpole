@@ -67,7 +67,9 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
 
-        var result = await Mediator.Send(new DeleteResourceGroupRequest(resourceGroup.Id));
+        var result = await Mediator.Send(new DeleteResourceGroupRequest(
+            resourceGroup.Id,
+            resourceGroup.TenantId));
 
         var response = result.AssertSuccess();
         Assert.True(response.Deleted);
@@ -95,7 +97,9 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
                     ResourceType.WebService))
         });
 
-        var result = await Mediator.Send(new DeleteResourceGroupRequest(resourceGroup.Id));
+        var result = await Mediator.Send(new DeleteResourceGroupRequest(
+            resourceGroup.Id,
+            resourceGroup.TenantId));
 
         var failure = result.AssertFailure();
         Assert.IsType<ConflictFailure>(failure);
@@ -117,7 +121,9 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             RuntimeCellFactory.DefaultOptions);
         await DbContext.RuntimeCells.InsertOneAsync(cell);
 
-        var result = await Mediator.Send(new DeleteResourceGroupRequest(resourceGroup.Id));
+        var result = await Mediator.Send(new DeleteResourceGroupRequest(
+            resourceGroup.Id,
+            resourceGroup.TenantId));
 
         var response = result.AssertSuccess();
         Assert.False(response.Deleted);

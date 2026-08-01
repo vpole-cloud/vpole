@@ -33,7 +33,7 @@ public static class GetFunctionRevisions
 
 public sealed record GetFunctionRevisionsRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId)
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
     : IMediatorRequest<IReadOnlyList<FunctionRevisionDto>>, ITenantReadOperation;
 
 public sealed class GetFunctionRevisionsHandler(IFunctionAppDbContext dbContext)

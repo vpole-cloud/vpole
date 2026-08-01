@@ -33,7 +33,7 @@ public static class GetFunctionAppById
 
 public sealed record GetFunctionAppByIdRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId)
+    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
     : IMediatorRequest<FunctionAppDetailsDto>, ITenantReadOperation;
 
 public sealed class GetFunctionAppByIdHandler(IFunctionAppDbContext dbContext)
