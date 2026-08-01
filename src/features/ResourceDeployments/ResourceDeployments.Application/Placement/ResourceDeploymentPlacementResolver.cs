@@ -63,7 +63,7 @@ public sealed class ResourceDeploymentPlacementResolver(
         var ingress = target.WorkloadConfiguration.Ingress;
         if (requiresIngress && ingress is null)
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
+            return Failures.SemanticValidation(new Dictionary<string, string[]>
             {
                 ["Placement.DeploymentTargetId"] =
                 [

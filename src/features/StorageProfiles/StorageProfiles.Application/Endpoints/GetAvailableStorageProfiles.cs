@@ -1,4 +1,5 @@
 using FluentValidation;
+using Pole.Validation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -89,11 +90,9 @@ public sealed class GetAvailableStorageProfilesRequestValidator
                 Enum.IsDefined(parsed))
             .WithMessage("Resource type is invalid.");
         RuleFor(request => request.DeploymentTargetId)
-            .Must(id => ObjectId.TryParse(id?.Trim(), out _))
-            .WithMessage("Deployment target ID must be a MongoDB ObjectId.");
+            .MongoObjectId("Deployment target ID");
         RuleFor(request => request.TenantId)
-            .Must(id => ObjectId.TryParse(id?.Trim(), out _))
-            .WithMessage($"{TenantHeaders.TenantId} must be a MongoDB ObjectId.");
+            .MongoObjectId(TenantHeaders.TenantId);
     }
 }
 

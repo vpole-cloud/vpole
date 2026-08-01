@@ -1,4 +1,5 @@
 using FluentValidation;
+using Pole.Validation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -32,8 +33,7 @@ public sealed class GetKubernetesPersistentVolumeClaimsRequestValidator
 {
     public GetKubernetesPersistentVolumeClaimsRequestValidator() =>
         RuleFor(request => request.DeploymentTargetId)
-            .Must(id => ObjectId.TryParse(id?.Trim(), out _))
-            .WithMessage("Deployment target ID must be a MongoDB ObjectId.");
+            .MongoObjectId("Deployment target ID");
 }
 
 public static class GetKubernetesPersistentVolumeClaimsEndpoint

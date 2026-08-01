@@ -20,6 +20,7 @@
       <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
       <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
+      <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj" />
     </ItemGroup>
 
     <ItemGroup>

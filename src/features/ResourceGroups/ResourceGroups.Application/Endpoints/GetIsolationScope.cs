@@ -1,4 +1,5 @@
 using FluentValidation;
+using Pole.Validation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -56,11 +57,9 @@ public sealed class GetIsolationScopeRequestValidator
     public GetIsolationScopeRequestValidator()
     {
         RuleFor(request => request.ResourceGroupId)
-            .Must(id => ObjectId.TryParse(id, out _))
-            .WithMessage("Resource group ID must be a MongoDB ObjectId.");
+            .MongoObjectId("Resource group ID");
         RuleFor(request => request.ScopeId)
-            .Must(id => ObjectId.TryParse(id, out _))
-            .WithMessage("Isolation scope ID must be a MongoDB ObjectId.");
+            .MongoObjectId("Isolation scope ID");
     }
 }
 

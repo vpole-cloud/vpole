@@ -1,4 +1,5 @@
 using FluentValidation;
+using Pole.Validation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -100,11 +101,9 @@ public sealed class RetryRuntimeCellRequestValidator
     public RetryRuntimeCellRequestValidator()
     {
         RuleFor(request => request.ResourceGroupId)
-            .Must(id => ObjectId.TryParse(id, out _))
-            .WithMessage("Resource group ID must be a MongoDB ObjectId.");
+            .MongoObjectId("Resource group ID");
         RuleFor(request => request.CellId)
-            .Must(id => ObjectId.TryParse(id, out _))
-            .WithMessage("Runtime cell ID must be a MongoDB ObjectId.");
+            .MongoObjectId("Runtime cell ID");
     }
 }
 

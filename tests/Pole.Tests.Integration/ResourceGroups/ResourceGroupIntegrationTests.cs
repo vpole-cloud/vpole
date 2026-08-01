@@ -52,6 +52,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
 
         var result = await Mediator.Send(new GetResourceGroupsRequest
         {
+            TenantId = TestData.TenantId,
             Search = "alp",
             PageNumber = 1,
             PageSize = 10
