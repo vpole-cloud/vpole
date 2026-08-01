@@ -47,7 +47,7 @@ type ResourceDeploymentSearchProjectionConsumer(
                    && (placement.DesiredGeneration >= generation
                        || placement.ObservedGeneration >= generation) then
                     do!
-                        searchService.UpdatePlacement(
+                        searchService.UpdateOperationalStatus(
                             sourceType,
                             tenantId,
                             resourceId,

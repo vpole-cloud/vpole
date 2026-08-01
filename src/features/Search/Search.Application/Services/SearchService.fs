@@ -32,7 +32,7 @@ type ISearchService =
         sourceId : string ->
             cancellationToken : CancellationToken ->
                 Task
-    abstract member UpdatePlacement :
+    abstract member UpdateOperationalStatus :
         sourceType : SearchDocumentType *
         tenantId : string *
         sourceId : string *
@@ -90,7 +90,7 @@ type SearchService(database : IMongoDatabase) =
                     | _ ->
                         { candidate with
                             Id = existingSource.Id
-                            Placement = existingSource.Placement }
+                            OperationalStatus = existingSource.OperationalStatus }
 
                 let! _ =
                     sourceCollection.ReplaceOneAsync(
@@ -103,66 +103,41 @@ type SearchService(database : IMongoDatabase) =
         }
 
     let toSourceHitDto (document : SearchSourceDocument) =
-        let placement =
-            document.Placement
+        let operationalStatus =
+            document.OperationalStatus
             |> Option.map (fun value ->
-                { DeploymentId = value.DeploymentId
-                  IsolationScopeId = value.IsolationScopeId
-                  RuntimeCellId = value.RuntimeCellId
-                  DeploymentTargetId = value.DeploymentTargetId
-                  DesiredGeneration = value.DesiredGeneration
-                  ObservedGeneration = value.ObservedGeneration
-                  Status = value.Status
-                  FailureCode = value.FailureCode
-                  Endpoints =
-                    value.Endpoints
-                    |> Array.map (fun endpoint ->
-                        { Kind = endpoint.Kind
-                          Host = endpoint.Host
-                          Port = endpoint.Port
-                          Scheme = endpoint.Scheme }) })
+                { Status = value.Status
+                  FailureCode = value.FailureCode })
 
         { SourceType = document.SourceType.ToString()
           SourceId = document.SourceId
           Title = document.Title
           ResourceGroupId = document.ResourceGroupId
           ResourceGroupName = document.ResourceGroupName
-          Placement = placement }
+          OperationalStatus = operationalStatus }
 
-    let toSearchPlacementSummary
+    let toSearchOperationalStatus
         (placement : PlacementSummaryDto)
         (eventOccurredAtUtc : System.DateTime) =
-        { DeploymentId = placement.DeploymentId
-          IsolationScopeId = placement.IsolationScopeId
-          RuntimeCellId = placement.RuntimeCellId
-          DeploymentTargetId = placement.DeploymentTargetId
-          DesiredGeneration = placement.DesiredGeneration
+        { DesiredGeneration = placement.DesiredGeneration
           ObservedGeneration = placement.ObservedGeneration
           Status = placement.Status
           FailureCode = Option.ofObj placement.FailureCode
-          Endpoints =
-            placement.Endpoints
-            |> Seq.map (fun endpoint ->
-                { Kind = endpoint.Kind
-                  Host = endpoint.Host
-                  Port = endpoint.Port
-                  Scheme = endpoint.Scheme })
-            |> Seq.toArray
           EventOccurredAtUtc = eventOccurredAtUtc }
 
     let placementFence (placement : PlacementSummaryDto) (eventOccurredAtUtc : System.DateTime) =
         let filter = Builders<SearchSourceDocument>.Filter
         filter.Or(
-            filter.Exists("Placement", false),
-            filter.Eq("Placement", BsonNull.Value),
-            filter.Lt("Placement.DesiredGeneration", placement.DesiredGeneration),
+            filter.Exists("OperationalStatus", false),
+            filter.Eq("OperationalStatus", BsonNull.Value),
+            filter.Lt("OperationalStatus.DesiredGeneration", placement.DesiredGeneration),
             filter.And(
-                filter.Eq("Placement.DesiredGeneration", placement.DesiredGeneration),
-                filter.Lt("Placement.ObservedGeneration", placement.ObservedGeneration)),
+                filter.Eq("OperationalStatus.DesiredGeneration", placement.DesiredGeneration),
+                filter.Lt("OperationalStatus.ObservedGeneration", placement.ObservedGeneration)),
             filter.And(
-                filter.Eq("Placement.DesiredGeneration", placement.DesiredGeneration),
-                filter.Eq("Placement.ObservedGeneration", placement.ObservedGeneration),
-                filter.Lte("Placement.EventOccurredAtUtc", eventOccurredAtUtc)))
+                filter.Eq("OperationalStatus.DesiredGeneration", placement.DesiredGeneration),
+                filter.Eq("OperationalStatus.ObservedGeneration", placement.ObservedGeneration),
+                filter.Lte("OperationalStatus.EventOccurredAtUtc", eventOccurredAtUtc)))
 
     let escapePrefix (query : string) =
         $"^{Regex.Escape(query)}"
@@ -217,7 +192,7 @@ type SearchService(database : IMongoDatabase) =
         member _.Delete(sourceType, tenantId, sourceId) cancellationToken =
             deleteBySource sourceType tenantId sourceId cancellationToken
 
-        member _.UpdatePlacement(sourceType, tenantId, sourceId, placement, eventOccurredAtUtc) cancellationToken =
+        member _.UpdateOperationalStatus(sourceType, tenantId, sourceId, placement, eventOccurredAtUtc) cancellationToken =
             task {
                 let filter =
                     Builders<SearchSourceDocument>.Filter.And(
@@ -225,8 +200,8 @@ type SearchService(database : IMongoDatabase) =
                         placementFence placement eventOccurredAtUtc)
                 let update =
                     Builders<SearchSourceDocument>.Update.Set(
-                        _.Placement,
-                        Some(toSearchPlacementSummary placement eventOccurredAtUtc))
+                        _.OperationalStatus,
+                        Some(toSearchOperationalStatus placement eventOccurredAtUtc))
                 let! _ =
                     sourceCollection.UpdateOneAsync(
                         filter,

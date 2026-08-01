@@ -6,22 +6,9 @@ open Microsoft.AspNetCore.Mvc
 open Pole.Features.Search.Domain
 open Pole.Mediator
 
-type SearchPlacementEndpointDto =
-    { Kind : string
-      Host : string
-      Port : int
-      Scheme : string }
-
-type SearchPlacementSummaryDto =
-    { DeploymentId : string
-      IsolationScopeId : string
-      RuntimeCellId : string
-      DeploymentTargetId : string
-      DesiredGeneration : int64
-      ObservedGeneration : int64
-      Status : string
-      FailureCode : string option
-      Endpoints : SearchPlacementEndpointDto array }
+type SearchOperationalStatusDto =
+    { Status : string
+      FailureCode : string option }
 
 type SearchHitDto =
     { SourceType : string
@@ -29,7 +16,7 @@ type SearchHitDto =
       Title : string
       ResourceGroupId : string option
       ResourceGroupName : string option
-      Placement : SearchPlacementSummaryDto option }
+      OperationalStatus : SearchOperationalStatusDto option }
 
 type SearchQuery =
     { Query : string
