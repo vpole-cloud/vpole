@@ -111,6 +111,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(new GetRedisServicesRequest
         {
+            TenantId = TestData.TenantId,
             PageNumber = 2,
             PageSize = 1
         });
