@@ -1,6 +1,5 @@
-using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -9,30 +8,8 @@ using Pole.ResultType;
 
 namespace Pole.Features.RedisServices.Application.Kubernetes;
 
-public interface IRedisResourceDeploymentReader
-{
-    Task<Redis?> FindAsync(
-        string tenantId,
-        string redisId,
-        CancellationToken cancellationToken = default);
-}
-
-public sealed class MongoRedisResourceDeploymentReader(
-    IRedisDbContext dbContext) : IRedisResourceDeploymentReader
-{
-    public async Task<Redis?> FindAsync(
-        string tenantId,
-        string redisId,
-        CancellationToken cancellationToken = default) =>
-        await dbContext.RedisServices
-            .Find(Builders<Redis>.Filter.And(
-                Builders<Redis>.Filter.ForTenant(tenantId),
-                Builders<Redis>.Filter.Eq(redis => redis.Id, redisId)))
-            .FirstOrDefaultAsync(cancellationToken);
-}
-
 public sealed class RedisResourceDeploymentAdapter(
-    IRedisResourceDeploymentReader reader)
+    LoadRedisById loadRedisById)
     : IResourceDeploymentAdapter
 {
     public async Task<ResourceDeploymentAdapterResult> ApplyAsync(
@@ -43,7 +20,7 @@ public sealed class RedisResourceDeploymentAdapter(
         if (validationFailure is not null)
             return validationFailure;
 
-        var redis = await reader.FindAsync(
+        var redis = await loadRedisById(
             context.Deployment.TenantId,
             context.Deployment.ResourceId,
             cancellationToken);
@@ -93,7 +70,7 @@ public sealed class RedisResourceDeploymentAdapter(
         if (validationFailure is not null)
             return validationFailure;
 
-        var redis = await reader.FindAsync(
+        var redis = await loadRedisById(
             context.Deployment.TenantId,
             context.Deployment.ResourceId,
             cancellationToken);

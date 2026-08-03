@@ -28,6 +28,7 @@ using Pole.Features.Outbox.Application.Migrations;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Migrations;
@@ -134,6 +135,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
         builder.Services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
         builder.Services.AddMongoDbContextInterfaces();
+        builder.Services.AddRedisPersistence();
         builder.Services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         builder.Services.AddSingleton(new PostgresSettings
         {

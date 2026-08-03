@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Events;
@@ -29,6 +30,25 @@ internal static class RedisServicesEventExtensions
             {
                 EventCore = EventCore.Create(redis.TenantId)
             };
+
+        internal RedisServiceUpdatedEvent ToUpdateEvent(Redis replacement)
+        {
+            ArgumentNullException.ThrowIfNull(replacement);
+            return new RedisServiceUpdatedEvent(
+                redis.Id,
+                redis.Name,
+                redis.ResourceGroupId,
+                new RedisServiceUpdatedEventChanges(
+                    UpdateLog<RedisServiceSpecSnapshot>.Of(
+                        redis.Spec.ToSnapshot(),
+                        replacement.Spec.ToSnapshot()),
+                    UpdateLog<ImmutableHashSet<string>>.Of(
+                        redis.Tags,
+                        replacement.Tags)))
+            {
+                EventCore = EventCore.Create(redis.TenantId)
+            };
+        }
     }
 
     extension(RedisServiceCreatedEvent createEvent)

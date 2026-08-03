@@ -5,6 +5,7 @@ using System.Text.Json;
 using k8s;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Kubernetes;
+using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -21,10 +22,10 @@ public sealed class RedisResourceDeploymentAdapterTests
     [Fact]
     public async Task Apply_UsesContextClientNamespaceAndResolvedStorage()
     {
-        var reader = new RecordingReader(CreateRedis());
+        var loader = new RecordingRedisLoader(CreateRedis());
         using var handler = new RecordingKubernetesHandler();
         using var kubernetes = CreateKubernetes(handler);
-        var subject = new RedisResourceDeploymentAdapter(reader);
+        var subject = new RedisResourceDeploymentAdapter(loader.InvokeAsync);
 
         var result = await subject.ApplyAsync(CreateContext(kubernetes));
 
@@ -37,7 +38,7 @@ public sealed class RedisResourceDeploymentAdapterTests
             endpoint.Host);
         Assert.Equal(6379, endpoint.Port);
         Assert.Equal("redis", endpoint.Scheme);
-        Assert.Equal([(TenantId, ResourceId)], reader.Requests);
+        Assert.Equal([(TenantId, ResourceId)], loader.Requests);
         Assert.Equal(2, handler.Requests.Count);
         Assert.All(
             handler.Requests,
@@ -85,10 +86,10 @@ public sealed class RedisResourceDeploymentAdapterTests
     [Fact]
     public async Task Apply_WithoutResolvedStorage_FailsBeforeLookupOrKubernetes()
     {
-        var reader = new RecordingReader(CreateRedis());
+        var loader = new RecordingRedisLoader(CreateRedis());
         using var handler = new RecordingKubernetesHandler();
         using var kubernetes = CreateKubernetes(handler);
-        var subject = new RedisResourceDeploymentAdapter(reader);
+        var subject = new RedisResourceDeploymentAdapter(loader.InvokeAsync);
 
         var result = await subject.ApplyAsync(
             CreateContext(kubernetes, includeStorage: false));
@@ -97,24 +98,24 @@ public sealed class RedisResourceDeploymentAdapterTests
             Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
         Assert.Equal("StorageConfigurationMissing", failed.FailureCode);
         Assert.False(failed.Retryable);
-        Assert.Empty(reader.Requests);
+        Assert.Empty(loader.Requests);
         Assert.Empty(handler.Requests);
     }
 
     [Fact]
     public async Task Delete_UsesContextClientAndPersistedNamespace()
     {
-        var reader = new RecordingReader(CreateRedis());
+        var loader = new RecordingRedisLoader(CreateRedis());
         using var handler = new RecordingKubernetesHandler();
         using var kubernetes = CreateKubernetes(handler);
-        var subject = new RedisResourceDeploymentAdapter(reader);
+        var subject = new RedisResourceDeploymentAdapter(loader.InvokeAsync);
 
         var result = await subject.DeleteAsync(CreateContext(kubernetes));
 
         var succeeded =
             Assert.IsType<ResourceDeploymentAdapterResult.Succeeded>(result);
         Assert.Empty(succeeded.Endpoints);
-        Assert.Equal([(TenantId, ResourceId)], reader.Requests);
+        Assert.Equal([(TenantId, ResourceId)], loader.Requests);
         Assert.Equal(2, handler.Requests.Count);
         Assert.All(handler.Requests, request =>
         {
@@ -196,12 +197,11 @@ public sealed class RedisResourceDeploymentAdapterTests
                 Tags = ImmutableHashSet.Create("cache")
             });
 
-    private sealed class RecordingReader(Redis redis)
-        : IRedisResourceDeploymentReader
+    private sealed class RecordingRedisLoader(Redis redis)
     {
         public List<(string TenantId, string ResourceId)> Requests { get; } = [];
 
-        public Task<Redis?> FindAsync(
+        public Task<Redis?> InvokeAsync(
             string tenantId,
             string redisId,
             CancellationToken cancellationToken = default)

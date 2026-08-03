@@ -29,7 +29,7 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.False(second.TryGetValue(out _, out var failure));
         Assert.IsType<ConflictFailure>(failure);
 
-        Assert.Equal(1L, await DbContext.RedisServices.CountDocumentsAsync(redis => redis.TenantId == TestData.TenantId));
+        Assert.Equal(1L, await DbContext.Database.RedisServices().CountDocumentsAsync(redis => redis.TenantId == TestData.TenantId));
         var usage = await GetUsageAsync(TestData.TenantId);
         Assert.Equal(1, QuotaValues.GetValue(usage.Values, RedisServiceCountQuota.QuotaKey));
         var reservations = await DbContext.QuotaReservations

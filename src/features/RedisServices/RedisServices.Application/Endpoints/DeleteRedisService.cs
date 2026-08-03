@@ -3,18 +3,15 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Events;
+using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.Quotas.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -38,7 +35,8 @@ public static class DeleteRedisService
 }
 
 public sealed class DeleteRedisServiceHandler(
-    IRedisDbContext dbContext,
+    LoadRedisById loadRedisById,
+    BeginRedisDeletion beginRedisDeletion,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     IResourceDeploymentMutationWriter deploymentWriter,
     IResourceDeploymentQueryService deploymentQuery,
@@ -48,13 +46,10 @@ public sealed class DeleteRedisServiceHandler(
     public async Task<Result<DeleteRedisServiceResponse>> HandleAsync(DeleteRedisServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<Redis>.Filter.And(
-            Builders<Redis>.Filter.ForTenant(request.TenantId),
-            Builders<Redis>.Filter.Eq(r => r.Id, request.Id));
-
-        var redis = await dbContext.RedisServices
-            .Find(filter)
-            .FirstOrDefaultAsync(cancellationToken);
+        var redis = await loadRedisById(
+            request.TenantId,
+            request.Id,
+            cancellationToken);
         if (redis is null)
             return Failures.NotFound("Redis service not found.", request.Id);
         if (redis.Lifecycle is DeletingRedisLifecycle)
@@ -78,20 +73,13 @@ public sealed class DeleteRedisServiceHandler(
             {
                 var deleting = redis.BeginDeletion(
                     timeProvider.GetUtcNow().UtcDateTime);
-                var replace = await dbContext.RedisServices.ReplaceOneAsync(
+                var persistenceResult = await beginRedisDeletion(
                     session,
-                    Builders<Redis>.Filter.And(
-                        filter,
-                        Builders<Redis>.Filter.Eq(
-                            item => item.Revision,
-                            redis.Revision)),
+                    redis,
                     deleting,
-                    cancellationToken: transactionCancellationToken);
-                if (replace.ModifiedCount != 1)
-                {
-                    return Failures.Conflict(
-                        "The Redis service changed while deletion was being accepted.");
-                }
+                    transactionCancellationToken);
+                if (persistenceResult is Failure persistenceFailure)
+                    return persistenceFailure;
 
                 var deploymentResult = await deploymentWriter.RequestDeletionAsync(
                     new ResourceDeploymentMutationCommand(
@@ -116,8 +104,7 @@ public sealed class DeleteRedisServiceHandler(
 }
 
 public sealed class FinalizeRedisServiceDeletionConsumer(
-    IRedisDbContext dbContext,
-    IResourceDeploymentDbContext deploymentDbContext)
+    FinalizeRedisDeletion finalizeRedisDeletion)
     : IConsumer<ResourceDeploymentDeletedEvent>
 {
     public Task Consume(ConsumeContext<ResourceDeploymentDeletedEvent> context)
@@ -131,58 +118,10 @@ public sealed class FinalizeRedisServiceDeletionConsumer(
             return Task.CompletedTask;
         }
 
-        return dbContext.RunInTransactionAsync(async (session, ct) =>
-        {
-            var redisFilter = Builders<Redis>.Filter.And(
-                Builders<Redis>.Filter.ForTenant(message.EventCore.TenantId),
-                Builders<Redis>.Filter.Eq(
-                    redis => redis.Id,
-                    message.ResourceId),
-                Builders<Redis>.Filter.OfType<
-                    RedisLifecycle,
-                    DeletingRedisLifecycle>(
-                    redis => redis.Lifecycle));
-            var redis = await dbContext.RedisServices
-                .Find(session, redisFilter)
-                .FirstOrDefaultAsync(ct);
-            if (redis is null)
-                return Result.Success();
-
-            var deployments = await deploymentDbContext.ResourceDeployments
-                .Find(session, deployment =>
-                    deployment.TenantId == message.EventCore.TenantId &&
-                    deployment.ResourceType ==
-                        RedisResourceDeployment.ResourceType.Value &&
-                    deployment.ResourceId == message.ResourceId)
-                .ToListAsync(ct);
-            if (deployments.Count == 0 ||
-                deployments.Any(deployment =>
-                    deployment.State is not DeletedResourceDeploymentState))
-            {
-                return Result.Success();
-            }
-
-            var deleted = await dbContext.RedisServices.DeleteOneAsync(
-                session,
-                filter: redisFilter,
-                cancellationToken: ct);
-            if (deleted.DeletedCount != 1)
-                return Result.Success();
-
-            await deploymentDbContext.ResourceDeployments.DeleteManyAsync(
-                session,
-                filter: deployment =>
-                    deployment.TenantId == message.EventCore.TenantId &&
-                    deployment.ResourceType ==
-                        RedisResourceDeployment.ResourceType.Value &&
-                    deployment.ResourceId == message.ResourceId,
-                cancellationToken: ct);
-            await dbContext.StoreEventAsync(
-                redis.ToDeleteEvent(),
-                session,
-                ct);
-            return Result.Success();
-        }, cancellationToken: context.CancellationToken);
+        return finalizeRedisDeletion(
+            message.EventCore.TenantId,
+            message.ResourceId,
+            context.CancellationToken);
     }
 }
 

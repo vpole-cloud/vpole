@@ -2,13 +2,11 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -34,7 +32,7 @@ public static class GetRedisServiceById
 }
 
 public sealed class GetRedisServiceByIdHandler(
-    IRedisDbContext dbContext,
+    LoadRedisById loadRedisById,
     IResourceDeploymentQueryService deploymentQuery)
     : IMediatorHandler<GetRedisServiceByIdRequest, RedisDto>
 {
@@ -42,13 +40,10 @@ public sealed class GetRedisServiceByIdHandler(
         GetRedisServiceByIdRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<Redis>.Filter.And(
-            Builders<Redis>.Filter.ForTenant(request.TenantId),
-            Builders<Redis>.Filter.Eq(r => r.Id, request.Id));
-
-        var redis = await dbContext.RedisServices
-            .Find(filter)
-            .FirstOrDefaultAsync(cancellationToken: cancellationToken);
+        var redis = await loadRedisById(
+            request.TenantId,
+            request.Id,
+            cancellationToken);
 
         if (redis is null)
             return Failures.NotFound("Redis service not found.", request.Id);

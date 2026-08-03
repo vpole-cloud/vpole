@@ -2,13 +2,11 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
-using MongoDB.Driver.Linq;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.Request;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -37,7 +35,7 @@ public static class GetRedisServices
 }
 
 public sealed class GetRedisServicesHandler(
-    IRedisDbContext dbContext,
+    LoadRedisPage loadRedisPage,
     IResourceDeploymentQueryService deploymentQuery)
     : IMediatorHandler<GetRedisServicesRequest, PaginatedResponse<RedisDto>>
 {
@@ -45,29 +43,24 @@ public sealed class GetRedisServicesHandler(
         GetRedisServicesRequest request,
         CancellationToken cancellationToken = default)
     {
-        var query = dbContext.RedisServices
-            .AsQueryable()
-            .Where(redis => redis.TenantId == request.TenantId);
-        if (!string.IsNullOrWhiteSpace(request.Search))
-            query = query.Where(rs => rs.Name.Contains(request.Search, StringComparison.OrdinalIgnoreCase));
-        if (!string.IsNullOrWhiteSpace(request.ResourceGroupId))
-            query = query.Where(rs => rs.ResourceGroupId == request.ResourceGroupId);
-
-        var totalCount = await query.CountAsync(cancellationToken: cancellationToken);
-
-        var redisServices = await query
-            .ApplyPagination(request)
-            .ToListAsync(cancellationToken: cancellationToken);
+        var page = await loadRedisPage(
+            new RedisListQuery(
+                request.TenantId,
+                request.Search,
+                request.ResourceGroupId,
+                request.PageNumber,
+                request.PageSize),
+            cancellationToken);
         var placements = await deploymentQuery.GetManyAsync(
             request.TenantId,
             RedisResourceDeployment.ResourceType,
-            redisServices.Select(redis => redis.Id).ToArray(),
+            page.Items.Select(redis => redis.Id).ToArray(),
             cancellationToken);
 
         return new PaginatedResponse<RedisDto>(
-            Items: redisServices.Select(redis => redis.ToDto(
+            Items: page.Items.Select(redis => redis.ToDto(
                 placements.GetValueOrDefault(redis.Id))),
-            TotalCount: totalCount,
+            TotalCount: page.TotalCount,
             PageNumber: request.PageNumber,
             PageSize: request.PageSize);
     }

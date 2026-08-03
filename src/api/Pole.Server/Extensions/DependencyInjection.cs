@@ -63,6 +63,7 @@ using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Contracts;
@@ -223,9 +224,6 @@ public static class DependencyInjection
                 IWebServiceResourceDeploymentReader,
                 MongoWebServiceResourceDeploymentReader>();
             services.TryAddScoped<WebServiceResourceDeploymentAdapter>();
-            services.TryAddScoped<
-                IRedisResourceDeploymentReader,
-                MongoRedisResourceDeploymentReader>();
             services.TryAddScoped<RedisResourceDeploymentAdapter>();
             services.TryAddSingleton<IFunctionRevisionKubernetesManager, FunctionRevisionKubernetesManager>();
             services.TryAddSingleton<IFunctionEndpointSliceSource, KubernetesFunctionEndpointSliceSource>();
@@ -304,8 +302,21 @@ public static class DependencyInjection
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IMongoDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IEventDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
+            services.TryAddSingleton(serviceProvider =>
+                serviceProvider
+                    .GetRequiredService<IMongoDatabase>()
+                    .GetCollection<OutboxMessage>("OutboxMessages"));
+            services.TryAddSingleton<MongoStoreOutboxWrites>();
+            services.TryAddSingleton<StoreOutboxWrites>(serviceProvider =>
+                serviceProvider
+                    .GetRequiredService<MongoStoreOutboxWrites>()
+                    .InvokeAsync);
+            services.TryAddSingleton<MongoRunTransaction>();
+            services.TryAddSingleton<RunMongoTransaction>(serviceProvider =>
+                serviceProvider
+                    .GetRequiredService<MongoRunTransaction>()
+                    .InvokeAsync);
             services.TryAddSingleton<IWebServiceDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddSingleton<IRedisDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IResourceDeploymentDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddScoped<
                 IResourceDeploymentReferenceLookup,

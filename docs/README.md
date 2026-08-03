@@ -50,6 +50,7 @@ requirement when adding or changing one feature.
 ## Feature documentation
 
 - [Pole Functions](../src/features/Functions/README.md)
+- [Redis services and persistence capability experiment](../src/features/RedisServices/README.md)
 - [Search](search.md) (existing central document; it can move beside the feature independently)
 
 ## Development and verification

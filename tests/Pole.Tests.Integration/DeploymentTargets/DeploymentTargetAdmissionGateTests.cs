@@ -63,7 +63,7 @@ public sealed class DeploymentTargetAdmissionGateTests(MongoReplicaSetFixture fi
         new(
             await Fixture.DbContext.ResourceGroups.CountDocumentsAsync(
                 Builders<ResourceGroup>.Filter.Empty),
-            await Fixture.DbContext.RedisServices.CountDocumentsAsync(
+            await Fixture.Database.RedisServices().CountDocumentsAsync(
                 Builders<Pole.Features.RedisServices.Domain.Redis>.Filter.Empty),
             await Fixture.DbContext.WebServices.CountDocumentsAsync(
                 Builders<Pole.Features.WebServices.Domain.WebService>.Filter.Empty),
