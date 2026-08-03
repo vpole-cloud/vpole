@@ -51,7 +51,7 @@ public static class TestSeedExtensions
 
     public static async Task<Redis> InsertRedisAsync(this MongoDbContext dbContext, Redis redis)
     {
-        await dbContext.RedisServices.InsertOneAsync(redis);
+        await dbContext.Database.RedisServices().InsertOneAsync(redis);
         return redis;
     }
 

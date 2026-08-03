@@ -4,18 +4,15 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
-using Pole.Features.Events.Abstractions;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Domain;
-using Pole.Features.RedisServices.Events;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -56,7 +53,8 @@ public sealed record UpdateRedisServiceResponse(
     PlacementSummaryDto Placement);
 
 public sealed class UpdateRedisServiceHandler(
-    IRedisDbContext dbContext,
+    LoadRedisById loadRedisById,
+    PersistUpdatedRedis persistUpdatedRedis,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     IResourceDeploymentMutationWriter deploymentWriter)
     : IMediatorHandler<UpdateRedisServiceRequest, UpdateRedisServiceResponse>
@@ -65,13 +63,10 @@ public sealed class UpdateRedisServiceHandler(
         UpdateRedisServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<Redis>.Filter.And(
-            Builders<Redis>.Filter.ForTenant(request.TenantId),
-            Builders<Redis>.Filter.Eq(r => r.Id, request.Id));
-
-        var redis = await dbContext.RedisServices
-            .Find(filter)
-            .FirstOrDefaultAsync(cancellationToken: cancellationToken);
+        var redis = await loadRedisById(
+            request.TenantId,
+            request.Id,
+            cancellationToken);
 
         if (redis is null)
             return Failures.NotFound("Redis service not found.", request.Id);
@@ -99,21 +94,13 @@ public sealed class UpdateRedisServiceHandler(
                 var updatedRedis = redis.UpdateDesiredState(
                     nextSpec,
                     request.Body.Tags);
-                var changes = GetChanges(redis, updatedRedis);
-                var replace = await dbContext.RedisServices.ReplaceOneAsync(
+                var persistenceResult = await persistUpdatedRedis(
                     session,
-                    Builders<Redis>.Filter.And(
-                        filter,
-                        Builders<Redis>.Filter.Eq(
-                            item => item.Revision,
-                            redis.Revision)),
+                    redis,
                     updatedRedis,
-                    cancellationToken: transactionCancellationToken);
-                if (replace.ModifiedCount != 1)
-                {
-                    return Failures.Conflict(
-                        "The Redis service changed while the update was being accepted.");
-                }
+                    transactionCancellationToken);
+                if (persistenceResult is Failure persistenceFailure)
+                    return persistenceFailure;
 
                 var deploymentResult = await deploymentWriter.RequestApplyAsync(
                     new ResourceDeploymentMutationCommand(
@@ -129,34 +116,12 @@ public sealed class UpdateRedisServiceHandler(
                     return deploymentFailure;
                 }
 
-                await dbContext.StoreEventAsync(
-                    new RedisServiceUpdatedEvent(
-                        request.Id,
-                        redis.Name,
-                        redis.ResourceGroupId,
-                        changes)
-                    {
-                        EventCore = EventCore.Create(redis.TenantId)
-                    },
-                    session,
-                    transactionCancellationToken);
-
                 return new UpdateRedisServiceResponse(
                     redis.Id,
                     deployment.ToPlacementSummaryDto());
             },
             cancellationToken);
     }
-
-    private static RedisServiceUpdatedEventChanges GetChanges(
-        Redis redis,
-        Redis updatedRedis) =>
-        new(UpdateLog<RedisServiceSpecSnapshot>.Of(
-                redis.Spec.ToSnapshot(),
-                updatedRedis.Spec.ToSnapshot()),
-            UpdateLog<ImmutableHashSet<string>>.Of(
-                redis.Tags,
-                updatedRedis.Tags));
 }
 
 public sealed class UpdateRedisServiceValidator : AbstractValidator<UpdateRedisServiceRequest>

@@ -280,7 +280,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
 
     private async Task IndexRedisCreatedAsync(string redisId)
     {
-        var redis = await DbContext.RedisServices.Find(service => service.Id == redisId).FirstAsync();
+        var redis = await DbContext.Database.RedisServices().Find(service => service.Id == redisId).FirstAsync();
         var consumer = new AddRedisServiceToSearchOnRedisServiceCreatedConsumer(SearchService);
         await consumer.Handle(new RedisCreateEvent(
             redis.Id,

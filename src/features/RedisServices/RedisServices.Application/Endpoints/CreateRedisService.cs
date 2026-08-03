@@ -5,17 +5,15 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Application.Placement;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Domain;
-using Pole.Features.RedisServices.Events;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
@@ -45,7 +43,7 @@ public static class CreateRedisService
 }
 
 public sealed class CreateRedisServiceHandler(
-    IRedisDbContext dbContext,
+    PersistCreatedRedis persistCreatedRedis,
     IStorageProfileResolver storageProfileResolver,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     IResourceDeploymentPlacementResolver placementResolver,
@@ -95,10 +93,10 @@ public sealed class CreateRedisServiceHandler(
             new CreateQuotaMutation<RedisSpec>(newRedis.Spec),
             async (session, transactionCancellationToken) =>
             {
-                await dbContext.RedisServices.InsertOneAsync(
+                await persistCreatedRedis(
                     session,
                     newRedis,
-                    cancellationToken: transactionCancellationToken);
+                    transactionCancellationToken);
 
                 var deploymentResult = await deploymentWriter.CreateAsync(
                     new CreateResourceDeploymentCommand(
@@ -119,11 +117,6 @@ public sealed class CreateRedisServiceHandler(
                 {
                     return deploymentFailure;
                 }
-
-                await dbContext.StoreEventAsync(
-                    newRedis.ToCreateEvent(),
-                    session,
-                    transactionCancellationToken);
 
                 return new CreateRedisServiceResponse(
                     newRedis.Id,

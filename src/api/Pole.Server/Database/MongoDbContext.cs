@@ -12,8 +12,6 @@ using Pole.Features.Functions.Domain;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Domain;
-using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Application.Common;
@@ -41,7 +39,6 @@ public class MongoDbContext(
     ) : 
     IResourceGroupDbContext,
     IWebServiceDbContext,
-    IRedisDbContext,
     ISearchDbContext,
     IPostgresDbContext,
     IQuotaDbContext,
@@ -61,7 +58,6 @@ public class MongoDbContext(
     public IMongoCollection<WebService> WebServices { get; } = database.GetCollection<WebService>("WebServices");
     public IMongoCollection<WebServiceRelease> WebServiceReleases { get; } = database.GetCollection<WebServiceRelease>("WebServiceReleases");
     public IMongoCollection<WebServiceDeploymentToken> WebServiceDeploymentTokens { get; } = database.GetCollection<WebServiceDeploymentToken>("WebServiceDeploymentTokens");
-    public IMongoCollection<Redis> RedisServices { get; } = database.GetCollection<Redis>("RedisServices");
     public IMongoCollection<SearchDocument> SearchDocuments { get; } = database.GetCollection<SearchDocument>("SearchDocuments");
     public IMongoCollection<ResourceGroup> ResourceGroups { get; } = database.GetCollection<ResourceGroup>("ResourceGroups");
     public IMongoCollection<IsolationScope> IsolationScopes { get; } = database.GetCollection<IsolationScope>("IsolationScopes");

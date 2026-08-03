@@ -14,6 +14,7 @@ using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.Search.Application.Common;
@@ -56,6 +57,7 @@ public static class TestServiceProviderFactory
         services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
         services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
         services.AddMongoDbContextInterfaces();
+        services.AddRedisPersistence();
         services.AddScoped<IFunctionRevisionLifecycleService, FunctionRevisionLifecycleService>();
         services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         services.AddSingleton(new PostgresSettings

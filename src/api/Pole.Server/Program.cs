@@ -16,6 +16,7 @@ using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.Search.Application.Common;
@@ -73,6 +74,7 @@ builder.Services.AddKubernetes(configuration)
     .AddEventBus(configuration, assemblies)
     .AddOutboxEventAssemblies(outboxEventAssemblies)
     .AddDatabase()
+    .AddRedisPersistence()
     .AddQuotaFramework(
         typeof(RedisQuotaProfile).Assembly,
         typeof(FunctionAppQuotaProfile).Assembly,
