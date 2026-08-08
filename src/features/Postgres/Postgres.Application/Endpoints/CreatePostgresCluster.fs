@@ -50,8 +50,8 @@ type CreatePostgresClusterHandler(
     credentialService : IPostgresCredentialService,
     settings : PostgresSettings,
     quotaAdmissionExecutor : IQuotaAdmissionExecutor,
-    placementResolver : IResourceDeploymentPlacementResolver,
-    deploymentWriter : IResourceDeploymentWriter) =
+    resolveResourceDeploymentTarget : ResolveResourceDeploymentTarget,
+    createResourceDeployment : CreateResourceDeployment) =
 
     interface IMediatorHandler<CreatePostgresClusterRequest, PostgresClusterDto> with
         member _.HandleAsync(request, cancellationToken) =
@@ -65,7 +65,7 @@ type CreatePostgresClusterHandler(
                                 Some placement.DeploymentTargetId)
 
                 let! targetResult =
-                    placementResolver.ResolveTargetAsync(
+                    resolveResourceDeploymentTarget.Invoke(
                         Option.toObj targetId,
                         false,
                         cancellationToken)
@@ -151,7 +151,7 @@ type CreatePostgresClusterHandler(
                                                             Some placement.IsolationScopeId)
 
                                                 let! deploymentResult =
-                                                    deploymentWriter.CreateAsync(
+                                                    createResourceDeployment.Invoke(
                                                         CreateResourceDeploymentCommand(
                                                             deploymentId,
                                                             cluster.TenantId,

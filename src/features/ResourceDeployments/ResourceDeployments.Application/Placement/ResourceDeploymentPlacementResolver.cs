@@ -4,24 +4,20 @@ using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Placement;
 
-public interface IResourceDeploymentPlacementResolver
-{
-    Task<Result<ResolvedDeploymentTarget>> ResolveTargetAsync(
-        string? deploymentTargetId,
-        bool requiresIngress,
-        CancellationToken cancellationToken = default);
-}
+public delegate Task<Result<ResolvedDeploymentTarget>> ResolveResourceDeploymentTarget(
+    string? deploymentTargetId,
+    bool requiresIngress,
+    CancellationToken cancellationToken = default);
 
 public sealed record ResolvedDeploymentTarget(
     string DeploymentTargetId,
     long WorkloadConfigurationRevision,
     ResolvedIngressConfiguration? Ingress);
 
-public sealed class ResourceDeploymentPlacementResolver(
+internal sealed class ResourceDeploymentPlacementResolver(
     IDeploymentTargetLookup deploymentTargetLookup)
-    : IResourceDeploymentPlacementResolver
 {
-    public async Task<Result<ResolvedDeploymentTarget>> ResolveTargetAsync(
+    public async Task<Result<ResolvedDeploymentTarget>> InvokeAsync(
         string? deploymentTargetId,
         bool requiresIngress,
         CancellationToken cancellationToken = default)

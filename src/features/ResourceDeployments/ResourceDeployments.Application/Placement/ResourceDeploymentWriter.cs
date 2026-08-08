@@ -20,13 +20,10 @@ public sealed record CreateResourceDeploymentCommand(
     ResolvedStorageConfiguration? Storage,
     ResourcePlacementCapability PlacementCapability);
 
-public interface IResourceDeploymentWriter
-{
-    Task<Result<ResourceDeployment>> CreateAsync(
-        CreateResourceDeploymentCommand command,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
-}
+public delegate Task<Result<ResourceDeployment>> CreateResourceDeployment(
+    CreateResourceDeploymentCommand command,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
 public interface IResourceDeploymentStorageConfigurationFence
 {
@@ -37,15 +34,14 @@ public interface IResourceDeploymentStorageConfigurationFence
         CancellationToken cancellationToken = default);
 }
 
-public sealed class ResourceDeploymentWriter(
+internal sealed class ResourceDeploymentWriter(
     IResourceDeploymentDbContext dbContext,
     IResourcePlacementService placementService,
     IDeploymentTargetWorkloadConfigurationFence targetConfigurationFence,
     IResourceDeploymentStorageConfigurationFence storageConfigurationFence,
     TimeProvider timeProvider)
-    : IResourceDeploymentWriter
 {
-    public async Task<Result<ResourceDeployment>> CreateAsync(
+    public async Task<Result<ResourceDeployment>> InvokeAsync(
         CreateResourceDeploymentCommand command,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)

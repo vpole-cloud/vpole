@@ -46,14 +46,14 @@ public sealed class CreateRedisServiceHandler(
     PersistCreatedRedis persistCreatedRedis,
     IStorageProfileResolver storageProfileResolver,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    IResourceDeploymentPlacementResolver placementResolver,
-    IResourceDeploymentWriter deploymentWriter)
+    ResolveResourceDeploymentTarget resolveResourceDeploymentTarget,
+    CreateResourceDeployment createResourceDeployment)
     : IMediatorHandler<CreateRedisServiceRequest, CreateRedisServiceResponse>
 {
     public async Task<Result<CreateRedisServiceResponse>> HandleAsync(CreateRedisServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var targetResult = await placementResolver.ResolveTargetAsync(
+        var targetResult = await resolveResourceDeploymentTarget(
             request.Body.Placement?.DeploymentTargetId,
             requiresIngress: false,
             cancellationToken);
@@ -98,7 +98,7 @@ public sealed class CreateRedisServiceHandler(
                     newRedis,
                     transactionCancellationToken);
 
-                var deploymentResult = await deploymentWriter.CreateAsync(
+                var deploymentResult = await createResourceDeployment(
                     new CreateResourceDeploymentCommand(
                         deploymentId,
                         request.TenantId,
