@@ -336,12 +336,7 @@ public static class DependencyInjection
             services.TryAddScoped<IResourcePlacementService, ResourcePlacementService>();
             services.TryAddScoped<ResourceDeploymentReconciler>();
             services.TryAddSingleton<ResourceDeploymentMetrics>();
-            services.TryAddScoped<
-                IResourceDeploymentPlacementResolver,
-                ResourceDeploymentPlacementResolver>();
-            services.TryAddScoped<
-                IResourceDeploymentWriter,
-                ResourceDeploymentWriter>();
+            services.AddResourceDeploymentPlacementCapabilities();
             services.TryAddScoped<
                 IResourceDeploymentStorageConfigurationFence,
                 StorageProfileResolutionFence>();

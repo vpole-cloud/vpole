@@ -49,8 +49,8 @@ public sealed class CreateWebServiceHandler(
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     IDomainNameReservationService domainNameReservationService,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    IResourceDeploymentPlacementResolver placementResolver,
-    IResourceDeploymentWriter deploymentWriter)
+    ResolveResourceDeploymentTarget resolveResourceDeploymentTarget,
+    CreateResourceDeployment createResourceDeployment)
     : IMediatorHandler<CreateWebServiceRequest, CreateWebServiceResponse>
 {
     public async Task<Result<CreateWebServiceResponse>> HandleAsync(CreateWebServiceRequest request,
@@ -62,7 +62,7 @@ public sealed class CreateWebServiceHandler(
         };
         var deploymentId = ObjectId.GenerateNewId().ToString();
         var spec = request.Body.Spec.ToDomain();
-        var targetResult = await placementResolver.ResolveTargetAsync(
+        var targetResult = await resolveResourceDeploymentTarget(
             request.Body.Placement?.DeploymentTargetId,
             requiresIngress: true,
             cancellationToken);
@@ -95,7 +95,7 @@ public sealed class CreateWebServiceHandler(
                     session,
                     newWebService,
                     transactionCancellationToken);
-                var deploymentResult = await deploymentWriter.CreateAsync(
+                var deploymentResult = await createResourceDeployment(
                     new CreateResourceDeploymentCommand(
                         deploymentId,
                         request.TenantId,
