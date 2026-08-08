@@ -4,6 +4,13 @@ The WebServices feature owns the desired state, release history, deployment toke
 of tenant-scoped web services. MongoDB remains the source of truth, but application consumers do
 not receive a feature-wide database context.
 
+CPU, memory, extended resources, and Kubernetes scheduling are resolved from a
+[`ComputeProfile`](../ComputeProfiles/README.md) and persisted as an immutable
+`ResourceDeployment` snapshot. Create uses the default profile when no ID is supplied. Update
+without an ID preserves the snapshot; an explicit ID adopts the latest eligible profile revision.
+Rollback preserves the currently deployed compute policy. Quota admission measures resolved
+requests across the admitted replica count, and generated Deployments consume only the snapshot.
+
 ## Persistence boundary
 
 `WebServices.Application/Persistence` exposes named delegates for the exact operations used by

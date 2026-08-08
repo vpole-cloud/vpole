@@ -1,7 +1,6 @@
 using Microsoft.FSharp.Core;
 using MongoDB.Bson;
 using Pole.Features.Postgres.Domain;
-using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -29,6 +28,11 @@ public sealed class PostgresDomainTests
             property => property.Name.Contains(
                 "StorageClass",
                 StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            cluster.Spec.GetType().GetProperties(),
+            property => property.Name.Equals(
+                "Resources",
+                StringComparison.Ordinal));
     }
 
     [Fact]
@@ -45,8 +49,7 @@ public sealed class PostgresDomainTests
         Assert.Throws<InvalidOperationException>(() =>
             deleting.UpdateDesiredState(
                 2,
-                20,
-                deleting.Spec.Resources));
+                20));
     }
 
     private static PostgresCluster Create() =>
@@ -60,8 +63,5 @@ public sealed class PostgresDomainTests
             new CreatePostgresClusterOptions(
                 FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()),
                 1,
-                10,
-                new Resources(
-                    new Resource(1, 256),
-                    new Resource(2, 512))));
+                10));
 }

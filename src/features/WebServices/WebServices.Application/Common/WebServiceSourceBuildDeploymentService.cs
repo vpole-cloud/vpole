@@ -17,6 +17,7 @@ public sealed class WebServiceSourceBuildDeploymentService(
     PersistUpdatedWebService persistUpdatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     RunMongoTransaction<SourceBuildDeploymentResult> runMongoTransaction,
+    IResourceDeploymentComputeLookup deploymentComputeLookup,
     IResourceDeploymentMutationWriter deploymentWriter)
     : IWebServiceSourceBuildDeploymentService
 {
@@ -32,6 +33,14 @@ public sealed class WebServiceSourceBuildDeploymentService(
             return Failures.NotFound("Web service not found.", request.WebServiceId);
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
             return Failures.Conflict("A deleting web service cannot accept a source build.");
+
+        var computeResult = await deploymentComputeLookup.GetCurrentAsync(
+            webService.TenantId,
+            WebServiceResourceDeployment.ResourceType,
+            webService.Id,
+            cancellationToken);
+        if (!computeResult.TryGetValue(out var currentCompute, out var computeFailure))
+            return computeFailure;
 
         return await runMongoTransaction(async (session, ct) =>
         {
@@ -74,7 +83,8 @@ public sealed class WebServiceSourceBuildDeploymentService(
                 new ResourceDeploymentMutationCommand(
                     webService.TenantId,
                     WebServiceResourceDeployment.ResourceType,
-                    webService.Id),
+                    webService.Id,
+                    currentCompute.Compute.Profile),
                 session,
                 ct);
             if (!deploymentResult.TryGetValue(

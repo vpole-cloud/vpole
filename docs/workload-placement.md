@@ -64,6 +64,23 @@ this allows reconciliation and cleanup without silently moving the workload to a
 cluster. Parent revision writes fence placement against concurrent scope or resource-group
 deletion.
 
+## Resource deployments and compute
+
+WebService, Redis, and PostgreSQL use `ResourceDeployment` as the durable binding between a
+logical resource and its physical placement. The document records the resource identity,
+runtime cell, target, namespace, resolved ingress/storage values, reconciliation generation, and
+a complete immutable compute snapshot.
+
+Compute comes from a platform-managed `ComputeProfile`. Resolution is contextual: the profile
+must be enabled, accessible to the tenant, allow the resource type, and have a mapping for the
+selected target. Omitting a profile on create selects the default. Omitting it on update preserves
+the existing snapshot; supplying an ID explicitly adopts the latest eligible revision.
+
+Resource mutation compares the expected deployment snapshot and fences the resolved profile in
+the same Mongo transaction as quota usage, logical resource persistence, deployment persistence,
+and outbox writes. Concurrent profile changes or resource updates therefore fail cleanly instead
+of releasing quota or applying manifests from stale compute configuration.
+
 ## Namespace ownership
 
 Runtime-cell namespace names use:
@@ -128,11 +145,11 @@ Deleting an empty additional scope completes synchronously with `204 No Content`
 scope owns unfinished runtime cells, the API returns `202 Accepted`, marks the scope and
 cells as deleting, and writes deletion events in the same transaction.
 
-Resource-group deletion currently uses `ResourceGroup.Resources` as a temporary compatibility
-guard. A non-empty registration list returns `409 Conflict`. That list is not yet an
-authoritative cross-feature registration source and has an asynchronous update window.
-Issue #54 must replace it with platform-owned generic registration before this deletion path
-is treated as production-safe.
+Resource-group deletion still uses `ResourceGroup.Resources` as a temporary compatibility guard.
+A non-empty registration list returns `409 Conflict`. That list is not yet an authoritative
+cross-feature registration source and has an asynchronous update window. A separate platform-owned
+generic registration change must replace it before this deletion path is treated as
+production-safe.
 
 For an otherwise empty group, deletion completes synchronously. If runtime cells need
 cleanup, the group and all scopes/cells transition to deleting and the API returns `202`.
@@ -169,12 +186,8 @@ succeeds. It is not the placement source of truth; the RuntimeCell is.
 
 ## Transition boundary
 
-This placement foundation intentionally does not introduce `ResourceDeployment`.
-WebService, Redis, and PostgreSQL adoption belongs to issue #37. Functions adoption belongs
-to issue #55. Until those changes land, their existing handlers continue to consume the
-legacy `ResourceGroup.KubernetesNamespace` through the explicitly transitional
-`IResourceGroupLookup.GetPlacementAsync` contract.
-
-New code must use `GetOwnershipAsync` and `IResourcePlacementService`; it must not add new
-dependencies on the legacy namespace field. No production-data migration or backward
-compatibility code is included because Pole has not yet deployed this model.
+WebService, Redis, and PostgreSQL now reconcile through `ResourceDeployment`. Functions adoption
+remains separate. New resource features must use `GetOwnershipAsync`,
+`IResourcePlacementService`, and the ResourceDeployment mutation/fence capabilities; they must not
+add dependencies on the legacy resource-group namespace field. No production-data migration or
+backward-compatibility path is included because Pole has not yet deployed the old model.

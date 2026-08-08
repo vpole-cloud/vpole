@@ -79,45 +79,55 @@ type PostgresResourceDeploymentAdapter(
                                 false)
                             :> ResourceDeploymentAdapterResult
                     | Some cluster ->
-                        let! credentialResult =
-                            credentialService.ResolveAsync(
-                                deployment.TenantId,
-                                cluster.Id,
-                                cancellationToken)
-
-                        match credentialResult.TryGetValue() with
-                        | struct (false, _, _) ->
+                        if cluster.Spec.DeploymentMode = PostgresDeploymentMode.Operator &&
+                           not (String.IsNullOrWhiteSpace deployment.ResolvedPlacement.Compute.RuntimeClassName) then
                             return
                                 ResourceDeploymentAdapterResult.Failed.Create(
-                                    "PostgresCredentialUnavailable",
-                                    "The encrypted PostgreSQL credentials are unavailable.",
-                                    true)
+                                    "ComputeRuntimeClassUnsupported",
+                                    "CloudNativePG compute profiles cannot specify a runtime class.",
+                                    false)
                                 :> ResourceDeploymentAdapterResult
-                        | struct (true, credentials, _) ->
-                            let storage = deployment.ResolvedPlacement.Storage
-                            let metadata =
-                                { DeploymentId = deployment.Id
-                                  RuntimeCellId = deployment.RuntimeCellId
-                                  DeploymentTargetId = deployment.ResolvedPlacement.DeploymentTargetId
-                                  Generation = deployment.DesiredGeneration }
-
-                            do!
-                                deploymentManager.ApplyAsync(
-                                    context.Kubernetes,
-                                    cluster,
-                                    credentials,
-                                    deployment.ResolvedPlacement.KubernetesNamespace,
-                                    storage.StorageClassName,
-                                    metadata,
+                        else
+                            let! credentialResult =
+                                credentialService.ResolveAsync(
+                                    deployment.TenantId,
+                                    cluster.Id,
                                     cancellationToken)
 
-                            let host =
-                                $"{PostgresClusterKubernetesBuilder.buildReadWriteServiceName cluster.Id}.{deployment.ResolvedPlacement.KubernetesNamespace}.svc.cluster.local"
+                            match credentialResult.TryGetValue() with
+                            | struct (false, _, _) ->
+                                return
+                                    ResourceDeploymentAdapterResult.Failed.Create(
+                                        "PostgresCredentialUnavailable",
+                                        "The encrypted PostgreSQL credentials are unavailable.",
+                                        true)
+                                    :> ResourceDeploymentAdapterResult
+                            | struct (true, credentials, _) ->
+                                let storage = deployment.ResolvedPlacement.Storage
+                                let metadata =
+                                    { DeploymentId = deployment.Id
+                                      RuntimeCellId = deployment.RuntimeCellId
+                                      DeploymentTargetId = deployment.ResolvedPlacement.DeploymentTargetId
+                                      Generation = deployment.DesiredGeneration }
 
-                            return
-                                ResourceDeploymentAdapterResult.Succeeded.Create(
-                                    [ PostgreSqlResourceDeploymentEndpoint.Create(host, 5432) ])
-                                :> ResourceDeploymentAdapterResult
+                                do!
+                                    deploymentManager.ApplyAsync(
+                                        context.Kubernetes,
+                                        cluster,
+                                        credentials,
+                                        deployment.ResolvedPlacement.KubernetesNamespace,
+                                        storage.StorageClassName,
+                                        deployment.ResolvedPlacement.Compute,
+                                        metadata,
+                                        cancellationToken)
+
+                                let host =
+                                    $"{PostgresClusterKubernetesBuilder.buildReadWriteServiceName cluster.Id}.{deployment.ResolvedPlacement.KubernetesNamespace}.svc.cluster.local"
+
+                                return
+                                    ResourceDeploymentAdapterResult.Succeeded.Create(
+                                        [ PostgreSqlResourceDeploymentEndpoint.Create(host, 5432) ])
+                                    :> ResourceDeploymentAdapterResult
             }
 
         member _.DeleteAsync(context, cancellationToken) =

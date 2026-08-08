@@ -16,7 +16,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
       <ProjectReference Include="..\..\..\shared\Encryption\Encryption.csproj" />
     </ItemGroup>
 </Project>

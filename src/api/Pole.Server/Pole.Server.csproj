@@ -33,6 +33,7 @@
       <ProjectReference Include="..\..\features\Functions\Functions.Runtime\Functions.Runtime.csproj" />
       <ProjectReference Include="..\..\features\GitProviders\GitProviders.Application\GitProviders.Application.csproj" />
       <ProjectReference Include="..\..\features\ContainerRegistries\ContainerRegistries.Application\ContainerRegistries.Application.csproj" />
+      <ProjectReference Include="..\..\features\ComputeProfiles\ComputeProfiles.Application\ComputeProfiles.Application.csproj" />
       <ProjectReference Include="..\..\features\DeploymentTargets\DeploymentTargets.Application\DeploymentTargets.Application.csproj" />
       <ProjectReference Include="..\..\features\SourceBuilds\SourceBuilds.Application\SourceBuilds.Application.csproj" />
       <ProjectReference Include="..\..\features\DnsRecords\DnsRecords.Contracts\DnsRecords.Contracts.csproj" />
@@ -64,7 +65,6 @@
     </ItemGroup>
 
 </Project>
-
 
 
 

@@ -40,6 +40,7 @@ public sealed class DeleteRedisServiceHandler(
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     IResourceDeploymentMutationWriter deploymentWriter,
     IResourceDeploymentQueryService deploymentQuery,
+    IResourceDeploymentComputeLookup deploymentComputeLookup,
     TimeProvider timeProvider
     ) : IMediatorHandler<DeleteRedisServiceRequest, DeleteRedisServiceResponse>
 {
@@ -54,21 +55,36 @@ public sealed class DeleteRedisServiceHandler(
             return Failures.NotFound("Redis service not found.", request.Id);
         if (redis.Lifecycle is DeletingRedisLifecycle)
         {
-            var currentPlacement = await deploymentQuery.GetAsync(
+            var deletingPlacement = await deploymentQuery.GetAsync(
                 request.TenantId,
                 RedisResourceDeployment.ResourceType,
                 request.Id,
                 cancellationToken);
-            return currentPlacement is null
+            return deletingPlacement is null
                 ? Failures.Conflict(
                     "The deleting Redis service has no resource deployment.")
-                : new DeleteRedisServiceResponse(request.Id, currentPlacement);
+                : new DeleteRedisServiceResponse(request.Id, deletingPlacement);
         }
         
-        return await quotaAdmissionExecutor.ExecuteAsync<RedisSpec, DeleteRedisServiceResponse>(
+        var currentComputeResult = await deploymentComputeLookup.GetCurrentAsync(
+            redis.TenantId,
+            RedisResourceDeployment.ResourceType,
+            redis.Id,
+            cancellationToken);
+        if (!currentComputeResult.TryGetValue(
+                out var currentCompute,
+                out var currentComputeFailure))
+        {
+            return currentComputeFailure;
+        }
+
+        var quotaInput = RedisQuotaInput.Create(
+            currentCompute.Compute.Requests.CpuMillis,
+            currentCompute.Compute.Requests.MemoryMi);
+        return await quotaAdmissionExecutor.ExecuteAsync<RedisQuotaInput, DeleteRedisServiceResponse>(
             redis.TenantId,
             RedisQuotaResourceKey.Create(redis.Id),
-            new DeleteQuotaMutation<RedisSpec>(redis.Spec),
+            new DeleteQuotaMutation<RedisQuotaInput>(quotaInput),
             async (session, transactionCancellationToken) =>
             {
                 var deleting = redis.BeginDeletion(
@@ -85,7 +101,8 @@ public sealed class DeleteRedisServiceHandler(
                     new ResourceDeploymentMutationCommand(
                         redis.TenantId,
                         RedisResourceDeployment.ResourceType,
-                        redis.Id),
+                        redis.Id,
+                        currentCompute.Compute.Profile),
                     session,
                     transactionCancellationToken);
                 if (!deploymentResult.TryGetValue(

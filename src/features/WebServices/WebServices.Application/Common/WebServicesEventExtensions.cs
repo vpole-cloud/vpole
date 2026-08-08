@@ -57,7 +57,6 @@ internal static class WebServicesEventExtensions
             => new(
                 spec.Image.ToSnapshot(),
                 spec.Replicas,
-                spec.Resources,
                 spec.Config.ToSnapshot(),
                 spec.Autoscaling?.ToSnapshot(),
                 spec.Probes);
@@ -100,7 +99,6 @@ internal static class WebServicesEventExtensions
             => new(
                 spec.Image.ToDomain(),
                 spec.Replicas,
-                spec.Resources,
                 spec.Config.ToDomain(),
                 spec.Autoscaling?.ToDomain(),
                 spec.Probes);

@@ -4,7 +4,6 @@ open System
 open MongoDB.Bson
 open MongoDB.Bson.Serialization.Attributes
 open Pole.Encryption
-open Pole.Features.Shared.Models
 
 type PostgresDeploymentMode =
     | Operator = 0
@@ -13,7 +12,6 @@ type PostgresDeploymentMode =
 type PostgresClusterSpec =
     { Instances : int
       Storage : int
-      Resources : Resources
       StorageProfileId : string
       Version : int
       DeploymentMode : PostgresDeploymentMode }
@@ -54,6 +52,11 @@ type PostgresCluster =
         deploymentMode : PostgresDeploymentMode,
         storageProfileId : string,
         options : CreatePostgresClusterOptions) =
+        if options.Instances < 1 then
+            invalidArg (nameof options) "PostgreSQL instances must be positive."
+        if options.Storage < 1 then
+            invalidArg (nameof options) "PostgreSQL storage must be positive."
+
         { Id = defaultArg options.Id (ObjectId.GenerateNewId().ToString())
           TenantId = tenantId
           Name = name
@@ -61,22 +64,25 @@ type PostgresCluster =
           Spec =
             { Instances = options.Instances
               Storage = options.Storage
-              Resources = options.Resources
               StorageProfileId = storageProfileId
               Version = version
               DeploymentMode = deploymentMode }
           Revision = 1L
           Lifecycle = ActivePostgresClusterLifecycle() }
 
-    member this.UpdateDesiredState(instances : int, storage : int, resources : Resources) =
+    member this.UpdateDesiredState(instances : int, storage : int) =
+        if instances < 1 then
+            invalidArg (nameof instances) "PostgreSQL instances must be positive."
+        if storage < 1 then
+            invalidArg (nameof storage) "PostgreSQL storage must be positive."
+
         match this.Lifecycle with
         | :? ActivePostgresClusterLifecycle ->
             { this with
                 Spec =
                     { this.Spec with
                         Instances = instances
-                        Storage = storage
-                        Resources = resources }
+                        Storage = storage }
                 Revision = PostgresCluster.incrementRevision this.Revision }
         | _ ->
             invalidOp "A deleting PostgreSQL cluster cannot be updated."
@@ -104,8 +110,7 @@ type PostgresCluster =
 and CreatePostgresClusterOptions =
     { Id : string option
       Instances : int
-      Storage : int
-      Resources : Resources }
+      Storage : int }
 
 type PostgresCredential =
     { [<BsonId>]

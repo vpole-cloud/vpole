@@ -75,7 +75,6 @@ public sealed record DnsRecordShortInfoDto(
 public sealed record WebServiceSpecDto(
     ImageInfoDto Image,
     int Replicas,
-    Resources Resources,
     WebServiceConfigDto Config,
     AutoscalingSpecDto? Autoscaling,
     ProbeSpecDto Probes
@@ -195,7 +194,6 @@ public static class WebServiceDtoExtensions
     public static WebServiceSpecDto ToDto(this WebServiceSpec spec) => new(
         spec.Image.ToDto(),
         spec.Replicas,
-        spec.Resources,
         spec.Config.ToDto(),
         spec.Autoscaling?.ToDto(),
         spec.Probes.ToDto()
@@ -239,7 +237,6 @@ public static class WebServiceDtoExtensions
     public static WebServiceSpec ToDomain(this WebServiceSpecDto dto) => new(
         dto.Image.ToDomain(),
         dto.Replicas,
-        dto.Resources,
         dto.Config.ToDomain(),
         dto.Autoscaling?.ToDomain(),
         dto.Probes.ToDomain()

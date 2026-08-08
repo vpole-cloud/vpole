@@ -82,6 +82,7 @@ public sealed class TenantContextMiddleware(RequestDelegate next)
                path.StartsWithSegments("/api/v1/postgres") ||
                path.StartsWithSegments("/api/v1/tenant-quotas") ||
                path.StartsWithSegments("/api/v1/storage-profiles") ||
+               path.StartsWithSegments("/api/v1/compute-profiles") ||
                path.StartsWithSegments("/api/v1/git-provider-connections") ||
                path.StartsWithSegments("/api/v1/source-repositories") ||
                path.StartsWithSegments("/api/v1/source-build-configurations") ||
@@ -106,4 +107,3 @@ public sealed class TenantContextMiddleware(RequestDelegate next)
         return authorization?.StartsWith("Bearer pole_ci_", StringComparison.OrdinalIgnoreCase) == true;
     }
 }
-

@@ -306,16 +306,6 @@ const buildWebServiceSpec = (input: WebServiceInput) => ({
     tag: input.imageTag,
   },
   replicas: input.replicas,
-  resources: {
-    requests: {
-      cpuCores: input.requestCpuCores,
-      memoryMi: input.requestMemoryMi,
-    },
-    limits: {
-      cpuCores: input.limitCpuCores,
-      memoryMi: input.limitMemoryMi,
-    },
-  },
   config: {
     environmentVariables: Object.fromEntries(
       input.environmentVariables.map((item) => [item.key, item.value]),
@@ -375,6 +365,7 @@ export async function createWebService(
       resourceGroupId: input.resourceGroupId,
       domainName: input.domainName,
       spec: buildWebServiceSpec(input),
+      computeProfileId: input.computeProfileId,
     }),
   })
 }
@@ -392,6 +383,7 @@ export async function updateWebService(
     body: JSON.stringify({
       resourceGroupId: input.resourceGroupId,
       spec: buildWebServiceSpec(input),
+      computeProfileId: input.computeProfileId,
     }),
   })
 }

@@ -1,11 +1,29 @@
 namespace Pole.Features.Postgres.Application.Common
 
 open System.Collections.Generic
-open Pole.Features.Postgres.Domain
 open Pole.Features.Quotas.Contracts
 
+type PostgresQuotaInput =
+    { RequestedCpuMillisPerInstance : int64
+      RequestedMemoryMiPerInstance : int64
+      Instances : int64 }
+
+[<RequireQualifiedAccess>]
+module PostgresQuotaInput =
+    let create requestedCpuMillis requestedMemoryMi instances =
+        if requestedCpuMillis < 1L then
+            invalidArg (nameof requestedCpuMillis) "Requested CPU must be positive."
+        if requestedMemoryMi < 1L then
+            invalidArg (nameof requestedMemoryMi) "Requested memory must be positive."
+        if instances < 1L then
+            invalidArg (nameof instances) "Instances must be positive."
+
+        { RequestedCpuMillisPerInstance = requestedCpuMillis
+          RequestedMemoryMiPerInstance = requestedMemoryMi
+          Instances = instances }
+
 type PostgresClusterCountQuota() =
-    inherit Quota<PostgresClusterSpec>()
+    inherit Quota<PostgresQuotaInput>()
 
     static member QuotaKey = QuotaKey("PostgresClusterCount")
 
@@ -18,7 +36,7 @@ type PostgresQuotaProfile(
     ramQuota : RamQuota,
     workloadInstancesQuota : WorkloadInstancesQuota,
     clusterCountQuota : PostgresClusterCountQuota) =
-    inherit QuotaProfile<PostgresClusterSpec>()
+    inherit QuotaProfile<PostgresQuotaInput>()
 
     override _.Keys =
         [| CpuQuota.QuotaKey
@@ -27,18 +45,18 @@ type PostgresQuotaProfile(
            PostgresClusterCountQuota.QuotaKey |]
         :> IReadOnlyCollection<QuotaKey>
 
-    override _.Calculate(spec) =
+    override _.Calculate(input) =
         let workload =
             WorkloadQuotaInput(
-                int64 spec.Resources.Requests.CpuCores * 1000L,
-                int64 spec.Resources.Requests.MemoryMi,
-                int64 spec.Instances)
+                input.RequestedCpuMillisPerInstance,
+                input.RequestedMemoryMiPerInstance,
+                input.Instances)
 
         QuotaDelta.Create(
             [| cpuQuota.Measure(workload)
                ramQuota.Measure(workload)
                workloadInstancesQuota.Measure(workload)
-               clusterCountQuota.Measure(spec) |])
+               clusterCountQuota.Measure(input) |])
 
 [<RequireQualifiedAccess>]
 module PostgresQuotaResourceKey =

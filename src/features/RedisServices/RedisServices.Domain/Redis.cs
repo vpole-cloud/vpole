@@ -59,8 +59,7 @@ public sealed record Redis(
 }
 
 public sealed record RedisSpec(
-    Storage Storage,
-    Resources Resources);
+    Storage Storage);
 
 public sealed record Storage(
     int SizeGb,

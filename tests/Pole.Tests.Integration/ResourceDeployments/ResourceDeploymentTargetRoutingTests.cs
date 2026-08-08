@@ -56,6 +56,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
                 "507f1f77bcf86cd799439069",
                 storageProfileRevision: 1,
                 "fast"),
+            ResourceDeploymentTestData.Compute(),
             now);
         var deployment = ResourceDeploymentFactory.Create(
             TenantId,
@@ -151,6 +152,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
                     "507f1f77bcf86cd799439069",
                     storageProfileRevision: 1,
                     "fast"),
+                ResourceDeploymentTestData.Compute(),
                 now.AddSeconds(1)),
             ResourcePlacementCapability.SingleTarget,
             runtimeCellReady: true,

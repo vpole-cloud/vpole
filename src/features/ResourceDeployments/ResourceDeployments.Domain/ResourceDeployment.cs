@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text.RegularExpressions;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -453,6 +454,7 @@ public sealed record ResolvedResourcePlacement(
     long TargetWorkloadConfigurationRevision,
     ResolvedIngressConfiguration? Ingress,
     ResolvedStorageConfiguration? Storage,
+    ResolvedComputeConfiguration Compute,
     DateTime ResolvedAtUtc)
 {
     public static ResolvedResourcePlacement Create(
@@ -463,6 +465,7 @@ public sealed record ResolvedResourcePlacement(
         long targetWorkloadConfigurationRevision,
         ResolvedIngressConfiguration? ingress,
         ResolvedStorageConfiguration? storage,
+        ResolvedComputeConfiguration compute,
         DateTime resolvedAtUtc) =>
         new(
             ResourceDeploymentValueGuard.ObjectId(runtimeCellId, nameof(runtimeCellId)),
@@ -478,7 +481,401 @@ public sealed record ResolvedResourcePlacement(
                 nameof(targetWorkloadConfigurationRevision)),
             ingress,
             storage,
+            compute ?? throw new ArgumentNullException(nameof(compute)),
             ResourceDeploymentValueGuard.Utc(resolvedAtUtc, nameof(resolvedAtUtc)));
+}
+
+public enum ResolvedComputeArchitecture
+{
+    Any,
+    Amd64,
+    Arm64
+}
+
+public enum ResolvedComputeNodeAffinityOperator
+{
+    In,
+    NotIn,
+    Exists,
+    DoesNotExist,
+    GreaterThan,
+    LessThan
+}
+
+public enum ResolvedComputeTolerationOperator
+{
+    Equal,
+    Exists
+}
+
+public enum ResolvedComputeTaintEffect
+{
+    Any,
+    NoSchedule,
+    PreferNoSchedule,
+    NoExecute
+}
+
+public sealed record ResolvedComputeResourceValues(
+    long CpuMillis,
+    long MemoryMi)
+{
+    public static ResolvedComputeResourceValues Create(
+        long cpuMillis,
+        long memoryMi) =>
+        new(
+            ResourceDeploymentValueGuard.Positive(cpuMillis, nameof(cpuMillis)),
+            ResourceDeploymentValueGuard.Positive(memoryMi, nameof(memoryMi)));
+}
+
+public sealed record ResolvedComputeExtendedResource(
+    string Name,
+    long Quantity)
+{
+    public static ResolvedComputeExtendedResource Create(
+        string name,
+        long quantity) =>
+        new(
+            ResourceDeploymentValueGuard.ExtendedResourceName(
+                name,
+                nameof(name)),
+            ResourceDeploymentValueGuard.Positive(quantity, nameof(quantity)));
+}
+
+public sealed record ResolvedComputeNodeSelector(
+    string Key,
+    string Value)
+{
+    public static ResolvedComputeNodeSelector Create(
+        string key,
+        string value) =>
+        new(
+            ResourceDeploymentValueGuard.LabelKey(
+                key,
+                nameof(key)),
+            ResourceDeploymentValueGuard.LabelValue(
+                value,
+                nameof(value)));
+}
+
+public sealed record ResolvedComputeNodeAffinityExpression(
+    string Key,
+    ResolvedComputeNodeAffinityOperator Operator,
+    ImmutableList<string> Values)
+{
+    public static ResolvedComputeNodeAffinityExpression Create(
+        string key,
+        ResolvedComputeNodeAffinityOperator @operator,
+        IEnumerable<string> values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        if (!Enum.IsDefined(@operator))
+            throw new ArgumentOutOfRangeException(nameof(@operator));
+
+        var normalizedValues = values
+            .Select(value => ResourceDeploymentValueGuard.LabelValue(
+                value,
+                nameof(values)))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToImmutableList();
+        var expectedValueCount = @operator switch
+        {
+            ResolvedComputeNodeAffinityOperator.In or
+            ResolvedComputeNodeAffinityOperator.NotIn => normalizedValues.Count > 0,
+            ResolvedComputeNodeAffinityOperator.Exists or
+            ResolvedComputeNodeAffinityOperator.DoesNotExist => normalizedValues.Count == 0,
+            ResolvedComputeNodeAffinityOperator.GreaterThan or
+            ResolvedComputeNodeAffinityOperator.LessThan =>
+                normalizedValues.Count == 1 &&
+                long.TryParse(normalizedValues[0], out _),
+            _ => false
+        };
+        if (!expectedValueCount)
+        {
+            throw new ArgumentException(
+                "Node-affinity values do not match the selected operator.",
+                nameof(values));
+        }
+
+        return new ResolvedComputeNodeAffinityExpression(
+            ResourceDeploymentValueGuard.LabelKey(
+                key,
+                nameof(key)),
+            @operator,
+            normalizedValues);
+    }
+}
+
+public sealed record ResolvedComputeNodeAffinityTerm(
+    ImmutableList<ResolvedComputeNodeAffinityExpression> Expressions)
+{
+    public static ResolvedComputeNodeAffinityTerm Create(
+        IEnumerable<ResolvedComputeNodeAffinityExpression> expressions)
+    {
+        ArgumentNullException.ThrowIfNull(expressions);
+        var normalized = expressions
+            .Select(expression => expression ?? throw new ArgumentException(
+                "Node-affinity expressions cannot contain null values.",
+                nameof(expressions)))
+            .Select(expression => ResolvedComputeNodeAffinityExpression.Create(
+                expression.Key,
+                expression.Operator,
+                expression.Values))
+            .OrderBy(expression => expression.Key, StringComparer.Ordinal)
+            .ThenBy(expression => expression.Operator)
+            .ThenBy(
+                expression => string.Join(',', expression.Values),
+                StringComparer.Ordinal)
+            .ToImmutableList();
+        if (normalized.Count == 0)
+            throw new ArgumentException("A node-affinity term must contain an expression.", nameof(expressions));
+
+        return new ResolvedComputeNodeAffinityTerm(normalized);
+    }
+}
+
+public sealed record ResolvedComputePreferredNodeAffinityTerm(
+    int Weight,
+    ResolvedComputeNodeAffinityTerm Term)
+{
+    public static ResolvedComputePreferredNodeAffinityTerm Create(
+        int weight,
+        ResolvedComputeNodeAffinityTerm term)
+    {
+        if (weight is < 1 or > 100)
+            throw new ArgumentOutOfRangeException(nameof(weight));
+        ArgumentNullException.ThrowIfNull(term);
+
+        return new ResolvedComputePreferredNodeAffinityTerm(
+            weight,
+            ResolvedComputeNodeAffinityTerm.Create(term.Expressions));
+    }
+}
+
+public sealed record ResolvedComputeToleration(
+    string? Key,
+    ResolvedComputeTolerationOperator Operator,
+    string? Value,
+    ResolvedComputeTaintEffect Effect,
+    long? TolerationSeconds)
+{
+    public static ResolvedComputeToleration Create(
+        string? key,
+        ResolvedComputeTolerationOperator @operator,
+        string? value,
+        ResolvedComputeTaintEffect effect,
+        long? tolerationSeconds)
+    {
+        if (!Enum.IsDefined(@operator))
+            throw new ArgumentOutOfRangeException(nameof(@operator));
+        if (!Enum.IsDefined(effect))
+            throw new ArgumentOutOfRangeException(nameof(effect));
+        if (tolerationSeconds < 0)
+            throw new ArgumentOutOfRangeException(nameof(tolerationSeconds));
+
+        var normalizedKey = string.IsNullOrWhiteSpace(key)
+            ? null
+            : ResourceDeploymentValueGuard.LabelKey(key, nameof(key));
+        var normalizedValue = value is null
+            ? null
+            : ResourceDeploymentValueGuard.LabelValue(value, nameof(value));
+        if (@operator == ResolvedComputeTolerationOperator.Equal &&
+            (normalizedKey is null || normalizedValue is null))
+        {
+            throw new ArgumentException(
+                "Equal tolerations require both key and value.",
+                nameof(value));
+        }
+        if (@operator == ResolvedComputeTolerationOperator.Exists && normalizedValue is not null)
+            throw new ArgumentException("Exists tolerations cannot specify a value.", nameof(value));
+        if (normalizedKey is null && @operator != ResolvedComputeTolerationOperator.Exists)
+            throw new ArgumentException("An empty toleration key requires the Exists operator.", nameof(key));
+        if (tolerationSeconds is not null && effect != ResolvedComputeTaintEffect.NoExecute)
+        {
+            throw new ArgumentException(
+                "Toleration seconds are supported only for NoExecute tolerations.",
+                nameof(tolerationSeconds));
+        }
+
+        return new ResolvedComputeToleration(
+            normalizedKey,
+            @operator,
+            normalizedValue,
+            effect,
+            tolerationSeconds);
+    }
+}
+
+public sealed record ResolvedComputeConfiguration(
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string ComputeProfileId,
+    long ComputeProfileRevision,
+    string DisplayName,
+    ResolvedComputeResourceValues Requests,
+    ResolvedComputeResourceValues Limits,
+    ResolvedComputeArchitecture Architecture,
+    ImmutableList<ResolvedComputeExtendedResource> ExtendedResources,
+    ImmutableList<ResolvedComputeNodeSelector> NodeSelector,
+    ImmutableList<ResolvedComputeNodeAffinityTerm> RequiredNodeAffinity,
+    ImmutableList<ResolvedComputePreferredNodeAffinityTerm> PreferredNodeAffinity,
+    ImmutableList<ResolvedComputeToleration> Tolerations,
+    string? RuntimeClassName)
+{
+    public static ResolvedComputeConfiguration Create(
+        string computeProfileId,
+        long computeProfileRevision,
+        string displayName,
+        ResolvedComputeResourceValues requests,
+        ResolvedComputeResourceValues limits,
+        ResolvedComputeArchitecture architecture,
+        IEnumerable<ResolvedComputeExtendedResource>? extendedResources = null,
+        IEnumerable<ResolvedComputeNodeSelector>? nodeSelector = null,
+        IEnumerable<ResolvedComputeNodeAffinityTerm>? requiredNodeAffinity = null,
+        IEnumerable<ResolvedComputePreferredNodeAffinityTerm>? preferredNodeAffinity = null,
+        IEnumerable<ResolvedComputeToleration>? tolerations = null,
+        string? runtimeClassName = null)
+    {
+        ArgumentNullException.ThrowIfNull(requests);
+        ArgumentNullException.ThrowIfNull(limits);
+        if (!Enum.IsDefined(architecture))
+            throw new ArgumentOutOfRangeException(nameof(architecture));
+        var normalizedRequests = ResolvedComputeResourceValues.Create(
+            requests.CpuMillis,
+            requests.MemoryMi);
+        var normalizedLimits = ResolvedComputeResourceValues.Create(
+            limits.CpuMillis,
+            limits.MemoryMi);
+        if (normalizedLimits.CpuMillis < normalizedRequests.CpuMillis ||
+            normalizedLimits.MemoryMi < normalizedRequests.MemoryMi)
+        {
+            throw new ArgumentException("Compute limits cannot be lower than requests.", nameof(limits));
+        }
+        var normalizedExtendedResources = NormalizeExtendedResources(extendedResources);
+        var normalizedNodeSelector = NormalizeNodeSelector(nodeSelector);
+        EnsureArchitectureMatchesNodeSelector(architecture, normalizedNodeSelector);
+
+        return new ResolvedComputeConfiguration(
+            ResourceDeploymentValueGuard.ObjectId(computeProfileId, nameof(computeProfileId)),
+            ResourceDeploymentValueGuard.Positive(
+                computeProfileRevision,
+                nameof(computeProfileRevision)),
+            ResourceDeploymentValueGuard.Required(
+                displayName,
+                nameof(displayName),
+                ResourceDeploymentValueGuard.MaximumDisplayNameLength),
+            normalizedRequests,
+            normalizedLimits,
+            architecture,
+            normalizedExtendedResources,
+            normalizedNodeSelector,
+            (requiredNodeAffinity ?? [])
+                .Select(term => ResolvedComputeNodeAffinityTerm.Create(term.Expressions))
+                .OrderBy(TermSortKey, StringComparer.Ordinal)
+                .ToImmutableList(),
+            (preferredNodeAffinity ?? [])
+                .Select(term => ResolvedComputePreferredNodeAffinityTerm.Create(
+                    term.Weight,
+                    term.Term))
+                .OrderByDescending(term => term.Weight)
+                .ThenBy(term => TermSortKey(term.Term), StringComparer.Ordinal)
+                .ToImmutableList(),
+            (tolerations ?? [])
+                .Select(toleration => ResolvedComputeToleration.Create(
+                    toleration.Key,
+                    toleration.Operator,
+                    toleration.Value,
+                    toleration.Effect,
+                    toleration.TolerationSeconds))
+                .OrderBy(TolerationSortKey, StringComparer.Ordinal)
+                .ToImmutableList(),
+            ResourceDeploymentValueGuard.OptionalDnsSubdomain(
+                runtimeClassName,
+                nameof(runtimeClassName)));
+    }
+
+    public bool Matches(string computeProfileId, long computeProfileRevision) =>
+        string.Equals(ComputeProfileId, computeProfileId, StringComparison.Ordinal) &&
+        ComputeProfileRevision == computeProfileRevision;
+
+    private static ImmutableList<ResolvedComputeExtendedResource>
+        NormalizeExtendedResources(
+            IEnumerable<ResolvedComputeExtendedResource>? extendedResources)
+    {
+        var normalized = (extendedResources ?? [])
+                .Select(resource => ResolvedComputeExtendedResource.Create(
+                    resource.Name,
+                    resource.Quantity))
+                .OrderBy(resource => resource.Name, StringComparer.Ordinal)
+                .ToImmutableList();
+        if (normalized.Select(resource => resource.Name)
+            .Distinct(StringComparer.Ordinal).Count() != normalized.Count)
+        {
+            throw new ArgumentException(
+                "Extended resource names must be unique.",
+                nameof(extendedResources));
+        }
+
+        return normalized;
+    }
+
+    private static ImmutableList<ResolvedComputeNodeSelector>
+        NormalizeNodeSelector(
+            IEnumerable<ResolvedComputeNodeSelector>? nodeSelector)
+    {
+        var normalized = (nodeSelector ?? [])
+                .Select(selector => ResolvedComputeNodeSelector.Create(
+                    selector.Key,
+                    selector.Value))
+                .OrderBy(selector => selector.Key, StringComparer.Ordinal)
+                .ThenBy(selector => selector.Value, StringComparer.Ordinal)
+                .ToImmutableList();
+        if (normalized.Select(selector => selector.Key)
+            .Distinct(StringComparer.Ordinal).Count() != normalized.Count)
+        {
+            throw new ArgumentException(
+                "Node selector keys must be unique.",
+                nameof(nodeSelector));
+        }
+
+        return normalized;
+    }
+
+    private static string TermSortKey(ResolvedComputeNodeAffinityTerm term) =>
+        string.Join(
+            '|',
+            term.Expressions.Select(expression =>
+                $"{expression.Key}:{expression.Operator}:{string.Join(',', expression.Values)}"));
+
+    private static string TolerationSortKey(ResolvedComputeToleration toleration) =>
+        $"{toleration.Key}:{toleration.Operator}:{toleration.Value}:" +
+        $"{toleration.Effect}:{toleration.TolerationSeconds}";
+
+    private static void EnsureArchitectureMatchesNodeSelector(
+        ResolvedComputeArchitecture architecture,
+        ImmutableList<ResolvedComputeNodeSelector> nodeSelector)
+    {
+        var expected = architecture switch
+        {
+            ResolvedComputeArchitecture.Any => null,
+            ResolvedComputeArchitecture.Amd64 => "amd64",
+            ResolvedComputeArchitecture.Arm64 => "arm64",
+            _ => throw new ArgumentOutOfRangeException(nameof(architecture))
+        };
+        var selected = nodeSelector.FirstOrDefault(selector =>
+            string.Equals(
+                selector.Key,
+                "kubernetes.io/arch",
+                StringComparison.Ordinal));
+        if (expected is not null &&
+            selected is not null &&
+            !string.Equals(selected.Value, expected, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "The compute architecture conflicts with the node selector.",
+                nameof(nodeSelector));
+        }
+    }
 }
 
 public sealed record ResolvedIngressConfiguration(
@@ -668,12 +1065,17 @@ public static class ResourceDeploymentFactory
     }
 }
 
-internal static class ResourceDeploymentValueGuard
+internal static partial class ResourceDeploymentValueGuard
 {
     public const int MaximumFailureCodeLength = 128;
     public const int MaximumFailureMessageLength = 512;
     public const int MaximumKubernetesNameLength = 253;
     public const int MaximumEndpointHostLength = 253;
+    public const int MaximumDisplayNameLength = 80;
+    public const int MaximumLabelNameLength = 63;
+    public const int MaximumDnsSubdomainLength = 253;
+    public const int MaximumQualifiedNameLength =
+        MaximumDnsSubdomainLength + MaximumLabelNameLength + 1;
 
     public static string Required(string? value, string parameterName, int maximumLength)
     {
@@ -690,6 +1092,96 @@ internal static class ResourceDeploymentValueGuard
 
         return normalized;
     }
+
+    public static string Optional(string? value, string parameterName, int maximumLength)
+    {
+        if (value is null)
+            throw new ArgumentNullException(parameterName);
+        var normalized = value.Trim();
+        if (normalized.Length > maximumLength)
+        {
+            throw new ArgumentException(
+                $"The value must be {maximumLength} characters or less.",
+                parameterName);
+        }
+
+        return normalized;
+    }
+
+    public static string ExtendedResourceName(string? value, string parameterName)
+    {
+        var normalized = Required(
+            value,
+            parameterName,
+            MaximumQualifiedNameLength);
+        var separator = normalized.IndexOf('/');
+        if (separator <= 0 ||
+            separator != normalized.LastIndexOf('/') ||
+            !IsDnsSubdomain(normalized[..separator]) ||
+            !IsLabelName(normalized[(separator + 1)..]) ||
+            string.Equals(normalized[..separator], "kubernetes.io", StringComparison.Ordinal) ||
+            normalized[..separator].EndsWith(".kubernetes.io", StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "The value must be a non-Kubernetes qualified resource name.",
+                parameterName);
+        }
+
+        return normalized;
+    }
+
+    public static string LabelKey(string? value, string parameterName)
+    {
+        var normalized = Required(value, parameterName, MaximumQualifiedNameLength);
+        var separator = normalized.IndexOf('/');
+        var valid = separator < 0
+            ? IsLabelName(normalized)
+            : separator == normalized.LastIndexOf('/') &&
+              IsDnsSubdomain(normalized[..separator]) &&
+              IsLabelName(normalized[(separator + 1)..]);
+        return valid
+            ? normalized
+            : throw new ArgumentException(
+                "The value must be a Kubernetes label key.",
+                parameterName);
+    }
+
+    public static string LabelValue(string? value, string parameterName)
+    {
+        var normalized = value?.Trim() ?? string.Empty;
+        return normalized.Length <= MaximumLabelNameLength &&
+               (normalized.Length == 0 || IsLabelName(normalized))
+            ? normalized
+            : throw new ArgumentException(
+                "The value must be a Kubernetes label value.",
+                parameterName);
+    }
+
+    public static string? OptionalDnsSubdomain(string? value, string parameterName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        var normalized = value.Trim();
+        return IsDnsSubdomain(normalized)
+            ? normalized
+            : throw new ArgumentException(
+                "The value must be a Kubernetes DNS subdomain.",
+                parameterName);
+    }
+
+    private static bool IsDnsSubdomain(string value) =>
+        value.Length is >= 1 and <= MaximumDnsSubdomainLength &&
+        value.Split('.').All(label => DnsLabelPattern().IsMatch(label));
+
+    private static bool IsLabelName(string value) =>
+        value.Length is >= 1 and <= MaximumLabelNameLength &&
+        LabelNamePattern().IsMatch(value);
+
+    [GeneratedRegex("^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$")]
+    private static partial Regex DnsLabelPattern();
+
+    [GeneratedRegex("^[A-Za-z0-9](?:[-_.A-Za-z0-9]*[A-Za-z0-9])?$")]
+    private static partial Regex LabelNamePattern();
 
     public static string ObjectId(string? value, string parameterName)
     {

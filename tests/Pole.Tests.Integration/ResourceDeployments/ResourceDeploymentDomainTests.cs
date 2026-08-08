@@ -139,6 +139,10 @@ public sealed class ResourceDeploymentDomainTests
             Assert.Single(roundTripped.Endpoints));
         Assert.Equal("app.example.test", endpoint.Host);
         Assert.Equal(TargetId, roundTripped.ResolvedPlacement.DeploymentTargetId);
+        Assert.Equal(
+            ResourceDeploymentTestData.ComputeProfileId,
+            roundTripped.ResolvedPlacement.Compute.ComputeProfileId);
+        Assert.Equal(250, roundTripped.ResolvedPlacement.Compute.Requests.CpuMillis);
     }
 
     private static ResourceDeployment CreateDeployment(bool runtimeCellReady)
@@ -151,6 +155,7 @@ public sealed class ResourceDeploymentDomainTests
             targetWorkloadConfigurationRevision: 1,
             ResolvedIngressConfiguration.Create("traefik", "letsencrypt-prod"),
             storage: null,
+            ResourceDeploymentTestData.Compute(),
             CreatedAtUtc);
 
         return ResourceDeploymentFactory.Create(

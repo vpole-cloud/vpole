@@ -28,7 +28,7 @@ public sealed class WebServiceManifestTests
     }
 
     [Fact]
-    public void ToDeployment_UsesImagePortsProbesAndResources()
+    public void ToDeployment_UsesImagePortsProbesAndResolvedCompute()
     {
         var manifest = CreateSubject();
 
@@ -49,6 +49,13 @@ public sealed class WebServiceManifestTests
         Assert.Equal("256Mi", container.Resources.Requests["memory"].ToString());
         Assert.Equal("2", container.Resources.Limits["cpu"].ToString());
         Assert.Equal("512Mi", container.Resources.Limits["memory"].ToString());
+        Assert.Equal("1", container.Resources.Requests["nvidia.com/gpu"].ToString());
+        Assert.Equal(
+            "linux",
+            deployment.Spec.Template.Spec.NodeSelector["kubernetes.io/os"]);
+        Assert.Equal(
+            "workload-runtime",
+            deployment.Spec.Template.Spec.RuntimeClassName);
     }
 
     [Fact]
@@ -255,6 +262,22 @@ public sealed class WebServiceManifestTests
             "pole-apps",
             ResolvedIngressConfiguration.Create(
                 "nginx-private",
-                "pole-private-issuer"));
+                "pole-private-issuer"),
+            ResolvedComputeConfiguration.Create(
+                "507f1f77bcf86cd799439035",
+                computeProfileRevision: 3,
+                displayName: "Web workloads",
+                ResolvedComputeResourceValues.Create(1000, 256),
+                ResolvedComputeResourceValues.Create(2000, 512),
+                ResolvedComputeArchitecture.Any,
+                extendedResources:
+                [
+                    ResolvedComputeExtendedResource.Create("nvidia.com/gpu", 1)
+                ],
+                nodeSelector:
+                [
+                    ResolvedComputeNodeSelector.Create("kubernetes.io/os", "linux")
+                ],
+                runtimeClassName: "workload-runtime"));
     }
 }

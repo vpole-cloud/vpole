@@ -1,7 +1,10 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.ComputeProfiles.Contracts;
+using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Mutations;
+using Pole.Features.ResourceDeployments.Application.Placement;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;
@@ -138,6 +141,89 @@ public sealed class ResourceDeploymentMutationWriterTests(
     }
 
     [Fact]
+    public async Task RequestApply_WithReplacement_FencesAndAdoptsResolvedComputeSnapshot()
+    {
+        var (runtimeCell, deployment) = CreateAggregate(runtimeCellReady: true);
+        await InsertAsync(runtimeCell, deployment);
+        var fence = new RecordingComputeProfileFence();
+        var writer = CreateWriter(fence);
+        var replacement = ResourceDeploymentTestData.ResolvedComputeProfile(
+            TargetId,
+            revision: 2,
+            requestsCpuMillis: 500,
+            requestsMemoryMi: 512);
+
+        var result = await fixture.DbContext
+            .RunInTransactionAsync<ResourceDeployment>(
+                (session, cancellationToken) => writer.RequestApplyAsync(
+                    CreateCommand() with { ReplacementCompute = replacement },
+                    session,
+                    cancellationToken));
+
+        var updated = result.AssertSuccess();
+        Assert.Equal(1, fence.CallCount);
+        Assert.Equal(2, updated.ResolvedPlacement.Compute.ComputeProfileRevision);
+        Assert.Equal(500, updated.ResolvedPlacement.Compute.Requests.CpuMillis);
+        Assert.Equal(512, updated.ResolvedPlacement.Compute.Requests.MemoryMi);
+    }
+
+    [Fact]
+    public async Task RequestApply_WithStaleComputeExpectation_DoesNotMutateOrFence()
+    {
+        var (runtimeCell, deployment) = CreateAggregate(runtimeCellReady: true);
+        await InsertAsync(runtimeCell, deployment);
+        var fence = new RecordingComputeProfileFence();
+        var writer = CreateWriter(fence);
+
+        var result = await fixture.DbContext
+            .RunInTransactionAsync<ResourceDeployment>(
+                (session, cancellationToken) => writer.RequestApplyAsync(
+                    CreateCommand() with
+                    {
+                        ExpectedCompute = new ComputeProfileReference(
+                            ResourceDeploymentTestData.ComputeProfileId,
+                            ComputeProfileRevision: 2),
+                        ReplacementCompute =
+                            ResourceDeploymentTestData.ResolvedComputeProfile(
+                                TargetId,
+                                revision: 2)
+                    },
+                    session,
+                    cancellationToken));
+
+        Assert.IsType<ConflictFailure>(result.AssertFailure());
+        Assert.Equal(0, fence.CallCount);
+        var saved = await fixture.DbContext.ResourceDeployments
+            .Find(item => item.Id == DeploymentId)
+            .SingleAsync();
+        Assert.Equal(1, saved.DesiredGeneration);
+        Assert.Equal(1, saved.ResolvedPlacement.Compute.ComputeProfileRevision);
+    }
+
+    [Fact]
+    public async Task ComputeLookup_ReturnsThePersistedQuotaAndVersionSnapshot()
+    {
+        var (runtimeCell, deployment) = CreateAggregate(runtimeCellReady: true);
+        await InsertAsync(runtimeCell, deployment);
+        var lookup = new ResourceDeploymentComputeLookup(fixture.DbContext);
+
+        var result = await lookup.GetCurrentAsync(
+            TenantId,
+            TestResourceType,
+            ResourceId);
+
+        var compute = result.AssertSuccess();
+        Assert.Equal(TargetId, compute.DeploymentTargetId);
+        Assert.Equal(
+            ResourceDeploymentTestData.ComputeProfileId,
+            compute.Compute.Profile.ComputeProfileId);
+        Assert.Equal(1, compute.Compute.Profile.ComputeProfileRevision);
+        Assert.Equal(250, compute.Compute.Requests.CpuMillis);
+        Assert.Equal(256, compute.Compute.Requests.MemoryMi);
+        Assert.Empty(compute.Compute.ExtendedResources);
+    }
+
+    [Fact]
     public async Task CallerFailure_AbortsDeploymentAndOutboxWrites()
     {
         var (runtimeCell, deployment) = CreateAggregate(runtimeCellReady: true);
@@ -183,8 +269,13 @@ public sealed class ResourceDeploymentMutationWriterTests(
     }
 
     private ResourceDeploymentMutationWriter CreateWriter() =>
+        CreateWriter(new RecordingComputeProfileFence());
+
+    private ResourceDeploymentMutationWriter CreateWriter(
+        RecordingComputeProfileFence fence) =>
         new(
             fixture.DbContext,
+            fence,
             new FixedTimeProvider(new DateTimeOffset(
                 MutationAtUtc,
                 TimeSpan.Zero)));
@@ -193,7 +284,10 @@ public sealed class ResourceDeploymentMutationWriterTests(
         new(
             TenantId,
             TestResourceType,
-            ResourceId);
+            ResourceId,
+            new ComputeProfileReference(
+                ResourceDeploymentTestData.ComputeProfileId,
+                ComputeProfileRevision: 1));
 
     private async Task InsertAsync(
         RuntimeCell runtimeCell,
@@ -232,6 +326,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
                 "traefik",
                 "letsencrypt-prod"),
             storage: null,
+            ResourceDeploymentTestData.Compute(),
             CreatedAtUtc);
         var deployment = ResourceDeploymentFactory.Create(
             TenantId,
@@ -251,5 +346,22 @@ public sealed class ResourceDeploymentMutationWriterTests(
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
+    }
+
+    private sealed class RecordingComputeProfileFence
+        : IResourceDeploymentComputeProfileFence
+    {
+        public int CallCount { get; private set; }
+
+        public Task<Result> FenceAsync(
+            ResolvedComputeProfile compute,
+            string tenantId,
+            ResourceTypeId resourceType,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult<Result>(Result.Success());
+        }
     }
 }

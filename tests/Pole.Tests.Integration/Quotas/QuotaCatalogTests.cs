@@ -75,7 +75,7 @@ public sealed class QuotaCatalogTests
         Assert.True(catalog.Contains(CpuQuota.QuotaKey));
         Assert.True(catalog.Contains(RedisServiceCountQuota.QuotaKey));
         Assert.False(catalog.Contains(WebServiceCountQuota.QuotaKey));
-        Assert.IsType<RedisQuotaProfile>(catalog.GetProfile<Pole.Features.RedisServices.Domain.RedisSpec>());
+        Assert.IsType<RedisQuotaProfile>(catalog.GetProfile<RedisQuotaInput>());
     }
 
     [Fact]
@@ -86,9 +86,9 @@ public sealed class QuotaCatalogTests
             new RamQuota(),
             new WorkloadInstancesQuota(),
             new RedisServiceCountQuota());
-        var spec = TestData.ValidRedisSpec().ToDomain();
+        var input = RedisQuotaInput.Create(1000, 128);
 
-        var impact = profile.Calculate(spec);
+        var impact = profile.Calculate(input);
 
         Assert.Equal(1000, impact[CpuQuota.QuotaKey]);
         Assert.Equal(128, impact[RamQuota.QuotaKey]);
@@ -113,9 +113,10 @@ public sealed class QuotaCatalogTests
         };
         var spec = dto.ToDomain();
 
-        var impact = profile.Calculate(spec);
+        var impact = profile.Calculate(
+            WebServiceQuotaInput.Create(250, 256, spec));
 
-        Assert.Equal(5000, impact[CpuQuota.QuotaKey]);
+        Assert.Equal(1250, impact[CpuQuota.QuotaKey]);
         Assert.Equal(1280, impact[RamQuota.QuotaKey]);
         Assert.Equal(5, impact[WorkloadInstancesQuota.QuotaKey]);
         Assert.Equal(1, impact[WebServiceCountQuota.QuotaKey]);

@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -17,6 +18,7 @@ public sealed record CreateResourceDeploymentCommand(
     string ResourceGroupId,
     string? IsolationScopeId,
     ResolvedDeploymentTarget Target,
+    ResolvedComputeProfile Compute,
     ResolvedStorageConfiguration? Storage,
     ResourcePlacementCapability PlacementCapability);
 
@@ -34,10 +36,21 @@ public interface IResourceDeploymentStorageConfigurationFence
         CancellationToken cancellationToken = default);
 }
 
+public interface IResourceDeploymentComputeProfileFence
+{
+    Task<Result> FenceAsync(
+        ResolvedComputeProfile compute,
+        string tenantId,
+        ResourceTypeId resourceType,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);
+}
+
 internal sealed class ResourceDeploymentWriter(
     IResourceDeploymentDbContext dbContext,
     IResourcePlacementService placementService,
     IDeploymentTargetWorkloadConfigurationFence targetConfigurationFence,
+    IResourceDeploymentComputeProfileFence computeProfileFence,
     IResourceDeploymentStorageConfigurationFence storageConfigurationFence,
     TimeProvider timeProvider)
 {
@@ -47,6 +60,14 @@ internal sealed class ResourceDeploymentWriter(
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
+        if (!string.Equals(
+                command.Compute.DeploymentTargetId,
+                command.Target.DeploymentTargetId,
+                StringComparison.Ordinal))
+        {
+            return Failures.Conflict(
+                "The resolved compute profile belongs to a different deployment target.");
+        }
 
         var targetFence = await targetConfigurationFence
             .FenceAsync(
@@ -56,6 +77,14 @@ internal sealed class ResourceDeploymentWriter(
                 cancellationToken);
         if (targetFence is not ISuccess)
             return (Failure)targetFence;
+        var computeFence = await computeProfileFence.FenceAsync(
+            command.Compute,
+            command.TenantId,
+            command.ResourceType,
+            session,
+            cancellationToken);
+        if (computeFence is not ISuccess)
+            return (Failure)computeFence;
         if (command.Storage is not null)
         {
             var storageFence = await storageConfigurationFence.FenceAsync(
@@ -100,6 +129,7 @@ internal sealed class ResourceDeploymentWriter(
             command.Target.WorkloadConfigurationRevision,
             command.Target.Ingress,
             command.Storage,
+            command.Compute.ToConfiguration(),
             now);
         var deployment = ResourceDeploymentFactory.Create(
             command.TenantId,

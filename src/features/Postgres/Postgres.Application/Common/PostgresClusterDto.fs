@@ -2,12 +2,10 @@ namespace Pole.Features.Postgres.Application.Common
 
 open Pole.Features.Postgres.Domain
 open Pole.Features.ResourceDeployments.Contracts
-open Pole.Features.Shared.Models
 
 type PostgresClusterSpecDto =
     { Instances : int
       Storage : int
-      Resources : Resources
       StorageProfileId : string
       Version : int
       DeploymentMode : string }
@@ -36,7 +34,6 @@ module PostgresClusterDto =
           Spec =
             { Instances = cluster.Spec.Instances
               Storage = cluster.Spec.Storage
-              Resources = cluster.Spec.Resources
               StorageProfileId = cluster.Spec.StorageProfileId
               Version = cluster.Spec.Version
               DeploymentMode = cluster.Spec.DeploymentMode.ToString() }

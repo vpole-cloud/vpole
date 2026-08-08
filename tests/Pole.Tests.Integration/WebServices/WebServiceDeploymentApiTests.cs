@@ -15,6 +15,7 @@ using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Domain;
 using Pole.Tests.Integration.Infrastructure;
+using Pole.Tests.Integration.ResourceDeployments;
 using Xunit;
 
 namespace Pole.Tests.Integration.WebServices;
@@ -43,7 +44,6 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             {
                 image = spec.Image,
                 spec.Replicas,
-                spec.Resources,
                 config = new
                 {
                     environmentVariables = new Dictionary<string, string>(),
@@ -296,7 +296,8 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
                     "traefik",
                     "letsencrypt-prod"),
                 storage: null,
-                createdAtUtc.AddSeconds(1)),
+                compute: ResourceDeploymentTestData.Compute(),
+                resolvedAtUtc: createdAtUtc.AddSeconds(1)),
             ResourcePlacementCapability.SingleTarget,
             runtimeCellReady: true,
             new ResourceDeploymentFactory.CreateOptions(

@@ -1,0 +1,19 @@
+using Pole.Features.ComputeProfiles.Domain;
+
+namespace Pole.Features.ComputeProfiles.Application.Persistence;
+
+internal static class ComputeProfilePersistenceGuards
+{
+    public static void EnsureSameIdentity(
+        ComputeProfile current,
+        ComputeProfile replacement)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+        ArgumentNullException.ThrowIfNull(replacement);
+        if (!string.Equals(current.Id, replacement.Id, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "A compute profile replacement must preserve profile identity.");
+        }
+    }
+}

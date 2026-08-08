@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,6 +14,7 @@ using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
+using Pole.Tests.Integration.ResourceDeployments;
 using Xunit;
 
 namespace Pole.Tests.Integration.WebServices;
@@ -32,6 +34,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             Services.GetRequiredService<PersistCurrentWebServiceRelease>(),
             Services.GetRequiredService<
                 Pole.Database.RunMongoTransaction<SourceBuildDeploymentResult>>(),
+            new SuccessfulComputeLookup(mutationWriter.Deployment),
             mutationWriter);
         var request = new SourceBuildDeploymentRequest(
             TestData.TenantId,
@@ -63,6 +66,11 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
         Assert.Equal(request.Image.Digest, provenance.ImageDigest);
 
         Assert.Equal(1, mutationWriter.ApplyCallCount);
+        Assert.Equal(
+            new ComputeProfileReference(
+                mutationWriter.Deployment.ResolvedPlacement.Compute.ComputeProfileId,
+                mutationWriter.Deployment.ResolvedPlacement.Compute.ComputeProfileRevision),
+            mutationWriter.LastCommand?.ExpectedCompute);
         var applied = new ResourceDeploymentAppliedEvent(
             mutationWriter.Deployment.Id,
             WebServiceResourceDeployment.ResourceType.Value,
@@ -109,7 +117,8 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
                         "traefik",
                         "letsencrypt-prod"),
                     storage: null,
-                    now),
+                    compute: ResourceDeploymentTestData.Compute(),
+                    resolvedAtUtc: now),
                 ResourcePlacementCapability.SingleTarget,
                 runtimeCellReady: true,
                 new ResourceDeploymentFactory.CreateOptions(
@@ -119,6 +128,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
 
         public ResourceDeployment Deployment { get; }
         public int ApplyCallCount { get; private set; }
+        public ResourceDeploymentMutationCommand? LastCommand { get; private set; }
 
         public Task<Result<ResourceDeployment>> RequestApplyAsync(
             ResourceDeploymentMutationCommand command,
@@ -126,6 +136,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             CancellationToken cancellationToken = default)
         {
             ApplyCallCount++;
+            LastCommand = command;
             return Task.FromResult<Result<ResourceDeployment>>(Deployment);
         }
 
@@ -134,5 +145,30 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             IClientSessionHandle session,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<Result<ResourceDeployment>>(Deployment);
+    }
+
+    private sealed class SuccessfulComputeLookup(ResourceDeployment deployment)
+        : IResourceDeploymentComputeLookup
+    {
+        public Task<Result<CurrentResourceDeploymentComputeDto>> GetCurrentAsync(
+            string tenantId,
+            ResourceTypeId resourceType,
+            string resourceId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result<CurrentResourceDeploymentComputeDto>>(
+                new CurrentResourceDeploymentComputeDto(
+                    deployment.ResolvedPlacement.DeploymentTargetId,
+                    new ComputeConfigurationSummaryDto(
+                        new ComputeProfileReference(
+                            deployment.ResolvedPlacement.Compute.ComputeProfileId,
+                            deployment.ResolvedPlacement.Compute.ComputeProfileRevision),
+                        deployment.ResolvedPlacement.Compute.DisplayName,
+                        new ComputeResourceValuesDto(
+                            deployment.ResolvedPlacement.Compute.Requests.CpuMillis,
+                            deployment.ResolvedPlacement.Compute.Requests.MemoryMi),
+                        new ComputeResourceValuesDto(
+                            deployment.ResolvedPlacement.Compute.Limits.CpuMillis,
+                            deployment.ResolvedPlacement.Compute.Limits.MemoryMi),
+                        ImmutableList<ComputeExtendedResourceDto>.Empty)));
     }
 }

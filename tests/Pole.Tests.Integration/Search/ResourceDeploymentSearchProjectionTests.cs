@@ -324,6 +324,14 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             observedGeneration,
             status,
             failureCode,
+            new ComputeConfigurationSummaryDto(
+                new ComputeProfileReference(
+                    ObjectId.GenerateNewId().ToString(),
+                    ComputeProfileRevision: 1),
+                "General purpose",
+                new ComputeResourceValuesDto(250, 256),
+                new ComputeResourceValuesDto(1000, 1024),
+                []),
             ImmutableList.Create(
                 new ResourceDeploymentEndpointDto(
                     "Ingress",

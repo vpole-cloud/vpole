@@ -10,6 +10,7 @@ using Npgsql;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Application.Kubernetes;
+using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -33,6 +34,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
             Credentials("initial-secret"),
             NamespaceName,
             "standard",
+            Compute(),
             Metadata(),
             CancellationToken.None);
 
@@ -64,6 +66,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
             Credentials("initial-secret"),
             NamespaceName,
             "standard",
+            Compute(),
             Metadata(),
             CancellationToken.None);
         await WaitForClusterReadyAsync(cluster.Id, expectedReadyInstances: cluster.Spec.Instances);
@@ -96,6 +99,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
             Credentials("initial-secret"),
             NamespaceName,
             "standard",
+            Compute(),
             Metadata(),
             CancellationToken.None);
         await manager.ApplyAsync(
@@ -104,6 +108,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
             Credentials("rotated-secret"),
             NamespaceName,
             "standard",
+            Compute(),
             Metadata(),
             CancellationToken.None);
 
@@ -128,6 +133,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
             Credentials("initial-secret"),
             NamespaceName,
             "standard",
+            Compute(),
             Metadata(),
             CancellationToken.None);
         await manager.DeleteAsync(
@@ -161,6 +167,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
             Credentials("initial-secret"),
             NamespaceName,
             "standard",
+            Compute(),
             Metadata(),
             CancellationToken.None);
         await WaitForStatefulSetReadyAsync(cluster.Id);
@@ -193,6 +200,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
             Credentials("initial-secret"),
             NamespaceName,
             "standard",
+            Compute(),
             Metadata(),
             CancellationToken.None);
         await manager.DeleteAsync(
@@ -229,8 +237,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
             new CreatePostgresClusterOptions(
                 FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()),
                 1,
-                5,
-                ResourceRequirements()));
+                5));
 
     private static PostgresClusterCredentials Credentials(string password) =>
         new("postgres-user", password);
@@ -242,9 +249,14 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
             TestData.DefaultDeploymentTargetId,
             1);
 
-    private static Resources ResourceRequirements() => new(
-        Requests: new Resource(1, 256),
-        Limits: new Resource(2, 512));
+    private static ResolvedComputeConfiguration Compute() =>
+        ResolvedComputeConfiguration.Create(
+            TestData.DefaultComputeProfileId,
+            1,
+            "Default",
+            ResolvedComputeResourceValues.Create(250, 256),
+            ResolvedComputeResourceValues.Create(1000, 1024),
+            ResolvedComputeArchitecture.Any);
 
     private static PostgresSettings CreateSettings() =>
         new()

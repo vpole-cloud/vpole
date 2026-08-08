@@ -7,7 +7,6 @@ using k8s.Autorest;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
 using StackExchange.Redis;
 using Xunit;
@@ -21,8 +20,11 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
     [KubernetesFact]
     public async Task CreateAsync_WaitsForPodReadiness_AndRespondsToPing()
     {
-        var (redis, storage) = await BuildTestRedisAsync("redis-k8s");
-        var redisInKubernetes = redis.ToKubernetes(NamespaceName, storage);
+        var (redis, storage, compute) = await BuildTestRedisAsync("redis-k8s");
+        var redisInKubernetes = redis.ToKubernetes(
+            NamespaceName,
+            storage,
+            compute);
 
         await RedisKubernetesResourceManager.CreateAsync(Kubernetes, redisInKubernetes);
 
@@ -51,24 +53,22 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
     [KubernetesFact]
     public async Task ReplaceAsync_UpdatesStatefulSetAndService()
     {
-        var (redis, storage) = await BuildTestRedisAsync("redis-k8s-replace");
+        var (redis, storage, compute) = await BuildTestRedisAsync("redis-k8s-replace");
         await RedisKubernetesResourceManager.CreateAsync(
             Kubernetes,
-            redis.ToKubernetes(NamespaceName, storage));
+            redis.ToKubernetes(NamespaceName, storage, compute));
 
-        var updated = redis with
-        {
-            Spec = redis.Spec with
-            {
-                Resources = new Resources(
-                    Requests: new Resource(1, 256),
-                    Limits: new Resource(2, 512))
-            }
-        };
+        var updatedCompute = ResolvedComputeConfiguration.Create(
+            compute.ComputeProfileId,
+            compute.ComputeProfileRevision + 1,
+            compute.DisplayName,
+            ResolvedComputeResourceValues.Create(1000, 256),
+            ResolvedComputeResourceValues.Create(2000, 512),
+            ResolvedComputeArchitecture.Any);
 
         await RedisKubernetesResourceManager.ReplaceAsync(
             Kubernetes,
-            updated.ToKubernetes(NamespaceName, storage));
+            redis.ToKubernetes(NamespaceName, storage, updatedCompute));
 
         var statefulSet = await Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(redis.Name, NamespaceName);
         var service = await Kubernetes.CoreV1.ReadNamespacedServiceAsync(
@@ -86,11 +86,11 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
     [KubernetesFact]
     public async Task DeleteAsync_RemovesResources()
     {
-        var (redis, storage) = await BuildTestRedisAsync("redis-k8s-delete");
+        var (redis, storage, compute) = await BuildTestRedisAsync("redis-k8s-delete");
 
         await RedisKubernetesResourceManager.CreateAsync(
             Kubernetes,
-            redis.ToKubernetes(NamespaceName, storage));
+            redis.ToKubernetes(NamespaceName, storage, compute));
         await RedisKubernetesResourceManager.DeleteAsync(Kubernetes, redis.Name, NamespaceName);
 
         await AssertResourceDeletedAsync(() => Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(redis.Name, NamespaceName));
@@ -99,15 +99,15 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
             NamespaceName));
     }
 
-    private async Task<(RedisEntity Redis, ResolvedStorageConfiguration Storage)>
+    private async Task<(
+        RedisEntity Redis,
+        ResolvedStorageConfiguration Storage,
+        ResolvedComputeConfiguration Compute)>
         BuildTestRedisAsync(string name)
     {
         var storageClassName = await ResolveStorageClassNameAsync();
         var spec = new RedisSpec(
-            new Storage(1, TestData.DefaultStorageProfileId),
-            new Resources(
-                Requests: new Resource(1, 128),
-                Limits: new Resource(2, 256)));
+            new Storage(1, TestData.DefaultStorageProfileId));
 
         var redis = RedisFactory.Create(
             tenantId: TestData.TenantId,
@@ -123,7 +123,14 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
             TestData.DefaultStorageProfileId,
             storageProfileRevision: 1,
             storageClassName);
-        return (redis, storage);
+        var compute = ResolvedComputeConfiguration.Create(
+            "507f1f77bcf86cd799439019",
+            computeProfileRevision: 1,
+            displayName: "General purpose",
+            ResolvedComputeResourceValues.Create(250, 128),
+            ResolvedComputeResourceValues.Create(1000, 256),
+            ResolvedComputeArchitecture.Any);
+        return (redis, storage, compute);
     }
 
     private async Task<string> ResolveStorageClassNameAsync()

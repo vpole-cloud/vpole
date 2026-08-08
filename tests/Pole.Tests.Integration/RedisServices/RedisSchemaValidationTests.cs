@@ -56,6 +56,17 @@ public sealed class RedisSchemaValidationTests(MongoReplicaSetFixture fixture) :
                 nameof(DeletingRedisLifecycle.RequestedAtUtc)));
     }
 
+    [Fact]
+    public async Task Validator_rejects_legacy_direct_compute_resources()
+    {
+        await new RedisSchemaValidationMigration().Up(fixture.Database);
+
+        await CreateContract().AssertRejectsAsync(
+            CreateRedis(new ActiveRedisLifecycle()),
+            document => document[nameof(Redis.Spec)].AsBsonDocument["Resources"] =
+                new BsonDocument());
+    }
+
     private MongoDocumentContractTester<Redis> CreateContract() =>
         new(fixture.Database, CollectionName);
 
@@ -64,10 +75,7 @@ public sealed class RedisSchemaValidationTests(MongoReplicaSetFixture fixture) :
         "cache",
         ObjectId.GenerateNewId().ToString(),
         new RedisSpec(
-            new Storage(5, TestData.DefaultStorageProfileId),
-            new Resources(
-                new Resource(1, 128),
-                new Resource(2, 256))),
+            new Storage(5, TestData.DefaultStorageProfileId)),
         RedisFactory.DefaultCreateOptions with
         {
             Id = ObjectId.GenerateNewId().ToString(),

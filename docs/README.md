@@ -45,12 +45,17 @@ requirement when adding or changing one feature.
 - [Multitenancy](multitenancy.md)
 - [Envelope encryption operations](envelope-encryption.md)
 - [Tenant quotas](quotas.md)
+- [Workload placement](workload-placement.md)
+- [Deployment targets](deployment-targets.md)
 - [Observability](observability.md)
 
 ## Feature documentation
 
 - [Pole Functions](../src/features/Functions/README.md)
+- [Compute profiles](../src/features/ComputeProfiles/README.md)
+- [PostgreSQL clusters](../src/features/Postgres/README.md)
 - [Redis services and persistence capability experiment](../src/features/RedisServices/README.md)
+- [Web services](../src/features/WebServices/README.md)
 - [Search](search.md) (existing central document; it can move beside the feature independently)
 
 ## Development and verification

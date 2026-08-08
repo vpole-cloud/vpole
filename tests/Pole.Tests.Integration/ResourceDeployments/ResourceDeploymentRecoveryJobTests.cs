@@ -60,6 +60,7 @@ public sealed class ResourceDeploymentRecoveryJobTests(
                     targetWorkloadConfigurationRevision: 1,
                     ingress: null,
                     storage: null,
+                    ResourceDeploymentTestData.Compute(),
                     createdAtUtc),
                 ResourcePlacementCapability.SingleTarget,
                 runtimeCellReady: true,

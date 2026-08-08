@@ -12,6 +12,7 @@ using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
+using Pole.Tests.Integration.ResourceDeployments;
 using Xunit;
 
 namespace Pole.Tests.Integration.WebServices;
@@ -42,7 +43,6 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         var spec = new WebServiceSpec(
             new ImageInfo("docker.io", "library/nginx", "1.27"),
             Replicas: 1,
-            Resources: new Resources(new Resource(1, 64), new Resource(1, 128)),
             Config: new WebServiceConfig(
                 ImmutableDictionary<string, string>.Empty,
                 [new PortMapping(80, "8080", "TCP", "http")]),
@@ -181,7 +181,8 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
             NamespaceName,
             ResolvedIngressConfiguration.Create(
                 "traefik",
-                "letsencrypt-prod"));
+                "letsencrypt-prod"),
+            ResourceDeploymentTestData.Compute());
 
     private async Task WaitForDeploymentAvailableAsync(string deploymentName, int timeoutSeconds = 60)
     {

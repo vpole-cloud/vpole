@@ -14,6 +14,7 @@ using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
+using Pole.Tests.Integration.ResourceDeployments;
 using Xunit;
 
 namespace Pole.Tests.Integration.WebServices;
@@ -97,6 +98,18 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         Assert.Equal(
             "1",
             annotations.GetProperty("pole.server/deploymentGeneration").GetString());
+        var resources = deployment.RootElement
+            .GetProperty("spec")
+            .GetProperty("template")
+            .GetProperty("spec")
+            .GetProperty("containers")[0]
+            .GetProperty("resources");
+        Assert.Equal(
+            "250m",
+            resources.GetProperty("requests").GetProperty("cpu").GetString());
+        Assert.Equal(
+            "1",
+            resources.GetProperty("limits").GetProperty("cpu").GetString());
     }
 
     [Fact]
@@ -169,7 +182,8 @@ public sealed class WebServiceResourceDeploymentAdapterTests
                     "pole-private-issuer")
                 : null,
             storage: null,
-            NowUtc);
+            compute: ResourceDeploymentTestData.Compute(),
+            resolvedAtUtc: NowUtc);
         var deployment = ResourceDeploymentFactory.Create(
             TenantId,
             WebServiceResourceDeployment.ResourceType,
@@ -205,9 +219,6 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             spec: new WebServiceSpec(
                 new ImageInfo("registry.example.test", "pole/api", "1.0"),
                 Replicas: 2,
-                Resources: new Resources(
-                    new Resource(1, 128),
-                    new Resource(2, 256)),
                 Config: new WebServiceConfig(
                     ImmutableDictionary<string, string>.Empty,
                     [new PortMapping(80, "8080", "TCP", "http")]),

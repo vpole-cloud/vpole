@@ -1,4 +1,6 @@
+using Pole.ASP.Helpers;
 using Pole.Features.ContainerRegistries.Application.Common;
+using Pole.Features.ComputeProfiles.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.GitProviders.Application.Common;
@@ -41,6 +43,19 @@ public static class MapApi
             .MapStorageProfileEndpoints()
             .MapSearchEndpoints()
             .MapDomainNameEndpoints();
+
+        group.MapGroup("/platform/compute-profiles")
+            .WithTags("PlatformComputeProfiles")
+            .RequireAuthorization(Policy.Admin)
+            .MapGetComputeProfilesEndpoint()
+            .MapGetComputeProfileEndpoint()
+            .MapCreateComputeProfileEndpoint()
+            .MapUpdateComputeProfileEndpoint()
+            .MapDeleteComputeProfileEndpoint();
+
+        group.MapGroup("/compute-profiles")
+            .WithTags("ComputeProfiles")
+            .MapGetAvailableComputeProfilesEndpoint();
 
         return app;
     }

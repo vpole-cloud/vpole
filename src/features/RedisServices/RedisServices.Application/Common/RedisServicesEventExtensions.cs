@@ -72,8 +72,7 @@ internal static class RedisServicesEventExtensions
             => new(
                 new RedisServiceStorageSnapshot(
                     spec.Storage.SizeGb,
-                    spec.Storage.StorageProfileId),
-                spec.Resources);
+                    spec.Storage.StorageProfileId));
     }
 
     extension(RedisServiceSpecSnapshot spec)
@@ -82,7 +81,6 @@ internal static class RedisServicesEventExtensions
             => new(
                 new Storage(
                     spec.Storage.SizeGb,
-                    spec.Storage.StorageProfileId),
-                spec.Resources);
+                    spec.Storage.StorageProfileId));
     }
 }

@@ -1,6 +1,8 @@
 using System.Collections.Immutable;
 using Microsoft.FSharp.Core;
 using Pole.ASP.Helpers;
+using Pole.Features.ComputeProfiles.Contracts;
+using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DnsRecords.Domain;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.RedisServices.Application.Common;
@@ -24,6 +26,7 @@ public static class TestData
     public const string TenantId = "507f1f77bcf86cd799439011";
     public const string DefaultDeploymentTargetId = "507f1f77bcf86cd799439098";
     public const string DefaultStorageProfileId = "507f1f77bcf86cd799439099";
+    public const string DefaultComputeProfileId = "507f1f77bcf86cd799439097";
     public const string UserId = "test-user";
     public const string UserEmail = "test-user@example.test";
 
@@ -78,10 +81,8 @@ public static class TestData
             version,
             FSharpOption<int>.Some(1),
             FSharpOption<int>.Some(10),
-            new Resources(
-                Requests: new Resource(1, 256),
-                Limits: new Resource(2, 512)),
             DefaultStorageProfileId,
+            FSharpOption<string>.None,
             username,
             password,
             FSharpOption<PlacementRequest>.None),
@@ -90,9 +91,6 @@ public static class TestData
     public static WebServiceSpecDto ValidWebServiceSpec() => new(
         Image: new ImageInfoDto("docker.io", "nginx", "1.27"),
         Replicas: 2,
-        Resources: new Resources(
-            Requests: new Resource(1, 256),
-            Limits: new Resource(2, 512)),
         Config: new WebServiceConfigDto(
             EnvironmentVariables: ImmutableDictionary<string, string>.Empty
                 .Add("ASPNETCORE_ENVIRONMENT", "Development"),
@@ -107,10 +105,7 @@ public static class TestData
             Readiness: ValidProbe()));
 
     public static RedisSpecDto ValidRedisSpec() => new(
-        Storage: new StorageDto(5, DefaultStorageProfileId),
-        Resources: new Resources(
-            Requests: new Resource(1, 128),
-            Limits: new Resource(2, 256)));
+        Storage: new StorageDto(5, DefaultStorageProfileId));
 
     public static ResolvedStorageProfile DefaultResolvedStorageProfile(string storageClassName = "standard") =>
         new(
@@ -152,6 +147,39 @@ public static class TestData
                 Id = id
             });
     }
+
+    public static ComputeProfile SeedComputeProfile(
+        string id = DefaultComputeProfileId,
+        long requestedCpuMillis = 250,
+        long requestedMemoryMi = 256,
+        long limitCpuMillis = 1000,
+        long limitMemoryMi = 1024,
+        bool isDefault = true) =>
+        ComputeProfileFactory.Create(
+            "Default",
+            "Default test compute profile",
+            ComputeProfileResourceRequirements.Create(
+                ComputeProfileResourceQuantity.Create(
+                    requestedCpuMillis,
+                    requestedMemoryMi),
+                ComputeProfileResourceQuantity.Create(
+                    limitCpuMillis,
+                    limitMemoryMi)),
+            ComputeArchitecture.Any,
+            extendedResources: [],
+            allowedResourceTypes:
+            [
+                ResourceTypeId.Create("pole/web-service"),
+                ResourceTypeId.Create("pole/redis"),
+                ResourceTypeId.Create("pole/postgresql")
+            ],
+            AllTenantsComputeProfileAccess.Create(),
+            [ComputeProfileTargetMapping.Create(DefaultDeploymentTargetId)],
+            isEnabled: true,
+            isDefault,
+            new ComputeProfileFactory.CreateOptions(
+                id,
+                new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
 
     public static ProbeConfigDto ValidProbe() => new(
         Path: "/health",
@@ -207,7 +235,6 @@ public static class TestData
         return new WebServiceSpecSnapshot(
             new WebServiceImageInfoSnapshot(spec.Image.Server, spec.Image.Name, spec.Image.Tag),
             spec.Replicas,
-            spec.Resources,
             new WebServiceConfigSnapshot(
                 spec.Config.EnvironmentVariables,
                 spec.Config.PortMappings

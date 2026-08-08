@@ -12,6 +12,7 @@
       <ProjectReference Include="..\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
       <ProjectReference Include="..\ResourceDeployments.Domain\ResourceDeployments.Domain.csproj" />
       <ProjectReference Include="..\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />
+      <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj" />
       <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Domain\ResourceGroups.Domain.csproj" />

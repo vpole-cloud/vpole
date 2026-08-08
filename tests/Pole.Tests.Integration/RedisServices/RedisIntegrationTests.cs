@@ -3,11 +3,13 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -32,6 +34,19 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
 
         var savedRedis = await DbContext.Database.RedisServices().Find(redis => redis.Id == response.RedisId).FirstOrDefaultAsync();
         Assert.NotNull(savedRedis);
+        var deployment = await DbContext.ResourceDeployments
+            .Find(candidate => candidate.ResourceId == response.RedisId)
+            .SingleAsync();
+        var defaultProfile = await DbContext.Database
+            .GetCollection<ComputeProfile>("ComputeProfiles")
+            .Find(profile => profile.IsDefault)
+            .SingleAsync();
+        Assert.Equal(
+            defaultProfile.Id,
+            deployment.ResolvedPlacement.Compute.ComputeProfileId);
+        Assert.Equal(
+            defaultProfile.Revision,
+            deployment.ResolvedPlacement.Compute.ComputeProfileRevision);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("redis-service-created"));
         var outbox = await DbContext.OutboxMessages
             .Find(message => message.EventType == "redis-service-created")
@@ -47,9 +62,32 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(request);
 
-        Assert.False(result.TryGetValue(out _, out var error));
-        var validation = Assert.IsType<ValidationFailure>(error);
+        var validation = Assert.IsType<ValidationFailure>(
+            result.AssertFailure());
         Assert.Contains("Body.Name", validation.ValidationErrors.Keys);
+    }
+
+    [Fact]
+    public async Task Create_ReturnsValidationFailure_ForInvalidComputeProfileId()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(
+            TestData.SeedResourceGroup());
+        var validRequest = TestData.CreateRedisServiceRequest(resourceGroup.Id);
+        var request = validRequest with
+        {
+            Body = validRequest.Body with
+            {
+                ComputeProfileId = "not-an-object-id"
+            }
+        };
+
+        var result = await Mediator.Send(request);
+
+        var validation = Assert.IsType<ValidationFailure>(
+            result.AssertFailure());
+        Assert.Contains(
+            "Body.ComputeProfileId",
+            validation.ValidationErrors.Keys);
     }
 
     [Fact]
@@ -84,10 +122,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             Id: created.RedisId,
             Body: new UpdateRedisServiceRequestBody(
                 Spec: new(
-                    Storage: new(10, TestData.DefaultStorageProfileId),
-                    Resources: new(
-                        Requests: new(2, 512),
-                        Limits: new(4, 1024))),
+                    Storage: new(10, TestData.DefaultStorageProfileId)),
                 Tags: ["cache", "prod"]),
             TenantId: TestData.TenantId);
 
@@ -110,6 +145,126 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task Update_WithoutComputeProfileId_PreservesExistingSnapshot()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(
+            TestData.SeedResourceGroup());
+        var createResult = await Mediator.Send(
+            TestData.CreateRedisServiceRequest(resourceGroup.Id));
+        var created = createResult.AssertSuccess();
+        var originalDeployment = await LoadDeploymentAsync(created.RedisId);
+        await ReconfigureDefaultComputeProfileAsync(
+            requestsCpuMillis: 500,
+            requestsMemoryMi: 512);
+
+        var updateResult = await Mediator.Send(new UpdateRedisServiceRequest(
+            created.RedisId,
+            new UpdateRedisServiceRequestBody(
+                new RedisSpecDto(new StorageDto(
+                    10,
+                    TestData.DefaultStorageProfileId)),
+                ImmutableHashSet.Create("updated")),
+            TestData.TenantId));
+
+        updateResult.AssertSuccess();
+        var updatedDeployment = await LoadDeploymentAsync(created.RedisId);
+        Assert.Equal(
+            originalDeployment.ResolvedPlacement.Compute.ToBsonDocument(),
+            updatedDeployment.ResolvedPlacement.Compute.ToBsonDocument());
+    }
+
+    [Fact]
+    public async Task Update_WithComputeProfileId_AdoptsLatestProfileRevision()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(
+            TestData.SeedResourceGroup());
+        var createResult = await Mediator.Send(
+            TestData.CreateRedisServiceRequest(resourceGroup.Id));
+        var created = createResult.AssertSuccess();
+        var originalDeployment = await LoadDeploymentAsync(created.RedisId);
+        var updatedProfile = await ReconfigureDefaultComputeProfileAsync(
+            requestsCpuMillis: 500,
+            requestsMemoryMi: 512);
+
+        var updateResult = await Mediator.Send(new UpdateRedisServiceRequest(
+            created.RedisId,
+            new UpdateRedisServiceRequestBody(
+                new RedisSpecDto(new StorageDto(
+                    10,
+                    TestData.DefaultStorageProfileId)),
+                ImmutableHashSet.Create("updated"),
+                updatedProfile.Id),
+            TestData.TenantId));
+
+        updateResult.AssertSuccess();
+        var updatedDeployment = await LoadDeploymentAsync(created.RedisId);
+        Assert.Equal(
+            originalDeployment.ResolvedPlacement.Compute.ComputeProfileId,
+            updatedDeployment.ResolvedPlacement.Compute.ComputeProfileId);
+        Assert.Equal(
+            updatedProfile.Revision,
+            updatedDeployment.ResolvedPlacement.Compute.ComputeProfileRevision);
+        Assert.Equal(
+            500,
+            updatedDeployment.ResolvedPlacement.Compute.Requests.CpuMillis);
+        Assert.Equal(
+            512,
+            updatedDeployment.ResolvedPlacement.Compute.Requests.MemoryMi);
+    }
+
+    [Fact]
+    public async Task DisabledProfile_BlocksAdoption_ButOmittedUpdatePreservesSnapshot()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(
+            TestData.SeedResourceGroup());
+        var profile = TestData.SeedComputeProfile(
+            ObjectId.GenerateNewId().ToString(),
+            requestedCpuMillis: 400,
+            requestedMemoryMi: 450,
+            isDefault: false);
+        var profiles = DbContext.Database
+            .GetCollection<ComputeProfile>("ComputeProfiles");
+        await profiles.InsertOneAsync(profile);
+        var defaultRequest = TestData.CreateRedisServiceRequest(resourceGroup.Id);
+        var createRequest = defaultRequest with
+        {
+            Body = defaultRequest.Body with { ComputeProfileId = profile.Id }
+        };
+        var created = (await Mediator.Send(createRequest)).AssertSuccess();
+        var originalDeployment = await LoadDeploymentAsync(created.RedisId);
+
+        var disabled = profile.Reconfigure(
+            profile.DisplayName,
+            profile.Description,
+            profile.Resources,
+            profile.Architecture,
+            profile.ExtendedResources,
+            profile.AllowedResourceTypes.Select(ResourceTypeId.Create),
+            profile.TenantAccess,
+            profile.TargetMappings,
+            isEnabled: false,
+            isDefault: false,
+            profile.UpdatedAtUtc.AddMinutes(1));
+        await profiles.ReplaceOneAsync(candidate => candidate.Id == profile.Id, disabled);
+
+        (await Mediator.Send(UpdateRequest(created.RedisId, TestData.TenantId)))
+            .AssertSuccess();
+        var preservedDeployment = await LoadDeploymentAsync(created.RedisId);
+        Assert.Equal(
+            originalDeployment.ResolvedPlacement.Compute.ToBsonDocument(),
+            preservedDeployment.ResolvedPlacement.Compute.ToBsonDocument());
+
+        var explicitAdoption = await Mediator.Send(new UpdateRedisServiceRequest(
+            created.RedisId,
+            new UpdateRedisServiceRequestBody(
+                TestData.ValidRedisSpec(),
+                ImmutableHashSet.Create("updated"),
+                profile.Id),
+            TestData.TenantId));
+        Assert.IsType<SemanticValidationFailure>(explicitAdoption.AssertFailure());
+    }
+
+    [Fact]
     public async Task Update_ReturnsValidationFailure_WhenStorageProfileChanges()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
@@ -125,10 +280,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             Id: created.RedisId,
             Body: new UpdateRedisServiceRequestBody(
                 Spec: new(
-                    Storage: new(5, otherProfileId),
-                    Resources: new(
-                        Requests: new(1, 128),
-                        Limits: new(2, 256))),
+                    Storage: new(5, otherProfileId)),
                 Tags: []),
             TenantId: TestData.TenantId);
 
@@ -426,4 +578,43 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
                 TestData.ValidRedisSpec(),
                 ImmutableHashSet.Create("updated")),
             tenantId);
+
+    private Task<ResourceDeployment> LoadDeploymentAsync(string redisId) =>
+        DbContext.ResourceDeployments
+            .Find(candidate =>
+                candidate.TenantId == TestData.TenantId &&
+                candidate.ResourceType == RedisResourceDeployment.ResourceType.Value &&
+                candidate.ResourceId == redisId)
+            .SingleAsync();
+
+    private async Task<ComputeProfile> ReconfigureDefaultComputeProfileAsync(
+        long requestsCpuMillis,
+        long requestsMemoryMi)
+    {
+        var profiles = DbContext.Database
+            .GetCollection<ComputeProfile>("ComputeProfiles");
+        var current = await profiles
+            .Find(profile => profile.IsDefault)
+            .SingleAsync();
+        var replacement = current.Reconfigure(
+            current.DisplayName,
+            current.Description,
+            ComputeProfileResourceRequirements.Create(
+                ComputeProfileResourceQuantity.Create(
+                    requestsCpuMillis,
+                    requestsMemoryMi),
+                current.Resources.Limits),
+            current.Architecture,
+            current.ExtendedResources,
+            current.AllowedResourceTypes.Select(ResourceTypeId.Create),
+            current.TenantAccess,
+            current.TargetMappings,
+            current.IsEnabled,
+            current.IsDefault,
+            current.UpdatedAtUtc.AddMinutes(1));
+        await profiles.ReplaceOneAsync(
+            profile => profile.Id == current.Id,
+            replacement);
+        return replacement;
+    }
 }

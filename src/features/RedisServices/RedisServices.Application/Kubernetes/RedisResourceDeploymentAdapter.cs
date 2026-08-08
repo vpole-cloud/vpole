@@ -34,7 +34,8 @@ public sealed class RedisResourceDeploymentAdapter(
 
         var inKubernetes = redis.ToKubernetes(
             context.Deployment.ResolvedPlacement.KubernetesNamespace,
-            context.Deployment.ResolvedPlacement.Storage!);
+            context.Deployment.ResolvedPlacement.Storage!,
+            context.Deployment.ResolvedPlacement.Compute);
         var metadata = RedisResourceDeploymentMetadata.Create(
             context.Deployment.Id,
             context.Deployment.RuntimeCellId,

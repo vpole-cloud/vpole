@@ -89,9 +89,6 @@ public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixtu
             new WebServiceSpec(
                 new ImageInfo("registry.example.com", "team/api", "latest", secretName),
                 2,
-                new Resources(
-                    new Resource(1, 128),
-                    new Resource(2, 256)),
                 new WebServiceConfig(
                     withConfiguration
                         ? ImmutableDictionary<string, string>.Empty.Add("ASPNETCORE_ENVIRONMENT", "Development")
