@@ -1,6 +1,7 @@
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.ResultType;
@@ -33,16 +34,10 @@ internal sealed class MongoFinalizeRedisDeletion(
             if (redis is null)
                 return Result.Success();
 
-            var deploymentFilter = Builders<ResourceDeployment>.Filter.And(
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.TenantId,
-                    tenantId),
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.ResourceType,
-                    RedisResourceDeployment.ResourceType.Value),
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.ResourceId,
-                    redisId));
+            var deploymentFilter = ResourceDeploymentFilters.ForResource(
+                tenantId,
+                RedisResourceDeployment.ResourceType,
+                redisId);
             var deployments = await resourceDeployments
                 .Find(session, deploymentFilter)
                 .ToListAsync(transactionCancellationToken);

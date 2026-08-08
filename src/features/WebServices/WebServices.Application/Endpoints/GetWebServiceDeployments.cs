@@ -3,13 +3,11 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Request;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Domain;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -42,43 +40,29 @@ public sealed record GetWebServiceDeploymentsRequest : IMediatorRequest<WebServi
     public int Skip => (EffectivePageNumber - 1) * EffectivePageSize;
 }
 
-public sealed class GetWebServiceDeploymentsHandler(IWebServiceDbContext dbContext)
+public sealed class GetWebServiceDeploymentsHandler(
+    LoadWebServiceReleaseHistory loadWebServiceReleaseHistory)
     : IMediatorHandler<GetWebServiceDeploymentsRequest, WebServiceReleaseHistoryDto>
 {
     public async Task<Result<WebServiceReleaseHistoryDto>> HandleAsync(
         GetWebServiceDeploymentsRequest request,
         CancellationToken cancellationToken = default)
     {
-        var webServiceFilter = Builders<WebService>.Filter.And(
-            Builders<WebService>.Filter.ForTenant(request.TenantId),
-            Builders<WebService>.Filter.Eq(service => service.Id, request.Id));
-
-        var webService = await dbContext.WebServices
-            .Find(webServiceFilter)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (webService is null)
+        var history = await loadWebServiceReleaseHistory(
+            new WebServiceReleaseHistoryQuery(
+                request.TenantId,
+                request.Id,
+                request.EffectivePageNumber,
+                request.EffectivePageSize),
+            cancellationToken);
+        if (history is null)
             return Failures.NotFound("Web service not found.", request.Id);
 
-        var releaseFilter = Builders<WebServiceRelease>.Filter.And(
-            Builders<WebServiceRelease>.Filter.ForTenant(request.TenantId),
-            Builders<WebServiceRelease>.Filter.Eq(release => release.WebServiceId, request.Id));
-
-        var totalCount = await dbContext.WebServiceReleases
-            .CountDocumentsAsync(releaseFilter, cancellationToken: cancellationToken);
-
-        var releases = await dbContext.WebServiceReleases
-            .Find(releaseFilter)
-            .SortByDescending(release => release.Revision)
-            .Skip(request.Skip)
-            .Limit(request.EffectivePageSize)
-            .ToListAsync(cancellationToken);
-
         return new WebServiceReleaseHistoryDto(
-            webService.ActiveRevision,
+            history.WebService.ActiveRevision,
             new PaginatedResponse<WebServiceReleaseDto>(
-                releases.Select(release => release.ToDto()),
-                totalCount,
+                history.Releases.Select(release => release.ToDto()),
+                history.TotalCount,
                 request.EffectivePageNumber,
                 request.EffectivePageSize));
     }

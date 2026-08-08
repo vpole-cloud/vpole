@@ -27,6 +27,7 @@ using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Middleware;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Observability;
 using Pole.Server.Extensions;
 using Pole.ServiceDefaults;
@@ -75,6 +76,7 @@ builder.Services.AddKubernetes(configuration)
     .AddOutboxEventAssemblies(outboxEventAssemblies)
     .AddDatabase()
     .AddRedisPersistence()
+    .AddWebServicePersistence()
     .AddQuotaFramework(
         typeof(RedisQuotaProfile).Assembly,
         typeof(FunctionAppQuotaProfile).Assembly,

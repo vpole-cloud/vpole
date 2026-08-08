@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -7,6 +8,7 @@ using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Consumers;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
@@ -16,16 +18,20 @@ using Xunit;
 namespace Pole.Tests.Integration.WebServices;
 
 public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+    : MediatorIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task SourceBuildDeployment_CreatesTypedProvenanceAndCompletionEvent()
     {
         var webService = TestData.SeedWebService(ObjectId.GenerateNewId().ToString());
-        await Fixture.DbContext.WebServices.InsertOneAsync(webService);
+        await Fixture.Database.WebServices().InsertOneAsync(webService);
         var mutationWriter = new SuccessfulMutationWriter(webService);
         var service = new WebServiceSourceBuildDeploymentService(
-            Fixture.DbContext,
+            Services.GetRequiredService<LoadWebServiceById>(),
+            Services.GetRequiredService<PersistUpdatedWebService>(),
+            Services.GetRequiredService<PersistCurrentWebServiceRelease>(),
+            Services.GetRequiredService<
+                Pole.Database.RunMongoTransaction<SourceBuildDeploymentResult>>(),
             mutationWriter);
         var request = new SourceBuildDeploymentRequest(
             TestData.TenantId,
@@ -45,10 +51,10 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
         var result = await service.DeployAsync(request);
 
         var deployment = result.AssertSuccess();
-        var updated = await Fixture.DbContext.WebServices.Find(item => item.Id == webService.Id).SingleAsync();
+        var updated = await Fixture.Database.WebServices().Find(item => item.Id == webService.Id).SingleAsync();
         Assert.Equal("harbor.test", updated.Spec.Image.Server);
         Assert.Equal("pole-registry-project-1", updated.Spec.Image.SecretName);
-        var release = await Fixture.DbContext.WebServiceReleases
+        var release = await Fixture.Database.WebServiceReleases()
             .Find(item => item.Id == deployment.ReleaseId)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseAction.SourceBuild, release.Action);
@@ -67,11 +73,11 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             EventCore = EventCore.Create(TestData.TenantId)
         };
         var consumer = new WebServiceDeploymentConsumer(
-            Fixture.DbContext,
+            Services.GetRequiredService<CompleteWebServiceDeployment>(),
             TimeProvider.System);
         await consumer.Handle(applied);
 
-        var completedRelease = await Fixture.DbContext.WebServiceReleases
+        var completedRelease = await Fixture.Database.WebServiceReleases()
             .Find(item => item.Id == release.Id)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseOutcome.Succeeded, completedRelease.Outcome);

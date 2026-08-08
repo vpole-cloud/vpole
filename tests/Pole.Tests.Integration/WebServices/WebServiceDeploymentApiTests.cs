@@ -60,10 +60,10 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         var created = await response.Content.ReadFromJsonAsync<CreateWebServiceResponse>(JsonOptions);
         Assert.NotNull(created);
 
-        var webService = await Fixture.DbContext.WebServices
+        var webService = await Fixture.Database.WebServices()
             .Find(service => service.Id == created.WebServiceId)
             .SingleAsync();
-        var release = await Fixture.DbContext.WebServiceReleases
+        var release = await Fixture.Database.WebServiceReleases()
             .Find(item => item.WebServiceId == created.WebServiceId && item.Revision == 1)
             .SingleAsync();
 
@@ -101,12 +101,12 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.True(
             response.StatusCode == HttpStatusCode.Accepted,
             await response.Content.ReadAsStringAsync());
-        var saved = await Fixture.DbContext.WebServices
+        var saved = await Fixture.Database.WebServices()
             .Find(service => service.Id == webService.Id)
             .SingleAsync();
         Assert.Equal(2, saved.ActiveRevision);
 
-        var release = await Fixture.DbContext.WebServiceReleases
+        var release = await Fixture.Database.WebServiceReleases()
             .Find(r => r.WebServiceId == webService.Id && r.Revision == 2)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseAction.Redeploy, release.Action);
@@ -131,7 +131,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal("github-actions", createdToken.Token.Name);
         Assert.Contains(WebServiceDeploymentTokenOperations.UpdateImageTag, createdToken.Token.AllowedOperations);
 
-        var savedToken = await Fixture.DbContext.WebServiceDeploymentTokens
+        var savedToken = await Fixture.Database.WebServiceDeploymentTokens()
             .Find(token => token.Id == createdToken.Token.Id)
             .SingleAsync();
         Assert.Equal(WebServiceDeploymentTokenFactory.Hash(createdToken.RawToken), savedToken.TokenHash);
@@ -161,13 +161,13 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(2, response.Revision);
         Assert.Equal("2026.07.09-abc1234", response.Tag);
 
-        var saved = await Fixture.DbContext.WebServices
+        var saved = await Fixture.Database.WebServices()
             .Find(service => service.Id == webService.Id)
             .SingleAsync();
         Assert.Equal(2, saved.ActiveRevision);
         Assert.Equal("2026.07.09-abc1234", saved.Spec.Image.Tag);
 
-        var release = await Fixture.DbContext.WebServiceReleases
+        var release = await Fixture.Database.WebServiceReleases()
             .Find(r => r.WebServiceId == webService.Id && r.Revision == 2)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseAction.ImageTagUpdate, release.Action);
@@ -183,7 +183,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(createdToken.Token.Id, provenance.DeploymentTokenId);
         Assert.Equal("github-actions", provenance.DeploymentTokenName);
 
-        var usedToken = await Fixture.DbContext.WebServiceDeploymentTokens
+        var usedToken = await Fixture.Database.WebServiceDeploymentTokens()
             .Find(token => token.Id == createdToken.Token.Id)
             .SingleAsync();
         Assert.NotNull(usedToken.LastUsedAtUtc);
@@ -302,7 +302,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             new ResourceDeploymentFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 createdAtUtc.AddSeconds(1)));
-        await Fixture.DbContext.WebServices.InsertOneAsync(webService);
+        await Fixture.Database.WebServices().InsertOneAsync(webService);
         await Fixture.DbContext.RuntimeCells.InsertOneAsync(runtimeCell);
         await Fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
         return webService;

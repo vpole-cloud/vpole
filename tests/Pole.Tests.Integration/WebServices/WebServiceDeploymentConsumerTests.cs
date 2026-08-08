@@ -1,9 +1,11 @@
 using MongoDB.Driver;
+using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Consumers;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -18,12 +20,12 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
     {
         var release = await InsertPendingReleaseAsync();
         var consumer = new WebServiceDeploymentConsumer(
-            DbContext,
+            Services.GetRequiredService<CompleteWebServiceDeployment>(),
             TimeProvider.System);
 
         await consumer.Handle(CreateDeploymentEvent(release));
 
-        var saved = await DbContext.WebServiceReleases
+        var saved = await Fixture.Database.WebServiceReleases()
             .Find(r => r.Id == release.Id)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseOutcome.Succeeded, saved.Outcome);
@@ -36,7 +38,7 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
     {
         var release = await InsertPendingReleaseAsync();
         var consumer = new WebServiceDeploymentConsumer(
-            DbContext,
+            Services.GetRequiredService<CompleteWebServiceDeployment>(),
             TimeProvider.System);
         var applied = CreateDeploymentEvent(release) with
         {
@@ -45,7 +47,7 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
 
         await consumer.Handle(applied);
 
-        var saved = await DbContext.WebServiceReleases
+        var saved = await Fixture.Database.WebServiceReleases()
             .Find(r => r.Id == release.Id)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseOutcome.Pending, saved.Outcome);
@@ -61,7 +63,7 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
     {
         var release = await InsertPendingReleaseAsync();
         var consumer = new WebServiceDeploymentConsumer(
-            DbContext,
+            Services.GetRequiredService<CompleteWebServiceDeployment>(),
             TimeProvider.System);
         var deployment = CreateDeploymentEvent(release);
 
@@ -79,12 +81,12 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
     {
         var release = await InsertPendingReleaseAsync();
         var consumer = new WebServiceDeploymentConsumer(
-            DbContext,
+            Services.GetRequiredService<CompleteWebServiceDeployment>(),
             TimeProvider.System);
 
         await consumer.Handle(CreateFailureEvent(release, retryable: false));
 
-        var saved = await DbContext.WebServiceReleases
+        var saved = await Fixture.Database.WebServiceReleases()
             .Find(item => item.Id == release.Id)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseOutcome.Failed, saved.Outcome);
@@ -104,12 +106,12 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
     {
         var release = await InsertPendingReleaseAsync();
         var consumer = new WebServiceDeploymentConsumer(
-            DbContext,
+            Services.GetRequiredService<CompleteWebServiceDeployment>(),
             TimeProvider.System);
 
         await consumer.Handle(CreateFailureEvent(release, retryable: true));
 
-        var saved = await DbContext.WebServiceReleases
+        var saved = await Fixture.Database.WebServiceReleases()
             .Find(item => item.Id == release.Id)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseOutcome.Pending, saved.Outcome);
@@ -133,7 +135,7 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
             "trace-1",
             "correlation-1");
 
-        await DbContext.WebServiceReleases.InsertOneAsync(release);
+        await Fixture.Database.WebServiceReleases().InsertOneAsync(release);
         return release;
     }
 

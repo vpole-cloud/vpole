@@ -1,17 +1,13 @@
-using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Request;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Domain;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -40,7 +36,7 @@ public static class GetWebServices
 }
 
 public sealed class GetWebServicesHandler(
-    IWebServiceDbContext dbContext,
+    LoadWebServicePage loadWebServicePage,
     IResourceDeploymentQueryService deploymentQuery)
     : IMediatorHandler<GetWebServicesRequest, PaginatedResponse<WebServiceDto>>
 {
@@ -48,35 +44,24 @@ public sealed class GetWebServicesHandler(
         GetWebServicesRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<WebService>.Filter.ForTenant(request.TenantId);
-        
-        if (request.ResourceGroupId is not null)
-        {
-            filter &= Builders<WebService>.Filter.Eq(ws => ws.ResourceGroupId, request.ResourceGroupId);
-        }
-        if (!string.IsNullOrEmpty(request.Search))
-        {
-            var namePattern = new BsonRegularExpression($".*{Regex.Escape(request.Search)}.*", "i");
-            var nameFilter = Builders<WebService>.Filter.Regex(ws => ws.Name, namePattern);
-            filter &= ObjectId.TryParse(request.Search, out _)
-                ? Builders<WebService>.Filter.Or(nameFilter, Builders<WebService>.Filter.Eq(ws => ws.Id, request.Search))
-                : nameFilter;
-        }
-        
-        var totalCount = await dbContext.WebServices.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
-        var webServices = await dbContext.WebServices.Find(filter)
-            .ApplyPagination(request)
-            .ToListAsync(cancellationToken);
+        var page = await loadWebServicePage(
+            new WebServiceListQuery(
+                request.TenantId,
+                request.Search,
+                request.ResourceGroupId,
+                request.PageNumber,
+                request.PageSize),
+            cancellationToken);
         var placements = await deploymentQuery.GetManyAsync(
             request.TenantId,
             WebServiceResourceDeployment.ResourceType,
-            webServices.Select(service => service.Id).ToArray(),
+            page.Items.Select(service => service.Id).ToArray(),
             cancellationToken);
 
         return new PaginatedResponse<WebServiceDto>(
-            Items: webServices.Select(service => service.ToDto(
+            Items: page.Items.Select(service => service.ToDto(
                 placements.GetValueOrDefault(service.Id))),
-            TotalCount: totalCount,
+            TotalCount: page.TotalCount,
             PageNumber: request.PageNumber,
             PageSize: request.PageSize);
     }

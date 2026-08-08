@@ -27,8 +27,6 @@ using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Domain;
-using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Domain;
 using PostgresCluster = Pole.Features.Postgres.Domain.PostgresCluster;
 
 namespace Pole.Server.Database;
@@ -38,7 +36,6 @@ public class MongoDbContext(
     IMongoDatabase database
     ) : 
     IResourceGroupDbContext,
-    IWebServiceDbContext,
     ISearchDbContext,
     IPostgresDbContext,
     IQuotaDbContext,
@@ -55,9 +52,6 @@ public class MongoDbContext(
 {
     public IMongoDatabase Database { get; } = database;
     public IMongoClient Client { get; } = client;
-    public IMongoCollection<WebService> WebServices { get; } = database.GetCollection<WebService>("WebServices");
-    public IMongoCollection<WebServiceRelease> WebServiceReleases { get; } = database.GetCollection<WebServiceRelease>("WebServiceReleases");
-    public IMongoCollection<WebServiceDeploymentToken> WebServiceDeploymentTokens { get; } = database.GetCollection<WebServiceDeploymentToken>("WebServiceDeploymentTokens");
     public IMongoCollection<SearchDocument> SearchDocuments { get; } = database.GetCollection<SearchDocument>("SearchDocuments");
     public IMongoCollection<ResourceGroup> ResourceGroups { get; } = database.GetCollection<ResourceGroup>("ResourceGroups");
     public IMongoCollection<IsolationScope> IsolationScopes { get; } = database.GetCollection<IsolationScope>("IsolationScopes");

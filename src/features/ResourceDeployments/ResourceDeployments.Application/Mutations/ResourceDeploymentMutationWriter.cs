@@ -3,6 +3,7 @@ using Pole.Database;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
 
@@ -112,10 +113,12 @@ public sealed class ResourceDeploymentMutationWriter(
             throw new ArgumentException("Resource type is required.", nameof(command));
 
         var deployments = await dbContext.ResourceDeployments
-            .Find(session, deployment =>
-                deployment.TenantId == command.TenantId &&
-                deployment.ResourceType == command.ResourceType.Value &&
-                deployment.ResourceId == command.ResourceId)
+            .Find(
+                session,
+                ResourceDeploymentFilters.ForResource(
+                    command.TenantId,
+                    command.ResourceType,
+                    command.ResourceId))
             .SortBy(deployment => deployment.Id)
             .Limit(2)
             .ToListAsync(cancellationToken);
@@ -139,22 +142,7 @@ public sealed class ResourceDeploymentMutationWriter(
     {
         var replacement = await dbContext.ResourceDeployments.ReplaceOneAsync(
             session,
-            Builders<ResourceDeployment>.Filter.And(
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.Id,
-                    current.Id),
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.TenantId,
-                    command.TenantId),
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.ResourceType,
-                    command.ResourceType.Value),
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.ResourceId,
-                    command.ResourceId),
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.Revision,
-                    current.Revision)),
+            ResourceDeploymentFilters.AtRevision(current),
             updated,
             cancellationToken: cancellationToken);
         if (replacement.ModifiedCount != 1)

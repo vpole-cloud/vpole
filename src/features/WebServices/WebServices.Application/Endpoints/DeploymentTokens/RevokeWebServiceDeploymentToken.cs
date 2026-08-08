@@ -3,11 +3,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -23,29 +21,23 @@ public sealed record RevokeWebServiceDeploymentTokenRequest(
 
 public sealed record RevokeWebServiceDeploymentTokenResponse(string Id);
 
-public sealed class RevokeWebServiceDeploymentTokenHandler(IWebServiceDbContext dbContext)
+public sealed class RevokeWebServiceDeploymentTokenHandler(
+    RevokeWebServiceDeploymentToken revokeToken)
     : IMediatorHandler<RevokeWebServiceDeploymentTokenRequest, RevokeWebServiceDeploymentTokenResponse>
 {
     public async Task<Result<RevokeWebServiceDeploymentTokenResponse>> HandleAsync(
         RevokeWebServiceDeploymentTokenRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<WebServiceDeploymentToken>.Filter.And(
-            Builders<WebServiceDeploymentToken>.Filter.ForTenant(request.TenantId),
-            Builders<WebServiceDeploymentToken>.Filter.Eq(token => token.WebServiceId, request.Id),
-            Builders<WebServiceDeploymentToken>.Filter.Eq(token => token.Id, request.TokenId));
-
-        var update = Builders<WebServiceDeploymentToken>.Update
-            .Set(token => token.RevokedAtUtc, DateTime.UtcNow)
-            .Set(token => token.RevokedByUserId, request.ActorUserId.Value);
-
-        var result = await dbContext.WebServiceDeploymentTokens.UpdateOneAsync(
-            filter,
-            update,
-            cancellationToken: cancellationToken);
-
-        return result.MatchedCount == 0
-            ? Failures.NotFound("Deployment token not found.", request.TokenId)
+        var result = await revokeToken(
+            request.TenantId,
+            request.Id,
+            request.TokenId,
+            request.ActorUserId.Value,
+            DateTime.UtcNow,
+            cancellationToken);
+        return result is Failure failure
+            ? failure
             : new RevokeWebServiceDeploymentTokenResponse(request.TokenId);
     }
 }

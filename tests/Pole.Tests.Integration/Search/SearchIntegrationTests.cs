@@ -264,7 +264,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
 
     private async Task IndexWebServiceCreatedAsync(string webServiceId)
     {
-        var webService = await DbContext.WebServices.Find(service => service.Id == webServiceId).FirstAsync();
+        var webService = await Fixture.Database.WebServices().Find(service => service.Id == webServiceId).FirstAsync();
         var consumer = new AddWebServiceToSearchOnWebServiceCreatedConsumer(SearchService);
         await consumer.Handle(new WebServiceCreateEvent(
             webService.Id,

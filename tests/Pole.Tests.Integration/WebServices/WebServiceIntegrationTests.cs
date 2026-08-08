@@ -30,7 +30,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Null(error);
         Assert.NotNull(response);
 
-        var savedWebService = await DbContext.WebServices.Find(service => service.Id == response.WebServiceId).FirstOrDefaultAsync();
+        var savedWebService = await Fixture.Database.WebServices().Find(service => service.Id == response.WebServiceId).FirstOrDefaultAsync();
         Assert.NotNull(savedWebService);
 
         var savedDns = await DbContext.DnsRecords.Find(record => record.Resource.Id == response.WebServiceId).FirstOrDefaultAsync();
@@ -46,7 +46,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
             "resource-deployment-reconciliation-requested"));
 
-        var release = await DbContext.WebServiceReleases
+        var release = await Fixture.Database.WebServiceReleases()
             .Find(r => r.WebServiceId == response.WebServiceId && r.TenantId == TestData.TenantId)
             .SingleAsync();
         Assert.Equal(1, release.Revision);
@@ -92,13 +92,13 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Null(error);
         Assert.Equal(created.WebServiceId, response.Id);
 
-        var saved = await DbContext.WebServices
+        var saved = await Fixture.Database.WebServices()
             .Find(service => service.Id == created.WebServiceId)
             .SingleAsync();
         Assert.Equal(2, saved.ActiveRevision);
         Assert.Equal("1.28", saved.Spec.Image.Tag);
 
-        var release = await DbContext.WebServiceReleases
+        var release = await Fixture.Database.WebServiceReleases()
             .Find(r => r.WebServiceId == created.WebServiceId && r.Revision == 2)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseAction.Update, release.Action);
@@ -139,12 +139,12 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Null(error);
         Assert.Equal(2, response.Revision);
 
-        var saved = await DbContext.WebServices
+        var saved = await Fixture.Database.WebServices()
             .Find(service => service.Id == created.WebServiceId)
             .SingleAsync();
         Assert.Equal(2, saved.ActiveRevision);
 
-        var release = await DbContext.WebServiceReleases
+        var release = await Fixture.Database.WebServiceReleases()
             .Find(r => r.Id == response.ReleaseId)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseAction.Redeploy, release.Action);
@@ -162,7 +162,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id));
         Assert.True(createResult.TryGetValue(out var created, out _));
 
-        await DbContext.WebServiceReleases.UpdateOneAsync(
+        await Fixture.Database.WebServiceReleases().UpdateOneAsync(
             r => r.WebServiceId == created.WebServiceId && r.Revision == 1,
             Builders<WebServiceRelease>.Update
                 .Set(r => r.Outcome, WebServiceReleaseOutcome.Succeeded)
@@ -190,13 +190,13 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Null(error);
         Assert.Equal(3, rollback.Revision);
 
-        var saved = await DbContext.WebServices
+        var saved = await Fixture.Database.WebServices()
             .Find(service => service.Id == created.WebServiceId)
             .SingleAsync();
         Assert.Equal(3, saved.ActiveRevision);
         Assert.Equal("1.27", saved.Spec.Image.Tag);
 
-        var release = await DbContext.WebServiceReleases
+        var release = await Fixture.Database.WebServiceReleases()
             .Find(r => r.Id == rollback.ReleaseId)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseAction.Rollback, release.Action);
@@ -238,7 +238,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             Outcome = WebServiceReleaseOutcome.Succeeded,
             CompletedAtUtc = DateTime.UtcNow
         };
-        await DbContext.WebServiceReleases.InsertOneAsync(foreignRelease);
+        await Fixture.Database.WebServiceReleases().InsertOneAsync(foreignRelease);
 
         var rollbackResult = await Mediator.Send(new RollbackWebServiceRequest(
             created.WebServiceId,
@@ -325,7 +325,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.NotNull(response);
         Assert.Equal(created.WebServiceId, response.Id);
 
-        var deletingService = await DbContext.WebServices
+        var deletingService = await Fixture.Database.WebServices()
             .Find(service => service.Id == created.WebServiceId)
             .SingleAsync();
         var retainedDns = await DbContext.DnsRecords.Find(record => record.Resource.Id == created.WebServiceId).FirstOrDefaultAsync();
