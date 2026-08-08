@@ -3,11 +3,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -19,29 +18,26 @@ public sealed record GetWebServiceDeploymentTokensRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
 ) : IMediatorRequest<IReadOnlyList<WebServiceDeploymentTokenDto>>, ITenantReadOperation;
 
-public sealed class GetWebServiceDeploymentTokensHandler(IWebServiceDbContext dbContext)
+public sealed class GetWebServiceDeploymentTokensHandler(
+    WebServiceExists webServiceExists,
+    LoadWebServiceDeploymentTokens loadTokens)
     : IMediatorHandler<GetWebServiceDeploymentTokensRequest, IReadOnlyList<WebServiceDeploymentTokenDto>>
 {
     public async Task<Result<IReadOnlyList<WebServiceDeploymentTokenDto>>> HandleAsync(
         GetWebServiceDeploymentTokensRequest request,
         CancellationToken cancellationToken = default)
     {
-        var webServiceExists = await WebServiceDeploymentTokenAccess.WebServiceExistsAsync(
-            dbContext,
+        var exists = await webServiceExists(
             request.TenantId,
             request.Id,
             cancellationToken);
-        if (!webServiceExists)
+        if (!exists)
             return Failures.NotFound("Web service not found.", request.Id);
 
-        var filter = Builders<WebServiceDeploymentToken>.Filter.And(
-            Builders<WebServiceDeploymentToken>.Filter.ForTenant(request.TenantId),
-            Builders<WebServiceDeploymentToken>.Filter.Eq(token => token.WebServiceId, request.Id));
-
-        var tokens = await dbContext.WebServiceDeploymentTokens
-            .Find(filter)
-            .SortByDescending(token => token.CreatedAtUtc)
-            .ToListAsync(cancellationToken);
+        var tokens = await loadTokens(
+            request.TenantId,
+            request.Id,
+            cancellationToken);
 
         return tokens.Select(token => token.ToDto()).ToArray();
     }

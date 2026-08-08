@@ -3,18 +3,15 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Events;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.Quotas.Contracts;
 using Pole.Mediator;
@@ -40,7 +37,8 @@ public static class DeleteWebService
 }
 
 public sealed class DeleteWebServiceHandler(
-    IWebServiceDbContext dbContext,
+    LoadWebServiceById loadWebServiceById,
+    BeginWebServiceDeletion beginWebServiceDeletion,
     ISourceBuildReferenceLookup sourceBuildReferences,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     IResourceDeploymentMutationWriter deploymentWriter,
@@ -58,12 +56,10 @@ public sealed class DeleteWebServiceHandler(
         if (configurationGuard is Failure failure)
             return failure;
 
-        var filter = Builders<WebService>.Filter.And(
-            Builders<WebService>.Filter.ForTenant(request.TenantId),
-            Builders<WebService>.Filter.Eq(ws => ws.Id, request.Id));
-        var webService = await dbContext.WebServices
-            .Find(filter)
-            .FirstOrDefaultAsync(cancellationToken);
+        var webService = await loadWebServiceById(
+            request.TenantId,
+            request.Id,
+            cancellationToken);
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
         if (webService.Lifecycle is DeletingWebServiceLifecycle)
@@ -87,20 +83,13 @@ public sealed class DeleteWebServiceHandler(
             {
                 var deleting = webService.BeginDeletion(
                     timeProvider.GetUtcNow().UtcDateTime);
-                var replace = await dbContext.WebServices.ReplaceOneAsync(
+                var replace = await beginWebServiceDeletion(
                     session,
-                    Builders<WebService>.Filter.And(
-                        filter,
-                        Builders<WebService>.Filter.Eq(
-                            item => item.Revision,
-                            webService.Revision)),
+                    webService,
                     deleting,
-                    cancellationToken: transactionCancellationToken);
-                if (replace.ModifiedCount != 1)
-                {
-                    return Failures.Conflict(
-                        "The web service changed while deletion was being accepted.");
-                }
+                    transactionCancellationToken);
+                if (replace is not ISuccess)
+                    return (Failure)replace;
 
                 var deploymentResult = await deploymentWriter.RequestDeletionAsync(
                     new ResourceDeploymentMutationCommand(
@@ -125,8 +114,7 @@ public sealed class DeleteWebServiceHandler(
 }
 
 public sealed class FinalizeWebServiceDeletionConsumer(
-    IWebServiceDbContext dbContext,
-    IResourceDeploymentDbContext deploymentDbContext)
+    FinalizeWebServiceDeletion finalizeWebServiceDeletion)
     : IConsumer<ResourceDeploymentDeletedEvent>
 {
     public Task Consume(ConsumeContext<ResourceDeploymentDeletedEvent> context)
@@ -140,58 +128,10 @@ public sealed class FinalizeWebServiceDeletionConsumer(
             return Task.CompletedTask;
         }
 
-        return dbContext.RunInTransactionAsync(async (session, ct) =>
-        {
-            var webServiceFilter = Builders<WebService>.Filter.And(
-                Builders<WebService>.Filter.ForTenant(message.EventCore.TenantId),
-                Builders<WebService>.Filter.Eq(
-                    service => service.Id,
-                    message.ResourceId),
-                Builders<WebService>.Filter.OfType<
-                    WebServiceLifecycle,
-                    DeletingWebServiceLifecycle>(
-                    service => service.Lifecycle));
-            var webService = await dbContext.WebServices
-                .Find(session, webServiceFilter)
-                .FirstOrDefaultAsync(ct);
-            if (webService is null)
-                return Result.Success();
-
-            var deployments = await deploymentDbContext.ResourceDeployments
-                .Find(session, deployment =>
-                    deployment.TenantId == message.EventCore.TenantId &&
-                    deployment.ResourceType ==
-                        WebServiceResourceDeployment.ResourceType.Value &&
-                    deployment.ResourceId == message.ResourceId)
-                .ToListAsync(ct);
-            if (deployments.Count == 0 ||
-                deployments.Any(deployment =>
-                    deployment.State is not DeletedResourceDeploymentState))
-            {
-                return Result.Success();
-            }
-
-            var deleted = await dbContext.WebServices.DeleteOneAsync(
-                session,
-                filter: webServiceFilter,
-                cancellationToken: ct);
-            if (deleted.DeletedCount != 1)
-                return Result.Success();
-
-            await deploymentDbContext.ResourceDeployments.DeleteManyAsync(
-                session,
-                filter: deployment =>
-                    deployment.TenantId == message.EventCore.TenantId &&
-                    deployment.ResourceType ==
-                        WebServiceResourceDeployment.ResourceType.Value &&
-                    deployment.ResourceId == message.ResourceId,
-                cancellationToken: ct);
-            await dbContext.StoreEventAsync(
-                webService.ToDeleteEvent(),
-                session,
-                ct);
-            return Result.Success();
-        }, cancellationToken: context.CancellationToken);
+        return finalizeWebServiceDeletion(
+            message.EventCore.TenantId,
+            message.ResourceId,
+            context.CancellationToken);
     }
 }
 

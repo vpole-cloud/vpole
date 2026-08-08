@@ -7,11 +7,26 @@ public delegate Task<Result> RunMongoTransaction(
     Func<IClientSessionHandle, CancellationToken, Task<Result>> operation,
     CancellationToken cancellationToken = default);
 
+public delegate Task<Result<T>> RunMongoTransaction<T>(
+    Func<IClientSessionHandle, CancellationToken, Task<Result<T>>> operation,
+    CancellationToken cancellationToken = default)
+    where T : notnull;
+
 public sealed class MongoRunTransaction(IMongoClient client)
 {
     public Task<Result> InvokeAsync(
         Func<IClientSessionHandle, CancellationToken, Task<Result>> operation,
         CancellationToken cancellationToken = default) =>
+        MongoTransactionPersistence.RunAsync(
+            client,
+            operation,
+            transactionOptions: null,
+            cancellationToken);
+
+    public Task<Result<T>> InvokeAsync<T>(
+        Func<IClientSessionHandle, CancellationToken, Task<Result<T>>> operation,
+        CancellationToken cancellationToken = default)
+        where T : notnull =>
         MongoTransactionPersistence.RunAsync(
             client,
             operation,

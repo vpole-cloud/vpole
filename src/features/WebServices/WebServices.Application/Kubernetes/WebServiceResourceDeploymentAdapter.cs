@@ -1,90 +1,17 @@
-using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
 
 namespace Pole.Features.WebServices.Application.Kubernetes;
 
-public interface IWebServiceResourceDeploymentReader
-{
-    Task<WebServiceResourceDeploymentSnapshot?> FindForApplyAsync(
-        string tenantId,
-        string webServiceId,
-        long deploymentGeneration,
-        CancellationToken cancellationToken = default);
-
-    Task<WebService?> FindForDeleteAsync(
-        string tenantId,
-        string webServiceId,
-        CancellationToken cancellationToken = default);
-}
-
-public sealed record WebServiceResourceDeploymentSnapshot(
-    WebService WebService,
-    string ReleaseId,
-    int Revision,
-    DateTime RequestedAtUtc);
-
-public sealed class MongoWebServiceResourceDeploymentReader(
-    IWebServiceDbContext dbContext) : IWebServiceResourceDeploymentReader
-{
-    public async Task<WebServiceResourceDeploymentSnapshot?> FindForApplyAsync(
-        string tenantId,
-        string webServiceId,
-        long deploymentGeneration,
-        CancellationToken cancellationToken = default)
-    {
-        var webService = await FindForDeleteAsync(
-            tenantId,
-            webServiceId,
-            cancellationToken);
-        if (webService is null)
-            return null;
-
-        var release = await dbContext.WebServiceReleases
-            .Find(Builders<WebServiceRelease>.Filter.And(
-                Builders<WebServiceRelease>.Filter.ForTenant(tenantId),
-                Builders<WebServiceRelease>.Filter.Eq(
-                    item => item.WebServiceId,
-                    webServiceId),
-                Builders<WebServiceRelease>.Filter.Eq(
-                    item => item.DeploymentGeneration,
-                    deploymentGeneration)))
-            .FirstOrDefaultAsync(cancellationToken);
-        if (release is null)
-            return null;
-
-        return new WebServiceResourceDeploymentSnapshot(
-            webService with
-            {
-                Spec = release.Spec.ToDomain(),
-                ActiveRevision = release.Revision
-            },
-            release.Id,
-            release.Revision,
-            release.RequestedAtUtc);
-    }
-
-    public async Task<WebService?> FindForDeleteAsync(
-        string tenantId,
-        string webServiceId,
-        CancellationToken cancellationToken = default) =>
-        await dbContext.WebServices
-            .Find(Builders<WebService>.Filter.And(
-                Builders<WebService>.Filter.ForTenant(tenantId),
-                Builders<WebService>.Filter.Eq(
-                    webService => webService.Id,
-                    webServiceId)))
-            .FirstOrDefaultAsync(cancellationToken);
-}
-
 public sealed class WebServiceResourceDeploymentAdapter(
-    IWebServiceResourceDeploymentReader reader,
+    LoadWebServiceDeploymentSnapshot loadDeploymentSnapshot,
+    LoadWebServiceById loadWebServiceById,
     IRuntimeRegistryAccessProvider registryAccessProvider)
     : IResourceDeploymentAdapter
 {
@@ -96,7 +23,7 @@ public sealed class WebServiceResourceDeploymentAdapter(
         if (placementFailure is not null)
             return placementFailure;
 
-        var desired = await reader.FindForApplyAsync(
+        var desired = await loadDeploymentSnapshot(
             context.Deployment.TenantId,
             context.Deployment.ResourceId,
             context.Deployment.DesiredGeneration,
@@ -163,7 +90,7 @@ public sealed class WebServiceResourceDeploymentAdapter(
         if (placementFailure is not null)
             return placementFailure;
 
-        var webService = await reader.FindForDeleteAsync(
+        var webService = await loadWebServiceById(
             context.Deployment.TenantId,
             context.Deployment.ResourceId,
             cancellationToken);

@@ -24,6 +24,7 @@ using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Mediator;
 using Pole.Server.Database;
 using Pole.Server.Extensions;
@@ -58,6 +59,7 @@ public static class TestServiceProviderFactory
         services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
         services.AddMongoDbContextInterfaces();
         services.AddRedisPersistence();
+        services.AddWebServicePersistence();
         services.AddScoped<IFunctionRevisionLifecycleService, FunctionRevisionLifecycleService>();
         services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         services.AddSingleton(new PostgresSettings

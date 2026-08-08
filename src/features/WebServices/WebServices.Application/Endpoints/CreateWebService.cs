@@ -4,12 +4,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.DnsRecords.Contracts;
-using Pole.Features.DnsRecords.Events;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceDeployments.Application.Placement;
@@ -19,6 +16,7 @@ using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 using Pole.Mediator;
@@ -47,7 +45,8 @@ public static class CreateWebService
 }
 
 public sealed class CreateWebServiceHandler(
-    IWebServiceDbContext dbContext,
+    PersistCreatedWebService persistCreatedWebService,
+    PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     IDomainNameReservationService domainNameReservationService,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     IResourceDeploymentPlacementResolver placementResolver,
@@ -92,10 +91,10 @@ public sealed class CreateWebServiceHandler(
                     dnsRecord: preparation.DnsRecord,
                     options: createWebServiceOptions);
                 var deploymentEventCore = EventCore.Create(request.TenantId);
-                await dbContext.WebServices.InsertOneAsync(
+                await persistCreatedWebService(
                     session,
                     newWebService,
-                    cancellationToken: transactionCancellationToken);
+                    transactionCancellationToken);
                 var deploymentResult = await deploymentWriter.CreateAsync(
                     new CreateResourceDeploymentCommand(
                         deploymentId,
@@ -128,21 +127,9 @@ public sealed class CreateWebServiceHandler(
                     deploymentEventCore.CorrelationId,
                     deploymentEventCore.OccurredOn,
                     deploymentGeneration: deployment.DesiredGeneration);
-                await WebServiceReleasePersistence.InsertCurrentAsync(
-                    dbContext,
+                await persistCurrentWebServiceRelease(
                     session,
                     release,
-                    transactionCancellationToken);
-
-                await dbContext.StoreEventAsync(
-                    [
-                        newWebService.ToCreateEvent(),
-                        new CommitDomainNameEvent(
-                            DnsRecordId: preparation.DnsRecord.Id,
-                            ResourceId: newWebService.Id,
-                            EventCore: EventCore.Create(request.TenantId))
-                    ],
-                    session,
                     transactionCancellationToken);
 
                 return new CreateWebServiceResponse(

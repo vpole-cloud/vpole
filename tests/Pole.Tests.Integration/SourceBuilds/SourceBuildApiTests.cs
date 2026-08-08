@@ -21,7 +21,7 @@ public sealed class SourceBuildApiTests(MongoReplicaSetFixture fixture)
     {
         var webService = TestData.SeedWebService(ObjectId.GenerateNewId().ToString());
         var sourceRepository = CreateSourceRepository(TestData.TenantId);
-        await Fixture.DbContext.WebServices.InsertOneAsync(webService);
+        await Fixture.Database.WebServices().InsertOneAsync(webService);
         await Fixture.DbContext.SourceRepositories.InsertOneAsync(sourceRepository);
 
         var createResponse = await Client.PostAsJsonAsync(
@@ -92,7 +92,7 @@ public sealed class SourceBuildApiTests(MongoReplicaSetFixture fixture)
         var webService = TestData.SeedWebService(ObjectId.GenerateNewId().ToString());
         var sourceRepository = CreateSourceRepository(TestData.TenantId);
         var otherTenantSource = CreateSourceRepository("507f1f77bcf86cd799439099");
-        await Fixture.DbContext.WebServices.InsertOneAsync(webService);
+        await Fixture.Database.WebServices().InsertOneAsync(webService);
         await Fixture.DbContext.SourceRepositories.InsertManyAsync([sourceRepository, otherTenantSource]);
 
         var crossTenant = await Client.PostAsJsonAsync(
@@ -138,7 +138,7 @@ public sealed class SourceBuildApiTests(MongoReplicaSetFixture fixture)
     {
         var webService = TestData.SeedWebService(ObjectId.GenerateNewId().ToString());
         var sourceRepository = CreateSourceRepository(TestData.TenantId);
-        await Fixture.DbContext.WebServices.InsertOneAsync(webService);
+        await Fixture.Database.WebServices().InsertOneAsync(webService);
         await Fixture.DbContext.SourceRepositories.InsertOneAsync(sourceRepository);
         var createdResponse = await Client.PostAsJsonAsync(
             "/api/v1/source-build-configurations",

@@ -43,6 +43,7 @@ using Pole.Features.StorageProfiles.Application.Migrations;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Middleware;
 using Pole.Observability;
@@ -136,6 +137,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
         builder.Services.AddMongoDbContextInterfaces();
         builder.Services.AddRedisPersistence();
+        builder.Services.AddWebServicePersistence();
         builder.Services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         builder.Services.AddSingleton(new PostgresSettings
         {

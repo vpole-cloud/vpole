@@ -11,6 +11,7 @@ using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Kubernetes;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
 using Xunit;
@@ -29,7 +30,8 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
             handler);
         var subject = new WebServiceResourceDeploymentAdapter(
-            reader,
+            reader.LoadSnapshot,
+            reader.LoadById,
             new UnexpectedRegistryAccessProvider());
         var context = CreateContext(kubernetes, includeIngress: true);
 
@@ -106,7 +108,8 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
             handler);
         var subject = new WebServiceResourceDeploymentAdapter(
-            reader,
+            reader.LoadSnapshot,
+            reader.LoadById,
             new UnexpectedRegistryAccessProvider());
 
         var result = await subject.ApplyAsync(
@@ -129,7 +132,8 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
             handler);
         var subject = new WebServiceResourceDeploymentAdapter(
-            reader,
+            reader.LoadSnapshot,
+            reader.LoadById,
             new UnexpectedRegistryAccessProvider());
 
         var result = await subject.DeleteAsync(
@@ -221,28 +225,27 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             });
 
     private sealed class RecordingReader(WebService webService)
-        : IWebServiceResourceDeploymentReader
     {
         public List<(string TenantId, string ResourceId, long Generation)>
             ApplyRequests { get; } = [];
         public List<(string TenantId, string ResourceId)> DeleteRequests { get; } = [];
 
-        public Task<WebServiceResourceDeploymentSnapshot?> FindForApplyAsync(
+        public Task<WebServiceDeploymentPersistenceSnapshot?> LoadSnapshot(
             string tenantId,
             string webServiceId,
             long deploymentGeneration,
             CancellationToken cancellationToken = default)
         {
             ApplyRequests.Add((tenantId, webServiceId, deploymentGeneration));
-            return Task.FromResult<WebServiceResourceDeploymentSnapshot?>(
-                new WebServiceResourceDeploymentSnapshot(
+            return Task.FromResult<WebServiceDeploymentPersistenceSnapshot?>(
+                new WebServiceDeploymentPersistenceSnapshot(
                     webService,
                     ReleaseId,
                     webService.ActiveRevision,
                     NowUtc));
         }
 
-        public Task<WebService?> FindForDeleteAsync(
+        public Task<WebService?> LoadById(
             string tenantId,
             string webServiceId,
             CancellationToken cancellationToken = default)

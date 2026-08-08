@@ -4,9 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Quotas.Contracts;
@@ -14,6 +12,7 @@ using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 using Pole.Mediator;
@@ -58,7 +57,9 @@ public sealed record UpdateWebServiceResponse(
     PlacementSummaryDto Placement);
 
 public sealed class UpdateWebServiceHandler(
-    IWebServiceDbContext dbContext,
+    LoadWebServiceById loadWebServiceById,
+    PersistUpdatedWebService persistUpdatedWebService,
+    PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     IResourceDeploymentMutationWriter deploymentWriter)
     : IMediatorHandler<UpdateWebServiceRequest, UpdateWebServiceResponse>
@@ -67,13 +68,10 @@ public sealed class UpdateWebServiceHandler(
         UpdateWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<WebService>.Filter.And(
-            Builders<WebService>.Filter.ForTenant(request.TenantId),
-            Builders<WebService>.Filter.Eq(ws => ws.Id, request.Id));
-
-        var webService = await dbContext.WebServices
-            .Find(filter)
-            .FirstOrDefaultAsync(cancellationToken: cancellationToken);
+        var webService = await loadWebServiceById(
+            request.TenantId,
+            request.Id,
+            cancellationToken);
 
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
@@ -94,20 +92,23 @@ public sealed class UpdateWebServiceHandler(
                 var changes = GetChanges(webService, updatedWebService);
                 var deploymentEventCore = EventCore.Create(webService.TenantId);
 
-                var replace = await dbContext.WebServices.ReplaceOneAsync(
-                    session,
-                    Builders<WebService>.Filter.And(
-                        filter,
-                        Builders<WebService>.Filter.Eq(
-                            item => item.Revision,
-                            webService.Revision)),
-                    updatedWebService,
-                    cancellationToken: transactionCancellationToken);
-                if (replace.ModifiedCount != 1)
+                var updatedEvent = new WebServiceUpdatedEvent(
+                    request.Id,
+                    webService.Name,
+                    webService.ResourceGroupId,
+                    webService.DnsRecord,
+                    changes)
                 {
-                    return Failures.Conflict(
-                        "The web service changed while the update was being accepted.");
-                }
+                    EventCore = EventCore.Create(webService.TenantId)
+                };
+                var replace = await persistUpdatedWebService(
+                    session,
+                    webService,
+                    updatedWebService,
+                    updatedEvent,
+                    transactionCancellationToken);
+                if (replace is not ISuccess)
+                    return (Failure)replace;
 
                 var deploymentResult = await deploymentWriter.RequestApplyAsync(
                     new ResourceDeploymentMutationCommand(
@@ -135,22 +136,9 @@ public sealed class UpdateWebServiceHandler(
                     deploymentEventCore.CorrelationId,
                     deploymentEventCore.OccurredOn,
                     deploymentGeneration: deployment.DesiredGeneration);
-                await WebServiceReleasePersistence.InsertCurrentAsync(
-                    dbContext,
+                await persistCurrentWebServiceRelease(
                     session,
                     release,
-                    transactionCancellationToken);
-                await dbContext.StoreEventAsync(
-                    new WebServiceUpdatedEvent(
-                        request.Id,
-                        webService.Name,
-                        webService.ResourceGroupId,
-                        webService.DnsRecord,
-                        changes)
-                    {
-                        EventCore = EventCore.Create(webService.TenantId)
-                    },
-                    session,
                     transactionCancellationToken);
 
                 return new UpdateWebServiceResponse(

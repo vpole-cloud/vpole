@@ -83,6 +83,38 @@ This is intentionally not a generic repository. The delegate signatures use sema
 return domain values or intention-revealing outcomes; they do not expose `IFindFluent`,
 `UpdateResult`, or general query execution.
 
+## Mongo document validation
+
+The `RedisSchemaValidationMigration` makes the Mongo collection an additional enforcement point
+for Redis persistence invariants. It creates `RedisServices` with a `$jsonSchema` validator when
+the collection is absent and uses `collMod` when it already exists. Development currently has no
+legacy Redis data, so the validator is enabled immediately with `validationLevel: strict` and
+`validationAction: error`.
+
+The migration is a self-contained historical artifact: its collection name, BSON field names,
+types, and discriminators are frozen in the migration file. It depends only on the migration
+contract and MongoDB driver, not on current Redis domain types or persistence registration. A
+future persistence rename therefore requires a new migration instead of rewriting this one.
+Small BSON schema helpers are nested in the migration for readability and are not shared with
+future migrations, so changing a common helper cannot alter this historical contract.
+
+The schema requires the tenant and resource identity, the complete desired-state specification,
+tags, events, revision, and lifecycle. It also validates the exact discriminator and fields of the
+active and deleting lifecycle variants. This protects every writer, including scripts and future
+persistence operations, instead of relying only on request validation.
+
+Unknown fields are allowed outside the closed lifecycle variants. This keeps additive document
+changes deployable without a synchronized schema migration; a newly mandatory field must still be
+added to the schema's `required` list before writers rely on it. If Pole starts retaining production
+data, tightening the schema should use an explicit audit/backfill rollout before switching strict
+validation on.
+
+`MongoDocumentContractTester<TDocument>` keeps the schema independent while checking it against
+the current domain serialization. It serializes real domain instances with the MongoDB driver and
+asks the validated collection to accept them; negative cases mutate the serialized BSON and assert
+MongoDB document-validation error `121`. The Redis tests cover both collection creation and
+`collMod`, strict/error settings, tenant ownership, and both lifecycle shapes.
+
 ## What this experiment is evaluating
 
 Benefits observed so far:

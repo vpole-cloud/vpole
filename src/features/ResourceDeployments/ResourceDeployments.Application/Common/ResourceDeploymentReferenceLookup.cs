@@ -1,6 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Common;
@@ -16,9 +17,7 @@ public sealed class ResourceDeploymentReferenceLookup(
         CancellationToken cancellationToken = default) =>
         EnsureNoneAsync(
             Builders<ResourceDeployment>.Filter.And(
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.TenantId,
-                    tenantId),
+                ResourceDeploymentFilters.VisibleToTenant(tenantId),
                 Builders<ResourceDeployment>.Filter.Eq(
                     deployment => deployment.ResourceGroupId,
                     resourceGroupId)),
@@ -34,9 +33,7 @@ public sealed class ResourceDeploymentReferenceLookup(
         CancellationToken cancellationToken = default) =>
         EnsureNoneAsync(
             Builders<ResourceDeployment>.Filter.And(
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.TenantId,
-                    tenantId),
+                ResourceDeploymentFilters.VisibleToTenant(tenantId),
                 Builders<ResourceDeployment>.Filter.Eq(
                     deployment => deployment.ResourceGroupId,
                     resourceGroupId),

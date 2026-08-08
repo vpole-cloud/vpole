@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -22,19 +23,20 @@ public sealed record CreateWebServiceDeploymentTokenRequest(
 
 public sealed record CreateWebServiceDeploymentTokenRequestBody(string Name);
 
-public sealed class CreateWebServiceDeploymentTokenHandler(IWebServiceDbContext dbContext)
+public sealed class CreateWebServiceDeploymentTokenHandler(
+    WebServiceExists webServiceExists,
+    PersistIssuedWebServiceDeploymentToken persistIssuedToken)
     : IMediatorHandler<CreateWebServiceDeploymentTokenRequest, CreateWebServiceDeploymentTokenResponse>
 {
     public async Task<Result<CreateWebServiceDeploymentTokenResponse>> HandleAsync(
         CreateWebServiceDeploymentTokenRequest request,
         CancellationToken cancellationToken = default)
     {
-        var webServiceExists = await WebServiceDeploymentTokenAccess.WebServiceExistsAsync(
-            dbContext,
+        var exists = await webServiceExists(
             request.TenantId,
             request.Id,
             cancellationToken);
-        if (!webServiceExists)
+        if (!exists)
             return Failures.NotFound("Web service not found.", request.Id);
 
         var issuedToken = WebServiceDeploymentTokenFactory.Issue(
@@ -45,9 +47,9 @@ public sealed class CreateWebServiceDeploymentTokenHandler(IWebServiceDbContext 
             request.ActorEmail.Value,
             WebServiceDeploymentTokenFactory.DefaultOptions);
 
-        await dbContext.WebServiceDeploymentTokens.InsertOneAsync(
+        await persistIssuedToken(
             issuedToken.Token,
-            cancellationToken: cancellationToken);
+            cancellationToken);
 
         return new CreateWebServiceDeploymentTokenResponse(
             issuedToken.Token.ToDto(),

@@ -2,6 +2,7 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Application.Persistence;
 
 namespace Pole.Features.ResourceDeployments.Application.Common;
 
@@ -53,12 +54,8 @@ public sealed class ResourceDeploymentQueryService(
         string tenantId,
         ResourceTypeId resourceType,
         IReadOnlyCollection<string> resourceIds) =>
-        Builders<ResourceDeployment>.Filter.And(
-            Builders<ResourceDeployment>.Filter.ForTenant(tenantId),
-            Builders<ResourceDeployment>.Filter.Eq(
-                deployment => deployment.ResourceType,
-                resourceType.Value),
-            Builders<ResourceDeployment>.Filter.In(
-                deployment => deployment.ResourceId,
-                resourceIds));
+        ResourceDeploymentFilters.ForResources(
+            tenantId,
+            resourceType,
+            resourceIds);
 }

@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
@@ -12,6 +11,7 @@ using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -48,7 +48,10 @@ public sealed record RedeployWebServiceResponse(
     PlacementSummaryDto Placement);
 
 public sealed class RedeployWebServiceHandler(
-    IWebServiceDbContext dbContext,
+    LoadWebServiceById loadWebServiceById,
+    PersistRedeployedWebService persistRedeployedWebService,
+    PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
+    RunMongoTransaction<RedeployWebServiceResponse> runMongoTransaction,
     IResourceDeploymentMutationWriter deploymentWriter)
     : IMediatorHandler<RedeployWebServiceRequest, RedeployWebServiceResponse>
 {
@@ -56,38 +59,28 @@ public sealed class RedeployWebServiceHandler(
         RedeployWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<WebService>.Filter.And(
-            Builders<WebService>.Filter.ForTenant(request.TenantId),
-            Builders<WebService>.Filter.Eq(service => service.Id, request.Id));
-
-        var webService = await dbContext.WebServices
-            .Find(filter)
-            .FirstOrDefaultAsync(cancellationToken);
+        var webService = await loadWebServiceById(
+            request.TenantId,
+            request.Id,
+            cancellationToken);
 
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
             return Failures.Conflict("A deleting web service cannot be redeployed.");
 
-        return await dbContext.RunInTransactionAsync<RedeployWebServiceResponse>(async (session, ct) =>
+        return await runMongoTransaction(async (session, ct) =>
         {
             var updatedWebService = webService.Redeploy();
             var deploymentEventCore = EventCore.Create(webService.TenantId);
 
-            var replace = await dbContext.WebServices.ReplaceOneAsync(
+            var replace = await persistRedeployedWebService(
                 session,
-                Builders<WebService>.Filter.And(
-                    filter,
-                    Builders<WebService>.Filter.Eq(
-                        item => item.Revision,
-                        webService.Revision)),
+                webService,
                 updatedWebService,
-                cancellationToken: ct);
-            if (replace.ModifiedCount != 1)
-            {
-                return Failures.Conflict(
-                    "The web service changed while redeployment was being accepted.");
-            }
+                ct);
+            if (replace is not ISuccess)
+                return (Failure)replace;
 
             var deploymentResult = await deploymentWriter.RequestApplyAsync(
                 new ResourceDeploymentMutationCommand(
@@ -115,8 +108,7 @@ public sealed class RedeployWebServiceHandler(
                 deploymentEventCore.CorrelationId,
                 deploymentEventCore.OccurredOn,
                 deploymentGeneration: deployment.DesiredGeneration);
-            await WebServiceReleasePersistence.InsertCurrentAsync(
-                dbContext,
+            await persistCurrentWebServiceRelease(
                 session,
                 release,
                 ct);
@@ -126,7 +118,7 @@ public sealed class RedeployWebServiceHandler(
                 updatedWebService.ActiveRevision,
                 release.Id,
                 deployment.ToPlacementSummaryDto());
-        }, cancellationToken: cancellationToken);
+        }, cancellationToken);
     }
 }
 

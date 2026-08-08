@@ -1,11 +1,11 @@
 using System.Collections.Immutable;
-using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Contracts;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 using Pole.ResultType;
@@ -13,7 +13,10 @@ using Pole.ResultType;
 namespace Pole.Features.WebServices.Application.Common;
 
 public sealed class WebServiceSourceBuildDeploymentService(
-    IWebServiceDbContext dbContext,
+    LoadWebServiceById loadWebServiceById,
+    PersistUpdatedWebService persistUpdatedWebService,
+    PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
+    RunMongoTransaction<SourceBuildDeploymentResult> runMongoTransaction,
     IResourceDeploymentMutationWriter deploymentWriter)
     : IWebServiceSourceBuildDeploymentService
 {
@@ -21,18 +24,16 @@ public sealed class WebServiceSourceBuildDeploymentService(
         SourceBuildDeploymentRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<WebService>.Filter.And(
-            Builders<WebService>.Filter.Eq(service => service.TenantId, request.TenantId),
-            Builders<WebService>.Filter.Eq(service => service.Id, request.WebServiceId));
-        var webService = await dbContext.WebServices
-            .Find(filter)
-            .FirstOrDefaultAsync(cancellationToken);
+        var webService = await loadWebServiceById(
+            request.TenantId,
+            request.WebServiceId,
+            cancellationToken);
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.WebServiceId);
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
             return Failures.Conflict("A deleting web service cannot accept a source build.");
 
-        return await dbContext.RunInTransactionAsync<SourceBuildDeploymentResult>(async (session, ct) =>
+        return await runMongoTransaction(async (session, ct) =>
         {
             var previousSpec = webService.Spec.ToSnapshot();
             var previousImageReference = webService.Spec.Image.FullImageName;
@@ -48,17 +49,26 @@ public sealed class WebServiceSourceBuildDeploymentService(
             var nextSpecSnapshot = nextSpec.ToSnapshot();
             var eventCore = EventCore.Create(request.TenantId);
 
-            var update = await dbContext.WebServices.ReplaceOneAsync(
+            var changes = new WebServiceUpdatedEventChanges(
+                UpdateLog<WebServiceSpecSnapshot>.Of(previousSpec, nextSpecSnapshot),
+                UpdateLog<ImmutableHashSet<string>>.Of(webService.Tags, webService.Tags));
+            var updatedEvent = new WebServiceUpdatedEvent(
+                webService.Id,
+                webService.Name,
+                webService.ResourceGroupId,
+                webService.DnsRecord,
+                changes)
+            {
+                EventCore = eventCore
+            };
+            var update = await persistUpdatedWebService(
                 session,
-                Builders<WebService>.Filter.And(
-                    filter,
-                    Builders<WebService>.Filter.Eq(
-                        item => item.Revision,
-                        webService.Revision)),
+                webService,
                 updatedWebService,
-                cancellationToken: ct);
-            if (update.ModifiedCount != 1)
-                return Failures.Conflict("The web service changed while creating the source deployment.");
+                updatedEvent,
+                ct);
+            if (update is not ISuccess)
+                return (Failure)update;
 
             var deploymentResult = await deploymentWriter.RequestApplyAsync(
                 new ResourceDeploymentMutationCommand(
@@ -93,30 +103,13 @@ public sealed class WebServiceSourceBuildDeploymentService(
                     previousImageReference,
                     nextImage.FullImageName),
                 deployment.DesiredGeneration);
-            await WebServiceReleasePersistence.InsertCurrentAsync(
-                dbContext,
+            await persistCurrentWebServiceRelease(
                 session,
                 release,
                 ct);
-            var changes = new WebServiceUpdatedEventChanges(
-                UpdateLog<WebServiceSpecSnapshot>.Of(previousSpec, nextSpecSnapshot),
-                UpdateLog<ImmutableHashSet<string>>.Of(webService.Tags, webService.Tags));
-            await dbContext.StoreEventAsync(
-                new WebServiceUpdatedEvent(
-                    webService.Id,
-                    webService.Name,
-                    webService.ResourceGroupId,
-                    webService.DnsRecord,
-                    changes)
-                {
-                    EventCore = eventCore
-                },
-                session,
-                ct);
-
             return new SourceBuildDeploymentResult(
                 release.Id,
                 updatedWebService.ActiveRevision);
-        }, cancellationToken: cancellationToken);
+        }, cancellationToken);
     }
 }

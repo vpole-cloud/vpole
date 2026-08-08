@@ -45,7 +45,7 @@ public static class TestSeedExtensions
 
     public static async Task<WebService> InsertWebServiceAsync(this MongoDbContext dbContext, WebService webService)
     {
-        await dbContext.WebServices.InsertOneAsync(webService);
+        await dbContext.Database.WebServices().InsertOneAsync(webService);
         return webService;
     }
 

@@ -2,12 +2,11 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -34,7 +33,7 @@ public static class GetWebServiceById
 }
 
 public sealed class GetWebServiceByIdHandler(
-    IWebServiceDbContext dbContext,
+    LoadWebServiceById loadWebServiceById,
     IResourceDeploymentQueryService deploymentQuery)
     : IMediatorHandler<GetWebServiceByIdRequest, WebServiceDto>
 {
@@ -42,13 +41,10 @@ public sealed class GetWebServiceByIdHandler(
         GetWebServiceByIdRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<WebService>.Filter.And(
-            Builders<WebService>.Filter.ForTenant(request.TenantId),
-            Builders<WebService>.Filter.Eq(ws => ws.Id, request.Id));
-
-        var webService = await dbContext.WebServices
-            .Find(filter)
-            .FirstOrDefaultAsync(cancellationToken: cancellationToken);
+        var webService = await loadWebServiceById(
+            request.TenantId,
+            request.Id,
+            cancellationToken);
 
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);

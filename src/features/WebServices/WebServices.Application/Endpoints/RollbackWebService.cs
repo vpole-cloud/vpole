@@ -4,9 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Quotas.Contracts;
@@ -14,6 +12,7 @@ using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 using Pole.Mediator;
@@ -54,7 +53,10 @@ public sealed record RollbackWebServiceResponse(
     PlacementSummaryDto Placement);
 
 public sealed class RollbackWebServiceHandler(
-    IWebServiceDbContext dbContext,
+    LoadWebServiceById loadWebServiceById,
+    LoadSucceededWebServiceRelease loadSucceededWebServiceRelease,
+    PersistUpdatedWebService persistUpdatedWebService,
+    PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     IResourceDeploymentMutationWriter deploymentWriter)
     : IMediatorHandler<RollbackWebServiceRequest, RollbackWebServiceResponse>
@@ -63,28 +65,21 @@ public sealed class RollbackWebServiceHandler(
         RollbackWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var webServiceFilter = Builders<WebService>.Filter.And(
-            Builders<WebService>.Filter.ForTenant(request.TenantId),
-            Builders<WebService>.Filter.Eq(service => service.Id, request.Id));
-
-        var webService = await dbContext.WebServices
-            .Find(webServiceFilter)
-            .FirstOrDefaultAsync(cancellationToken);
+        var webService = await loadWebServiceById(
+            request.TenantId,
+            request.Id,
+            cancellationToken);
 
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
             return Failures.Conflict("A deleting web service cannot be rolled back.");
 
-        var targetReleaseFilter = Builders<WebServiceRelease>.Filter.And(
-            Builders<WebServiceRelease>.Filter.ForTenant(request.TenantId),
-            Builders<WebServiceRelease>.Filter.Eq(release => release.WebServiceId, request.Id),
-            Builders<WebServiceRelease>.Filter.Eq(release => release.Revision, request.Body.TargetRevision),
-            Builders<WebServiceRelease>.Filter.Eq(release => release.Outcome, WebServiceReleaseOutcome.Succeeded));
-
-        var targetRelease = await dbContext.WebServiceReleases
-            .Find(targetReleaseFilter)
-            .FirstOrDefaultAsync(cancellationToken);
+        var targetRelease = await loadSucceededWebServiceRelease(
+            request.TenantId,
+            request.Id,
+            request.Body.TargetRevision,
+            cancellationToken);
 
         if (targetRelease is null)
             return Failures.NotFound("Succeeded release revision was not found for web service.", request.Body.TargetRevision);
@@ -104,20 +99,23 @@ public sealed class RollbackWebServiceHandler(
                     UpdateLog<WebServiceSpecSnapshot>.Of(webService.Spec.ToSnapshot(), targetRelease.Spec),
                     UpdateLog<ImmutableHashSet<string>>.Of(webService.Tags, webService.Tags));
 
-                var replace = await dbContext.WebServices.ReplaceOneAsync(
-                    session,
-                    Builders<WebService>.Filter.And(
-                        webServiceFilter,
-                        Builders<WebService>.Filter.Eq(
-                            item => item.Revision,
-                            webService.Revision)),
-                    updatedWebService,
-                    cancellationToken: transactionCancellationToken);
-                if (replace.ModifiedCount != 1)
+                var updatedEvent = new WebServiceUpdatedEvent(
+                    webService.Id,
+                    webService.Name,
+                    webService.ResourceGroupId,
+                    webService.DnsRecord,
+                    changes)
                 {
-                    return Failures.Conflict(
-                        "The web service changed while rollback was being accepted.");
-                }
+                    EventCore = EventCore.Create(webService.TenantId)
+                };
+                var replace = await persistUpdatedWebService(
+                    session,
+                    webService,
+                    updatedWebService,
+                    updatedEvent,
+                    transactionCancellationToken);
+                if (replace is not ISuccess)
+                    return (Failure)replace;
 
                 var deploymentResult = await deploymentWriter.RequestApplyAsync(
                     new ResourceDeploymentMutationCommand(
@@ -145,22 +143,9 @@ public sealed class RollbackWebServiceHandler(
                     deploymentEventCore.CorrelationId,
                     deploymentEventCore.OccurredOn,
                     deploymentGeneration: deployment.DesiredGeneration);
-                await WebServiceReleasePersistence.InsertCurrentAsync(
-                    dbContext,
+                await persistCurrentWebServiceRelease(
                     session,
                     release,
-                    transactionCancellationToken);
-                await dbContext.StoreEventAsync(
-                    new WebServiceUpdatedEvent(
-                        webService.Id,
-                        webService.Name,
-                        webService.ResourceGroupId,
-                        webService.DnsRecord,
-                        changes)
-                    {
-                        EventCore = EventCore.Create(webService.TenantId)
-                    },
-                    session,
                     transactionCancellationToken);
 
                 return new RollbackWebServiceResponse(

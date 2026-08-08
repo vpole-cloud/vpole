@@ -220,9 +220,6 @@ public static class DependencyInjection
             services.TryAddSingleton<
                 IPostgresClusterDeploymentManager,
                 PostgresClusterDeploymentManager>();
-            services.TryAddScoped<
-                IWebServiceResourceDeploymentReader,
-                MongoWebServiceResourceDeploymentReader>();
             services.TryAddScoped<WebServiceResourceDeploymentAdapter>();
             services.TryAddScoped<RedisResourceDeploymentAdapter>();
             services.TryAddSingleton<IFunctionRevisionKubernetesManager, FunctionRevisionKubernetesManager>();
@@ -316,7 +313,6 @@ public static class DependencyInjection
                 serviceProvider
                     .GetRequiredService<MongoRunTransaction>()
                     .InvokeAsync);
-            services.TryAddSingleton<IWebServiceDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IResourceDeploymentDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddScoped<
                 IResourceDeploymentReferenceLookup,

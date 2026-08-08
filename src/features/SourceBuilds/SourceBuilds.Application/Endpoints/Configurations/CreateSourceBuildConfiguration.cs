@@ -10,7 +10,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Domain;
-using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -29,7 +29,7 @@ public sealed record CreateSourceBuildConfigurationBody(
 public sealed class CreateSourceBuildConfigurationHandler(
     ISourceBuildDbContext dbContext,
     IGitProviderDbContext gitProviderDbContext,
-    IWebServiceDbContext webServiceDbContext,
+    WebServiceExists webServiceExists,
     TimeProvider timeProvider)
     : IMediatorHandler<CreateSourceBuildConfigurationRequest, SourceBuildConfigurationDto>
 {
@@ -43,10 +43,11 @@ public sealed class CreateSourceBuildConfigurationHandler(
         if (sourceRepository is null)
             return Failures.NotFound("Source repository not found.", request.Body.SourceRepositoryId);
 
-        var webServiceExists = await webServiceDbContext.WebServices
-            .Find(item => item.TenantId == request.TenantId && item.Id == request.Body.WebServiceId)
-            .AnyAsync(cancellationToken);
-        if (!webServiceExists)
+        var exists = await webServiceExists(
+            request.TenantId,
+            request.Body.WebServiceId,
+            cancellationToken);
+        if (!exists)
             return Failures.NotFound("Web service not found.", request.Body.WebServiceId);
 
         var alreadyConfigured = await dbContext.SourceBuildConfigurations
