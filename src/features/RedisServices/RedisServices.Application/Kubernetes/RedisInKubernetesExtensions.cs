@@ -9,10 +9,12 @@ public static class RedisInKubernetesExtensions
     {
         public RedisInKubernetes ToKubernetes(
             string kubernetesNamespace,
-            ResolvedStorageConfiguration storageConfiguration) =>
+            ResolvedStorageConfiguration storageConfiguration,
+            ResolvedComputeConfiguration computeConfiguration) =>
             RedisInKubernetes.Create(
                 redis,
                 kubernetesNamespace,
-                storageConfiguration);
+                storageConfiguration,
+                computeConfiguration);
     }
 }

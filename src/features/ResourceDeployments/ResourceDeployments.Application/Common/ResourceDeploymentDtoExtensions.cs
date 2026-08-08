@@ -29,7 +29,27 @@ public static class ResourceDeploymentDtoExtensions
             deployment.State is FailedResourceDeploymentState failed
                 ? failed.FailureCode
                 : null,
+            deployment.ResolvedPlacement.Compute.ToSummaryDto(),
             deployment.Endpoints.Select(ToDto).ToImmutableList());
+
+    public static ComputeConfigurationSummaryDto ToSummaryDto(
+        this ResolvedComputeConfiguration compute) =>
+        new(
+            new ComputeProfileReference(
+                compute.ComputeProfileId,
+                compute.ComputeProfileRevision),
+            compute.DisplayName,
+            new ComputeResourceValuesDto(
+                compute.Requests.CpuMillis,
+                compute.Requests.MemoryMi),
+            new ComputeResourceValuesDto(
+                compute.Limits.CpuMillis,
+                compute.Limits.MemoryMi),
+            compute.ExtendedResources
+                .Select(resource => new ComputeExtendedResourceDto(
+                    resource.Name,
+                    resource.Quantity))
+                .ToImmutableList());
 
     private static ResourceDeploymentEndpointDto ToDto(
         ResourceDeploymentEndpoint endpoint) =>

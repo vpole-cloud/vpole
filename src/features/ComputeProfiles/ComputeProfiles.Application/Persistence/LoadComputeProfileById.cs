@@ -1,0 +1,22 @@
+using MongoDB.Driver;
+using Pole.Features.ComputeProfiles.Domain;
+
+namespace Pole.Features.ComputeProfiles.Application.Persistence;
+
+public delegate Task<ComputeProfile?> LoadComputeProfileById(
+    string computeProfileId,
+    CancellationToken cancellationToken = default);
+
+internal sealed class MongoLoadComputeProfileById(
+    IMongoCollection<ComputeProfile> computeProfiles)
+{
+    public async Task<ComputeProfile?> InvokeAsync(
+        string computeProfileId,
+        CancellationToken cancellationToken = default)
+    {
+        ComputeProfile? profile = await computeProfiles
+            .Find(ComputeProfileFilters.ById(computeProfileId))
+            .FirstOrDefaultAsync(cancellationToken);
+        return profile;
+    }
+}

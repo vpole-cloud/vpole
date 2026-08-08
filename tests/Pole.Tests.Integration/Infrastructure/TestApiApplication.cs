@@ -2,14 +2,20 @@ using System.Reflection;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
+using MongoDB.Driver;
 using Pole.Encryption;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Features.ComputeProfiles.Application;
+using Pole.Features.ComputeProfiles.Application.Endpoints;
+using Pole.Features.ComputeProfiles.Application.Migrations;
+using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Common;
@@ -60,6 +66,7 @@ public sealed class TestApiApplication : IAsyncDisposable
     private static readonly Assembly[] Assemblies =
     [
         typeof(WebServiceEndpoints).Assembly,
+        typeof(ComputeProfileFeature).Assembly,
         typeof(FunctionAppFeature).Assembly,
         typeof(FunctionRuntimeFeature).Assembly,
         typeof(PostgresClusterEndpoints).Assembly,
@@ -136,6 +143,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
         builder.Services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
         builder.Services.AddMongoDbContextInterfaces();
+        builder.Services.AddComputeProfiles();
         builder.Services.AddRedisPersistence();
         builder.Services.AddWebServicePersistence();
         builder.Services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
@@ -214,17 +222,24 @@ public sealed class TestApiApplication : IAsyncDisposable
         await new DeploymentTargetReferenceMigration().Up(fixture.Database);
         await new ResourceGroupPlacementMigration().Up(fixture.Database);
         await new ResourceDeploymentMigration().Up(fixture.Database);
+        await new ComputeProfileSchemaValidationMigration().Up(fixture.Database);
+        await new ComputeProfileIndexesMigration().Up(fixture.Database);
+        await new ComputeProfileResourceDeploymentIndexMigration().Up(fixture.Database);
         await ((IMigration)new PostgresCredentialMigration()).Up(fixture.Database);
         await new StorageProfileMigration().Up(fixture.Database);
         await new OutboxMessageMigration().Up(fixture.Database);
+        await fixture.Database
+            .GetCollection<ComputeProfile>("ComputeProfiles")
+            .InsertOneAsync(TestData.SeedComputeProfile());
         app.UseTraceContext();
         app.UseCors("frontend-dev");
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseMiddleware<TenantContextMiddleware>();
         app.MapGitHubCallbackEndpoints();
-        app.MapGroup("/api/v1")
-            .RequireAuthorization()
+        var api = app.MapGroup("/api/v1")
+            .RequireAuthorization();
+        api
             .MapResourceGroupEndpoints()
             .MapContainerRegistryEndpoints()
             .MapDeploymentTargetEndpoints()
@@ -240,6 +255,19 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapStorageProfileEndpoints()
             .MapGitProviderEndpoints()
             .MapSourceBuildEndpoints();
+
+        api.MapGroup("/platform/compute-profiles")
+            .WithTags("PlatformComputeProfiles")
+            .RequireAuthorization(Policy.Admin)
+            .MapGetComputeProfilesEndpoint()
+            .MapGetComputeProfileEndpoint()
+            .MapCreateComputeProfileEndpoint()
+            .MapUpdateComputeProfileEndpoint()
+            .MapDeleteComputeProfileEndpoint();
+
+        api.MapGroup("/compute-profiles")
+            .WithTags("ComputeProfiles")
+            .MapGetAvailableComputeProfilesEndpoint();
 
         await app.StartAsync();
 

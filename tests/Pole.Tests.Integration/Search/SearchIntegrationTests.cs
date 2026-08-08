@@ -313,7 +313,6 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
                 spec.Image.Tag,
                 spec.Image.SecretName),
             spec.Replicas,
-            spec.Resources,
             new WebServiceConfigSnapshot(
                 spec.Config.EnvironmentVariables,
                 spec.Config.PortMappings
@@ -337,14 +336,12 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         new(
             new RedisServiceStorageSnapshot(
                 spec.Storage.SizeGb,
-                spec.Storage.StorageProfileId),
-            spec.Resources);
+                spec.Storage.StorageProfileId));
 
     private static PostgresClusterSpecSnapshot ToSnapshot(PostgresClusterSpec spec) =>
         new(
             spec.Instances,
             spec.Storage,
-            spec.Resources,
             spec.StorageProfileId,
             spec.Version,
             spec.DeploymentMode switch

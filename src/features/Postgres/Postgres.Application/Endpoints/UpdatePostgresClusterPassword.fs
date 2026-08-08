@@ -39,6 +39,7 @@ type UpdatePostgresClusterPasswordRequest =
 type UpdatePostgresClusterPasswordHandler(
     dbContext : IPostgresDbContext,
     credentialService : IPostgresCredentialService,
+    deploymentComputeLookup : IResourceDeploymentComputeLookup,
     deploymentWriter : IResourceDeploymentMutationWriter) =
     interface IMediatorHandler<UpdatePostgresClusterPasswordRequest, UpdatePostgresClusterPasswordResponse> with
         member _.HandleAsync(request, cancellationToken) =
@@ -68,73 +69,85 @@ type UpdatePostgresClusterPasswordHandler(
                             "Password rotation is not supported for StatefulSet PostgreSQL deployments.")
                         |> ResultF.ofFailure
                 | Some cluster ->
-                    let credentials = PostgresCredentials.collection dbContext
-                    let! credential =
-                        credentials
-                            .Find(fun item ->
-                                item.TenantId = request.TenantId &&
-                                item.PostgresClusterId = cluster.Id)
-                            .FirstOrDefaultAsync(cancellationToken)
+                    let! currentComputeResult =
+                        deploymentComputeLookup.GetCurrentAsync(
+                            cluster.TenantId,
+                            PostgresResourceDeployment.ResourceType,
+                            cluster.Id,
+                            cancellationToken)
 
-                    if isNull (box credential) then
-                        return
-                            Failures.NotFound(
-                                "PostgreSQL credentials were not found.",
-                                cluster.Id)
-                            |> ResultF.ofFailure
-                    else
-                        let! rotatedResult =
-                            credentialService.RotateAsync(
-                                credential,
-                                request.Body.Password,
-                                cancellationToken)
+                    match currentComputeResult.TryGetValue() with
+                    | struct (false, _, failure) ->
+                        return failure |> ResultF.ofFailure
+                    | struct (true, currentCompute, _) ->
+                        let credentials = PostgresCredentials.collection dbContext
+                        let! credential =
+                            credentials
+                                .Find(fun item ->
+                                    item.TenantId = request.TenantId &&
+                                    item.PostgresClusterId = cluster.Id)
+                                .FirstOrDefaultAsync(cancellationToken)
 
-                        match rotatedResult.TryGetValue() with
-                        | struct (false, _, failure) ->
-                            return failure |> ResultF.ofFailure
-                        | struct (true, rotated, _) ->
-                            return!
-                                dbContext.RunInTransactionAsync(
-                                    (fun session ct ->
-                                        task {
-                                            let! replacement =
-                                                credentials.ReplaceOneAsync(
-                                                    session,
-                                                    (fun item ->
-                                                        item.Id = credential.Id &&
-                                                        item.TenantId = request.TenantId &&
-                                                        item.PostgresClusterId = cluster.Id &&
-                                                        item.Version = credential.Version),
-                                                    rotated,
-                                                    cancellationToken = ct)
+                        if isNull (box credential) then
+                            return
+                                Failures.NotFound(
+                                    "PostgreSQL credentials were not found.",
+                                    cluster.Id)
+                                |> ResultF.ofFailure
+                        else
+                            let! rotatedResult =
+                                credentialService.RotateAsync(
+                                    credential,
+                                    request.Body.Password,
+                                    cancellationToken)
 
-                                            if replacement.ModifiedCount <> 1L then
-                                                return
-                                                    Failures.Conflict(
-                                                        "The PostgreSQL credential changed while rotation was being accepted.")
-                                                    |> ResultF.ofFailure
-                                            else
-                                                let! deploymentResult =
-                                                    deploymentWriter.RequestApplyAsync(
-                                                        ResourceDeploymentMutationCommand(
-                                                            cluster.TenantId,
-                                                            PostgresResourceDeployment.ResourceType,
-                                                            cluster.Id),
+                            match rotatedResult.TryGetValue() with
+                            | struct (false, _, failure) ->
+                                return failure |> ResultF.ofFailure
+                            | struct (true, rotated, _) ->
+                                return!
+                                    dbContext.RunInTransactionAsync(
+                                        (fun session ct ->
+                                            task {
+                                                let! replacement =
+                                                    credentials.ReplaceOneAsync(
                                                         session,
-                                                        ct)
+                                                        (fun item ->
+                                                            item.Id = credential.Id &&
+                                                            item.TenantId = request.TenantId &&
+                                                            item.PostgresClusterId = cluster.Id &&
+                                                            item.Version = credential.Version),
+                                                        rotated,
+                                                        cancellationToken = ct)
 
-                                                match deploymentResult.TryGetValue() with
-                                                | struct (false, _, failure) ->
-                                                    return failure |> ResultF.ofFailure
-                                                | struct (true, deployment, _) ->
+                                                if replacement.ModifiedCount <> 1L then
                                                     return
-                                                        { Id = cluster.Id
-                                                          Placement =
-                                                            ResourceDeploymentDtoExtensions.ToPlacementSummaryDto(
-                                                                deployment) }
-                                                        |> ResultF.ofValue
-                                        }),
-                                    cancellationToken = cancellationToken)
+                                                        Failures.Conflict(
+                                                            "The PostgreSQL credential changed while rotation was being accepted.")
+                                                        |> ResultF.ofFailure
+                                                else
+                                                    let! deploymentResult =
+                                                        deploymentWriter.RequestApplyAsync(
+                                                            ResourceDeploymentMutationCommand(
+                                                                cluster.TenantId,
+                                                                PostgresResourceDeployment.ResourceType,
+                                                                cluster.Id,
+                                                                currentCompute.Compute.Profile),
+                                                            session,
+                                                            ct)
+
+                                                    match deploymentResult.TryGetValue() with
+                                                    | struct (false, _, failure) ->
+                                                        return failure |> ResultF.ofFailure
+                                                    | struct (true, deployment, _) ->
+                                                        return
+                                                            { Id = cluster.Id
+                                                              Placement =
+                                                                ResourceDeploymentDtoExtensions.ToPlacementSummaryDto(
+                                                                    deployment) }
+                                                            |> ResultF.ofValue
+                                            }),
+                                        cancellationToken = cancellationToken)
             }
 
 type UpdatePostgresClusterPasswordRequestValidator() as this =

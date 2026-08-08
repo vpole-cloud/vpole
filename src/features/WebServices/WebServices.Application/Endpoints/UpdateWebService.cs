@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
+using Pole.Features.ComputeProfiles.Application.Persistence;
+using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Quotas.Contracts;
@@ -17,6 +19,7 @@ using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 using Pole.Mediator;
 using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.WebServices.Application.Endpoints;
 
@@ -49,7 +52,8 @@ public sealed record UpdateWebServiceRequest(
 
 public sealed record UpdateWebServiceRequestBody(
     WebServiceSpecDto Spec,
-    ImmutableHashSet<string> Tags
+    ImmutableHashSet<string> Tags,
+    string? ComputeProfileId = null
 );
 
 public sealed record UpdateWebServiceResponse(
@@ -61,6 +65,8 @@ public sealed class UpdateWebServiceHandler(
     PersistUpdatedWebService persistUpdatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
+    ResolveComputeProfile resolveComputeProfile,
+    IResourceDeploymentComputeLookup deploymentComputeLookup,
     IResourceDeploymentMutationWriter deploymentWriter)
     : IMediatorHandler<UpdateWebServiceRequest, UpdateWebServiceResponse>
 {
@@ -80,10 +86,52 @@ public sealed class UpdateWebServiceHandler(
             return Failures.Conflict("A deleting web service cannot be updated.");
 
         var nextSpec = request.Body.Spec.ToDomain();
-        return await quotaAdmissionExecutor.ExecuteAsync<WebServiceSpec, UpdateWebServiceResponse>(
+        var computeLookupResult = await deploymentComputeLookup.GetCurrentAsync(
+            webService.TenantId,
+            WebServiceResourceDeployment.ResourceType,
+            webService.Id,
+            cancellationToken);
+        if (!computeLookupResult.TryGetValue(
+                out var currentCompute,
+                out var computeLookupFailure))
+            return computeLookupFailure;
+
+        ResolvedComputeProfile? replacementCompute = null;
+        if (!string.IsNullOrWhiteSpace(request.Body.ComputeProfileId))
+        {
+            var computeResult = await resolveComputeProfile(
+                new ComputeProfileResolutionRequest(
+                    request.Body.ComputeProfileId,
+                    currentCompute.DeploymentTargetId,
+                    webService.TenantId,
+                    WebServiceResourceDeployment.ResourceType),
+                cancellationToken);
+            if (!computeResult.TryGetValue(
+                    out replacementCompute,
+                    out var computeFailure))
+            {
+                return computeFailure;
+            }
+        }
+
+        var currentQuotaInput = WebServiceQuotaInput.Create(
+            currentCompute.Compute.Requests.CpuMillis,
+            currentCompute.Compute.Requests.MemoryMi,
+            webService.Spec);
+        var nextQuotaInput = WebServiceQuotaInput.Create(
+            replacementCompute?.Requests.CpuMillis ??
+            currentCompute.Compute.Requests.CpuMillis,
+            replacementCompute?.Requests.MemoryMi ??
+            currentCompute.Compute.Requests.MemoryMi,
+            nextSpec);
+        return await quotaAdmissionExecutor.ExecuteAsync<
+            WebServiceQuotaInput,
+            UpdateWebServiceResponse>(
             webService.TenantId,
             WebServiceQuotaResourceKey.Create(webService.Id),
-            new UpdateQuotaMutation<WebServiceSpec>(webService.Spec, nextSpec),
+            new UpdateQuotaMutation<WebServiceQuotaInput>(
+                currentQuotaInput,
+                nextQuotaInput),
             async (session, transactionCancellationToken) =>
             {
                 var updatedWebService = webService.UpdateDesiredState(
@@ -114,7 +162,9 @@ public sealed class UpdateWebServiceHandler(
                     new ResourceDeploymentMutationCommand(
                         webService.TenantId,
                         WebServiceResourceDeployment.ResourceType,
-                        webService.Id),
+                        webService.Id,
+                        currentCompute.Compute.Profile,
+                        replacementCompute),
                     session,
                     transactionCancellationToken);
                 if (!deploymentResult.TryGetValue(
@@ -168,5 +218,7 @@ public sealed class UpdateWebServiceValidator : AbstractValidator<UpdateWebServi
         RuleFor(x => x.Body.Spec)
             .NotNull().WithMessage("Web service specification is required.")
             .SetValidator(new WebServiceSpecDtoValidator());
+        RuleFor(x => x.Body.ComputeProfileId)
+            .OptionalMongoObjectId("Compute profile ID");
     }
 }

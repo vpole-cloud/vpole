@@ -84,7 +84,7 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
                 ("Lifecycle", LifecycleSchema())));
 
         private static BsonDocument WebServiceSpecSchema() => Object(
-            ["Image", "Replicas", "Resources", "Config", "Autoscaling", "Probes"],
+            ["Image", "Replicas", "Config", "Autoscaling", "Probes"],
             ("Image", Object(
                 ["Server", "Name", "Tag", "SecretName"],
                 ("Server", StringType(minimumLength: 1, maximumLength: 255)),
@@ -92,20 +92,9 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
                 ("Tag", StringType(minimumLength: 1, maximumLength: 100)),
                 ("SecretName", Nullable(StringType())))),
             ("Replicas", IntegerType("int", minimum: 1)),
-            ("Resources", ResourcesSchema()),
             ("Config", ConfigSchema()),
             ("Autoscaling", Nullable(AutoscalingSchema())),
             ("Probes", ProbeSpecSchema()));
-
-        private static BsonDocument ResourcesSchema() => Object(
-            ["Requests", "Limits"],
-            ("Requests", ResourceSchema()),
-            ("Limits", ResourceSchema()));
-
-        private static BsonDocument ResourceSchema() => Object(
-            ["CpuCores", "MemoryMi"],
-            ("CpuCores", IntegerType("int", minimum: 1)),
-            ("MemoryMi", IntegerType("int", minimum: 1)));
 
         private static BsonDocument ConfigSchema() => Object(
             ["EnvironmentVariables", "PortMappings"],

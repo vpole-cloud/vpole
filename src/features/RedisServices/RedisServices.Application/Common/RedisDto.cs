@@ -16,8 +16,7 @@ public sealed record RedisDto(
 );
 
 public sealed record RedisSpecDto(
-    StorageDto Storage,
-    Resources Resources
+    StorageDto Storage
 );
 
 public sealed record StorageDto(
@@ -40,8 +39,7 @@ public static class RedisDtoExtensions
     );
 
     private static RedisSpecDto ToDto(this RedisSpec spec) => new(
-        spec.Storage.ToDto(),
-        spec.Resources
+        spec.Storage.ToDto()
     );
 
     private static StorageDto ToDto(this Storage storage) => new(
@@ -50,8 +48,7 @@ public static class RedisDtoExtensions
     );
     
     public static RedisSpec ToDomain(this RedisSpecDto dto) => new(
-        dto.Storage.ToDomain(),
-        dto.Resources
+        dto.Storage.ToDomain()
     );
     
     private static Storage ToDomain(this StorageDto dto) => new(

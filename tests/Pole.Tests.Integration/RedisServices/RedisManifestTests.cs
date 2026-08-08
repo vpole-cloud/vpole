@@ -2,7 +2,6 @@ using System.Collections.Immutable;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 using Redis = Pole.Features.RedisServices.Domain.Redis;
@@ -42,10 +41,29 @@ public sealed class RedisManifestTests
         Assert.Equal("rg-1", volumeClaim.Metadata.Labels["pole.io/resource-group-id"]);
         Assert.Equal("Redis", volumeClaim.Metadata.Labels["pole.io/resource-type"]);
         Assert.Equal("12Gi", volumeClaim.Spec.Resources.Requests["storage"].ToString());
-        Assert.Equal("1", container.Resources.Requests["cpu"].ToString());
+        Assert.Equal("250m", container.Resources.Requests["cpu"].ToString());
         Assert.Equal("256Mi", container.Resources.Requests["memory"].ToString());
-        Assert.Equal("2", container.Resources.Limits["cpu"].ToString());
-        Assert.Equal("512Mi", container.Resources.Limits["memory"].ToString());
+        Assert.Equal("1", container.Resources.Limits["cpu"].ToString());
+        Assert.Equal("1Gi", container.Resources.Limits["memory"].ToString());
+        Assert.Equal("1", container.Resources.Requests["nvidia.com/gpu"].ToString());
+        Assert.Equal("linux", statefulSet.Spec.Template.Spec.NodeSelector["kubernetes.io/os"]);
+        Assert.Equal("workload-runtime", statefulSet.Spec.Template.Spec.RuntimeClassName);
+        var toleration = Assert.Single(statefulSet.Spec.Template.Spec.Tolerations);
+        Assert.Equal("dedicated", toleration.Key);
+        Assert.Equal("Exists", toleration.OperatorProperty);
+        var nodeAffinity = statefulSet.Spec.Template.Spec.Affinity.NodeAffinity;
+        var requiredExpression = Assert.Single(Assert.Single(
+            nodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution
+                .NodeSelectorTerms).MatchExpressions);
+        Assert.Equal("topology.kubernetes.io/zone", requiredExpression.Key);
+        Assert.Equal("In", requiredExpression.OperatorProperty);
+        Assert.Equal(["eu-west-1a"], requiredExpression.Values);
+        var preferredTerm = Assert.Single(
+            nodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution);
+        Assert.Equal(60, preferredTerm.Weight);
+        Assert.Equal(
+            "node.kubernetes.io/instance-type",
+            Assert.Single(preferredTerm.Preference.MatchExpressions).Key);
         Assert.Equal("pole-server", statefulSet.Spec.Template.Metadata.Annotations["app.kubernetes.io/managed-by"]);
         Assert.Equal("redis-1", statefulSet.Spec.Template.Metadata.Annotations["pole.server/redisId"]);
         Assert.Equal(
@@ -93,15 +111,59 @@ public sealed class RedisManifestTests
                 new RedisSpec(
                     new Storage(
                         12,
-                        "507f1f77bcf86cd799439034"),
-                    new Resources(
-                        Requests: new Resource(1, 256),
-                        Limits: new Resource(2, 512)))),
+                        "507f1f77bcf86cd799439034"))),
             "pole-cache",
             ResolvedStorageConfiguration.Create(
                 "507f1f77bcf86cd799439034",
                 storageProfileRevision: 7,
-                storageClassName: "fast-cache"));
+                storageClassName: "fast-cache"),
+            ResolvedComputeConfiguration.Create(
+                "507f1f77bcf86cd799439035",
+                computeProfileRevision: 3,
+                displayName: "GPU cache",
+                ResolvedComputeResourceValues.Create(250, 256),
+                ResolvedComputeResourceValues.Create(1000, 1024),
+                ResolvedComputeArchitecture.Amd64,
+                extendedResources:
+                [
+                    ResolvedComputeExtendedResource.Create("nvidia.com/gpu", 1)
+                ],
+                nodeSelector:
+                [
+                    ResolvedComputeNodeSelector.Create("kubernetes.io/os", "linux")
+                ],
+                requiredNodeAffinity:
+                [
+                    ResolvedComputeNodeAffinityTerm.Create(
+                    [
+                        ResolvedComputeNodeAffinityExpression.Create(
+                            "topology.kubernetes.io/zone",
+                            ResolvedComputeNodeAffinityOperator.In,
+                            ["eu-west-1a"])
+                    ])
+                ],
+                preferredNodeAffinity:
+                [
+                    ResolvedComputePreferredNodeAffinityTerm.Create(
+                        60,
+                        ResolvedComputeNodeAffinityTerm.Create(
+                        [
+                            ResolvedComputeNodeAffinityExpression.Create(
+                                "node.kubernetes.io/instance-type",
+                                ResolvedComputeNodeAffinityOperator.Exists,
+                                [])
+                        ]))
+                ],
+                tolerations:
+                [
+                    ResolvedComputeToleration.Create(
+                        "dedicated",
+                        ResolvedComputeTolerationOperator.Exists,
+                        value: null,
+                        ResolvedComputeTaintEffect.NoSchedule,
+                        tolerationSeconds: null)
+                ],
+                runtimeClassName: "workload-runtime"));
 
     private static Redis BuildRedis(string id, string name, RedisSpec spec) =>
         RedisFactory.Create(

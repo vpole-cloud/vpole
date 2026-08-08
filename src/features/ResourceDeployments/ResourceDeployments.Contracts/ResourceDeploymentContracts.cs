@@ -60,6 +60,29 @@ public sealed record ResourceDeploymentEndpointDto(
     int Port,
     string Scheme);
 
+public sealed record ComputeProfileReference(
+    string ComputeProfileId,
+    long ComputeProfileRevision);
+
+public sealed record ComputeResourceValuesDto(
+    long CpuMillis,
+    long MemoryMi);
+
+public sealed record ComputeExtendedResourceDto(
+    string Name,
+    long Quantity);
+
+public sealed record ComputeConfigurationSummaryDto(
+    ComputeProfileReference Profile,
+    string DisplayName,
+    ComputeResourceValuesDto Requests,
+    ComputeResourceValuesDto Limits,
+    ImmutableList<ComputeExtendedResourceDto> ExtendedResources);
+
+public sealed record CurrentResourceDeploymentComputeDto(
+    string DeploymentTargetId,
+    ComputeConfigurationSummaryDto Compute);
+
 public sealed record PlacementSummaryDto(
     string DeploymentId,
     string IsolationScopeId,
@@ -69,6 +92,7 @@ public sealed record PlacementSummaryDto(
     long ObservedGeneration,
     string Status,
     string? FailureCode,
+    ComputeConfigurationSummaryDto Compute,
     ImmutableList<ResourceDeploymentEndpointDto> Endpoints);
 
 public sealed record ResourceDeploymentDto(
@@ -108,5 +132,14 @@ public interface IResourceDeploymentQueryService
         string tenantId,
         ResourceTypeId resourceType,
         IReadOnlyCollection<string> resourceIds,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IResourceDeploymentComputeLookup
+{
+    Task<Result<CurrentResourceDeploymentComputeDto>> GetCurrentAsync(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId,
         CancellationToken cancellationToken = default);
 }

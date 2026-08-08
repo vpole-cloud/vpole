@@ -2,6 +2,7 @@ using MongoDB.Driver;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
 using Pole.Features.DnsRecords.Application.Consumers;
+using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DnsRecords.Contracts;
 using Pole.Features.DnsRecords.Domain;
 using Pole.Features.DnsRecords.Events;
@@ -32,6 +33,15 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
 
         var savedWebService = await Fixture.Database.WebServices().Find(service => service.Id == response.WebServiceId).FirstOrDefaultAsync();
         Assert.NotNull(savedWebService);
+
+        var deployment = await DbContext.ResourceDeployments
+            .Find(item => item.ResourceId == response.WebServiceId)
+            .SingleAsync();
+        Assert.Equal(
+            TestData.DefaultComputeProfileId,
+            deployment.ResolvedPlacement.Compute.ComputeProfileId);
+        Assert.Equal(1, deployment.ResolvedPlacement.Compute.ComputeProfileRevision);
+        Assert.Equal(250, deployment.ResolvedPlacement.Compute.Requests.CpuMillis);
 
         var savedDns = await DbContext.DnsRecords.Find(record => record.Resource.Id == response.WebServiceId).FirstOrDefaultAsync();
         Assert.NotNull(savedDns);
@@ -65,6 +75,64 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         var committedDns = await DbContext.DnsRecords.Find(record => record.Id == savedDns.Id).FirstOrDefaultAsync();
         Assert.NotNull(committedDns);
         Assert.IsType<Committed>(committedDns.Status);
+    }
+
+    [Fact]
+    public async Task Update_OmissionPreservesComputeSnapshot_AndExplicitIdAdoptsLatestRevision()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(
+            TestData.SeedResourceGroup());
+        var createResult = await Mediator.Send(
+            TestData.CreateWebServiceRequest(resourceGroup.Id));
+        var created = createResult.AssertSuccess();
+
+        var profiles = Fixture.Database
+            .GetCollection<ComputeProfile>("ComputeProfiles");
+        var currentProfile = await profiles
+            .Find(profile => profile.Id == TestData.DefaultComputeProfileId)
+            .SingleAsync();
+        var revisedProfile = currentProfile with
+        {
+            Resources = ComputeProfileResourceRequirements.Create(
+                ComputeProfileResourceQuantity.Create(500, 512),
+                ComputeProfileResourceQuantity.Create(1500, 1536)),
+            Revision = 2,
+            UpdatedAtUtc = currentProfile.UpdatedAtUtc.AddMinutes(1)
+        };
+        await profiles.ReplaceOneAsync(
+            profile => profile.Id == currentProfile.Id,
+            revisedProfile);
+
+        var updatedSpec = TestData.ValidWebServiceSpec() with
+        {
+            Image = new ImageInfoDto("docker.io", "nginx", "1.28")
+        };
+        var preserveResult = await Mediator.Send(new UpdateWebServiceRequest(
+            created.WebServiceId,
+            new UpdateWebServiceRequestBody(updatedSpec, []),
+            TestData.TenantId));
+        preserveResult.AssertSuccess();
+
+        var preservedDeployment = await DbContext.ResourceDeployments
+            .Find(item => item.ResourceId == created.WebServiceId)
+            .SingleAsync();
+        Assert.Equal(1, preservedDeployment.ResolvedPlacement.Compute.ComputeProfileRevision);
+        Assert.Equal(250, preservedDeployment.ResolvedPlacement.Compute.Requests.CpuMillis);
+
+        var adoptResult = await Mediator.Send(new UpdateWebServiceRequest(
+            created.WebServiceId,
+            new UpdateWebServiceRequestBody(
+                updatedSpec,
+                [],
+                TestData.DefaultComputeProfileId),
+            TestData.TenantId));
+        adoptResult.AssertSuccess();
+
+        var adoptedDeployment = await DbContext.ResourceDeployments
+            .Find(item => item.ResourceId == created.WebServiceId)
+            .SingleAsync();
+        Assert.Equal(2, adoptedDeployment.ResolvedPlacement.Compute.ComputeProfileRevision);
+        Assert.Equal(500, adoptedDeployment.ResolvedPlacement.Compute.Requests.CpuMillis);
     }
 
     [Fact]

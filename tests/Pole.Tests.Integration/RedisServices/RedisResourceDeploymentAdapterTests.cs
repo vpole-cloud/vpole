@@ -11,7 +11,7 @@ using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.Features.Shared.Models;
+using Pole.Tests.Integration.ResourceDeployments;
 using Xunit;
 using Redis = Pole.Features.RedisServices.Domain.Redis;
 
@@ -81,6 +81,18 @@ public sealed class RedisResourceDeploymentAdapterTests
         Assert.Equal(
             "1",
             annotations.GetProperty("pole.server/deploymentGeneration").GetString());
+        var podSpec = root
+            .GetProperty("spec")
+            .GetProperty("template")
+            .GetProperty("spec");
+        var resources = podSpec.GetProperty("containers")[0]
+            .GetProperty("resources");
+        Assert.Equal(
+            "250m",
+            resources.GetProperty("requests").GetProperty("cpu").GetString());
+        Assert.Equal(
+            "1Gi",
+            resources.GetProperty("limits").GetProperty("memory").GetString());
     }
 
     [Fact]
@@ -152,6 +164,7 @@ public sealed class RedisResourceDeploymentAdapterTests
                     storageProfileRevision: 7,
                     StorageClassName)
                 : null,
+            ResourceDeploymentTestData.Compute(),
             NowUtc);
         var deployment = ResourceDeploymentFactory.Create(
             TenantId,
@@ -187,10 +200,7 @@ public sealed class RedisResourceDeploymentAdapterTests
             name: "redis-cache",
             resourceGroupId: ResourceGroupId,
             spec: new RedisSpec(
-                new Storage(12, StorageProfileId),
-                new Resources(
-                    Requests: new Resource(1, 256),
-                    Limits: new Resource(2, 512))),
+                new Storage(12, StorageProfileId)),
             options: RedisFactory.DefaultCreateOptions with
             {
                 Id = ResourceId,

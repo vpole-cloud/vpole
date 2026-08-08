@@ -1,13 +1,14 @@
 using Microsoft.FSharp.Core;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Features.ComputeProfiles.Contracts;
+using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.Shared.Models;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -96,9 +97,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             new UpdatePostgresClusterRequestBody(
                 FSharpOption<int>.Some(3),
                 FSharpOption<int>.Some(25),
-                FSharpOption<Resources>.Some(new Resources(
-                    Requests: new Resource(2, 512),
-                    Limits: new Resource(4, 1024)))),
+                FSharpOption<string>.None),
             TestData.TenantId);
 
         var result = await Mediator.Send(updateRequest);
@@ -120,6 +119,186 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(
             deployment.ResolvedPlacement.DeploymentTargetId,
             updatedDeployment.ResolvedPlacement.DeploymentTargetId);
+        Assert.Equal(
+            deployment.ResolvedPlacement.Compute,
+            updatedDeployment.ResolvedPlacement.Compute);
+    }
+
+    [Fact]
+    public async Task Update_StatefulSetCluster_RejectsMultipleInstances_FromPersistedMode()
+    {
+        var cluster = PostgresCluster.Create(
+            TestData.TenantId,
+            "stateful-postgres",
+            ObjectId.GenerateNewId().ToString(),
+            17,
+            PostgresDeploymentMode.StatefulSet,
+            TestData.DefaultStorageProfileId,
+            new CreatePostgresClusterOptions(
+                FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()),
+                1,
+                20));
+        await DbContext.Postgres.InsertOneAsync(cluster);
+
+        var result = await Mediator.Send(new UpdatePostgresClusterRequest(
+            cluster.Id,
+            new UpdatePostgresClusterRequestBody(
+                FSharpOption<int>.Some(2),
+                FSharpOption<int>.None,
+                FSharpOption<string>.None),
+            TestData.TenantId));
+
+        var validation = Assert.IsType<SemanticValidationFailure>(
+            result.AssertFailure());
+        Assert.Contains("Body.Instances", validation.ValidationErrors.Keys);
+        Assert.Equal(
+            1,
+            (await DbContext.Postgres.Find(item => item.Id == cluster.Id).SingleAsync())
+            .Spec.Instances);
+    }
+
+    [Fact]
+    public async Task Update_WithComputeProfile_AdoptsItsCurrentRevisionAndQuotaRequests()
+    {
+        var (cluster, deployment) = await CreateClusterAsync();
+        var profile = CreateComputeProfile(
+            requestedCpuMillis: 600,
+            requestedMemoryMi: 700);
+        await DbContext.Database
+            .GetCollection<ComputeProfile>("ComputeProfiles")
+            .InsertOneAsync(profile);
+
+        var result = await Mediator.Send(
+            new UpdatePostgresClusterRequest(
+                cluster.Id,
+                new UpdatePostgresClusterRequestBody(
+                    FSharpOption<int>.Some(2),
+                    FSharpOption<int>.None,
+                    FSharpOption<string>.Some(profile.Id)),
+                TestData.TenantId));
+
+        Assert.True(
+            result.TryGetValue(out _, out var error),
+            error?.Message);
+        var updatedDeployment = await DbContext.ResourceDeployments
+            .Find(item => item.Id == deployment.Id)
+            .SingleAsync();
+        Assert.Equal(profile.Id, updatedDeployment.ResolvedPlacement.Compute.ComputeProfileId);
+        Assert.Equal(profile.Revision, updatedDeployment.ResolvedPlacement.Compute.ComputeProfileRevision);
+        Assert.Equal(600, updatedDeployment.ResolvedPlacement.Compute.Requests.CpuMillis);
+        Assert.Equal(700, updatedDeployment.ResolvedPlacement.Compute.Requests.MemoryMi);
+    }
+
+    [Fact]
+    public async Task Update_WithCurrentComputeProfileId_AdoptsItsLatestRevision()
+    {
+        var (cluster, deployment) = await CreateClusterAsync();
+        var currentProfile = TestData.SeedComputeProfile();
+        var updatedProfile = currentProfile.Reconfigure(
+            currentProfile.DisplayName,
+            currentProfile.Description,
+            ComputeProfileResourceRequirements.Create(
+                ComputeProfileResourceQuantity.Create(425, 480),
+                currentProfile.Resources.Limits),
+            currentProfile.Architecture,
+            currentProfile.ExtendedResources,
+            currentProfile.AllowedResourceTypes.Select(ResourceTypeId.Create),
+            currentProfile.TenantAccess,
+            currentProfile.TargetMappings,
+            currentProfile.IsEnabled,
+            currentProfile.IsDefault,
+            currentProfile.UpdatedAtUtc.AddMinutes(1));
+        await DbContext.Database
+            .GetCollection<ComputeProfile>("ComputeProfiles")
+            .ReplaceOneAsync(
+                profile => profile.Id == currentProfile.Id,
+                updatedProfile);
+
+        var result = await Mediator.Send(
+            new UpdatePostgresClusterRequest(
+                cluster.Id,
+                new UpdatePostgresClusterRequestBody(
+                    FSharpOption<int>.None,
+                    FSharpOption<int>.None,
+                    FSharpOption<string>.Some(currentProfile.Id)),
+                TestData.TenantId));
+
+        Assert.True(
+            result.TryGetValue(out _, out var error),
+            error?.Message);
+        var updatedDeployment = await DbContext.ResourceDeployments
+            .Find(item => item.Id == deployment.Id)
+            .SingleAsync();
+        Assert.Equal(updatedProfile.Revision, updatedDeployment.ResolvedPlacement.Compute.ComputeProfileRevision);
+        Assert.Equal(425, updatedDeployment.ResolvedPlacement.Compute.Requests.CpuMillis);
+        Assert.Equal(480, updatedDeployment.ResolvedPlacement.Compute.Requests.MemoryMi);
+    }
+
+    [Fact]
+    public async Task Create_RejectsRuntimeClassComputeForCloudNativePgBeforePersistence()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(
+            TestData.SeedResourceGroup());
+        var profile = CreateComputeProfile(runtimeClassName: "kata");
+        await DbContext.Database
+            .GetCollection<ComputeProfile>("ComputeProfiles")
+            .InsertOneAsync(profile);
+        var request = new CreatePostgresClusterRequest(
+            new CreatePostgresClusterRequestBody(
+                "postgres-runtime-class",
+                resourceGroup.Id,
+                17,
+                FSharpOption<int>.Some(1),
+                FSharpOption<int>.Some(10),
+                TestData.DefaultStorageProfileId,
+                FSharpOption<string>.Some(profile.Id),
+                "postgres",
+                "postgres-secret",
+                FSharpOption<PlacementRequest>.None),
+            TestData.TenantId);
+
+        var result = await Mediator.Send(request);
+
+        var validation = Assert.IsType<SemanticValidationFailure>(
+            result.AssertFailure());
+        Assert.Contains("Body.ComputeProfileId", validation.ValidationErrors.Keys);
+        Assert.Equal(0, await DbContext.Postgres.CountDocumentsAsync(_ => true));
+        Assert.Equal(0, await Credentials.CountDocumentsAsync(_ => true));
+        Assert.Equal(0, await DbContext.ResourceDeployments.CountDocumentsAsync(_ => true));
+    }
+
+    [Fact]
+    public async Task Update_RejectsRuntimeClassComputeForCloudNativePgBeforeMutation()
+    {
+        var (cluster, deployment) = await CreateClusterAsync();
+        var profile = CreateComputeProfile(runtimeClassName: "kata");
+        await DbContext.Database
+            .GetCollection<ComputeProfile>("ComputeProfiles")
+            .InsertOneAsync(profile);
+
+        var result = await Mediator.Send(
+            new UpdatePostgresClusterRequest(
+                cluster.Id,
+                new UpdatePostgresClusterRequestBody(
+                    FSharpOption<int>.Some(2),
+                    FSharpOption<int>.None,
+                    FSharpOption<string>.Some(profile.Id)),
+                TestData.TenantId));
+
+        var validation = Assert.IsType<SemanticValidationFailure>(
+            result.AssertFailure());
+        Assert.Contains("Body.ComputeProfileId", validation.ValidationErrors.Keys);
+        var unchangedCluster = await DbContext.Postgres
+            .Find(item => item.Id == cluster.Id)
+            .SingleAsync();
+        var unchangedDeployment = await DbContext.ResourceDeployments
+            .Find(item => item.Id == deployment.Id)
+            .SingleAsync();
+        Assert.Equal(cluster.Revision, unchangedCluster.Revision);
+        Assert.Equal(deployment.Revision, unchangedDeployment.Revision);
+        Assert.Equal(
+            deployment.ResolvedPlacement.Compute,
+            unchangedDeployment.ResolvedPlacement.Compute);
     }
 
     [Fact]
@@ -234,7 +413,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
-    public async Task Create_ReturnsValidationFailure_WhenResourceRequestsExceedLimits()
+    public async Task Create_ReturnsValidationFailure_WhenComputeProfileIdIsMalformed()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(
             TestData.SeedResourceGroup());
@@ -245,10 +424,8 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
                 17,
                 FSharpOption<int>.Some(1),
                 FSharpOption<int>.Some(10),
-                new Resources(
-                    Requests: new Resource(3, 1024),
-                    Limits: new Resource(2, 512)),
                 TestData.DefaultStorageProfileId,
+                FSharpOption<string>.Some("not-an-object-id"),
                 "postgres",
                 "postgres-secret",
                 FSharpOption<PlacementRequest>.None),
@@ -256,11 +433,11 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(request);
 
-        Assert.False(result.TryGetValue(out _, out var error));
-        var validation = Assert.IsType<ValidationFailure>(error);
+        var validation = Assert.IsType<ValidationFailure>(
+            result.AssertFailure());
         Assert.Contains(
             validation.ValidationErrors.Keys,
-            key => key.StartsWith("Body.Resources", StringComparison.Ordinal));
+            key => key.StartsWith("Body.ComputeProfileId", StringComparison.Ordinal));
         Assert.Equal(0, await Credentials.CountDocumentsAsync(_ => true));
         Assert.Equal(
             0,
@@ -332,4 +509,31 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             item => item.Id == deployment.Id,
             applied);
     }
+
+    private static ComputeProfile CreateComputeProfile(
+        long requestedCpuMillis = 500,
+        long requestedMemoryMi = 512,
+        string? runtimeClassName = null) =>
+        ComputeProfileFactory.Create(
+            "PostgreSQL compute",
+            "PostgreSQL integration-test profile",
+            ComputeProfileResourceRequirements.Create(
+                ComputeProfileResourceQuantity.Create(
+                    requestedCpuMillis,
+                    requestedMemoryMi),
+                ComputeProfileResourceQuantity.Create(2000, 2048)),
+            ComputeArchitecture.Any,
+            [],
+            [PostgresResourceDeployment.ResourceType],
+            AllTenantsComputeProfileAccess.Create(),
+            [
+                ComputeProfileTargetMapping.Create(
+                    TestData.DefaultDeploymentTargetId,
+                    runtimeClassName: runtimeClassName)
+            ],
+            isEnabled: true,
+            isDefault: false,
+            new ComputeProfileFactory.CreateOptions(
+                ObjectId.GenerateNewId().ToString(),
+                new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
 }

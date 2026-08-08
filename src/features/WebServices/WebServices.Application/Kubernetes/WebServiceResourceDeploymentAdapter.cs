@@ -39,7 +39,8 @@ public sealed class WebServiceResourceDeploymentAdapter(
         var webService = desired.WebService;
         var inKubernetes = webService.ToKubernetes(
             context.Deployment.ResolvedPlacement.KubernetesNamespace,
-            context.Deployment.ResolvedPlacement.Ingress!);
+            context.Deployment.ResolvedPlacement.Ingress!,
+            context.Deployment.ResolvedPlacement.Compute);
 
         if (webService.Spec.Image.SecretName is not null)
         {

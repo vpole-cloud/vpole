@@ -10,6 +10,8 @@ open MongoDB.Bson
 open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
+open Pole.Features.ComputeProfiles.Application.Persistence
+open Pole.Features.ComputeProfiles.Contracts
 open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
@@ -30,8 +32,8 @@ type CreatePostgresClusterRequestBody =
       Version : int
       Instances : int option
       Storage : int option
-      Resources : Resources
       StorageProfileId : string
+      ComputeProfileId : string option
       Username : string
       Password : string
       Placement : PlacementRequest option }
@@ -51,6 +53,7 @@ type CreatePostgresClusterHandler(
     settings : PostgresSettings,
     quotaAdmissionExecutor : IQuotaAdmissionExecutor,
     resolveResourceDeploymentTarget : ResolveResourceDeploymentTarget,
+    resolveComputeProfile : ResolveComputeProfile,
     createResourceDeployment : CreateResourceDeployment) =
 
     interface IMediatorHandler<CreatePostgresClusterRequest, PostgresClusterDto> with
@@ -74,6 +77,29 @@ type CreatePostgresClusterHandler(
                 | struct (false, _, failure) ->
                     return failure |> ResultF.ofFailure
                 | struct (true, target, _) ->
+                    let! computeProfileResult =
+                        resolveComputeProfile.Invoke(
+                            ComputeProfileResolutionRequest(
+                                Option.toObj request.Body.ComputeProfileId,
+                                target.DeploymentTargetId,
+                                request.TenantId,
+                                PostgresResourceDeployment.ResourceType),
+                            cancellationToken)
+
+                    match computeProfileResult.TryGetValue() with
+                    | struct (false, _, failure) ->
+                        return failure |> ResultF.ofFailure
+                    | struct (true, computeProfile, _)
+                        when settings.DefaultDeploymentMode = PostgresDeploymentMode.Operator &&
+                             not (System.String.IsNullOrWhiteSpace computeProfile.RuntimeClassName) ->
+                        let errors =
+                            System.Collections.Generic.Dictionary<string, string[]>()
+                        errors["Body.ComputeProfileId"] <-
+                            [| "CloudNativePG compute profiles cannot specify a runtime class." |]
+                        return
+                            Failures.SemanticValidation(errors)
+                            |> ResultF.ofFailure
+                    | struct (true, computeProfile, _) ->
                         let requestedStorage =
                             defaultArg request.Body.Storage PostgresCluster.DefaultStorage
                         let! storageProfileResult =
@@ -101,8 +127,7 @@ type CreatePostgresClusterHandler(
                                     { Id = Some(ObjectId.GenerateNewId().ToString())
                                       Instances =
                                         defaultArg request.Body.Instances PostgresCluster.DefaultInstances
-                                      Storage = requestedStorage
-                                      Resources = request.Body.Resources })
+                                      Storage = requestedStorage })
 
                             let! credentialResult =
                                 credentialService.CreateAsync(
@@ -122,12 +147,17 @@ type CreatePostgresClusterHandler(
                                         storageProfile.ProfileId,
                                         storageProfile.ProfileRevision,
                                         storageProfile.StorageClassName)
+                                let quotaInput =
+                                    PostgresQuotaInput.create
+                                        computeProfile.Requests.CpuMillis
+                                        computeProfile.Requests.MemoryMi
+                                        (int64 cluster.Spec.Instances)
 
                                 return!
-                                    quotaAdmissionExecutor.ExecuteAsync<PostgresClusterSpec, PostgresClusterDto>(
+                                    quotaAdmissionExecutor.ExecuteAsync<PostgresQuotaInput, PostgresClusterDto>(
                                         cluster.TenantId,
                                         PostgresQuotaResourceKey.create cluster.Id,
-                                        CreateQuotaMutation<PostgresClusterSpec>(cluster.Spec),
+                                        CreateQuotaMutation<PostgresQuotaInput>(quotaInput),
                                         (fun session ct ->
                                             task {
                                                 do!
@@ -160,6 +190,7 @@ type CreatePostgresClusterHandler(
                                                             cluster.GroupId,
                                                             Option.toObj isolationScopeId,
                                                             target,
+                                                            computeProfile,
                                                             resolvedStorage,
                                                             ResourcePlacementCapability.SingleTarget),
                                                         session,
@@ -190,16 +221,24 @@ type CreatePostgresClusterValidator(settings : PostgresSettings) as this =
         this.RuleFor(_.Body.Name).NotEmpty().WithMessage("Name is required.") |> ignore
         this.RuleFor(_.Body.GroupId).NotEmpty().WithMessage("GroupId is required.") |> ignore
         this.RuleFor(_.Body.Version).GreaterThan(0).WithMessage("Version is required.") |> ignore
-        this.RuleFor(_.Body.Resources)
-            .NotNull()
-            .SetValidator(PostgresResourcesValidator())
-        |> ignore
         this.RuleFor(_.Body.StorageProfileId)
             .NotEmpty()
             .WithMessage("StorageProfileId is required.")
         |> ignore
         this.RuleFor(_.Body.Username).NotEmpty().WithMessage("Username is required.") |> ignore
         this.RuleFor(_.Body.Password).NotEmpty().WithMessage("Password is required.") |> ignore
+        this.RuleFor(_.Body.Instances)
+            .Must(fun instances -> Option.forall (fun value -> value > 0) instances)
+            .WithMessage("Instances must be greater than zero.")
+        |> ignore
+        this.RuleFor(_.Body.Storage)
+            .Must(fun storage -> Option.forall (fun value -> value > 0) storage)
+            .WithMessage("Storage must be greater than zero.")
+        |> ignore
+        this.RuleFor(fun request -> Option.toObj request.Body.ComputeProfileId)
+            .OptionalMongoObjectId("Compute profile ID")
+            .OverridePropertyName("Body.ComputeProfileId")
+        |> ignore
         this.RuleFor(_.Body.Version)
             .Must(fun version -> PostgresSettings.isSupportedVersion settings version)
             .WithMessage(

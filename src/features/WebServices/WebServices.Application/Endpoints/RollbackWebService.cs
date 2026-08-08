@@ -58,6 +58,7 @@ public sealed class RollbackWebServiceHandler(
     PersistUpdatedWebService persistUpdatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
+    IResourceDeploymentComputeLookup deploymentComputeLookup,
     IResourceDeploymentMutationWriter deploymentWriter)
     : IMediatorHandler<RollbackWebServiceRequest, RollbackWebServiceResponse>
 {
@@ -85,10 +86,32 @@ public sealed class RollbackWebServiceHandler(
             return Failures.NotFound("Succeeded release revision was not found for web service.", request.Body.TargetRevision);
 
         var targetSpec = targetRelease.Spec.ToDomain();
-        return await quotaAdmissionExecutor.ExecuteAsync<WebServiceSpec, RollbackWebServiceResponse>(
+        var computeLookupResult = await deploymentComputeLookup.GetCurrentAsync(
+            webService.TenantId,
+            WebServiceResourceDeployment.ResourceType,
+            webService.Id,
+            cancellationToken);
+        if (!computeLookupResult.TryGetValue(
+                out var currentCompute,
+                out var computeLookupFailure))
+            return computeLookupFailure;
+
+        var currentQuotaInput = WebServiceQuotaInput.Create(
+            currentCompute.Compute.Requests.CpuMillis,
+            currentCompute.Compute.Requests.MemoryMi,
+            webService.Spec);
+        var targetQuotaInput = WebServiceQuotaInput.Create(
+            currentCompute.Compute.Requests.CpuMillis,
+            currentCompute.Compute.Requests.MemoryMi,
+            targetSpec);
+        return await quotaAdmissionExecutor.ExecuteAsync<
+            WebServiceQuotaInput,
+            RollbackWebServiceResponse>(
             webService.TenantId,
             WebServiceQuotaResourceKey.Create(webService.Id),
-            new UpdateQuotaMutation<WebServiceSpec>(webService.Spec, targetSpec),
+            new UpdateQuotaMutation<WebServiceQuotaInput>(
+                currentQuotaInput,
+                targetQuotaInput),
             async (session, transactionCancellationToken) =>
             {
                 var updatedWebService = webService.UpdateDesiredState(
@@ -121,7 +144,8 @@ public sealed class RollbackWebServiceHandler(
                     new ResourceDeploymentMutationCommand(
                         webService.TenantId,
                         WebServiceResourceDeployment.ResourceType,
-                        webService.Id),
+                        webService.Id,
+                        currentCompute.Compute.Profile),
                     session,
                     transactionCancellationToken);
                 if (!deploymentResult.TryGetValue(

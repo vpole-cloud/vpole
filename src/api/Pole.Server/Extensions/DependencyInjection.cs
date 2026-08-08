@@ -317,6 +317,9 @@ public static class DependencyInjection
             services.TryAddScoped<
                 IResourceDeploymentReferenceLookup,
                 ResourceDeploymentReferenceLookup>();
+            services.TryAddScoped<
+                IResourceDeploymentComputeLookup,
+                ResourceDeploymentComputeLookup>();
             services.TryAddSingleton<ISearchDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IPostgresDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IQuotaDbContext>(sp => sp.GetRequiredService<MongoDbContext>());

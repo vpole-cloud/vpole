@@ -89,10 +89,7 @@ public sealed class UpdateLogTests
     {
         var previous = TestData.ValidRedisSpec().ToDomain();
         var next = new RedisSpec(
-            Storage: new Storage(5, TestData.DefaultStorageProfileId),
-            Resources: new Resources(
-                Requests: new Resource(1, 128),
-                Limits: new Resource(2, 256)));
+            Storage: new Storage(5, TestData.DefaultStorageProfileId));
 
         var updateLog = UpdateLog<RedisSpec>.Of(previous, next);
 

@@ -82,8 +82,11 @@ Before running the integration suite:
 - make sure **Docker is running**
 - make sure the .NET SDK for the repo is installed
 
-On Linux kernel 6.19, MongoDB 8.0 currently cannot start because of an upstream TCMalloc
-incompatibility. Until MongoDB publishes a compatible build, use the local fallback:
+On Linux kernels 6.19 through 7.0.13, MongoDB currently cannot run safely because of an upstream
+TCMalloc incompatibility. The image may refuse to start or an older image may terminate during a
+long suite. Prefer running Mongo-backed tests on kernel 6.18 or 7.0.14+. The following local
+fallback can help with short diagnostic runs, but it is not a substitute for the normal MongoDB 8
+verification boundary:
 
 ```bash
 POLE_TEST_MONGO_IMAGE=mongo:7.0 dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj -maxcpucount:1 -nodeReuse:false

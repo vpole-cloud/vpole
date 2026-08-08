@@ -84,7 +84,6 @@ public sealed record DeletingWebServiceLifecycle(DateTime RequestedAtUtc) : WebS
 public record WebServiceSpec(
     ImageInfo Image,
     int Replicas,
-    Resources Resources,
     WebServiceConfig Config,
     AutoscalingSpec? Autoscaling,
     ProbeSpec Probes

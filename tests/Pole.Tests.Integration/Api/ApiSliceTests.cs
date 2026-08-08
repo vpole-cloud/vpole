@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
@@ -125,6 +126,56 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         Assert.Equal(
             "fast",
             Assert.Single(payload.TargetMappings).StorageClassName);
+    }
+
+    [Fact]
+    public async Task GetComputeProfiles_RequiresPlatformAdmin()
+    {
+        var response = await Client.GetAsync(
+            "/api/v1/platform/compute-profiles?pageNumber=1&pageSize=10");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetComputeProfiles_ReturnsCatalog_ForPlatformAdmin()
+    {
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+
+        var response = await Client.GetAsync(
+            "/api/v1/platform/compute-profiles?pageNumber=1&pageSize=10");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var page = await response.Content.ReadFromJsonAsync<ComputeProfilePageDto>();
+        var profile = Assert.Single(page!.Items);
+        Assert.True(profile.IsDefault);
+        Assert.Equal("Default", profile.DisplayName);
+    }
+
+    [Fact]
+    public async Task GetAvailableComputeProfiles_RequiresTenantHeader()
+    {
+        Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
+
+        var response = await Client.GetAsync(
+            $"/api/v1/compute-profiles/available?deploymentTargetId={TestData.DefaultDeploymentTargetId}&resourceType=pole/redis");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetAvailableComputeProfiles_ReturnsEligibleDefault()
+    {
+        var response = await Client.GetAsync(
+            $"/api/v1/compute-profiles/available?deploymentTargetId={TestData.DefaultDeploymentTargetId}&resourceType=pole/redis");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var profiles = await response.Content.ReadFromJsonAsync<
+            IReadOnlyCollection<AvailableComputeProfileDto>>();
+        var profile = Assert.Single(profiles!);
+        Assert.True(profile.IsDefault);
+        Assert.Equal(250, profile.Resources.Requests.CpuMillis);
+        Assert.Equal(256, profile.Resources.Requests.MemoryMi);
     }
 
     [Fact]

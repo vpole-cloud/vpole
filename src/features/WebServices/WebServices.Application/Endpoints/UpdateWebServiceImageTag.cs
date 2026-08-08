@@ -68,6 +68,7 @@ public sealed class UpdateWebServiceImageTagHandler(
     TouchWebServiceDeploymentToken touchDeploymentToken,
     RunMongoTransaction<UpdateWebServiceImageTagResponse> runMongoTransaction,
     ITenantContextAccessor tenantContextAccessor,
+    IResourceDeploymentComputeLookup deploymentComputeLookup,
     IResourceDeploymentMutationWriter deploymentWriter)
     : IMediatorHandler<UpdateWebServiceImageTagRequest, UpdateWebServiceImageTagResponse>
 {
@@ -88,6 +89,16 @@ public sealed class UpdateWebServiceImageTagHandler(
             return Failures.NotFound("Web service not found.", request.Id);
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
             return Failures.Conflict("A deleting web service cannot be updated.");
+
+        var computeLookupResult = await deploymentComputeLookup.GetCurrentAsync(
+            webService.TenantId,
+            WebServiceResourceDeployment.ResourceType,
+            webService.Id,
+            cancellationToken);
+        if (!computeLookupResult.TryGetValue(
+                out var currentCompute,
+                out var computeLookupFailure))
+            return computeLookupFailure;
 
         return await runMongoTransaction(async (session, ct) =>
         {
@@ -142,7 +153,8 @@ public sealed class UpdateWebServiceImageTagHandler(
                 new ResourceDeploymentMutationCommand(
                     webService.TenantId,
                     WebServiceResourceDeployment.ResourceType,
-                    webService.Id),
+                    webService.Id,
+                    currentCompute.Compute.Profile),
                 session,
                 ct);
             if (!deploymentResult.TryGetValue(

@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
+using Pole.Features.ComputeProfiles.Application.Persistence;
+using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Application.Placement;
 using Pole.Features.ResourceDeployments.Application.Common;
@@ -47,6 +49,7 @@ public sealed class CreateRedisServiceHandler(
     IStorageProfileResolver storageProfileResolver,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     ResolveResourceDeploymentTarget resolveResourceDeploymentTarget,
+    ResolveComputeProfile resolveComputeProfile,
     CreateResourceDeployment createResourceDeployment)
     : IMediatorHandler<CreateRedisServiceRequest, CreateRedisServiceResponse>
 {
@@ -59,6 +62,20 @@ public sealed class CreateRedisServiceHandler(
             cancellationToken);
         if (!targetResult.TryGetValue(out var target, out var targetFailure))
             return targetFailure;
+
+        var computeProfileResult = await resolveComputeProfile(
+            new ComputeProfileResolutionRequest(
+                request.Body.ComputeProfileId,
+                target.DeploymentTargetId,
+                request.TenantId,
+                RedisResourceDeployment.ResourceType),
+            cancellationToken);
+        if (!computeProfileResult.TryGetValue(
+                out var computeProfile,
+                out var computeProfileFailure))
+        {
+            return computeProfileFailure;
+        }
 
         var storageProfileResult = await storageProfileResolver.ResolveAsync(
             new StorageProfileResolutionRequest(
@@ -87,10 +104,13 @@ public sealed class CreateRedisServiceHandler(
             storageProfile.ProfileRevision,
             storageProfile.StorageClassName);
 
-        return await quotaAdmissionExecutor.ExecuteAsync<RedisSpec, CreateRedisServiceResponse>(
+        var quotaInput = RedisQuotaInput.Create(
+            computeProfile.Requests.CpuMillis,
+            computeProfile.Requests.MemoryMi);
+        return await quotaAdmissionExecutor.ExecuteAsync<RedisQuotaInput, CreateRedisServiceResponse>(
             request.TenantId,
             RedisQuotaResourceKey.Create(newRedis.Id),
-            new CreateQuotaMutation<RedisSpec>(newRedis.Spec),
+            new CreateQuotaMutation<RedisQuotaInput>(quotaInput),
             async (session, transactionCancellationToken) =>
             {
                 await persistCreatedRedis(
@@ -107,6 +127,7 @@ public sealed class CreateRedisServiceHandler(
                         newRedis.ResourceGroupId,
                         request.Body.Placement?.IsolationScopeId,
                         target,
+                        computeProfile,
                         resolvedStorage,
                         ResourcePlacementCapability.SingleTarget),
                     session,
@@ -136,6 +157,7 @@ public sealed record CreateRedisServiceRequestBody(
     string ResourceGroupId,
     RedisSpecDto Spec,
     ImmutableHashSet<string> Tags,
+    string? ComputeProfileId = null,
     PlacementRequest? Placement = null
 );
 
@@ -165,6 +187,8 @@ public sealed class CreateRedisServiceRequestBodyValidator : AbstractValidator<C
             .NotEmpty();
         RuleFor(x => x.Spec)
             .SetValidator(new RedisSpecDtoValidator());
+        RuleFor(body => body.ComputeProfileId)
+            .OptionalMongoObjectId("Compute profile ID");
         When(body => body.Placement is not null, () =>
         {
             RuleFor(body => body.Placement!.IsolationScopeId)

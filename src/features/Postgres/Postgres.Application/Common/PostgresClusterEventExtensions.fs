@@ -15,7 +15,6 @@ module PostgresClusterEvents =
     let private toSnapshotSpec (spec : PostgresClusterSpec) : PostgresClusterSpecSnapshot =
         { Instances = spec.Instances
           Storage = spec.Storage
-          Resources = spec.Resources
           StorageProfileId = spec.StorageProfileId
           Version = spec.Version
           DeploymentMode = toSnapshotDeploymentMode spec.DeploymentMode }

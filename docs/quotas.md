@@ -16,9 +16,9 @@ All persisted quota quantities use `long`. Units belong to the quota definition,
 
 ## Definitions and profiles
 
-`Quota<TInput>` calculates one quota for a typed input. Shared CPU, RAM, and instance definitions consume `WorkloadQuotaInput`. A feature-specific `QuotaProfile<TSpec>` composes shared and local definitions and returns the complete quota impact for one resolved domain specification.
+`Quota<TInput>` calculates one quota for a typed input. Shared CPU, RAM, and instance definitions consume `WorkloadQuotaInput`. A feature-specific quota input combines its logical scaling values with the resolved `ComputeProfile` requests; CPU and memory no longer come from WebService, Redis, or PostgreSQL domain specifications.
 
-For example, `RedisQuotaProfile` combines the shared workload quotas with `RedisServiceCountQuota`. Resource handlers pass a `RedisSpec`; they do not calculate vectors or know how admission persistence works.
+For example, `RedisQuotaProfile` combines the resolved per-instance CPU/memory request with one admitted Redis instance and `RedisServiceCountQuota`. PostgreSQL multiplies the resolved per-instance requests by its instance count exactly once. WebService admission uses the maximum admitted replica count. Handlers do not calculate quota vectors or know how admission persistence works.
 
 Quota types and profiles are discovered from an explicit list of feature assemblies passed to `AddQuotaFramework`. Discovery is intentionally bounded. `QuotaCatalog` fails fast for duplicate quota keys, duplicate profiles, unregistered profile keys, and values returned under undeclared keys.
 
@@ -28,7 +28,8 @@ Handlers call `IQuotaAdmissionExecutor` with:
 
 1. the tenant id;
 2. a feature helper-created `QuotaResourceKey`;
-3. an explicit create, update, or delete mutation containing the resolved domain specification;
+3. an explicit create, update, or delete mutation containing the feature-owned quota input built
+   from the resolved compute snapshot and logical scaling values;
 4. a callback that persists the resource and its outbox events.
 
 The executor calculates the delta from the registered profile. Positive changes are reserved before the mutation. Inside one Mongo transaction it commits the reservation, applies reductions, persists the resource, and stores outbox events. A returned failure aborts the transaction. If preparation or the transaction fails, the executor makes a best-effort cancellation of the active reservation without masking the original failure.

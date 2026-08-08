@@ -41,6 +41,7 @@ public sealed class DeleteWebServiceHandler(
     BeginWebServiceDeletion beginWebServiceDeletion,
     ISourceBuildReferenceLookup sourceBuildReferences,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
+    IResourceDeploymentComputeLookup deploymentComputeLookup,
     IResourceDeploymentMutationWriter deploymentWriter,
     IResourceDeploymentQueryService deploymentQuery,
     TimeProvider timeProvider
@@ -64,21 +65,37 @@ public sealed class DeleteWebServiceHandler(
             return Failures.NotFound("Web service not found.", request.Id);
         if (webService.Lifecycle is DeletingWebServiceLifecycle)
         {
-            var currentPlacement = await deploymentQuery.GetAsync(
+            var deletingPlacement = await deploymentQuery.GetAsync(
                 request.TenantId,
                 WebServiceResourceDeployment.ResourceType,
                 request.Id,
                 cancellationToken);
-            return currentPlacement is null
+            return deletingPlacement is null
                 ? Failures.Conflict(
                     "The deleting web service has no resource deployment.")
-                : new DeleteWebServiceResponse(request.Id, currentPlacement);
+                : new DeleteWebServiceResponse(request.Id, deletingPlacement);
         }
 
-        return await quotaAdmissionExecutor.ExecuteAsync<WebServiceSpec, DeleteWebServiceResponse>(
+        var computeLookupResult = await deploymentComputeLookup.GetCurrentAsync(
+            webService.TenantId,
+            WebServiceResourceDeployment.ResourceType,
+            webService.Id,
+            cancellationToken);
+        if (!computeLookupResult.TryGetValue(
+                out var currentCompute,
+                out var computeLookupFailure))
+            return computeLookupFailure;
+
+        var quotaInput = WebServiceQuotaInput.Create(
+            currentCompute.Compute.Requests.CpuMillis,
+            currentCompute.Compute.Requests.MemoryMi,
+            webService.Spec);
+        return await quotaAdmissionExecutor.ExecuteAsync<
+            WebServiceQuotaInput,
+            DeleteWebServiceResponse>(
             webService.TenantId,
             WebServiceQuotaResourceKey.Create(webService.Id),
-            new DeleteQuotaMutation<WebServiceSpec>(webService.Spec),
+            new DeleteQuotaMutation<WebServiceQuotaInput>(quotaInput),
             async (session, transactionCancellationToken) =>
             {
                 var deleting = webService.BeginDeletion(
@@ -95,7 +112,8 @@ public sealed class DeleteWebServiceHandler(
                     new ResourceDeploymentMutationCommand(
                         webService.TenantId,
                         WebServiceResourceDeployment.ResourceType,
-                        webService.Id),
+                        webService.Id,
+                        currentCompute.Compute.Profile),
                     session,
                     transactionCancellationToken);
                 if (!deploymentResult.TryGetValue(

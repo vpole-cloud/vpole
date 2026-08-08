@@ -4,6 +4,7 @@ using MongoDB.Bson;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Application.Kubernetes;
+using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -23,6 +24,7 @@ public sealed class PostgresManifestTests
                 "app_user",
                 "pole-data",
                 "fast-db",
+                Compute(),
                 Metadata(),
                 settings))!.AsObject();
         var metadata = clusterManifest["metadata"]!.AsObject();
@@ -42,10 +44,21 @@ public sealed class PostgresManifestTests
 
         Assert.Equal("20Gi", storage["size"]!.GetValue<string>());
         Assert.Equal("fast-db", storage["storageClass"]!.GetValue<string>());
-        Assert.Equal("1", requests["cpu"]!.GetValue<string>());
-        Assert.Equal("256Mi", requests["memory"]!.GetValue<string>());
+        Assert.Equal("750m", requests["cpu"]!.GetValue<string>());
+        Assert.Equal("768Mi", requests["memory"]!.GetValue<string>());
         Assert.Equal("2", limits["cpu"]!.GetValue<string>());
-        Assert.Equal("512Mi", limits["memory"]!.GetValue<string>());
+        Assert.Equal("2Gi", limits["memory"]!.GetValue<string>());
+        Assert.Equal("1", requests["nvidia.com/gpu"]!.GetValue<string>());
+        var affinity = spec["affinity"]!.AsObject();
+        Assert.Equal("linux", affinity["nodeSelector"]!["kubernetes.io/os"]!.GetValue<string>());
+        Assert.Equal("arm64", affinity["nodeSelector"]!["kubernetes.io/arch"]!.GetValue<string>());
+        var nodeAffinity = affinity["nodeAffinity"]!.AsObject();
+        Assert.NotNull(nodeAffinity["requiredDuringSchedulingIgnoredDuringExecution"]);
+        Assert.NotNull(nodeAffinity["preferredDuringSchedulingIgnoredDuringExecution"]);
+        var toleration = Assert.Single(affinity["tolerations"]!.AsArray())!.AsObject();
+        Assert.Equal("dedicated", toleration["key"]!.GetValue<string>());
+        Assert.Equal("database", toleration["value"]!.GetValue<string>());
+        Assert.Equal("NoSchedule", toleration["effect"]!.GetValue<string>());
         Assert.Equal($"{cluster.Id}-secret", secret["name"]!.GetValue<string>());
         Assert.Equal("ghcr.io/cloudnative-pg/postgresql:17", spec["imageName"]!.GetValue<string>());
         Assert.Equal(cluster.Id, bootstrap["database"]!.GetValue<string>());
@@ -77,6 +90,24 @@ public sealed class PostgresManifestTests
     }
 
     [Fact]
+    public void BuildCluster_WithoutScheduling_OmitsAffinity()
+    {
+        var (cluster, settings) = CreateOperatorSubject();
+
+        var manifest = JsonSerializer.SerializeToNode(
+            PostgresClusterKubernetesBuilder.buildCluster(
+                cluster,
+                "app_user",
+                "pole-data",
+                "fast-db",
+                MinimalCompute(),
+                Metadata(),
+                settings))!.AsObject();
+
+        Assert.False(manifest["spec"]!.AsObject().ContainsKey("affinity"));
+    }
+
+    [Fact]
     public void BuildStatefulSet_UsesConfiguredImageAndSecretBackedEnvironment()
     {
         var (cluster, settings) = CreateStatefulSetSubject();
@@ -85,6 +116,7 @@ public sealed class PostgresManifestTests
             cluster,
             "pole-data",
             "fast-db",
+            Compute(runtimeClassName: "kata"),
             Metadata(),
             settings);
 
@@ -97,10 +129,16 @@ public sealed class PostgresManifestTests
 
         var env = statefulSet.Spec.Template.Spec.Containers.Single().Env.ToDictionary(x => x.Name);
         var resources = statefulSet.Spec.Template.Spec.Containers.Single().Resources;
-        Assert.Equal("1", resources.Requests["cpu"].ToString());
-        Assert.Equal("256Mi", resources.Requests["memory"].ToString());
+        Assert.Equal("750m", resources.Requests["cpu"].ToString());
+        Assert.Equal("768Mi", resources.Requests["memory"].ToString());
         Assert.Equal("2", resources.Limits["cpu"].ToString());
-        Assert.Equal("512Mi", resources.Limits["memory"].ToString());
+        Assert.Equal("2Gi", resources.Limits["memory"].ToString());
+        Assert.Equal("1", resources.Requests["nvidia.com/gpu"].ToString());
+        Assert.Equal("linux", statefulSet.Spec.Template.Spec.NodeSelector["kubernetes.io/os"]);
+        Assert.Equal("arm64", statefulSet.Spec.Template.Spec.NodeSelector["kubernetes.io/arch"]);
+        Assert.Equal("kata", statefulSet.Spec.Template.Spec.RuntimeClassName);
+        Assert.NotNull(statefulSet.Spec.Template.Spec.Affinity.NodeAffinity);
+        Assert.Single(statefulSet.Spec.Template.Spec.Tolerations);
         Assert.Equal($"{cluster.Id}-secret", env["POSTGRES_USER"].ValueFrom.SecretKeyRef.Name);
         Assert.Equal("username", env["POSTGRES_USER"].ValueFrom.SecretKeyRef.Key);
         Assert.Equal($"{cluster.Id}-secret", env["POSTGRES_PASSWORD"].ValueFrom.SecretKeyRef.Name);
@@ -144,8 +182,7 @@ public sealed class PostgresManifestTests
             new CreatePostgresClusterOptions(
                 FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()),
                 2,
-                20,
-                ResourceRequirements()));
+                20));
         return (cluster, CreateSettings());
     }
 
@@ -161,14 +198,49 @@ public sealed class PostgresManifestTests
             new CreatePostgresClusterOptions(
                 FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()),
                 1,
-                20,
-                ResourceRequirements()));
+                20));
         return (cluster, CreateSettings());
     }
 
-    private static Resources ResourceRequirements() => new(
-        Requests: new Resource(1, 256),
-        Limits: new Resource(2, 512));
+    private static ResolvedComputeConfiguration Compute(string? runtimeClassName = null)
+    {
+        var requiredTerm = ResolvedComputeNodeAffinityTerm.Create(
+        [
+            ResolvedComputeNodeAffinityExpression.Create(
+                "topology.kubernetes.io/zone",
+                ResolvedComputeNodeAffinityOperator.In,
+                ["ua-1"])
+        ]);
+        return ResolvedComputeConfiguration.Create(
+            TestData.DefaultComputeProfileId,
+            3,
+            "PostgreSQL compute",
+            ResolvedComputeResourceValues.Create(750, 768),
+            ResolvedComputeResourceValues.Create(2000, 2048),
+            ResolvedComputeArchitecture.Arm64,
+            [ResolvedComputeExtendedResource.Create("nvidia.com/gpu", 1)],
+            [ResolvedComputeNodeSelector.Create("kubernetes.io/os", "linux")],
+            [requiredTerm],
+            [ResolvedComputePreferredNodeAffinityTerm.Create(50, requiredTerm)],
+            [
+                ResolvedComputeToleration.Create(
+                    "dedicated",
+                    ResolvedComputeTolerationOperator.Equal,
+                    "database",
+                    ResolvedComputeTaintEffect.NoSchedule,
+                    null)
+            ],
+            runtimeClassName);
+    }
+
+    private static ResolvedComputeConfiguration MinimalCompute() =>
+        ResolvedComputeConfiguration.Create(
+            TestData.DefaultComputeProfileId,
+            1,
+            "Default",
+            ResolvedComputeResourceValues.Create(250, 256),
+            ResolvedComputeResourceValues.Create(1000, 1024),
+            ResolvedComputeArchitecture.Any);
 
     private static PostgresSettings CreateSettings() =>
         new()

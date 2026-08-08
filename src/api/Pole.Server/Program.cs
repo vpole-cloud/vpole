@@ -2,6 +2,8 @@ using System.Reflection;
 using Pole.Database;
 using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Application.Common;
+using Pole.Features.ComputeProfiles.Application;
+using Pole.Features.ComputeProfiles.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
@@ -43,6 +45,7 @@ Assembly[] assemblies = [
     typeof(DnsRecordEndpoints).Assembly,
     typeof(GitProviderEndpoints).Assembly,
     typeof(ContainerRegistryFeature).Assembly,
+    typeof(ComputeProfileFeature).Assembly,
     typeof(DeploymentTargetFeature).Assembly,
     typeof(SourceBuildFeature).Assembly,
     typeof(OutboxProcessorJob).Assembly,
@@ -75,6 +78,7 @@ builder.Services.AddKubernetes(configuration)
     .AddEventBus(configuration, assemblies)
     .AddOutboxEventAssemblies(outboxEventAssemblies)
     .AddDatabase()
+    .AddComputeProfiles()
     .AddRedisPersistence()
     .AddWebServicePersistence()
     .AddQuotaFramework(
@@ -112,6 +116,7 @@ _ = app.Services.GetRequiredService<IEnvelopeEncryptionService>();
 _ = app.Services.GetRequiredService<OutboxEventAssemblyCatalog>();
 await app.Services.GetRequiredService<MigrationRunner>().RunMigrations();
 await app.Services.GetRequiredService<IDeploymentTargetBootstrapper>().BootstrapAsync();
+await app.Services.GetRequiredService<IComputeProfileBootstrapper>().BootstrapAsync();
 
 var functionGatewayOptions = app.Services.GetRequiredService<FunctionGatewayOptions>();
 app.MapWhen(

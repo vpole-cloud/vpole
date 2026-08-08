@@ -4,6 +4,13 @@ The Redis feature owns the desired state and lifecycle of tenant-scoped Redis se
 coordinates quota admission, resource placement, durable events, and Kubernetes reconciliation,
 while MongoDB remains the source of truth for the resource document.
 
+CPU, memory, extended resources, and Kubernetes scheduling are resolved from a
+[`ComputeProfile`](../ComputeProfiles/README.md) and stored in the resource's immutable
+`ResourceDeployment` snapshot. Create uses the default profile when no ID is supplied. Update
+without an ID preserves that snapshot; an explicit ID adopts the latest eligible revision. Quota
+admission uses resolved requests, and StatefulSet manifests do not read compute values from the
+logical Redis specification.
+
 ## Module boundaries
 
 - `RedisServices.Domain` owns the Redis aggregate, specification, lifecycle states, and state

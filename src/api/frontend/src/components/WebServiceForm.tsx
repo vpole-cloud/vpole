@@ -46,18 +46,6 @@ export function WebServiceForm({
   const [imageName, setImageName] = useState(initialValue?.spec.image.name ?? '')
   const [imageTag, setImageTag] = useState(initialValue?.spec.image.tag ?? 'latest')
   const [replicas, setReplicas] = useState(String(initialValue?.spec.replicas ?? 1))
-  const [requestCpuCores, setRequestCpuCores] = useState(
-    String(initialValue?.spec.resources.requests.cpuCores ?? 1),
-  )
-  const [requestMemoryMi, setRequestMemoryMi] = useState(
-    String(initialValue?.spec.resources.requests.memoryMi ?? 256),
-  )
-  const [limitCpuCores, setLimitCpuCores] = useState(
-    String(initialValue?.spec.resources.limits.cpuCores ?? 2),
-  )
-  const [limitMemoryMi, setLimitMemoryMi] = useState(
-    String(initialValue?.spec.resources.limits.memoryMi ?? 512),
-  )
   const [probePath, setProbePath] = useState(
     initialValue?.spec.probes?.readiness.path ?? '/health',
   )
@@ -108,10 +96,6 @@ export function WebServiceForm({
       imageName: imageName.trim(),
       imageTag: imageTag.trim(),
       replicas: Number(replicas),
-      requestCpuCores: Number(requestCpuCores),
-      requestMemoryMi: Number(requestMemoryMi),
-      limitCpuCores: Number(limitCpuCores),
-      limitMemoryMi: Number(limitMemoryMi),
       probePath: probePath.trim(),
       probePort: probePort.trim(),
       servicePort: Number(servicePort),
@@ -207,30 +191,14 @@ export function WebServiceForm({
           </label>
         </div>
 
-        <div className="form-grid form-grid--four">
+        <div className="form-grid">
           <label className="field">
             <span className="field__label">Replicas</span>
             <input className="field__control" type="number" min="1" value={replicas} onChange={(event) => setReplicas(event.target.value)} />
           </label>
-          <label className="field">
-            <span className="field__label">Request CPU</span>
-            <input className="field__control" type="number" min="1" value={requestCpuCores} onChange={(event) => setRequestCpuCores(event.target.value)} />
-          </label>
-          <label className="field">
-            <span className="field__label">Request memory</span>
-            <input className="field__control" type="number" min="1" value={requestMemoryMi} onChange={(event) => setRequestMemoryMi(event.target.value)} />
-          </label>
-          <label className="field">
-            <span className="field__label">Limit CPU</span>
-            <input className="field__control" type="number" min="1" value={limitCpuCores} onChange={(event) => setLimitCpuCores(event.target.value)} />
-          </label>
         </div>
 
         <div className="form-grid form-grid--three">
-          <label className="field">
-            <span className="field__label">Limit memory</span>
-            <input className="field__control" type="number" min="1" value={limitMemoryMi} onChange={(event) => setLimitMemoryMi(event.target.value)} />
-          </label>
           <label className="field">
             <span className="field__label">Probe path</span>
             <input className="field__control" value={probePath} onChange={(event) => setProbePath(event.target.value)} />

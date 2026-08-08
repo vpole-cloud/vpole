@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
+using MongoDB.Bson;
+using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Domain;
@@ -59,7 +61,7 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.IsType<ConflictFailure>(failure);
 
         var usage = await GetUsageAsync(TestData.TenantId);
-        Assert.Equal(1000, QuotaValues.GetValue(usage.Values, CpuQuota.QuotaKey));
+        Assert.Equal(250, QuotaValues.GetValue(usage.Values, CpuQuota.QuotaKey));
         Assert.Equal(256, QuotaValues.GetValue(usage.Values, RamQuota.QuotaKey));
         Assert.Equal(1, QuotaValues.GetValue(usage.Values, WorkloadInstancesQuota.QuotaKey));
         Assert.Equal(1, QuotaValues.GetValue(usage.Values, PostgresClusterCountQuota.QuotaKey));
@@ -80,13 +82,24 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         var create = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id));
         Assert.True(create.TryGetValue(out var created, out _));
 
+        var replacementComputeId = ObjectId.GenerateNewId().ToString();
+        await Fixture.Database
+            .GetCollection<ComputeProfile>("ComputeProfiles")
+            .InsertOneAsync(TestData.SeedComputeProfile(
+                replacementComputeId,
+                requestedCpuMillis: 2000,
+                requestedMemoryMi: 512,
+                limitCpuMillis: 4000,
+                limitMemoryMi: 1024,
+                isDefault: false));
+
         var update = await Mediator.Send(new UpdateRedisServiceRequest(
             created.RedisId,
             new UpdateRedisServiceRequestBody(
                 new RedisSpecDto(
-                    new StorageDto(5, TestData.DefaultStorageProfileId),
-                    new Resources(new Resource(2, 512), new Resource(4, 1024))),
-                []),
+                    new StorageDto(5, TestData.DefaultStorageProfileId)),
+                [],
+                replacementComputeId),
             TestData.TenantId));
         Assert.True(update.TryGetValue(out _, out _));
 

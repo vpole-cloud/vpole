@@ -52,6 +52,7 @@ public sealed class RedeployWebServiceHandler(
     PersistRedeployedWebService persistRedeployedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     RunMongoTransaction<RedeployWebServiceResponse> runMongoTransaction,
+    IResourceDeploymentComputeLookup deploymentComputeLookup,
     IResourceDeploymentMutationWriter deploymentWriter)
     : IMediatorHandler<RedeployWebServiceRequest, RedeployWebServiceResponse>
 {
@@ -68,6 +69,16 @@ public sealed class RedeployWebServiceHandler(
             return Failures.NotFound("Web service not found.", request.Id);
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
             return Failures.Conflict("A deleting web service cannot be redeployed.");
+
+        var computeLookupResult = await deploymentComputeLookup.GetCurrentAsync(
+            webService.TenantId,
+            WebServiceResourceDeployment.ResourceType,
+            webService.Id,
+            cancellationToken);
+        if (!computeLookupResult.TryGetValue(
+                out var currentCompute,
+                out var computeLookupFailure))
+            return computeLookupFailure;
 
         return await runMongoTransaction(async (session, ct) =>
         {
@@ -86,7 +97,8 @@ public sealed class RedeployWebServiceHandler(
                 new ResourceDeploymentMutationCommand(
                     webService.TenantId,
                     WebServiceResourceDeployment.ResourceType,
-                    webService.Id),
+                    webService.Id,
+                    currentCompute.Compute.Profile),
                 session,
                 ct);
             if (!deploymentResult.TryGetValue(

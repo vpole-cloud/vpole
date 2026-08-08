@@ -2,6 +2,7 @@ using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Pole.Encryption;
+using Pole.Features.ComputeProfiles.Application;
 using Pole.Features.DnsRecords.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -36,6 +37,7 @@ public static class TestServiceProviderFactory
     private static readonly Assembly[] Assemblies =
     [
         typeof(WebServiceEndpoints).Assembly,
+        typeof(ComputeProfileFeature).Assembly,
         typeof(FunctionAppFeature).Assembly,
         typeof(FunctionRuntimeFeature).Assembly,
         typeof(PostgresClusterEndpoints).Assembly,
@@ -58,6 +60,7 @@ public static class TestServiceProviderFactory
         services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
         services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
         services.AddMongoDbContextInterfaces();
+        services.AddComputeProfiles();
         services.AddRedisPersistence();
         services.AddWebServicePersistence();
         services.AddScoped<IFunctionRevisionLifecycleService, FunctionRevisionLifecycleService>();

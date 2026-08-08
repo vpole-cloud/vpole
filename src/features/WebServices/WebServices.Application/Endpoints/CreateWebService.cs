@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
+using Pole.Features.ComputeProfiles.Application.Persistence;
+using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.DnsRecords.Contracts;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
@@ -50,6 +52,7 @@ public sealed class CreateWebServiceHandler(
     IDomainNameReservationService domainNameReservationService,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     ResolveResourceDeploymentTarget resolveResourceDeploymentTarget,
+    ResolveComputeProfile resolveComputeProfile,
     CreateResourceDeployment createResourceDeployment)
     : IMediatorHandler<CreateWebServiceRequest, CreateWebServiceResponse>
 {
@@ -69,13 +72,27 @@ public sealed class CreateWebServiceHandler(
         if (!targetResult.TryGetValue(out var target, out var targetFailure))
             return targetFailure;
 
+        var computeResult = await resolveComputeProfile(
+            new ComputeProfileResolutionRequest(
+                request.Body.ComputeProfileId,
+                target.DeploymentTargetId,
+                request.TenantId,
+                WebServiceResourceDeployment.ResourceType),
+            cancellationToken);
+        if (!computeResult.TryGetValue(out var compute, out var computeFailure))
+            return computeFailure;
+
+        var quotaInput = WebServiceQuotaInput.Create(
+            compute.Requests.CpuMillis,
+            compute.Requests.MemoryMi,
+            spec);
         return await quotaAdmissionExecutor.ExecuteAsync<
-            WebServiceSpec,
+            WebServiceQuotaInput,
             WebServiceCreatePreparation,
             CreateWebServiceResponse>(
             request.TenantId,
             WebServiceQuotaResourceKey.Create(createWebServiceOptions.Id),
-            new CreateQuotaMutation<WebServiceSpec>(spec),
+            new CreateQuotaMutation<WebServiceQuotaInput>(quotaInput),
             transactionCancellationToken => PrepareAsync(
                 request,
                 createWebServiceOptions.Id,
@@ -104,6 +121,7 @@ public sealed class CreateWebServiceHandler(
                         newWebService.ResourceGroupId,
                         request.Body.Placement?.IsolationScopeId,
                         preparation.Target,
+                        compute,
                         Storage: null,
                         ResourcePlacementCapability.SingleTarget),
                     session,
@@ -177,6 +195,7 @@ public sealed record CreateWebServiceRequestBody(
     WebServiceSpecDto Spec,
     string DomainName,
     ImmutableHashSet<string> Tags,
+    string? ComputeProfileId = null,
     PlacementRequest? Placement = null);
 public sealed record CreateWebServiceResponse(
     string WebServiceId,
@@ -207,6 +226,8 @@ public sealed class CreateWebServiceRequestBodyValidator : AbstractValidator<Cre
         RuleFor(x => x.DomainName)
             .NotEmpty()
             .MaximumLength(100);
+        RuleFor(body => body.ComputeProfileId)
+            .OptionalMongoObjectId("Compute profile ID");
         When(body => body.Placement is not null, () =>
         {
             RuleFor(body => body.Placement!.IsolationScopeId)
@@ -235,8 +256,6 @@ public sealed class WebServiceSpecDtoValidator : AbstractValidator<WebServiceSpe
             .SetValidator(new ImageInfoDtoValidator());
         RuleFor(x => x.Replicas)
             .GreaterThan(0);
-        RuleFor(x => x.Resources)
-            .SetValidator(new ResourcesValidator());
         RuleFor(x => x.Probes)
             .SetValidator(new ProbeSpecDtoValidator());
         RuleFor(x => x.Config)
@@ -285,29 +304,6 @@ public class ProbeConfigDtoValidator : AbstractValidator<ProbeConfigDto>
                 
     }
 }
-
-public class ResourcesValidator : AbstractValidator<Resources>
-{
-    public ResourcesValidator()
-    {
-        RuleFor(x => x.Requests)
-            .SetValidator(new ResourceValidator());
-        RuleFor(x => x.Limits)
-            .SetValidator(new ResourceValidator());
-    }
-}
-
-public class ResourceValidator : AbstractValidator<Resource>
-{
-    public ResourceValidator()
-    {
-        RuleFor(x => x.CpuCores)
-            .GreaterThan(0);
-        RuleFor(x => x.MemoryMi)
-            .GreaterThan(0);
-    }
-}
-
 
 public sealed class ImageInfoDtoValidator : AbstractValidator<ImageInfoDto>
 {

@@ -82,21 +82,12 @@ public sealed class RedisSchemaValidationMigration : IMigration
                 ("Revision", IntegerType("long", minimum: 1)),
                 ("Lifecycle", LifecycleSchema())));
 
-        private static BsonDocument RedisSpecSchema() => Object(
-            ["Storage", "Resources"],
-            ("Storage", Object(
+        private static BsonDocument RedisSpecSchema() => ClosedObject(
+            ["Storage"],
+            ("Storage", ClosedObject(
                 ["SizeGb", "StorageProfileId"],
                 ("SizeGb", IntegerType("int", minimum: 1, maximum: 1000)),
-                ("StorageProfileId", StringType(minimumLength: 1, maximumLength: 100)))),
-            ("Resources", Object(
-                ["Requests", "Limits"],
-                ("Requests", ResourceSchema()),
-                ("Limits", ResourceSchema()))));
-
-        private static BsonDocument ResourceSchema() => Object(
-            ["CpuCores", "MemoryMi"],
-            ("CpuCores", IntegerType("int", minimum: 1)),
-            ("MemoryMi", IntegerType("int", minimum: 1)));
+                ("StorageProfileId", StringType(minimumLength: 1, maximumLength: 100)))));
 
         private static BsonDocument ServiceEventSchema() => Object(
             ["OccurredOn", "Message"],

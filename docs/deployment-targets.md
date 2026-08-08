@@ -14,7 +14,7 @@ Each target has a stable ID, display name, stable cluster identity, connection v
 
 The stable identity is derived from the `kube-system` namespace UID. Validation also records the Kubernetes server version and self-subject access results for get/create/update/patch/delete on namespaces.
 
-The default target is stored in the singleton `DeploymentTargetSettings` document. The local cluster has no special `IsManagementCluster` flag. RuntimeCell placement now persists the selected target for each isolation scope. Resource features that have not yet adopted ResourceDeployment still resolve the default target through the transitional resource-group placement contract; the default is therefore not mutable through the #35 API.
+The default target is stored in the singleton `DeploymentTargetSettings` document. The local cluster has no special `IsManagementCluster` flag. RuntimeCell placement persists the selected target for each isolation scope, and ResourceDeployment persists the target selected for each adopted workload. The default is therefore not mutable through the current platform API.
 
 ## Connection kinds and security
 
@@ -72,6 +72,12 @@ same transaction that creates the cell and its initial reconciliation event. The
 remains until namespace deletion succeeds. It is a referential-integrity index used to block
 unsafe target deletion; the RuntimeCell document remains the source of truth for placement
 and lifecycle. See [workload placement](workload-placement.md).
+
+ComputeProfile target mappings also register references with owner type `compute-profile` in the
+same transaction as catalog changes. The reference protects the mapping; the profile remains the
+source of truth. Mapping validation inspects node labels, architecture, extended-resource
+allocatable quantities, and RuntimeClass scheduling against the target cluster without treating
+temporary cordon/readiness state as permanent capability.
 
 `POST /{id}/validate` is an operational health refresh, not request validation. It rebuilds a client from the stored credential, probes Kubernetes health and namespace capabilities, verifies the stable cluster identity, and compare-and-sets only the observational fields when the target revision and connection version are unchanged.
 

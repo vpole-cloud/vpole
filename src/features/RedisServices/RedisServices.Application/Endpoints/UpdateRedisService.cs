@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
+using Pole.Features.ComputeProfiles.Application.Persistence;
+using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Application.Mutations;
@@ -15,6 +17,7 @@ using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.RedisServices.Application.Endpoints;
 
@@ -45,7 +48,8 @@ public sealed record UpdateRedisServiceRequest(
 
 public sealed record UpdateRedisServiceRequestBody(
     RedisSpecDto Spec,
-    ImmutableHashSet<string> Tags
+    ImmutableHashSet<string> Tags,
+    string? ComputeProfileId = null
 );
 
 public sealed record UpdateRedisServiceResponse(
@@ -56,6 +60,8 @@ public sealed class UpdateRedisServiceHandler(
     LoadRedisById loadRedisById,
     PersistUpdatedRedis persistUpdatedRedis,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
+    ResolveComputeProfile resolveComputeProfile,
+    IResourceDeploymentComputeLookup deploymentComputeLookup,
     IResourceDeploymentMutationWriter deploymentWriter)
     : IMediatorHandler<UpdateRedisServiceRequest, UpdateRedisServiceResponse>
 {
@@ -85,10 +91,52 @@ public sealed class UpdateRedisServiceHandler(
         }
 
         var nextSpec = request.Body.Spec.ToDomain();
-        return await quotaAdmissionExecutor.ExecuteAsync<RedisSpec, UpdateRedisServiceResponse>(
+        var currentComputeResult = await deploymentComputeLookup.GetCurrentAsync(
+            redis.TenantId,
+            RedisResourceDeployment.ResourceType,
+            redis.Id,
+            cancellationToken);
+        if (!currentComputeResult.TryGetValue(
+                out var currentCompute,
+                out var currentComputeFailure))
+        {
+            return currentComputeFailure;
+        }
+
+        ResolvedComputeProfile? replacementCompute = null;
+        if (!string.IsNullOrWhiteSpace(request.Body.ComputeProfileId))
+        {
+            var computeResult = await resolveComputeProfile(
+                new ComputeProfileResolutionRequest(
+                    request.Body.ComputeProfileId,
+                    currentCompute.DeploymentTargetId,
+                    redis.TenantId,
+                    RedisResourceDeployment.ResourceType),
+                cancellationToken);
+            if (!computeResult.TryGetValue(
+                    out replacementCompute,
+                    out var computeFailure))
+            {
+                return computeFailure;
+            }
+        }
+
+        var currentQuotaInput = RedisQuotaInput.Create(
+            currentCompute.Compute.Requests.CpuMillis,
+            currentCompute.Compute.Requests.MemoryMi);
+        var nextQuotaInput = replacementCompute is null
+            ? RedisQuotaInput.Create(
+                currentCompute.Compute.Requests.CpuMillis,
+                currentCompute.Compute.Requests.MemoryMi)
+            : RedisQuotaInput.Create(
+                replacementCompute.Requests.CpuMillis,
+                replacementCompute.Requests.MemoryMi);
+        return await quotaAdmissionExecutor.ExecuteAsync<RedisQuotaInput, UpdateRedisServiceResponse>(
             redis.TenantId,
             RedisQuotaResourceKey.Create(redis.Id),
-            new UpdateQuotaMutation<RedisSpec>(redis.Spec, nextSpec),
+            new UpdateQuotaMutation<RedisQuotaInput>(
+                currentQuotaInput,
+                nextQuotaInput),
             async (session, transactionCancellationToken) =>
             {
                 var updatedRedis = redis.UpdateDesiredState(
@@ -106,7 +154,9 @@ public sealed class UpdateRedisServiceHandler(
                     new ResourceDeploymentMutationCommand(
                         redis.TenantId,
                         RedisResourceDeployment.ResourceType,
-                        redis.Id),
+                        redis.Id,
+                        currentCompute.Compute.Profile,
+                        replacementCompute),
                     session,
                     transactionCancellationToken);
                 if (!deploymentResult.TryGetValue(
@@ -134,5 +184,7 @@ public sealed class UpdateRedisServiceValidator : AbstractValidator<UpdateRedisS
         RuleFor(x => x.Body.Spec)
             .NotNull().WithMessage("Redis service specification is required.")
             .SetValidator(new RedisSpecDtoValidator());
+        RuleFor(x => x.Body.ComputeProfileId)
+            .OptionalMongoObjectId("Compute profile ID");
     }
 }

@@ -2,7 +2,6 @@ namespace Pole.Features.Postgres.Events
 
 open MassTransit
 open Pole.Features.Events.Abstractions
-open Pole.Features.Shared.Models
 
 type PostgresDeploymentModeSnapshot =
     | Operator = 0
@@ -11,7 +10,6 @@ type PostgresDeploymentModeSnapshot =
 type PostgresClusterSpecSnapshot =
     { Instances : int
       Storage : int
-      Resources : Resources
       StorageProfileId : string
       Version : int
       DeploymentMode : PostgresDeploymentModeSnapshot }

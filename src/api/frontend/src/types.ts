@@ -41,17 +41,6 @@ export interface ImageInfo {
   tag: string
 }
 
-export interface WebServiceResources {
-  requests: {
-    cpuCores: number
-    memoryMi: number
-  }
-  limits: {
-    cpuCores: number
-    memoryMi: number
-  }
-}
-
 export interface ProbeConfig {
   path: string
   port: string
@@ -75,7 +64,6 @@ export interface WebService {
   spec: {
     replicas: number
     image: ImageInfo
-    resources: WebServiceResources
     config: {
       environmentVariables: Record<string, string>
       portMappings: PortMapping[]
@@ -264,10 +252,7 @@ export interface WebServiceInput {
   imageName: string
   imageTag: string
   replicas: number
-  requestCpuCores: number
-  requestMemoryMi: number
-  limitCpuCores: number
-  limitMemoryMi: number
+  computeProfileId?: string
   probePath: string
   probePort: string
   servicePort: number

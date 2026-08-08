@@ -9,6 +9,8 @@ open Microsoft.AspNetCore.Routing
 open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
+open Pole.Features.ComputeProfiles.Application.Persistence
+open Pole.Features.ComputeProfiles.Contracts
 open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
@@ -20,11 +22,12 @@ open Pole.Features.Shared.Models
 open Pole.Features.StorageProfiles.Contracts
 open Pole.Mediator
 open Pole.ResultType
+open Pole.Validation
 
 type UpdatePostgresClusterRequestBody =
     { Instances : int option
       Storage : int option
-      Resources : Resources option }
+      ComputeProfileId : string option }
 
 type UpdatePostgresClusterResponse =
     { Id : string
@@ -41,11 +44,17 @@ type UpdatePostgresClusterRequest =
     interface ITenantWriteOperation with
         member this.TenantId = this.TenantId
 
+[<Struct>]
+type private PostgresComputeAdoption =
+    | Preserve
+    | Replace of ResolvedComputeProfile
+
 type UpdatePostgresClusterHandler(
     dbContext : IPostgresDbContext,
     storageProfileResolver : IStorageProfileResolver,
     quotaAdmissionExecutor : IQuotaAdmissionExecutor,
-    deploymentQuery : IResourceDeploymentQueryService,
+    resolveComputeProfile : ResolveComputeProfile,
+    deploymentComputeLookup : IResourceDeploymentComputeLookup,
     deploymentWriter : IResourceDeploymentMutationWriter) =
     interface IMediatorHandler<UpdatePostgresClusterRequest, UpdatePostgresClusterResponse> with
         member _.HandleAsync(request, cancellationToken) =
@@ -69,43 +78,74 @@ type UpdatePostgresClusterHandler(
                     return
                         Failures.Conflict("A deleting PostgreSQL cluster cannot be updated.")
                         |> ResultF.ofFailure
+                | Some cluster
+                    when cluster.Spec.DeploymentMode = PostgresDeploymentMode.StatefulSet &&
+                         defaultArg request.Body.Instances cluster.Spec.Instances <> 1 ->
+                    let errors =
+                        System.Collections.Generic.Dictionary<string, string[]>()
+                    errors["Body.Instances"] <-
+                        [| "StatefulSet PostgreSQL supports exactly one instance." |]
+                    return
+                        Failures.SemanticValidation(errors)
+                        |> ResultF.ofFailure
                 | Some cluster ->
                     let updatedInstances =
                         defaultArg request.Body.Instances cluster.Spec.Instances
                     let updatedStorage =
                         defaultArg request.Body.Storage cluster.Spec.Storage
-                    let updatedResources =
-                        defaultArg request.Body.Resources cluster.Spec.Resources
 
-                    if cluster.Spec.DeploymentMode = PostgresDeploymentMode.StatefulSet &&
-                       updatedInstances <> 1 then
-                        let errors =
-                            System.Collections.Generic.Dictionary<string, string[]>()
-                        errors["Body.Instances"] <-
-                            [| "StatefulSet PostgreSQL supports exactly one instance." |]
-                        return
-                            Failures.ValidationFailure(errors)
-                            |> ResultF.ofFailure
-                    else
-                        let! placement =
-                            deploymentQuery.FindOptionAsync(
-                                cluster.TenantId,
-                                PostgresResourceDeployment.ResourceType,
-                                cluster.Id,
-                                cancellationToken)
+                    let! currentComputeResult =
+                        deploymentComputeLookup.GetCurrentAsync(
+                            cluster.TenantId,
+                            PostgresResourceDeployment.ResourceType,
+                            cluster.Id,
+                            cancellationToken)
 
-                        match placement with
-                        | None ->
-                            return
-                                Failures.Conflict(
-                                    "The PostgreSQL resource deployment is unavailable.")
-                                |> ResultF.ofFailure
-                        | Some placement ->
+                    match currentComputeResult.TryGetValue() with
+                    | struct (false, _, failure) ->
+                        return failure |> ResultF.ofFailure
+                    | struct (true, currentCompute, _) ->
+                        let! replacementComputeResult =
+                            task {
+                                match request.Body.ComputeProfileId with
+                                | Some computeProfileId when not (System.String.IsNullOrWhiteSpace computeProfileId) ->
+                                    let! computeResult =
+                                        resolveComputeProfile.Invoke(
+                                            ComputeProfileResolutionRequest(
+                                                computeProfileId,
+                                                currentCompute.DeploymentTargetId,
+                                                cluster.TenantId,
+                                                PostgresResourceDeployment.ResourceType),
+                                            cancellationToken)
+
+                                    match computeResult.TryGetValue() with
+                                    | struct (false, _, failure) ->
+                                        return failure |> ResultF.ofFailure
+                                    | struct (true, computeProfile, _)
+                                        when cluster.Spec.DeploymentMode = PostgresDeploymentMode.Operator &&
+                                             not (System.String.IsNullOrWhiteSpace computeProfile.RuntimeClassName) ->
+                                        let errors =
+                                            System.Collections.Generic.Dictionary<string, string[]>()
+                                        errors["Body.ComputeProfileId"] <-
+                                            [| "CloudNativePG compute profiles cannot specify a runtime class." |]
+                                        return
+                                            Failures.SemanticValidation(errors)
+                                            |> ResultF.ofFailure
+                                    | struct (true, computeProfile, _) ->
+                                        return Replace computeProfile |> ResultF.ofValue
+                                | _ ->
+                                    return Preserve |> ResultF.ofValue
+                            }
+
+                        match replacementComputeResult.TryGetValue() with
+                        | struct (false, _, failure) ->
+                            return failure |> ResultF.ofFailure
+                        | struct (true, replacementCompute, _) ->
                             let! storageProfileResult =
                                 storageProfileResolver.ResolveAsync(
                                     StorageProfileResolutionRequest(
                                         cluster.Spec.StorageProfileId,
-                                        placement.DeploymentTargetId,
+                                        currentCompute.DeploymentTargetId,
                                         cluster.TenantId,
                                         ResourceType.Postgres,
                                         updatedStorage),
@@ -118,16 +158,37 @@ type UpdatePostgresClusterHandler(
                                 let updatedCluster =
                                     cluster.UpdateDesiredState(
                                         updatedInstances,
-                                        updatedStorage,
-                                        updatedResources)
+                                        updatedStorage)
+                                let currentQuotaInput =
+                                    PostgresQuotaInput.create
+                                        currentCompute.Compute.Requests.CpuMillis
+                                        currentCompute.Compute.Requests.MemoryMi
+                                        (int64 cluster.Spec.Instances)
+                                let nextRequestsCpuMillis, nextRequestsMemoryMi =
+                                    match replacementCompute with
+                                    | Replace compute ->
+                                        compute.Requests.CpuMillis,
+                                        compute.Requests.MemoryMi
+                                    | Preserve ->
+                                        currentCompute.Compute.Requests.CpuMillis,
+                                        currentCompute.Compute.Requests.MemoryMi
+                                let replacementComputeProfile =
+                                    match replacementCompute with
+                                    | Replace compute -> compute
+                                    | Preserve -> null
+                                let nextQuotaInput =
+                                    PostgresQuotaInput.create
+                                        nextRequestsCpuMillis
+                                        nextRequestsMemoryMi
+                                        (int64 updatedCluster.Spec.Instances)
 
                                 return!
-                                    quotaAdmissionExecutor.ExecuteAsync<PostgresClusterSpec, UpdatePostgresClusterResponse>(
+                                    quotaAdmissionExecutor.ExecuteAsync<PostgresQuotaInput, UpdatePostgresClusterResponse>(
                                         cluster.TenantId,
                                         PostgresQuotaResourceKey.create cluster.Id,
-                                        UpdateQuotaMutation<PostgresClusterSpec>(
-                                            cluster.Spec,
-                                            updatedCluster.Spec),
+                                        UpdateQuotaMutation<PostgresQuotaInput>(
+                                            currentQuotaInput,
+                                            nextQuotaInput),
                                         (fun session ct ->
                                             task {
                                                 let! replacement =
@@ -152,7 +213,9 @@ type UpdatePostgresClusterHandler(
                                                             ResourceDeploymentMutationCommand(
                                                                 cluster.TenantId,
                                                                 PostgresResourceDeployment.ResourceType,
-                                                                cluster.Id),
+                                                                cluster.Id,
+                                                                currentCompute.Compute.Profile,
+                                                                replacementComputeProfile),
                                                             session,
                                                             ct)
 
@@ -181,12 +244,17 @@ type UpdatePostgresClusterRequestValidator() as this =
     inherit AbstractValidator<UpdatePostgresClusterRequest>()
     do
         this.RuleFor(_.ClusterId).NotEmpty() |> ignore
-        this.When(
-            (fun request -> Option.isSome request.Body.Resources),
-            (fun () ->
-                this.RuleFor(fun request -> request.Body.Resources.Value)
-                    .SetValidator(PostgresResourcesValidator())
-                |> ignore))
+        this.RuleFor(_.Body.Instances)
+            .Must(fun instances -> Option.forall (fun value -> value > 0) instances)
+            .WithMessage("Instances must be greater than zero.")
+        |> ignore
+        this.RuleFor(_.Body.Storage)
+            .Must(fun storage -> Option.forall (fun value -> value > 0) storage)
+            .WithMessage("Storage must be greater than zero.")
+        |> ignore
+        this.RuleFor(fun request -> Option.toObj request.Body.ComputeProfileId)
+            .OptionalMongoObjectId("Compute profile ID")
+            .OverridePropertyName("Body.ComputeProfileId")
         |> ignore
 
 [<AbstractClass; Sealed>]

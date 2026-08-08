@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using k8s.Models;
+using Pole.Features.ResourceDeployments.Application.Kubernetes;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.WebServices.Domain;
 
@@ -74,21 +75,25 @@ public sealed record WebServiceResourceDeploymentMetadata(
 public readonly record struct WebServiceInKubernetes(
     WebService WebService,
     string Namespace,
-    ResolvedIngressConfiguration IngressConfiguration)
+    ResolvedIngressConfiguration IngressConfiguration,
+    ResolvedComputeConfiguration ComputeConfiguration)
 {
     public static WebServiceInKubernetes Create(
         WebService webService,
         string kubernetesNamespace,
-        ResolvedIngressConfiguration ingressConfiguration)
+        ResolvedIngressConfiguration ingressConfiguration,
+        ResolvedComputeConfiguration computeConfiguration)
     {
         ArgumentNullException.ThrowIfNull(webService);
         ArgumentException.ThrowIfNullOrWhiteSpace(kubernetesNamespace);
         ArgumentNullException.ThrowIfNull(ingressConfiguration);
+        ArgumentNullException.ThrowIfNull(computeConfiguration);
 
         return new(
             webService,
             kubernetesNamespace.Trim(),
-            ingressConfiguration);
+            ingressConfiguration,
+            computeConfiguration);
     }
 
     public string ConfigMapName => BuildConfigMapName(WebService.Name);
@@ -137,52 +142,46 @@ public readonly record struct WebServiceInKubernetes(
                     },
                     Annotations = BuildPodTemplateAnnotations(deploymentMetadata),
                 },
-                Spec = new V1PodSpec()
-                {
-                    ImagePullSecrets = WebService.Spec.Image.SecretName is null ? null : new List<V1LocalObjectReference>
-                    {
-                        new()
-                        {
-                            Name = WebService.Spec.Image.SecretName
-                        }
-                    },
-                    Containers =
-                    [
-                        new V1Container
-                        {
-                            Name = WebService.Name,
-                            Image = WebService.Spec.Image.FullImageName,
-                            Ports = new List<V1ContainerPort>()
-                            {
-                                new()
-                                {
-                                    ContainerPort = 80
-                                }
-                            },
-                            EnvFrom = [new V1EnvFromSource { ConfigMapRef = new V1ConfigMapEnvSource { Name = ConfigMapName } }],
-                            StartupProbe = WebService.Spec.Probes.Startup.ToV1Probe(),
-                            LivenessProbe = WebService.Spec.Probes.Liveness.ToV1Probe(),
-                            ReadinessProbe = WebService.Spec.Probes.Readiness.ToV1Probe(),
-                            Resources = new V1ResourceRequirements()
-                            {
-                                Requests = new Dictionary<string, ResourceQuantity>()
-                                {
-                                    ["cpu"] = new ($"{WebService.Spec.Resources.Requests.CpuCores}"),
-                                    ["memory"] = new ($"{WebService.Spec.Resources.Requests.MemoryMi}Mi")
-                                },
-                                Limits = new Dictionary<string, ResourceQuantity>()
-                                {
-                                    ["cpu"] = new ($"{WebService.Spec.Resources.Limits.CpuCores}"),
-                                    ["memory"] = new ($"{WebService.Spec.Resources.Limits.MemoryMi}Mi")
-                                },
-                            },
-                        }
-                    ]
-                }
+                Spec = BuildPodSpec()
 
             }
         }
     };
+
+    private V1PodSpec BuildPodSpec()
+    {
+        var podSpec = new V1PodSpec
+        {
+            ImagePullSecrets = WebService.Spec.Image.SecretName is null
+                ? null
+                : [new V1LocalObjectReference { Name = WebService.Spec.Image.SecretName }],
+            Containers =
+            [
+                new V1Container
+                {
+                    Name = WebService.Name,
+                    Image = WebService.Spec.Image.FullImageName,
+                    Ports = [new V1ContainerPort { ContainerPort = 80 }],
+                    EnvFrom =
+                    [
+                        new V1EnvFromSource
+                        {
+                            ConfigMapRef = new V1ConfigMapEnvSource
+                            {
+                                Name = ConfigMapName
+                            }
+                        }
+                    ],
+                    StartupProbe = WebService.Spec.Probes.Startup.ToV1Probe(),
+                    LivenessProbe = WebService.Spec.Probes.Liveness.ToV1Probe(),
+                    ReadinessProbe = WebService.Spec.Probes.Readiness.ToV1Probe(),
+                    Resources = ComputeConfiguration.ToKubernetesResources()
+                }
+            ]
+        };
+        ComputeConfiguration.ApplyToPodSpec(podSpec);
+        return podSpec;
+    }
     public V1Service ToService() => new()
     {
         ApiVersion = "v1",

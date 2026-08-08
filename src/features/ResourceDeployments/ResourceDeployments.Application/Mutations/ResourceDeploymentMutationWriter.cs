@@ -1,6 +1,8 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Application.Placement;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Application.Persistence;
@@ -12,7 +14,9 @@ namespace Pole.Features.ResourceDeployments.Application.Mutations;
 public sealed record ResourceDeploymentMutationCommand(
     string TenantId,
     ResourceTypeId ResourceType,
-    string ResourceId);
+    string ResourceId,
+    ComputeProfileReference ExpectedCompute,
+    ResolvedComputeProfile? ReplacementCompute = null);
 
 public interface IResourceDeploymentMutationWriter
 {
@@ -29,6 +33,7 @@ public interface IResourceDeploymentMutationWriter
 
 public sealed class ResourceDeploymentMutationWriter(
     IResourceDeploymentDbContext dbContext,
+    IResourceDeploymentComputeProfileFence computeProfileFence,
     TimeProvider timeProvider)
     : IResourceDeploymentMutationWriter
 {
@@ -42,6 +47,9 @@ public sealed class ResourceDeploymentMutationWriter(
         var loadResult = await LoadSingleAsync(command, session, cancellationToken);
         if (!loadResult.TryGetValue(out var current, out var loadFailure))
             return loadFailure;
+        var computeExpectation = EnsureExpectedCompute(command, current);
+        if (computeExpectation is not null)
+            return computeExpectation;
         if (current.DesiredOperation == ResourceDeploymentOperation.Delete ||
             current.State is DeletedResourceDeploymentState)
         {
@@ -68,8 +76,35 @@ public sealed class ResourceDeploymentMutationWriter(
                 "The resource deployment runtime-cell placement is unavailable.");
         }
 
+        var resolvedPlacement = current.ResolvedPlacement;
+        if (command.ReplacementCompute is not null)
+        {
+            if (!string.Equals(
+                    command.ReplacementCompute.DeploymentTargetId,
+                    current.ResolvedPlacement.DeploymentTargetId,
+                    StringComparison.Ordinal))
+            {
+                return Failures.Conflict(
+                    "The replacement compute profile belongs to a different deployment target.");
+            }
+
+            var computeFence = await computeProfileFence.FenceAsync(
+                command.ReplacementCompute,
+                command.TenantId,
+                command.ResourceType,
+                session,
+                cancellationToken);
+            if (computeFence is not ISuccess)
+                return (Failure)computeFence;
+
+            resolvedPlacement = resolvedPlacement with
+            {
+                Compute = command.ReplacementCompute.ToConfiguration()
+            };
+        }
+
         var updated = current.RequestReconciliation(
-            current.ResolvedPlacement,
+            resolvedPlacement,
             runtimeCell.State is ReadyRuntimeCellState,
             timeProvider.GetUtcNow().UtcDateTime);
         return await ReplaceAndEnqueueAsync(
@@ -90,6 +125,17 @@ public sealed class ResourceDeploymentMutationWriter(
         var loadResult = await LoadSingleAsync(command, session, cancellationToken);
         if (!loadResult.TryGetValue(out var current, out var loadFailure))
             return loadFailure;
+        var computeExpectation = EnsureExpectedCompute(command, current);
+        if (computeExpectation is not null)
+            return computeExpectation;
+        if (command.ReplacementCompute is not null)
+        {
+            return Failures.ValidationFailure(new Dictionary<string, string[]>
+            {
+                ["ComputeProfileId"] =
+                    ["Compute profile adoption is not valid for resource deletion."]
+            });
+        }
 
         var updated = current.RequestDeletion(
             timeProvider.GetUtcNow().UtcDateTime);
@@ -132,6 +178,16 @@ public sealed class ResourceDeploymentMutationWriter(
                 "The logical resource has multiple deployments and cannot be mutated as a single-target resource.")
         };
     }
+
+    private static ConflictFailure? EnsureExpectedCompute(
+        ResourceDeploymentMutationCommand command,
+        ResourceDeployment current) =>
+        current.ResolvedPlacement.Compute.Matches(
+            command.ExpectedCompute.ComputeProfileId,
+            command.ExpectedCompute.ComputeProfileRevision)
+            ? null
+            : Failures.Conflict(
+                "The resource deployment compute configuration changed while the logical resource mutation was being prepared.");
 
     private async Task<Result<ResourceDeployment>> ReplaceAndEnqueueAsync(
         ResourceDeploymentMutationCommand command,

@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Globalization;
 using k8s.Models;
 using Pole.Features.RedisServices.Domain;
+using Pole.Features.ResourceDeployments.Application.Kubernetes;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
@@ -41,21 +42,25 @@ public sealed record RedisResourceDeploymentMetadata(
 public readonly record struct RedisInKubernetes(
     Redis Redis,
     string Namespace,
-    ResolvedStorageConfiguration StorageConfiguration)
+    ResolvedStorageConfiguration StorageConfiguration,
+    ResolvedComputeConfiguration ComputeConfiguration)
 {
     public static RedisInKubernetes Create(
         Redis redis,
         string kubernetesNamespace,
-        ResolvedStorageConfiguration storageConfiguration)
+        ResolvedStorageConfiguration storageConfiguration,
+        ResolvedComputeConfiguration computeConfiguration)
     {
         ArgumentNullException.ThrowIfNull(redis);
         ArgumentException.ThrowIfNullOrWhiteSpace(kubernetesNamespace);
         ArgumentNullException.ThrowIfNull(storageConfiguration);
+        ArgumentNullException.ThrowIfNull(computeConfiguration);
 
         return new(
             redis,
             kubernetesNamespace.Trim(),
-            storageConfiguration);
+            storageConfiguration,
+            computeConfiguration);
     }
 
     public string StatefulSetName => Redis.Name;
@@ -96,46 +101,7 @@ public readonly record struct RedisInKubernetes(
                         (BuildLabels()),
                     Annotations = BuildPodTemplateAnnotations(deploymentMetadata)
                 },
-                Spec = new V1PodSpec
-                {
-                    Containers = new List<V1Container>
-                    {
-                        new()
-                        {
-                            Name = "redis",
-                            Image = "redis:8-alpine",
-                            Ports = new List<V1ContainerPort>
-                            {
-                                new()
-                                {
-                                    ContainerPort = 6379,
-                                    Name = "redis"
-                                }
-                            },
-                            VolumeMounts = new List<V1VolumeMount>
-                            {
-                                new()
-                                {
-                                    Name = "redis-data",
-                                    MountPath = "/data"
-                                }
-                            },
-                            Resources = new V1ResourceRequirements
-                            {
-                                Requests = new Dictionary<string, ResourceQuantity>
-                                {
-                                    ["cpu"] = new($"{Redis.Spec.Resources.Requests.CpuCores}"),
-                                    ["memory"] = new($"{Redis.Spec.Resources.Requests.MemoryMi}Mi")
-                                },
-                                Limits = new Dictionary<string, ResourceQuantity>
-                                {
-                                    ["cpu"] = new($"{Redis.Spec.Resources.Limits.CpuCores}"),
-                                    ["memory"] = new($"{Redis.Spec.Resources.Limits.MemoryMi}Mi")
-                                }
-                            }
-                        }
-                    }
-                }
+                Spec = BuildPodSpec()
             },
             VolumeClaimTemplates = new List<V1PersistentVolumeClaim>
             {
@@ -236,4 +202,38 @@ public readonly record struct RedisInKubernetes(
         { PoleStorageLabels.ResourceId, Redis.Id },
         { PoleStorageLabels.ResourceName, Redis.Name }
     };
+
+    private V1PodSpec BuildPodSpec()
+    {
+        var podSpec = new V1PodSpec
+        {
+            Containers =
+            [
+                new V1Container
+                {
+                    Name = "redis",
+                    Image = "redis:8-alpine",
+                    Ports =
+                    [
+                        new V1ContainerPort
+                        {
+                            ContainerPort = 6379,
+                            Name = "redis"
+                        }
+                    ],
+                    VolumeMounts =
+                    [
+                        new V1VolumeMount
+                        {
+                            Name = "redis-data",
+                            MountPath = "/data"
+                        }
+                    ],
+                    Resources = ComputeConfiguration.ToKubernetesResources()
+                }
+            ]
+        };
+        ComputeConfiguration.ApplyToPodSpec(podSpec);
+        return podSpec;
+    }
 }
