@@ -73,6 +73,14 @@ internal sealed class TestDeploymentTargetLookup :
         CancellationToken cancellationToken = default) =>
         Task.FromResult<Result>(Result.Success());
 
+    public Task<Result> ApplyChangesAsync(
+        DeploymentTargetReferenceOwner owner,
+        IReadOnlyCollection<string> addedDeploymentTargetIds,
+        IReadOnlyCollection<string> removedDeploymentTargetIds,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<Result>(Result.Success());
+
     public Task<Result> FenceAsync(
         string deploymentTargetId,
         long expectedWorkloadConfigurationRevision,

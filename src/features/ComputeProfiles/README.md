@@ -85,8 +85,8 @@ snapshot. CloudNativePG supports resources and affinity/tolerations but its Clus
 `runtimeClassName`; operator-mode PostgreSQL therefore rejects such a profile explicitly rather
 than dropping the setting.
 
-Full catalog management and profile selection UI is deferred. The current frontend only removes
-the obsolete direct WebService CPU/memory fields and relies on default-profile resolution.
+The current frontend does not yet expose catalog management or per-resource profile selection.
+Resources created through that UI rely on default-profile resolution.
 
 ## Verification
 

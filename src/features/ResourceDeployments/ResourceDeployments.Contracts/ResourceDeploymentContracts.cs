@@ -120,6 +120,14 @@ public interface IResourceDeploymentReferenceLookup
         CancellationToken cancellationToken = default);
 }
 
+public interface IResourceDeploymentComputeProfileReferenceGuard
+{
+    Task<Result> EnsureUnreferencedAsync(
+        string computeProfileId,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IResourceDeploymentQueryService
 {
     Task<PlacementSummaryDto?> GetAsync(

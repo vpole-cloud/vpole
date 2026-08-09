@@ -9,45 +9,21 @@ internal static class ComputeProfileTargetReferences
 {
     public const string OwnerType = "compute-profile";
 
-    public static async Task<Result> RegisterAsync(
+    public static Task<Result> ApplyChangesAsync(
         IDeploymentTargetReferenceAdmission referenceAdmission,
         ComputeProfile profile,
-        IEnumerable<string> deploymentTargetIds,
+        IEnumerable<string> addedDeploymentTargetIds,
+        IEnumerable<string> removedDeploymentTargetIds,
         IClientSessionHandle session,
         CancellationToken cancellationToken)
     {
-        foreach (var deploymentTargetId in deploymentTargetIds.Distinct(StringComparer.Ordinal))
-        {
-            var registered = await referenceAdmission.RegisterAsync(
-                deploymentTargetId,
-                new DeploymentTargetReferenceOwner(OwnerType, profile.Id),
-                session,
-                cancellationToken);
-            if (registered is not ISuccess)
-                return (Failure)registered;
-        }
-
-        return Result.Success();
-    }
-
-    public static async Task<Result> UnregisterAsync(
-        IDeploymentTargetReferenceAdmission referenceAdmission,
-        ComputeProfile profile,
-        IEnumerable<string> deploymentTargetIds,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken)
-    {
-        foreach (var deploymentTargetId in deploymentTargetIds.Distinct(StringComparer.Ordinal))
-        {
-            var unregistered = await referenceAdmission.UnregisterAsync(
-                deploymentTargetId,
-                new DeploymentTargetReferenceOwner(OwnerType, profile.Id),
-                session,
-                cancellationToken);
-            if (unregistered is not ISuccess)
-                return (Failure)unregistered;
-        }
-
-        return Result.Success();
+        ArgumentNullException.ThrowIfNull(addedDeploymentTargetIds);
+        ArgumentNullException.ThrowIfNull(removedDeploymentTargetIds);
+        return referenceAdmission.ApplyChangesAsync(
+            new DeploymentTargetReferenceOwner(OwnerType, profile.Id),
+            addedDeploymentTargetIds.Distinct(StringComparer.Ordinal).ToArray(),
+            removedDeploymentTargetIds.Distinct(StringComparer.Ordinal).ToArray(),
+            session,
+            cancellationToken);
     }
 }

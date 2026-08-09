@@ -2,6 +2,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Application.Migrations;
 using Pole.Features.ComputeProfiles.Domain;
+using Pole.Features.ResourceDeployments.Application.Migrations;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -73,7 +74,7 @@ public sealed class ComputeProfileSchemaValidationTests(MongoReplicaSetFixture f
     {
         await new ComputeProfileSchemaValidationMigration().Up(fixture.Database);
         await new ComputeProfileIndexesMigration().Up(fixture.Database);
-        await new ComputeProfileResourceDeploymentIndexMigration().Up(fixture.Database);
+        await new ResourceDeploymentComputeProfileIndexMigration().Up(fixture.Database);
 
         var profileIndexNames = (await fixture.Database
                 .GetCollection<BsonDocument>(CollectionName)

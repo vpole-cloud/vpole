@@ -224,7 +224,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         await new ResourceDeploymentMigration().Up(fixture.Database);
         await new ComputeProfileSchemaValidationMigration().Up(fixture.Database);
         await new ComputeProfileIndexesMigration().Up(fixture.Database);
-        await new ComputeProfileResourceDeploymentIndexMigration().Up(fixture.Database);
+        await new ResourceDeploymentComputeProfileIndexMigration().Up(fixture.Database);
         await ((IMigration)new PostgresCredentialMigration()).Up(fixture.Database);
         await new StorageProfileMigration().Up(fixture.Database);
         await new OutboxMessageMigration().Up(fixture.Database);

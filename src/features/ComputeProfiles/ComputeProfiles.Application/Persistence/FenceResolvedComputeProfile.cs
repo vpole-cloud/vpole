@@ -2,22 +2,14 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.ResourceDeployments.Application.Placement;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence;
 
-public delegate Task<Result> FenceResolvedComputeProfile(
-    ResolvedComputeProfile resolved,
-    string tenantId,
-    ResourceTypeId resourceType,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
-
 internal sealed class MongoFenceResolvedComputeProfile(
     IMongoCollection<ComputeProfile> computeProfiles)
-    : IResourceDeploymentComputeProfileFence
+    : IComputeProfileResolutionFence
 {
     public Task<Result> FenceAsync(
         ResolvedComputeProfile compute,
@@ -54,35 +46,12 @@ internal sealed class MongoFenceResolvedComputeProfile(
             });
         }
 
-        var tenantAccess = Builders<ComputeProfile>.Filter.Or(
-            Builders<ComputeProfile>.Filter.Eq(
-                "TenantAccess._t",
-                ComputeProfileTenantAccessKinds.AllTenants),
-            Builders<ComputeProfile>.Filter.And(
-                Builders<ComputeProfile>.Filter.Eq(
-                    "TenantAccess._t",
-                    ComputeProfileTenantAccessKinds.SelectedTenants),
-                Builders<ComputeProfile>.Filter.Eq(
-                    "TenantAccess.TenantIds",
-                    tenantId)));
-        var filter = Builders<ComputeProfile>.Filter.And(
-            ComputeProfileFilters.AtRevision(
-                resolved.ComputeProfileId,
-                resolved.ComputeProfileRevision),
-            Builders<ComputeProfile>.Filter.Eq(profile => profile.IsEnabled, true),
-            Builders<ComputeProfile>.Filter.AnyEq(
-                profile => profile.AllowedResourceTypes,
-                resourceType.Value),
-            Builders<ComputeProfile>.Filter.ElemMatch(
-                profile => profile.TargetMappings,
-                mapping => mapping.DeploymentTargetId == resolved.DeploymentTargetId),
-            tenantAccess,
-            Builders<ComputeProfile>.Filter.Lt(
-                profile => profile.ResolutionFence,
-                long.MaxValue));
         var fenced = await computeProfiles.UpdateOneAsync(
             session,
-            filter,
+            ComputeProfileFilters.AvailableForResolutionFence(
+                resolved,
+                tenantId,
+                resourceType),
             Builders<ComputeProfile>.Update.Inc(
                 profile => profile.ResolutionFence,
                 1),

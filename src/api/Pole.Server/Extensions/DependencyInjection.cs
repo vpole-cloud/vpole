@@ -318,6 +318,9 @@ public static class DependencyInjection
                 IResourceDeploymentReferenceLookup,
                 ResourceDeploymentReferenceLookup>();
             services.TryAddScoped<
+                IResourceDeploymentComputeProfileReferenceGuard,
+                ResourceDeploymentComputeProfileReferenceGuard>();
+            services.TryAddScoped<
                 IResourceDeploymentComputeLookup,
                 ResourceDeploymentComputeLookup>();
             services.TryAddSingleton<ISearchDbContext>(sp => sp.GetRequiredService<MongoDbContext>());

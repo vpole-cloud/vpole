@@ -1,8 +1,8 @@
-using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence;
@@ -13,13 +13,11 @@ public delegate Task<Result> DeleteComputeProfile(
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoDeleteComputeProfile(
-    IMongoDatabase database,
     IMongoCollection<ComputeProfile> computeProfiles,
     IDeploymentTargetReferenceAdmission referenceAdmission,
+    IResourceDeploymentComputeProfileReferenceGuard resourceDeploymentReferences,
     RunMongoTransaction runMongoTransaction)
 {
-    private const string ResourceDeploymentCollectionName = "ResourceDeployments";
-
     public Task<Result> InvokeAsync(
         string computeProfileId,
         long expectedRevision,
@@ -46,21 +44,10 @@ internal sealed class MongoDeleteComputeProfile(
                     "Promote another compute profile before deleting the current default.");
             }
 
-            var resourceDeployments = database.GetCollection<BsonDocument>(
-                ResourceDeploymentCollectionName);
-            var referenced = await resourceDeployments
-                .Find(
-                    session,
-                    Builders<BsonDocument>.Filter.Eq(
-                        "ResolvedPlacement.Compute.ComputeProfileId",
-                        computeProfileId))
-                .Project(Builders<BsonDocument>.Projection.Include("_id"))
-                .FirstOrDefaultAsync(ct);
-            if (referenced is not null)
-            {
-                return Failures.Conflict(
-                    "The compute profile is still referenced by a resource deployment.");
-            }
+            var unreferenced = await resourceDeploymentReferences
+                .EnsureUnreferencedAsync(computeProfileId, session, ct);
+            if (unreferenced is not ISuccess)
+                return (Failure)unreferenced;
 
             var deleted = await computeProfiles.DeleteOneAsync(
                 session,
@@ -72,9 +59,10 @@ internal sealed class MongoDeleteComputeProfile(
                     "The compute profile changed while deletion was being accepted.");
             }
 
-            return await ComputeProfileTargetReferences.UnregisterAsync(
+            return await ComputeProfileTargetReferences.ApplyChangesAsync(
                 referenceAdmission,
                 profile,
+                [],
                 profile.TargetMappings.Select(mapping => mapping.DeploymentTargetId),
                 session,
                 ct);

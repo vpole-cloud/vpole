@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
-using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Application.Placement;

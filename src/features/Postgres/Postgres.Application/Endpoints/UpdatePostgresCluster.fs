@@ -9,7 +9,7 @@ open Microsoft.AspNetCore.Routing
 open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
-open Pole.Features.ComputeProfiles.Application.Persistence
+open Pole.Features.ComputeProfiles.Contracts
 open Pole.Features.ComputeProfiles.Contracts
 open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain

@@ -7,6 +7,7 @@ using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
+using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Tests.Integration.DeploymentTargets;
 using Pole.Tests.Integration.Infrastructure;
@@ -95,6 +96,9 @@ internal sealed class ComputeProfilePersistenceTestHost : IDisposable
         var services = new ServiceCollection();
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
+        services.AddSingleton<IResourceDeploymentDbContext>(fixture.DbContext);
+        services.AddSingleton<IResourceDeploymentComputeProfileReferenceGuard,
+            ResourceDeploymentComputeProfileReferenceGuard>();
         services.AddSingleton<MongoRunTransaction>();
         services.AddSingleton<RunMongoTransaction>(provider =>
             provider.GetRequiredService<MongoRunTransaction>().InvokeAsync);

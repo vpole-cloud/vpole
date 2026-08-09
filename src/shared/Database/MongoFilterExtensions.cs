@@ -1,4 +1,5 @@
 ﻿using System.Linq.Expressions;
+using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
 
@@ -19,12 +20,14 @@ public static class MongoFilterExtensions
         ArgumentNullException.ThrowIfNull(field);
 
         var fieldName = ((MemberExpression)field.Body).Member.Name;
-        var typeName = typeof(TSubType).Name;
+        var discriminator = BsonClassMap
+            .LookupClassMap(typeof(TSubType))
+            .Discriminator;
 
         // Handle both cases: discriminator as string or array
         return builder.Or(
-            builder.Eq($"{fieldName}._t", typeName),
-            builder.AnyEq($"{fieldName}._t", typeName)
+            builder.Eq($"{fieldName}._t", discriminator),
+            builder.AnyEq($"{fieldName}._t", discriminator)
         );
     }
 

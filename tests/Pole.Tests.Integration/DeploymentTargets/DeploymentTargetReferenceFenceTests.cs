@@ -178,6 +178,89 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
             Builders<DeploymentTargetReference>.Filter.Empty));
     }
 
+    [Fact]
+    public async Task BatchReferenceChanges_FenceTargetsAndApplyTheOwnerDiff()
+    {
+        var firstTarget = CreateTarget();
+        var secondTarget = CreateTarget();
+        var thirdTarget = CreateTarget();
+        await fixture.DbContext.DeploymentTargets.InsertManyAsync(
+            [firstTarget, secondTarget, thirdTarget]);
+        var admission = CreateAdmission();
+        var owner = CreateOwner();
+
+        var registered = await fixture.DbContext.RunInTransactionAsync(
+            (session, ct) => admission.ApplyChangesAsync(
+                owner,
+                [firstTarget.Id, secondTarget.Id],
+                [],
+                session,
+                ct));
+        registered.AssertSuccess();
+
+        var changed = await fixture.DbContext.RunInTransactionAsync(
+            (session, ct) => admission.ApplyChangesAsync(
+                owner,
+                [thirdTarget.Id],
+                [firstTarget.Id],
+                session,
+                ct));
+        changed.AssertSuccess();
+
+        var references = await fixture.DbContext.DeploymentTargetReferences
+            .Find(reference =>
+                reference.OwnerType == owner.Type &&
+                reference.OwnerId == owner.Id)
+            .SortBy(reference => reference.DeploymentTargetId)
+            .ToListAsync();
+        Assert.Equal(
+            new[] { secondTarget.Id, thirdTarget.Id }.Order(StringComparer.Ordinal),
+            references.Select(reference => reference.DeploymentTargetId));
+
+        var targets = await fixture.DbContext.DeploymentTargets
+            .Find(target =>
+                target.Id == firstTarget.Id ||
+                target.Id == secondTarget.Id ||
+                target.Id == thirdTarget.Id)
+            .ToListAsync();
+        Assert.Equal(
+            firstTarget.ReferenceFence + 2,
+            targets.Single(target => target.Id == firstTarget.Id).ReferenceFence);
+        Assert.Equal(
+            secondTarget.ReferenceFence + 1,
+            targets.Single(target => target.Id == secondTarget.Id).ReferenceFence);
+        Assert.Equal(
+            thirdTarget.ReferenceFence + 1,
+            targets.Single(target => target.Id == thirdTarget.Id).ReferenceFence);
+    }
+
+    [Fact]
+    public async Task BatchReferenceChanges_WhenOneTargetRejectsAdmission_RollsBackTheBatch()
+    {
+        var eligibleTarget = CreateTarget();
+        var ineligibleTarget = CreateTarget() with { AcceptsWorkloads = false };
+        await fixture.DbContext.DeploymentTargets.InsertManyAsync(
+            [eligibleTarget, ineligibleTarget]);
+        var admission = CreateAdmission();
+        var owner = CreateOwner();
+
+        var result = await fixture.DbContext.RunInTransactionAsync(
+            (session, ct) => admission.ApplyChangesAsync(
+                owner,
+                [eligibleTarget.Id, ineligibleTarget.Id],
+                [],
+                session,
+                ct));
+
+        Assert.IsType<ConflictFailure>((Failure)result);
+        Assert.Equal(0, await fixture.DbContext.DeploymentTargetReferences.CountDocumentsAsync(
+            Builders<DeploymentTargetReference>.Filter.Empty));
+        var persistedEligibleTarget = await fixture.DbContext.DeploymentTargets
+            .Find(target => target.Id == eligibleTarget.Id)
+            .SingleAsync();
+        Assert.Equal(eligibleTarget.ReferenceFence, persistedEligibleTarget.ReferenceFence);
+    }
+
     private DeleteDeploymentTargetHandler CreateDeleteHandler(
         IDeploymentTargetDeletionGuard deletionGuard,
         TimeProvider? timeProvider = null) =>

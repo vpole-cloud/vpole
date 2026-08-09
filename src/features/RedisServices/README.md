@@ -8,8 +8,8 @@ CPU, memory, extended resources, and Kubernetes scheduling are resolved from a
 [`ComputeProfile`](../ComputeProfiles/README.md) and stored in the resource's immutable
 `ResourceDeployment` snapshot. Create uses the default profile when no ID is supplied. Update
 without an ID preserves that snapshot; an explicit ID adopts the latest eligible revision. Quota
-admission uses resolved requests, and StatefulSet manifests do not read compute values from the
-logical Redis specification.
+admission uses resolved requests, and StatefulSet manifests are rendered from the persisted
+deployment snapshot.
 
 ## Module boundaries
 
@@ -25,11 +25,10 @@ logical Redis specification.
 Redis is tenant-owned. Every identity lookup and mutation fence must include `TenantId`; callers
 must not treat an absent tenant as an unscoped query.
 
-## Persistence capability experiment
+## Persistence capabilities
 
-Redis is the first feature experimenting with a capability-oriented persistence boundary. Handler
-constructors receive named delegates that describe exactly which persistence operations they may
-perform. They do not receive `IRedisDbContext`, `IMongoDatabase`, or
+Handler constructors receive named delegates that describe exactly which persistence operations
+they may perform. They do not receive `IRedisDbContext`, `IMongoDatabase`, or
 `IMongoCollection<Redis>`.
 
 Each capability file keeps three closely related elements together when applicable:
@@ -70,9 +69,8 @@ hierarchy once rather than finding every handler query.
   use the same session.
 - Deletion finalization is a self-contained cross-collection operation, so it owns the transaction
   around Redis deletion, deployment cleanup, and the deleted event.
-- `StoreOutboxWrites` and `RunMongoTransaction` are shared narrow capabilities backed by the same
-  implementation as the legacy `StoreEventAsync` and `RunInTransactionAsync` extensions. Other
-  features can migrate incrementally without maintaining two transaction/outbox semantics.
+- `StoreOutboxWrites` and `RunMongoTransaction` are the shared narrow transaction and outbox
+  capabilities used by the persistence operations.
 - Expected revision and duplicate-key conflicts map to `Result` failures. Mongo availability,
   timeout, and unexpected driver exceptions remain exceptions and reach the standard 5xx path.
 
@@ -94,9 +92,8 @@ return domain values or intention-revealing outcomes; they do not expose `IFindF
 
 The `RedisSchemaValidationMigration` makes the Mongo collection an additional enforcement point
 for Redis persistence invariants. It creates `RedisServices` with a `$jsonSchema` validator when
-the collection is absent and uses `collMod` when it already exists. Development currently has no
-legacy Redis data, so the validator is enabled immediately with `validationLevel: strict` and
-`validationAction: error`.
+the collection is absent and uses `collMod` when it already exists. The validator uses
+`validationLevel: strict` and `validationAction: error`.
 
 The migration is a self-contained historical artifact: its collection name, BSON field names,
 types, and discriminators are frozen in the migration file. It depends only on the migration
@@ -122,33 +119,9 @@ asks the validated collection to accept them; negative cases mutate the serializ
 MongoDB document-validation error `121`. The Redis tests cover both collection creation and
 `collMod`, strict/error settings, tenant ownership, and both lifecycle shapes.
 
-## What this experiment is evaluating
-
-Benefits observed so far:
-
-- Tenant, identity, lifecycle, and revision fences have one implementation path.
-- Handler authority is visible from its constructor and is narrower than a feature-wide context.
-- Mutation/outbox pairing is harder to forget because it lives inside one operation.
-- `MongoDbContext` no longer needs a compile-time dependency on Redis.
-- Delegate contracts remain easy to replace with small fakes in tests.
-
-Costs and open questions:
-
-- DI registration is more explicit and has more entries.
-- Handlers that need several capabilities gain constructor parameters.
-- Write delegates still expose the Mongo session type because they join larger transactions.
-- Individual delegates may eventually be grouped into small query/mutation records if constructor
-  noise grows, but such records must not grant unrelated persistence authority.
-- A separate Redis Mongo project is useful only if a stronger compile-time boundary justifies the
-  extra project and the public contracts no longer need Mongo types.
-
-Do not apply this pattern mechanically to every feature. Further experiments on this branch should
-compare constructor clarity, stack traces, test ergonomics, transaction visibility, and the effort
-required to add a new mandatory persistence invariant.
-
 ## Verification
 
-The experiment is covered by Mongo-backed integration tests for tenant isolation, stale revision
+The persistence boundary is covered by Mongo-backed integration tests for tenant isolation, stale revision
 conflicts, rollback, finalization atomicity, idempotency, and outbox tenant metadata. API-slice tests
 exercise the same registration path as production.
 
@@ -163,6 +136,7 @@ rg -n "StoreEventAsync|RunInTransactionAsync" \
 
 Related platform rules:
 
+- [Architecture history](../../../docs/architecture-history.md)
 - [Engineering guidelines](../../../docs/engineering-guidelines.md)
 - [Multitenancy](../../../docs/multitenancy.md)
 - [Observability and outbox propagation](../../../docs/observability.md)

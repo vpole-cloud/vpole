@@ -84,9 +84,12 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
         var create = host.GetRequiredService<PersistCreatedComputeProfile>();
         var update = host.GetRequiredService<PersistUpdatedComputeProfile>();
         var resolve = host.GetRequiredService<ResolveComputeProfile>();
-        var fence = host.GetRequiredService<FenceResolvedComputeProfile>();
+        var fence = host.GetRequiredService<IComputeProfileResolutionFence>();
         var runTransaction = host.GetRequiredService<RunMongoTransaction>();
-        var original = (await create(ComputeProfileTestData.CreateProfile(target.Id)))
+        var original = (await create(ComputeProfileTestData.CreateProfile(
+                target.Id,
+                tenantAccess: SelectedTenantsComputeProfileAccess.Create(
+                    [ComputeProfileTestData.TenantId]))))
             .AssertSuccess();
         var resolved = (await resolve(new ComputeProfileResolutionRequest(
             original.Id,
@@ -95,7 +98,7 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
             WebServiceType))).AssertSuccess();
 
         var fenced = await runTransaction(
-            (session, ct) => fence(
+            (session, ct) => fence.FenceAsync(
                 resolved,
                 ComputeProfileTestData.TenantId,
                 WebServiceType,
@@ -117,7 +120,7 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
         Assert.Equal(1, updated.ResolutionFence);
 
         var staleFence = await runTransaction(
-            (session, ct) => fence(
+            (session, ct) => fence.FenceAsync(
                 resolved,
                 ComputeProfileTestData.TenantId,
                 WebServiceType,

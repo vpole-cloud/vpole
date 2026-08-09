@@ -7,10 +7,6 @@ using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence;
 
-public delegate Task<Result<ResolvedComputeProfile>> ResolveComputeProfile(
-    ComputeProfileResolutionRequest request,
-    CancellationToken cancellationToken = default);
-
 internal sealed class MongoResolveComputeProfile(
     IMongoCollection<ComputeProfile> computeProfiles)
 {

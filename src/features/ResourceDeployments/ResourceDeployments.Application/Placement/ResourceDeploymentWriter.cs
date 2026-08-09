@@ -36,21 +36,11 @@ public interface IResourceDeploymentStorageConfigurationFence
         CancellationToken cancellationToken = default);
 }
 
-public interface IResourceDeploymentComputeProfileFence
-{
-    Task<Result> FenceAsync(
-        ResolvedComputeProfile compute,
-        string tenantId,
-        ResourceTypeId resourceType,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
-}
-
 internal sealed class ResourceDeploymentWriter(
     IResourceDeploymentDbContext dbContext,
     IResourcePlacementService placementService,
     IDeploymentTargetWorkloadConfigurationFence targetConfigurationFence,
-    IResourceDeploymentComputeProfileFence computeProfileFence,
+    IComputeProfileResolutionFence computeProfileFence,
     IResourceDeploymentStorageConfigurationFence storageConfigurationFence,
     TimeProvider timeProvider)
 {
