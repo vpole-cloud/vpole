@@ -1,7 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.ResourceDeployments.Application.Persistence;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.ResultType;
@@ -15,7 +14,7 @@ public delegate Task<Result> FinalizeRedisDeletion(
 
 internal sealed class MongoFinalizeRedisDeletion(
     IMongoCollection<Redis> redisServices,
-    IMongoCollection<ResourceDeployment> resourceDeployments,
+    IResourceDeploymentFinalizationService deploymentFinalization,
     RunMongoTransaction runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites)
 {
@@ -34,16 +33,13 @@ internal sealed class MongoFinalizeRedisDeletion(
             if (redis is null)
                 return Result.Success();
 
-            var deploymentFilter = ResourceDeploymentFilters.ForResource(
+            var readiness = await deploymentFinalization.GetReadinessAsync(
                 tenantId,
                 RedisResourceDeployment.ResourceType,
-                redisId);
-            var deployments = await resourceDeployments
-                .Find(session, deploymentFilter)
-                .ToListAsync(transactionCancellationToken);
-            if (deployments.Count == 0 ||
-                deployments.Any(deployment =>
-                    deployment.State is not DeletedResourceDeploymentState))
+                redisId,
+                session,
+                transactionCancellationToken);
+            if (readiness is not ResourceDeploymentFinalizationReadiness.Ready)
             {
                 return Result.Success();
             }
@@ -55,10 +51,14 @@ internal sealed class MongoFinalizeRedisDeletion(
             if (deleted.DeletedCount != 1)
                 return Result.Success();
 
-            await resourceDeployments.DeleteManyAsync(
+            var purge = await deploymentFinalization.PurgeDeletedAsync(
+                tenantId,
+                RedisResourceDeployment.ResourceType,
+                redisId,
                 session,
-                filter: deploymentFilter,
-                cancellationToken: transactionCancellationToken);
+                transactionCancellationToken);
+            if (purge is not ISuccess)
+                return (Failure)purge;
             await storeOutboxWrites(
                 session,
                 [OutboxWrite.Create(redis.ToDeleteEvent())],

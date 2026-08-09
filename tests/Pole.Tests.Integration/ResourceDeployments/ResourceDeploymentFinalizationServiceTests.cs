@@ -1,0 +1,163 @@
+using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Domain;
+using Pole.ResultType;
+using Pole.Tests.Integration.Infrastructure;
+using Xunit;
+
+namespace Pole.Tests.Integration.ResourceDeployments;
+
+[Collection(IntegrationTestCollection.Name)]
+public sealed class ResourceDeploymentFinalizationServiceTests(
+    MongoReplicaSetFixture fixture)
+    : IAsyncLifetime
+{
+    private const string TenantId = "507f1f77bcf86cd799439081";
+    private const string OtherTenantId = "507f1f77bcf86cd799439082";
+    private const string ResourceId = "507f1f77bcf86cd799439083";
+    private const string ResourceGroupId = "507f1f77bcf86cd799439084";
+    private const string IsolationScopeId = "507f1f77bcf86cd799439085";
+    private const string RuntimeCellId = "507f1f77bcf86cd799439086";
+    private const string TargetId = "507f1f77bcf86cd799439087";
+    private static readonly ResourceTypeId ResourceType =
+        ResourceTypeId.Create("pole/finalization-test");
+    private static readonly DateTime CreatedAtUtc =
+        new(2026, 8, 9, 12, 0, 0, DateTimeKind.Utc);
+
+    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [Fact]
+    public async Task Finalization_WaitsUntilEveryDeploymentIsDeleted()
+    {
+        await fixture.DbContext.ResourceDeployments.InsertManyAsync(
+        [
+            CreateDeployment(
+                "507f1f77bcf86cd799439088",
+                TenantId,
+                deleted: true),
+            CreateDeployment(
+                "507f1f77bcf86cd799439089",
+                TenantId,
+                deleted: false)
+        ]);
+        var subject = new ResourceDeploymentFinalizationService(fixture.DbContext);
+
+        var result = await fixture.DbContext.RunInTransactionAsync(
+            async (session, cancellationToken) =>
+            {
+                var readiness = await subject.GetReadinessAsync(
+                    TenantId,
+                    ResourceType,
+                    ResourceId,
+                    session,
+                    cancellationToken);
+                Assert.Equal(ResourceDeploymentFinalizationReadiness.Waiting, readiness);
+                return await subject.PurgeDeletedAsync(
+                    TenantId,
+                    ResourceType,
+                    ResourceId,
+                    session,
+                    cancellationToken);
+            });
+
+        Assert.IsType<ConflictFailure>(result);
+        Assert.Equal(
+            2,
+            await fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
+                deployment => deployment.TenantId == TenantId));
+    }
+
+    [Fact]
+    public async Task Finalization_PurgesOnlyTheRequestedTenantInsideCallerTransaction()
+    {
+        await fixture.DbContext.ResourceDeployments.InsertManyAsync(
+        [
+            CreateDeployment(
+                "507f1f77bcf86cd79943908a",
+                TenantId,
+                deleted: true),
+            CreateDeployment(
+                "507f1f77bcf86cd79943908b",
+                OtherTenantId,
+                deleted: true)
+        ]);
+        var subject = new ResourceDeploymentFinalizationService(fixture.DbContext);
+
+        var result = await fixture.DbContext.RunInTransactionAsync(
+            async (session, cancellationToken) =>
+            {
+                var readiness = await subject.GetReadinessAsync(
+                    TenantId,
+                    ResourceType,
+                    ResourceId,
+                    session,
+                    cancellationToken);
+                Assert.Equal(ResourceDeploymentFinalizationReadiness.Ready, readiness);
+                return await subject.PurgeDeletedAsync(
+                    TenantId,
+                    ResourceType,
+                    ResourceId,
+                    session,
+                    cancellationToken);
+            });
+
+        Assert.IsAssignableFrom<ISuccess>(result);
+        Assert.Equal(
+            0,
+            await fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
+                deployment => deployment.TenantId == TenantId));
+        Assert.Equal(
+            1,
+            await fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
+                deployment => deployment.TenantId == OtherTenantId));
+    }
+
+    private static ResourceDeployment CreateDeployment(
+        string deploymentId,
+        string tenantId,
+        bool deleted)
+    {
+        var deployment = ResourceDeploymentFactory.Create(
+            tenantId,
+            ResourceType,
+            ResourceId,
+            ResourceGroupId,
+            IsolationScopeId,
+            ResolvedResourcePlacement.Create(
+                RuntimeCellId,
+                TargetId,
+                "pole-finalization-test",
+                runtimeCellGeneration: 1,
+                targetWorkloadConfigurationRevision: 1,
+                ingress: null,
+                storage: null,
+                ResourceDeploymentTestData.Compute(),
+                CreatedAtUtc),
+            ResourcePlacementCapability.SingleTarget,
+            runtimeCellReady: true,
+            new ResourceDeploymentFactory.CreateOptions(
+                deploymentId,
+                CreatedAtUtc));
+        if (!deleted)
+            return deployment;
+
+        const string claimId = "507f1f77bcf86cd79943908c";
+        var requested = deployment.RequestDeletion(CreatedAtUtc.AddSeconds(1));
+        var started = requested.Start(
+            expectedGeneration: 2,
+            ResourceDeploymentOperation.Delete,
+            claimId,
+            CreatedAtUtc.AddSeconds(2),
+            CreatedAtUtc.AddMinutes(1));
+        return started.Complete(
+            expectedGeneration: 2,
+            ResourceDeploymentOperation.Delete,
+            claimId,
+            [],
+            CreatedAtUtc.AddSeconds(3));
+    }
+}

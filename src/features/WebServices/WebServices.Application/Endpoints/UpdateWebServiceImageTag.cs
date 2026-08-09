@@ -8,8 +8,6 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.ResourceDeployments.Application.Mutations;
-using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence;
@@ -123,7 +121,7 @@ public sealed class UpdateWebServiceImageTagHandler(
                 webService.Id,
                 webService.Name,
                 webService.ResourceGroupId,
-                webService.DnsRecord,
+                webService.DnsRecord.ToSnapshot(),
                 changes)
             {
                 EventCore = EventCore.Create(webService.TenantId)
@@ -150,7 +148,7 @@ public sealed class UpdateWebServiceImageTagHandler(
             }
 
             var deploymentResult = await deploymentWriter.RequestApplyAsync(
-                new ResourceDeploymentMutationCommand(
+                new ResourceDeploymentMutationRequest(
                     webService.TenantId,
                     WebServiceResourceDeployment.ResourceType,
                     webService.Id,
@@ -171,7 +169,7 @@ public sealed class UpdateWebServiceImageTagHandler(
                 WebServiceReleaseAction.ImageTagUpdate,
                 authorization.ActorUserId,
                 authorization.ActorEmail,
-                nextSpecSnapshot,
+                nextSpec,
                 deploymentEventCore.TraceId,
                 deploymentEventCore.CorrelationId,
                 deploymentEventCore.OccurredOn,
@@ -195,7 +193,7 @@ public sealed class UpdateWebServiceImageTagHandler(
                 updatedWebService.ActiveRevision,
                 release.Id,
                 request.Body.Tag,
-                deployment.ToPlacementSummaryDto());
+                deployment);
         }, cancellationToken);
     }
 

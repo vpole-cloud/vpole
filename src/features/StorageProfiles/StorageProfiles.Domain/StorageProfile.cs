@@ -2,7 +2,7 @@ using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using Pole.Features.Shared.Models;
-using Pole.Features.StorageProfiles.Contracts;
+using Pole.Features.StorageProfiles.Primitives;
 
 namespace Pole.Features.StorageProfiles.Domain;
 

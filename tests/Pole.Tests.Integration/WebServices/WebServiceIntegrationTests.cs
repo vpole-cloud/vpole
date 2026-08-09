@@ -299,7 +299,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             WebServiceReleaseAction.Imported,
             null,
             null,
-            TestData.ValidWebServiceSpecSnapshot(),
+            TestData.ValidWebServiceSpec().ToDomain(),
             null,
             null) with
         {

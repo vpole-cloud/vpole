@@ -5,8 +5,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.ResourceDeployments.Application.Common;
-using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.WebServices.Domain;
@@ -109,7 +107,7 @@ public sealed class DeleteWebServiceHandler(
                     return (Failure)replace;
 
                 var deploymentResult = await deploymentWriter.RequestDeletionAsync(
-                    new ResourceDeploymentMutationCommand(
+                    new ResourceDeploymentMutationRequest(
                         webService.TenantId,
                         WebServiceResourceDeployment.ResourceType,
                         webService.Id,
@@ -125,7 +123,7 @@ public sealed class DeleteWebServiceHandler(
 
                 return new DeleteWebServiceResponse(
                     request.Id,
-                    deployment.ToPlacementSummaryDto());
+                    deployment);
             },
             cancellationToken);
     }

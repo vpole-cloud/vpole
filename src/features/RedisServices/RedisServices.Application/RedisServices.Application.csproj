@@ -13,9 +13,8 @@
       <ProjectReference Include="..\RedisServices.Domain\RedisServices.Domain.csproj" />
       <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
-      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Application\ResourceDeployments.Application.csproj" />
       <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
-      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Domain\ResourceDeployments.Domain.csproj" />
+      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />
       <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj" />
       <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
       <ProjectReference Include="..\RedisServices.Events\RedisServices.Events.csproj" />
@@ -27,7 +26,9 @@
       <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
       <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj" />
+      <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
       <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
+      <ProjectReference Include="..\..\Quotas\Quotas.Primitives\Quotas.Primitives.csproj" />
     </ItemGroup>
 
     <ItemGroup>

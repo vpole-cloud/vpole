@@ -8,7 +8,7 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.GitProviders.Application.Common;
+using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.SourceBuilds.Events;
@@ -26,7 +26,7 @@ public sealed record StartManualSourceBuildRequest(
 
 public sealed class StartManualSourceBuildHandler(
     ISourceBuildDbContext dbContext,
-    IGitProviderDbContext gitProviderDbContext,
+    ISourceRepositoryBuildAccess sourceRepositoryBuildAccess,
     TimeProvider timeProvider)
     : IMediatorHandler<StartManualSourceBuildRequest, SourceBuildJobDto>
 {
@@ -40,11 +40,10 @@ public sealed class StartManualSourceBuildHandler(
         if (configuration is null)
             return Failures.NotFound("Source build configuration not found.", request.ConfigurationId);
 
-        var sourceRepository = await gitProviderDbContext.SourceRepositories
-            .Find(item =>
-                item.TenantId == request.TenantId &&
-                item.Id == configuration.SourceRepositoryId)
-            .FirstOrDefaultAsync(cancellationToken);
+        var sourceRepository = await sourceRepositoryBuildAccess.FindAsync(
+            request.TenantId,
+            configuration.SourceRepositoryId,
+            cancellationToken);
         if (sourceRepository is null)
             return Failures.Conflict("The linked source repository no longer exists.");
         if (!string.Equals(

@@ -7,7 +7,6 @@ using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;

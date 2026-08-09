@@ -43,6 +43,7 @@ requirement when adding or changing one feature.
 
 - [Architecture history](architecture-history.md)
 - [Engineering guidelines](engineering-guidelines.md)
+- [Module boundaries](module-boundaries.md)
 - [Multitenancy](multitenancy.md)
 - [Envelope encryption operations](envelope-encryption.md)
 - [Tenant quotas](quotas.md)

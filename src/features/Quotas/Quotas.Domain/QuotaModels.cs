@@ -1,7 +1,9 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Attributes;
-using Pole.Features.Quotas.Contracts;
+using MongoDB.Bson.Serialization.Serializers;
+using Pole.Features.Quotas.Primitives;
 
 namespace Pole.Features.Quotas.Domain;
 
@@ -57,9 +59,33 @@ public sealed record QuotaReservation(
     string Id,
     string TenantId,
     ImmutableList<QuotaValue> Delta,
+    [property: BsonSerializer(typeof(QuotaResourceKeyBsonSerializer))]
     QuotaResourceKey ResourceKey,
     DateTime CreatedAtUtc,
     QuotaReservationState State);
+
+public sealed class QuotaResourceKeyBsonSerializer
+    : StructSerializerBase<QuotaResourceKey>
+{
+    public override QuotaResourceKey Deserialize(
+        BsonDeserializationContext context,
+        BsonDeserializationArgs args) =>
+        QuotaResourceKey.Parse(context.Reader.ReadString());
+
+    public override void Serialize(
+        BsonSerializationContext context,
+        BsonSerializationArgs args,
+        QuotaResourceKey value)
+    {
+        if (string.IsNullOrWhiteSpace(value.Value))
+        {
+            throw new BsonSerializationException(
+                "Quota resource key must have a value before it can be persisted.");
+        }
+
+        context.Writer.WriteString(value.Value);
+    }
+}
 
 public static class QuotaDomainFactory
 {

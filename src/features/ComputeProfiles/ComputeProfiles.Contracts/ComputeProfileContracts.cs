@@ -1,40 +1,10 @@
 using System.Collections.Immutable;
 using MongoDB.Driver;
-using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ComputeProfiles.Primitives;
 using Pole.ResultType;
+using Pole.Workloads;
 
 namespace Pole.Features.ComputeProfiles.Contracts;
-
-public enum ComputeArchitecture
-{
-    Any,
-    Amd64,
-    Arm64
-}
-
-public enum ComputeNodeAffinityOperator
-{
-    In,
-    NotIn,
-    Exists,
-    DoesNotExist,
-    GreaterThan,
-    LessThan
-}
-
-public enum ComputeTolerationOperator
-{
-    Equal,
-    Exists
-}
-
-public enum ComputeTaintEffect
-{
-    Any,
-    NoSchedule,
-    PreferNoSchedule,
-    NoExecute
-}
 
 public sealed record ComputeResourceValues(
     long CpuMillis,
@@ -92,12 +62,17 @@ public delegate Task<Result<ResolvedComputeProfile>> ResolveComputeProfile(
     ComputeProfileResolutionRequest request,
     CancellationToken cancellationToken = default);
 
+public sealed record ComputeProfileResolutionFenceRequest(
+    string ComputeProfileId,
+    long ComputeProfileRevision,
+    string DeploymentTargetId,
+    string TenantId,
+    ResourceTypeId ResourceType);
+
 public interface IComputeProfileResolutionFence
 {
     Task<Result> FenceAsync(
-        ResolvedComputeProfile compute,
-        string tenantId,
-        ResourceTypeId resourceType,
+        ComputeProfileResolutionFenceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 }

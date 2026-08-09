@@ -3,7 +3,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.ResourceDeployments.Application.Mutations;
+using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;
@@ -128,23 +128,25 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
 
         public ResourceDeployment Deployment { get; }
         public int ApplyCallCount { get; private set; }
-        public ResourceDeploymentMutationCommand? LastCommand { get; private set; }
+        public ResourceDeploymentMutationRequest? LastCommand { get; private set; }
 
-        public Task<Result<ResourceDeployment>> RequestApplyAsync(
-            ResourceDeploymentMutationCommand command,
+        public Task<Result<PlacementSummaryDto>> RequestApplyAsync(
+            ResourceDeploymentMutationRequest command,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
             ApplyCallCount++;
             LastCommand = command;
-            return Task.FromResult<Result<ResourceDeployment>>(Deployment);
+            return Task.FromResult<Result<PlacementSummaryDto>>(
+                Deployment.ToPlacementSummaryDto());
         }
 
-        public Task<Result<ResourceDeployment>> RequestDeletionAsync(
-            ResourceDeploymentMutationCommand command,
+        public Task<Result<PlacementSummaryDto>> RequestDeletionAsync(
+            ResourceDeploymentMutationRequest command,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<ResourceDeployment>>(Deployment);
+            Task.FromResult<Result<PlacementSummaryDto>>(
+                Deployment.ToPlacementSummaryDto());
     }
 
     private sealed class SuccessfulComputeLookup(ResourceDeployment deployment)

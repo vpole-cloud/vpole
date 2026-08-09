@@ -6,53 +6,28 @@ using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.StorageProfiles.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Placement;
-
-public sealed record CreateResourceDeploymentCommand(
-    string DeploymentId,
-    string TenantId,
-    ResourceTypeId ResourceType,
-    string ResourceId,
-    string ResourceGroupId,
-    string? IsolationScopeId,
-    ResolvedDeploymentTarget Target,
-    ResolvedComputeProfile Compute,
-    ResolvedStorageConfiguration? Storage,
-    ResourcePlacementCapability PlacementCapability);
-
-public delegate Task<Result<ResourceDeployment>> CreateResourceDeployment(
-    CreateResourceDeploymentCommand command,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
-
-public interface IResourceDeploymentStorageConfigurationFence
-{
-    Task<Result> FenceAsync(
-        string deploymentTargetId,
-        ResolvedStorageConfiguration storage,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
-}
 
 internal sealed class ResourceDeploymentWriter(
     IResourceDeploymentDbContext dbContext,
     IResourcePlacementService placementService,
     IDeploymentTargetWorkloadConfigurationFence targetConfigurationFence,
     IComputeProfileResolutionFence computeProfileFence,
-    IResourceDeploymentStorageConfigurationFence storageConfigurationFence,
+    IStorageProfileResolutionFence storageConfigurationFence,
     TimeProvider timeProvider)
 {
-    public async Task<Result<ResourceDeployment>> InvokeAsync(
-        CreateResourceDeploymentCommand command,
+    public async Task<Result<PlacementSummaryDto>> InvokeAsync(
+        CreateResourceDeploymentRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
         if (!string.Equals(
-                command.Compute.DeploymentTargetId,
-                command.Target.DeploymentTargetId,
+                request.Compute.DeploymentTargetId,
+                request.Target.DeploymentTargetId,
                 StringComparison.Ordinal))
         {
             return Failures.Conflict(
@@ -61,25 +36,31 @@ internal sealed class ResourceDeploymentWriter(
 
         var targetFence = await targetConfigurationFence
             .FenceAsync(
-                command.Target.DeploymentTargetId,
-                command.Target.WorkloadConfigurationRevision,
+                request.Target.DeploymentTargetId,
+                request.Target.WorkloadConfigurationRevision,
                 session,
                 cancellationToken);
         if (targetFence is not ISuccess)
             return (Failure)targetFence;
         var computeFence = await computeProfileFence.FenceAsync(
-            command.Compute,
-            command.TenantId,
-            command.ResourceType,
+            new ComputeProfileResolutionFenceRequest(
+                request.Compute.ComputeProfileId,
+                request.Compute.ComputeProfileRevision,
+                request.Compute.DeploymentTargetId,
+                request.TenantId,
+                request.ResourceType),
             session,
             cancellationToken);
         if (computeFence is not ISuccess)
             return (Failure)computeFence;
-        if (command.Storage is not null)
+        if (request.Storage is not null)
         {
             var storageFence = await storageConfigurationFence.FenceAsync(
-                command.Target.DeploymentTargetId,
-                command.Storage,
+                new StorageProfileResolutionFenceRequest(
+                    request.Storage.StorageProfileId,
+                    request.Storage.StorageProfileRevision,
+                    request.Target.DeploymentTargetId,
+                    request.Storage.StorageClassName),
                 session,
                 cancellationToken);
             if (storageFence is not ISuccess)
@@ -87,17 +68,17 @@ internal sealed class ResourceDeploymentWriter(
         }
 
         var placementResult = await placementService.ResolveOrCreateAsync(
-            command.TenantId,
-            command.ResourceGroupId,
-            command.IsolationScopeId,
-            command.Target.DeploymentTargetId,
+            request.TenantId,
+            request.ResourceGroupId,
+            request.IsolationScopeId,
+            request.Target.DeploymentTargetId,
             session,
             cancellationToken);
         if (!placementResult.TryGetValue(out var placement, out var failure))
             return failure;
         if (!string.Equals(
                 placement.DeploymentTargetId,
-                command.Target.DeploymentTargetId,
+                request.Target.DeploymentTargetId,
                 StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
@@ -116,22 +97,22 @@ internal sealed class ResourceDeploymentWriter(
             placement.DeploymentTargetId,
             placement.KubernetesNamespace,
             placement.RuntimeCellGeneration,
-            command.Target.WorkloadConfigurationRevision,
-            command.Target.Ingress,
-            command.Storage,
-            command.Compute.ToConfiguration(),
+            request.Target.WorkloadConfigurationRevision,
+            request.Target.Ingress.ToDomain(),
+            request.Storage.ToDomain(),
+            request.Compute.ToDomain(),
             now);
         var deployment = ResourceDeploymentFactory.Create(
-            command.TenantId,
-            command.ResourceType,
-            command.ResourceId,
-            command.ResourceGroupId,
+            request.TenantId,
+            request.ResourceType,
+            request.ResourceId,
+            request.ResourceGroupId,
             placement.IsolationScopeId,
             resolvedPlacement,
-            command.PlacementCapability,
+            request.PlacementCapability,
             runtimeCellReady: placement.State == ResourcePlacementState.Ready,
             new ResourceDeploymentFactory.CreateOptions(
-                command.DeploymentId,
+                request.DeploymentId,
                 now));
         await dbContext.ResourceDeployments.InsertOneAsync(
             session,
@@ -145,7 +126,7 @@ internal sealed class ResourceDeploymentWriter(
                 cancellationToken);
         }
 
-        return deployment;
+        return deployment.ToPlacementSummaryDto();
     }
 
     private static void EnsureTransaction(IClientSessionHandle session)

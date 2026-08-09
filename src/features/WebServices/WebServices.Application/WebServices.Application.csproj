@@ -17,9 +17,8 @@
       <ProjectReference Include="..\..\ContainerRegistries\ContainerRegistries.Contracts\ContainerRegistries.Contracts.csproj" />
       <ProjectReference Include="..\..\DnsRecords\DnsRecords.Events\DnsRecords.Events.csproj" />
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
-      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Application\ResourceDeployments.Application.csproj" />
       <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
-      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Domain\ResourceDeployments.Domain.csproj" />
+      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />
       <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj" />
       <ProjectReference Include="..\..\SourceBuilds\SourceBuilds.Contracts\SourceBuilds.Contracts.csproj" />
       <ProjectReference Include="..\WebServices.Events\WebServices.Events.csproj" />
@@ -32,6 +31,8 @@
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
       <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj" />
       <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
+      <ProjectReference Include="..\..\Quotas\Quotas.Primitives\Quotas.Primitives.csproj" />
+      <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
     </ItemGroup>
 
     <ItemGroup>

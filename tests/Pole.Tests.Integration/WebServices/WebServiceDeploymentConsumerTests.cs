@@ -131,7 +131,7 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
             WebServiceReleaseAction.Redeploy,
             TestData.UserId,
             TestData.UserEmail,
-            TestData.ValidWebServiceSpecSnapshot(),
+            TestData.ValidWebServiceSpec().ToDomain(),
             "trace-1",
             "correlation-1");
 

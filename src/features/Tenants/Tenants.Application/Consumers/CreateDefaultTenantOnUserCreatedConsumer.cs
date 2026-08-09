@@ -3,7 +3,7 @@ using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Domain;
-using Pole.Features.Users.Contracts;
+using Pole.Features.Users.Events;
 
 namespace Pole.Features.Tenants.Application.Consumers;
 

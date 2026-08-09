@@ -1,6 +1,5 @@
 using k8s.Models;
-using Pole.Features.ResourceDeployments.Application.Kubernetes;
-using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.Core.Kubernetes;
 using Xunit;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
@@ -10,37 +9,34 @@ public sealed class ResolvedComputeConfigurationKubernetesTests
     [Fact]
     public void Mapping_ProducesResourcesAndCompletePodScheduling()
     {
-        var requiredTerm = ResolvedComputeNodeAffinityTerm.Create(
+        var requiredTerm = new KubernetesNodeAffinityTerm(
         [
-            ResolvedComputeNodeAffinityExpression.Create(
+            new KubernetesNodeAffinityExpression(
                 "topology.kubernetes.io/zone",
-                ResolvedComputeNodeAffinityOperator.In,
+                KubernetesNodeAffinityOperator.In,
                 ["ua-1", "ua-2"])
         ]);
-        var compute = ResolvedComputeConfiguration.Create(
-            ResourceDeploymentTestData.ComputeProfileId,
-            computeProfileRevision: 3,
-            "GPU workload",
-            ResolvedComputeResourceValues.Create(750, 768),
-            ResolvedComputeResourceValues.Create(2000, 2048),
-            ResolvedComputeArchitecture.Arm64,
-            [ResolvedComputeExtendedResource.Create("nvidia.com/gpu", 1)],
-            [ResolvedComputeNodeSelector.Create("kubernetes.io/os", "linux")],
+        var compute = new KubernetesComputeConfiguration(
+            new KubernetesComputeResourceValues(750, 768),
+            new KubernetesComputeResourceValues(2000, 2048),
+            KubernetesComputeArchitecture.Arm64,
+            [new KubernetesExtendedResource("nvidia.com/gpu", 1)],
+            [new KubernetesNodeSelector("kubernetes.io/os", "linux")],
             [requiredTerm],
-            [ResolvedComputePreferredNodeAffinityTerm.Create(75, requiredTerm)],
+            [new KubernetesPreferredNodeAffinityTerm(75, requiredTerm)],
             [
-                ResolvedComputeToleration.Create(
+                new KubernetesToleration(
                     "dedicated",
-                    ResolvedComputeTolerationOperator.Equal,
+                    KubernetesTolerationOperator.Equal,
                     "gpu",
-                    ResolvedComputeTaintEffect.NoSchedule,
-                    tolerationSeconds: null)
+                    KubernetesTaintEffect.NoSchedule,
+                    TolerationSeconds: null)
             ],
-            runtimeClassName: "kata");
+            RuntimeClassName: "kata");
 
-        var resources = compute.ToKubernetesResources();
+        var resources = compute.ToResourceRequirements();
         var podSpec = new V1PodSpec();
-        compute.ApplyToPodSpec(podSpec);
+        compute.ApplyTo(podSpec);
 
         Assert.Equal("750m", resources.Requests["cpu"].ToString());
         Assert.Equal("768Mi", resources.Requests["memory"].ToString());
@@ -73,10 +69,19 @@ public sealed class ResolvedComputeConfigurationKubernetesTests
     [Fact]
     public void EmptyScheduling_DoesNotAddEmptyKubernetesObjects()
     {
-        var compute = ResourceDeploymentTestData.Compute();
+        var compute = new KubernetesComputeConfiguration(
+            new KubernetesComputeResourceValues(250, 256),
+            new KubernetesComputeResourceValues(1000, 1024),
+            KubernetesComputeArchitecture.Any,
+            [],
+            [],
+            [],
+            [],
+            [],
+            RuntimeClassName: null);
         var podSpec = new V1PodSpec();
 
-        compute.ApplyToPodSpec(podSpec);
+        compute.ApplyTo(podSpec);
 
         Assert.Null(podSpec.NodeSelector);
         Assert.Null(podSpec.Affinity);

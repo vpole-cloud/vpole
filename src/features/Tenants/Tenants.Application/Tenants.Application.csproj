@@ -18,7 +18,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Tenants.Domain\Tenants.Domain.csproj" />
-      <ProjectReference Include="..\..\Users\Users.Contracts\Users.Contracts.csproj" />
+      <ProjectReference Include="..\..\Users\Users.Events\Users.Events.csproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
       <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
       <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
@@ -27,5 +27,4 @@
     </ItemGroup>
 
 </Project>
-
 

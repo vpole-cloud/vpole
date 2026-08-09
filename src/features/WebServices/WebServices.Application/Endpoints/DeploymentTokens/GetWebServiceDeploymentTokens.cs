@@ -7,6 +7,7 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence;
+using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;

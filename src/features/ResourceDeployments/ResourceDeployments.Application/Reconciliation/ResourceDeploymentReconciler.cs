@@ -6,15 +6,16 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Reconciliation;
 
 public sealed class ResourceDeploymentReconciler(
     IResourceDeploymentDbContext dbContext,
-    IKubernetesClientProvider kubernetesClientProvider,
+    IResourcePlacementLookup placementLookup,
     ResourceDeploymentAdapterCatalog adapterCatalog,
     IServiceProvider serviceProvider,
     ResourceDeploymentSettings settings,
@@ -42,11 +43,10 @@ public sealed class ResourceDeploymentReconciler(
             return;
         metrics.RecordAttempt(claimed.ResourceType, operation);
 
-        var runtimeCell = await dbContext.RuntimeCells
-            .Find(cell =>
-                cell.Id == claimed.RuntimeCellId &&
-                cell.TenantId == claimed.TenantId)
-            .FirstOrDefaultAsync(cancellationToken);
+        var runtimeCell = await placementLookup.FindAsync(
+            claimed.TenantId,
+            claimed.RuntimeCellId,
+            cancellationToken);
         if (runtimeCell is null ||
             !string.Equals(runtimeCell.DeploymentTargetId,
                 claimed.ResolvedPlacement.DeploymentTargetId,
@@ -67,7 +67,7 @@ public sealed class ResourceDeploymentReconciler(
         }
 
         if (operation == ResourceDeploymentOperation.Apply &&
-            runtimeCell.State is not ReadyRuntimeCellState)
+            runtimeCell.State != ResourcePlacementState.Ready)
         {
             await PersistFailureAsync(
                 claimed,
@@ -94,12 +94,17 @@ public sealed class ResourceDeploymentReconciler(
             return;
         }
 
-        k8s.IKubernetes kubernetes;
+        var adapter = (IResourceDeploymentAdapter)serviceProvider
+            .GetRequiredService(descriptor.AdapterType);
+        var context = new ResourceDeploymentReconciliationContext(
+            claimed.ToReconciliationSnapshot());
+        var adapterStartedTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+        ResourceDeploymentAdapterResult result;
         try
         {
-            kubernetes = await kubernetesClientProvider.GetAsync(
-                claimed.ResolvedPlacement.DeploymentTargetId,
-                cancellationToken);
+            result = operation == ResourceDeploymentOperation.Apply
+                ? await adapter.ApplyAsync(context, cancellationToken)
+                : await adapter.DeleteAsync(context, cancellationToken);
         }
         catch (DeploymentTargetUnavailableException exception)
         {
@@ -112,21 +117,6 @@ public sealed class ResourceDeploymentReconciler(
                 retryable: true,
                 cancellationToken);
             return;
-        }
-
-        var adapter = (IResourceDeploymentAdapter)serviceProvider
-            .GetRequiredService(descriptor.AdapterType);
-        var context = new ResourceDeploymentReconciliationContext(
-            claimed,
-            runtimeCell,
-            kubernetes);
-        var adapterStartedTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
-        ResourceDeploymentAdapterResult result;
-        try
-        {
-            result = operation == ResourceDeploymentOperation.Apply
-                ? await adapter.ApplyAsync(context, cancellationToken)
-                : await adapter.DeleteAsync(context, cancellationToken);
         }
         catch (HttpOperationException)
         {
@@ -173,7 +163,7 @@ public sealed class ResourceDeploymentReconciler(
                     claimed,
                     generation,
                     operation,
-                    succeeded.Endpoints,
+                    succeeded.Endpoints.Select(endpoint => endpoint.ToDomain()),
                     cancellationToken);
                 break;
             case ResourceDeploymentAdapterResult.Failed failed:

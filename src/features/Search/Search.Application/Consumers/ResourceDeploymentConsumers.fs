@@ -8,6 +8,7 @@ open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.ResourceDeployments.Events
 open Pole.Features.Search.Application.Services
 open Pole.Features.Search.Domain
+open Pole.Workloads
 
 type ResourceDeploymentSearchProjectionConsumer(
     searchService : ISearchService,

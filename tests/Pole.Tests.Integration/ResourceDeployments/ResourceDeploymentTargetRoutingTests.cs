@@ -7,6 +7,7 @@ using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -79,7 +80,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
                 [TargetAId] = targetA,
                 [TargetBId] = targetB
             });
-        var adapter = new RecordingAdapter();
+        var adapter = new RecordingAdapter(provider);
         using var services = new ServiceCollection()
             .AddSingleton(adapter)
             .BuildServiceProvider();
@@ -92,7 +93,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         using var metrics = new ResourceDeploymentMetrics();
         var reconciler = new ResourceDeploymentReconciler(
             fixture.DbContext,
-            provider,
+            new ResourcePlacementLookup(fixture.DbContext),
             new ResourceDeploymentAdapterCatalog(
             [
                 ResourceDeploymentAdapterDescriptor.Create<RecordingAdapter>(
@@ -169,7 +170,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
                 [TargetBId] = kubernetes
             });
         using var services = new ServiceCollection()
-            .AddSingleton<ThrowingTransportAdapter>()
+            .AddSingleton(new ThrowingTransportAdapter(provider))
             .BuildServiceProvider();
         var settings = new ResourceDeploymentSettings
         {
@@ -180,7 +181,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         using var metrics = new ResourceDeploymentMetrics();
         var reconciler = new ResourceDeploymentReconciler(
             fixture.DbContext,
-            provider,
+            new ResourcePlacementLookup(fixture.DbContext),
             new ResourceDeploymentAdapterCatalog(
             [
                 ResourceDeploymentAdapterDescriptor.Create<ThrowingTransportAdapter>(
@@ -244,25 +245,27 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         }
     }
 
-    private sealed class RecordingAdapter : IResourceDeploymentAdapter
+    private sealed class RecordingAdapter(IKubernetesClientProvider kubernetesClientProvider)
+        : IResourceDeploymentAdapter
     {
         public IKubernetes? Kubernetes { get; private set; }
         public string? DeploymentTargetId { get; private set; }
 
-        public Task<ResourceDeploymentAdapterResult> ApplyAsync(
+        public async Task<ResourceDeploymentAdapterResult> ApplyAsync(
             ResourceDeploymentReconciliationContext context,
             CancellationToken cancellationToken = default)
         {
-            Kubernetes = context.Kubernetes;
+            Kubernetes = await kubernetesClientProvider.GetAsync(
+                context.Deployment.Placement.DeploymentTargetId,
+                cancellationToken);
             DeploymentTargetId =
-                context.Deployment.ResolvedPlacement.DeploymentTargetId;
-            return Task.FromResult<ResourceDeploymentAdapterResult>(
-                ResourceDeploymentAdapterResult.Succeeded.Create(
-                [
-                    RedisResourceDeploymentEndpoint.Create(
-                        "redis.pole-routing-test.svc.cluster.local",
-                        6379)
-                ]));
+                context.Deployment.Placement.DeploymentTargetId;
+            return ResourceDeploymentAdapterResult.Succeeded.Create(
+            [
+                ResourceDeploymentEndpointDto.Redis(
+                    "redis.pole-routing-test.svc.cluster.local",
+                    6379)
+            ]);
         }
 
         public Task<ResourceDeploymentAdapterResult> DeleteAsync(
@@ -272,13 +275,19 @@ public sealed class ResourceDeploymentTargetRoutingTests(
                 ResourceDeploymentAdapterResult.Succeeded.Create());
     }
 
-    private sealed class ThrowingTransportAdapter : IResourceDeploymentAdapter
+    private sealed class ThrowingTransportAdapter(
+        IKubernetesClientProvider kubernetesClientProvider)
+        : IResourceDeploymentAdapter
     {
-        public Task<ResourceDeploymentAdapterResult> ApplyAsync(
+        public async Task<ResourceDeploymentAdapterResult> ApplyAsync(
             ResourceDeploymentReconciliationContext context,
-            CancellationToken cancellationToken = default) =>
-            Task.FromException<ResourceDeploymentAdapterResult>(
-                new HttpRequestException("Synthetic Kubernetes transport failure."));
+            CancellationToken cancellationToken = default)
+        {
+            _ = await kubernetesClientProvider.GetAsync(
+                context.Deployment.Placement.DeploymentTargetId,
+                cancellationToken);
+            throw new HttpRequestException("Synthetic Kubernetes transport failure.");
+        }
 
         public Task<ResourceDeploymentAdapterResult> DeleteAsync(
             ResourceDeploymentReconciliationContext context,

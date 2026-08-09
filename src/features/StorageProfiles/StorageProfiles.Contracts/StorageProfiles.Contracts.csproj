@@ -9,8 +9,13 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\StorageProfiles.Primitives\StorageProfiles.Primitives.csproj" />
       <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
       <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="MongoDB.Driver" />
     </ItemGroup>
 
 </Project>

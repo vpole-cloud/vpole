@@ -30,6 +30,13 @@ public sealed class StorageProfileDomainTests
                 .Select(mapping => mapping.DeploymentTargetId)
                 .ToArray());
 
+        var document = profile.ToBsonDocument();
+        Assert.Equal(2, document["MediaType"].AsInt32);
+        Assert.Equal(2, document["PerformanceTier"].AsInt32);
+        Assert.Equal(
+            0,
+            document["TenantAccess"].AsBsonDocument["Mode"].AsInt32);
+
         var roundTripped = BsonSerializer.Deserialize<StorageProfile>(
             profile.ToBson());
         Assert.Equal(profile.Id, roundTripped.Id);

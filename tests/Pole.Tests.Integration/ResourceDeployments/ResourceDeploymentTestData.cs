@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Pole.Features.ComputeProfiles.Contracts;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
@@ -50,5 +51,31 @@ internal static class ResourceDeploymentTestData
             ImmutableList<ComputeNodeAffinityTermValue>.Empty,
             ImmutableList<ComputePreferredNodeAffinityTermValue>.Empty,
             ImmutableList<ComputeTolerationValue>.Empty,
+            RuntimeClassName: null);
+
+    public static ResourceDeploymentComputeConfiguration ContractCompute(
+        string deploymentTargetId,
+        long revision = 1,
+        long requestsCpuMillis = 250,
+        long requestsMemoryMi = 256,
+        long limitsCpuMillis = 1000,
+        long limitsMemoryMi = 1024) =>
+        new(
+            ComputeProfileId,
+            revision,
+            deploymentTargetId,
+            "General purpose",
+            new ResourceDeploymentComputeResourceValues(
+                requestsCpuMillis,
+                requestsMemoryMi),
+            new ResourceDeploymentComputeResourceValues(
+                limitsCpuMillis,
+                limitsMemoryMi),
+            ResourceDeploymentComputeArchitecture.Any,
+            ImmutableList<ResourceDeploymentExtendedResource>.Empty,
+            ImmutableList<ResourceDeploymentNodeSelector>.Empty,
+            ImmutableList<ResourceDeploymentNodeAffinityTerm>.Empty,
+            ImmutableList<ResourceDeploymentPreferredNodeAffinityTerm>.Empty,
+            ImmutableList<ResourceDeploymentToleration>.Empty,
             RuntimeClassName: null);
 }

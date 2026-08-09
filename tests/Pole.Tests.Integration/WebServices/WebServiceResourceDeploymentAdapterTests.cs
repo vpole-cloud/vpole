@@ -4,16 +4,14 @@ using System.Text;
 using System.Text.Json;
 using k8s;
 using Pole.Features.ContainerRegistries.Contracts;
-using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
+using Pole.Tests.Integration.Infrastructure;
 using Pole.Tests.Integration.ResourceDeployments;
 using Xunit;
 
@@ -33,14 +31,15 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         var subject = new WebServiceResourceDeploymentAdapter(
             reader.LoadSnapshot,
             reader.LoadById,
-            new UnexpectedRegistryAccessProvider());
-        var context = CreateContext(kubernetes, includeIngress: true);
+            new UnexpectedRegistryAccessProvider(),
+            new FixedKubernetesClientProvider(kubernetes));
+        var context = CreateContext(includeIngress: true);
 
         var result = await subject.ApplyAsync(context);
 
         var succeeded = Assert.IsType<ResourceDeploymentAdapterResult.Succeeded>(result);
-        var endpoint = Assert.IsType<IngressResourceDeploymentEndpoint>(
-            Assert.Single(succeeded.Endpoints));
+        var endpoint = Assert.Single(succeeded.Endpoints);
+        Assert.Equal("Ingress", endpoint.Kind);
         Assert.Equal("api.example.test", endpoint.Host);
         Assert.Equal(443, endpoint.Port);
         Assert.Equal("https", endpoint.Scheme);
@@ -123,10 +122,11 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         var subject = new WebServiceResourceDeploymentAdapter(
             reader.LoadSnapshot,
             reader.LoadById,
-            new UnexpectedRegistryAccessProvider());
+            new UnexpectedRegistryAccessProvider(),
+            new FixedKubernetesClientProvider(kubernetes));
 
         var result = await subject.ApplyAsync(
-            CreateContext(kubernetes, includeIngress: false));
+            CreateContext(includeIngress: false));
 
         var failed = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
         Assert.Equal("IngressConfigurationMissing", failed.FailureCode);
@@ -147,10 +147,11 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         var subject = new WebServiceResourceDeploymentAdapter(
             reader.LoadSnapshot,
             reader.LoadById,
-            new UnexpectedRegistryAccessProvider());
+            new UnexpectedRegistryAccessProvider(),
+            new FixedKubernetesClientProvider(kubernetes));
 
         var result = await subject.DeleteAsync(
-            CreateContext(kubernetes, includeIngress: true));
+            CreateContext(includeIngress: true));
 
         var succeeded = Assert.IsType<ResourceDeploymentAdapterResult.Succeeded>(result);
         Assert.Empty(succeeded.Endpoints);
@@ -167,48 +168,30 @@ public sealed class WebServiceResourceDeploymentAdapterTests
     }
 
     private static ResourceDeploymentReconciliationContext CreateContext(
-        IKubernetes kubernetes,
         bool includeIngress)
     {
-        var placement = ResolvedResourcePlacement.Create(
-            RuntimeCellId,
+        var placement = new ResourceDeploymentResolvedPlacementSnapshot(
             TargetId,
             KubernetesNamespace,
-            runtimeCellGeneration: 1,
-            targetWorkloadConfigurationRevision: 4,
             includeIngress
-                ? ResolvedIngressConfiguration.Create(
+                ? new ResourceDeploymentIngressConfiguration(
                     "nginx-private",
                     "pole-private-issuer")
                 : null,
-            storage: null,
-            compute: ResourceDeploymentTestData.Compute(),
-            resolvedAtUtc: NowUtc);
-        var deployment = ResourceDeploymentFactory.Create(
+            Storage: null,
+            ResourceDeploymentTestData.ContractCompute(TargetId));
+        var deployment = new ResourceDeploymentReconciliationSnapshot(
+            DeploymentId,
             TenantId,
             WebServiceResourceDeployment.ResourceType,
             ResourceId,
             ResourceGroupId,
             IsolationScopeId,
-            placement,
-            ResourcePlacementCapability.SingleTarget,
-            runtimeCellReady: true,
-            new ResourceDeploymentFactory.CreateOptions(
-                DeploymentId,
-                NowUtc));
-        var runtimeCell = RuntimeCellFactory.Create(
-            TenantId,
-            ResourceGroupId,
-            IsolationScopeId,
-            TargetId,
-            KubernetesNamespace,
-            new RuntimeCellFactory.CreateOptions(
-                RuntimeCellId,
-                NowUtc));
-        return new ResourceDeploymentReconciliationContext(
-            deployment,
-            runtimeCell,
-            kubernetes);
+            RuntimeCellId,
+            DesiredGeneration: 1,
+            NowUtc,
+            placement);
+        return new ResourceDeploymentReconciliationContext(deployment);
     }
 
     private static WebService CreateWebService() =>

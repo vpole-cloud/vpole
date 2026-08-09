@@ -3,13 +3,14 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Jobs;
 
 public sealed class ResourceDeploymentRecoveryJob(
     IResourceDeploymentDbContext dbContext,
+    IResourcePlacementLookup placementLookup,
     ResourceDeploymentMetrics metrics,
     ResourceDeploymentSettings settings,
     TimeProvider timeProvider)
@@ -115,12 +116,12 @@ public sealed class ResourceDeploymentRecoveryJob(
                             ct);
 
                     case WaitingForRuntimeCellResourceDeploymentState:
-                        var runtimeCell = await dbContext.RuntimeCells
-                            .Find(session, cell =>
-                                cell.Id == current.RuntimeCellId &&
-                                cell.TenantId == current.TenantId)
-                            .FirstOrDefaultAsync(ct);
-                        if (runtimeCell?.State is not ReadyRuntimeCellState)
+                        var runtimeCell = await placementLookup.FindAsync(
+                            current.TenantId,
+                            current.RuntimeCellId,
+                            session,
+                            ct);
+                        if (runtimeCell?.State != ResourcePlacementState.Ready)
                             return 0L;
 
                         return await PersistRecoveryAsync(

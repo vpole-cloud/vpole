@@ -2,10 +2,9 @@ namespace Pole.Features.Postgres.Application.Kubernetes
 
 open System.Collections.Generic
 open Pole.Features.Shared.Models
+open Pole.Features.Core.Kubernetes
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.ResourceDeployments.Application.Kubernetes
-open Pole.Features.ResourceDeployments.Domain
 open Pole.Features.StorageProfiles.Contracts
 open k8s.Models
 
@@ -43,24 +42,20 @@ module PostgresClusterKubernetesBuilder =
             values[key] <- value.ToString()
         values
 
-    let private buildResources (compute : ResolvedComputeConfiguration) =
-        let resources =
-            ResolvedComputeConfigurationKubernetesExtensions.ToKubernetesResources(compute)
+    let private buildResources (compute : KubernetesComputeConfiguration) =
+        let resources = compute.ToResourceRequirements()
         {| requests = toResourceDictionary resources.Requests
            limits = toResourceDictionary resources.Limits |}
 
-    let private buildAffinity (compute : ResolvedComputeConfiguration) =
+    let private buildAffinity (compute : KubernetesComputeConfiguration) =
         let affinity = Dictionary<string, obj>()
-        let nodeSelector =
-            ResolvedComputeConfigurationKubernetesExtensions.ToKubernetesNodeSelector(compute)
+        let nodeSelector = compute.ToNodeSelector()
         if not (isNull nodeSelector) then
             affinity["nodeSelector"] <- nodeSelector
-        let nodeAffinity =
-            ResolvedComputeConfigurationKubernetesExtensions.ToKubernetesNodeAffinity(compute)
+        let nodeAffinity = compute.ToNodeAffinity()
         if not (isNull nodeAffinity) then
             affinity["nodeAffinity"] <- nodeAffinity
-        let tolerations =
-            ResolvedComputeConfigurationKubernetesExtensions.ToKubernetesTolerations(compute)
+        let tolerations = compute.ToTolerations()
         if not (isNull tolerations) then
             affinity["tolerations"] <- tolerations
 
@@ -71,7 +66,7 @@ module PostgresClusterKubernetesBuilder =
         (username : string)
         (namespaceName : string)
         (storageClassName : string)
-        (compute : ResolvedComputeConfiguration)
+        (compute : KubernetesComputeConfiguration)
         (metadata : PostgresResourceDeploymentMetadata)
         (settings : PostgresSettings) =
         let clusterSecretName = buildSecretName cluster.Id

@@ -66,7 +66,7 @@ Assembly[] outboxEventAssemblies = [
     typeof(Pole.Features.ResourceDeployments.Events.ResourceDeploymentAppliedEvent).Assembly,
     typeof(Pole.Features.ResourceGroups.Events.ResourceGroupCreatedEvent).Assembly,
     typeof(Pole.Features.SourceBuilds.Events.SourceBuildRequestedEvent).Assembly,
-    typeof(Pole.Features.Users.Contracts.UserCreatedEvent).Assembly
+    typeof(Pole.Features.Users.Events.UserCreatedEvent).Assembly
 ];
 
 builder.AddServiceDefaults();

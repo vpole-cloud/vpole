@@ -3,6 +3,7 @@ namespace Pole.Features.Postgres.Application.Common
 open System.Threading
 open System.Threading.Tasks
 open Pole.Features.ResourceDeployments.Contracts
+open Pole.Workloads
 
 [<AutoOpen>]
 module ResourceDeploymentQueryExtensions =

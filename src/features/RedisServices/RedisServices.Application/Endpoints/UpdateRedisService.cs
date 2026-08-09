@@ -8,8 +8,6 @@ using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.ResourceDeployments.Application.Mutations;
-using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Persistence;
@@ -150,12 +148,12 @@ public sealed class UpdateRedisServiceHandler(
                     return persistenceFailure;
 
                 var deploymentResult = await deploymentWriter.RequestApplyAsync(
-                    new ResourceDeploymentMutationCommand(
+                    new ResourceDeploymentMutationRequest(
                         redis.TenantId,
                         RedisResourceDeployment.ResourceType,
                         redis.Id,
                         currentCompute.Compute.Profile,
-                        replacementCompute),
+                        replacementCompute?.ToResourceDeploymentConfiguration()),
                     session,
                     transactionCancellationToken);
                 if (!deploymentResult.TryGetValue(
@@ -167,7 +165,7 @@ public sealed class UpdateRedisServiceHandler(
 
                 return new UpdateRedisServiceResponse(
                     redis.Id,
-                    deployment.ToPlacementSummaryDto());
+                    deployment);
             },
             cancellationToken);
     }

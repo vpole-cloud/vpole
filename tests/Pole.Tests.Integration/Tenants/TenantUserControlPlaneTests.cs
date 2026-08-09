@@ -14,7 +14,7 @@ using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Consumers;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.Tenants.Application.Endpoints;
-using Pole.Features.Users.Contracts;
+using Pole.Features.Users.Events;
 using Pole.Features.Users.Domain;
 using Pole.Features.Users.Application.Endpoints;
 using Pole.Features.Users.Application.Identity;
@@ -336,4 +336,3 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         }
     }
 }
-

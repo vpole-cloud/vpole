@@ -13,11 +13,10 @@
     <ProjectReference Include="..\SourceBuilds.Contracts\SourceBuilds.Contracts.csproj" />
     <ProjectReference Include="..\SourceBuilds.Domain\SourceBuilds.Domain.csproj" />
     <ProjectReference Include="..\SourceBuilds.Events\SourceBuilds.Events.csproj" />
-    <ProjectReference Include="..\..\GitProviders\GitProviders.Application\GitProviders.Application.csproj" />
+    <ProjectReference Include="..\..\GitProviders\GitProviders.Contracts\GitProviders.Contracts.csproj" />
     <ProjectReference Include="..\..\ContainerRegistries\ContainerRegistries.Contracts\ContainerRegistries.Contracts.csproj" />
-    <ProjectReference Include="..\..\ContainerRegistries\ContainerRegistries.Application\ContainerRegistries.Application.csproj" />
-    <ProjectReference Include="..\..\WebServices\WebServices.Application\WebServices.Application.csproj" />
     <ProjectReference Include="..\..\WebServices\WebServices.Contracts\WebServices.Contracts.csproj" />
+    <ProjectReference Include="..\..\WebServices\WebServices.Events\WebServices.Events.csproj" />
     <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
     <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
     <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />

@@ -1,6 +1,5 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Contracts;
@@ -47,10 +46,10 @@ public sealed class StorageProfileResolutionFenceTests(
 
         var result = await fixture.DbContext.RunInTransactionAsync(
             (session, cancellationToken) => fence.FenceAsync(
-                TargetId,
-                ResolvedStorageConfiguration.Create(
+                new StorageProfileResolutionFenceRequest(
                     ProfileId,
                     profile.Revision,
+                    TargetId,
                     "fast"),
                 session,
                 cancellationToken));
@@ -87,10 +86,10 @@ public sealed class StorageProfileResolutionFenceTests(
 
         var result = await fixture.DbContext.RunInTransactionAsync(
             (session, cancellationToken) => fence.FenceAsync(
-                TargetId,
-                ResolvedStorageConfiguration.Create(
+                new StorageProfileResolutionFenceRequest(
                     ProfileId,
                     profile.Revision + 1,
+                    TargetId,
                     "fast"),
                 session,
                 cancellationToken));

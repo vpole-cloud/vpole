@@ -2,6 +2,7 @@ namespace Pole.Features.Postgres.Application.Common
 
 open System.Collections.Generic
 open Pole.Features.Quotas.Contracts
+open Pole.Features.Quotas.Primitives
 
 type PostgresQuotaInput =
     { RequestedCpuMillisPerInstance : int64

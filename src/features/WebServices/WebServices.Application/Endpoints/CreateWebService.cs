@@ -10,10 +10,7 @@ using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.DnsRecords.Contracts;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.ResourceDeployments.Application.Placement;
-using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
@@ -23,6 +20,7 @@ using Pole.Features.WebServices.Events;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
+using Pole.Workloads;
 
 namespace Pole.Features.WebServices.Application.Endpoints;
 
@@ -112,7 +110,7 @@ public sealed class CreateWebServiceHandler(
                     newWebService,
                     transactionCancellationToken);
                 var deploymentResult = await createResourceDeployment(
-                    new CreateResourceDeploymentCommand(
+                    new CreateResourceDeploymentRequest(
                         deploymentId,
                         request.TenantId,
                         WebServiceResourceDeployment.ResourceType,
@@ -120,7 +118,7 @@ public sealed class CreateWebServiceHandler(
                         newWebService.ResourceGroupId,
                         request.Body.Placement?.IsolationScopeId,
                         preparation.Target,
-                        compute,
+                        compute.ToResourceDeploymentConfiguration(),
                         Storage: null,
                         ResourcePlacementCapability.SingleTarget),
                     session,
@@ -139,7 +137,7 @@ public sealed class CreateWebServiceHandler(
                     WebServiceReleaseAction.Create,
                     request.ActorUserId.Value,
                     request.ActorEmail.Value,
-                    newWebService.Spec.ToSnapshot(),
+                    newWebService.Spec,
                     deploymentEventCore.TraceId,
                     deploymentEventCore.CorrelationId,
                     deploymentEventCore.OccurredOn,
@@ -151,7 +149,7 @@ public sealed class CreateWebServiceHandler(
 
                 return new CreateWebServiceResponse(
                     newWebService.Id,
-                    deployment.ToPlacementSummaryDto());
+                    deployment);
             },
             cancellationToken);
     }
@@ -159,7 +157,7 @@ public sealed class CreateWebServiceHandler(
     private async Task<Result<WebServiceCreatePreparation>> PrepareAsync(
         CreateWebServiceRequest request,
         string webServiceId,
-        ResolvedDeploymentTarget target,
+        ResolvedResourceDeploymentTarget target,
         CancellationToken cancellationToken)
     {
         var dnsResult = await domainNameReservationService.ReserveAsync(
@@ -178,7 +176,7 @@ public sealed class CreateWebServiceHandler(
 
     private sealed record WebServiceCreatePreparation(
         DnsRecordShortInfo DnsRecord,
-        ResolvedDeploymentTarget Target);
+        ResolvedResourceDeploymentTarget Target);
 }
 
 public sealed record CreateWebServiceRequest(

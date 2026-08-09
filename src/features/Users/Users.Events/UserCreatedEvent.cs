@@ -1,7 +1,7 @@
 using MassTransit;
 using Pole.Features.Events.Abstractions;
 
-namespace Pole.Features.Users.Contracts;
+namespace Pole.Features.Users.Events;
 
 [EntityName("user-created")]
 public sealed record UserCreatedEvent(
@@ -10,8 +10,8 @@ public sealed record UserCreatedEvent(
     string? FirstName,
     string? LastName,
     string DefaultTenantId,
-    string DefaultTenantName
-) : IPoleEvent
+    string DefaultTenantName)
+    : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

@@ -35,6 +35,17 @@ public static class ResultAssertionExtensions
                 $"'{result.GetType().Name}'.")
         };
 
+    public static Failure AssertFailure(this Result result) =>
+        result switch
+        {
+            Failure failure => failure,
+            ISuccess success => throw new XunitException(
+                $"Expected a failed result, but received {success.GetType().Name}."),
+            _ => throw new XunitException(
+                $"Expected a failed result, but received unsupported result type " +
+                $"'{result.GetType().Name}'.")
+        };
+
     public static Failure AssertFailure<T>(this Result<T> result)
         where T : notnull =>
         result switch

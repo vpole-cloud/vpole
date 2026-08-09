@@ -2,43 +2,23 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ResourceDeployments.Application.Common;
-using Pole.Features.ResourceDeployments.Application.Placement;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Application.Persistence;
-using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Mutations;
 
-public sealed record ResourceDeploymentMutationCommand(
-    string TenantId,
-    ResourceTypeId ResourceType,
-    string ResourceId,
-    ComputeProfileReference ExpectedCompute,
-    ResolvedComputeProfile? ReplacementCompute = null);
-
-public interface IResourceDeploymentMutationWriter
-{
-    Task<Result<ResourceDeployment>> RequestApplyAsync(
-        ResourceDeploymentMutationCommand command,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
-
-    Task<Result<ResourceDeployment>> RequestDeletionAsync(
-        ResourceDeploymentMutationCommand command,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
-}
-
 public sealed class ResourceDeploymentMutationWriter(
     IResourceDeploymentDbContext dbContext,
+    IResourcePlacementLookup placementLookup,
     IComputeProfileResolutionFence computeProfileFence,
     TimeProvider timeProvider)
     : IResourceDeploymentMutationWriter
 {
-    public async Task<Result<ResourceDeployment>> RequestApplyAsync(
-        ResourceDeploymentMutationCommand command,
+    public async Task<Result<PlacementSummaryDto>> RequestApplyAsync(
+        ResourceDeploymentMutationRequest command,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
@@ -57,11 +37,11 @@ public sealed class ResourceDeploymentMutationWriter(
                 "A resource deployment pending deletion cannot be reconciled.");
         }
 
-        var runtimeCell = await dbContext.RuntimeCells
-            .Find(session, cell =>
-                cell.Id == current.RuntimeCellId &&
-                cell.TenantId == command.TenantId)
-            .FirstOrDefaultAsync(cancellationToken);
+        var runtimeCell = await placementLookup.FindAsync(
+            command.TenantId,
+            current.RuntimeCellId,
+            session,
+            cancellationToken);
         if (runtimeCell is null ||
             !string.Equals(
                 runtimeCell.DeploymentTargetId,
@@ -89,9 +69,12 @@ public sealed class ResourceDeploymentMutationWriter(
             }
 
             var computeFence = await computeProfileFence.FenceAsync(
-                command.ReplacementCompute,
-                command.TenantId,
-                command.ResourceType,
+                new ComputeProfileResolutionFenceRequest(
+                    command.ReplacementCompute.ComputeProfileId,
+                    command.ReplacementCompute.ComputeProfileRevision,
+                    command.ReplacementCompute.DeploymentTargetId,
+                    command.TenantId,
+                    command.ResourceType),
                 session,
                 cancellationToken);
             if (computeFence is not ISuccess)
@@ -99,13 +82,13 @@ public sealed class ResourceDeploymentMutationWriter(
 
             resolvedPlacement = resolvedPlacement with
             {
-                Compute = command.ReplacementCompute.ToConfiguration()
+                Compute = command.ReplacementCompute.ToDomain()
             };
         }
 
         var updated = current.RequestReconciliation(
             resolvedPlacement,
-            runtimeCell.State is ReadyRuntimeCellState,
+            runtimeCell.State == ResourcePlacementState.Ready,
             timeProvider.GetUtcNow().UtcDateTime);
         return await ReplaceAndEnqueueAsync(
             command,
@@ -115,8 +98,8 @@ public sealed class ResourceDeploymentMutationWriter(
             cancellationToken);
     }
 
-    public async Task<Result<ResourceDeployment>> RequestDeletionAsync(
-        ResourceDeploymentMutationCommand command,
+    public async Task<Result<PlacementSummaryDto>> RequestDeletionAsync(
+        ResourceDeploymentMutationRequest command,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
@@ -140,7 +123,7 @@ public sealed class ResourceDeploymentMutationWriter(
         var updated = current.RequestDeletion(
             timeProvider.GetUtcNow().UtcDateTime);
         if (updated.Revision == current.Revision)
-            return current;
+            return current.ToPlacementSummaryDto();
 
         return await ReplaceAndEnqueueAsync(
             command,
@@ -151,7 +134,7 @@ public sealed class ResourceDeploymentMutationWriter(
     }
 
     private async Task<Result<ResourceDeployment>> LoadSingleAsync(
-        ResourceDeploymentMutationCommand command,
+        ResourceDeploymentMutationRequest command,
         IClientSessionHandle session,
         CancellationToken cancellationToken)
     {
@@ -180,7 +163,7 @@ public sealed class ResourceDeploymentMutationWriter(
     }
 
     private static ConflictFailure? EnsureExpectedCompute(
-        ResourceDeploymentMutationCommand command,
+        ResourceDeploymentMutationRequest command,
         ResourceDeployment current) =>
         current.ResolvedPlacement.Compute.Matches(
             command.ExpectedCompute.ComputeProfileId,
@@ -189,8 +172,8 @@ public sealed class ResourceDeploymentMutationWriter(
             : Failures.Conflict(
                 "The resource deployment compute configuration changed while the logical resource mutation was being prepared.");
 
-    private async Task<Result<ResourceDeployment>> ReplaceAndEnqueueAsync(
-        ResourceDeploymentMutationCommand command,
+    private async Task<Result<PlacementSummaryDto>> ReplaceAndEnqueueAsync(
+        ResourceDeploymentMutationRequest command,
         ResourceDeployment current,
         ResourceDeployment updated,
         IClientSessionHandle session,
@@ -215,7 +198,7 @@ public sealed class ResourceDeploymentMutationWriter(
                 cancellationToken);
         }
 
-        return updated;
+        return updated.ToPlacementSummaryDto();
     }
 
     private static void EnsureTransaction(IClientSessionHandle session)

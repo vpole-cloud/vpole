@@ -1,30 +1,9 @@
+using MongoDB.Driver;
 using Pole.Features.Shared.Models;
+using Pole.Features.StorageProfiles.Primitives;
 using Pole.ResultType;
 
 namespace Pole.Features.StorageProfiles.Contracts;
-
-public enum StorageMediaType
-{
-    Unknown,
-    HDD,
-    SSD,
-    NVMe,
-    Network
-}
-
-public enum StoragePerformanceTier
-{
-    Standard,
-    Bulk,
-    Fast,
-    Ultra
-}
-
-public enum StorageProfileTenantAccessMode
-{
-    AllTenants,
-    SelectedTenants
-}
 
 public sealed record ResolvedStorageProfile(
     string ProfileId,
@@ -71,6 +50,20 @@ public interface IStorageProfileResolver
 {
     Task<Result<ResolvedStorageProfile>> ResolveAsync(
         StorageProfileResolutionRequest request,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record StorageProfileResolutionFenceRequest(
+    string StorageProfileId,
+    long StorageProfileRevision,
+    string DeploymentTargetId,
+    string StorageClassName);
+
+public interface IStorageProfileResolutionFence
+{
+    Task<Result> FenceAsync(
+        StorageProfileResolutionFenceRequest request,
+        IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 }
 

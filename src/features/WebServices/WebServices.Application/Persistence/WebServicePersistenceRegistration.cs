@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Domain;
@@ -22,10 +21,6 @@ public static class WebServicePersistenceRegistration
         services.TryAddSingleton(serviceProvider => serviceProvider
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<WebServiceDeploymentToken>("WebServiceDeploymentTokens"));
-        services.TryAddSingleton(serviceProvider => serviceProvider
-            .GetRequiredService<IMongoDatabase>()
-            .GetCollection<ResourceDeployment>("ResourceDeployments"));
-
         services.AddCapability<MongoLoadWebServiceById, LoadWebServiceById>(x => x.InvokeAsync);
         services.AddCapability<MongoWebServiceExists, WebServiceExists>(x => x.InvokeAsync);
         services.AddCapability<MongoLoadWebServicePage, LoadWebServicePage>(x => x.InvokeAsync);

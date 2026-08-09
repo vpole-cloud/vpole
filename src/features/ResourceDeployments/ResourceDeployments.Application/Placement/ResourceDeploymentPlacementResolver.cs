@@ -1,23 +1,13 @@
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Placement;
 
-public delegate Task<Result<ResolvedDeploymentTarget>> ResolveResourceDeploymentTarget(
-    string? deploymentTargetId,
-    bool requiresIngress,
-    CancellationToken cancellationToken = default);
-
-public sealed record ResolvedDeploymentTarget(
-    string DeploymentTargetId,
-    long WorkloadConfigurationRevision,
-    ResolvedIngressConfiguration? Ingress);
-
 internal sealed class ResourceDeploymentPlacementResolver(
     IDeploymentTargetLookup deploymentTargetLookup)
 {
-    public async Task<Result<ResolvedDeploymentTarget>> InvokeAsync(
+    public async Task<Result<ResolvedResourceDeploymentTarget>> InvokeAsync(
         string? deploymentTargetId,
         bool requiresIngress,
         CancellationToken cancellationToken = default)
@@ -68,12 +58,12 @@ internal sealed class ResourceDeploymentPlacementResolver(
             });
         }
 
-        return new ResolvedDeploymentTarget(
+        return new ResolvedResourceDeploymentTarget(
             target.Id,
             target.WorkloadConfiguration.Revision,
             ingress is null
                 ? null
-                : ResolvedIngressConfiguration.Create(
+                : new ResourceDeploymentIngressConfiguration(
                     ingress.IngressClassName,
                     ingress.ClusterIssuerName));
     }

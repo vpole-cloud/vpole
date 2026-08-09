@@ -1,7 +1,6 @@
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.ResourceDeployments.Contracts;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence;
 

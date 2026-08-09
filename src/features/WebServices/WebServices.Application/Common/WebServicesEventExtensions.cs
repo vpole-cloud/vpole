@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 
@@ -15,7 +16,7 @@ internal static class WebServicesEventExtensions
                 webService.Name,
                 webService.ResourceGroupId,
                 webService.Spec.ToSnapshot(),
-                webService.DnsRecord,
+                webService.DnsRecord.ToSnapshot(),
                 webService.Tags
             )
             {
@@ -43,7 +44,7 @@ internal static class WebServicesEventExtensions
                 createEvent.EventCore.TenantId,
                 createEvent.ResourceGroupId,
                 createEvent.Spec.ToDomain(),
-                createEvent.DnsRecord,
+                createEvent.DnsRecord.ToDomain(),
                 WebServiceFactory.DefaultOptions with
                 {
                     Id = createEvent.WebServiceId,
@@ -59,7 +60,7 @@ internal static class WebServicesEventExtensions
                 spec.Replicas,
                 spec.Config.ToSnapshot(),
                 spec.Autoscaling?.ToSnapshot(),
-                spec.Probes);
+                spec.Probes.ToSnapshot());
     }
 
     extension(ImageInfo image)
@@ -101,7 +102,7 @@ internal static class WebServicesEventExtensions
                 spec.Replicas,
                 spec.Config.ToDomain(),
                 spec.Autoscaling?.ToDomain(),
-                spec.Probes);
+                spec.Probes.ToDomain());
     }
 
     extension(WebServiceImageInfoSnapshot image)
@@ -133,5 +134,61 @@ internal static class WebServicesEventExtensions
                 new AutoscalingMetric(
                     autoscaling.Metric.Type,
                     autoscaling.Metric.TargetAverageUtilization));
+    }
+
+    extension(DnsRecordShortInfo dnsRecord)
+    {
+        internal WebServiceDnsRecordSnapshot ToSnapshot()
+            => new(dnsRecord.Id, dnsRecord.Domain);
+    }
+
+    extension(WebServiceDnsRecordSnapshot dnsRecord)
+    {
+        private DnsRecordShortInfo ToDomain()
+            => new(dnsRecord.Id, dnsRecord.Domain);
+    }
+
+    extension(ProbeSpec probes)
+    {
+        private WebServiceProbeSpecSnapshot ToSnapshot()
+            => new(
+                probes.Startup.ToSnapshot(),
+                probes.Liveness.ToSnapshot(),
+                probes.Readiness.ToSnapshot());
+    }
+
+    extension(ProbeConfig probe)
+    {
+        private WebServiceProbeConfigSnapshot ToSnapshot()
+            => new(
+                probe.Path,
+                probe.Port,
+                probe.InitialDelaySeconds,
+                probe.PeriodSeconds,
+                probe.TimeoutSeconds,
+                probe.FailureThreshold,
+                probe.SuccessThreshold);
+    }
+
+    extension(WebServiceProbeSpecSnapshot probes)
+    {
+        private ProbeSpec ToDomain()
+            => new(
+                probes.Startup.ToDomain(),
+                probes.Liveness.ToDomain(),
+                probes.Readiness.ToDomain());
+    }
+
+    extension(WebServiceProbeConfigSnapshot probe)
+    {
+        private ProbeConfig ToDomain()
+            => new(
+                probe.Path,
+                probe.Port,
+                probe.InitialDelaySeconds,
+                probe.PeriodSeconds,
+                probe.TimeoutSeconds,
+                probe.FailureThreshold,
+                probe.SuccessThreshold);
     }
 }

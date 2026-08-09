@@ -39,9 +39,9 @@ Pole uses `AsyncLocal` only as in-process glue. It is not durable storage. When 
 
 ## Event And Outbox Flow
 
-Domain events implement `IPoleEvent`, which exposes `TraceId` and `CorrelationId`.
-
-C# events inherit `BaseEvent`, which initializes the IDs from the current `TraceContext`. F# events initialize the same fields when their event factory functions run.
+Integration events implement `IPoleEvent`, which exposes `EventCore`. Application event factories
+create `EventCore` from the current tenant and trace context before the event is stored. F# event
+factory modules initialize the same values explicitly.
 
 When an event is stored in the outbox, Pole writes the IDs in two places:
 

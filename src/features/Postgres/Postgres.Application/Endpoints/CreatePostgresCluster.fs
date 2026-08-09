@@ -11,15 +11,12 @@ open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
 open Pole.Features.ComputeProfiles.Contracts
-open Pole.Features.ComputeProfiles.Contracts
 open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Quotas.Contracts
-open Pole.Features.ResourceDeployments.Application.Common
-open Pole.Features.ResourceDeployments.Application.Placement
 open Pole.Features.ResourceDeployments.Contracts
-open Pole.Features.ResourceDeployments.Domain
+open Pole.Workloads
 open Pole.Features.Shared.Models
 open Pole.Features.StorageProfiles.Contracts
 open Pole.Mediator
@@ -142,11 +139,6 @@ type CreatePostgresClusterHandler(
                                 return failure |> ResultF.ofFailure
                             | struct (true, credential, _) ->
                                 let deploymentId = ObjectId.GenerateNewId().ToString()
-                                let resolvedStorage =
-                                    ResolvedStorageConfiguration.Create(
-                                        storageProfile.ProfileId,
-                                        storageProfile.ProfileRevision,
-                                        storageProfile.StorageClassName)
                                 let quotaInput =
                                     PostgresQuotaInput.create
                                         computeProfile.Requests.CpuMillis
@@ -182,7 +174,7 @@ type CreatePostgresClusterHandler(
 
                                                 let! deploymentResult =
                                                     createResourceDeployment.Invoke(
-                                                        CreateResourceDeploymentCommand(
+                                                        CreateResourceDeploymentRequest(
                                                             deploymentId,
                                                             cluster.TenantId,
                                                             PostgresResourceDeployment.ResourceType,
@@ -190,8 +182,8 @@ type CreatePostgresClusterHandler(
                                                             cluster.GroupId,
                                                             Option.toObj isolationScopeId,
                                                             target,
-                                                            computeProfile,
-                                                            resolvedStorage,
+                                                            PostgresResourceDeploymentMappings.compute computeProfile,
+                                                            PostgresResourceDeploymentMappings.storage storageProfile,
                                                             ResourcePlacementCapability.SingleTarget),
                                                         session,
                                                         ct)
@@ -209,7 +201,7 @@ type CreatePostgresClusterHandler(
                                                     return
                                                         PostgresClusterDto.create
                                                             cluster
-                                                            (ResourceDeploymentDtoExtensions.ToPlacementSummaryDto deployment)
+                                                            deployment
                                                         |> ResultF.ofValue
                                             }),
                                         cancellationToken)

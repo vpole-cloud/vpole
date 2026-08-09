@@ -1,15 +1,15 @@
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Domain;
-using Pole.Features.ResourceDeployments.Application.Reconciliation;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Domain;
 using Pole.ResultType;
 
 namespace Pole.Features.RedisServices.Application.Kubernetes;
 
 public sealed class RedisResourceDeploymentAdapter(
-    LoadRedisById loadRedisById)
+    LoadRedisById loadRedisById,
+    IKubernetesClientProvider kubernetesClientProvider)
     : IResourceDeploymentAdapter
 {
     public async Task<ResourceDeploymentAdapterResult> ApplyAsync(
@@ -19,6 +19,10 @@ public sealed class RedisResourceDeploymentAdapter(
         var validationFailure = ValidateContext(context);
         if (validationFailure is not null)
             return validationFailure;
+
+        var kubernetes = await kubernetesClientProvider.GetAsync(
+            context.Deployment.Placement.DeploymentTargetId,
+            cancellationToken);
 
         var redis = await loadRedisById(
             context.Deployment.TenantId,
@@ -33,17 +37,17 @@ public sealed class RedisResourceDeploymentAdapter(
         }
 
         var inKubernetes = redis.ToKubernetes(
-            context.Deployment.ResolvedPlacement.KubernetesNamespace,
-            context.Deployment.ResolvedPlacement.Storage!,
-            context.Deployment.ResolvedPlacement.Compute);
+            context.Deployment.Placement.KubernetesNamespace,
+            context.Deployment.Placement.Storage!,
+            context.Deployment.Placement.Compute);
         var metadata = RedisResourceDeploymentMetadata.Create(
             context.Deployment.Id,
             context.Deployment.RuntimeCellId,
-            context.Deployment.ResolvedPlacement.DeploymentTargetId,
+            context.Deployment.Placement.DeploymentTargetId,
             context.Deployment.DesiredGeneration,
             context.Deployment.UpdatedAtUtc);
         var applyResult = await RedisKubernetesResourceManager.ApplyAsync(
-            context.Kubernetes,
+            kubernetes,
             inKubernetes,
             metadata,
             cancellationToken);
@@ -57,7 +61,7 @@ public sealed class RedisResourceDeploymentAdapter(
 
         return ResourceDeploymentAdapterResult.Succeeded.Create(
         [
-            RedisResourceDeploymentEndpoint.Create(
+            ResourceDeploymentEndpointDto.Redis(
                 inKubernetes.ClusterLocalHost,
                 port: 6379)
         ]);
@@ -70,6 +74,10 @@ public sealed class RedisResourceDeploymentAdapter(
         var validationFailure = ValidateContext(context);
         if (validationFailure is not null)
             return validationFailure;
+
+        var kubernetes = await kubernetesClientProvider.GetAsync(
+            context.Deployment.Placement.DeploymentTargetId,
+            cancellationToken);
 
         var redis = await loadRedisById(
             context.Deployment.TenantId,
@@ -84,9 +92,9 @@ public sealed class RedisResourceDeploymentAdapter(
         }
 
         await RedisKubernetesResourceManager.DeleteAsync(
-            context.Kubernetes,
+            kubernetes,
             redis.Name,
-            context.Deployment.ResolvedPlacement.KubernetesNamespace,
+            context.Deployment.Placement.KubernetesNamespace,
             cancellationToken);
 
         return ResourceDeploymentAdapterResult.Succeeded.Create();
@@ -97,7 +105,7 @@ public sealed class RedisResourceDeploymentAdapter(
     {
         ArgumentNullException.ThrowIfNull(context);
         if (!string.Equals(
-                context.Deployment.ResourceType,
+                context.Deployment.ResourceType.Value,
                 RedisResourceDeployment.ResourceType.Value,
                 StringComparison.Ordinal))
         {
@@ -107,7 +115,7 @@ public sealed class RedisResourceDeploymentAdapter(
                 retryable: false);
         }
 
-        if (context.Deployment.ResolvedPlacement.Storage is null)
+        if (context.Deployment.Placement.Storage is null)
         {
             return ResourceDeploymentAdapterResult.Failed.Create(
                 "StorageConfigurationMissing",

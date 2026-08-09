@@ -18,9 +18,10 @@ public sealed class OutboxEventAssemblyCatalogTests
             typeof(Pole.Features.DnsRecords.Events.CommitDomainNameEvent).Assembly,
             typeof(Pole.Features.Postgres.Events.PostgresClusterCreatedEvent).Assembly,
             typeof(Pole.Features.RedisServices.Events.RedisServiceCreatedEvent).Assembly,
+            typeof(Pole.Features.ResourceDeployments.Events.ResourceDeploymentAppliedEvent).Assembly,
             typeof(Pole.Features.ResourceGroups.Events.ResourceGroupCreatedEvent).Assembly,
             typeof(Pole.Features.SourceBuilds.Events.SourceBuildRequestedEvent).Assembly,
-            typeof(Pole.Features.Users.Contracts.UserCreatedEvent).Assembly
+            typeof(Pole.Features.Users.Events.UserCreatedEvent).Assembly
         ]);
 
         Assert.Contains("web-service-created", catalog.EventTypes.Keys);
@@ -28,6 +29,7 @@ public sealed class OutboxEventAssemblyCatalogTests
         Assert.Contains("commit-domain-name", catalog.EventTypes.Keys);
         Assert.Contains("postgres-cluster-created", catalog.EventTypes.Keys);
         Assert.Contains("redis-service-created", catalog.EventTypes.Keys);
+        Assert.Contains("resource-deployment-applied", catalog.EventTypes.Keys);
         Assert.Contains("runtime-cell-reconciliation-requested", catalog.EventTypes.Keys);
         Assert.Contains("source-build-requested", catalog.EventTypes.Keys);
         Assert.Contains("user-created", catalog.EventTypes.Keys);

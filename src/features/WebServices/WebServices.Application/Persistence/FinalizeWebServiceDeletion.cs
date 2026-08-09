@@ -1,7 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.ResourceDeployments.Application.Persistence;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
@@ -15,7 +14,7 @@ public delegate Task<Result> FinalizeWebServiceDeletion(
 
 internal sealed class MongoFinalizeWebServiceDeletion(
     IMongoCollection<WebService> webServices,
-    IMongoCollection<ResourceDeployment> resourceDeployments,
+    IResourceDeploymentFinalizationService deploymentFinalization,
     RunMongoTransaction runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites)
 {
@@ -33,14 +32,13 @@ internal sealed class MongoFinalizeWebServiceDeletion(
             if (webService is null)
                 return Result.Success();
 
-            var deploymentFilter = ResourceDeploymentFilters.ForResource(
+            var readiness = await deploymentFinalization.GetReadinessAsync(
                 tenantId,
                 WebServiceResourceDeployment.ResourceType,
-                webServiceId);
-            var deployments = await resourceDeployments.Find(session, deploymentFilter)
-                .ToListAsync(ct);
-            if (deployments.Count == 0 ||
-                deployments.Any(item => item.State is not DeletedResourceDeploymentState))
+                webServiceId,
+                session,
+                ct);
+            if (readiness is not ResourceDeploymentFinalizationReadiness.Ready)
             {
                 return Result.Success();
             }
@@ -52,10 +50,14 @@ internal sealed class MongoFinalizeWebServiceDeletion(
             if (deleted.DeletedCount != 1)
                 return Result.Success();
 
-            await resourceDeployments.DeleteManyAsync(
+            var purge = await deploymentFinalization.PurgeDeletedAsync(
+                tenantId,
+                WebServiceResourceDeployment.ResourceType,
+                webServiceId,
                 session,
-                filter: deploymentFilter,
-                cancellationToken: ct);
+                ct);
+            if (purge is not ISuccess)
+                return (Failure)purge;
             await storeOutboxWrites(
                 session,
                 [OutboxWrite.Create(webService.ToDeleteEvent())],

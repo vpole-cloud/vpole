@@ -1,9 +1,7 @@
-using System.Collections.Immutable;
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Text;
-using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Domain;
+using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.ResultType;
@@ -17,66 +15,25 @@ public sealed class SourceBuildWorkspaceServiceTests
     public async Task CreateAsync_DisposesTheArchiveBeforeDeletingIt()
     {
         using var workspaceRoot = new TemporaryDirectory();
+        var repositoryAccess = new ArchiveRepositoryService(CreateArchive());
         var service = new SourceBuildWorkspaceService(
-            new ArchiveRepositoryService(CreateArchive()),
+            repositoryAccess,
             new RepositoryArchiveExtractor(),
             new SourceBuildExecutionOptions { WorkspaceRoot = workspaceRoot.Path });
 
-        var result = await service.CreateAsync(CreateConnection(), CreateSourceRepository(), "build-job");
+        var result = await service.CreateAsync(
+            "tenant",
+            "source",
+            "commit",
+            "build-job");
 
         Assert.True(result.TryGetValue(out var workspace, out var failure), failure?.Message);
+        Assert.Equal(("tenant", "source", "commit"), repositoryAccess.Request);
         await using (workspace)
         {
             Assert.False(File.Exists(Path.Combine(workspace.RootPath, "source.tar.gz")));
             Assert.True(File.Exists(Path.Combine(workspace.SourcePath, "src", "App.csproj")));
         }
-    }
-
-    private static GitProviderConnection CreateConnection()
-    {
-        var now = DateTime.UtcNow;
-        return GitProviderConnectionFactory.Create(
-            "tenant",
-            GitProviderKind.GitHub,
-            "installation",
-            "account",
-            "pole",
-            GitProviderAccountType.Organization,
-            GitProviderRepositorySelection.Selected,
-            "user",
-            new GitProviderConnectionFactory.CreateOptions("connection", now, now));
-    }
-
-    private static SourceRepository CreateSourceRepository()
-    {
-        var now = DateTime.UtcNow;
-        var plan = new SourceBuildPlan(
-            "candidate",
-            SourceBuildPlanKind.DotNet,
-            "App",
-            ".",
-            "src/App.csproj",
-            SourceBuildPlanConfidence.High,
-            ImmutableList<string>.Empty,
-            ImmutableList<string>.Empty,
-            ImmutableList<string>.Empty,
-            null,
-            "FROM scratch");
-        return SourceRepositoryFactory.Create(
-            "tenant",
-            "connection",
-            "repository",
-            "pole/sample",
-            "https://example.test/pole/sample",
-            true,
-            new SourceRepositoryAnalysis(
-                "main",
-                "commit",
-                now,
-                ImmutableList.Create("src/App.csproj"),
-                ImmutableList.Create(plan)),
-            plan,
-            new SourceRepositoryFactory.CreateOptions("source", now, now));
     }
 
     private static byte[] CreateArchive()
@@ -95,37 +52,24 @@ public sealed class SourceBuildWorkspaceServiceTests
         return archive.ToArray();
     }
 
-    private sealed class ArchiveRepositoryService(byte[] archive) : IGitProviderRepositoryService
+    private sealed class ArchiveRepositoryService(byte[] archive) : ISourceRepositoryBuildAccess
     {
-        public Task<Result<ProviderPage<ProviderRepository>>> GetRepositoriesAsync(
-            GitProviderConnection connection,
-            int page,
-            int pageSize,
+        public (string TenantId, string SourceRepositoryId, string CommitSha)? Request { get; private set; }
+
+        public Task<SourceRepositoryBuildSnapshot?> FindAsync(
+            string tenantId,
+            string sourceRepositoryId,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<Result<ProviderPage<ProviderBranch>>> GetBranchesAsync(
-            GitProviderConnection connection,
-            string repositoryId,
-            int page,
-            int pageSize,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task<Result<RepositorySourceSnapshot>> GetRepositorySnapshotAsync(
-            GitProviderConnection connection,
-            string repositoryId,
-            string branch,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public async Task<Result> DownloadRepositoryArchiveAsync(
-            GitProviderConnection connection,
-            string repositoryId,
+        public async Task<Result> DownloadArchiveAsync(
+            string tenantId,
+            string sourceRepositoryId,
             string commitSha,
             Stream destination,
             CancellationToken cancellationToken = default)
         {
+            Request = (tenantId, sourceRepositoryId, commitSha);
             await destination.WriteAsync(archive, cancellationToken);
             return Result.Success();
         }

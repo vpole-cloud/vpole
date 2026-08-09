@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Collections.Immutable;
-using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
@@ -260,24 +260,28 @@ public sealed class WebServiceManifestTests
             options: options);
         return webService.ToKubernetes(
             "pole-apps",
-            ResolvedIngressConfiguration.Create(
+            new ResourceDeploymentIngressConfiguration(
                 "nginx-private",
                 "pole-private-issuer"),
-            ResolvedComputeConfiguration.Create(
+            new ResourceDeploymentComputeConfiguration(
                 "507f1f77bcf86cd799439035",
-                computeProfileRevision: 3,
-                displayName: "Web workloads",
-                ResolvedComputeResourceValues.Create(1000, 256),
-                ResolvedComputeResourceValues.Create(2000, 512),
-                ResolvedComputeArchitecture.Any,
-                extendedResources:
+                ComputeProfileRevision: 3,
+                DeploymentTargetId: "507f1f77bcf86cd799439036",
+                DisplayName: "Web workloads",
+                new ResourceDeploymentComputeResourceValues(1000, 256),
+                new ResourceDeploymentComputeResourceValues(2000, 512),
+                ResourceDeploymentComputeArchitecture.Any,
+                ExtendedResources:
                 [
-                    ResolvedComputeExtendedResource.Create("nvidia.com/gpu", 1)
+                    new ResourceDeploymentExtendedResource("nvidia.com/gpu", 1)
                 ],
-                nodeSelector:
+                NodeSelector:
                 [
-                    ResolvedComputeNodeSelector.Create("kubernetes.io/os", "linux")
+                    new ResourceDeploymentNodeSelector("kubernetes.io/os", "linux")
                 ],
-                runtimeClassName: "workload-runtime"));
+                RequiredNodeAffinity: [],
+                PreferredNodeAffinity: [],
+                Tolerations: [],
+                RuntimeClassName: "workload-runtime"));
     }
 }

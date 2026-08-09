@@ -9,8 +9,6 @@ using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Quotas.Contracts;
-using Pole.Features.ResourceDeployments.Application.Mutations;
-using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence;
@@ -143,7 +141,7 @@ public sealed class UpdateWebServiceHandler(
                     request.Id,
                     webService.Name,
                     webService.ResourceGroupId,
-                    webService.DnsRecord,
+                    webService.DnsRecord.ToSnapshot(),
                     changes)
                 {
                     EventCore = EventCore.Create(webService.TenantId)
@@ -158,12 +156,12 @@ public sealed class UpdateWebServiceHandler(
                     return (Failure)replace;
 
                 var deploymentResult = await deploymentWriter.RequestApplyAsync(
-                    new ResourceDeploymentMutationCommand(
+                    new ResourceDeploymentMutationRequest(
                         webService.TenantId,
                         WebServiceResourceDeployment.ResourceType,
                         webService.Id,
                         currentCompute.Compute.Profile,
-                        replacementCompute),
+                        replacementCompute?.ToResourceDeploymentConfiguration()),
                     session,
                     transactionCancellationToken);
                 if (!deploymentResult.TryGetValue(
@@ -180,7 +178,7 @@ public sealed class UpdateWebServiceHandler(
                     WebServiceReleaseAction.Update,
                     request.ActorUserId.Value,
                     request.ActorEmail.Value,
-                    changes.WebServiceSpec.New,
+                    updatedWebService.Spec,
                     deploymentEventCore.TraceId,
                     deploymentEventCore.CorrelationId,
                     deploymentEventCore.OccurredOn,
@@ -192,7 +190,7 @@ public sealed class UpdateWebServiceHandler(
 
                 return new UpdateWebServiceResponse(
                     webService.Id,
-                    deployment.ToPlacementSummaryDto());
+                    deployment);
             },
             cancellationToken);
     }

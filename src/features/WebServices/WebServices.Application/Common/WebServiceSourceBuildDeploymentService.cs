@@ -1,7 +1,6 @@
 using System.Collections.Immutable;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Contracts;
@@ -65,7 +64,7 @@ public sealed class WebServiceSourceBuildDeploymentService(
                 webService.Id,
                 webService.Name,
                 webService.ResourceGroupId,
-                webService.DnsRecord,
+                webService.DnsRecord.ToSnapshot(),
                 changes)
             {
                 EventCore = eventCore
@@ -80,7 +79,7 @@ public sealed class WebServiceSourceBuildDeploymentService(
                 return (Failure)update;
 
             var deploymentResult = await deploymentWriter.RequestApplyAsync(
-                new ResourceDeploymentMutationCommand(
+                new ResourceDeploymentMutationRequest(
                     webService.TenantId,
                     WebServiceResourceDeployment.ResourceType,
                     webService.Id,
@@ -101,7 +100,7 @@ public sealed class WebServiceSourceBuildDeploymentService(
                 WebServiceReleaseAction.SourceBuild,
                 request.ActorUserId,
                 request.ActorEmail,
-                nextSpecSnapshot,
+                nextSpec,
                 eventCore.TraceId,
                 eventCore.CorrelationId,
                 eventCore.OccurredOn,

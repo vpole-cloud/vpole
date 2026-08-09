@@ -26,6 +26,7 @@
     <Project Path="src/shared/Observability/Observability.csproj" />
     <Project Path="src/shared/Request/Request.csproj" />
     <Project Path="src/shared/Validation/Validation.csproj" />
+    <Project Path="src/shared/Workloads/Workloads.csproj" />
   </Folder>
   <Folder Name="/features/" />
   <Folder Name="/features/Functions/">
@@ -39,9 +40,11 @@
     <Project Path="src/features/Quotas/Quotas.Application/Quotas.Application.csproj" />
     <Project Path="src/features/Quotas/Quotas.Contracts/Quotas.Contracts.csproj" />
     <Project Path="src/features/Quotas/Quotas.Domain/Quotas.Domain.csproj" />
+    <Project Path="src/features/Quotas/Quotas.Primitives/Quotas.Primitives.csproj" />
   </Folder>
   <Folder Name="/features/GitProviders/">
     <Project Path="src/features/GitProviders/GitProviders.Application/GitProviders.Application.csproj" />
+    <Project Path="src/features/GitProviders/GitProviders.Contracts/GitProviders.Contracts.csproj" />
     <Project Path="src/features/GitProviders/GitProviders.Domain/GitProviders.Domain.csproj" />
     <Project Path="src/features/GitProviders/GitProviders.Tests/GitProviders.Tests.csproj" />
   </Folder>
@@ -59,6 +62,7 @@
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Application/ComputeProfiles.Application.csproj" />
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Contracts/ComputeProfiles.Contracts.csproj" />
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Domain/ComputeProfiles.Domain.csproj" />
+    <Project Path="src/features/ComputeProfiles/ComputeProfiles.Primitives/ComputeProfiles.Primitives.csproj" />
   </Folder>
   <Folder Name="/features/SourceBuilds/">
     <Project Path="src/features/SourceBuilds/SourceBuilds.Application/SourceBuilds.Application.csproj" />
@@ -109,8 +113,8 @@
     <Project Path="src/features/Tenants/Tenants.Domain/Tenants.Domain.csproj" />
   </Folder>
   <Folder Name="/features/Users/">
-    <Project Path="src/features/Users/Users.Contracts/Users.Contracts.csproj" />
     <Project Path="src/features/Users/Users.Domain/Users.Domain.csproj" />
+    <Project Path="src/features/Users/Users.Events/Users.Events.csproj" />
     <Project Path="src/features/Users/Users.Application/Users.Application.csproj" />
   </Folder>
   <Folder Name="/features/Search/">
@@ -121,6 +125,7 @@
     <Project Path="src/features/StorageProfiles/StorageProfiles.Contracts/StorageProfiles.Contracts.csproj" />
     <Project Path="src/features/StorageProfiles/StorageProfiles.Domain/StorageProfiles.Domain.csproj" />
     <Project Path="src/features/StorageProfiles/StorageProfiles.Application/StorageProfiles.Application.csproj" />
+    <Project Path="src/features/StorageProfiles/StorageProfiles.Primitives/StorageProfiles.Primitives.csproj" />
   </Folder>
   <Folder Name="/shared/helpers/">
     <Project Path="src/shared/helpers/ASP/ASP.csproj" />
@@ -131,7 +136,4 @@
     <Project Path="tests/Pole.Tests.E2E/Pole.Tests.E2E.csproj" />
   </Folder>
 </Solution>
-
-
-
 

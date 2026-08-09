@@ -6,7 +6,7 @@ using k8s;
 using k8s.Autorest;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Application.Kubernetes;
-using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Tests.Integration.Infrastructure;
 using StackExchange.Redis;
 using Xunit;
@@ -58,13 +58,12 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
             Kubernetes,
             redis.ToKubernetes(NamespaceName, storage, compute));
 
-        var updatedCompute = ResolvedComputeConfiguration.Create(
-            compute.ComputeProfileId,
-            compute.ComputeProfileRevision + 1,
-            compute.DisplayName,
-            ResolvedComputeResourceValues.Create(1000, 256),
-            ResolvedComputeResourceValues.Create(2000, 512),
-            ResolvedComputeArchitecture.Any);
+        var updatedCompute = compute with
+        {
+            ComputeProfileRevision = compute.ComputeProfileRevision + 1,
+            Requests = new ResourceDeploymentComputeResourceValues(1000, 256),
+            Limits = new ResourceDeploymentComputeResourceValues(2000, 512)
+        };
 
         await RedisKubernetesResourceManager.ReplaceAsync(
             Kubernetes,
@@ -101,8 +100,8 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
 
     private async Task<(
         RedisEntity Redis,
-        ResolvedStorageConfiguration Storage,
-        ResolvedComputeConfiguration Compute)>
+        ResourceDeploymentStorageConfiguration Storage,
+        ResourceDeploymentComputeConfiguration Compute)>
         BuildTestRedisAsync(string name)
     {
         var storageClassName = await ResolveStorageClassNameAsync();
@@ -119,17 +118,24 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
                 Id = name,
                 Tags = ImmutableHashSet.Create("cache")
             });
-        var storage = ResolvedStorageConfiguration.Create(
+        var storage = new ResourceDeploymentStorageConfiguration(
             TestData.DefaultStorageProfileId,
-            storageProfileRevision: 1,
+            StorageProfileRevision: 1,
             storageClassName);
-        var compute = ResolvedComputeConfiguration.Create(
+        var compute = new ResourceDeploymentComputeConfiguration(
             "507f1f77bcf86cd799439019",
-            computeProfileRevision: 1,
-            displayName: "General purpose",
-            ResolvedComputeResourceValues.Create(250, 128),
-            ResolvedComputeResourceValues.Create(1000, 256),
-            ResolvedComputeArchitecture.Any);
+            ComputeProfileRevision: 1,
+            DeploymentTargetId: "507f1f77bcf86cd799439020",
+            DisplayName: "General purpose",
+            new ResourceDeploymentComputeResourceValues(250, 128),
+            new ResourceDeploymentComputeResourceValues(1000, 256),
+            ResourceDeploymentComputeArchitecture.Any,
+            [],
+            [],
+            [],
+            [],
+            [],
+            RuntimeClassName: null);
         return (redis, storage, compute);
     }
 

@@ -2,6 +2,16 @@
 
 These guidelines describe how Pole code should divide responsibilities and make design decisions. They complement the focused architecture, multitenancy, observability, and testing documentation.
 
+## Module boundaries
+
+Feature Domain projects do not reference Contracts, Events, Application, or other features.
+Cross-feature synchronous integration uses provider-owned Contracts; asynchronous integration uses
+provider-owned Events. Application projects do not reference another feature's Domain or
+Application. Small, genuinely shared concepts belong to thematic dependency-leaf projects.
+
+The complete dependency matrix, Mongo transaction exception, event evolution policy, and
+architecture-test rules are defined in [Module boundaries](module-boundaries.md).
+
 ## Validation boundaries
 
 Separate validation by the kind of information required to evaluate a rule.

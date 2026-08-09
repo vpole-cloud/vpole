@@ -5,7 +5,7 @@ using System.Text.Json;
 using k8s;
 using k8s.Autorest;
 using k8s.Models;
-using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
@@ -179,10 +179,11 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     private WebServiceInKubernetes ToKubernetes(WebService webService) =>
         webService.ToKubernetes(
             NamespaceName,
-            ResolvedIngressConfiguration.Create(
+            new ResourceDeploymentIngressConfiguration(
                 "traefik",
                 "letsencrypt-prod"),
-            ResourceDeploymentTestData.Compute());
+            ResourceDeploymentTestData.ContractCompute(
+                "507f1f77bcf86cd799439020"));
 
     private async Task WaitForDeploymentAvailableAsync(string deploymentName, int timeoutSeconds = 60)
     {

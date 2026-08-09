@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using Pole.Features.Shared.Models;
 
 namespace Pole.Features.WebServices.Events;
 
@@ -8,7 +7,21 @@ public sealed record WebServiceSpecSnapshot(
     int Replicas,
     WebServiceConfigSnapshot Config,
     AutoscalingSpecSnapshot? Autoscaling,
-    ProbeSpec Probes);
+    WebServiceProbeSpecSnapshot Probes);
+
+public sealed record WebServiceProbeSpecSnapshot(
+    WebServiceProbeConfigSnapshot Startup,
+    WebServiceProbeConfigSnapshot Liveness,
+    WebServiceProbeConfigSnapshot Readiness);
+
+public sealed record WebServiceProbeConfigSnapshot(
+    string Path,
+    string Port,
+    int InitialDelaySeconds = 10,
+    int PeriodSeconds = 10,
+    int TimeoutSeconds = 5,
+    int FailureThreshold = 3,
+    int SuccessThreshold = 1);
 
 public sealed record AutoscalingSpecSnapshot(
     int MinReplicas,

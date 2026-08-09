@@ -7,10 +7,8 @@ using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Domain;
-using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.ResourceGroups.Domain;
+using Pole.Tests.Integration.Infrastructure;
 using Pole.Tests.Integration.ResourceDeployments;
 using Xunit;
 using Redis = Pole.Features.RedisServices.Domain.Redis;
@@ -25,14 +23,16 @@ public sealed class RedisResourceDeploymentAdapterTests
         var loader = new RecordingRedisLoader(CreateRedis());
         using var handler = new RecordingKubernetesHandler();
         using var kubernetes = CreateKubernetes(handler);
-        var subject = new RedisResourceDeploymentAdapter(loader.InvokeAsync);
+        var subject = new RedisResourceDeploymentAdapter(
+            loader.InvokeAsync,
+            new FixedKubernetesClientProvider(kubernetes));
 
-        var result = await subject.ApplyAsync(CreateContext(kubernetes));
+        var result = await subject.ApplyAsync(CreateContext());
 
         var succeeded =
             Assert.IsType<ResourceDeploymentAdapterResult.Succeeded>(result);
-        var endpoint = Assert.IsType<RedisResourceDeploymentEndpoint>(
-            Assert.Single(succeeded.Endpoints));
+        var endpoint = Assert.Single(succeeded.Endpoints);
+        Assert.Equal("Redis", endpoint.Kind);
         Assert.Equal(
             $"redis-cache-svc.{KubernetesNamespace}.svc.cluster.local",
             endpoint.Host);
@@ -101,10 +101,12 @@ public sealed class RedisResourceDeploymentAdapterTests
         var loader = new RecordingRedisLoader(CreateRedis());
         using var handler = new RecordingKubernetesHandler();
         using var kubernetes = CreateKubernetes(handler);
-        var subject = new RedisResourceDeploymentAdapter(loader.InvokeAsync);
+        var subject = new RedisResourceDeploymentAdapter(
+            loader.InvokeAsync,
+            new FixedKubernetesClientProvider(kubernetes));
 
         var result = await subject.ApplyAsync(
-            CreateContext(kubernetes, includeStorage: false));
+            CreateContext(includeStorage: false));
 
         var failed =
             Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
@@ -120,9 +122,11 @@ public sealed class RedisResourceDeploymentAdapterTests
         var loader = new RecordingRedisLoader(CreateRedis());
         using var handler = new RecordingKubernetesHandler();
         using var kubernetes = CreateKubernetes(handler);
-        var subject = new RedisResourceDeploymentAdapter(loader.InvokeAsync);
+        var subject = new RedisResourceDeploymentAdapter(
+            loader.InvokeAsync,
+            new FixedKubernetesClientProvider(kubernetes));
 
-        var result = await subject.DeleteAsync(CreateContext(kubernetes));
+        var result = await subject.DeleteAsync(CreateContext());
 
         var succeeded =
             Assert.IsType<ResourceDeploymentAdapterResult.Succeeded>(result);
@@ -148,50 +152,32 @@ public sealed class RedisResourceDeploymentAdapterTests
             handler);
 
     private static ResourceDeploymentReconciliationContext CreateContext(
-        IKubernetes kubernetes,
         bool includeStorage = true)
     {
-        var placement = ResolvedResourcePlacement.Create(
-            RuntimeCellId,
+        var placement = new ResourceDeploymentResolvedPlacementSnapshot(
             TargetId,
             KubernetesNamespace,
-            runtimeCellGeneration: 1,
-            targetWorkloadConfigurationRevision: 3,
-            ingress: null,
+            Ingress: null,
             includeStorage
-                ? ResolvedStorageConfiguration.Create(
+                ? new ResourceDeploymentStorageConfiguration(
                     StorageProfileId,
-                    storageProfileRevision: 7,
+                    StorageProfileRevision: 7,
                     StorageClassName)
                 : null,
-            ResourceDeploymentTestData.Compute(),
-            NowUtc);
-        var deployment = ResourceDeploymentFactory.Create(
+            ResourceDeploymentTestData.ContractCompute(TargetId));
+        var deployment = new ResourceDeploymentReconciliationSnapshot(
+            DeploymentId,
             TenantId,
             RedisResourceDeployment.ResourceType,
             ResourceId,
             ResourceGroupId,
             IsolationScopeId,
-            placement,
-            ResourcePlacementCapability.SingleTarget,
-            runtimeCellReady: true,
-            new ResourceDeploymentFactory.CreateOptions(
-                DeploymentId,
-                NowUtc));
-        var runtimeCell = RuntimeCellFactory.Create(
-            TenantId,
-            ResourceGroupId,
-            IsolationScopeId,
-            TargetId,
-            KubernetesNamespace,
-            new RuntimeCellFactory.CreateOptions(
-                RuntimeCellId,
-                NowUtc));
+            RuntimeCellId,
+            DesiredGeneration: 1,
+            NowUtc,
+            placement);
 
-        return new ResourceDeploymentReconciliationContext(
-            deployment,
-            runtimeCell,
-            kubernetes);
+        return new ResourceDeploymentReconciliationContext(deployment);
     }
 
     private static Redis CreateRedis() =>

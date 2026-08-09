@@ -5,11 +5,11 @@ open System.Threading
 open System.Threading.Tasks
 open MongoDB.Driver
 open Pole.Database
+open Pole.Features.DeploymentTargets.Contracts
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.ResourceDeployments.Application.Reconciliation
 open Pole.Features.ResourceDeployments.Contracts
-open Pole.Features.ResourceDeployments.Domain
+open Pole.Workloads
 
 type IPostgresResourceDeploymentReader =
     abstract FindAsync :
@@ -39,16 +39,17 @@ type MongoPostgresResourceDeploymentReader(dbContext : IPostgresDbContext) =
 type PostgresResourceDeploymentAdapter(
     reader : IPostgresResourceDeploymentReader,
     credentialService : IPostgresCredentialService,
-    deploymentManager : IPostgresClusterDeploymentManager) =
+    deploymentManager : IPostgresClusterDeploymentManager,
+    kubernetesClientProvider : IKubernetesClientProvider) =
 
     let validateContext (context : ResourceDeploymentReconciliationContext) =
-        if context.Deployment.ResourceType <> PostgresResourceDeployment.ResourceType.Value then
+        if context.Deployment.ResourceType <> PostgresResourceDeployment.ResourceType then
             Some(
                 ResourceDeploymentAdapterResult.Failed.Create(
                     "ResourceTypeMismatch",
                     "The resource deployment is not PostgreSQL.",
                     false))
-        elif isNull context.Deployment.ResolvedPlacement.Storage then
+        elif isNull context.Deployment.Placement.Storage then
             Some(
                 ResourceDeploymentAdapterResult.Failed.Create(
                     "StorageConfigurationMissing",
@@ -80,7 +81,7 @@ type PostgresResourceDeploymentAdapter(
                             :> ResourceDeploymentAdapterResult
                     | Some cluster ->
                         if cluster.Spec.DeploymentMode = PostgresDeploymentMode.Operator &&
-                           not (String.IsNullOrWhiteSpace deployment.ResolvedPlacement.Compute.RuntimeClassName) then
+                           not (String.IsNullOrWhiteSpace deployment.Placement.Compute.RuntimeClassName) then
                             return
                                 ResourceDeploymentAdapterResult.Failed.Create(
                                     "ComputeRuntimeClassUnsupported",
@@ -103,30 +104,36 @@ type PostgresResourceDeploymentAdapter(
                                         true)
                                     :> ResourceDeploymentAdapterResult
                             | struct (true, credentials, _) ->
-                                let storage = deployment.ResolvedPlacement.Storage
+                                let storage = deployment.Placement.Storage
                                 let metadata =
                                     { DeploymentId = deployment.Id
                                       RuntimeCellId = deployment.RuntimeCellId
-                                      DeploymentTargetId = deployment.ResolvedPlacement.DeploymentTargetId
+                                      DeploymentTargetId = deployment.Placement.DeploymentTargetId
                                       Generation = deployment.DesiredGeneration }
+
+                                let! kubernetes =
+                                    kubernetesClientProvider.GetAsync(
+                                        deployment.Placement.DeploymentTargetId,
+                                        cancellationToken)
 
                                 do!
                                     deploymentManager.ApplyAsync(
-                                        context.Kubernetes,
+                                        kubernetes,
                                         cluster,
                                         credentials,
-                                        deployment.ResolvedPlacement.KubernetesNamespace,
+                                        deployment.Placement.KubernetesNamespace,
                                         storage.StorageClassName,
-                                        deployment.ResolvedPlacement.Compute,
+                                        PostgresResourceDeploymentMappings.kubernetesCompute
+                                            deployment.Placement.Compute,
                                         metadata,
                                         cancellationToken)
 
                                 let host =
-                                    $"{PostgresClusterKubernetesBuilder.buildReadWriteServiceName cluster.Id}.{deployment.ResolvedPlacement.KubernetesNamespace}.svc.cluster.local"
+                                    $"{PostgresClusterKubernetesBuilder.buildReadWriteServiceName cluster.Id}.{deployment.Placement.KubernetesNamespace}.svc.cluster.local"
 
                                 return
                                     ResourceDeploymentAdapterResult.Succeeded.Create(
-                                        [ PostgreSqlResourceDeploymentEndpoint.Create(host, 5432) ])
+                                        [ ResourceDeploymentEndpointDto.PostgreSql(host, 5432) ])
                                     :> ResourceDeploymentAdapterResult
             }
 
@@ -151,11 +158,16 @@ type PostgresResourceDeploymentAdapter(
                                 false)
                             :> ResourceDeploymentAdapterResult
                     | Some cluster ->
+                        let! kubernetes =
+                            kubernetesClientProvider.GetAsync(
+                                deployment.Placement.DeploymentTargetId,
+                                cancellationToken)
+
                         do!
                             deploymentManager.DeleteAsync(
-                                context.Kubernetes,
+                                kubernetes,
                                 cluster.Id,
-                                deployment.ResolvedPlacement.KubernetesNamespace,
+                                deployment.Placement.KubernetesNamespace,
                                 cluster.Spec.DeploymentMode,
                                 cancellationToken)
 

@@ -8,6 +8,7 @@ using Pole.Features.ResourceDeployments.Application.Placement;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;
+using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
@@ -47,14 +48,15 @@ public sealed class ResourceDeploymentMutationWriterTests(
         var writer = CreateWriter();
 
         var result = await fixture.DbContext
-            .RunInTransactionAsync<ResourceDeployment>(
+            .RunInTransactionAsync<PlacementSummaryDto>(
                 (session, cancellationToken) => writer.RequestApplyAsync(
                     CreateCommand(),
                     session,
                     cancellationToken));
 
-        var updated = result.AssertSuccess();
-        Assert.Equal(2, updated.DesiredGeneration);
+        var summary = result.AssertSuccess();
+        Assert.Equal(2, summary.DesiredGeneration);
+        var updated = await LoadDeploymentAsync();
         Assert.Equal(deployment.ResolvedPlacement, updated.ResolvedPlacement);
         var pending = Assert.IsType<PendingResourceDeploymentState>(updated.State);
         Assert.Equal(ResourceDeploymentOperation.Apply, pending.Operation);
@@ -75,13 +77,14 @@ public sealed class ResourceDeploymentMutationWriterTests(
         var writer = CreateWriter();
 
         var result = await fixture.DbContext
-            .RunInTransactionAsync<ResourceDeployment>(
+            .RunInTransactionAsync<PlacementSummaryDto>(
                 (session, cancellationToken) => writer.RequestApplyAsync(
                     CreateCommand(),
                     session,
                     cancellationToken));
 
-        var updated = result.AssertSuccess();
+        _ = result.AssertSuccess();
+        var updated = await LoadDeploymentAsync();
         var waiting = Assert.IsType<WaitingForRuntimeCellResourceDeploymentState>(
             updated.State);
         Assert.Equal(2, waiting.Generation);
@@ -99,14 +102,15 @@ public sealed class ResourceDeploymentMutationWriterTests(
         var writer = CreateWriter();
 
         var result = await fixture.DbContext
-            .RunInTransactionAsync<ResourceDeployment>(
+            .RunInTransactionAsync<PlacementSummaryDto>(
                 (session, cancellationToken) => writer.RequestDeletionAsync(
                     CreateCommand(),
                     session,
                     cancellationToken));
 
-        var updated = result.AssertSuccess();
-        Assert.Equal(2, updated.DesiredGeneration);
+        var summary = result.AssertSuccess();
+        Assert.Equal(2, summary.DesiredGeneration);
+        var updated = await LoadDeploymentAsync();
         Assert.Equal(ResourceDeploymentOperation.Delete, updated.DesiredOperation);
         var pending = Assert.IsType<PendingResourceDeploymentState>(updated.State);
         Assert.Equal(ResourceDeploymentOperation.Delete, pending.Operation);
@@ -127,7 +131,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
         var writer = CreateWriter();
 
         var result = await fixture.DbContext
-            .RunInTransactionAsync<ResourceDeployment>(
+            .RunInTransactionAsync<PlacementSummaryDto>(
                 (session, cancellationToken) => writer.RequestApplyAsync(
                     CreateCommand() with { TenantId = OtherTenantId },
                     session,
@@ -147,20 +151,21 @@ public sealed class ResourceDeploymentMutationWriterTests(
         await InsertAsync(runtimeCell, deployment);
         var fence = new RecordingComputeProfileFence();
         var writer = CreateWriter(fence);
-        var replacement = ResourceDeploymentTestData.ResolvedComputeProfile(
+        var replacement = ResourceDeploymentTestData.ContractCompute(
             TargetId,
             revision: 2,
             requestsCpuMillis: 500,
             requestsMemoryMi: 512);
 
         var result = await fixture.DbContext
-            .RunInTransactionAsync<ResourceDeployment>(
+            .RunInTransactionAsync<PlacementSummaryDto>(
                 (session, cancellationToken) => writer.RequestApplyAsync(
                     CreateCommand() with { ReplacementCompute = replacement },
                     session,
                     cancellationToken));
 
-        var updated = result.AssertSuccess();
+        _ = result.AssertSuccess();
+        var updated = await LoadDeploymentAsync();
         Assert.Equal(1, fence.CallCount);
         Assert.Equal(2, updated.ResolvedPlacement.Compute.ComputeProfileRevision);
         Assert.Equal(500, updated.ResolvedPlacement.Compute.Requests.CpuMillis);
@@ -176,7 +181,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
         var writer = CreateWriter(fence);
 
         var result = await fixture.DbContext
-            .RunInTransactionAsync<ResourceDeployment>(
+            .RunInTransactionAsync<PlacementSummaryDto>(
                 (session, cancellationToken) => writer.RequestApplyAsync(
                     CreateCommand() with
                     {
@@ -184,7 +189,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
                             ResourceDeploymentTestData.ComputeProfileId,
                             ComputeProfileRevision: 2),
                         ReplacementCompute =
-                            ResourceDeploymentTestData.ResolvedComputeProfile(
+                            ResourceDeploymentTestData.ContractCompute(
                                 TargetId,
                                 revision: 2)
                     },
@@ -231,7 +236,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
         var writer = CreateWriter();
 
         var result = await fixture.DbContext
-            .RunInTransactionAsync<ResourceDeployment>(
+            .RunInTransactionAsync<PlacementSummaryDto>(
                 async (session, cancellationToken) =>
                 {
                     var mutation = await writer.RequestApplyAsync(
@@ -275,12 +280,13 @@ public sealed class ResourceDeploymentMutationWriterTests(
         RecordingComputeProfileFence fence) =>
         new(
             fixture.DbContext,
+            new ResourcePlacementLookup(fixture.DbContext),
             fence,
             new FixedTimeProvider(new DateTimeOffset(
                 MutationAtUtc,
                 TimeSpan.Zero)));
 
-    private static ResourceDeploymentMutationCommand CreateCommand() =>
+    private static ResourceDeploymentMutationRequest CreateCommand() =>
         new(
             TenantId,
             TestResourceType,
@@ -296,6 +302,11 @@ public sealed class ResourceDeploymentMutationWriterTests(
         await fixture.DbContext.RuntimeCells.InsertOneAsync(runtimeCell);
         await fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
     }
+
+    private Task<ResourceDeployment> LoadDeploymentAsync() =>
+        fixture.DbContext.ResourceDeployments
+            .Find(item => item.Id == DeploymentId)
+            .SingleAsync();
 
     private static (RuntimeCell RuntimeCell, ResourceDeployment Deployment)
         CreateAggregate(bool runtimeCellReady)
@@ -354,9 +365,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
         public int CallCount { get; private set; }
 
         public Task<Result> FenceAsync(
-            ResolvedComputeProfile compute,
-            string tenantId,
-            ResourceTypeId resourceType,
+            ComputeProfileResolutionFenceRequest request,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
