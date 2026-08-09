@@ -2,7 +2,6 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.ResourceDeployments.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence;
@@ -12,32 +11,26 @@ internal sealed class MongoFenceResolvedComputeProfile(
     : IComputeProfileResolutionFence
 {
     public Task<Result> FenceAsync(
-        ResolvedComputeProfile compute,
-        string tenantId,
-        ResourceTypeId resourceType,
+        ComputeProfileResolutionFenceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default) =>
         InvokeAsync(
-            compute,
-            tenantId,
-            resourceType,
+            request,
             session,
             cancellationToken);
 
     public async Task<Result> InvokeAsync(
-        ResolvedComputeProfile resolved,
-        string tenantId,
-        ResourceTypeId resourceType,
+        ComputeProfileResolutionFenceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(resolved);
+        ArgumentNullException.ThrowIfNull(request);
         EnsureTransaction(session);
-        if (!ObjectId.TryParse(resolved.ComputeProfileId, out _) ||
-            !ObjectId.TryParse(resolved.DeploymentTargetId, out _) ||
-            !ObjectId.TryParse(tenantId, out _) ||
-            resolved.ComputeProfileRevision < 1 ||
-            string.IsNullOrWhiteSpace(resourceType.Value))
+        if (!ObjectId.TryParse(request.ComputeProfileId, out _) ||
+            !ObjectId.TryParse(request.DeploymentTargetId, out _) ||
+            !ObjectId.TryParse(request.TenantId, out _) ||
+            request.ComputeProfileRevision < 1 ||
+            string.IsNullOrWhiteSpace(request.ResourceType.Value))
         {
             return Failures.ValidationFailure(new Dictionary<string, string[]>
             {
@@ -49,9 +42,7 @@ internal sealed class MongoFenceResolvedComputeProfile(
         var fenced = await computeProfiles.UpdateOneAsync(
             session,
             ComputeProfileFilters.AvailableForResolutionFence(
-                resolved,
-                tenantId,
-                resourceType),
+                request),
             Builders<ComputeProfile>.Update.Inc(
                 profile => profile.ResolutionFence,
                 1),

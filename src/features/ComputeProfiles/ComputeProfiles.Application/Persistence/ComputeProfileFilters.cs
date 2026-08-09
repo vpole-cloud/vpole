@@ -2,7 +2,6 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.ResourceDeployments.Contracts;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence;
 
@@ -54,21 +53,19 @@ internal static class ComputeProfileFilters
                     tenantId)));
 
     public static FilterDefinition<ComputeProfile> AvailableForResolutionFence(
-        ResolvedComputeProfile resolved,
-        string tenantId,
-        ResourceTypeId resourceType) =>
+        ComputeProfileResolutionFenceRequest request) =>
         Builders<ComputeProfile>.Filter.And(
             AtRevision(
-                resolved.ComputeProfileId,
-                resolved.ComputeProfileRevision),
+                request.ComputeProfileId,
+                request.ComputeProfileRevision),
             Builders<ComputeProfile>.Filter.Eq(profile => profile.IsEnabled, true),
             Builders<ComputeProfile>.Filter.AnyEq(
                 profile => profile.AllowedResourceTypes,
-                resourceType.Value),
+                request.ResourceType.Value),
             Builders<ComputeProfile>.Filter.ElemMatch(
                 profile => profile.TargetMappings,
-                mapping => mapping.DeploymentTargetId == resolved.DeploymentTargetId),
-            AllowsTenant(tenantId),
+                mapping => mapping.DeploymentTargetId == request.DeploymentTargetId),
+            AllowsTenant(request.TenantId),
             Builders<ComputeProfile>.Filter.Lt(
                 profile => profile.ResolutionFence,
                 long.MaxValue));

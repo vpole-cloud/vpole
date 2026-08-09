@@ -7,8 +7,6 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.ResourceDeployments.Application.Mutations;
-using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence;
@@ -94,7 +92,7 @@ public sealed class RedeployWebServiceHandler(
                 return (Failure)replace;
 
             var deploymentResult = await deploymentWriter.RequestApplyAsync(
-                new ResourceDeploymentMutationCommand(
+                new ResourceDeploymentMutationRequest(
                     webService.TenantId,
                     WebServiceResourceDeployment.ResourceType,
                     webService.Id,
@@ -115,7 +113,7 @@ public sealed class RedeployWebServiceHandler(
                 WebServiceReleaseAction.Redeploy,
                 request.ActorUserId.Value,
                 request.ActorEmail.Value,
-                webService.Spec.ToSnapshot(),
+                webService.Spec,
                 deploymentEventCore.TraceId,
                 deploymentEventCore.CorrelationId,
                 deploymentEventCore.OccurredOn,
@@ -129,7 +127,7 @@ public sealed class RedeployWebServiceHandler(
                 webService.Id,
                 updatedWebService.ActiveRevision,
                 release.Id,
-                deployment.ToPlacementSummaryDto());
+                deployment);
         }, cancellationToken);
     }
 }

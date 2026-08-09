@@ -10,13 +10,10 @@ open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
 open Pole.Features.ComputeProfiles.Contracts
-open Pole.Features.ComputeProfiles.Contracts
 open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Quotas.Contracts
-open Pole.Features.ResourceDeployments.Application.Common
-open Pole.Features.ResourceDeployments.Application.Mutations
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.Shared.Models
 open Pole.Features.StorageProfiles.Contracts
@@ -172,9 +169,10 @@ type UpdatePostgresClusterHandler(
                                     | Preserve ->
                                         currentCompute.Compute.Requests.CpuMillis,
                                         currentCompute.Compute.Requests.MemoryMi
-                                let replacementComputeProfile =
+                                let replacementDeploymentCompute =
                                     match replacementCompute with
-                                    | Replace compute -> compute
+                                    | Replace compute ->
+                                        PostgresResourceDeploymentMappings.compute compute
                                     | Preserve -> null
                                 let nextQuotaInput =
                                     PostgresQuotaInput.create
@@ -210,12 +208,12 @@ type UpdatePostgresClusterHandler(
                                                 else
                                                     let! deploymentResult =
                                                         deploymentWriter.RequestApplyAsync(
-                                                            ResourceDeploymentMutationCommand(
+                                                            ResourceDeploymentMutationRequest(
                                                                 cluster.TenantId,
                                                                 PostgresResourceDeployment.ResourceType,
                                                                 cluster.Id,
                                                                 currentCompute.Compute.Profile,
-                                                                replacementComputeProfile),
+                                                                replacementDeploymentCompute),
                                                             session,
                                                             ct)
 
@@ -232,9 +230,7 @@ type UpdatePostgresClusterHandler(
                                                                 ct)
                                                         return
                                                             { Id = cluster.Id
-                                                              Placement =
-                                                                ResourceDeploymentDtoExtensions.ToPlacementSummaryDto(
-                                                                    deployment) }
+                                                              Placement = deployment }
                                                             |> ResultF.ofValue
                                             }),
                                         cancellationToken)

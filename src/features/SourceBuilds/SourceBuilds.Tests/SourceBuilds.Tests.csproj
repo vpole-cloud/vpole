@@ -22,9 +22,7 @@
     <ProjectReference Include="..\SourceBuilds.Application\SourceBuilds.Application.csproj" />
     <ProjectReference Include="..\SourceBuilds.Domain\SourceBuilds.Domain.csproj" />
     <ProjectReference Include="..\..\ContainerRegistries\ContainerRegistries.Contracts\ContainerRegistries.Contracts.csproj" />
-    <ProjectReference Include="..\..\ContainerRegistries\ContainerRegistries.Domain\ContainerRegistries.Domain.csproj" />
-    <ProjectReference Include="..\..\GitProviders\GitProviders.Application\GitProviders.Application.csproj" />
-    <ProjectReference Include="..\..\GitProviders\GitProviders.Domain\GitProviders.Domain.csproj" />
+    <ProjectReference Include="..\..\GitProviders\GitProviders.Contracts\GitProviders.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

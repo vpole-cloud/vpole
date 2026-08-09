@@ -9,7 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Quotas.Contracts\Quotas.Contracts.csproj" />
+    <ProjectReference Include="..\Quotas.Primitives\Quotas.Primitives.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MongoDB.Driver" />
   </ItemGroup>
 
 </Project>

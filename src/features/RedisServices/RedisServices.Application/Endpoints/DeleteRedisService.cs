@@ -5,8 +5,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.ResourceDeployments.Application.Common;
-using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.RedisServices.Domain;
@@ -98,7 +96,7 @@ public sealed class DeleteRedisServiceHandler(
                     return persistenceFailure;
 
                 var deploymentResult = await deploymentWriter.RequestDeletionAsync(
-                    new ResourceDeploymentMutationCommand(
+                    new ResourceDeploymentMutationRequest(
                         redis.TenantId,
                         RedisResourceDeployment.ResourceType,
                         redis.Id,
@@ -114,7 +112,7 @@ public sealed class DeleteRedisServiceHandler(
 
                 return new DeleteRedisServiceResponse(
                     request.Id,
-                    deployment.ToPlacementSummaryDto());
+                    deployment);
             },
             cancellationToken);
     }

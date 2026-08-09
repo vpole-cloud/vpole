@@ -1,18 +1,19 @@
 using Pole.Features.ContainerRegistries.Contracts;
-using Pole.Features.ResourceDeployments.Application.Reconciliation;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
+using Pole.Workloads;
 
 namespace Pole.Features.WebServices.Application.Kubernetes;
 
 public sealed class WebServiceResourceDeploymentAdapter(
     LoadWebServiceDeploymentSnapshot loadDeploymentSnapshot,
     LoadWebServiceById loadWebServiceById,
-    IRuntimeRegistryAccessProvider registryAccessProvider)
+    IRuntimeRegistryAccessProvider registryAccessProvider,
+    IKubernetesClientProvider kubernetesClientProvider)
     : IResourceDeploymentAdapter
 {
     public async Task<ResourceDeploymentAdapterResult> ApplyAsync(
@@ -22,6 +23,10 @@ public sealed class WebServiceResourceDeploymentAdapter(
         var placementFailure = ValidateContext(context);
         if (placementFailure is not null)
             return placementFailure;
+
+        var kubernetes = await kubernetesClientProvider.GetAsync(
+            context.Deployment.Placement.DeploymentTargetId,
+            cancellationToken);
 
         var desired = await loadDeploymentSnapshot(
             context.Deployment.TenantId,
@@ -38,14 +43,15 @@ public sealed class WebServiceResourceDeploymentAdapter(
 
         var webService = desired.WebService;
         var inKubernetes = webService.ToKubernetes(
-            context.Deployment.ResolvedPlacement.KubernetesNamespace,
-            context.Deployment.ResolvedPlacement.Ingress!,
-            context.Deployment.ResolvedPlacement.Compute);
+            context.Deployment.Placement.KubernetesNamespace,
+            context.Deployment.Placement.Ingress!,
+            context.Deployment.Placement.Compute);
 
         if (webService.Spec.Image.SecretName is not null)
         {
             var credentialResult = await ApplyRegistryCredentialAsync(
                 context,
+                kubernetes,
                 webService,
                 inKubernetes,
                 cancellationToken);
@@ -57,12 +63,12 @@ public sealed class WebServiceResourceDeploymentAdapter(
             desired.ReleaseId,
             context.Deployment.Id,
             context.Deployment.RuntimeCellId,
-            context.Deployment.ResolvedPlacement.DeploymentTargetId,
+            context.Deployment.Placement.DeploymentTargetId,
             context.Deployment.DesiredGeneration,
             desired.Revision,
             desired.RequestedAtUtc);
         var applyResult = await WebServiceKubernetesResourceManager.ApplyAsync(
-            context.Kubernetes,
+            kubernetes,
             inKubernetes,
             metadata,
             cancellationToken);
@@ -76,7 +82,7 @@ public sealed class WebServiceResourceDeploymentAdapter(
 
         return ResourceDeploymentAdapterResult.Succeeded.Create(
         [
-            IngressResourceDeploymentEndpoint.Create(
+            ResourceDeploymentEndpointDto.Ingress(
                 webService.DnsRecord.Domain,
                 port: 443,
                 scheme: "https")
@@ -91,6 +97,10 @@ public sealed class WebServiceResourceDeploymentAdapter(
         if (placementFailure is not null)
             return placementFailure;
 
+        var kubernetes = await kubernetesClientProvider.GetAsync(
+            context.Deployment.Placement.DeploymentTargetId,
+            cancellationToken);
+
         var webService = await loadWebServiceById(
             context.Deployment.TenantId,
             context.Deployment.ResourceId,
@@ -104,9 +114,9 @@ public sealed class WebServiceResourceDeploymentAdapter(
         }
 
         await WebServiceKubernetesResourceManager.DeleteAsync(
-            context.Kubernetes,
+            kubernetes,
             webService.Name,
-            context.Deployment.ResolvedPlacement.KubernetesNamespace,
+            context.Deployment.Placement.KubernetesNamespace,
             cancellationToken);
 
         return ResourceDeploymentAdapterResult.Succeeded.Create();
@@ -117,7 +127,7 @@ public sealed class WebServiceResourceDeploymentAdapter(
     {
         ArgumentNullException.ThrowIfNull(context);
         if (!string.Equals(
-                context.Deployment.ResourceType,
+                context.Deployment.ResourceType.Value,
                 WebServiceResourceDeployment.ResourceType.Value,
                 StringComparison.Ordinal))
         {
@@ -127,7 +137,7 @@ public sealed class WebServiceResourceDeploymentAdapter(
                 retryable: false);
         }
 
-        var ingress = context.Deployment.ResolvedPlacement.Ingress;
+        var ingress = context.Deployment.Placement.Ingress;
         if (ingress is null)
         {
             return ResourceDeploymentAdapterResult.Failed.Create(
@@ -141,6 +151,7 @@ public sealed class WebServiceResourceDeploymentAdapter(
 
     private async Task<ResourceDeploymentAdapterResult.Failed?> ApplyRegistryCredentialAsync(
         ResourceDeploymentReconciliationContext context,
+        k8s.IKubernetes kubernetes,
         WebService webService,
         WebServiceInKubernetes inKubernetes,
         CancellationToken cancellationToken)
@@ -172,7 +183,7 @@ public sealed class WebServiceResourceDeploymentAdapter(
         }
 
         var secretResult = await WebServiceKubernetesResourceManager.ApplyImagePullSecretAsync(
-            context.Kubernetes,
+            kubernetes,
             inKubernetes,
             registryAccess.Username,
             registryAccess.Secret,

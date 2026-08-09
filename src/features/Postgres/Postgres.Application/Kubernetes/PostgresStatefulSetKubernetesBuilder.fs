@@ -2,10 +2,9 @@ namespace Pole.Features.Postgres.Application.Kubernetes
 
 open System.Collections.Generic
 open k8s.Models
+open Pole.Features.Core.Kubernetes
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.ResourceDeployments.Application.Kubernetes
-open Pole.Features.ResourceDeployments.Domain
 
 [<RequireQualifiedAccess>]
 module PostgresStatefulSetKubernetesBuilder =
@@ -23,7 +22,7 @@ module PostgresStatefulSetKubernetesBuilder =
         (cluster : PostgresCluster)
         (namespaceName : string)
         (storageClassName : string)
-        (compute : ResolvedComputeConfiguration)
+        (compute : KubernetesComputeConfiguration)
         (metadata : PostgresResourceDeploymentMetadata)
         (settings : PostgresSettings) =
         let labels = PostgresClusterKubernetesBuilder.buildLabels cluster metadata
@@ -43,9 +42,9 @@ module PostgresStatefulSetKubernetesBuilder =
                                       [ V1EnvVar(Name = "POSTGRES_USER", ValueFrom = buildSecretKeyReference secretName "username")
                                         V1EnvVar(Name = "POSTGRES_PASSWORD", ValueFrom = buildSecretKeyReference secretName "password")
                                         V1EnvVar(Name = "POSTGRES_DB", Value = databaseName) ]),
-                              Resources = ResolvedComputeConfigurationKubernetesExtensions.ToKubernetesResources(compute),
+                              Resources = compute.ToResourceRequirements(),
                               VolumeMounts = ResizeArray([ V1VolumeMount(Name = "postgres-data", MountPath = "/var/lib/postgresql/data") ])) ]))
-        ResolvedComputeConfigurationKubernetesExtensions.ApplyToPodSpec(compute, podSpec)
+        compute.ApplyTo(podSpec)
 
         V1StatefulSet(
             ApiVersion = "apps/v1",

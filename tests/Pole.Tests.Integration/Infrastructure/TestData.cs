@@ -252,7 +252,20 @@ public static class TestData
                     new AutoscalingMetricSnapshot(
                         spec.Autoscaling.Metric.Type,
                         spec.Autoscaling.Metric.TargetAverageUtilization)),
-            spec.Probes.ToDomain());
+            new WebServiceProbeSpecSnapshot(
+                ToProbeSnapshot(spec.Probes.Startup),
+                ToProbeSnapshot(spec.Probes.Liveness),
+                ToProbeSnapshot(spec.Probes.Readiness)));
+
+        static WebServiceProbeConfigSnapshot ToProbeSnapshot(ProbeConfigDto probe) =>
+            new(
+                probe.Path,
+                probe.Port,
+                probe.InitialDelaySeconds,
+                probe.PeriodSeconds,
+                probe.TimeoutSeconds,
+                probe.FailureThreshold,
+                probe.SuccessThreshold);
     }
 
     public static DnsRecord SeedDnsRecord(string groupId, string resourceId, string name = "existing.example.com") =>

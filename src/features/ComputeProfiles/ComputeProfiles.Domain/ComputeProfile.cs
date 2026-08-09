@@ -1,9 +1,9 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
-using Pole.Features.ComputeProfiles.Contracts;
-using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ComputeProfiles.Primitives;
 using Pole.KubernetesValidation;
+using Pole.Workloads;
 
 namespace Pole.Features.ComputeProfiles.Domain;
 

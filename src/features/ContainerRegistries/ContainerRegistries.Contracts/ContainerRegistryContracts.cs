@@ -58,6 +58,34 @@ public sealed record RegistryArtifact(
     string Digest,
     long SizeBytes);
 
+public sealed record RegistryBuildAccess(
+    string RegistryProjectId,
+    RegistryPushTarget Target,
+    string KubernetesPullSecretName,
+    string Username,
+    string Secret)
+{
+    public override string ToString() =>
+        $"RegistryBuildAccess(project={RegistryProjectId}, target={Target.Reference}, credentials=[REDACTED])";
+}
+
+public interface IContainerRegistryBuildService
+{
+    Task<Result<RegistryBuildAccess>> PreparePushAsync(
+        string tenantId,
+        string initiatedByUserId,
+        string repositoryName,
+        string tag,
+        CancellationToken cancellationToken = default);
+
+    Task<Result<RegistryArtifact>> GetArtifactAsync(
+        string tenantId,
+        string registryProjectId,
+        string repositoryName,
+        string reference,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IContainerRegistryClient
 {
     Task<Result<ProvisionedRegistryProject>> ProvisionProjectAsync(

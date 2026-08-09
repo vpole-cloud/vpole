@@ -5,6 +5,7 @@ using Pole.Features.ResourceDeployments.Application.Jobs;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;
+using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -93,6 +94,7 @@ public sealed class ResourceDeploymentRecoveryJobTests(
         using var metrics = new ResourceDeploymentMetrics();
         var job = new ResourceDeploymentRecoveryJob(
             fixture.DbContext,
+            new ResourcePlacementLookup(fixture.DbContext),
             metrics,
             new ResourceDeploymentSettings { RecoveryBatchSize = 10 },
             new FixedTimeProvider(now));

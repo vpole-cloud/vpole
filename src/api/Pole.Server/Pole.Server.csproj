@@ -52,7 +52,7 @@
       <ProjectReference Include="..\..\features\StorageProfiles\StorageProfiles.Application\StorageProfiles.Application.csproj" />
       <ProjectReference Include="..\..\features\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
       <ProjectReference Include="..\..\features\Users\Users.Application\Users.Application.csproj" />
-      <ProjectReference Include="..\..\features\Users\Users.Contracts\Users.Contracts.csproj" />
+      <ProjectReference Include="..\..\features\Users\Users.Events\Users.Events.csproj" />
       <ProjectReference Include="..\..\features\WebServices\WebServices.Application\WebServices.Application.csproj" />
       <ProjectReference Include="..\..\features\Tenants\Tenants.Application\Tenants.Application.csproj" />
       <ProjectReference Include="..\..\shared\Observability\Observability.csproj" />
@@ -65,7 +65,6 @@
     </ItemGroup>
 
 </Project>
-
 
 
 

@@ -1,5 +1,5 @@
 using Pole.Features.RedisServices.Domain;
-using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 
 namespace Pole.Features.RedisServices.Application.Kubernetes;
 
@@ -9,8 +9,8 @@ public static class RedisInKubernetesExtensions
     {
         public RedisInKubernetes ToKubernetes(
             string kubernetesNamespace,
-            ResolvedStorageConfiguration storageConfiguration,
-            ResolvedComputeConfiguration computeConfiguration) =>
+            ResourceDeploymentStorageConfiguration storageConfiguration,
+            ResourceDeploymentComputeConfiguration computeConfiguration) =>
             RedisInKubernetes.Create(
                 redis,
                 kubernetesNamespace,

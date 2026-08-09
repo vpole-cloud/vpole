@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Pole.Features.ResourceDeployments.Contracts;
 
 namespace Pole.Features.ResourceDeployments.Application.Placement;
 

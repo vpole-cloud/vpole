@@ -1,5 +1,5 @@
 using System.Collections.Immutable;
-using Pole.Features.GitProviders.Domain;
+using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 
 namespace Pole.Features.SourceBuilds.Application.Common;
@@ -60,21 +60,21 @@ public sealed record SourceBuildJobDto(
 
 public static class SourceBuildDtoMappings
 {
-    public static SourceBuildRecipe ToBuildRecipe(this SourceBuildPlan plan) =>
+    public static SourceBuildRecipe ToBuildRecipe(this SourceRepositoryBuildPlanSnapshot plan) =>
         new(
             plan.CandidateKey,
             plan.Kind switch
             {
-                SourceBuildPlanKind.Dockerfile => SourceBuildRecipeKind.Dockerfile,
-                SourceBuildPlanKind.DotNet => SourceBuildRecipeKind.DotNet,
-                SourceBuildPlanKind.Node => SourceBuildRecipeKind.Node,
+                SourceRepositoryBuildPlanKind.Dockerfile => SourceBuildRecipeKind.Dockerfile,
+                SourceRepositoryBuildPlanKind.DotNet => SourceBuildRecipeKind.DotNet,
+                SourceRepositoryBuildPlanKind.Node => SourceBuildRecipeKind.Node,
                 _ => throw new ArgumentOutOfRangeException(nameof(plan.Kind), plan.Kind, null)
             },
             plan.SourceRoot,
             plan.ManifestPath,
-            plan.Commands,
+            plan.Commands.ToImmutableList(),
             plan.StartCommand,
-            plan.DockerfilePreview,
+            plan.Dockerfile,
             IsCustomized: false);
 
     public static SourceBuildConfigurationDto ToDto(this SourceBuildConfiguration configuration) =>

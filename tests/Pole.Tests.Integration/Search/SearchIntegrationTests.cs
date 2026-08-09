@@ -8,6 +8,7 @@ using Pole.Features.Search.Application.Consumers;
 using Pole.Features.Search.Domain;
 using Pole.Features.Search.Application.Projection;
 using Pole.Features.Search.Application.Services;
+using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
@@ -271,7 +272,9 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             webService.Name,
             webService.ResourceGroupId,
             ToSnapshot(webService.Spec),
-            webService.DnsRecord,
+            new WebServiceDnsRecordSnapshot(
+                webService.DnsRecord.Id,
+                webService.DnsRecord.Domain),
             webService.Tags)
         {
             EventCore = EventCore.Create(webService.TenantId)
@@ -330,7 +333,20 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
                     new AutoscalingMetricSnapshot(
                         spec.Autoscaling.Metric.Type,
                         spec.Autoscaling.Metric.TargetAverageUtilization)),
-            spec.Probes);
+            new WebServiceProbeSpecSnapshot(
+                ToSnapshot(spec.Probes.Startup),
+                ToSnapshot(spec.Probes.Liveness),
+                ToSnapshot(spec.Probes.Readiness)));
+
+    private static WebServiceProbeConfigSnapshot ToSnapshot(ProbeConfig probe) =>
+        new(
+            probe.Path,
+            probe.Port,
+            probe.InitialDelaySeconds,
+            probe.PeriodSeconds,
+            probe.TimeoutSeconds,
+            probe.FailureThreshold,
+            probe.SuccessThreshold);
 
     private static RedisServiceSpecSnapshot ToSnapshot(RedisSpec spec) =>
         new(

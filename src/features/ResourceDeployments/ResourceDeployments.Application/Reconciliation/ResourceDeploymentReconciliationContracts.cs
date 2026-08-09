@@ -1,78 +1,7 @@
 using System.Collections.Frozen;
-using System.Collections.Immutable;
-using k8s;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.ResourceGroups.Domain;
 
 namespace Pole.Features.ResourceDeployments.Application.Reconciliation;
-
-public sealed record ResourceDeploymentReconciliationContext(
-    ResourceDeployment Deployment,
-    RuntimeCell RuntimeCell,
-    IKubernetes Kubernetes);
-
-public interface IResourceDeploymentAdapter
-{
-    Task<ResourceDeploymentAdapterResult> ApplyAsync(
-        ResourceDeploymentReconciliationContext context,
-        CancellationToken cancellationToken = default);
-
-    Task<ResourceDeploymentAdapterResult> DeleteAsync(
-        ResourceDeploymentReconciliationContext context,
-        CancellationToken cancellationToken = default);
-}
-
-public abstract record ResourceDeploymentAdapterResult
-{
-    private ResourceDeploymentAdapterResult()
-    {
-    }
-
-    public sealed record Succeeded(
-        ImmutableList<ResourceDeploymentEndpoint> Endpoints)
-        : ResourceDeploymentAdapterResult
-    {
-        public static Succeeded Create(
-            IEnumerable<ResourceDeploymentEndpoint>? endpoints = null) =>
-            new((endpoints ?? []).ToImmutableList());
-    }
-
-    public sealed record Failed(
-        string FailureCode,
-        string FailureMessage,
-        bool Retryable)
-        : ResourceDeploymentAdapterResult
-    {
-        public static Failed Create(
-            string failureCode,
-            string failureMessage,
-            bool retryable = true)
-        {
-            if (string.IsNullOrWhiteSpace(failureCode))
-                throw new ArgumentException("Failure code is required.", nameof(failureCode));
-            if (string.IsNullOrWhiteSpace(failureMessage))
-                throw new ArgumentException("Failure message is required.", nameof(failureMessage));
-
-            return new Failed(
-                failureCode.Trim(),
-                failureMessage.Trim(),
-                retryable);
-        }
-    }
-}
-
-public sealed record ResourceDeploymentAdapterDescriptor(
-    ResourceTypeId ResourceType,
-    ResourcePlacementCapability PlacementCapability,
-    Type AdapterType)
-{
-    public static ResourceDeploymentAdapterDescriptor Create<TAdapter>(
-        ResourceTypeId resourceType,
-        ResourcePlacementCapability placementCapability)
-        where TAdapter : class, IResourceDeploymentAdapter =>
-        new(resourceType, placementCapability, typeof(TAdapter));
-}
 
 public sealed class ResourceDeploymentAdapterCatalog(
     IEnumerable<ResourceDeploymentAdapterDescriptor> descriptors)

@@ -9,8 +9,9 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj" />
+      <ProjectReference Include="..\ComputeProfiles.Primitives\ComputeProfiles.Primitives.csproj" />
       <ProjectReference Include="..\..\..\shared\Kubernetes.Validation\Kubernetes.Validation.csproj" />
+      <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
     </ItemGroup>
 
     <ItemGroup>

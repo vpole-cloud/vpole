@@ -2,8 +2,7 @@ using System.Collections.Immutable;
 using System.Globalization;
 using k8s.Models;
 using Pole.Features.RedisServices.Domain;
-using Pole.Features.ResourceDeployments.Application.Kubernetes;
-using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
 
@@ -42,14 +41,14 @@ public sealed record RedisResourceDeploymentMetadata(
 public readonly record struct RedisInKubernetes(
     Redis Redis,
     string Namespace,
-    ResolvedStorageConfiguration StorageConfiguration,
-    ResolvedComputeConfiguration ComputeConfiguration)
+    ResourceDeploymentStorageConfiguration StorageConfiguration,
+    ResourceDeploymentComputeConfiguration ComputeConfiguration)
 {
     public static RedisInKubernetes Create(
         Redis redis,
         string kubernetesNamespace,
-        ResolvedStorageConfiguration storageConfiguration,
-        ResolvedComputeConfiguration computeConfiguration)
+        ResourceDeploymentStorageConfiguration storageConfiguration,
+        ResourceDeploymentComputeConfiguration computeConfiguration)
     {
         ArgumentNullException.ThrowIfNull(redis);
         ArgumentException.ThrowIfNullOrWhiteSpace(kubernetesNamespace);
@@ -229,11 +228,11 @@ public readonly record struct RedisInKubernetes(
                             MountPath = "/data"
                         }
                     ],
-                    Resources = ComputeConfiguration.ToKubernetesResources()
+                    Resources = ComputeConfiguration.ToKubernetesCompute().ToResourceRequirements()
                 }
             ]
         };
-        ComputeConfiguration.ApplyToPodSpec(podSpec);
+        ComputeConfiguration.ToKubernetesCompute().ApplyTo(podSpec);
         return podSpec;
     }
 }

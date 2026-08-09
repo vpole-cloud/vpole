@@ -3,8 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using k8s.Models;
-using Pole.Features.ResourceDeployments.Application.Kubernetes;
-using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Domain;
 
 namespace Pole.Features.WebServices.Application.Kubernetes;
@@ -75,14 +74,14 @@ public sealed record WebServiceResourceDeploymentMetadata(
 public readonly record struct WebServiceInKubernetes(
     WebService WebService,
     string Namespace,
-    ResolvedIngressConfiguration IngressConfiguration,
-    ResolvedComputeConfiguration ComputeConfiguration)
+    ResourceDeploymentIngressConfiguration IngressConfiguration,
+    ResourceDeploymentComputeConfiguration ComputeConfiguration)
 {
     public static WebServiceInKubernetes Create(
         WebService webService,
         string kubernetesNamespace,
-        ResolvedIngressConfiguration ingressConfiguration,
-        ResolvedComputeConfiguration computeConfiguration)
+        ResourceDeploymentIngressConfiguration ingressConfiguration,
+        ResourceDeploymentComputeConfiguration computeConfiguration)
     {
         ArgumentNullException.ThrowIfNull(webService);
         ArgumentException.ThrowIfNullOrWhiteSpace(kubernetesNamespace);
@@ -175,11 +174,11 @@ public readonly record struct WebServiceInKubernetes(
                     StartupProbe = WebService.Spec.Probes.Startup.ToV1Probe(),
                     LivenessProbe = WebService.Spec.Probes.Liveness.ToV1Probe(),
                     ReadinessProbe = WebService.Spec.Probes.Readiness.ToV1Probe(),
-                    Resources = ComputeConfiguration.ToKubernetesResources()
+                    Resources = ComputeConfiguration.ToKubernetesCompute().ToResourceRequirements()
                 }
             ]
         };
-        ComputeConfiguration.ApplyToPodSpec(podSpec);
+        ComputeConfiguration.ToKubernetesCompute().ApplyTo(podSpec);
         return podSpec;
     }
     public V1Service ToService() => new()

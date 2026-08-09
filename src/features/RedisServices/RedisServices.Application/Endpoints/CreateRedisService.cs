@@ -8,10 +8,7 @@ using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.ResourceDeployments.Application.Placement;
-using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Domain;
@@ -98,7 +95,7 @@ public sealed class CreateRedisServiceHandler(
             spec: request.Body.Spec.ToDomain(),
             options: createOptions);
         var deploymentId = ObjectId.GenerateNewId().ToString();
-        var resolvedStorage = ResolvedStorageConfiguration.Create(
+        var resolvedStorage = new ResourceDeploymentStorageConfiguration(
             storageProfile.ProfileId,
             storageProfile.ProfileRevision,
             storageProfile.StorageClassName);
@@ -118,7 +115,7 @@ public sealed class CreateRedisServiceHandler(
                     transactionCancellationToken);
 
                 var deploymentResult = await createResourceDeployment(
-                    new CreateResourceDeploymentCommand(
+                    new CreateResourceDeploymentRequest(
                         deploymentId,
                         request.TenantId,
                         RedisResourceDeployment.ResourceType,
@@ -126,7 +123,7 @@ public sealed class CreateRedisServiceHandler(
                         newRedis.ResourceGroupId,
                         request.Body.Placement?.IsolationScopeId,
                         target,
-                        computeProfile,
+                        computeProfile.ToResourceDeploymentConfiguration(),
                         resolvedStorage,
                         ResourcePlacementCapability.SingleTarget),
                     session,
@@ -140,7 +137,7 @@ public sealed class CreateRedisServiceHandler(
 
                 return new CreateRedisServiceResponse(
                     newRedis.Id,
-                    deployment.ToPlacementSummaryDto());
+                    deployment);
             },
             cancellationToken);
     }

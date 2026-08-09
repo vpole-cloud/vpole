@@ -9,8 +9,9 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
+      <ProjectReference Include="..\ComputeProfiles.Primitives\ComputeProfiles.Primitives.csproj" />
       <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
+      <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
     </ItemGroup>
 
     <ItemGroup>

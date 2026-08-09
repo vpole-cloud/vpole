@@ -7,10 +7,10 @@ using System.Text.Json;
 using Microsoft.FSharp.Core;
 using MongoDB.Bson;
 using Npgsql;
+using Pole.Features.Core.Kubernetes;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Application.Kubernetes;
-using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -249,14 +249,17 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
             TestData.DefaultDeploymentTargetId,
             1);
 
-    private static ResolvedComputeConfiguration Compute() =>
-        ResolvedComputeConfiguration.Create(
-            TestData.DefaultComputeProfileId,
-            1,
-            "Default",
-            ResolvedComputeResourceValues.Create(250, 256),
-            ResolvedComputeResourceValues.Create(1000, 1024),
-            ResolvedComputeArchitecture.Any);
+    private static KubernetesComputeConfiguration Compute() =>
+        new(
+            new KubernetesComputeResourceValues(250, 256),
+            new KubernetesComputeResourceValues(1000, 1024),
+            KubernetesComputeArchitecture.Any,
+            [],
+            [],
+            [],
+            [],
+            [],
+            null);
 
     private static PostgresSettings CreateSettings() =>
         new()

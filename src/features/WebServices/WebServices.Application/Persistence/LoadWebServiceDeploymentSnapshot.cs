@@ -43,7 +43,7 @@ internal sealed class MongoLoadWebServiceDeploymentSnapshot(
             : new WebServiceDeploymentPersistenceSnapshot(
                 webService with
                 {
-                    Spec = release.Spec.ToDomain(),
+                    Spec = release.Spec,
                     ActiveRevision = release.Revision
                 },
                 release.Id,

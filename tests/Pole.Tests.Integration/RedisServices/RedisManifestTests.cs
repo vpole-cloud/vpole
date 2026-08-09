@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Application.Kubernetes;
-using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 using Redis = Pole.Features.RedisServices.Domain.Redis;
@@ -113,57 +113,58 @@ public sealed class RedisManifestTests
                         12,
                         "507f1f77bcf86cd799439034"))),
             "pole-cache",
-            ResolvedStorageConfiguration.Create(
+            new ResourceDeploymentStorageConfiguration(
                 "507f1f77bcf86cd799439034",
-                storageProfileRevision: 7,
-                storageClassName: "fast-cache"),
-            ResolvedComputeConfiguration.Create(
+                StorageProfileRevision: 7,
+                StorageClassName: "fast-cache"),
+            new ResourceDeploymentComputeConfiguration(
                 "507f1f77bcf86cd799439035",
-                computeProfileRevision: 3,
-                displayName: "GPU cache",
-                ResolvedComputeResourceValues.Create(250, 256),
-                ResolvedComputeResourceValues.Create(1000, 1024),
-                ResolvedComputeArchitecture.Amd64,
-                extendedResources:
+                ComputeProfileRevision: 3,
+                DeploymentTargetId: "507f1f77bcf86cd799439036",
+                DisplayName: "GPU cache",
+                new ResourceDeploymentComputeResourceValues(250, 256),
+                new ResourceDeploymentComputeResourceValues(1000, 1024),
+                ResourceDeploymentComputeArchitecture.Amd64,
+                ExtendedResources:
                 [
-                    ResolvedComputeExtendedResource.Create("nvidia.com/gpu", 1)
+                    new ResourceDeploymentExtendedResource("nvidia.com/gpu", 1)
                 ],
-                nodeSelector:
+                NodeSelector:
                 [
-                    ResolvedComputeNodeSelector.Create("kubernetes.io/os", "linux")
+                    new ResourceDeploymentNodeSelector("kubernetes.io/os", "linux")
                 ],
-                requiredNodeAffinity:
+                RequiredNodeAffinity:
                 [
-                    ResolvedComputeNodeAffinityTerm.Create(
+                    new ResourceDeploymentNodeAffinityTerm(
                     [
-                        ResolvedComputeNodeAffinityExpression.Create(
+                        new ResourceDeploymentNodeAffinityExpression(
                             "topology.kubernetes.io/zone",
-                            ResolvedComputeNodeAffinityOperator.In,
+                            ResourceDeploymentNodeAffinityOperator.In,
                             ["eu-west-1a"])
                     ])
                 ],
-                preferredNodeAffinity:
+                PreferredNodeAffinity:
                 [
-                    ResolvedComputePreferredNodeAffinityTerm.Create(
+                    new ResourceDeploymentPreferredNodeAffinityTerm(
                         60,
-                        ResolvedComputeNodeAffinityTerm.Create(
+                        new ResourceDeploymentNodeAffinityTerm(
                         [
-                            ResolvedComputeNodeAffinityExpression.Create(
+                            new ResourceDeploymentNodeAffinityExpression(
                                 "node.kubernetes.io/instance-type",
-                                ResolvedComputeNodeAffinityOperator.Exists,
+                                ResourceDeploymentNodeAffinityOperator.Exists,
                                 [])
                         ]))
                 ],
-                tolerations:
+                Tolerations:
                 [
-                    ResolvedComputeToleration.Create(
+                    new ResourceDeploymentToleration(
                         "dedicated",
-                        ResolvedComputeTolerationOperator.Exists,
-                        value: null,
-                        ResolvedComputeTaintEffect.NoSchedule,
-                        tolerationSeconds: null)
+                        ResourceDeploymentTolerationOperator.Exists,
+                        Value: null,
+                        ResourceDeploymentTaintEffect.NoSchedule,
+                        TolerationSeconds: null)
                 ],
-                runtimeClassName: "workload-runtime"));
+                RuntimeClassName: "workload-runtime"));
 
     private static Redis BuildRedis(string id, string name, RedisSpec spec) =>
         RedisFactory.Create(

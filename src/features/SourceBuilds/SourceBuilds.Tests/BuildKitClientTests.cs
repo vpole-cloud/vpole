@@ -11,6 +11,23 @@ public sealed class BuildKitClientTests
     private const string Digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     [Fact]
+    public void RegistryBuildAccessStringRepresentationRedactsCredentials()
+    {
+        var access = new RegistryBuildAccess(
+            "registry-project",
+            new RegistryPushTarget("harbor.test", "pole-test", "service", "tag"),
+            "pull-secret",
+            "sensitive-username",
+            "sensitive-registry-secret");
+
+        var diagnostic = access.ToString();
+
+        Assert.DoesNotContain("sensitive-username", diagnostic, StringComparison.Ordinal);
+        Assert.DoesNotContain("sensitive-registry-secret", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("REDACTED", diagnostic, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BuildRequestStringRepresentationRedactsCredentialsAndDockerfile()
     {
         var request = new BuildKitBuildRequest(

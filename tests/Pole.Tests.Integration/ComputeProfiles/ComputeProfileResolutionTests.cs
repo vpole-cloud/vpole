@@ -99,9 +99,12 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
 
         var fenced = await runTransaction(
             (session, ct) => fence.FenceAsync(
-                resolved,
-                ComputeProfileTestData.TenantId,
-                WebServiceType,
+                new ComputeProfileResolutionFenceRequest(
+                    resolved.ComputeProfileId,
+                    resolved.ComputeProfileRevision,
+                    resolved.DeploymentTargetId,
+                    ComputeProfileTestData.TenantId,
+                    WebServiceType),
                 session,
                 ct));
         fenced.AssertSuccess();
@@ -121,9 +124,12 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
 
         var staleFence = await runTransaction(
             (session, ct) => fence.FenceAsync(
-                resolved,
-                ComputeProfileTestData.TenantId,
-                WebServiceType,
+                new ComputeProfileResolutionFenceRequest(
+                    resolved.ComputeProfileId,
+                    resolved.ComputeProfileRevision,
+                    resolved.DeploymentTargetId,
+                    ComputeProfileTestData.TenantId,
+                    WebServiceType),
                 session,
                 ct));
         Assert.IsType<ConflictFailure>((Failure)staleFence);

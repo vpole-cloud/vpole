@@ -34,6 +34,10 @@ public sealed class ResourceDeploymentDomainTests
         Assert.Equal(0, deployment.ObservedGeneration);
         Assert.IsType<WaitingForRuntimeCellResourceDeploymentState>(deployment.State);
         Assert.Empty(deployment.Endpoints);
+
+        var document = deployment.ToBsonDocument();
+        Assert.Equal(TestResourceType.Value, document["ResourceType"].AsString);
+        Assert.Equal(0, document["PlacementCapability"].AsInt32);
     }
 
     [Fact]

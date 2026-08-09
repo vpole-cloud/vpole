@@ -12,8 +12,6 @@ open Pole.Database
 open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.ResourceDeployments.Application.Common
-open Pole.Features.ResourceDeployments.Application.Mutations
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Mediator
 open Pole.ResultType
@@ -128,7 +126,7 @@ type UpdatePostgresClusterPasswordHandler(
                                                 else
                                                     let! deploymentResult =
                                                         deploymentWriter.RequestApplyAsync(
-                                                            ResourceDeploymentMutationCommand(
+                                                            ResourceDeploymentMutationRequest(
                                                                 cluster.TenantId,
                                                                 PostgresResourceDeployment.ResourceType,
                                                                 cluster.Id,
@@ -142,9 +140,7 @@ type UpdatePostgresClusterPasswordHandler(
                                                     | struct (true, deployment, _) ->
                                                         return
                                                             { Id = cluster.Id
-                                                              Placement =
-                                                                ResourceDeploymentDtoExtensions.ToPlacementSummaryDto(
-                                                                    deployment) }
+                                                              Placement = deployment }
                                                             |> ResultF.ofValue
                                             }),
                                         cancellationToken = cancellationToken)

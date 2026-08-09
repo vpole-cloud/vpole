@@ -1,5 +1,4 @@
-using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Domain;
+using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.ResultType;
 
@@ -39,20 +38,22 @@ public sealed class SourceBuildWorkspace : IAsyncDisposable
 public interface ISourceBuildWorkspaceService
 {
     Task<Result<SourceBuildWorkspace>> CreateAsync(
-        GitProviderConnection connection,
-        SourceRepository sourceRepository,
+        string tenantId,
+        string sourceRepositoryId,
+        string commitSha,
         string buildJobId,
         CancellationToken cancellationToken = default);
 }
 
 public sealed class SourceBuildWorkspaceService(
-    IGitProviderRepositoryService repositoryService,
+    ISourceRepositoryBuildAccess sourceRepositoryBuildAccess,
     IRepositoryArchiveExtractor archiveExtractor,
     SourceBuildExecutionOptions options) : ISourceBuildWorkspaceService
 {
     public async Task<Result<SourceBuildWorkspace>> CreateAsync(
-        GitProviderConnection connection,
-        SourceRepository sourceRepository,
+        string tenantId,
+        string sourceRepositoryId,
+        string commitSha,
         string buildJobId,
         CancellationToken cancellationToken = default)
     {
@@ -74,10 +75,10 @@ public sealed class SourceBuildWorkspaceService(
                              useAsync: true))
             await using (var limitedArchive = new SizeLimitedWriteStream(archiveFile, options.MaxArchiveBytes))
             {
-                var download = await repositoryService.DownloadRepositoryArchiveAsync(
-                    connection,
-                    sourceRepository.ExternalRepositoryId,
-                    sourceRepository.CommitSha,
+                var download = await sourceRepositoryBuildAccess.DownloadArchiveAsync(
+                    tenantId,
+                    sourceRepositoryId,
+                    commitSha,
                     limitedArchive,
                     cancellationToken);
                 if (download is Failure failure)

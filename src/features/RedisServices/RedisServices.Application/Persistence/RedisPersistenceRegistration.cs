@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.RedisServices.Domain;
-using Pole.Features.ResourceDeployments.Domain;
 
 namespace Pole.Features.RedisServices.Application.Persistence;
 
@@ -18,11 +17,6 @@ public static class RedisPersistenceRegistration
             serviceProvider
                 .GetRequiredService<IMongoDatabase>()
                 .GetCollection<Redis>(RedisCollectionName));
-        services.TryAddSingleton(serviceProvider =>
-            serviceProvider
-                .GetRequiredService<IMongoDatabase>()
-                .GetCollection<ResourceDeployment>("ResourceDeployments"));
-
         services.AddScoped<MongoLoadRedisById>();
         services.AddScoped<MongoLoadRedisPage>();
         services.AddScoped<MongoPersistCreatedRedis>();

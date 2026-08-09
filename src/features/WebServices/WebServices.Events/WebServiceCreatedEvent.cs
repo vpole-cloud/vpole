@@ -1,7 +1,6 @@
 using System.Collections.Immutable;
 using MassTransit;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Shared.Models;
 
 namespace Pole.Features.WebServices.Events;
 
@@ -11,9 +10,13 @@ public record WebServiceCreatedEvent(
     string Name,
     string ResourceGroupId,
     WebServiceSpecSnapshot Spec,
-    DnsRecordShortInfo DnsRecord,
+    WebServiceDnsRecordSnapshot DnsRecord,
     ImmutableHashSet<string> Tags
 ) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
+
+public sealed record WebServiceDnsRecordSnapshot(
+    string Id,
+    string Domain);

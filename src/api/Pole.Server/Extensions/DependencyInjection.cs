@@ -323,6 +323,9 @@ public static class DependencyInjection
             services.TryAddScoped<
                 IResourceDeploymentComputeLookup,
                 ResourceDeploymentComputeLookup>();
+            services.TryAddScoped<
+                IResourceDeploymentFinalizationService,
+                ResourceDeploymentFinalizationService>();
             services.TryAddSingleton<ISearchDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IPostgresDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IQuotaDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
@@ -340,11 +343,12 @@ public static class DependencyInjection
             services.TryAddScoped<IDomainNameReservationService, DomainNameReservationService>();
             services.TryAddScoped<IResourceGroupLookup, ResourceGroupLookup>();
             services.TryAddScoped<IResourcePlacementService, ResourcePlacementService>();
+            services.TryAddScoped<IResourcePlacementLookup, ResourcePlacementLookup>();
             services.TryAddScoped<ResourceDeploymentReconciler>();
             services.TryAddSingleton<ResourceDeploymentMetrics>();
             services.AddResourceDeploymentPlacementCapabilities();
             services.TryAddScoped<
-                IResourceDeploymentStorageConfigurationFence,
+                IStorageProfileResolutionFence,
                 StorageProfileResolutionFence>();
             services.TryAddScoped<
                 IResourceDeploymentMutationWriter,
@@ -376,6 +380,7 @@ public static class DependencyInjection
 
         public IServiceCollection AddGitProvidersFeature()
         {
+            services.AddGitProviderCapabilities();
             services.AddMemoryCache();
             services.AddDataProtection().SetApplicationName("Pole");
             services.TryAddSingleton(TimeProvider.System);
@@ -393,6 +398,7 @@ public static class DependencyInjection
 
         public IServiceCollection AddContainerRegistriesFeature()
         {
+            services.AddContainerRegistryCapabilities();
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IRegistryCredentialProtector, RegistryCredentialProtector>();
             services.TryAddScoped<IRegistryCredentialResolver, RegistryCredentialResolver>();

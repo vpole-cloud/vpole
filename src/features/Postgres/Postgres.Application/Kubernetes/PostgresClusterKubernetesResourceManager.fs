@@ -10,7 +10,6 @@ open k8s.Models
 open Pole.Features.Core.Kubernetes
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.ResourceDeployments.Domain
 
 type IPostgresClusterDeploymentManager =
     abstract member ApplyAsync :
@@ -19,7 +18,7 @@ type IPostgresClusterDeploymentManager =
         credentials : PostgresClusterCredentials *
         namespaceName : string *
         storageClassName : string *
-        compute : ResolvedComputeConfiguration *
+        compute : KubernetesComputeConfiguration *
         metadata : PostgresResourceDeploymentMetadata *
         cancellationToken : CancellationToken -> Task
 

@@ -2,7 +2,6 @@ using FluentValidation;
 using MongoDB.Bson;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Validation;
 
 namespace Pole.Features.ComputeProfiles.Application.Common;

@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
-using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Domain;
 

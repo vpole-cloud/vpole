@@ -8,8 +8,6 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Quotas.Contracts;
-using Pole.Features.ResourceDeployments.Application.Mutations;
-using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence;
@@ -85,7 +83,7 @@ public sealed class RollbackWebServiceHandler(
         if (targetRelease is null)
             return Failures.NotFound("Succeeded release revision was not found for web service.", request.Body.TargetRevision);
 
-        var targetSpec = targetRelease.Spec.ToDomain();
+        var targetSpec = targetRelease.Spec;
         var computeLookupResult = await deploymentComputeLookup.GetCurrentAsync(
             webService.TenantId,
             WebServiceResourceDeployment.ResourceType,
@@ -119,14 +117,16 @@ public sealed class RollbackWebServiceHandler(
                     webService.Tags);
                 var deploymentEventCore = EventCore.Create(webService.TenantId);
                 var changes = new WebServiceUpdatedEventChanges(
-                    UpdateLog<WebServiceSpecSnapshot>.Of(webService.Spec.ToSnapshot(), targetRelease.Spec),
+                    UpdateLog<WebServiceSpecSnapshot>.Of(
+                        webService.Spec.ToSnapshot(),
+                        targetRelease.Spec.ToSnapshot()),
                     UpdateLog<ImmutableHashSet<string>>.Of(webService.Tags, webService.Tags));
 
                 var updatedEvent = new WebServiceUpdatedEvent(
                     webService.Id,
                     webService.Name,
                     webService.ResourceGroupId,
-                    webService.DnsRecord,
+                    webService.DnsRecord.ToSnapshot(),
                     changes)
                 {
                     EventCore = EventCore.Create(webService.TenantId)
@@ -141,7 +141,7 @@ public sealed class RollbackWebServiceHandler(
                     return (Failure)replace;
 
                 var deploymentResult = await deploymentWriter.RequestApplyAsync(
-                    new ResourceDeploymentMutationCommand(
+                    new ResourceDeploymentMutationRequest(
                         webService.TenantId,
                         WebServiceResourceDeployment.ResourceType,
                         webService.Id,
@@ -176,7 +176,7 @@ public sealed class RollbackWebServiceHandler(
                     webService.Id,
                     updatedWebService.ActiveRevision,
                     release.Id,
-                    deployment.ToPlacementSummaryDto());
+                    deployment);
             },
             cancellationToken);
     }

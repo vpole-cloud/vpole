@@ -147,7 +147,7 @@ public static class WebServiceDtoExtensions
         release.TraceId,
         release.CorrelationId,
         release.Provenance?.ToDto(),
-        release.Spec.ToDomain().ToDto()
+        release.Spec.ToDto()
     );
     public static WebServiceReleaseProvenanceDto ToDto(this WebServiceReleaseProvenance provenance) =>
         provenance switch

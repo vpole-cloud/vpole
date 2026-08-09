@@ -1,7 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.ResourceDeployments.Application.Placement;
-using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.ResultType;
 
@@ -9,17 +8,15 @@ namespace Pole.Features.StorageProfiles.Application.Common;
 
 public sealed class StorageProfileResolutionFence(
     IStorageProfileDbContext dbContext)
-    : IResourceDeploymentStorageConfigurationFence
+    : IStorageProfileResolutionFence
 {
     public async Task<Result> FenceAsync(
-        string deploymentTargetId,
-        ResolvedStorageConfiguration storage,
+        StorageProfileResolutionFenceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(storage);
         EnsureTransaction(session);
-        if (!ObjectId.TryParse(deploymentTargetId, out _))
+        if (!ObjectId.TryParse(request.DeploymentTargetId, out _))
         {
             return Failures.ValidationFailure(new Dictionary<string, string[]>
             {
@@ -32,19 +29,19 @@ public sealed class StorageProfileResolutionFence(
             Builders<StorageProfileTargetMapping>.Filter.And(
                 Builders<StorageProfileTargetMapping>.Filter.Eq(
                     mapping => mapping.DeploymentTargetId,
-                    deploymentTargetId),
+                    request.DeploymentTargetId),
                 Builders<StorageProfileTargetMapping>.Filter.Eq(
                     mapping => mapping.StorageClassName,
-                    storage.StorageClassName));
+                    request.StorageClassName));
         var update = await dbContext.StorageProfiles.UpdateOneAsync(
             session,
             Builders<StorageProfile>.Filter.And(
                 Builders<StorageProfile>.Filter.Eq(
                     profile => profile.Id,
-                    storage.StorageProfileId),
+                    request.StorageProfileId),
                 Builders<StorageProfile>.Filter.Eq(
                     profile => profile.Revision,
-                    storage.StorageProfileRevision),
+                    request.StorageProfileRevision),
                 Builders<StorageProfile>.Filter.Eq(
                     profile => profile.IsEnabled,
                     true),

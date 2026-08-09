@@ -10,7 +10,7 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Users.Contracts;
+using Pole.Features.Users.Events;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Domain;
 using Pole.Features.Users.Application.Identity;
@@ -122,4 +122,3 @@ public sealed class CreateUserValidator : AbstractValidator<CreateUserRequest>
         RuleFor(x => x.Body.LastName).MaximumLength(80);
     }
 }
-

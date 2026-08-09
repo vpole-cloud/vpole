@@ -7,10 +7,10 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.GitProviders.Application.Common;
+using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Domain;
-using Pole.Features.WebServices.Application.Persistence;
+using Pole.Features.WebServices.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -28,7 +28,7 @@ public sealed record CreateSourceBuildConfigurationBody(
 
 public sealed class CreateSourceBuildConfigurationHandler(
     ISourceBuildDbContext dbContext,
-    IGitProviderDbContext gitProviderDbContext,
+    ISourceRepositoryBuildAccess sourceRepositoryBuildAccess,
     WebServiceExists webServiceExists,
     TimeProvider timeProvider)
     : IMediatorHandler<CreateSourceBuildConfigurationRequest, SourceBuildConfigurationDto>
@@ -37,9 +37,10 @@ public sealed class CreateSourceBuildConfigurationHandler(
         CreateSourceBuildConfigurationRequest request,
         CancellationToken cancellationToken = default)
     {
-        var sourceRepository = await gitProviderDbContext.SourceRepositories
-            .Find(item => item.TenantId == request.TenantId && item.Id == request.Body.SourceRepositoryId)
-            .FirstOrDefaultAsync(cancellationToken);
+        var sourceRepository = await sourceRepositoryBuildAccess.FindAsync(
+            request.TenantId,
+            request.Body.SourceRepositoryId,
+            cancellationToken);
         if (sourceRepository is null)
             return Failures.NotFound("Source repository not found.", request.Body.SourceRepositoryId);
 

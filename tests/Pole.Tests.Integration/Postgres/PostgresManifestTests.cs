@@ -1,10 +1,11 @@
 using System.Text.Json;
 using Microsoft.FSharp.Core;
 using MongoDB.Bson;
+using Pole.Features.Core.Kubernetes;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Application.Kubernetes;
-using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -202,45 +203,55 @@ public sealed class PostgresManifestTests
         return (cluster, CreateSettings());
     }
 
-    private static ResolvedComputeConfiguration Compute(string? runtimeClassName = null)
+    private static KubernetesComputeConfiguration Compute(string? runtimeClassName = null)
     {
-        var requiredTerm = ResolvedComputeNodeAffinityTerm.Create(
+        var requiredTerm = new ResourceDeploymentNodeAffinityTerm(
         [
-            ResolvedComputeNodeAffinityExpression.Create(
+            new ResourceDeploymentNodeAffinityExpression(
                 "topology.kubernetes.io/zone",
-                ResolvedComputeNodeAffinityOperator.In,
+                ResourceDeploymentNodeAffinityOperator.In,
                 ["ua-1"])
         ]);
-        return ResolvedComputeConfiguration.Create(
+        var deploymentCompute = new ResourceDeploymentComputeConfiguration(
             TestData.DefaultComputeProfileId,
             3,
+            TestData.DefaultDeploymentTargetId,
             "PostgreSQL compute",
-            ResolvedComputeResourceValues.Create(750, 768),
-            ResolvedComputeResourceValues.Create(2000, 2048),
-            ResolvedComputeArchitecture.Arm64,
-            [ResolvedComputeExtendedResource.Create("nvidia.com/gpu", 1)],
-            [ResolvedComputeNodeSelector.Create("kubernetes.io/os", "linux")],
+            new ResourceDeploymentComputeResourceValues(750, 768),
+            new ResourceDeploymentComputeResourceValues(2000, 2048),
+            ResourceDeploymentComputeArchitecture.Arm64,
+            [new ResourceDeploymentExtendedResource("nvidia.com/gpu", 1)],
+            [new ResourceDeploymentNodeSelector("kubernetes.io/os", "linux")],
             [requiredTerm],
-            [ResolvedComputePreferredNodeAffinityTerm.Create(50, requiredTerm)],
+            [new ResourceDeploymentPreferredNodeAffinityTerm(50, requiredTerm)],
             [
-                ResolvedComputeToleration.Create(
+                new ResourceDeploymentToleration(
                     "dedicated",
-                    ResolvedComputeTolerationOperator.Equal,
+                    ResourceDeploymentTolerationOperator.Equal,
                     "database",
-                    ResolvedComputeTaintEffect.NoSchedule,
+                    ResourceDeploymentTaintEffect.NoSchedule,
                     null)
             ],
             runtimeClassName);
+        return PostgresResourceDeploymentMappings.kubernetesCompute(deploymentCompute);
     }
 
-    private static ResolvedComputeConfiguration MinimalCompute() =>
-        ResolvedComputeConfiguration.Create(
-            TestData.DefaultComputeProfileId,
-            1,
-            "Default",
-            ResolvedComputeResourceValues.Create(250, 256),
-            ResolvedComputeResourceValues.Create(1000, 1024),
-            ResolvedComputeArchitecture.Any);
+    private static KubernetesComputeConfiguration MinimalCompute() =>
+        PostgresResourceDeploymentMappings.kubernetesCompute(
+            new ResourceDeploymentComputeConfiguration(
+                TestData.DefaultComputeProfileId,
+                1,
+                TestData.DefaultDeploymentTargetId,
+                "Default",
+                new ResourceDeploymentComputeResourceValues(250, 256),
+                new ResourceDeploymentComputeResourceValues(1000, 1024),
+                ResourceDeploymentComputeArchitecture.Any,
+                [],
+                [],
+                [],
+                [],
+                [],
+                null));
 
     private static PostgresSettings CreateSettings() =>
         new()

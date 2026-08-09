@@ -34,6 +34,23 @@ public sealed class ComputeProfileDomainTests
             ["example.com/fpga", "nvidia.com/gpu"],
             profile.ExtendedResources.Select(resource => resource.Name));
 
+        var document = profile.ToBsonDocument();
+        Assert.Equal(1, document["Architecture"].AsInt32);
+        var firstMapping = document["TargetMappings"].AsBsonArray[0].AsBsonDocument;
+        Assert.Equal(
+            0,
+            firstMapping["RequiredNodeAffinity"].AsBsonArray[0]
+                .AsBsonDocument["Expressions"].AsBsonArray[0]
+                .AsBsonDocument["Operator"].AsInt32);
+        Assert.Equal(
+            1,
+            firstMapping["Tolerations"].AsBsonArray[0]
+                .AsBsonDocument["Operator"].AsInt32);
+        Assert.Equal(
+            1,
+            firstMapping["Tolerations"].AsBsonArray[0]
+                .AsBsonDocument["Effect"].AsInt32);
+
         var roundTripped = BsonSerializer.Deserialize<ComputeProfile>(
             profile.ToBson());
 

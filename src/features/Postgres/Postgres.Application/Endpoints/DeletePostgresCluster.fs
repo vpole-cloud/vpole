@@ -15,10 +15,7 @@ open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Quotas.Contracts
-open Pole.Features.ResourceDeployments.Application.Common
-open Pole.Features.ResourceDeployments.Application.Mutations
 open Pole.Features.ResourceDeployments.Contracts
-open Pole.Features.ResourceDeployments.Domain
 open Pole.Features.ResourceDeployments.Events
 open Pole.Mediator
 open Pole.ResultType
@@ -126,7 +123,7 @@ type DeletePostgresClusterHandler(
                                         else
                                             let! deploymentResult =
                                                 deploymentWriter.RequestDeletionAsync(
-                                                    ResourceDeploymentMutationCommand(
+                                                    ResourceDeploymentMutationRequest(
                                                         cluster.TenantId,
                                                         PostgresResourceDeployment.ResourceType,
                                                         cluster.Id,
@@ -140,9 +137,7 @@ type DeletePostgresClusterHandler(
                                             | struct (true, deployment, _) ->
                                                 return
                                                     { Id = cluster.Id
-                                                      Placement =
-                                                        ResourceDeploymentDtoExtensions.ToPlacementSummaryDto(
-                                                            deployment) }
+                                                      Placement = deployment }
                                                     |> ResultF.ofValue
                                     }),
                                 cancellationToken)
@@ -150,7 +145,7 @@ type DeletePostgresClusterHandler(
 
 type FinalizePostgresClusterDeletionConsumer(
     dbContext : IPostgresDbContext,
-    deploymentDbContext : IResourceDeploymentDbContext) =
+    deploymentFinalization : IResourceDeploymentFinalizationService) =
     interface IConsumer<ResourceDeploymentDeletedEvent> with
         member _.Consume(context) =
             let message = context.Message
@@ -176,21 +171,15 @@ type FinalizePostgresClusterDeletionConsumer(
                                not (cluster.Lifecycle :? DeletingPostgresClusterLifecycle) then
                                 return Result.Success() :> Result
                             else
-                                let! deployments =
-                                    deploymentDbContext.ResourceDeployments
-                                        .Find(
-                                            session,
-                                            fun deployment ->
-                                                deployment.TenantId = message.EventCore.TenantId &&
-                                                deployment.ResourceType =
-                                                    PostgresResourceDeployment.ResourceType.Value &&
-                                                deployment.ResourceId = message.ResourceId)
-                                        .ToListAsync(ct)
+                                let! readiness =
+                                    deploymentFinalization.GetReadinessAsync(
+                                        message.EventCore.TenantId,
+                                        PostgresResourceDeployment.ResourceType,
+                                        message.ResourceId,
+                                        session,
+                                        ct)
 
-                                if deployments.Count = 0 ||
-                                   deployments
-                                   |> Seq.exists (fun deployment ->
-                                       not (deployment.State :? DeletedResourceDeploymentState)) then
+                                if readiness <> ResourceDeploymentFinalizationReadiness.Ready then
                                     return Result.Success() :> Result
                                 else
                                     let! deletedCluster =
@@ -216,25 +205,24 @@ type FinalizePostgresClusterDeletionConsumer(
                                                         credential.PostgresClusterId =
                                                             message.ResourceId),
                                                     cancellationToken = ct)
-                                        let! _ =
-                                            deploymentDbContext.ResourceDeployments
-                                                .DeleteManyAsync(
-                                                    session,
-                                                    (fun deployment ->
-                                                        deployment.TenantId =
-                                                            message.EventCore.TenantId &&
-                                                        deployment.ResourceType =
-                                                            PostgresResourceDeployment.ResourceType.Value &&
-                                                        deployment.ResourceId =
-                                                            message.ResourceId),
-                                                    cancellationToken = ct)
-
-                                        do!
-                                            dbContext.StoreEventAsync(
-                                                PostgresClusterEvents.deleted cluster,
+                                        let! purgeResult =
+                                            deploymentFinalization.PurgeDeletedAsync(
+                                                message.EventCore.TenantId,
+                                                PostgresResourceDeployment.ResourceType,
+                                                message.ResourceId,
                                                 session,
                                                 ct)
-                                        return Result.Success() :> Result
+
+                                        match purgeResult with
+                                        | :? Failure as failure ->
+                                            return failure :> Result
+                                        | _ ->
+                                            do!
+                                                dbContext.StoreEventAsync(
+                                                    PostgresClusterEvents.deleted cluster,
+                                                    session,
+                                                    ct)
+                                            return Result.Success() :> Result
                         }),
                     cancellationToken = context.CancellationToken)
 

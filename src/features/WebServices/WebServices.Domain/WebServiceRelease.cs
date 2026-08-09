@@ -1,6 +1,5 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
-using Pole.Features.WebServices.Events;
 
 namespace Pole.Features.WebServices.Domain;
 
@@ -43,7 +42,7 @@ public sealed record WebServiceRelease(
     string? CorrelationId,
     WebServiceReleaseProvenance? Provenance,
     long DeploymentGeneration,
-    WebServiceSpecSnapshot Spec
+    WebServiceSpec Spec
 );
 
 [BsonDiscriminator(RootClass = true)]
@@ -78,7 +77,7 @@ public static class WebServiceReleaseFactory
         WebServiceReleaseAction action,
         string? actorUserId,
         string? actorEmail,
-        WebServiceSpecSnapshot spec,
+        WebServiceSpec spec,
         string? traceId,
         string? correlationId,
         DateTime? requestedAtUtc = null,

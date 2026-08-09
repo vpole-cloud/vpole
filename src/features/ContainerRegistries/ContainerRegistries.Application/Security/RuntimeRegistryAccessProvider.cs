@@ -33,11 +33,8 @@ public sealed class RuntimeRegistryAccessProvider(
             project.Id,
             options.RegistryHost,
             project.Name,
-            KubernetesSecretName(project.Id),
+            RegistryKubernetesSecretNames.ForProject(project.Id),
             resolved.Username,
             resolved.Secret);
     }
-
-    public static string KubernetesSecretName(string registryProjectId) =>
-        $"pole-registry-{registryProjectId.ToLowerInvariant()}";
 }

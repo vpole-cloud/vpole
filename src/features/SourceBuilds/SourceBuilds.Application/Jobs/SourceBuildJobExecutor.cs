@@ -1,13 +1,7 @@
 using Hangfire;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
-using Pole.Features.ContainerRegistries.Application.Common;
-using Pole.Features.ContainerRegistries.Application.Provisioning;
-using Pole.Features.ContainerRegistries.Application.Security;
 using Pole.Features.ContainerRegistries.Contracts;
-using Pole.Features.ContainerRegistries.Domain;
-using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Domain;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.Features.SourceBuilds.Domain;
@@ -18,14 +12,10 @@ namespace Pole.Features.SourceBuilds.Application.Jobs;
 
 public sealed class SourceBuildJobExecutor(
     ISourceBuildDbContext dbContext,
-    IGitProviderDbContext gitProviderDbContext,
     ISourceBuildWorkspaceService workspaceService,
-    IContainerRegistryProvisioningService registryProvisioning,
-    IRegistryCredentialResolver credentialResolver,
-    IContainerRegistryClient registryClient,
+    IContainerRegistryBuildService registryBuildService,
     IBuildKitClient buildKit,
     IWebServiceSourceBuildDeploymentService deploymentService,
-    HarborOptions harborOptions,
     TimeProvider timeProvider,
     ILogger<SourceBuildJobExecutor> logger) : ISourceBuildJobExecutor
 {
@@ -48,28 +38,11 @@ public sealed class SourceBuildJobExecutor(
                 return;
             }
 
-            var sourceRepository = await gitProviderDbContext.SourceRepositories
-                .Find(item => item.TenantId == job.TenantId && item.Id == job.SourceRepositoryId)
-                .FirstOrDefaultAsync();
-            if (sourceRepository is null)
-            {
-                await FailAsync(job, SourceBuildPhase.Cloning, "SourceRepositoryNotFound",
-                    "The linked source repository no longer exists.");
-                return;
-            }
-
-            var connection = await gitProviderDbContext.GitProviderConnections
-                .Find(item => item.TenantId == job.TenantId && item.Id == sourceRepository.ConnectionId)
-                .FirstOrDefaultAsync();
-            if (connection is null)
-            {
-                await FailAsync(job, SourceBuildPhase.Cloning, "GitProviderConnectionNotFound",
-                    "The linked git provider connection no longer exists.");
-                return;
-            }
-
-            var exactSource = sourceRepository with { Branch = job.Branch, CommitSha = job.CommitSha };
-            var workspaceResult = await workspaceService.CreateAsync(connection, exactSource, job.Id);
+            var workspaceResult = await workspaceService.CreateAsync(
+                job.TenantId,
+                job.SourceRepositoryId,
+                job.CommitSha,
+                job.Id);
             if (!workspaceResult.TryGetValue(out var workspace, out var workspaceFailure))
             {
                 await FailAsync(job, SourceBuildPhase.Cloning, workspaceFailure);
@@ -108,45 +81,25 @@ public sealed class SourceBuildJobExecutor(
                 job = building;
 
                 var actorUserId = (job.Trigger as ManualSourceBuildTrigger)?.UserId ?? "source-build-worker";
-                var registryProjectResult = await registryProvisioning.EnsureTenantProjectAsync(
+                var repositoryName = $"web-services/{job.WebServiceId}";
+                var tag = $"build-{job.Id}";
+                var registryAccessResult = await registryBuildService.PreparePushAsync(
                     job.TenantId,
-                    actorUserId);
-                if (!registryProjectResult.TryGetValue(out var registryProject, out var registryFailure))
+                    actorUserId,
+                    repositoryName,
+                    tag);
+                if (!registryAccessResult.TryGetValue(out var registryAccess, out var registryFailure))
                 {
                     await FailAsync(job, SourceBuildPhase.Building, registryFailure);
                     return;
                 }
-                if (registryProject.State is not ReadyRegistryProject)
-                {
-                    await FailAsync(job, SourceBuildPhase.Building, "RegistryProjectNotReady",
-                        "The tenant container registry is not ready.");
-                    return;
-                }
-
-                var credentialResult = await credentialResolver.ResolveAsync(
-                    job.TenantId,
-                    registryProject.Id,
-                    RegistryCredentialPurpose.BuildPushPull);
-                if (!credentialResult.TryGetValue(out var credential, out var credentialFailure))
-                {
-                    await FailAsync(job, SourceBuildPhase.Building, credentialFailure);
-                    return;
-                }
-
-                var repositoryName = $"web-services/{job.WebServiceId}";
-                var tag = $"build-{job.Id}";
-                var target = new RegistryPushTarget(
-                    harborOptions.RegistryHost,
-                    registryProject.Name,
-                    repositoryName,
-                    tag);
                 var imageResult = await buildKit.BuildAndPushAsync(
                     new BuildKitBuildRequest(
                         workspace.SourcePath,
                         job.Recipe.Dockerfile,
-                        target,
-                        credential.Username,
-                        credential.Secret));
+                        registryAccess.Target,
+                        registryAccess.Username,
+                        registryAccess.Secret));
                 if (!imageResult.TryGetValue(out var builtImage, out var buildFailure))
                 {
                     await FailAsync(job, SourceBuildPhase.Building, buildFailure);
@@ -158,8 +111,9 @@ public sealed class SourceBuildJobExecutor(
                     return;
                 job = pushing;
 
-                var artifactResult = await registryClient.GetArtifactAsync(
-                    registryProject.Name,
+                var artifactResult = await registryBuildService.GetArtifactAsync(
+                    job.TenantId,
+                    registryAccess.RegistryProjectId,
                     repositoryName,
                     tag);
                 if (!artifactResult.TryGetValue(out var artifact, out var artifactFailure))
@@ -174,7 +128,6 @@ public sealed class SourceBuildJobExecutor(
                     return;
                 }
 
-                var pullSecretName = RuntimeRegistryAccessProvider.KubernetesSecretName(registryProject.Id);
                 var trigger = job.Trigger as ManualSourceBuildTrigger;
                 var deploymentResult = await deploymentService.DeployAsync(
                     new SourceBuildDeploymentRequest(
@@ -186,11 +139,11 @@ public sealed class SourceBuildJobExecutor(
                         trigger?.UserId,
                         trigger?.Email,
                         new SourceBuildDeploymentImage(
-                            target.RegistryHost,
-                            $"{target.ProjectName}/{target.RepositoryName}",
-                            target.Tag,
+                            registryAccess.Target.RegistryHost,
+                            $"{registryAccess.Target.ProjectName}/{registryAccess.Target.RepositoryName}",
+                            registryAccess.Target.Tag,
                             artifact.Digest,
-                            pullSecretName)));
+                            registryAccess.KubernetesPullSecretName)));
                 if (!deploymentResult.TryGetValue(out var deployment, out var deploymentFailure))
                 {
                     await FailAsync(job, SourceBuildPhase.Deploying, deploymentFailure);

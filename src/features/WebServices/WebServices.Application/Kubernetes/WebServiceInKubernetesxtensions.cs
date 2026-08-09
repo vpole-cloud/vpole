@@ -1,5 +1,5 @@
 using k8s.Models;
-using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Domain;
 
@@ -11,8 +11,8 @@ public static class WebServiceInKubernetesxtensions
     {
         public WebServiceInKubernetes ToKubernetes(
             string kubernetesNamespace,
-            ResolvedIngressConfiguration ingressConfiguration,
-            ResolvedComputeConfiguration computeConfiguration) =>
+            ResourceDeploymentIngressConfiguration ingressConfiguration,
+            ResourceDeploymentComputeConfiguration computeConfiguration) =>
             WebServiceInKubernetes.Create(
                 webService,
                 kubernetesNamespace,

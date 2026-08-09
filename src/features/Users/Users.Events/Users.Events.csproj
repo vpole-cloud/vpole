@@ -4,8 +4,8 @@
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <AssemblyName>Pole.Features.Users.Contracts</AssemblyName>
-        <RootNamespace>Pole.Features.Users.Contracts</RootNamespace>
+        <AssemblyName>Pole.Features.Users.Events</AssemblyName>
+        <RootNamespace>Pole.Features.Users.Events</RootNamespace>
     </PropertyGroup>
 
     <ItemGroup>

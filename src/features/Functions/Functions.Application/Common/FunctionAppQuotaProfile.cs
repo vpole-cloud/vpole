@@ -1,5 +1,6 @@
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
+using Pole.Features.Quotas.Primitives;
 
 namespace Pole.Features.Functions.Application.Common;
 

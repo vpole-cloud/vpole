@@ -15,6 +15,11 @@ Cross-feature consumers depend on narrow contracts owned by the providing featur
 projects contain implementations and composition wiring, but are not used as integration-contract
 assemblies.
 
+The dependency direction was later formalized for every feature layer: domains remain internal,
+synchronous integration uses provider-owned Contracts, serialized integration uses Events, and
+shared concepts move only into small thematic primitives projects. The current normative rules are
+documented in [Module boundaries](module-boundaries.md).
+
 ## Durable workload placement
 
 Resource placement moved from logical resource specifications into `ResourceDeployment`.

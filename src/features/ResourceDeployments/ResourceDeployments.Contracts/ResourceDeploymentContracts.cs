@@ -1,54 +1,9 @@
 using System.Collections.Immutable;
-using System.Text.RegularExpressions;
 using MongoDB.Driver;
 using Pole.ResultType;
+using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Contracts;
-
-public readonly partial record struct ResourceTypeId
-{
-    public const int MaximumLength = 128;
-
-    private ResourceTypeId(string value)
-    {
-        Value = value;
-    }
-
-    public string Value { get; }
-
-    public static ResourceTypeId Create(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            throw new ArgumentException("Resource type is required.", nameof(value));
-
-        var normalized = value.Trim();
-        if (normalized.Length > MaximumLength)
-        {
-            throw new ArgumentException(
-                $"Resource type must be {MaximumLength} characters or less.",
-                nameof(value));
-        }
-        if (!ResourceTypePattern().IsMatch(normalized))
-        {
-            throw new ArgumentException(
-                "Resource type must contain lowercase path segments separated by '/'.",
-                nameof(value));
-        }
-
-        return new ResourceTypeId(normalized);
-    }
-
-    public override string ToString() => Value;
-
-    [GeneratedRegex("^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?:/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)+$")]
-    private static partial Regex ResourceTypePattern();
-}
-
-public enum ResourcePlacementCapability
-{
-    SingleTarget,
-    MultiTarget
-}
 
 public sealed record PlacementRequest(
     string? IsolationScopeId,
@@ -58,7 +13,24 @@ public sealed record ResourceDeploymentEndpointDto(
     string Kind,
     string Host,
     int Port,
-    string Scheme);
+    string Scheme)
+{
+    public static ResourceDeploymentEndpointDto Ingress(
+        string host,
+        int port = 443,
+        string scheme = "https") =>
+        new("Ingress", host, port, scheme);
+
+    public static ResourceDeploymentEndpointDto Redis(
+        string host,
+        int port = 6379) =>
+        new("Redis", host, port, "redis");
+
+    public static ResourceDeploymentEndpointDto PostgreSql(
+        string host,
+        int port = 5432) =>
+        new("PostgreSql", host, port, "postgresql");
+}
 
 public sealed record ComputeProfileReference(
     string ComputeProfileId,

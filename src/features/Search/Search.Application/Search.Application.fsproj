@@ -42,6 +42,7 @@
       <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
       <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
+      <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
       <ProjectReference Include="..\..\DnsRecords\DnsRecords.Events\DnsRecords.Events.csproj" />
       <ProjectReference Include="..\..\Postgres\Postgres.Events\Postgres.Events.fsproj" />
       <ProjectReference Include="..\..\RedisServices\RedisServices.Events\RedisServices.Events.csproj" />
@@ -52,7 +53,6 @@
       <ProjectReference Include="..\Search.Domain\Search.Domain.fsproj" />
     </ItemGroup>
 </Project>
-
 
 
 
