@@ -1,5 +1,7 @@
 using System.Collections.Immutable;
+using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Contracts;
 
@@ -85,3 +87,17 @@ public sealed record ComputeProfileResolutionRequest(
     string DeploymentTargetId,
     string TenantId,
     ResourceTypeId ResourceType);
+
+public delegate Task<Result<ResolvedComputeProfile>> ResolveComputeProfile(
+    ComputeProfileResolutionRequest request,
+    CancellationToken cancellationToken = default);
+
+public interface IComputeProfileResolutionFence
+{
+    Task<Result> FenceAsync(
+        ResolvedComputeProfile compute,
+        string tenantId,
+        ResourceTypeId resourceType,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);
+}

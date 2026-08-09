@@ -300,5 +300,19 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
                 cancellationToken: cancellationToken);
             return Result.Success();
         }
+
+        public async Task<Result> ApplyChangesAsync(
+            DeploymentTargetReferenceOwner owner,
+            IReadOnlyCollection<string> addedDeploymentTargetIds,
+            IReadOnlyCollection<string> removedDeploymentTargetIds,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
+        {
+            foreach (var deploymentTargetId in addedDeploymentTargetIds)
+                await RegisterAsync(deploymentTargetId, owner, session, cancellationToken);
+            foreach (var deploymentTargetId in removedDeploymentTargetIds)
+                await UnregisterAsync(deploymentTargetId, owner, session, cancellationToken);
+            return Result.Success();
+        }
     }
 }

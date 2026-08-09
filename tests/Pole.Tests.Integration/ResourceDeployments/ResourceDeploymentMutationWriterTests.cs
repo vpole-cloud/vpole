@@ -349,7 +349,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
     }
 
     private sealed class RecordingComputeProfileFence
-        : IResourceDeploymentComputeProfileFence
+        : IComputeProfileResolutionFence
     {
         public int CallCount { get; private set; }
 

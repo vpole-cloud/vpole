@@ -2,8 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.ResourceDeployments.Application.Placement;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence;
 
@@ -35,9 +35,8 @@ public static class ComputeProfilePersistenceRegistration
             implementation => implementation.InvokeAsync);
         services.AddCapability<MongoResolveComputeProfile, ResolveComputeProfile>(
             implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoFenceResolvedComputeProfile, FenceResolvedComputeProfile>(
-            implementation => implementation.InvokeAsync);
-        services.AddScoped<IResourceDeploymentComputeProfileFence>(serviceProvider =>
+        services.AddScoped<MongoFenceResolvedComputeProfile>();
+        services.AddScoped<IComputeProfileResolutionFence>(serviceProvider =>
             serviceProvider.GetRequiredService<MongoFenceResolvedComputeProfile>());
 
         services.TryAddSingleton<RunMongoTransaction<ComputeProfile>>(serviceProvider =>

@@ -37,14 +37,15 @@ internal sealed class MongoPersistUpdatedComputeProfile(
 
         return runMongoTransaction(async (session, ct) =>
         {
-            var registered = await ComputeProfileTargetReferences.RegisterAsync(
+            var references = await ComputeProfileTargetReferences.ApplyChangesAsync(
                 referenceAdmission,
                 replacement,
                 replacementTargetIds.Except(currentTargetIds, StringComparer.Ordinal),
+                currentTargetIds.Except(replacementTargetIds, StringComparer.Ordinal),
                 session,
                 ct);
-            if (registered is not ISuccess)
-                return (Failure)registered;
+            if (references is not ISuccess)
+                return (Failure)references;
 
             if (replacement.IsDefault)
             {
@@ -67,15 +68,7 @@ internal sealed class MongoPersistUpdatedComputeProfile(
                     "The compute profile changed while the update was being accepted.");
             }
 
-            var unregistered = await ComputeProfileTargetReferences.UnregisterAsync(
-                referenceAdmission,
-                current,
-                currentTargetIds.Except(replacementTargetIds, StringComparer.Ordinal),
-                session,
-                ct);
-            return unregistered is ISuccess
-                ? replacement
-                : (Failure)unregistered;
+            return replacement;
         }, cancellationToken);
     }
 }

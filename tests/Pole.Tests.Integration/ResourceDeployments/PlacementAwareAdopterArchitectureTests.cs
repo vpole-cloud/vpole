@@ -72,6 +72,58 @@ public sealed class PlacementAwareAdopterArchitectureTests
         Assert.Empty(offenders);
     }
 
+    [Theory]
+    [InlineData("WebServices", "WebServices.Application", "WebServices.Application.csproj")]
+    [InlineData("RedisServices", "RedisServices.Application", "RedisServices.Application.csproj")]
+    [InlineData("Postgres", "Postgres.Application", "Postgres.Application.fsproj")]
+    public void PlacementAwareAdopter_ReferencesComputeProfileContractsNotApplication(
+        string featureName,
+        string applicationProject,
+        string projectFile)
+    {
+        var content = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src",
+            "features",
+            featureName,
+            applicationProject,
+            projectFile));
+
+        Assert.Contains(
+            "ComputeProfiles.Contracts",
+            content,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "ComputeProfiles.Application",
+            content,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ComputeProfilesApplication_UsesResourceDeploymentContractsOnly()
+    {
+        var content = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src",
+            "features",
+            "ComputeProfiles",
+            "ComputeProfiles.Application",
+            "ComputeProfiles.Application.csproj"));
+
+        Assert.Contains(
+            "ResourceDeployments.Contracts",
+            content,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "ResourceDeployments.Application",
+            content,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "ResourceDeployments.Domain",
+            content,
+            StringComparison.Ordinal);
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

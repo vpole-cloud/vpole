@@ -53,4 +53,10 @@ public static class ResourceDeploymentFilters
             Builders<ResourceDeployment>.Filter.Eq(
                 item => item.Revision,
                 deployment.Revision));
+
+    public static FilterDefinition<ResourceDeployment> ReferencesComputeProfile(
+        string computeProfileId) =>
+        Builders<ResourceDeployment>.Filter.Eq(
+            deployment => deployment.ResolvedPlacement.Compute.ComputeProfileId,
+            computeProfileId);
 }

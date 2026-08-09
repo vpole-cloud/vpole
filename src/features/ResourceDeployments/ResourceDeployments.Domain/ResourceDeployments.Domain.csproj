@@ -10,6 +10,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
+      <ProjectReference Include="..\..\..\shared\Kubernetes.Validation\Kubernetes.Validation.csproj" />
       <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
     </ItemGroup>
 

@@ -1,9 +1,9 @@
 using System.Collections.Immutable;
-using System.Text.RegularExpressions;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.KubernetesValidation;
 
 namespace Pole.Features.ComputeProfiles.Domain;
 
@@ -158,7 +158,7 @@ public sealed record ComputeProfileExtendedResource(
         string name,
         long quantity) =>
         new(
-            ComputeProfileValueGuard.ExtendedResourceName(name, nameof(name)),
+            KubernetesValueGuard.ExtendedResourceName(name, nameof(name)),
             ComputeProfileValueGuard.Positive(quantity, nameof(quantity)));
 }
 
@@ -273,7 +273,7 @@ public sealed record ComputeProfileTargetMapping(
             normalizedRequired,
             normalizedPreferred,
             normalizedTolerations,
-            ComputeProfileValueGuard.OptionalDnsSubdomain(
+            KubernetesValueGuard.OptionalDnsSubdomain(
                 runtimeClassName,
                 nameof(runtimeClassName)));
     }
@@ -287,8 +287,8 @@ public sealed record ComputeProfileNodeSelector(
         string key,
         string value) =>
         new(
-            ComputeProfileValueGuard.LabelKey(key, nameof(key)),
-            ComputeProfileValueGuard.LabelValue(value, nameof(value)));
+            KubernetesValueGuard.LabelKey(key, nameof(key)),
+            KubernetesValueGuard.LabelValue(value, nameof(value)));
 }
 
 public sealed record ComputeProfileNodeAffinityExpression(
@@ -305,7 +305,7 @@ public sealed record ComputeProfileNodeAffinityExpression(
             throw new ArgumentOutOfRangeException(nameof(@operator));
 
         var normalizedValues = (values ?? [])
-            .Select(value => ComputeProfileValueGuard.LabelValue(
+            .Select(value => KubernetesValueGuard.LabelValue(
                 value,
                 nameof(values)))
             .Distinct(StringComparer.Ordinal)
@@ -346,7 +346,7 @@ public sealed record ComputeProfileNodeAffinityExpression(
         }
 
         return new ComputeProfileNodeAffinityExpression(
-            ComputeProfileValueGuard.LabelKey(key, nameof(key)),
+            KubernetesValueGuard.LabelKey(key, nameof(key)),
             @operator,
             normalizedValues);
     }
@@ -427,10 +427,10 @@ public sealed record ComputeProfileToleration(
 
         var normalizedKey = string.IsNullOrWhiteSpace(key)
             ? null
-            : ComputeProfileValueGuard.LabelKey(key, nameof(key));
+            : KubernetesValueGuard.LabelKey(key, nameof(key));
         var normalizedValue = value is null
             ? null
-            : ComputeProfileValueGuard.LabelValue(value, nameof(value));
+            : KubernetesValueGuard.LabelValue(value, nameof(value));
         if (@operator == ComputeTolerationOperator.Equal &&
             (normalizedKey is null || normalizedValue is null))
         {
@@ -619,12 +619,10 @@ internal sealed record ComputeProfileValues(
     bool IsEnabled,
     bool IsDefault);
 
-internal static partial class ComputeProfileValueGuard
+internal static class ComputeProfileValueGuard
 {
     public const int MaximumDisplayNameLength = 80;
     public const int MaximumDescriptionLength = 500;
-    private const int MaximumLabelNameLength = 63;
-    private const int MaximumDnsSubdomainLength = 253;
 
     public static long Positive(long value, string parameterName) =>
         value > 0
@@ -665,72 +663,4 @@ internal static partial class ComputeProfileValueGuard
         return normalized;
     }
 
-    public static string ExtendedResourceName(string? value, string parameterName)
-    {
-        var normalized = Required(value, parameterName, MaximumDnsSubdomainLength + MaximumLabelNameLength + 1);
-        var separator = normalized.IndexOf('/');
-        if (separator <= 0 ||
-            separator != normalized.LastIndexOf('/') ||
-            !IsDnsSubdomain(normalized[..separator]) ||
-            !IsLabelName(normalized[(separator + 1)..]) ||
-            string.Equals(normalized[..separator], "kubernetes.io", StringComparison.Ordinal) ||
-            normalized[..separator].EndsWith(".kubernetes.io", StringComparison.Ordinal))
-        {
-            throw new ArgumentException(
-                "The value must be a non-Kubernetes qualified resource name.",
-                parameterName);
-        }
-
-        return normalized;
-    }
-
-    public static string LabelKey(string? value, string parameterName)
-    {
-        var normalized = Required(
-            value,
-            parameterName,
-            MaximumDnsSubdomainLength + MaximumLabelNameLength + 1);
-        var separator = normalized.IndexOf('/');
-        var valid = separator < 0
-            ? IsLabelName(normalized)
-            : separator == normalized.LastIndexOf('/') &&
-              IsDnsSubdomain(normalized[..separator]) &&
-              IsLabelName(normalized[(separator + 1)..]);
-        return valid
-            ? normalized
-            : throw new ArgumentException("The value must be a Kubernetes label key.", parameterName);
-    }
-
-    public static string LabelValue(string? value, string parameterName)
-    {
-        var normalized = value?.Trim() ?? string.Empty;
-        return normalized.Length <= MaximumLabelNameLength &&
-               (normalized.Length == 0 || IsLabelName(normalized))
-            ? normalized
-            : throw new ArgumentException("The value must be a Kubernetes label value.", parameterName);
-    }
-
-    public static string? OptionalDnsSubdomain(string? value, string parameterName)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-        var normalized = value.Trim();
-        return IsDnsSubdomain(normalized)
-            ? normalized
-            : throw new ArgumentException("The value must be a Kubernetes DNS subdomain.", parameterName);
-    }
-
-    private static bool IsDnsSubdomain(string value) =>
-        value.Length is >= 1 and <= MaximumDnsSubdomainLength &&
-        value.Split('.').All(label => DnsLabelPattern().IsMatch(label));
-
-    private static bool IsLabelName(string value) =>
-        value.Length is >= 1 and <= MaximumLabelNameLength &&
-        LabelNamePattern().IsMatch(value);
-
-    [GeneratedRegex("^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$")]
-    private static partial Regex DnsLabelPattern();
-
-    [GeneratedRegex("^[A-Za-z0-9](?:[-_.A-Za-z0-9]*[A-Za-z0-9])?$")]
-    private static partial Regex LabelNamePattern();
 }

@@ -2,9 +2,9 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 
-namespace Pole.Features.ComputeProfiles.Application.Migrations;
+namespace Pole.Features.ResourceDeployments.Application.Migrations;
 
-public sealed class ComputeProfileResourceDeploymentIndexMigration : IMigration
+public sealed class ResourceDeploymentComputeProfileIndexMigration : IMigration
 {
     public ObjectId Id => new("6a700005b213917a38c38005");
 

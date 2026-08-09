@@ -41,6 +41,7 @@ requirement when adding or changing one feature.
 
 ## Architecture and engineering
 
+- [Architecture history](architecture-history.md)
 - [Engineering guidelines](engineering-guidelines.md)
 - [Multitenancy](multitenancy.md)
 - [Envelope encryption operations](envelope-encryption.md)
@@ -54,7 +55,7 @@ requirement when adding or changing one feature.
 - [Pole Functions](../src/features/Functions/README.md)
 - [Compute profiles](../src/features/ComputeProfiles/README.md)
 - [PostgreSQL clusters](../src/features/Postgres/README.md)
-- [Redis services and persistence capability experiment](../src/features/RedisServices/README.md)
+- [Redis services](../src/features/RedisServices/README.md)
 - [Web services](../src/features/WebServices/README.md)
 - [Search](search.md) (existing central document; it can move beside the feature independently)
 

@@ -116,6 +116,12 @@ public interface IDeploymentTargetReferenceAdmission
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
+    Task<Result> ApplyChangesAsync(
+        DeploymentTargetReferenceOwner owner,
+        IReadOnlyCollection<string> addedDeploymentTargetIds,
+        IReadOnlyCollection<string> removedDeploymentTargetIds,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IDeploymentTargetWorkloadConfigurationFence

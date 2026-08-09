@@ -44,7 +44,7 @@ Resource-deployment lookups reuse the pure `ResourceDeploymentFilters` hierarchy
 ResourceDeployments feature. Its tenant-visible, logical-resource, resource-set, and revision
 filters keep the `TenantId + ResourceType + ResourceId` fence consistent across adopters.
 
-`MongoDbContext` no longer implements a WebServices context or exposes the feature collections.
+`MongoDbContext` does not implement a WebServices context or expose the feature collections.
 Raw WebService Mongo access is limited to the feature persistence directory, historical migrations,
 and explicit integration-test helpers.
 
@@ -55,8 +55,8 @@ and explicit integration-test helpers.
 and lifecycle discriminators without referencing current domain or persistence types. It creates
 the validated collection when absent and otherwise applies the same validator with `collMod`.
 
-Development has no legacy WebService data, so validation is immediately `strict` with action
-`error`. The schema requires the complete currently serialized aggregate, including tenant scope,
+Validation uses level `strict` and action `error`. The schema requires the complete currently
+serialized aggregate, including tenant scope,
 specification, DNS identity, active revision, tags, events, persistence revision, and lifecycle.
 Active and deleting lifecycle objects are closed because their discriminator-specific shape is a
 state invariant; ordinary nested objects remain open so additive fields can roll out safely.

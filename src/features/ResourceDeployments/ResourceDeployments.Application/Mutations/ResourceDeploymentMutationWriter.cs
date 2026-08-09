@@ -33,7 +33,7 @@ public interface IResourceDeploymentMutationWriter
 
 public sealed class ResourceDeploymentMutationWriter(
     IResourceDeploymentDbContext dbContext,
-    IResourceDeploymentComputeProfileFence computeProfileFence,
+    IComputeProfileResolutionFence computeProfileFence,
     TimeProvider timeProvider)
     : IResourceDeploymentMutationWriter
 {

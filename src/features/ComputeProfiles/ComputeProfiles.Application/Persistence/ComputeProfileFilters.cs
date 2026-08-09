@@ -1,5 +1,8 @@
 using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence;
 
@@ -35,4 +38,38 @@ internal static class ComputeProfileFilters
             Builders<ComputeProfile>.Filter.ElemMatch(
                 profile => profile.TargetMappings,
                 mapping => mapping.DeploymentTargetId == deploymentTargetId));
+
+    public static FilterDefinition<ComputeProfile> AllowsTenant(string tenantId) =>
+        Builders<ComputeProfile>.Filter.Or(
+            Builders<ComputeProfile>.Filter
+                .OfType<ComputeProfileTenantAccess, AllTenantsComputeProfileAccess>(
+                    profile => profile.TenantAccess),
+            Builders<ComputeProfile>.Filter.And(
+                Builders<ComputeProfile>.Filter
+                    .OfType<ComputeProfileTenantAccess, SelectedTenantsComputeProfileAccess>(
+                        profile => profile.TenantAccess),
+                Builders<ComputeProfile>.Filter.AnyEq(
+                    profile =>
+                        ((SelectedTenantsComputeProfileAccess)profile.TenantAccess).TenantIds,
+                    tenantId)));
+
+    public static FilterDefinition<ComputeProfile> AvailableForResolutionFence(
+        ResolvedComputeProfile resolved,
+        string tenantId,
+        ResourceTypeId resourceType) =>
+        Builders<ComputeProfile>.Filter.And(
+            AtRevision(
+                resolved.ComputeProfileId,
+                resolved.ComputeProfileRevision),
+            Builders<ComputeProfile>.Filter.Eq(profile => profile.IsEnabled, true),
+            Builders<ComputeProfile>.Filter.AnyEq(
+                profile => profile.AllowedResourceTypes,
+                resourceType.Value),
+            Builders<ComputeProfile>.Filter.ElemMatch(
+                profile => profile.TargetMappings,
+                mapping => mapping.DeploymentTargetId == resolved.DeploymentTargetId),
+            AllowsTenant(tenantId),
+            Builders<ComputeProfile>.Filter.Lt(
+                profile => profile.ResolutionFence,
+                long.MaxValue));
 }

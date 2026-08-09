@@ -22,10 +22,11 @@ internal sealed class MongoPersistCreatedComputeProfile(
         ArgumentNullException.ThrowIfNull(profile);
         return runMongoTransaction(async (session, ct) =>
         {
-            var references = await ComputeProfileTargetReferences.RegisterAsync(
+            var references = await ComputeProfileTargetReferences.ApplyChangesAsync(
                 referenceAdmission,
                 profile,
                 profile.TargetMappings.Select(mapping => mapping.DeploymentTargetId),
+                [],
                 session,
                 ct);
             if (references is not ISuccess)

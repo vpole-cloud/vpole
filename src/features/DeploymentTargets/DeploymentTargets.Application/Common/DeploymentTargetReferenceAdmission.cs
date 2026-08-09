@@ -12,86 +12,136 @@ public sealed class DeploymentTargetReferenceAdmission(
     : IDeploymentTargetReferenceAdmission,
       IDeploymentTargetWorkloadConfigurationFence
 {
-    public async Task<Result> RegisterAsync(
+    public Task<Result> RegisterAsync(
         string deploymentTargetId,
         DeploymentTargetReferenceOwner owner,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default) =>
+        ApplyChangesAsync(
+            owner,
+            [deploymentTargetId],
+            [],
+            session,
+            cancellationToken);
+
+    public Task<Result> UnregisterAsync(
+        string deploymentTargetId,
+        DeploymentTargetReferenceOwner owner,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default) =>
+        ApplyChangesAsync(
+            owner,
+            [],
+            [deploymentTargetId],
+            session,
+            cancellationToken);
+
+    public async Task<Result> ApplyChangesAsync(
+        DeploymentTargetReferenceOwner owner,
+        IReadOnlyCollection<string> addedDeploymentTargetIds,
+        IReadOnlyCollection<string> removedDeploymentTargetIds,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
-        var referenceResult = CreateReference(deploymentTargetId, owner);
-        if (!referenceResult.TryGetValue(out var reference, out var validationFailure))
-            return validationFailure;
-
-        var fence = await AdvanceFenceAsync(
-            deploymentTargetId,
-            session,
-            requireAdmission: true,
-            cancellationToken);
-        if (fence is not ISuccess)
-            return (Failure)fence;
-
-        var referenceFilter = Builders<DeploymentTargetReference>.Filter.And(
-            Builders<DeploymentTargetReference>.Filter.Eq(
-                item => item.DeploymentTargetId,
-                reference.DeploymentTargetId),
-            Builders<DeploymentTargetReference>.Filter.Eq(item => item.OwnerType, reference.OwnerType),
-            Builders<DeploymentTargetReference>.Filter.Eq(item => item.OwnerId, reference.OwnerId));
-        await dbContext.DeploymentTargetReferences.UpdateOneAsync(
-            session,
-            referenceFilter,
-            Builders<DeploymentTargetReference>.Update
-                .SetOnInsert(item => item.Id, reference.Id)
-                .SetOnInsert(item => item.DeploymentTargetId, reference.DeploymentTargetId)
-                .SetOnInsert(item => item.OwnerType, reference.OwnerType)
-                .SetOnInsert(item => item.OwnerId, reference.OwnerId)
-                .SetOnInsert(item => item.CreatedAtUtc, reference.CreatedAtUtc),
-            new UpdateOptions { IsUpsert = true },
-            cancellationToken);
-        return Result.Success();
-    }
-
-    public async Task<Result> UnregisterAsync(
-        string deploymentTargetId,
-        DeploymentTargetReferenceOwner owner,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
-    {
-        EnsureTransaction(session);
+        ArgumentNullException.ThrowIfNull(addedDeploymentTargetIds);
+        ArgumentNullException.ThrowIfNull(removedDeploymentTargetIds);
         var ownerValidation = ValidateOwner(owner);
         if (ownerValidation is not null)
             return ownerValidation;
-        if (!ObjectId.TryParse(deploymentTargetId, out _))
+
+        var addedTargetIds = addedDeploymentTargetIds
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var removedTargetIds = removedDeploymentTargetIds
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (addedTargetIds.Any(id => !ObjectId.TryParse(id, out _)) ||
+            removedTargetIds.Any(id => !ObjectId.TryParse(id, out _)))
+        {
             return InvalidTargetId();
+        }
+        if (addedTargetIds.Intersect(removedTargetIds, StringComparer.Ordinal).Any())
+        {
+            return Failures.ValidationFailure(new Dictionary<string, string[]>
+            {
+                ["DeploymentTargetIds"] =
+                    ["A deployment target cannot be added and removed in the same change."]
+            });
+        }
+
+        var addedFence = await AdvanceFencesAsync(
+            addedTargetIds,
+            session,
+            requireAdmission: true,
+            cancellationToken);
+        if (addedFence is not ISuccess)
+            return (Failure)addedFence;
+
+        if (addedTargetIds.Length > 0)
+        {
+            var writes = new List<WriteModel<DeploymentTargetReference>>(
+                addedTargetIds.Length);
+            foreach (var deploymentTargetId in addedTargetIds)
+            {
+                var referenceResult = CreateReference(deploymentTargetId, owner);
+                if (!referenceResult.TryGetValue(out var reference, out var validationFailure))
+                    return validationFailure;
+
+                writes.Add(new UpdateOneModel<DeploymentTargetReference>(
+                    ReferenceFilter(reference.DeploymentTargetId, owner),
+                    Builders<DeploymentTargetReference>.Update
+                        .SetOnInsert(item => item.Id, reference.Id)
+                        .SetOnInsert(item => item.DeploymentTargetId, reference.DeploymentTargetId)
+                        .SetOnInsert(item => item.OwnerType, reference.OwnerType)
+                        .SetOnInsert(item => item.OwnerId, reference.OwnerId)
+                        .SetOnInsert(item => item.CreatedAtUtc, reference.CreatedAtUtc))
+                {
+                    IsUpsert = true
+                });
+            }
+
+            await dbContext.DeploymentTargetReferences.BulkWriteAsync(
+                session,
+                writes,
+                cancellationToken: cancellationToken);
+        }
 
         var normalizedOwnerType = owner.Type.Trim();
         var normalizedOwnerId = owner.Id.Trim();
-        var referenceFilter = Builders<DeploymentTargetReference>.Filter.And(
-            Builders<DeploymentTargetReference>.Filter.Eq(
+        var removalFilter = Builders<DeploymentTargetReference>.Filter.And(
+            Builders<DeploymentTargetReference>.Filter.In(
                 item => item.DeploymentTargetId,
-                deploymentTargetId),
-            Builders<DeploymentTargetReference>.Filter.Eq(item => item.OwnerType, normalizedOwnerType),
+                removedTargetIds),
+            Builders<DeploymentTargetReference>.Filter.Eq(
+                item => item.OwnerType,
+                normalizedOwnerType),
             Builders<DeploymentTargetReference>.Filter.Eq(item => item.OwnerId, normalizedOwnerId));
-        var referenceExists = await dbContext.DeploymentTargetReferences
-            .Find(session, referenceFilter)
-            .Project(item => item.Id)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (referenceExists is null)
+        var referencedTargetIds = removedTargetIds.Length == 0
+            ? []
+            : await dbContext.DeploymentTargetReferences
+                .Find(session, removalFilter)
+                .Project(item => item.DeploymentTargetId)
+                .ToListAsync(cancellationToken);
+        if (referencedTargetIds.Count == 0)
             return Result.Success();
 
-        var fence = await AdvanceFenceAsync(
-            deploymentTargetId,
+        var removedFence = await AdvanceFencesAsync(
+            referencedTargetIds,
             session,
             requireAdmission: false,
             cancellationToken);
-        if (fence is not ISuccess)
-            return (Failure)fence;
+        if (removedFence is not ISuccess)
+            return (Failure)removedFence;
 
-        await dbContext.DeploymentTargetReferences.DeleteOneAsync(
+        var deleted = await dbContext.DeploymentTargetReferences.DeleteManyAsync(
             session,
-            referenceFilter,
+            removalFilter,
             cancellationToken: cancellationToken);
-        return Result.Success();
+        return deleted.DeletedCount == referencedTargetIds.Count
+            ? Result.Success()
+            : Failures.Conflict(
+                "Deployment-target references changed while removal was being accepted.");
     }
 
     public async Task<Result> FenceAsync(
@@ -163,15 +213,22 @@ public sealed class DeploymentTargetReferenceAdmission(
                 timeProvider.GetUtcNow().UtcDateTime));
     }
 
-    private async Task<Result> AdvanceFenceAsync(
-        string deploymentTargetId,
+    private async Task<Result> AdvanceFencesAsync(
+        IReadOnlyCollection<string> deploymentTargetIds,
         IClientSessionHandle session,
         bool requireAdmission,
         CancellationToken cancellationToken)
     {
+        if (deploymentTargetIds.Count == 0)
+            return Result.Success();
+
         var filter = Builders<DeploymentTarget>.Filter.And(
-            Builders<DeploymentTarget>.Filter.Eq(target => target.Id, deploymentTargetId),
-            Builders<DeploymentTarget>.Filter.Lt(target => target.ReferenceFence, long.MaxValue));
+            Builders<DeploymentTarget>.Filter.In(
+                target => target.Id,
+                deploymentTargetIds),
+            Builders<DeploymentTarget>.Filter.Lt(
+                target => target.ReferenceFence,
+                long.MaxValue));
         if (requireAdmission)
         {
             filter &= Builders<DeploymentTarget>.Filter.And(
@@ -182,18 +239,32 @@ public sealed class DeploymentTargetReferenceAdmission(
                     null));
         }
 
-        var update = await dbContext.DeploymentTargets.UpdateOneAsync(
+        var update = await dbContext.DeploymentTargets.UpdateManyAsync(
             session,
             filter,
             Builders<DeploymentTarget>.Update.Inc(target => target.ReferenceFence, 1),
             cancellationToken: cancellationToken);
-        if (update.ModifiedCount == 1)
+        if (update.ModifiedCount == deploymentTargetIds.Count)
             return Result.Success();
 
         return requireAdmission
-            ? Failures.Conflict("The deployment target no longer accepts durable references.")
-            : Failures.Conflict("The deployment target is unavailable for reference removal.");
+            ? Failures.Conflict("A deployment target no longer accepts durable references.")
+            : Failures.Conflict("A deployment target is unavailable for reference removal.");
     }
+
+    private static FilterDefinition<DeploymentTargetReference> ReferenceFilter(
+        string deploymentTargetId,
+        DeploymentTargetReferenceOwner owner) =>
+        Builders<DeploymentTargetReference>.Filter.And(
+            Builders<DeploymentTargetReference>.Filter.Eq(
+                item => item.DeploymentTargetId,
+                deploymentTargetId),
+            Builders<DeploymentTargetReference>.Filter.Eq(
+                item => item.OwnerType,
+                owner.Type.Trim()),
+            Builders<DeploymentTargetReference>.Filter.Eq(
+                item => item.OwnerId,
+                owner.Id.Trim()));
 
     private static ValidationFailure? ValidateOwner(DeploymentTargetReferenceOwner? owner)
     {

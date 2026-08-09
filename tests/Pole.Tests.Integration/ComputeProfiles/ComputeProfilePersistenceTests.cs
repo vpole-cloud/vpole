@@ -4,6 +4,7 @@ using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Application.Migrations;
 using Pole.Features.DeploymentTargets.Domain;
+using Pole.Features.ResourceDeployments.Application.Migrations;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
@@ -163,7 +164,7 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
                 {
                     ["Compute"] = new MongoDB.Bson.BsonDocument
                     {
-                        ["ComputeProfileId"] = profile.Id
+                        ["ComputeProfileId"] = MongoDB.Bson.ObjectId.Parse(profile.Id)
                     }
                 }
             });
@@ -183,7 +184,7 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
         await new DeploymentTargetReferenceMigration().Up(fixture.Database);
         await new ComputeProfileSchemaValidationMigration().Up(fixture.Database);
         await new ComputeProfileIndexesMigration().Up(fixture.Database);
-        await new ComputeProfileResourceDeploymentIndexMigration().Up(fixture.Database);
+        await new ResourceDeploymentComputeProfileIndexMigration().Up(fixture.Database);
     }
 
     private static ComputeProfile Reconfigure(
