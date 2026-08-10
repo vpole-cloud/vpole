@@ -61,9 +61,11 @@ public sealed class RedisResourceDeploymentAdapter(
 
         return ResourceDeploymentAdapterResult.Succeeded.Create(
         [
-            ResourceDeploymentEndpointDto.Redis(
+            ResourceDeploymentEndpointDto.Create(
+                "Redis",
                 inKubernetes.ClusterLocalHost,
-                port: 6379)
+                port: 6379,
+                scheme: "redis")
         ]);
     }
 

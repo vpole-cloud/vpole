@@ -270,7 +270,7 @@ public sealed class WebServiceManifestTests
                 DisplayName: "Web workloads",
                 new ResourceDeploymentComputeResourceValues(1000, 256),
                 new ResourceDeploymentComputeResourceValues(2000, 512),
-                ResourceDeploymentComputeArchitecture.Any,
+                ComputeArchitecture.Any,
                 ExtendedResources:
                 [
                     new ResourceDeploymentExtendedResource("nvidia.com/gpu", 1)

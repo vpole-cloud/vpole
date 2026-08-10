@@ -253,7 +253,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
         new(
             new KubernetesComputeResourceValues(250, 256),
             new KubernetesComputeResourceValues(1000, 1024),
-            KubernetesComputeArchitecture.Any,
+            ComputeArchitecture.Any,
             [],
             [],
             [],

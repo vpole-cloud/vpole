@@ -525,13 +525,26 @@ public sealed record ResolvedStorageConfiguration(
                 ResourceDeploymentValueGuard.MaximumKubernetesNameLength));
 }
 
-[BsonDiscriminator(RootClass = true)]
-[BsonKnownTypes(
-    typeof(IngressResourceDeploymentEndpoint),
-    typeof(RedisResourceDeploymentEndpoint),
-    typeof(PostgreSqlResourceDeploymentEndpoint))]
-public abstract record ResourceDeploymentEndpoint(string Host, int Port, string Scheme)
+public sealed record ResourceDeploymentEndpoint(
+    string Kind,
+    string Host,
+    int Port,
+    string Scheme)
 {
+    public static ResourceDeploymentEndpoint Create(
+        string kind,
+        string host,
+        int port,
+        string scheme) =>
+        new(
+            ResourceDeploymentValueGuard.Required(
+                kind,
+                nameof(kind),
+                ResourceDeploymentValueGuard.MaximumEndpointKindLength),
+            NormalizeHost(host),
+            NormalizePort(port),
+            ResourceDeploymentValueGuard.Scheme(scheme, nameof(scheme)));
+
     internal static ImmutableList<ResourceDeploymentEndpoint> Normalize(
         IEnumerable<ResourceDeploymentEndpoint> endpoints)
     {
@@ -541,55 +554,22 @@ public abstract record ResourceDeploymentEndpoint(string Host, int Port, string 
                 "Deployment endpoints cannot contain null values.",
                 nameof(endpoints)))
             .Distinct()
-            .OrderBy(endpoint => endpoint.GetType().Name, StringComparer.Ordinal)
+            .OrderBy(endpoint => endpoint.Kind, StringComparer.Ordinal)
             .ThenBy(endpoint => endpoint.Host, StringComparer.Ordinal)
             .ThenBy(endpoint => endpoint.Port)
             .ToImmutableList();
     }
 
-    protected static string NormalizeHost(string host) =>
+    private static string NormalizeHost(string host) =>
         ResourceDeploymentValueGuard.Required(
             host,
             nameof(host),
             ResourceDeploymentValueGuard.MaximumEndpointHostLength);
 
-    protected static int NormalizePort(int port) =>
+    private static int NormalizePort(int port) =>
         port is >= 1 and <= 65535
             ? port
             : throw new ArgumentOutOfRangeException(nameof(port), "Endpoint port is invalid.");
-}
-
-[BsonDiscriminator("ingress")]
-public sealed record IngressResourceDeploymentEndpoint(
-    string Host,
-    int Port,
-    string Scheme)
-    : ResourceDeploymentEndpoint(Host, Port, Scheme)
-{
-    public static IngressResourceDeploymentEndpoint Create(
-        string host,
-        int port,
-        string scheme) =>
-        new(
-            NormalizeHost(host),
-            NormalizePort(port),
-            ResourceDeploymentValueGuard.Scheme(scheme, nameof(scheme)));
-}
-
-[BsonDiscriminator("redis")]
-public sealed record RedisResourceDeploymentEndpoint(string Host, int Port)
-    : ResourceDeploymentEndpoint(Host, Port, "redis")
-{
-    public static RedisResourceDeploymentEndpoint Create(string host, int port) =>
-        new(NormalizeHost(host), NormalizePort(port));
-}
-
-[BsonDiscriminator("postgresql")]
-public sealed record PostgreSqlResourceDeploymentEndpoint(string Host, int Port)
-    : ResourceDeploymentEndpoint(Host, Port, "postgresql")
-{
-    public static PostgreSqlResourceDeploymentEndpoint Create(string host, int port) =>
-        new(NormalizeHost(host), NormalizePort(port));
 }
 
 public static class ResourceDeploymentFactory
@@ -676,6 +656,7 @@ internal static class ResourceDeploymentValueGuard
     public const int MaximumFailureCodeLength = 128;
     public const int MaximumFailureMessageLength = 512;
     public const int MaximumKubernetesNameLength = 253;
+    public const int MaximumEndpointKindLength = 64;
     public const int MaximumEndpointHostLength = 253;
     public const int MaximumDisplayNameLength = 80;
 

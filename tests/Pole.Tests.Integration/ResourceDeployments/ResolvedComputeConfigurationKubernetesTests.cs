@@ -13,13 +13,13 @@ public sealed class ResolvedComputeConfigurationKubernetesTests
         [
             new KubernetesNodeAffinityExpression(
                 "topology.kubernetes.io/zone",
-                KubernetesNodeAffinityOperator.In,
+                ComputeNodeAffinityOperator.In,
                 ["ua-1", "ua-2"])
         ]);
         var compute = new KubernetesComputeConfiguration(
             new KubernetesComputeResourceValues(750, 768),
             new KubernetesComputeResourceValues(2000, 2048),
-            KubernetesComputeArchitecture.Arm64,
+            ComputeArchitecture.Arm64,
             [new KubernetesExtendedResource("nvidia.com/gpu", 1)],
             [new KubernetesNodeSelector("kubernetes.io/os", "linux")],
             [requiredTerm],
@@ -27,9 +27,9 @@ public sealed class ResolvedComputeConfigurationKubernetesTests
             [
                 new KubernetesToleration(
                     "dedicated",
-                    KubernetesTolerationOperator.Equal,
+                    ComputeTolerationOperator.Equal,
                     "gpu",
-                    KubernetesTaintEffect.NoSchedule,
+                    ComputeTaintEffect.NoSchedule,
                     TolerationSeconds: null)
             ],
             RuntimeClassName: "kata");
@@ -72,7 +72,7 @@ public sealed class ResolvedComputeConfigurationKubernetesTests
         var compute = new KubernetesComputeConfiguration(
             new KubernetesComputeResourceValues(250, 256),
             new KubernetesComputeResourceValues(1000, 1024),
-            KubernetesComputeArchitecture.Any,
+            ComputeArchitecture.Any,
             [],
             [],
             [],

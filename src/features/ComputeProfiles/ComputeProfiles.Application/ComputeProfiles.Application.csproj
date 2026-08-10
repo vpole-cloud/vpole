@@ -11,7 +11,6 @@
     <ItemGroup>
       <ProjectReference Include="..\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj" />
       <ProjectReference Include="..\ComputeProfiles.Domain\ComputeProfiles.Domain.csproj" />
-      <ProjectReference Include="..\ComputeProfiles.Primitives\ComputeProfiles.Primitives.csproj" />
       <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
       <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />

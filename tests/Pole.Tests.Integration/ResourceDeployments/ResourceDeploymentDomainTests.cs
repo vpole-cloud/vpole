@@ -61,7 +61,7 @@ public sealed class ResourceDeploymentDomainTests
             expectedGeneration: 1,
             ResourceDeploymentOperation.Apply,
             ClaimId,
-            [IngressResourceDeploymentEndpoint.Create("app.example.test", 443, "https")],
+            [ResourceDeploymentEndpoint.Create("Public", "app.example.test", 443, "https")],
             CreatedAtUtc.AddMinutes(3));
 
         var pending = Assert.IsType<PendingResourceDeploymentState>(completed.State);
@@ -120,7 +120,7 @@ public sealed class ResourceDeploymentDomainTests
     }
 
     [Fact]
-    public void AppliedDeployment_RoundTripsPolymorphicStateAndEndpoints()
+    public void AppliedDeployment_RoundTripsStateAndGenericEndpoints()
     {
         var claimed = CreateDeployment(runtimeCellReady: true).Start(
             expectedGeneration: 1,
@@ -132,16 +132,23 @@ public sealed class ResourceDeploymentDomainTests
             expectedGeneration: 1,
             ResourceDeploymentOperation.Apply,
             ClaimId,
-            [IngressResourceDeploymentEndpoint.Create("app.example.test", 443, "https")],
+            [ResourceDeploymentEndpoint.Create("Public", "app.example.test", 443, "https")],
             CreatedAtUtc.AddMinutes(2));
 
         var roundTripped = BsonSerializer.Deserialize<ResourceDeployment>(
             applied.ToBson());
 
         Assert.IsType<AppliedResourceDeploymentState>(roundTripped.State);
-        var endpoint = Assert.IsType<IngressResourceDeploymentEndpoint>(
-            Assert.Single(roundTripped.Endpoints));
+        var endpoint = Assert.Single(roundTripped.Endpoints);
+        Assert.Equal("Public", endpoint.Kind);
         Assert.Equal("app.example.test", endpoint.Host);
+
+        var endpointDocument = applied.ToBsonDocument()["Endpoints"]
+            .AsBsonArray[0]
+            .AsBsonDocument;
+        Assert.False(endpointDocument.Contains("_t"));
+        Assert.Equal("Public", endpointDocument["Kind"].AsString);
+        Assert.Equal("https", endpointDocument["Scheme"].AsString);
         Assert.Equal(TargetId, roundTripped.ResolvedPlacement.DeploymentTargetId);
         Assert.Equal(
             ResourceDeploymentTestData.ComputeProfileId,

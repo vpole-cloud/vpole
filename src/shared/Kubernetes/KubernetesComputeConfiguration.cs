@@ -1,37 +1,7 @@
 using k8s.Models;
+using Pole.Workloads;
 
 namespace Pole.Features.Core.Kubernetes;
-
-public enum KubernetesComputeArchitecture
-{
-    Any,
-    Amd64,
-    Arm64
-}
-
-public enum KubernetesNodeAffinityOperator
-{
-    In,
-    NotIn,
-    Exists,
-    DoesNotExist,
-    GreaterThan,
-    LessThan
-}
-
-public enum KubernetesTolerationOperator
-{
-    Equal,
-    Exists
-}
-
-public enum KubernetesTaintEffect
-{
-    Any,
-    NoSchedule,
-    PreferNoSchedule,
-    NoExecute
-}
 
 public sealed record KubernetesComputeResourceValues(
     long CpuMillis,
@@ -47,7 +17,7 @@ public sealed record KubernetesNodeSelector(
 
 public sealed record KubernetesNodeAffinityExpression(
     string Key,
-    KubernetesNodeAffinityOperator Operator,
+    ComputeNodeAffinityOperator Operator,
     IReadOnlyList<string> Values);
 
 public sealed record KubernetesNodeAffinityTerm(
@@ -59,9 +29,9 @@ public sealed record KubernetesPreferredNodeAffinityTerm(
 
 public sealed record KubernetesToleration(
     string? Key,
-    KubernetesTolerationOperator Operator,
+    ComputeTolerationOperator Operator,
     string? Value,
-    KubernetesTaintEffect Effect,
+    ComputeTaintEffect Effect,
     long? TolerationSeconds);
 
 /// <summary>
@@ -71,7 +41,7 @@ public sealed record KubernetesToleration(
 public sealed record KubernetesComputeConfiguration(
     KubernetesComputeResourceValues Requests,
     KubernetesComputeResourceValues Limits,
-    KubernetesComputeArchitecture Architecture,
+    ComputeArchitecture Architecture,
     IReadOnlyList<KubernetesExtendedResource> ExtendedResources,
     IReadOnlyList<KubernetesNodeSelector> NodeSelector,
     IReadOnlyList<KubernetesNodeAffinityTerm> RequiredNodeAffinity,
@@ -116,9 +86,9 @@ public sealed record KubernetesComputeConfiguration(
             StringComparer.Ordinal);
         var architecture = Architecture switch
         {
-            KubernetesComputeArchitecture.Any => null,
-            KubernetesComputeArchitecture.Amd64 => "amd64",
-            KubernetesComputeArchitecture.Arm64 => "arm64",
+            ComputeArchitecture.Any => null,
+            ComputeArchitecture.Amd64 => "amd64",
+            ComputeArchitecture.Arm64 => "arm64",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(Architecture),
                 Architecture,
@@ -176,8 +146,8 @@ public sealed record KubernetesComputeConfiguration(
                 Key = toleration.Key,
                 OperatorProperty = toleration.Operator switch
                 {
-                    KubernetesTolerationOperator.Equal => "Equal",
-                    KubernetesTolerationOperator.Exists => "Exists",
+                    ComputeTolerationOperator.Equal => "Equal",
+                    ComputeTolerationOperator.Exists => "Exists",
                     _ => throw new ArgumentOutOfRangeException(
                         nameof(Tolerations),
                         toleration.Operator,
@@ -186,10 +156,10 @@ public sealed record KubernetesComputeConfiguration(
                 Value = toleration.Value,
                 Effect = toleration.Effect switch
                 {
-                    KubernetesTaintEffect.Any => null,
-                    KubernetesTaintEffect.NoSchedule => "NoSchedule",
-                    KubernetesTaintEffect.PreferNoSchedule => "PreferNoSchedule",
-                    KubernetesTaintEffect.NoExecute => "NoExecute",
+                    ComputeTaintEffect.Any => null,
+                    ComputeTaintEffect.NoSchedule => "NoSchedule",
+                    ComputeTaintEffect.PreferNoSchedule => "PreferNoSchedule",
+                    ComputeTaintEffect.NoExecute => "NoExecute",
                     _ => throw new ArgumentOutOfRangeException(
                         nameof(Tolerations),
                         toleration.Effect,
@@ -221,12 +191,12 @@ public sealed record KubernetesComputeConfiguration(
                     Key = expression.Key,
                     OperatorProperty = expression.Operator switch
                     {
-                        KubernetesNodeAffinityOperator.In => "In",
-                        KubernetesNodeAffinityOperator.NotIn => "NotIn",
-                        KubernetesNodeAffinityOperator.Exists => "Exists",
-                        KubernetesNodeAffinityOperator.DoesNotExist => "DoesNotExist",
-                        KubernetesNodeAffinityOperator.GreaterThan => "Gt",
-                        KubernetesNodeAffinityOperator.LessThan => "Lt",
+                        ComputeNodeAffinityOperator.In => "In",
+                        ComputeNodeAffinityOperator.NotIn => "NotIn",
+                        ComputeNodeAffinityOperator.Exists => "Exists",
+                        ComputeNodeAffinityOperator.DoesNotExist => "DoesNotExist",
+                        ComputeNodeAffinityOperator.GreaterThan => "Gt",
+                        ComputeNodeAffinityOperator.LessThan => "Lt",
                         _ => throw new ArgumentOutOfRangeException(
                             nameof(term),
                             expression.Operator,

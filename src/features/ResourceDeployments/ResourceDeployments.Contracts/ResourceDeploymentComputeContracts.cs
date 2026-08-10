@@ -1,37 +1,7 @@
 using System.Collections.Immutable;
+using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Contracts;
-
-public enum ResourceDeploymentComputeArchitecture
-{
-    Any,
-    Amd64,
-    Arm64
-}
-
-public enum ResourceDeploymentNodeAffinityOperator
-{
-    In,
-    NotIn,
-    Exists,
-    DoesNotExist,
-    GreaterThan,
-    LessThan
-}
-
-public enum ResourceDeploymentTolerationOperator
-{
-    Equal,
-    Exists
-}
-
-public enum ResourceDeploymentTaintEffect
-{
-    Any,
-    NoSchedule,
-    PreferNoSchedule,
-    NoExecute
-}
 
 public sealed record ResourceDeploymentComputeResourceValues(
     long CpuMillis,
@@ -47,7 +17,7 @@ public sealed record ResourceDeploymentNodeSelector(
 
 public sealed record ResourceDeploymentNodeAffinityExpression(
     string Key,
-    ResourceDeploymentNodeAffinityOperator Operator,
+    ComputeNodeAffinityOperator Operator,
     ImmutableList<string> Values);
 
 public sealed record ResourceDeploymentNodeAffinityTerm(
@@ -59,9 +29,9 @@ public sealed record ResourceDeploymentPreferredNodeAffinityTerm(
 
 public sealed record ResourceDeploymentToleration(
     string? Key,
-    ResourceDeploymentTolerationOperator Operator,
+    ComputeTolerationOperator Operator,
     string? Value,
-    ResourceDeploymentTaintEffect Effect,
+    ComputeTaintEffect Effect,
     long? TolerationSeconds);
 
 /// <summary>
@@ -75,7 +45,7 @@ public sealed record ResourceDeploymentComputeConfiguration(
     string DisplayName,
     ResourceDeploymentComputeResourceValues Requests,
     ResourceDeploymentComputeResourceValues Limits,
-    ResourceDeploymentComputeArchitecture Architecture,
+    ComputeArchitecture Architecture,
     ImmutableList<ResourceDeploymentExtendedResource> ExtendedResources,
     ImmutableList<ResourceDeploymentNodeSelector> NodeSelector,
     ImmutableList<ResourceDeploymentNodeAffinityTerm> RequiredNodeAffinity,

@@ -209,7 +209,7 @@ public sealed class PostgresManifestTests
         [
             new ResourceDeploymentNodeAffinityExpression(
                 "topology.kubernetes.io/zone",
-                ResourceDeploymentNodeAffinityOperator.In,
+                ComputeNodeAffinityOperator.In,
                 ["ua-1"])
         ]);
         var deploymentCompute = new ResourceDeploymentComputeConfiguration(
@@ -219,7 +219,7 @@ public sealed class PostgresManifestTests
             "PostgreSQL compute",
             new ResourceDeploymentComputeResourceValues(750, 768),
             new ResourceDeploymentComputeResourceValues(2000, 2048),
-            ResourceDeploymentComputeArchitecture.Arm64,
+            ComputeArchitecture.Arm64,
             [new ResourceDeploymentExtendedResource("nvidia.com/gpu", 1)],
             [new ResourceDeploymentNodeSelector("kubernetes.io/os", "linux")],
             [requiredTerm],
@@ -227,9 +227,9 @@ public sealed class PostgresManifestTests
             [
                 new ResourceDeploymentToleration(
                     "dedicated",
-                    ResourceDeploymentTolerationOperator.Equal,
+                    ComputeTolerationOperator.Equal,
                     "database",
-                    ResourceDeploymentTaintEffect.NoSchedule,
+                    ComputeTaintEffect.NoSchedule,
                     null)
             ],
             runtimeClassName);
@@ -245,7 +245,7 @@ public sealed class PostgresManifestTests
                 "Default",
                 new ResourceDeploymentComputeResourceValues(250, 256),
                 new ResourceDeploymentComputeResourceValues(1000, 1024),
-                ResourceDeploymentComputeArchitecture.Any,
+                ComputeArchitecture.Any,
                 [],
                 [],
                 [],

@@ -133,7 +133,11 @@ type PostgresResourceDeploymentAdapter(
 
                                 return
                                     ResourceDeploymentAdapterResult.Succeeded.Create(
-                                        [ ResourceDeploymentEndpointDto.PostgreSql(host, 5432) ])
+                                        [ ResourceDeploymentEndpointDto.Create(
+                                              "PostgreSql",
+                                              host,
+                                              5432,
+                                              "postgresql") ])
                                     :> ResourceDeploymentAdapterResult
             }
 

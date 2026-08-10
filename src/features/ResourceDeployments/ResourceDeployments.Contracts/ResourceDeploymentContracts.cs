@@ -15,21 +15,27 @@ public sealed record ResourceDeploymentEndpointDto(
     int Port,
     string Scheme)
 {
-    public static ResourceDeploymentEndpointDto Ingress(
+    public static ResourceDeploymentEndpointDto Create(
+        string kind,
         string host,
-        int port = 443,
-        string scheme = "https") =>
-        new("Ingress", host, port, scheme);
+        int port,
+        string scheme)
+    {
+        if (string.IsNullOrWhiteSpace(kind))
+            throw new ArgumentException("Endpoint kind is required.", nameof(kind));
+        if (string.IsNullOrWhiteSpace(host))
+            throw new ArgumentException("Endpoint host is required.", nameof(host));
+        if (port is < 1 or > 65535)
+            throw new ArgumentOutOfRangeException(nameof(port), "Endpoint port is invalid.");
+        if (string.IsNullOrWhiteSpace(scheme))
+            throw new ArgumentException("Endpoint scheme is required.", nameof(scheme));
 
-    public static ResourceDeploymentEndpointDto Redis(
-        string host,
-        int port = 6379) =>
-        new("Redis", host, port, "redis");
-
-    public static ResourceDeploymentEndpointDto PostgreSql(
-        string host,
-        int port = 5432) =>
-        new("PostgreSql", host, port, "postgresql");
+        return new ResourceDeploymentEndpointDto(
+            kind.Trim(),
+            host.Trim(),
+            port,
+            scheme.Trim().ToLowerInvariant());
+    }
 }
 
 public sealed record ComputeProfileReference(
