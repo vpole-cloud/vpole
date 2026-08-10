@@ -1,5 +1,6 @@
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Workloads;
 
 namespace Pole.Features.WebServices.Application.Kubernetes;
 
@@ -10,13 +11,7 @@ internal static class ResourceDeploymentComputeKubernetesExtensions
         new(
             new(compute.Requests.CpuMillis, compute.Requests.MemoryMi),
             new(compute.Limits.CpuMillis, compute.Limits.MemoryMi),
-            compute.Architecture switch
-            {
-                ResourceDeploymentComputeArchitecture.Any => KubernetesComputeArchitecture.Any,
-                ResourceDeploymentComputeArchitecture.Amd64 => KubernetesComputeArchitecture.Amd64,
-                ResourceDeploymentComputeArchitecture.Arm64 => KubernetesComputeArchitecture.Arm64,
-                _ => throw new ArgumentOutOfRangeException(nameof(compute))
-            },
+            compute.Architecture,
             compute.ExtendedResources
                 .Select(resource => new KubernetesExtendedResource(resource.Name, resource.Quantity))
                 .ToList(),
@@ -28,21 +23,9 @@ internal static class ResourceDeploymentComputeKubernetesExtensions
                 new KubernetesPreferredNodeAffinityTerm(term.Weight, ToKubernetes(term.Term))).ToList(),
             compute.Tolerations.Select(toleration => new KubernetesToleration(
                 toleration.Key,
-                toleration.Operator switch
-                {
-                    ResourceDeploymentTolerationOperator.Equal => KubernetesTolerationOperator.Equal,
-                    ResourceDeploymentTolerationOperator.Exists => KubernetesTolerationOperator.Exists,
-                    _ => throw new ArgumentOutOfRangeException(nameof(compute))
-                },
+                toleration.Operator,
                 toleration.Value,
-                toleration.Effect switch
-                {
-                    ResourceDeploymentTaintEffect.Any => KubernetesTaintEffect.Any,
-                    ResourceDeploymentTaintEffect.NoSchedule => KubernetesTaintEffect.NoSchedule,
-                    ResourceDeploymentTaintEffect.PreferNoSchedule => KubernetesTaintEffect.PreferNoSchedule,
-                    ResourceDeploymentTaintEffect.NoExecute => KubernetesTaintEffect.NoExecute,
-                    _ => throw new ArgumentOutOfRangeException(nameof(compute))
-                },
+                toleration.Effect,
                 toleration.TolerationSeconds)).ToList(),
             compute.RuntimeClassName);
 
@@ -50,15 +33,6 @@ internal static class ResourceDeploymentComputeKubernetesExtensions
         ResourceDeploymentNodeAffinityTerm term) =>
         new(term.Expressions.Select(expression => new KubernetesNodeAffinityExpression(
             expression.Key,
-            expression.Operator switch
-            {
-                ResourceDeploymentNodeAffinityOperator.In => KubernetesNodeAffinityOperator.In,
-                ResourceDeploymentNodeAffinityOperator.NotIn => KubernetesNodeAffinityOperator.NotIn,
-                ResourceDeploymentNodeAffinityOperator.Exists => KubernetesNodeAffinityOperator.Exists,
-                ResourceDeploymentNodeAffinityOperator.DoesNotExist => KubernetesNodeAffinityOperator.DoesNotExist,
-                ResourceDeploymentNodeAffinityOperator.GreaterThan => KubernetesNodeAffinityOperator.GreaterThan,
-                ResourceDeploymentNodeAffinityOperator.LessThan => KubernetesNodeAffinityOperator.LessThan,
-                _ => throw new ArgumentOutOfRangeException(nameof(term))
-            },
+            expression.Operator,
             expression.Values)).ToList());
 }

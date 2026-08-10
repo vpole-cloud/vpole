@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using Pole.Features.ComputeProfiles.Contracts;
-using Pole.Features.ComputeProfiles.Primitives;
 using Pole.Features.ResourceDeployments.Contracts;
 
 namespace Pole.Features.RedisServices.Application.Common;
@@ -11,7 +10,7 @@ public static class RedisResourceDeployment
         ResourceTypeId.Create("pole/redis");
 }
 
-internal static class RedisResourceDeploymentComputeMappings
+internal static class ComputeProfileResourceDeploymentMappings
 {
     public static ResourceDeploymentComputeConfiguration ToResourceDeploymentConfiguration(
         this ResolvedComputeProfile compute) =>
@@ -26,13 +25,7 @@ internal static class RedisResourceDeploymentComputeMappings
             new ResourceDeploymentComputeResourceValues(
                 compute.Limits.CpuMillis,
                 compute.Limits.MemoryMi),
-            compute.Architecture switch
-            {
-                ComputeArchitecture.Any => ResourceDeploymentComputeArchitecture.Any,
-                ComputeArchitecture.Amd64 => ResourceDeploymentComputeArchitecture.Amd64,
-                ComputeArchitecture.Arm64 => ResourceDeploymentComputeArchitecture.Arm64,
-                _ => throw new ArgumentOutOfRangeException(nameof(compute))
-            },
+            compute.Architecture,
             compute.ExtendedResources
                 .Select(resource => new ResourceDeploymentExtendedResource(
                     resource.Name,
@@ -52,21 +45,9 @@ internal static class RedisResourceDeploymentComputeMappings
             compute.Tolerations
                 .Select(toleration => new ResourceDeploymentToleration(
                     toleration.Key,
-                    toleration.Operator switch
-                    {
-                        ComputeTolerationOperator.Equal => ResourceDeploymentTolerationOperator.Equal,
-                        ComputeTolerationOperator.Exists => ResourceDeploymentTolerationOperator.Exists,
-                        _ => throw new ArgumentOutOfRangeException(nameof(compute))
-                    },
+                    toleration.Operator,
                     toleration.Value,
-                    toleration.Effect switch
-                    {
-                        ComputeTaintEffect.Any => ResourceDeploymentTaintEffect.Any,
-                        ComputeTaintEffect.NoSchedule => ResourceDeploymentTaintEffect.NoSchedule,
-                        ComputeTaintEffect.PreferNoSchedule => ResourceDeploymentTaintEffect.PreferNoSchedule,
-                        ComputeTaintEffect.NoExecute => ResourceDeploymentTaintEffect.NoExecute,
-                        _ => throw new ArgumentOutOfRangeException(nameof(compute))
-                    },
+                    toleration.Effect,
                     toleration.TolerationSeconds))
                 .ToImmutableList(),
             compute.RuntimeClassName);
@@ -76,16 +57,7 @@ internal static class RedisResourceDeploymentComputeMappings
         new(term.Expressions
             .Select(expression => new ResourceDeploymentNodeAffinityExpression(
                 expression.Key,
-                expression.Operator switch
-                {
-                    ComputeNodeAffinityOperator.In => ResourceDeploymentNodeAffinityOperator.In,
-                    ComputeNodeAffinityOperator.NotIn => ResourceDeploymentNodeAffinityOperator.NotIn,
-                    ComputeNodeAffinityOperator.Exists => ResourceDeploymentNodeAffinityOperator.Exists,
-                    ComputeNodeAffinityOperator.DoesNotExist => ResourceDeploymentNodeAffinityOperator.DoesNotExist,
-                    ComputeNodeAffinityOperator.GreaterThan => ResourceDeploymentNodeAffinityOperator.GreaterThan,
-                    ComputeNodeAffinityOperator.LessThan => ResourceDeploymentNodeAffinityOperator.LessThan,
-                    _ => throw new ArgumentOutOfRangeException(nameof(term))
-                },
+                expression.Operator,
                 expression.Values))
             .ToImmutableList());
 }

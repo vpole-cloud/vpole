@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using MongoDB.Driver;
-using Pole.Features.ComputeProfiles.Primitives;
 using Pole.ResultType;
 using Pole.Workloads;
 

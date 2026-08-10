@@ -1,7 +1,6 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
-using Pole.Features.ComputeProfiles.Primitives;
 using Pole.KubernetesValidation;
 using Pole.Workloads;
 

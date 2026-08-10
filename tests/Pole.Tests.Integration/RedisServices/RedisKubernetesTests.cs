@@ -129,7 +129,7 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
             DisplayName: "General purpose",
             new ResourceDeploymentComputeResourceValues(250, 128),
             new ResourceDeploymentComputeResourceValues(1000, 256),
-            ResourceDeploymentComputeArchitecture.Any,
+            ComputeArchitecture.Any,
             [],
             [],
             [],

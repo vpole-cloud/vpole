@@ -2,39 +2,9 @@ using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using Pole.KubernetesValidation;
+using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Domain;
-
-public enum ResolvedComputeArchitecture
-{
-    Any,
-    Amd64,
-    Arm64
-}
-
-public enum ResolvedComputeNodeAffinityOperator
-{
-    In,
-    NotIn,
-    Exists,
-    DoesNotExist,
-    GreaterThan,
-    LessThan
-}
-
-public enum ResolvedComputeTolerationOperator
-{
-    Equal,
-    Exists
-}
-
-public enum ResolvedComputeTaintEffect
-{
-    Any,
-    NoSchedule,
-    PreferNoSchedule,
-    NoExecute
-}
 
 public sealed record ResolvedComputeResourceValues(
     long CpuMillis,
@@ -80,12 +50,12 @@ public sealed record ResolvedComputeNodeSelector(
 
 public sealed record ResolvedComputeNodeAffinityExpression(
     string Key,
-    ResolvedComputeNodeAffinityOperator Operator,
+    ComputeNodeAffinityOperator Operator,
     ImmutableList<string> Values)
 {
     public static ResolvedComputeNodeAffinityExpression Create(
         string key,
-        ResolvedComputeNodeAffinityOperator @operator,
+        ComputeNodeAffinityOperator @operator,
         IEnumerable<string> values)
     {
         ArgumentNullException.ThrowIfNull(values);
@@ -101,12 +71,12 @@ public sealed record ResolvedComputeNodeAffinityExpression(
             .ToImmutableList();
         var expectedValueCount = @operator switch
         {
-            ResolvedComputeNodeAffinityOperator.In or
-            ResolvedComputeNodeAffinityOperator.NotIn => normalizedValues.Count > 0,
-            ResolvedComputeNodeAffinityOperator.Exists or
-            ResolvedComputeNodeAffinityOperator.DoesNotExist => normalizedValues.Count == 0,
-            ResolvedComputeNodeAffinityOperator.GreaterThan or
-            ResolvedComputeNodeAffinityOperator.LessThan =>
+            ComputeNodeAffinityOperator.In or
+            ComputeNodeAffinityOperator.NotIn => normalizedValues.Count > 0,
+            ComputeNodeAffinityOperator.Exists or
+            ComputeNodeAffinityOperator.DoesNotExist => normalizedValues.Count == 0,
+            ComputeNodeAffinityOperator.GreaterThan or
+            ComputeNodeAffinityOperator.LessThan =>
                 normalizedValues.Count == 1 &&
                 long.TryParse(normalizedValues[0], out _),
             _ => false
@@ -175,16 +145,16 @@ public sealed record ResolvedComputePreferredNodeAffinityTerm(
 
 public sealed record ResolvedComputeToleration(
     string? Key,
-    ResolvedComputeTolerationOperator Operator,
+    ComputeTolerationOperator Operator,
     string? Value,
-    ResolvedComputeTaintEffect Effect,
+    ComputeTaintEffect Effect,
     long? TolerationSeconds)
 {
     public static ResolvedComputeToleration Create(
         string? key,
-        ResolvedComputeTolerationOperator @operator,
+        ComputeTolerationOperator @operator,
         string? value,
-        ResolvedComputeTaintEffect effect,
+        ComputeTaintEffect effect,
         long? tolerationSeconds)
     {
         if (!Enum.IsDefined(@operator))
@@ -200,18 +170,18 @@ public sealed record ResolvedComputeToleration(
         var normalizedValue = value is null
             ? null
             : KubernetesValueGuard.LabelValue(value, nameof(value));
-        if (@operator == ResolvedComputeTolerationOperator.Equal &&
+        if (@operator == ComputeTolerationOperator.Equal &&
             (normalizedKey is null || normalizedValue is null))
         {
             throw new ArgumentException(
                 "Equal tolerations require both key and value.",
                 nameof(value));
         }
-        if (@operator == ResolvedComputeTolerationOperator.Exists && normalizedValue is not null)
+        if (@operator == ComputeTolerationOperator.Exists && normalizedValue is not null)
             throw new ArgumentException("Exists tolerations cannot specify a value.", nameof(value));
-        if (normalizedKey is null && @operator != ResolvedComputeTolerationOperator.Exists)
+        if (normalizedKey is null && @operator != ComputeTolerationOperator.Exists)
             throw new ArgumentException("An empty toleration key requires the Exists operator.", nameof(key));
-        if (tolerationSeconds is not null && effect != ResolvedComputeTaintEffect.NoExecute)
+        if (tolerationSeconds is not null && effect != ComputeTaintEffect.NoExecute)
         {
             throw new ArgumentException(
                 "Toleration seconds are supported only for NoExecute tolerations.",
@@ -234,7 +204,7 @@ public sealed record ResolvedComputeConfiguration(
     string DisplayName,
     ResolvedComputeResourceValues Requests,
     ResolvedComputeResourceValues Limits,
-    ResolvedComputeArchitecture Architecture,
+    ComputeArchitecture Architecture,
     ImmutableList<ResolvedComputeExtendedResource> ExtendedResources,
     ImmutableList<ResolvedComputeNodeSelector> NodeSelector,
     ImmutableList<ResolvedComputeNodeAffinityTerm> RequiredNodeAffinity,
@@ -248,7 +218,7 @@ public sealed record ResolvedComputeConfiguration(
         string displayName,
         ResolvedComputeResourceValues requests,
         ResolvedComputeResourceValues limits,
-        ResolvedComputeArchitecture architecture,
+        ComputeArchitecture architecture,
         IEnumerable<ResolvedComputeExtendedResource>? extendedResources = null,
         IEnumerable<ResolvedComputeNodeSelector>? nodeSelector = null,
         IEnumerable<ResolvedComputeNodeAffinityTerm>? requiredNodeAffinity = null,
@@ -372,14 +342,14 @@ public sealed record ResolvedComputeConfiguration(
         $"{toleration.Effect}:{toleration.TolerationSeconds}";
 
     private static void EnsureArchitectureMatchesNodeSelector(
-        ResolvedComputeArchitecture architecture,
+        ComputeArchitecture architecture,
         ImmutableList<ResolvedComputeNodeSelector> nodeSelector)
     {
         var expected = architecture switch
         {
-            ResolvedComputeArchitecture.Any => null,
-            ResolvedComputeArchitecture.Amd64 => "amd64",
-            ResolvedComputeArchitecture.Arm64 => "arm64",
+            ComputeArchitecture.Any => null,
+            ComputeArchitecture.Amd64 => "amd64",
+            ComputeArchitecture.Arm64 => "arm64",
             _ => throw new ArgumentOutOfRangeException(nameof(architecture))
         };
         var selected = nodeSelector.FirstOrDefault(selector =>

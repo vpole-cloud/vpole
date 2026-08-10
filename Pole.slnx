@@ -62,7 +62,6 @@
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Application/ComputeProfiles.Application.csproj" />
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Contracts/ComputeProfiles.Contracts.csproj" />
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Domain/ComputeProfiles.Domain.csproj" />
-    <Project Path="src/features/ComputeProfiles/ComputeProfiles.Primitives/ComputeProfiles.Primitives.csproj" />
   </Folder>
   <Folder Name="/features/SourceBuilds/">
     <Project Path="src/features/SourceBuilds/SourceBuilds.Application/SourceBuilds.Application.csproj" />
@@ -136,4 +135,3 @@
     <Project Path="tests/Pole.Tests.E2E/Pole.Tests.E2E.csproj" />
   </Folder>
 </Solution>
-

@@ -25,7 +25,7 @@ internal static class ResourceDeploymentTestData
             ResolvedComputeResourceValues.Create(
                 limitsCpuMillis,
                 limitsMemoryMi),
-            ResolvedComputeArchitecture.Any);
+            ComputeArchitecture.Any);
 
     public static ResolvedComputeProfile ResolvedComputeProfile(
         string deploymentTargetId,
@@ -71,7 +71,7 @@ internal static class ResourceDeploymentTestData
             new ResourceDeploymentComputeResourceValues(
                 limitsCpuMillis,
                 limitsMemoryMi),
-            ResourceDeploymentComputeArchitecture.Any,
+            ComputeArchitecture.Any,
             ImmutableList<ResourceDeploymentExtendedResource>.Empty,
             ImmutableList<ResourceDeploymentNodeSelector>.Empty,
             ImmutableList<ResourceDeploymentNodeAffinityTerm>.Empty,

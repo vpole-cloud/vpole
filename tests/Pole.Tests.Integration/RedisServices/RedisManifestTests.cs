@@ -124,7 +124,7 @@ public sealed class RedisManifestTests
                 DisplayName: "GPU cache",
                 new ResourceDeploymentComputeResourceValues(250, 256),
                 new ResourceDeploymentComputeResourceValues(1000, 1024),
-                ResourceDeploymentComputeArchitecture.Amd64,
+                ComputeArchitecture.Amd64,
                 ExtendedResources:
                 [
                     new ResourceDeploymentExtendedResource("nvidia.com/gpu", 1)
@@ -139,7 +139,7 @@ public sealed class RedisManifestTests
                     [
                         new ResourceDeploymentNodeAffinityExpression(
                             "topology.kubernetes.io/zone",
-                            ResourceDeploymentNodeAffinityOperator.In,
+                            ComputeNodeAffinityOperator.In,
                             ["eu-west-1a"])
                     ])
                 ],
@@ -151,7 +151,7 @@ public sealed class RedisManifestTests
                         [
                             new ResourceDeploymentNodeAffinityExpression(
                                 "node.kubernetes.io/instance-type",
-                                ResourceDeploymentNodeAffinityOperator.Exists,
+                                ComputeNodeAffinityOperator.Exists,
                                 [])
                         ]))
                 ],
@@ -159,9 +159,9 @@ public sealed class RedisManifestTests
                 [
                     new ResourceDeploymentToleration(
                         "dedicated",
-                        ResourceDeploymentTolerationOperator.Exists,
+                        ComputeTolerationOperator.Exists,
                         Value: null,
-                        ResourceDeploymentTaintEffect.NoSchedule,
+                        ComputeTaintEffect.NoSchedule,
                         TolerationSeconds: null)
                 ],
                 RuntimeClassName: "workload-runtime"));

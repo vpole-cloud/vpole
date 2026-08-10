@@ -503,7 +503,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             deployment.DesiredGeneration,
             ResourceDeploymentOperation.Apply,
             claimId,
-            [PostgreSqlResourceDeploymentEndpoint.Create(host, 5432)],
+            [ResourceDeploymentEndpoint.Create("PostgreSql", host, 5432, "postgresql")],
             startedAt.AddSeconds(1));
         await DbContext.ResourceDeployments.ReplaceOneAsync(
             item => item.Id == deployment.Id,

@@ -21,13 +21,7 @@ internal static class ResourceDeploymentContractMappings
             ResolvedComputeResourceValues.Create(
                 compute.Limits.CpuMillis,
                 compute.Limits.MemoryMi),
-            compute.Architecture switch
-            {
-                ResourceDeploymentComputeArchitecture.Any => ResolvedComputeArchitecture.Any,
-                ResourceDeploymentComputeArchitecture.Amd64 => ResolvedComputeArchitecture.Amd64,
-                ResourceDeploymentComputeArchitecture.Arm64 => ResolvedComputeArchitecture.Arm64,
-                _ => throw new ArgumentOutOfRangeException(nameof(compute))
-            },
+            compute.Architecture,
             compute.ExtendedResources.Select(resource =>
                 ResolvedComputeExtendedResource.Create(resource.Name, resource.Quantity)),
             compute.NodeSelector.Select(selector =>
@@ -40,9 +34,9 @@ internal static class ResourceDeploymentContractMappings
             compute.Tolerations.Select(toleration =>
                 ResolvedComputeToleration.Create(
                     toleration.Key,
-                    ToDomain(toleration.Operator),
+                    toleration.Operator,
                     toleration.Value,
-                    ToDomain(toleration.Effect),
+                    toleration.Effect,
                     toleration.TolerationSeconds)),
             compute.RuntimeClassName);
     }
@@ -102,21 +96,11 @@ internal static class ResourceDeploymentContractMappings
     {
         ArgumentNullException.ThrowIfNull(endpoint);
 
-        return endpoint.Kind switch
-        {
-            "Ingress" => IngressResourceDeploymentEndpoint.Create(
-                endpoint.Host,
-                endpoint.Port,
-                endpoint.Scheme),
-            "Redis" => RedisResourceDeploymentEndpoint.Create(
-                endpoint.Host,
-                endpoint.Port),
-            "PostgreSql" => PostgreSqlResourceDeploymentEndpoint.Create(
-                endpoint.Host,
-                endpoint.Port),
-            _ => throw new InvalidOperationException(
-                $"Unsupported resource deployment endpoint kind '{endpoint.Kind}'.")
-        };
+        return ResourceDeploymentEndpoint.Create(
+            endpoint.Kind,
+            endpoint.Host,
+            endpoint.Port,
+            endpoint.Scheme);
     }
 
     private static ResourceDeploymentComputeConfiguration ToContract(
@@ -133,13 +117,7 @@ internal static class ResourceDeploymentContractMappings
             new ResourceDeploymentComputeResourceValues(
                 compute.Limits.CpuMillis,
                 compute.Limits.MemoryMi),
-            compute.Architecture switch
-            {
-                ResolvedComputeArchitecture.Any => ResourceDeploymentComputeArchitecture.Any,
-                ResolvedComputeArchitecture.Amd64 => ResourceDeploymentComputeArchitecture.Amd64,
-                ResolvedComputeArchitecture.Arm64 => ResourceDeploymentComputeArchitecture.Arm64,
-                _ => throw new ArgumentOutOfRangeException(nameof(compute))
-            },
+            compute.Architecture,
             compute.ExtendedResources
                 .Select(resource => new ResourceDeploymentExtendedResource(
                     resource.Name,
@@ -159,9 +137,9 @@ internal static class ResourceDeploymentContractMappings
             compute.Tolerations
                 .Select(toleration => new ResourceDeploymentToleration(
                     toleration.Key,
-                    ToContract(toleration.Operator),
+                    toleration.Operator,
                     toleration.Value,
-                    ToContract(toleration.Effect),
+                    toleration.Effect,
                     toleration.TolerationSeconds))
                 .ToImmutableList(),
             compute.RuntimeClassName);
@@ -172,7 +150,7 @@ internal static class ResourceDeploymentContractMappings
             term.Expressions.Select(expression =>
                 ResolvedComputeNodeAffinityExpression.Create(
                     expression.Key,
-                    ToDomain(expression.Operator),
+                    expression.Operator,
                     expression.Values)));
 
     private static ResourceDeploymentNodeAffinityTerm ToContract(
@@ -180,67 +158,7 @@ internal static class ResourceDeploymentContractMappings
         new(term.Expressions
             .Select(expression => new ResourceDeploymentNodeAffinityExpression(
                 expression.Key,
-                ToContract(expression.Operator),
+                expression.Operator,
                 expression.Values))
             .ToImmutableList());
-
-    private static ResolvedComputeNodeAffinityOperator ToDomain(
-        ResourceDeploymentNodeAffinityOperator value) => value switch
-        {
-            ResourceDeploymentNodeAffinityOperator.In => ResolvedComputeNodeAffinityOperator.In,
-            ResourceDeploymentNodeAffinityOperator.NotIn => ResolvedComputeNodeAffinityOperator.NotIn,
-            ResourceDeploymentNodeAffinityOperator.Exists => ResolvedComputeNodeAffinityOperator.Exists,
-            ResourceDeploymentNodeAffinityOperator.DoesNotExist => ResolvedComputeNodeAffinityOperator.DoesNotExist,
-            ResourceDeploymentNodeAffinityOperator.GreaterThan => ResolvedComputeNodeAffinityOperator.GreaterThan,
-            ResourceDeploymentNodeAffinityOperator.LessThan => ResolvedComputeNodeAffinityOperator.LessThan,
-            _ => throw new ArgumentOutOfRangeException(nameof(value))
-        };
-
-    private static ResourceDeploymentNodeAffinityOperator ToContract(
-        ResolvedComputeNodeAffinityOperator value) => value switch
-        {
-            ResolvedComputeNodeAffinityOperator.In => ResourceDeploymentNodeAffinityOperator.In,
-            ResolvedComputeNodeAffinityOperator.NotIn => ResourceDeploymentNodeAffinityOperator.NotIn,
-            ResolvedComputeNodeAffinityOperator.Exists => ResourceDeploymentNodeAffinityOperator.Exists,
-            ResolvedComputeNodeAffinityOperator.DoesNotExist => ResourceDeploymentNodeAffinityOperator.DoesNotExist,
-            ResolvedComputeNodeAffinityOperator.GreaterThan => ResourceDeploymentNodeAffinityOperator.GreaterThan,
-            ResolvedComputeNodeAffinityOperator.LessThan => ResourceDeploymentNodeAffinityOperator.LessThan,
-            _ => throw new ArgumentOutOfRangeException(nameof(value))
-        };
-
-    private static ResolvedComputeTolerationOperator ToDomain(
-        ResourceDeploymentTolerationOperator value) => value switch
-        {
-            ResourceDeploymentTolerationOperator.Equal => ResolvedComputeTolerationOperator.Equal,
-            ResourceDeploymentTolerationOperator.Exists => ResolvedComputeTolerationOperator.Exists,
-            _ => throw new ArgumentOutOfRangeException(nameof(value))
-        };
-
-    private static ResourceDeploymentTolerationOperator ToContract(
-        ResolvedComputeTolerationOperator value) => value switch
-        {
-            ResolvedComputeTolerationOperator.Equal => ResourceDeploymentTolerationOperator.Equal,
-            ResolvedComputeTolerationOperator.Exists => ResourceDeploymentTolerationOperator.Exists,
-            _ => throw new ArgumentOutOfRangeException(nameof(value))
-        };
-
-    private static ResolvedComputeTaintEffect ToDomain(
-        ResourceDeploymentTaintEffect value) => value switch
-        {
-            ResourceDeploymentTaintEffect.Any => ResolvedComputeTaintEffect.Any,
-            ResourceDeploymentTaintEffect.NoSchedule => ResolvedComputeTaintEffect.NoSchedule,
-            ResourceDeploymentTaintEffect.PreferNoSchedule => ResolvedComputeTaintEffect.PreferNoSchedule,
-            ResourceDeploymentTaintEffect.NoExecute => ResolvedComputeTaintEffect.NoExecute,
-            _ => throw new ArgumentOutOfRangeException(nameof(value))
-        };
-
-    private static ResourceDeploymentTaintEffect ToContract(
-        ResolvedComputeTaintEffect value) => value switch
-        {
-            ResolvedComputeTaintEffect.Any => ResourceDeploymentTaintEffect.Any,
-            ResolvedComputeTaintEffect.NoSchedule => ResourceDeploymentTaintEffect.NoSchedule,
-            ResolvedComputeTaintEffect.PreferNoSchedule => ResourceDeploymentTaintEffect.PreferNoSchedule,
-            ResolvedComputeTaintEffect.NoExecute => ResourceDeploymentTaintEffect.NoExecute,
-            _ => throw new ArgumentOutOfRangeException(nameof(value))
-        };
 }

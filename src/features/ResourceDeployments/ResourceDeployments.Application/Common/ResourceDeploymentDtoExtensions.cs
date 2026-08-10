@@ -54,14 +54,7 @@ public static class ResourceDeploymentDtoExtensions
     private static ResourceDeploymentEndpointDto ToDto(
         ResourceDeploymentEndpoint endpoint) =>
         new(
-            endpoint switch
-            {
-                IngressResourceDeploymentEndpoint => "Ingress",
-                RedisResourceDeploymentEndpoint => "Redis",
-                PostgreSqlResourceDeploymentEndpoint => "PostgreSql",
-                _ => throw new InvalidOperationException(
-                    $"Unsupported deployment endpoint '{endpoint.GetType().Name}'.")
-            },
+            endpoint.Kind,
             endpoint.Host,
             endpoint.Port,
             endpoint.Scheme);

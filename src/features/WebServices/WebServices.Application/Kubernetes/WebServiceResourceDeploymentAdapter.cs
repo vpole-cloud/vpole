@@ -82,7 +82,8 @@ public sealed class WebServiceResourceDeploymentAdapter(
 
         return ResourceDeploymentAdapterResult.Succeeded.Create(
         [
-            ResourceDeploymentEndpointDto.Ingress(
+            ResourceDeploymentEndpointDto.Create(
+                "Ingress",
                 webService.DnsRecord.Domain,
                 port: 443,
                 scheme: "https")

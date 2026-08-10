@@ -135,7 +135,7 @@ public sealed class PostgresResourceDeploymentAdapterTests
             "PostgreSQL compute",
             new ResourceDeploymentComputeResourceValues(250, 256),
             new ResourceDeploymentComputeResourceValues(1000, 1024),
-            ResourceDeploymentComputeArchitecture.Any,
+            ComputeArchitecture.Any,
             [],
             [],
             [],

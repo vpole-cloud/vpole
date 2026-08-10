@@ -262,9 +262,11 @@ public sealed class ResourceDeploymentTargetRoutingTests(
                 context.Deployment.Placement.DeploymentTargetId;
             return ResourceDeploymentAdapterResult.Succeeded.Create(
             [
-                ResourceDeploymentEndpointDto.Redis(
+                ResourceDeploymentEndpointDto.Create(
+                    "Redis",
                     "redis.pole-routing-test.svc.cluster.local",
-                    6379)
+                    6379,
+                    "redis")
             ]);
         }
 
