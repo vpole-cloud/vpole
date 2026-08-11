@@ -34,7 +34,7 @@ public static class GetWebServiceById
 
 public sealed class GetWebServiceByIdHandler(
     LoadWebServiceById loadWebServiceById,
-    IResourceDeploymentQueryService deploymentQuery)
+    IResourceDeploymentSetQueryService deploymentQuery)
     : IMediatorHandler<GetWebServiceByIdRequest, WebServiceDto>
 {
     public async Task<Result<WebServiceDto>> HandleAsync(
@@ -49,12 +49,12 @@ public sealed class GetWebServiceByIdHandler(
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
 
-        var placement = await deploymentQuery.GetAsync(
+        var deployments = await deploymentQuery.GetAllAsync(
             webService.TenantId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
             cancellationToken);
-        return webService.ToDto(placement);
+        return webService.ToDto(deployments);
     }
 }
 

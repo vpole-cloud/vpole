@@ -43,47 +43,52 @@ internal static class WebServiceReleaseFilters
     public static FilterDefinition<WebServiceRelease> SucceededRevision(
         string tenantId,
         string webServiceId,
-        int revision) =>
+        long revision) =>
         Builders<WebServiceRelease>.Filter.And(
             ByWebService(tenantId, webServiceId),
-            Builders<WebServiceRelease>.Filter.Eq(item => item.Revision, revision),
+            Builders<WebServiceRelease>.Filter.Eq(item => item.ResourceRevision, revision),
             Builders<WebServiceRelease>.Filter.Eq(
                 item => item.Outcome,
                 WebServiceReleaseOutcome.Succeeded));
 
-    public static FilterDefinition<WebServiceRelease> PendingGeneration(
+    public static FilterDefinition<WebServiceRelease> PendingDeployment(
         string tenantId,
         string webServiceId,
-        long deploymentGeneration) =>
+        string resourceDeploymentId,
+        long resourceRevision,
+        long deploymentGeneration,
+        WebServiceReleaseDeploymentOperation operation) =>
         Builders<WebServiceRelease>.Filter.And(
             ByWebService(tenantId, webServiceId),
             Builders<WebServiceRelease>.Filter.Eq(
-                item => item.DeploymentGeneration,
-                deploymentGeneration),
+                item => item.Outcome,
+                WebServiceReleaseOutcome.Pending),
+            Builders<WebServiceRelease>.Filter.ElemMatch(
+                item => item.Deployments,
+                entry => entry.ResourceDeploymentId == resourceDeploymentId &&
+                         entry.ResourceRevision == resourceRevision &&
+                         entry.DeploymentGeneration == deploymentGeneration &&
+                         entry.Operation == operation &&
+                         entry.Outcome == WebServiceReleaseDeploymentOutcome.Pending));
+
+    public static FilterDefinition<WebServiceRelease> PendingForWebService(
+        string tenantId, string webServiceId) =>
+        Builders<WebServiceRelease>.Filter.And(
+            ByWebService(tenantId, webServiceId),
             Builders<WebServiceRelease>.Filter.Eq(
                 item => item.Outcome,
                 WebServiceReleaseOutcome.Pending));
 
-    public static FilterDefinition<WebServiceRelease> OlderPendingGeneration(
-        WebServiceRelease release) =>
-        Builders<WebServiceRelease>.Filter.And(
-            ByWebService(release.TenantId, release.WebServiceId),
-            Builders<WebServiceRelease>.Filter.Eq(
-                item => item.Outcome,
-                WebServiceReleaseOutcome.Pending),
-            Builders<WebServiceRelease>.Filter.Lt(
-                item => item.DeploymentGeneration,
-                release.DeploymentGeneration));
-
-    public static FilterDefinition<WebServiceRelease> ByDeploymentGeneration(
-        string tenantId,
-        string webServiceId,
-        long deploymentGeneration) =>
+    public static FilterDefinition<WebServiceRelease> DeploymentSnapshot(
+        string tenantId, string webServiceId, string resourceDeploymentId,
+        long resourceRevision, long deploymentGeneration) =>
         Builders<WebServiceRelease>.Filter.And(
             ByWebService(tenantId, webServiceId),
-            Builders<WebServiceRelease>.Filter.Eq(
-                item => item.DeploymentGeneration,
-                deploymentGeneration));
+            Builders<WebServiceRelease>.Filter.ElemMatch(
+                item => item.Deployments,
+                entry => entry.ResourceDeploymentId == resourceDeploymentId &&
+                         entry.ResourceRevision == resourceRevision &&
+                         entry.DeploymentGeneration == deploymentGeneration));
 }
 
 internal static class WebServiceDeploymentTokenFilters

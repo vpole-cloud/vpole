@@ -42,7 +42,7 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
             TimeProvider.System);
         var applied = CreateDeploymentEvent(release) with
         {
-            Generation = release.DeploymentGeneration + 1
+            Generation = release.Deployments[0].DeploymentGeneration + 1
         };
 
         await consumer.Handle(applied);
@@ -126,14 +126,27 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
     {
         var release = WebServiceReleaseFactory.CreatePending(
             TestData.TenantId,
-            "web-service-1",
+            "507f1f77bcf86cd799439041",
             2,
             WebServiceReleaseAction.Redeploy,
             TestData.UserId,
             TestData.UserEmail,
             TestData.ValidWebServiceSpec().ToDomain(),
+            [new WebServiceReleaseDeployment(
+                "507f1f77bcf86cd799439051",
+                "507f1f77bcf86cd799439052",
+                ResourceRevision: 2,
+                DeploymentGeneration: 3,
+                WebServiceReleaseDeploymentOperation.Apply,
+                WebServiceReleaseDeploymentOutcome.Pending,
+                CompletedAtUtc: null,
+                FailureCode: null,
+                FailureMessage: null)],
             "trace-1",
-            "correlation-1");
+            "correlation-1",
+            new WebServiceReleaseFactory.CreateOptions(
+                MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
+                DateTime.UtcNow));
 
         await Fixture.Database.WebServiceReleases().InsertOneAsync(release);
         return release;
@@ -141,11 +154,12 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
 
     private static ResourceDeploymentAppliedEvent CreateDeploymentEvent(WebServiceRelease release) =>
         new(
-            "507f1f77bcf86cd799439051",
+            release.Deployments[0].ResourceDeploymentId,
             WebServiceResourceDeployment.ResourceType.Value,
             release.WebServiceId,
             "507f1f77bcf86cd799439052",
-            release.DeploymentGeneration)
+            release.Deployments[0].DeploymentGeneration,
+            release.Deployments[0].ResourceRevision)
         {
             EventCore = EventCore.Create(release.TenantId)
         };
@@ -154,14 +168,15 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
         WebServiceRelease release,
         bool retryable) =>
         new(
-            "507f1f77bcf86cd799439051",
+            release.Deployments[0].ResourceDeploymentId,
             WebServiceResourceDeployment.ResourceType.Value,
             release.WebServiceId,
             "507f1f77bcf86cd799439052",
-            release.DeploymentGeneration,
+            release.Deployments[0].DeploymentGeneration,
             "Apply",
             "ManifestInvalid",
-            retryable)
+            retryable,
+            release.Deployments[0].ResourceRevision)
         {
             EventCore = EventCore.Create(release.TenantId)
         };

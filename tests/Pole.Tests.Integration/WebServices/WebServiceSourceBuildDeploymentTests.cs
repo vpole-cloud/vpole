@@ -3,9 +3,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Consumers;
@@ -14,7 +12,6 @@ using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Tests.Integration.ResourceDeployments;
 using Xunit;
 
 namespace Pole.Tests.Integration.WebServices;
@@ -27,15 +24,21 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
     {
         var webService = TestData.SeedWebService(ObjectId.GenerateNewId().ToString());
         await Fixture.Database.WebServices().InsertOneAsync(webService);
-        var mutationWriter = new SuccessfulMutationWriter(webService);
+        var deployments = new[]
+        {
+            CreatePlacement("507f1f77bcf86cd799439051", "507f1f77bcf86cd799439061"),
+            CreatePlacement("507f1f77bcf86cd799439052", "507f1f77bcf86cd799439062")
+        };
+        var mutationWriter = new SuccessfulSetMutationWriter(deployments);
         var service = new WebServiceSourceBuildDeploymentService(
             Services.GetRequiredService<LoadWebServiceById>(),
             Services.GetRequiredService<PersistUpdatedWebService>(),
             Services.GetRequiredService<PersistCurrentWebServiceRelease>(),
             Services.GetRequiredService<
                 Pole.Database.RunMongoTransaction<SourceBuildDeploymentResult>>(),
-            new SuccessfulComputeLookup(mutationWriter.Deployment),
-            mutationWriter);
+            new FixedSetQueryService(deployments),
+            mutationWriter,
+            TimeProvider.System);
         var request = new SourceBuildDeploymentRequest(
             TestData.TenantId,
             webService.Id,
@@ -64,19 +67,20 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
         var provenance = Assert.IsType<SourceBuildReleaseProvenance>(release.Provenance);
         Assert.Equal("build-1", provenance.BuildJobId);
         Assert.Equal(request.Image.Digest, provenance.ImageDigest);
+        Assert.Equal(2, release.Deployments.Count);
 
         Assert.Equal(1, mutationWriter.ApplyCallCount);
-        Assert.Equal(
-            new ComputeProfileReference(
-                mutationWriter.Deployment.ResolvedPlacement.Compute.ComputeProfileId,
-                mutationWriter.Deployment.ResolvedPlacement.Compute.ComputeProfileRevision),
-            mutationWriter.LastCommand?.ExpectedCompute);
+        Assert.Equal(updated.ActiveRevision, mutationWriter.LastCommand?.ResourceRevision);
+        Assert.Equal(deployments.Select(item => item.DeploymentId),
+            mutationWriter.LastCommand?.Deployments.Select(item => item.ResourceDeploymentId));
+        var releaseDeployment = release.Deployments[0];
         var applied = new ResourceDeploymentAppliedEvent(
-            mutationWriter.Deployment.Id,
+            releaseDeployment.ResourceDeploymentId,
             WebServiceResourceDeployment.ResourceType.Value,
             updated.Id,
-            mutationWriter.Deployment.RuntimeCellId,
-            release.DeploymentGeneration)
+            "507f1f77bcf86cd799439071",
+            releaseDeployment.DeploymentGeneration,
+            releaseDeployment.ResourceRevision)
         {
             EventCore = EventCore.Create(TestData.TenantId)
         };
@@ -84,6 +88,23 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             Services.GetRequiredService<CompleteWebServiceDeployment>(),
             TimeProvider.System);
         await consumer.Handle(applied);
+
+        var partiallyCompletedRelease = await Fixture.Database.WebServiceReleases()
+            .Find(item => item.Id == release.Id)
+            .SingleAsync();
+        Assert.Equal(WebServiceReleaseOutcome.Pending, partiallyCompletedRelease.Outcome);
+        Assert.Equal(WebServiceReleaseDeploymentOutcome.Succeeded,
+            partiallyCompletedRelease.Deployments[0].Outcome);
+        Assert.Equal(WebServiceReleaseDeploymentOutcome.Pending,
+            partiallyCompletedRelease.Deployments[1].Outcome);
+
+        var secondReleaseDeployment = release.Deployments[1];
+        await consumer.Handle(applied with
+        {
+            ResourceDeploymentId = secondReleaseDeployment.ResourceDeploymentId,
+            Generation = secondReleaseDeployment.DeploymentGeneration,
+            ResourceRevision = secondReleaseDeployment.ResourceRevision
+        });
 
         var completedRelease = await Fixture.Database.WebServiceReleases()
             .Find(item => item.Id == release.Id)
@@ -94,83 +115,84 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             .AnyAsync());
     }
 
-    private sealed class SuccessfulMutationWriter
-        : IResourceDeploymentMutationWriter
+    private static PlacementSummaryDto CreatePlacement(string deploymentId, string targetId) =>
+        new(
+            deploymentId,
+            "507f1f77bcf86cd799439070",
+            ObjectId.GenerateNewId().ToString(),
+            targetId,
+            DesiredGeneration: 1,
+            ObservedGeneration: 1,
+            Status: "Applied",
+            FailureCode: null,
+            new ComputeConfigurationSummaryDto(
+                new ComputeProfileReference(ObjectId.GenerateNewId().ToString(), 1),
+                "default",
+                new ComputeResourceValuesDto(250, 256),
+                new ComputeResourceValuesDto(1000, 512),
+                ImmutableList<ComputeExtendedResourceDto>.Empty),
+            Endpoints: [],
+            ResourceRevision: 1,
+            FixedReplicas: 2,
+            Ingress: ResourceDeploymentIngressConfiguration.Create(
+                "traefik", "letsencrypt-prod", "example.test",
+                [$"{deploymentId}.example.test"]),
+            DeploymentRevision: 1);
+
+    private sealed class SuccessfulSetMutationWriter(IReadOnlyList<PlacementSummaryDto> deployments)
+        : IResourceDeploymentSetMutationWriter
     {
-        public SuccessfulMutationWriter(WebService webService)
-        {
-            var now = DateTime.UtcNow;
-            var runtimeCellId = ObjectId.GenerateNewId().ToString();
-            Deployment = ResourceDeploymentFactory.Create(
-                webService.TenantId,
-                WebServiceResourceDeployment.ResourceType,
-                webService.Id,
-                webService.ResourceGroupId,
-                ObjectId.GenerateNewId().ToString(),
-                ResolvedResourcePlacement.Create(
-                    runtimeCellId,
-                    TestData.DefaultDeploymentTargetId,
-                    "test-apps",
-                    runtimeCellGeneration: 1,
-                    targetWorkloadConfigurationRevision: 1,
-                    ResolvedIngressConfiguration.Create(
-                        "traefik",
-                        "letsencrypt-prod"),
-                    storage: null,
-                    compute: ResourceDeploymentTestData.Compute(),
-                    resolvedAtUtc: now),
-                ResourcePlacementCapability.SingleTarget,
-                runtimeCellReady: true,
-                new ResourceDeploymentFactory.CreateOptions(
-                    ObjectId.GenerateNewId().ToString(),
-                    now));
-        }
-
-        public ResourceDeployment Deployment { get; }
         public int ApplyCallCount { get; private set; }
-        public ResourceDeploymentMutationRequest? LastCommand { get; private set; }
+        public ResourceDeploymentSetApplyRequest? LastCommand { get; private set; }
 
-        public Task<Result<PlacementSummaryDto>> RequestApplyAsync(
-            ResourceDeploymentMutationRequest command,
+        public Task<Result<IReadOnlyList<PlacementSummaryDto>>> RequestSetApplyAsync(
+            ResourceDeploymentSetApplyRequest command,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
             ApplyCallCount++;
             LastCommand = command;
-            return Task.FromResult<Result<PlacementSummaryDto>>(
-                Deployment.ToPlacementSummaryDto());
+            return Task.FromResult<Result<IReadOnlyList<PlacementSummaryDto>>>(
+                deployments.Select(item => item with
+                {
+                    DesiredGeneration = item.DesiredGeneration + 1,
+                    ResourceRevision = command.ResourceRevision,
+                    Status = "Pending"
+                }).ToArray());
         }
 
-        public Task<Result<PlacementSummaryDto>> RequestDeletionAsync(
-            ResourceDeploymentMutationRequest command,
+        public Task<Result<PlacementSummaryDto>> RequestExactApplyAsync(
+            ResourceDeploymentExactMutationRequest request,
             IClientSessionHandle session,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<PlacementSummaryDto>>(
-                Deployment.ToPlacementSummaryDto());
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Result<PlacementSummaryDto>> RequestExactDeletionAsync(
+            ResourceDeploymentExactMutationRequest request,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Result<IReadOnlyList<PlacementSummaryDto>>> RequestSetDeletionAsync(
+            ResourceDeploymentSetDeletionRequest request,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Result<IReadOnlyList<PlacementSummaryDto>>> AdvanceResourceRevisionAsync(
+            ResourceDeploymentResourceRevisionRequest request,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
-    private sealed class SuccessfulComputeLookup(ResourceDeployment deployment)
-        : IResourceDeploymentComputeLookup
+    private sealed class FixedSetQueryService(IReadOnlyList<PlacementSummaryDto> deployments)
+        : IResourceDeploymentSetQueryService
     {
-        public Task<Result<CurrentResourceDeploymentComputeDto>> GetCurrentAsync(
+        public Task<IReadOnlyList<PlacementSummaryDto>> GetAllAsync(
             string tenantId,
             ResourceTypeId resourceType,
             string resourceId,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<CurrentResourceDeploymentComputeDto>>(
-                new CurrentResourceDeploymentComputeDto(
-                    deployment.ResolvedPlacement.DeploymentTargetId,
-                    new ComputeConfigurationSummaryDto(
-                        new ComputeProfileReference(
-                            deployment.ResolvedPlacement.Compute.ComputeProfileId,
-                            deployment.ResolvedPlacement.Compute.ComputeProfileRevision),
-                        deployment.ResolvedPlacement.Compute.DisplayName,
-                        new ComputeResourceValuesDto(
-                            deployment.ResolvedPlacement.Compute.Requests.CpuMillis,
-                            deployment.ResolvedPlacement.Compute.Requests.MemoryMi),
-                        new ComputeResourceValuesDto(
-                            deployment.ResolvedPlacement.Compute.Limits.CpuMillis,
-                            deployment.ResolvedPlacement.Compute.Limits.MemoryMi),
-                        ImmutableList<ComputeExtendedResourceDto>.Empty)));
+            CancellationToken cancellationToken = default) => Task.FromResult(deployments);
+        public Task<PlacementSummaryDto?> GetExactAsync(
+            string tenantId, ResourceTypeId resourceType, string resourceId,
+            string deploymentId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(deployments.SingleOrDefault(item => item.DeploymentId == deploymentId));
+        public Task<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>> GetAllManyAsync(
+            string tenantId, ResourceTypeId resourceType, IReadOnlyCollection<string> resourceIds,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

@@ -13,23 +13,23 @@ using Pole.ResultType;
 
 namespace Pole.Features.WebServices.Application.Endpoints;
 
-public static class GetWebServiceDeployments
+public static class GetWebServiceReleases
 {
-    public static IEndpointRouteBuilder MapGetWebServiceDeploymentsEndpoint(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapGetWebServiceReleasesEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{Id}/deployments", async (IMediator mediator, [AsParameters] GetWebServiceDeploymentsRequest request, CancellationToken cancellationToken) =>
+        app.MapGet("/{Id}/releases", async (IMediator mediator, [AsParameters] GetWebServiceReleasesRequest request, CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(Results.Ok);
             })
-            .WithName("GetWebServiceDeployments")
+            .WithName("GetWebServiceReleases")
             .Produces<WebServiceReleaseHistoryDto>();
 
         return app;
     }
 }
 
-public sealed record GetWebServiceDeploymentsRequest : IMediatorRequest<WebServiceReleaseHistoryDto>, ITenantReadOperation
+public sealed record GetWebServiceReleasesRequest : IMediatorRequest<WebServiceReleaseHistoryDto>, ITenantReadOperation
 {
     [FromRoute] public string Id { get; init; } = string.Empty;
     [FromHeader(Name = TenantHeaders.TenantId)] public string TenantId { get; init; } = string.Empty;
@@ -40,12 +40,12 @@ public sealed record GetWebServiceDeploymentsRequest : IMediatorRequest<WebServi
     public int Skip => (EffectivePageNumber - 1) * EffectivePageSize;
 }
 
-public sealed class GetWebServiceDeploymentsHandler(
+public sealed class GetWebServiceReleasesHandler(
     LoadWebServiceReleaseHistory loadWebServiceReleaseHistory)
-    : IMediatorHandler<GetWebServiceDeploymentsRequest, WebServiceReleaseHistoryDto>
+    : IMediatorHandler<GetWebServiceReleasesRequest, WebServiceReleaseHistoryDto>
 {
     public async Task<Result<WebServiceReleaseHistoryDto>> HandleAsync(
-        GetWebServiceDeploymentsRequest request,
+        GetWebServiceReleasesRequest request,
         CancellationToken cancellationToken = default)
     {
         var history = await loadWebServiceReleaseHistory(
@@ -68,9 +68,9 @@ public sealed class GetWebServiceDeploymentsHandler(
     }
 }
 
-public sealed class GetWebServiceDeploymentsValidator : AbstractValidator<GetWebServiceDeploymentsRequest>
+public sealed class GetWebServiceReleasesValidator : AbstractValidator<GetWebServiceReleasesRequest>
 {
-    public GetWebServiceDeploymentsValidator()
+    public GetWebServiceReleasesValidator()
     {
         RuleFor(x => x.Id).NotEmpty();
         RuleFor(x => x.PageNumber).GreaterThan(0).When(x => x.PageNumber.HasValue);

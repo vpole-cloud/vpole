@@ -19,7 +19,7 @@ internal sealed class MongoPersistCurrentWebServiceRelease(
         WebServicePersistenceGuards.EnsureTransaction(session, "Web service release persistence");
         await releases.UpdateManyAsync(
             session,
-            WebServiceReleaseFilters.OlderPendingGeneration(release),
+            WebServiceReleaseFilters.PendingForWebService(release.TenantId, release.WebServiceId),
             Builders<WebServiceRelease>.Update
                 .Set(item => item.Outcome, WebServiceReleaseOutcome.Superseded)
                 .Set(item => item.CompletedAtUtc, release.RequestedAtUtc)

@@ -9,6 +9,7 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.ResourceGroups.Application.Services;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
@@ -121,6 +122,73 @@ public sealed class ResourceDeploymentMutationWriterTests(
                     2))
             .SingleAsync();
         Assert.Equal("resource-deployment-deletion-requested", request.EventType);
+    }
+
+    [Fact]
+    public async Task RequestExactRetry_FencesRevisionAndOperation_AndQueuesCurrentRequest()
+    {
+        const string claimId = "507f1f77bcf86cd799439019";
+        var (runtimeCell, deployment) = CreateAggregate(runtimeCellReady: true);
+        var claimed = deployment.Start(
+            expectedGeneration: 1,
+            ResourceDeploymentOperation.Apply,
+            claimId,
+            CreatedAtUtc.AddSeconds(30),
+            CreatedAtUtc.AddMinutes(1));
+        var failed = claimed.Fail(
+            expectedGeneration: 1,
+            ResourceDeploymentOperation.Apply,
+            claimId,
+            "ProviderUnavailable",
+            "The provider was unavailable.",
+            retryable: true,
+            CreatedAtUtc.AddMinutes(1),
+            CreatedAtUtc.AddMinutes(1));
+        await InsertAsync(runtimeCell, failed);
+        var writer = CreateWriter();
+
+        var mismatch = await fixture.DbContext
+            .RunInTransactionAsync<PlacementSummaryDto>(
+                (session, cancellationToken) => writer.RequestRetryAsync(
+                    new ResourceDeploymentExactRetryRequest(
+                        TenantId,
+                        TestResourceType,
+                        ResourceId,
+                        DeploymentId,
+                        failed.Revision,
+                        ResourceDeploymentRequestedOperation.Delete),
+                    session,
+                    cancellationToken));
+
+        Assert.IsType<ConflictFailure>(mismatch.AssertFailure());
+
+        var result = await fixture.DbContext
+            .RunInTransactionAsync<PlacementSummaryDto>(
+                (session, cancellationToken) => writer.RequestRetryAsync(
+                    new ResourceDeploymentExactRetryRequest(
+                        TenantId,
+                        TestResourceType,
+                        ResourceId,
+                        DeploymentId,
+                        failed.Revision,
+                        ResourceDeploymentRequestedOperation.Apply),
+                    session,
+                    cancellationToken));
+
+        var summary = result.AssertSuccess();
+        Assert.Equal(1, summary.DesiredGeneration);
+        Assert.Equal(failed.Revision + 1, summary.DeploymentRevision);
+        var retried = await LoadDeploymentAsync();
+        var pending = Assert.IsType<PendingResourceDeploymentState>(retried.State);
+        Assert.Equal(ResourceDeploymentOperation.Apply, pending.Operation);
+        Assert.Equal(1, pending.AttemptCount);
+        var request = await fixture.DbContext.OutboxMessages
+            .Find(message =>
+                message.PendingKey == ResourceDeploymentPendingKey.Apply(
+                    DeploymentId,
+                    1))
+            .SingleAsync();
+        Assert.Equal("resource-deployment-reconciliation-requested", request.EventType);
     }
 
     [Fact]
@@ -259,6 +327,142 @@ public sealed class ResourceDeploymentMutationWriterTests(
     }
 
     [Fact]
+    public async Task RequestSetApply_UsesBatchPlacementAndComputeFencesOnce()
+    {
+        const string secondRuntimeCellId = "507f1f77bcf86cd79943901a";
+        const string secondTargetId = "507f1f77bcf86cd79943901b";
+        const string secondDeploymentId = "507f1f77bcf86cd79943901c";
+        var first = CreateAggregate(runtimeCellReady: true);
+        var second = CreateAggregate(
+            secondRuntimeCellId,
+            secondTargetId,
+            secondDeploymentId,
+            runtimeCellReady: true);
+        await fixture.DbContext.RuntimeCells.InsertManyAsync(
+            [first.RuntimeCell, second.RuntimeCell]);
+        await fixture.DbContext.ResourceDeployments.InsertManyAsync(
+            [first.Deployment, second.Deployment]);
+        var placementLookup = new RecordingPlacementLookup(
+            new ResourcePlacementLookup(fixture.DbContext));
+        var fence = new RecordingComputeProfileFence();
+        var writer = CreateWriter(fence, placementLookup);
+
+        var result = await fixture.DbContext.RunInTransactionAsync<IReadOnlyList<PlacementSummaryDto>>(
+            (session, cancellationToken) => writer.RequestSetApplyAsync(
+                new ResourceDeploymentSetApplyRequest(
+                    TenantId,
+                    TestResourceType,
+                    ResourceId,
+                    ResourceRevision: 2,
+                    [
+                        new ResourceDeploymentSetApplyItem(
+                            DeploymentId,
+                            first.Deployment.Revision,
+                            new ComputeProfileReference(
+                                ResourceDeploymentTestData.ComputeProfileId,
+                                1),
+                            ReplacementCompute: ResourceDeploymentTestData.ContractCompute(
+                                TargetId,
+                                revision: 2)),
+                        new ResourceDeploymentSetApplyItem(
+                            secondDeploymentId,
+                            second.Deployment.Revision,
+                            new ComputeProfileReference(
+                                ResourceDeploymentTestData.ComputeProfileId,
+                                1),
+                            ReplacementCompute: ResourceDeploymentTestData.ContractCompute(
+                                secondTargetId,
+                                revision: 2))
+                    ]),
+                session,
+                cancellationToken));
+
+        var summaries = result.AssertSuccess();
+        Assert.Equal([DeploymentId, secondDeploymentId], summaries.Select(item => item.DeploymentId));
+        Assert.Equal(1, placementLookup.FindManyCallCount);
+        Assert.Equal(0, placementLookup.FindCallCount);
+        Assert.Equal(1, fence.FenceManyCallCount);
+        Assert.Equal(2, fence.LastBatchCount);
+        Assert.Equal(0, fence.CallCount);
+        Assert.Equal(
+            2L,
+            await fixture.DbContext.CountOutboxMessagesAsync(
+                "resource-deployment-reconciliation-requested"));
+    }
+
+    [Fact]
+    public async Task RequestSetDeletion_BatchLoadsAndQueuesEachExactDeploymentInOrder()
+    {
+        const string secondRuntimeCellId = "507f1f77bcf86cd79943901d";
+        const string secondTargetId = "507f1f77bcf86cd79943901e";
+        const string secondDeploymentId = "507f1f77bcf86cd79943901f";
+        var first = CreateAggregate(runtimeCellReady: true);
+        var second = CreateAggregate(
+            secondRuntimeCellId,
+            secondTargetId,
+            secondDeploymentId,
+            runtimeCellReady: true);
+        await fixture.DbContext.RuntimeCells.InsertManyAsync(
+            [first.RuntimeCell, second.RuntimeCell]);
+        await fixture.DbContext.ResourceDeployments.InsertManyAsync(
+            [first.Deployment, second.Deployment]);
+        var writer = CreateWriter();
+
+        var result = await fixture.DbContext.RunInTransactionAsync<IReadOnlyList<PlacementSummaryDto>>(
+            (session, cancellationToken) => writer.RequestSetDeletionAsync(
+                new ResourceDeploymentSetDeletionRequest(
+                    TenantId,
+                    TestResourceType,
+                    ResourceId,
+                    ResourceRevision: 2,
+                    [
+                        new ResourceDeploymentSetDeletionItem(
+                            secondDeploymentId,
+                            second.Deployment.Revision,
+                            new ComputeProfileReference(
+                                ResourceDeploymentTestData.ComputeProfileId,
+                                1)),
+                        new ResourceDeploymentSetDeletionItem(
+                            DeploymentId,
+                            first.Deployment.Revision,
+                            new ComputeProfileReference(
+                                ResourceDeploymentTestData.ComputeProfileId,
+                                1))
+                    ]),
+                session,
+                cancellationToken));
+
+        var summaries = result.AssertSuccess();
+        Assert.Equal([secondDeploymentId, DeploymentId], summaries.Select(item => item.DeploymentId));
+        Assert.All(summaries, summary => Assert.Equal(2, summary.ResourceRevision));
+        Assert.Equal(
+            2L,
+            await fixture.DbContext.CountOutboxMessagesAsync(
+                "resource-deployment-deletion-requested"));
+
+        var retry = await fixture.DbContext.RunInTransactionAsync<IReadOnlyList<PlacementSummaryDto>>(
+            (session, cancellationToken) => writer.RequestSetDeletionAsync(
+                new ResourceDeploymentSetDeletionRequest(
+                    TenantId,
+                    TestResourceType,
+                    ResourceId,
+                    ResourceRevision: 2,
+                    summaries.Select(summary => new ResourceDeploymentSetDeletionItem(
+                            summary.DeploymentId,
+                            summary.DeploymentRevision,
+                            summary.Compute.Profile))
+                        .ToArray()),
+                session,
+                cancellationToken));
+
+        _ = retry.AssertSuccess();
+        Assert.Equal(
+            2L,
+            await fixture.DbContext.CountOutboxMessagesAsync(
+                "resource-deployment-deletion-requested"));
+    }
+
+    [Fact]
     public async Task Mutation_RequiresCallerOwnedTransaction()
     {
         var writer = CreateWriter();
@@ -277,10 +481,11 @@ public sealed class ResourceDeploymentMutationWriterTests(
         CreateWriter(new RecordingComputeProfileFence());
 
     private ResourceDeploymentMutationWriter CreateWriter(
-        RecordingComputeProfileFence fence) =>
+        RecordingComputeProfileFence fence,
+        IResourcePlacementLookup? placementLookup = null) =>
         new(
             fixture.DbContext,
-            new ResourcePlacementLookup(fixture.DbContext),
+            placementLookup ?? new ResourcePlacementLookup(fixture.DbContext),
             fence,
             new FixedTimeProvider(new DateTimeOffset(
                 MutationAtUtc,
@@ -310,15 +515,23 @@ public sealed class ResourceDeploymentMutationWriterTests(
 
     private static (RuntimeCell RuntimeCell, ResourceDeployment Deployment)
         CreateAggregate(bool runtimeCellReady)
+        => CreateAggregate(RuntimeCellId, TargetId, DeploymentId, runtimeCellReady);
+
+    private static (RuntimeCell RuntimeCell, ResourceDeployment Deployment)
+        CreateAggregate(
+            string runtimeCellId,
+            string targetId,
+            string deploymentId,
+            bool runtimeCellReady)
     {
         var runtimeCell = RuntimeCellFactory.Create(
             TenantId,
             ResourceGroupId,
             ScopeId,
-            TargetId,
+            targetId,
             "pole-test-scope",
             new RuntimeCellFactory.CreateOptions(
-                RuntimeCellId,
+                runtimeCellId,
                 CreatedAtUtc));
         if (runtimeCellReady)
         {
@@ -328,8 +541,8 @@ public sealed class ResourceDeploymentMutationWriterTests(
         }
 
         var placement = ResolvedResourcePlacement.Create(
-            RuntimeCellId,
-            TargetId,
+            runtimeCellId,
+            targetId,
             runtimeCell.KubernetesNamespace,
             runtimeCellGeneration: 1,
             targetWorkloadConfigurationRevision: 1,
@@ -346,10 +559,10 @@ public sealed class ResourceDeploymentMutationWriterTests(
             ResourceGroupId,
             ScopeId,
             placement,
-            ResourcePlacementCapability.SingleTarget,
+            ResourcePlacementCapability.MultiTarget,
             runtimeCellReady,
             new ResourceDeploymentFactory.CreateOptions(
-                DeploymentId,
+                deploymentId,
                 CreatedAtUtc));
         return (runtimeCell, deployment);
     }
@@ -363,6 +576,8 @@ public sealed class ResourceDeploymentMutationWriterTests(
         : IComputeProfileResolutionFence
     {
         public int CallCount { get; private set; }
+        public int FenceManyCallCount { get; private set; }
+        public int LastBatchCount { get; private set; }
 
         public Task<Result> FenceAsync(
             ComputeProfileResolutionFenceRequest request,
@@ -371,6 +586,52 @@ public sealed class ResourceDeploymentMutationWriterTests(
         {
             CallCount++;
             return Task.FromResult<Result>(Result.Success());
+        }
+
+        public Task<Result> FenceManyAsync(
+            IReadOnlyList<ComputeProfileResolutionFenceRequest> requests,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
+        {
+            FenceManyCallCount++;
+            LastBatchCount = requests.Count;
+            return Task.FromResult<Result>(Result.Success());
+        }
+    }
+
+    private sealed class RecordingPlacementLookup(IResourcePlacementLookup inner)
+        : IResourcePlacementLookup
+    {
+        public int FindCallCount { get; private set; }
+        public int FindManyCallCount { get; private set; }
+
+        public Task<ResourcePlacement?> FindAsync(
+            string tenantId,
+            string runtimeCellId,
+            CancellationToken cancellationToken = default)
+        {
+            FindCallCount++;
+            return inner.FindAsync(tenantId, runtimeCellId, cancellationToken);
+        }
+
+        public Task<ResourcePlacement?> FindAsync(
+            string tenantId,
+            string runtimeCellId,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
+        {
+            FindCallCount++;
+            return inner.FindAsync(tenantId, runtimeCellId, session, cancellationToken);
+        }
+
+        public Task<IReadOnlyList<ResourcePlacement>> FindManyAsync(
+            string tenantId,
+            IReadOnlyCollection<string> runtimeCellIds,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
+        {
+            FindManyCallCount++;
+            return inner.FindManyAsync(tenantId, runtimeCellIds, session, cancellationToken);
         }
     }
 }

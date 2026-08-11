@@ -1,12 +1,8 @@
-using System.Collections.Immutable;
 using Pole.Database;
-using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
-using Pole.Features.WebServices.Events;
 using Pole.ResultType;
 
 namespace Pole.Features.WebServices.Application.Common;
@@ -16,8 +12,9 @@ public sealed class WebServiceSourceBuildDeploymentService(
     PersistUpdatedWebService persistUpdatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     RunMongoTransaction<SourceBuildDeploymentResult> runMongoTransaction,
-    IResourceDeploymentComputeLookup deploymentComputeLookup,
-    IResourceDeploymentMutationWriter deploymentWriter)
+    IResourceDeploymentSetQueryService deploymentQuery,
+    IResourceDeploymentSetMutationWriter deploymentWriter,
+    TimeProvider timeProvider)
     : IWebServiceSourceBuildDeploymentService
 {
     public async Task<Result<SourceBuildDeploymentResult>> DeployAsync(
@@ -33,17 +30,16 @@ public sealed class WebServiceSourceBuildDeploymentService(
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
             return Failures.Conflict("A deleting web service cannot accept a source build.");
 
-        var computeResult = await deploymentComputeLookup.GetCurrentAsync(
+        var deployments = await deploymentQuery.GetAllAsync(
             webService.TenantId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
             cancellationToken);
-        if (!computeResult.TryGetValue(out var currentCompute, out var computeFailure))
-            return computeFailure;
+        if (deployments.Count == 0)
+            return Failures.Conflict("The web service has no active resource deployments.");
 
         return await runMongoTransaction(async (session, ct) =>
         {
-            var previousSpec = webService.Spec.ToSnapshot();
             var previousImageReference = webService.Spec.Image.FullImageName;
             var nextImage = new ImageInfo(
                 request.Image.RegistryHost,
@@ -54,21 +50,21 @@ public sealed class WebServiceSourceBuildDeploymentService(
             var updatedWebService = webService.UpdateDesiredState(
                 nextSpec,
                 webService.Tags);
-            var nextSpecSnapshot = nextSpec.ToSnapshot();
-            var eventCore = EventCore.Create(request.TenantId);
+            var deploymentResult = await deploymentWriter.RequestSetApplyAsync(
+                new ResourceDeploymentSetApplyRequest(
+                    webService.TenantId,
+                    WebServiceResourceDeployment.ResourceType,
+                    webService.Id,
+                    updatedWebService.ActiveRevision,
+                    deployments.Select(deployment =>
+                        WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
+                session,
+                ct);
+            if (!deploymentResult.TryGetValue(out var updatedDeployments, out var deploymentFailure))
+                return deploymentFailure;
 
-            var changes = new WebServiceUpdatedEventChanges(
-                UpdateLog<WebServiceSpecSnapshot>.Of(previousSpec, nextSpecSnapshot),
-                UpdateLog<ImmutableHashSet<string>>.Of(webService.Tags, webService.Tags));
-            var updatedEvent = new WebServiceUpdatedEvent(
-                webService.Id,
-                webService.Name,
-                webService.ResourceGroupId,
-                webService.DnsRecord.ToSnapshot(),
-                changes)
-            {
-                EventCore = eventCore
-            };
+            var updatedEvent = updatedWebService.ToUpdatedEvent(
+                WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments));
             var update = await persistUpdatedWebService(
                 session,
                 webService,
@@ -78,21 +74,6 @@ public sealed class WebServiceSourceBuildDeploymentService(
             if (update is not ISuccess)
                 return (Failure)update;
 
-            var deploymentResult = await deploymentWriter.RequestApplyAsync(
-                new ResourceDeploymentMutationRequest(
-                    webService.TenantId,
-                    WebServiceResourceDeployment.ResourceType,
-                    webService.Id,
-                    currentCompute.Compute.Profile),
-                session,
-                ct);
-            if (!deploymentResult.TryGetValue(
-                    out var deployment,
-                    out var deploymentFailure))
-            {
-                return deploymentFailure;
-            }
-
             var release = WebServiceReleaseFactory.CreatePending(
                 request.TenantId,
                 request.WebServiceId,
@@ -101,17 +82,19 @@ public sealed class WebServiceSourceBuildDeploymentService(
                 request.ActorUserId,
                 request.ActorEmail,
                 nextSpec,
-                eventCore.TraceId,
-                eventCore.CorrelationId,
-                eventCore.OccurredOn,
+                WebServiceDeploymentWorkflow.ToReleaseDeployments(updatedDeployments),
+                updatedEvent.EventCore.TraceId,
+                updatedEvent.EventCore.CorrelationId,
+                new WebServiceReleaseFactory.CreateOptions(
+                    MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
+                    timeProvider.GetUtcNow().UtcDateTime),
                 new SourceBuildReleaseProvenance(
                     request.BuildJobId,
                     request.SourceRepositoryId,
                     request.CommitSha,
                     request.Image.Digest,
                     previousImageReference,
-                    nextImage.FullImageName),
-                deployment.DesiredGeneration);
+                    nextImage.FullImageName));
             await persistCurrentWebServiceRelease(
                 session,
                 release,

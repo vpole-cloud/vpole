@@ -12,15 +12,16 @@ public sealed record WebServiceDto(
     string Id,
     string Name,
     string ResourceGroupId,
-    int ActiveRevision,
+    string IsolationScopeId,
+    long ActiveRevision,
     WebServiceSpecDto Spec,
-    DnsRecordShortInfoDto DnsRecordShortInfo,
-    PlacementSummaryDto? Placement
+    WebServiceExposureDto Exposure,
+    IReadOnlyList<PlacementSummaryDto> Deployments
 );
 
 public sealed record WebServiceReleaseDto(
     string Id,
-    int Revision,
+    long ResourceRevision,
     string Action,
     string Outcome,
     string? ActorUserId,
@@ -31,11 +32,23 @@ public sealed record WebServiceReleaseDto(
     string? TraceId,
     string? CorrelationId,
     WebServiceReleaseProvenanceDto? Provenance,
+    ImmutableList<WebServiceReleaseDeploymentDto> Deployments,
     WebServiceSpecDto Spec
 );
 
+public sealed record WebServiceReleaseDeploymentDto(
+    string ResourceDeploymentId,
+    string DeploymentTargetId,
+    long ResourceRevision,
+    long DeploymentGeneration,
+    string Operation,
+    string Outcome,
+    DateTime? CompletedAtUtc,
+    string? FailureCode,
+    string? FailureMessage);
+
 public sealed record WebServiceReleaseHistoryDto(
-    int ActiveRevision,
+    long ActiveRevision,
     PaginatedResponse<WebServiceReleaseDto> Releases
 );
 
@@ -67,14 +80,10 @@ public sealed record CreateWebServiceDeploymentTokenResponse(
     WebServiceDeploymentTokenDto Token,
     string RawToken);
 
-public sealed record DnsRecordShortInfoDto(
-    string Id,
-    string Domain
-);
+public sealed record WebServiceExposureDto(string GeneratedHostnameLabelPrefix);
 
 public sealed record WebServiceSpecDto(
     ImageInfoDto Image,
-    int Replicas,
     WebServiceConfigDto Config,
     AutoscalingSpecDto? Autoscaling,
     ProbeSpecDto Probes
@@ -125,18 +134,19 @@ public static class WebServiceDtoExtensions
 {
     public static WebServiceDto ToDto(
         this WebService webService,
-        PlacementSummaryDto? placement = null) => new(
+        IReadOnlyList<PlacementSummaryDto>? deployments = null) => new(
         webService.Id,
         webService.Name,
         webService.ResourceGroupId,
+        webService.IsolationScopeId,
         webService.ActiveRevision,
         webService.Spec.ToDto(),
-        webService.DnsRecord.ToDto(),
-        placement
+        webService.Exposure.ToDto(),
+        deployments ?? []
     );
     public static WebServiceReleaseDto ToDto(this WebServiceRelease release) => new(
         release.Id,
-        release.Revision,
+        release.ResourceRevision,
         release.Action.ToString(),
         release.Outcome.ToString(),
         release.ActorUserId,
@@ -147,8 +157,13 @@ public static class WebServiceDtoExtensions
         release.TraceId,
         release.CorrelationId,
         release.Provenance?.ToDto(),
+        release.Deployments.Select(item => item.ToDto()).ToImmutableList(),
         release.Spec.ToDto()
     );
+    public static WebServiceReleaseDeploymentDto ToDto(this WebServiceReleaseDeployment deployment) => new(
+        deployment.ResourceDeploymentId, deployment.DeploymentTargetId, deployment.ResourceRevision,
+        deployment.DeploymentGeneration, deployment.Operation.ToString(), deployment.Outcome.ToString(),
+        deployment.CompletedAtUtc, deployment.FailureCode, deployment.FailureMessage);
     public static WebServiceReleaseProvenanceDto ToDto(this WebServiceReleaseProvenance provenance) =>
         provenance switch
         {
@@ -187,13 +202,10 @@ public static class WebServiceDtoExtensions
         token.LastUsedAtUtc,
         token.LastUsedSource
     );
-    public static DnsRecordShortInfoDto ToDto(this DnsRecordShortInfo dnsRecord) => new(
-        dnsRecord.Id,
-        dnsRecord.Domain
-    );
+    public static WebServiceExposureDto ToDto(this WebServiceExposure exposure) =>
+        new(exposure.GeneratedHostnameLabelPrefix);
     public static WebServiceSpecDto ToDto(this WebServiceSpec spec) => new(
         spec.Image.ToDto(),
-        spec.Replicas,
         spec.Config.ToDto(),
         spec.Autoscaling?.ToDto(),
         spec.Probes.ToDto()
@@ -236,7 +248,6 @@ public static class WebServiceDtoExtensions
     
     public static WebServiceSpec ToDomain(this WebServiceSpecDto dto) => new(
         dto.Image.ToDomain(),
-        dto.Replicas,
         dto.Config.ToDomain(),
         dto.Autoscaling?.ToDomain(),
         dto.Probes.ToDomain()
@@ -274,9 +285,5 @@ public static class WebServiceDtoExtensions
         dto.Server,
         dto.Name,
         dto.Tag
-    );
-    public static DnsRecordShortInfo ToDomain(this DnsRecordShortInfoDto shortInfoDto) => new(
-        shortInfoDto.Id,
-        shortInfoDto.Domain
     );
 }

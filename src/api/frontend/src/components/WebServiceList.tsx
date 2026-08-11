@@ -55,11 +55,11 @@ export function WebServiceList({
               <article className="list-row" key={item.id}>
                 <div className="list-row__primary">
                   <h3>{item.name}</h3>
-                  <p>{item.dnsRecordShortInfo?.domain || 'No public domain assigned yet.'}</p>
+                  <p>{item.deployments.flatMap((deployment) => deployment.ingress?.hostnames ?? []).join(', ') || 'No public hostname reported yet.'}</p>
                 </div>
                 <div className="list-row__secondary">
                   <span className="status-pill status-pill--accent">
-                    {item.spec.replicas} replicas
+                    {item.deployments.length} target{item.deployments.length === 1 ? '' : 's'}
                   </span>
                   <span className="list-row__meta">
                     {groupName || 'Unknown group'} · {image}

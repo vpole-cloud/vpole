@@ -311,6 +311,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
             fixture.DbContext,
             preparer,
             probe ?? new SuccessfulProbe(),
+            new DeploymentTargetDomainAdmission(fixture.DbContext),
             options ?? CreateOptions(new DeploymentTargetBootstrapOptions()),
             new FakeHostEnvironment(environmentName),
             new FixedTimeProvider(Now),

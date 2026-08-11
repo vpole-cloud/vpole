@@ -12,7 +12,7 @@ open Pole.Workloads
 
 type ResourceDeploymentSearchProjectionConsumer(
     searchService : ISearchService,
-    deploymentQueryService : IResourceDeploymentQueryService) =
+    deploymentQueryService : IResourceDeploymentSetQueryService) =
 
     let trySourceType (resourceType : string) =
         match resourceType with
@@ -21,6 +21,19 @@ type ResourceDeploymentSearchProjectionConsumer(
         | "pole/postgresql" -> Some SearchDocumentType.PostgresCluster
         | _ -> None
 
+    let aggregateStatus (deployments : PlacementSummaryDto array) =
+        let allStatuses = deployments |> Array.map _.Status
+        let statuses = allStatuses |> Array.filter ((<>) "Deleted")
+        if statuses.Length = 0 && allStatuses.Length > 0 then "Deleted"
+        elif statuses |> Array.exists ((=) "DeleteFailed") then "DeleteFailed"
+        elif statuses |> Array.exists ((=) "Failed") then
+            if statuses |> Array.exists ((=) "Applied") then "PartiallyFailed" else "Failed"
+        elif statuses |> Array.exists ((=) "Deleting") then "Deleting"
+        elif statuses |> Array.forall ((=) "Applied") then "Applied"
+        elif statuses |> Array.exists ((=) "Reconciling") then "Reconciling"
+        elif statuses |> Array.exists ((=) "WaitingForRuntimeCell") then "WaitingForRuntimeCell"
+        else "Pending"
+
     member _.Handle(
         tenantId : string,
         deploymentId : string,
@@ -28,38 +41,65 @@ type ResourceDeploymentSearchProjectionConsumer(
         resourceId : string,
         generation : int64,
         eventOccurredAtUtc : DateTime,
+        allowMissingDeployment : bool,
         cancellationToken : CancellationToken) =
         task {
             match trySourceType resourceType with
             | None -> ()
             | Some sourceType ->
-                let! placement =
-                    deploymentQueryService.GetAsync(
+                let! current =
+                    deploymentQueryService.GetAllAsync(
                         tenantId,
                         ResourceTypeId.Create(resourceType),
                         resourceId,
                         cancellationToken)
 
-                if not (isNull placement)
-                   && String.Equals(
-                       placement.DeploymentId,
-                       deploymentId,
-                       StringComparison.Ordinal)
-                   && (placement.DesiredGeneration >= generation
-                       || placement.ObservedGeneration >= generation) then
+                let deployments = current |> Seq.toArray
+                let eventDeployment =
+                    deployments
+                    |> Array.tryFind (fun deployment ->
+                        String.Equals(deployment.DeploymentId, deploymentId, StringComparison.Ordinal))
+
+                match eventDeployment with
+                | Some deployment when deployment.DesiredGeneration >= generation
+                                       || deployment.ObservedGeneration >= generation ->
+                    let status =
+                        { DesiredGeneration = deployments |> Array.maxBy _.ResourceRevision |> _.ResourceRevision
+                          ObservedGeneration = deployments |> Array.minBy _.ObservedGeneration |> _.ObservedGeneration
+                          Status = aggregateStatus deployments
+                          FailureCode =
+                            deployments
+                            |> Array.tryPick (fun item -> Option.ofObj item.FailureCode) }
                     do!
                         searchService.UpdateOperationalStatus(
                             sourceType,
                             tenantId,
                             resourceId,
-                            placement,
+                            status,
                             eventOccurredAtUtc)
                             cancellationToken
+                | None when allowMissingDeployment && deployments.Length > 0 ->
+                    let status =
+                        { DesiredGeneration = deployments |> Array.maxBy _.ResourceRevision |> _.ResourceRevision
+                          ObservedGeneration = deployments |> Array.minBy _.ObservedGeneration |> _.ObservedGeneration
+                          Status = aggregateStatus deployments
+                          FailureCode =
+                            deployments
+                            |> Array.tryPick (fun item -> Option.ofObj item.FailureCode) }
+                    do!
+                        searchService.UpdateOperationalStatus(
+                            sourceType,
+                            tenantId,
+                            resourceId,
+                            status,
+                            eventOccurredAtUtc)
+                            cancellationToken
+                | _ -> ()
         }
 
 type UpdateResourceDeploymentInSearchOnAppliedConsumer(
     searchService : ISearchService,
-    deploymentQueryService : IResourceDeploymentQueryService) =
+    deploymentQueryService : IResourceDeploymentSetQueryService) =
     inherit ResourceDeploymentSearchProjectionConsumer(
         searchService,
         deploymentQueryService)
@@ -73,11 +113,12 @@ type UpdateResourceDeploymentInSearchOnAppliedConsumer(
                 context.Message.ResourceId,
                 context.Message.Generation,
                 context.Message.EventCore.OccurredOn,
+                false,
                 context.CancellationToken)
 
 type UpdateResourceDeploymentInSearchOnFailedConsumer(
     searchService : ISearchService,
-    deploymentQueryService : IResourceDeploymentQueryService) =
+    deploymentQueryService : IResourceDeploymentSetQueryService) =
     inherit ResourceDeploymentSearchProjectionConsumer(
         searchService,
         deploymentQueryService)
@@ -91,11 +132,12 @@ type UpdateResourceDeploymentInSearchOnFailedConsumer(
                 context.Message.ResourceId,
                 context.Message.Generation,
                 context.Message.EventCore.OccurredOn,
+                false,
                 context.CancellationToken)
 
 type UpdateResourceDeploymentInSearchOnDeletedConsumer(
     searchService : ISearchService,
-    deploymentQueryService : IResourceDeploymentQueryService) =
+    deploymentQueryService : IResourceDeploymentSetQueryService) =
     inherit ResourceDeploymentSearchProjectionConsumer(
         searchService,
         deploymentQueryService)
@@ -109,4 +151,5 @@ type UpdateResourceDeploymentInSearchOnDeletedConsumer(
                 context.Message.ResourceId,
                 context.Message.Generation,
                 context.Message.EventCore.OccurredOn,
+                true,
                 context.CancellationToken)

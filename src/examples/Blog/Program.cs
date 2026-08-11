@@ -37,10 +37,10 @@ namespace Blog
                 description: "Production workloads for the blog platform.",
                 tags: ["blog", "prod", "content"]);
 
-            await EnsureWebServiceAsync(resourceGroup.Id, "blog-microservice", "blog.example.local");
-            await EnsureWebServiceAsync(resourceGroup.Id, "admin-panel", "admin.example.local");
-            await EnsureWebServiceAsync(resourceGroup.Id, "public-frontend", "www.example.local");
-            await EnsureWebServiceAsync(resourceGroup.Id, "image-proxy", "images.example.local");
+            await EnsureWebServiceAsync(resourceGroup.Id, "blog-microservice");
+            await EnsureWebServiceAsync(resourceGroup.Id, "admin-panel");
+            await EnsureWebServiceAsync(resourceGroup.Id, "public-frontend");
+            await EnsureWebServiceAsync(resourceGroup.Id, "image-proxy");
             await EnsurePostgresClusterAsync(resourceGroup.Id, "blog-postgres", "blog_admin", "blog-admin-secret");
             await EnsurePostgresClusterAsync(resourceGroup.Id, "analytics-postgres", "analytics", "analytics-secret");
 
@@ -74,7 +74,7 @@ namespace Blog
             return created;
         }
 
-        private async Task EnsureWebServiceAsync(string resourceGroupId, string name, string domainName)
+        private async Task EnsureWebServiceAsync(string resourceGroupId, string name)
         {
             var existing = await FindWebServiceByNameAsync(name);
             if (existing is not null)
@@ -96,12 +96,6 @@ namespace Blog
                             Server = "docker.io",
                             Name = "nginx",
                             Tag = "1.27"
-                        },
-                        Replicas = 2,
-                        Resources = new
-                        {
-                            Requests = new { CpuCores = 1, MemoryMi = 256 },
-                            Limits = new { CpuCores = 2, MemoryMi = 512 }
                         },
                         Config = new
                         {
@@ -129,12 +123,25 @@ namespace Blog
                             Readiness = CreateProbe()
                         }
                     },
-                    DomainName = domainName
+                    Placement = new
+                    {
+                        IsolationScopeId = (string?)null,
+                        Targets = new[]
+                        {
+                            new
+                            {
+                                DeploymentTargetId = (string?)null,
+                                FixedReplicas = 2,
+                                ComputeProfileId = (string?)null
+                            }
+                        }
+                    },
+                    Tags = Array.Empty<string>()
                 });
 
             if (response.StatusCode == HttpStatusCode.Conflict)
             {
-                Console.WriteLine($"Skipped web service because domain is already used: {domainName}");
+                Console.WriteLine($"Skipped web service because its placement is unavailable: {name}");
                 return;
             }
 

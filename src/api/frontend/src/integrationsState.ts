@@ -13,6 +13,7 @@ const appViews = new Set<AppView>([
   'overview',
   'resource-groups',
   'web-services',
+  'domains',
   'integrations',
   'storage',
 ])

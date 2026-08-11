@@ -63,8 +63,9 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
                     "TenantId",
                     "Name",
                     "ResourceGroupId",
+                    "IsolationScopeId",
                     "Spec",
-                    "DnsRecord",
+                    "Exposure",
                     "ActiveRevision",
                     "Tags",
                     "Events",
@@ -74,24 +75,24 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
                 ("_id", Type("objectId")),
                 ("TenantId", StringType(minimumLength: 1)),
                 ("Name", StringType(minimumLength: 1, maximumLength: 30)),
-                ("ResourceGroupId", StringType(minimumLength: 1)),
+                ("ResourceGroupId", StringType(minimumLength: 24, maximumLength: 24)),
+                ("IsolationScopeId", StringType(minimumLength: 24, maximumLength: 24)),
                 ("Spec", WebServiceSpecSchema()),
-                ("DnsRecord", DnsRecordSchema()),
-                ("ActiveRevision", IntegerType("int", minimum: 1)),
+                ("Exposure", ExposureSchema()),
+                ("ActiveRevision", IntegerType("long", minimum: 1)),
                 ("Tags", ArrayOf(StringType(), uniqueItems: true)),
                 ("Events", ArrayOf(ServiceEventSchema())),
                 ("Revision", IntegerType("long", minimum: 1)),
                 ("Lifecycle", LifecycleSchema())));
 
         private static BsonDocument WebServiceSpecSchema() => Object(
-            ["Image", "Replicas", "Config", "Autoscaling", "Probes"],
+            ["Image", "Config", "Autoscaling", "Probes"],
             ("Image", Object(
                 ["Server", "Name", "Tag", "SecretName"],
                 ("Server", StringType(minimumLength: 1, maximumLength: 255)),
                 ("Name", StringType(minimumLength: 1, maximumLength: 255)),
                 ("Tag", StringType(minimumLength: 1, maximumLength: 100)),
                 ("SecretName", Nullable(StringType())))),
-            ("Replicas", IntegerType("int", minimum: 1)),
             ("Config", ConfigSchema()),
             ("Autoscaling", Nullable(AutoscalingSchema())),
             ("Probes", ProbeSpecSchema()));
@@ -141,10 +142,9 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
             ("FailureThreshold", IntegerType("int", minimum: 1, maximum: 10)),
             ("SuccessThreshold", IntegerType("int", minimum: 1, maximum: 10)));
 
-        private static BsonDocument DnsRecordSchema() => Object(
-            ["_id", "Domain"],
-            ("_id", StringType(minimumLength: 1)),
-            ("Domain", StringType(minimumLength: 1)));
+        private static BsonDocument ExposureSchema() => Object(
+            ["GeneratedHostnameLabelPrefix"],
+            ("GeneratedHostnameLabelPrefix", StringType(minimumLength: 1, maximumLength: 63)));
 
         private static BsonDocument ServiceEventSchema() => Object(
             ["OccurredOn", "Message"],

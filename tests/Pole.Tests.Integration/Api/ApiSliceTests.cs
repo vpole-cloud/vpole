@@ -10,6 +10,7 @@ using Pole.Features.Request;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Endpoints;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -62,16 +63,20 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
-    public async Task CreateWebService_ReturnsConflict_WhenDomainExists()
+    public async Task CreateWebService_ReturnsGeneratedDeployment()
     {
         var resourceGroupResponse = await Client.PostAsJsonAsync("/api/v1/resource-groups/", TestData.CreateResourceGroupRequest("web-rg").Body);
         var resourceGroup = await resourceGroupResponse.Content.ReadFromJsonAsync<ResourceGroupCreatedResponse>();
         Assert.NotNull(resourceGroup);
 
-        await Client.PostAsJsonAsync("/api/v1/web-services/", TestData.CreateWebServiceRequest(resourceGroup.Id, domainName: "dup.example.com").Body);
-        var response = await Client.PostAsJsonAsync("/api/v1/web-services/", TestData.CreateWebServiceRequest(resourceGroup.Id, name: "second-web", domainName: "dup.example.com").Body);
+        var response = await Client.PostAsJsonAsync(
+            "/api/v1/web-services/",
+            TestData.CreateWebServiceRequest(resourceGroup.Id, name: "generated-hostname-web").Body);
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<CreateWebServiceResponse>();
+        Assert.NotNull(created);
+        Assert.Single(created.Deployments);
     }
 
     [Fact]
@@ -192,8 +197,7 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
             "/api/v1/web-services/",
             TestData.CreateWebServiceRequest(
                 resourceGroup.Id,
-                "platform-web",
-                "platform-web.example.test").Body);
+                "platform-web").Body);
         var redisCreate = await Client.PostAsJsonAsync(
             "/api/v1/redis-services/",
             TestData.CreateRedisServiceRequest(
@@ -250,7 +254,7 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         var webItem = Assert.Single(web!.Items);
         var redisItem = Assert.Single(redis!.Items);
         var postgresItem = Assert.Single(postgres!.Items);
-        Assert.NotNull(webItem.Placement);
+        Assert.NotEmpty(webItem.Deployments);
         Assert.NotNull(redisItem.Placement);
         Assert.NotNull(postgresItem.Placement);
 
@@ -260,7 +264,7 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
             $"/api/v1/redis-services/{redisItem.Id}");
         var postgresDetail = await Client.GetFromJsonAsync<PostgresClusterDto>(
             $"/api/v1/postgres/{postgresItem.Id}");
-        Assert.NotNull(webDetail!.Placement);
+        Assert.NotEmpty(webDetail!.Deployments);
         Assert.NotNull(redisDetail!.Placement);
         Assert.NotNull(postgresDetail!.Placement);
     }

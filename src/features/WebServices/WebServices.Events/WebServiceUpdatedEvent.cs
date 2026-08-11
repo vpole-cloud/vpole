@@ -4,18 +4,17 @@ using Pole.Features.Events.Abstractions;
 
 namespace Pole.Features.WebServices.Events;
 
- [EntityName("web-service-updated")]
+[EntityName("web-service-updated")]
 public sealed record WebServiceUpdatedEvent(
     string WebServiceId,
     string Name,
     string ResourceGroupId,
-    WebServiceDnsRecordSnapshot DnsRecord,
-    WebServiceUpdatedEventChanges Changes
-    ) : IPoleEvent
+    string IsolationScopeId,
+    long ResourceRevision,
+    WebServiceSpecSnapshot Spec,
+    WebServiceExposureSnapshot Exposure,
+    ImmutableHashSet<string> Tags,
+    ImmutableList<WebServiceDesiredDeploymentSnapshot> Deployments) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
-
-public sealed record WebServiceUpdatedEventChanges(
-    UpdateLog<WebServiceSpecSnapshot> WebServiceSpec,
-    UpdateLog<ImmutableHashSet<string>> Tags);

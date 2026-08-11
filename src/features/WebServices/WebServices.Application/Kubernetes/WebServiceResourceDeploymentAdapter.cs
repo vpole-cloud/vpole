@@ -31,6 +31,8 @@ public sealed class WebServiceResourceDeploymentAdapter(
         var desired = await loadDeploymentSnapshot(
             context.Deployment.TenantId,
             context.Deployment.ResourceId,
+            context.Deployment.Id,
+            context.Deployment.ResourceRevision,
             context.Deployment.DesiredGeneration,
             cancellationToken);
         if (desired is null)
@@ -45,7 +47,8 @@ public sealed class WebServiceResourceDeploymentAdapter(
         var inKubernetes = webService.ToKubernetes(
             context.Deployment.Placement.KubernetesNamespace,
             context.Deployment.Placement.Ingress!,
-            context.Deployment.Placement.Compute);
+            context.Deployment.Placement.Compute,
+            context.Deployment.FixedReplicas);
 
         if (webService.Spec.Image.SecretName is not null)
         {
@@ -65,7 +68,7 @@ public sealed class WebServiceResourceDeploymentAdapter(
             context.Deployment.RuntimeCellId,
             context.Deployment.Placement.DeploymentTargetId,
             context.Deployment.DesiredGeneration,
-            desired.Revision,
+            desired.ResourceRevision,
             desired.RequestedAtUtc);
         var applyResult = await WebServiceKubernetesResourceManager.ApplyAsync(
             kubernetes,
@@ -81,13 +84,12 @@ public sealed class WebServiceResourceDeploymentAdapter(
         }
 
         return ResourceDeploymentAdapterResult.Succeeded.Create(
-        [
-            ResourceDeploymentEndpointDto.Create(
-                "Ingress",
-                webService.DnsRecord.Domain,
-                port: 443,
-                scheme: "https")
-        ]);
+            context.Deployment.Placement.Ingress!.Hostnames.Select(hostname =>
+                ResourceDeploymentEndpointDto.Create(
+                    "Ingress",
+                    hostname,
+                    port: 443,
+                    scheme: "https")));
     }
 
     public async Task<ResourceDeploymentAdapterResult> DeleteAsync(
@@ -144,6 +146,14 @@ public sealed class WebServiceResourceDeploymentAdapter(
             return ResourceDeploymentAdapterResult.Failed.Create(
                 "IngressConfigurationMissing",
                 "The web service placement does not contain resolved ingress configuration.",
+                retryable: false);
+        }
+
+        if (ingress.Hostnames.Count == 0)
+        {
+            return ResourceDeploymentAdapterResult.Failed.Create(
+                "IngressHostnamesMissing",
+                "The web service placement does not contain an ingress hostname.",
                 retryable: false);
         }
 
@@ -204,5 +214,5 @@ public static class WebServiceResourceDeploymentAdapterRegistration
     public static ResourceDeploymentAdapterDescriptor Descriptor { get; } =
         ResourceDeploymentAdapterDescriptor.Create<WebServiceResourceDeploymentAdapter>(
             WebServiceResourceDeployment.ResourceType,
-            ResourcePlacementCapability.SingleTarget);
+            ResourcePlacementCapability.MultiTarget);
 }

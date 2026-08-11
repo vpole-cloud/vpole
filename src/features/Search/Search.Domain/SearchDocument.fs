@@ -7,7 +7,6 @@ type SearchDocumentType =
     | ResourceGroup = 0
     | WebService = 1
     | RedisService = 2
-    | DnsRecord = 3
     | PostgresCluster = 4
 
 type SearchKeyType =

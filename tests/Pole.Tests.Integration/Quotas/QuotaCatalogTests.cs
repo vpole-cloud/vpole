@@ -122,6 +122,28 @@ public sealed class QuotaCatalogTests
         Assert.Equal(1, impact[WebServiceCountQuota.QuotaKey]);
     }
 
+    [Fact]
+    public void WebServiceProfileSumsDesiredCapacityAcrossDeploymentTargets()
+    {
+        var profile = new WebServiceQuotaProfile(
+            new CpuQuota(),
+            new RamQuota(),
+            new WorkloadInstancesQuota(),
+            new WebServiceCountQuota());
+        var input = WebServiceQuotaInput.Create(
+        [
+            WebServiceDeploymentQuotaInput.Create(250, 256, 2),
+            WebServiceDeploymentQuotaInput.Create(1000, 2048, 3)
+        ]);
+
+        var impact = profile.Calculate(input);
+
+        Assert.Equal(3500, impact[CpuQuota.QuotaKey]);
+        Assert.Equal(6656, impact[RamQuota.QuotaKey]);
+        Assert.Equal(5, impact[WorkloadInstancesQuota.QuotaKey]);
+        Assert.Equal(1, impact[WebServiceCountQuota.QuotaKey]);
+    }
+
     private sealed record TestSpec;
 
     private sealed class TestQuota(QuotaKey key) : Quota<TestSpec>

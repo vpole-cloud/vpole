@@ -139,6 +139,7 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
         var handler = new UpdateDeploymentTargetHandler(
             fixture.DbContext,
             new DeploymentTargetReader(fixture.DbContext),
+            new DeploymentTargetDomainAdmission(fixture.DbContext),
             new NoOpClientCache(),
             timeProvider);
 

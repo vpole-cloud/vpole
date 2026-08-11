@@ -120,7 +120,30 @@ module SearchDocumentFactory =
                            TokenWeight = Some TagTokenWeight })
                      |> Seq.toList)) }
 
-    let fromWebServiceFields tenantId resourceGroupName webServiceId name resourceGroupId domain image =
+    let fromWebServiceFields tenantId resourceGroupName webServiceId name resourceGroupId domains image =
+        let domainFields =
+            domains
+            |> Seq.distinct
+            |> Seq.map (fun domain ->
+                { KeyType = SearchKeyType.Domain
+                  Value = domain
+                  FullWeight = DomainWeight
+                  TokenWeight = Some DomainTokenWeight })
+            |> Seq.toList
+        let baseFields =
+            [ { KeyType = SearchKeyType.SourceId
+                Value = webServiceId
+                FullWeight = IdWeight
+                TokenWeight = None }
+              { KeyType = SearchKeyType.Name
+                Value = name
+                FullWeight = NameWeight
+                TokenWeight = Some NameTokenWeight }
+              { KeyType = SearchKeyType.Image
+                Value = image
+                FullWeight = ImageWeight
+                TokenWeight = Some ImageTokenWeight } ]
+
         { SourceType = SearchDocumentType.WebService
           TenantId = tenantId
           SourceId = webServiceId
@@ -132,43 +155,7 @@ module SearchDocumentFactory =
                 name
                 (Some resourceGroupId)
                 resourceGroupName
-                [ { KeyType = SearchKeyType.SourceId
-                    Value = webServiceId
-                    FullWeight = IdWeight
-                    TokenWeight = None }
-                  { KeyType = SearchKeyType.Name
-                    Value = name
-                    FullWeight = NameWeight
-                    TokenWeight = Some NameTokenWeight }
-                  { KeyType = SearchKeyType.Domain
-                    Value = domain
-                    FullWeight = DomainWeight
-                    TokenWeight = Some DomainTokenWeight }
-                  { KeyType = SearchKeyType.Image
-                    Value = image
-                    FullWeight = ImageWeight
-                    TokenWeight = Some ImageTokenWeight } ] }
-
-    let fromDnsRecordFields tenantId resourceGroupName dnsRecordId domain resourceGroupId resourceName =
-        { SourceType = SearchDocumentType.DnsRecord
-          TenantId = tenantId
-          SourceId = dnsRecordId
-          Documents =
-            toDocuments
-                SearchDocumentType.DnsRecord
-                tenantId
-                dnsRecordId
-                domain
-                (Some resourceGroupId)
-                resourceGroupName
-                [ { KeyType = SearchKeyType.Domain
-                    Value = domain
-                    FullWeight = DomainWeight
-                    TokenWeight = Some DomainTokenWeight }
-                  { KeyType = SearchKeyType.ResourceName
-                    Value = resourceName
-                    FullWeight = ResourceNameWeight
-                    TokenWeight = Some ResourceNameTokenWeight } ] }
+                (baseFields @ domainFields) }
 
     let fromRedisFields tenantId resourceGroupName redisId name resourceGroupId =
         { SourceType = SearchDocumentType.RedisService

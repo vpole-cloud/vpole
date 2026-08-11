@@ -3,6 +3,7 @@ export type AppView =
   | 'overview'
   | 'resource-groups'
   | 'web-services'
+  | 'domains'
   | 'integrations'
   | 'storage'
 
@@ -57,27 +58,173 @@ export interface WebService {
   id: string
   name: string
   resourceGroupId: string
-  dnsRecordShortInfo?: {
-    id: string
-    domain: string
+  isolationScopeId?: string | null
+  activeRevision: number
+  spec: WebServiceSpec
+  exposure: WebServiceExposure
+  deployments: WebServiceDeployment[]
+}
+
+export interface WebServiceExposure {
+  generatedHostnameLabelPrefix: string
+}
+
+export interface WebServiceSpec {
+  image: ImageInfo
+  config: {
+    environmentVariables: Record<string, string>
+    portMappings: PortMapping[]
   }
-  spec: {
-    replicas: number
-    image: ImageInfo
-    config: {
-      environmentVariables: Record<string, string>
-      portMappings: PortMapping[]
-    }
-    probes: {
-      startup: ProbeConfig
-      liveness: ProbeConfig
-      readiness: ProbeConfig
-    }
-    autoscaling?: {
-      minReplicas: number
-      maxReplicas: number
-    } | null
+  probes: {
+    startup: ProbeConfig
+    liveness: ProbeConfig
+    readiness: ProbeConfig
   }
+  autoscaling?: {
+    minReplicas: number
+    maxReplicas: number
+    metric: {
+      type: string
+      targetAverageUtilization: number
+    }
+  } | null
+}
+
+export interface ComputeProfileSummary {
+  profile: {
+    computeProfileId: string
+    computeProfileRevision: number
+  }
+  displayName: string
+  requests: {
+    cpuMillis: number
+    memoryMi: number
+  }
+  limits: {
+    cpuMillis: number
+    memoryMi: number
+  }
+  extendedResources: Array<{
+    name: string
+    quantity: number
+  }>
+}
+
+export interface WebServiceDeploymentEndpoint {
+  kind: string
+  host: string
+  port: number
+  scheme: string
+}
+
+export interface WebServiceDeploymentIngress {
+  ingressClassName: string
+  clusterIssuerName: string
+  publicBaseDomain?: string | null
+  hostnames: string[]
+}
+
+export interface WebServiceDeployment {
+  deploymentId: string
+  isolationScopeId?: string | null
+  runtimeCellId: string
+  deploymentTargetId: string
+  desiredGeneration: number
+  observedGeneration: number
+  status: string
+  failureCode?: string | null
+  compute: ComputeProfileSummary
+  endpoints: WebServiceDeploymentEndpoint[]
+  resourceRevision: number
+  fixedReplicas: number
+  ingress?: WebServiceDeploymentIngress | null
+  deploymentRevision: number
+  desiredOperation: 'Apply' | 'Delete'
+}
+
+export interface AvailableDeploymentTarget {
+  id: string
+  displayName: string
+  workloadConfigurationRevision: number
+  hasPublicIngress: boolean
+  publicBaseDomain?: string | null
+}
+
+export interface AvailableComputeProfile {
+  id: string
+  displayName: string
+  description: string
+  resources: {
+    requests: {
+      cpuMillis: number
+      memoryMi: number
+    }
+    limits: {
+      cpuMillis: number
+      memoryMi: number
+    }
+  }
+  architecture: string
+  extendedResources: Array<{
+    name: string
+    quantity: number
+  }>
+  isDefault: boolean
+  revision: number
+}
+
+export interface TenantDomainZone {
+  id: string
+  tenantId: string
+  deploymentTargetId: string
+  label: string
+  domain: string
+  kind: 'generated' | 'managed-reservation' | string
+  revision: number
+  createdAtUtc: string
+  updatedAtUtc: string
+}
+
+export interface HostnameBinding {
+  id: string
+  tenantId: string
+  tenantDomainZoneId: string
+  deploymentTargetId: string
+  resourceType: string
+  resourceId: string
+  resourceDeploymentId: string
+  relativeName: string
+  hostname: string
+  kind: 'generated' | 'custom' | string
+  createdAtUtc: string
+}
+
+export interface WebServiceReleaseDeployment {
+  resourceDeploymentId: string
+  deploymentTargetId: string
+  resourceRevision: number
+  deploymentGeneration: number
+  operation: string
+  outcome: string
+  completedAtUtc?: string | null
+  failureCode?: string | null
+  failureMessage?: string | null
+}
+
+export interface WebServiceRelease {
+  id: string
+  resourceRevision: number
+  action: string
+  outcome: string
+  requestedAtUtc: string
+  completedAtUtc?: string | null
+  failureMessage?: string | null
+  deployments: WebServiceReleaseDeployment[]
+}
+
+export interface WebServiceReleaseHistory {
+  activeRevision: number
+  releases: PaginatedResponse<WebServiceRelease>
 }
 
 export interface PaginatedResponse<T> {
@@ -247,12 +394,10 @@ export interface ResourceGroupInput {
 export interface WebServiceInput {
   name: string
   resourceGroupId: string
-  domainName: string
+  isolationScopeId?: string
   imageServer: string
   imageName: string
   imageTag: string
-  replicas: number
-  computeProfileId?: string
   probePath: string
   probePort: string
   servicePort: number
@@ -262,6 +407,19 @@ export interface WebServiceInput {
     key: string
     value: string
   }>
+  autoscaling?: WebServiceSpec['autoscaling']
+  targets: WebServiceDeploymentInput[]
+}
+
+export interface WebServiceDeploymentInput {
+  deploymentTargetId?: string
+  fixedReplicas: number
+  computeProfileId?: string
+}
+
+export interface WebServiceDeploymentUpdateInput {
+  fixedReplicas: number
+  computeProfileId?: string
 }
 
 export type StorageMediaType = 'Unknown' | 'HDD' | 'SSD' | 'NVMe' | 'Network'

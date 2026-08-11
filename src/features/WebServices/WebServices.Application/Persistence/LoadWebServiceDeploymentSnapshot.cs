@@ -7,12 +7,16 @@ namespace Pole.Features.WebServices.Application.Persistence;
 public sealed record WebServiceDeploymentPersistenceSnapshot(
     WebService WebService,
     string ReleaseId,
-    int Revision,
+    long ResourceRevision,
+    string ResourceDeploymentId,
+    long DeploymentGeneration,
     DateTime RequestedAtUtc);
 
 public delegate Task<WebServiceDeploymentPersistenceSnapshot?> LoadWebServiceDeploymentSnapshot(
     string tenantId,
     string webServiceId,
+    string resourceDeploymentId,
+    long resourceRevision,
     long deploymentGeneration,
     CancellationToken cancellationToken = default);
 
@@ -23,6 +27,8 @@ internal sealed class MongoLoadWebServiceDeploymentSnapshot(
     public async Task<WebServiceDeploymentPersistenceSnapshot?> InvokeAsync(
         string tenantId,
         string webServiceId,
+        string resourceDeploymentId,
+        long resourceRevision,
         long deploymentGeneration,
         CancellationToken cancellationToken = default)
     {
@@ -33,9 +39,11 @@ internal sealed class MongoLoadWebServiceDeploymentSnapshot(
             return null;
 
         var release = await releases.Find(
-                WebServiceReleaseFilters.ByDeploymentGeneration(
+                WebServiceReleaseFilters.DeploymentSnapshot(
                     tenantId,
                     webServiceId,
+                    resourceDeploymentId,
+                    resourceRevision,
                     deploymentGeneration))
             .FirstOrDefaultAsync(cancellationToken);
         return release is null
@@ -44,10 +52,12 @@ internal sealed class MongoLoadWebServiceDeploymentSnapshot(
                 webService with
                 {
                     Spec = release.Spec,
-                    ActiveRevision = release.Revision
+                    ActiveRevision = release.ResourceRevision
                 },
                 release.Id,
-                release.Revision,
+                release.ResourceRevision,
+                resourceDeploymentId,
+                deploymentGeneration,
                 release.RequestedAtUtc);
     }
 }

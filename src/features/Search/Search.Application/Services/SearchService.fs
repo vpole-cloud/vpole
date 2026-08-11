@@ -13,6 +13,12 @@ open Pole.Features.Search.Domain
 open Pole.Features.Search.Application.Projection
 open Pole.Features.ResourceDeployments.Contracts
 
+type SearchOperationalStatusUpdate =
+    { DesiredGeneration : int64
+      ObservedGeneration : int64
+      Status : string
+      FailureCode : string option }
+
 type ISearchService =
     abstract member Create :
         documentSet : SearchDocumentSet ->
@@ -36,7 +42,7 @@ type ISearchService =
         sourceType : SearchDocumentType *
         tenantId : string *
         sourceId : string *
-        placement : PlacementSummaryDto *
+        status : SearchOperationalStatusUpdate *
         eventOccurredAtUtc : System.DateTime ->
             cancellationToken : CancellationToken ->
                 Task
@@ -73,30 +79,29 @@ type SearchService(database : IMongoDatabase) =
 
     let replaceSet (documentSet : SearchDocumentSet) (cancellationToken : CancellationToken) =
         task {
-            let! existingSource =
-                sourceCollection
-                    .Find(sourceFilter documentSet.SourceType documentSet.TenantId documentSet.SourceId)
-                    .FirstOrDefaultAsync(cancellationToken)
-
             do! collection.DeleteManyAsync(rowFilter documentSet.SourceType documentSet.TenantId documentSet.SourceId, cancellationToken = cancellationToken) :> Task
 
             if not (List.isEmpty documentSet.Documents) then
                 do! collection.InsertManyAsync(documentSet.Documents, cancellationToken = cancellationToken)
 
-                let sourceDocument =
-                    let candidate = SearchDocumentFactory.toSourceDocument documentSet
-                    match box existingSource with
-                    | null -> candidate
-                    | _ ->
-                        { candidate with
-                            Id = existingSource.Id
-                            OperationalStatus = existingSource.OperationalStatus }
+                let candidate = SearchDocumentFactory.toSourceDocument documentSet
+                let update =
+                    Builders<SearchSourceDocument>.Update
+                        .Set(_.Title, candidate.Title)
+                        .Set(_.ResourceGroupId, candidate.ResourceGroupId)
+                        .Set(_.ResourceGroupName, candidate.ResourceGroupName)
+                        .Set(_.SearchKeys, candidate.SearchKeys)
+                        .SetOnInsert(_.Id, candidate.Id)
+                        .SetOnInsert(_.SourceType, candidate.SourceType)
+                        .SetOnInsert(_.TenantId, candidate.TenantId)
+                        .SetOnInsert(_.SourceId, candidate.SourceId)
+                        .SetOnInsert(_.OperationalStatus, None)
 
                 let! _ =
-                    sourceCollection.ReplaceOneAsync(
+                    sourceCollection.UpdateOneAsync(
                         sourceFilter documentSet.SourceType documentSet.TenantId documentSet.SourceId,
-                        sourceDocument,
-                        ReplaceOptions(IsUpsert = true),
+                        update,
+                        UpdateOptions(IsUpsert = true),
                         cancellationToken)
 
                 return ()
@@ -117,27 +122,87 @@ type SearchService(database : IMongoDatabase) =
           OperationalStatus = operationalStatus }
 
     let toSearchOperationalStatus
-        (placement : PlacementSummaryDto)
+        (status : SearchOperationalStatusUpdate)
         (eventOccurredAtUtc : System.DateTime) =
-        { DesiredGeneration = placement.DesiredGeneration
-          ObservedGeneration = placement.ObservedGeneration
-          Status = placement.Status
-          FailureCode = Option.ofObj placement.FailureCode
+        { DesiredGeneration = status.DesiredGeneration
+          ObservedGeneration = status.ObservedGeneration
+          Status = status.Status
+          FailureCode = status.FailureCode
           EventOccurredAtUtc = eventOccurredAtUtc }
 
-    let placementFence (placement : PlacementSummaryDto) (eventOccurredAtUtc : System.DateTime) =
+    let placementFence (status : SearchOperationalStatusUpdate) (eventOccurredAtUtc : System.DateTime) =
         let filter = Builders<SearchSourceDocument>.Filter
         filter.Or(
             filter.Exists("OperationalStatus", false),
             filter.Eq("OperationalStatus", BsonNull.Value),
-            filter.Lt("OperationalStatus.DesiredGeneration", placement.DesiredGeneration),
+            filter.Lt("OperationalStatus.DesiredGeneration", status.DesiredGeneration),
             filter.And(
-                filter.Eq("OperationalStatus.DesiredGeneration", placement.DesiredGeneration),
-                filter.Lt("OperationalStatus.ObservedGeneration", placement.ObservedGeneration)),
+                filter.Eq("OperationalStatus.DesiredGeneration", status.DesiredGeneration),
+                filter.Lt("OperationalStatus.ObservedGeneration", status.ObservedGeneration)),
             filter.And(
-                filter.Eq("OperationalStatus.DesiredGeneration", placement.DesiredGeneration),
-                filter.Eq("OperationalStatus.ObservedGeneration", placement.ObservedGeneration),
+                filter.Eq("OperationalStatus.DesiredGeneration", status.DesiredGeneration),
+                filter.Eq("OperationalStatus.ObservedGeneration", status.ObservedGeneration),
                 filter.Lte("OperationalStatus.EventOccurredAtUtc", eventOccurredAtUtc)))
+
+    let rec persistOperationalStatus
+        (sourceType : SearchDocumentType)
+        (tenantId : string)
+        (sourceId : string)
+        (status : SearchOperationalStatusUpdate)
+        (eventOccurredAtUtc : System.DateTime)
+        (cancellationToken : CancellationToken) =
+        task {
+            let identity = sourceFilter sourceType tenantId sourceId
+            let filter =
+                Builders<SearchSourceDocument>.Filter.And(
+                    identity,
+                    placementFence status eventOccurredAtUtc)
+            let operationalStatus =
+                Some(toSearchOperationalStatus status eventOccurredAtUtc)
+            let update =
+                Builders<SearchSourceDocument>.Update.Set(
+                    _.OperationalStatus,
+                    operationalStatus)
+            let! updated =
+                sourceCollection.UpdateOneAsync(
+                    filter,
+                    update,
+                    cancellationToken = cancellationToken)
+
+            if updated.MatchedCount = 0L then
+                let! existing =
+                    sourceCollection
+                        .Find(identity)
+                        .Limit(1)
+                        .AnyAsync(cancellationToken)
+
+                if not existing then
+                    let pendingSource =
+                        { Id = SearchSourceDocument.createId()
+                          SourceType = sourceType
+                          TenantId = tenantId
+                          SourceId = sourceId
+                          Title = ""
+                          ResourceGroupId = None
+                          ResourceGroupName = None
+                          SearchKeys = [||]
+                          OperationalStatus = operationalStatus }
+                    try
+                        do! sourceCollection.InsertOneAsync(
+                            pendingSource,
+                            cancellationToken = cancellationToken)
+                    with
+                    | :? MongoWriteException as mongoException
+                        when mongoException.WriteError.Category = ServerErrorCategory.DuplicateKey ->
+                        return!
+                            persistOperationalStatus
+                                sourceType
+                                tenantId
+                                sourceId
+                                status
+                                eventOccurredAtUtc
+                                cancellationToken
+        }
 
     let escapePrefix (query : string) =
         $"^{Regex.Escape(query)}"
@@ -192,23 +257,14 @@ type SearchService(database : IMongoDatabase) =
         member _.Delete(sourceType, tenantId, sourceId) cancellationToken =
             deleteBySource sourceType tenantId sourceId cancellationToken
 
-        member _.UpdateOperationalStatus(sourceType, tenantId, sourceId, placement, eventOccurredAtUtc) cancellationToken =
-            task {
-                let filter =
-                    Builders<SearchSourceDocument>.Filter.And(
-                        sourceFilter sourceType tenantId sourceId,
-                        placementFence placement eventOccurredAtUtc)
-                let update =
-                    Builders<SearchSourceDocument>.Update.Set(
-                        _.OperationalStatus,
-                        Some(toSearchOperationalStatus placement eventOccurredAtUtc))
-                let! _ =
-                    sourceCollection.UpdateOneAsync(
-                        filter,
-                        update,
-                        cancellationToken = cancellationToken)
-                return ()
-            }
+        member _.UpdateOperationalStatus(sourceType, tenantId, sourceId, status, eventOccurredAtUtc) cancellationToken =
+            persistOperationalStatus
+                sourceType
+                tenantId
+                sourceId
+                status
+                eventOccurredAtUtc
+                cancellationToken
 
         member _.Get query cancellationToken =
             task {

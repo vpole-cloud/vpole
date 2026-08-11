@@ -15,22 +15,14 @@ type WebServiceSearchProjectionConsumer(searchService : ISearchService) =
         webServiceId : string,
         name : string,
         resourceGroupId : string,
-        dnsRecordId : string,
-        domain : string,
+        hostnames : seq<string>,
         image : string,
         apply : SearchDocumentSet -> CancellationToken -> Task,
         cancellationToken : CancellationToken) =
-        task {
-            let resourceGroupName = None
-            let webDocuments =
-                SearchDocumentFactory.fromWebServiceFields tenantId resourceGroupName webServiceId name resourceGroupId domain image
-            do! apply webDocuments cancellationToken
-
-            if not (System.String.IsNullOrWhiteSpace(dnsRecordId)) then
-                let dnsDocuments =
-                    SearchDocumentFactory.fromDnsRecordFields tenantId resourceGroupName dnsRecordId domain resourceGroupId name
-                do! apply dnsDocuments cancellationToken
-        }
+        let resourceGroupName = None
+        let webDocuments =
+            SearchDocumentFactory.fromWebServiceFields tenantId resourceGroupName webServiceId name resourceGroupId hostnames image
+        apply webDocuments cancellationToken
 
 type AddWebServiceToSearchOnWebServiceCreatedConsumer(searchService : ISearchService) =
     inherit WebServiceSearchProjectionConsumer(searchService)
@@ -41,8 +33,7 @@ type AddWebServiceToSearchOnWebServiceCreatedConsumer(searchService : ISearchSer
             event.WebServiceId,
             event.Name,
             event.ResourceGroupId,
-            event.DnsRecord.Id,
-            event.DnsRecord.Domain,
+            event.Deployments |> Seq.collect _.Hostnames,
             event.Spec.Image.FullImageName,
             searchService.Create,
             cancellationToken)
@@ -60,9 +51,8 @@ type UpdateWebServiceInSearchOnWebServiceUpdatedConsumer(searchService : ISearch
             event.WebServiceId,
             event.Name,
             event.ResourceGroupId,
-            event.DnsRecord.Id,
-            event.DnsRecord.Domain,
-            event.Changes.WebServiceSpec.New.Image.FullImageName,
+            event.Deployments |> Seq.collect _.Hostnames,
+            event.Spec.Image.FullImageName,
             searchService.Update,
             cancellationToken)
 
@@ -71,17 +61,9 @@ type UpdateWebServiceInSearchOnWebServiceUpdatedConsumer(searchService : ISearch
             this.Handle(context.Message, context.CancellationToken)
 
 type RemoveWebServiceFromSearchOnWebServiceDeletedConsumer(searchService : ISearchService) =
-    member _.Handle(tenantId : string, webServiceId : string, dnsRecordId : string option, cancellationToken : CancellationToken) =
-        task {
-            do! searchService.Delete(SearchDocumentType.WebService, tenantId, webServiceId) cancellationToken
-
-            match dnsRecordId with
-            | Some value when not (System.String.IsNullOrWhiteSpace(value)) ->
-                do! searchService.Delete(SearchDocumentType.DnsRecord, tenantId, value) cancellationToken
-            | _ -> ()
-        }
+    member _.Handle(tenantId : string, webServiceId : string, cancellationToken : CancellationToken) =
+        searchService.Delete(SearchDocumentType.WebService, tenantId, webServiceId) cancellationToken
 
     interface IConsumer<WebServiceDeletedEvent> with
         member this.Consume(context : ConsumeContext<WebServiceDeletedEvent>) =
-            this.Handle(context.Message.EventCore.TenantId, context.Message.WebServiceId, Option.ofObj context.Message.DnsRecordId, context.CancellationToken)
-
+            this.Handle(context.Message.EventCore.TenantId, context.Message.WebServiceId, context.CancellationToken)

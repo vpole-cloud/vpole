@@ -7,16 +7,16 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Contracts;
-using Pole.Features.DnsRecords.Contracts;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.Domains.Contracts;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Quotas.Contracts;
-using Pole.Features.Shared.Models;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
-using Pole.Features.WebServices.Events;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
@@ -33,7 +33,7 @@ public static class CreateWebService
             app.MapPost("/", async (IMediator mediator, [AsParameters] CreateWebServiceRequest request, CancellationToken cancellationToken) =>
                 {
                     var response = await mediator.Send(request, cancellationToken);
-                    return response.ToHttpResult(v => Results.Accepted(value: v));
+                    return response.ToHttpResult(value => Results.Accepted(value: value));
                 })
                 .WithName("CreateWebService")
                 .Produces<CreateWebServiceResponse>(StatusCodes.Status202Accepted);
@@ -44,168 +44,327 @@ public static class CreateWebService
 }
 
 public sealed class CreateWebServiceHandler(
+    IResourceGroupOwnershipLookup resourceGroupLookup,
+    IDeploymentTargetLookup deploymentTargetLookup,
+    ResolveComputeProfiles resolveComputeProfiles,
+    IQuotaAdmissionExecutor quotaAdmissionExecutor,
+    ITenantDomainZoneCapability domainZones,
+    IHostnameBindingCapability hostnameBindings,
+    CreateResourceDeploymentSet createResourceDeploymentSet,
     PersistCreatedWebService persistCreatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
-    IDomainNameReservationService domainNameReservationService,
-    IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    ResolveResourceDeploymentTarget resolveResourceDeploymentTarget,
-    ResolveComputeProfile resolveComputeProfile,
-    CreateResourceDeployment createResourceDeployment)
+    TimeProvider timeProvider)
     : IMediatorHandler<CreateWebServiceRequest, CreateWebServiceResponse>
 {
-    public async Task<Result<CreateWebServiceResponse>> HandleAsync(CreateWebServiceRequest request,
+    public async Task<Result<CreateWebServiceResponse>> HandleAsync(
+        CreateWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var createWebServiceOptions = WebServiceFactory.DefaultOptions with
-        {
-            Tags = request.Body.Tags,
-        };
-        var deploymentId = ObjectId.GenerateNewId().ToString();
-        var spec = request.Body.Spec.ToDomain();
-        var targetResult = await resolveResourceDeploymentTarget(
-            request.Body.Placement?.DeploymentTargetId,
-            requiresIngress: true,
+        var ownership = await resourceGroupLookup.GetOwnershipAsync(
+            request.TenantId,
+            request.Body.ResourceGroupId,
             cancellationToken);
-        if (!targetResult.TryGetValue(out var target, out var targetFailure))
-            return targetFailure;
+        if (!ownership.TryGetValue(out var resourceGroup, out var ownershipFailure))
+            return ownershipFailure;
+        if (resourceGroup.Lifecycle is not ResourceGroupOwnershipLifecycle.Active)
+            return Failures.Conflict("The resource group is being deleted.");
 
-        var computeResult = await resolveComputeProfile(
-            new ComputeProfileResolutionRequest(
-                request.Body.ComputeProfileId,
-                target.DeploymentTargetId,
-                request.TenantId,
-                WebServiceResourceDeployment.ResourceType),
+        var isolationScopeId = request.Body.Placement.IsolationScopeId
+            ?? resourceGroup.DefaultIsolationScopeId;
+        var targetsResult = await ResolveTargetsAsync(
+            request.TenantId,
+            isolationScopeId,
+            request.Body.Placement.Targets,
             cancellationToken);
-        if (!computeResult.TryGetValue(out var compute, out var computeFailure))
+        if (!targetsResult.TryGetValue(out var targets, out var targetsFailure))
+            return targetsFailure;
+
+        var computeResult = await resolveComputeProfiles(
+            new ComputeProfileBatchResolutionRequest(
+                request.TenantId,
+                WebServiceResourceDeployment.ResourceType,
+                targets.Select(target => new ComputeProfileTargetResolutionRequest(
+                    target.Target.DeploymentTargetId,
+                    target.Request.ComputeProfileId)).ToArray()),
+            cancellationToken);
+        if (!computeResult.TryGetValue(out var computes, out var computeFailure))
             return computeFailure;
 
-        var quotaInput = WebServiceQuotaInput.Create(
-            compute.Requests.CpuMillis,
-            compute.Requests.MemoryMi,
+        var computeByTarget = computes.ToDictionary(
+            compute => compute.DeploymentTargetId,
+            StringComparer.Ordinal);
+        if (computeByTarget.Count != targets.Count || targets.Any(target =>
+                !computeByTarget.ContainsKey(target.Target.DeploymentTargetId)))
+        {
+            throw new InvalidOperationException(
+                "Compute profile batch resolution did not return one result for every selected deployment target.");
+        }
+
+        var options = WebServiceFactory.DefaultOptions with { Tags = request.Body.Tags };
+        var spec = request.Body.Spec.ToDomain();
+        var quotaInput = WebServiceDeploymentWorkflow.ToQuotaInput(
+            targets.Select(target => (
+                computeByTarget[target.Target.DeploymentTargetId],
+                target.Request.FixedReplicas)),
             spec);
+
         return await quotaAdmissionExecutor.ExecuteAsync<
             WebServiceQuotaInput,
-            WebServiceCreatePreparation,
             CreateWebServiceResponse>(
             request.TenantId,
-            WebServiceQuotaResourceKey.Create(createWebServiceOptions.Id),
+            WebServiceQuotaResourceKey.Create(options.Id),
             new CreateQuotaMutation<WebServiceQuotaInput>(quotaInput),
-            transactionCancellationToken => PrepareAsync(
-                request,
-                createWebServiceOptions.Id,
-                target,
-                transactionCancellationToken),
-            async (preparation, session, transactionCancellationToken) =>
+            async (session, ct) =>
             {
-                var newWebService = WebServiceFactory.Create(
-                    name: request.Body.Name,
-                    tenantId: request.TenantId,
-                    resourceGroupId: request.Body.ResourceGroupId,
-                    spec: spec,
-                    dnsRecord: preparation.DnsRecord,
-                    options: createWebServiceOptions);
-                var deploymentEventCore = EventCore.Create(request.TenantId);
-                await persistCreatedWebService(
+                var webService = WebServiceFactory.Create(
+                    request.Body.Name,
+                    request.TenantId,
+                    request.Body.ResourceGroupId,
+                    isolationScopeId,
+                    spec,
+                    WebServiceExposure.Create(),
+                    options);
+
+                var deploymentRequestsResult = await CreateDeploymentRequestsAsync(
+                    webService,
+                    targets,
+                    computeByTarget,
                     session,
-                    newWebService,
-                    transactionCancellationToken);
-                var deploymentResult = await createResourceDeployment(
-                    new CreateResourceDeploymentRequest(
-                        deploymentId,
-                        request.TenantId,
-                        WebServiceResourceDeployment.ResourceType,
-                        newWebService.Id,
-                        newWebService.ResourceGroupId,
-                        request.Body.Placement?.IsolationScopeId,
-                        preparation.Target,
-                        compute.ToResourceDeploymentConfiguration(),
-                        Storage: null,
-                        ResourcePlacementCapability.SingleTarget),
-                    session,
-                    transactionCancellationToken);
-                if (!deploymentResult.TryGetValue(
-                        out var deployment,
-                        out var deploymentFailure))
+                    ct);
+                if (!deploymentRequestsResult.TryGetValue(
+                        out var deploymentRequests,
+                        out var deploymentRequestsFailure))
                 {
-                    return deploymentFailure;
+                    return deploymentRequestsFailure;
                 }
 
+                var deploymentsResult = await createResourceDeploymentSet(
+                    new CreateResourceDeploymentSetRequest(deploymentRequests),
+                    session,
+                    ct);
+                if (!deploymentsResult.TryGetValue(out var deployments, out var deploymentsFailure))
+                    return deploymentsFailure;
+
+                var eventCore = EventCore.Create(webService.TenantId);
+                var createdEvent = webService.ToCreateEvent(
+                    WebServiceDeploymentWorkflow.ToEventDeployments(deployments));
+                await persistCreatedWebService(session, webService, createdEvent, ct);
+
                 var release = WebServiceReleaseFactory.CreatePending(
-                    request.TenantId,
-                    newWebService.Id,
-                    newWebService.ActiveRevision,
+                    webService.TenantId,
+                    webService.Id,
+                    webService.ActiveRevision,
                     WebServiceReleaseAction.Create,
                     request.ActorUserId.Value,
                     request.ActorEmail.Value,
-                    newWebService.Spec,
-                    deploymentEventCore.TraceId,
-                    deploymentEventCore.CorrelationId,
-                    deploymentEventCore.OccurredOn,
-                    deploymentGeneration: deployment.DesiredGeneration);
-                await persistCurrentWebServiceRelease(
-                    session,
-                    release,
-                    transactionCancellationToken);
+                    webService.Spec,
+                    WebServiceDeploymentWorkflow.ToReleaseDeployments(deployments),
+                    eventCore.TraceId,
+                    eventCore.CorrelationId,
+                    new WebServiceReleaseFactory.CreateOptions(
+                        ObjectId.GenerateNewId().ToString(),
+                        timeProvider.GetUtcNow().UtcDateTime));
+                await persistCurrentWebServiceRelease(session, release, ct);
 
-                return new CreateWebServiceResponse(
-                    newWebService.Id,
-                    deployment);
+                return new CreateWebServiceResponse(webService.Id, deployments);
             },
             cancellationToken);
     }
 
-    private async Task<Result<WebServiceCreatePreparation>> PrepareAsync(
-        CreateWebServiceRequest request,
-        string webServiceId,
-        ResolvedResourceDeploymentTarget target,
+    private async Task<Result<IReadOnlyList<ResolvedTargetRequest>>> ResolveTargetsAsync(
+        string tenantId,
+        string isolationScopeId,
+        IReadOnlyList<WebServiceDeploymentTargetRequest> requestedTargets,
         CancellationToken cancellationToken)
     {
-        var dnsResult = await domainNameReservationService.ReserveAsync(
-            new ReserveDomainNameRequest(
-                TenantId: request.TenantId,
-                DomainName: request.Body.DomainName,
-                ResourceType: ResourceType.WebService,
-                ResourceId: webServiceId,
-                ResourceName: request.Body.Name,
-                ResourceGroupId: request.Body.ResourceGroupId),
+        var admission = new DeploymentTargetAdmissionRequest(
+            tenantId,
+            WebServiceResourceDeployment.ResourceType,
+            isolationScopeId,
+            ExplicitDeploymentTargetId: null,
+            DeploymentTargetRequiredCapabilities.PublicIngress);
+        var eligibleResult = await deploymentTargetLookup.ListEligibleForNewWorkloadAsync(
+            admission,
             cancellationToken);
-        return dnsResult.TryGetValue(out var dnsRecord, out var dnsFailure)
-            ? new WebServiceCreatePreparation(dnsRecord, target)
-            : dnsFailure;
+        if (!eligibleResult.TryGetValue(out var eligible, out var eligibleFailure))
+            return eligibleFailure;
+
+        var byId = eligible.ToDictionary(target => target.Id, StringComparer.Ordinal);
+        var resolved = new List<ResolvedTargetRequest>(requestedTargets.Count);
+        foreach (var requested in requestedTargets)
+        {
+            DeploymentTargetLookupDto target;
+            if (string.IsNullOrWhiteSpace(requested.DeploymentTargetId))
+            {
+                if (requestedTargets.Count != 1)
+                    return AmbiguousPlacement();
+                if (eligible.Count == 0)
+                    return Failures.Conflict("No deployment target accepts public web-service workloads.");
+                if (eligible.Count > 1)
+                    return AmbiguousPlacement();
+                target = eligible[0];
+            }
+            else if (!byId.TryGetValue(requested.DeploymentTargetId.Trim(), out target!))
+            {
+                return Failures.Conflict(
+                    "The selected deployment target is unavailable for this web-service placement.");
+            }
+
+            var ingress = target.WorkloadConfiguration.Ingress;
+            if (ingress is null || string.IsNullOrWhiteSpace(ingress.PublicBaseDomain))
+            {
+                return Failures.Conflict(
+                    "The selected deployment target has no public ingress base-domain configuration.");
+            }
+
+            resolved.Add(new ResolvedTargetRequest(
+                requested,
+                new ResolvedResourceDeploymentTarget(
+                    target.Id,
+                    target.WorkloadConfiguration.Revision,
+                    ResourceDeploymentIngressConfiguration.Create(
+                        ingress.IngressClassName,
+                        ingress.ClusterIssuerName,
+                        ingress.PublicBaseDomain,
+                        []))));
+        }
+
+        return resolved;
     }
 
-    private sealed record WebServiceCreatePreparation(
-        DnsRecordShortInfo DnsRecord,
+    private async Task<Result<IReadOnlyList<CreateResourceDeploymentRequest>>> CreateDeploymentRequestsAsync(
+        WebService webService,
+        IReadOnlyList<ResolvedTargetRequest> targets,
+        IReadOnlyDictionary<string, ResolvedComputeProfile> computeByTarget,
+        MongoDB.Driver.IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var deployments = targets.Select(target => new PendingDeploymentRequest(
+            target,
+            ObjectId.GenerateNewId().ToString())).ToArray();
+        var zoneRequests = new GetOrCreateGeneratedZoneRequest[deployments.Length];
+        for (var index = 0; index < deployments.Length; index++)
+        {
+            var target = deployments[index].Target;
+            var ingress = target.Target.Ingress ?? throw new InvalidOperationException(
+                "The public-ingress target admission result must contain an ingress snapshot.");
+            zoneRequests[index] = new GetOrCreateGeneratedZoneRequest(
+                webService.TenantId,
+                target.Target.DeploymentTargetId,
+                ingress.PublicBaseDomain!,
+                target.Target.WorkloadConfigurationRevision);
+        }
+
+        var zonesResult = await domainZones.GetOrCreateGeneratedSetAsync(
+            zoneRequests,
+            session,
+            cancellationToken);
+        if (!zonesResult.TryGetValue(out var zones, out var zonesFailure))
+            return zonesFailure;
+
+        var bindingRequests = new CreateGeneratedHostnameBindingRequest[deployments.Length];
+        for (var index = 0; index < deployments.Length; index++)
+        {
+            var pending = deployments[index];
+            bindingRequests[index] = new CreateGeneratedHostnameBindingRequest(
+                webService.TenantId,
+                zones[index].Id,
+                pending.Target.Target.DeploymentTargetId,
+                WebServiceResourceDeployment.ResourceType,
+                webService.Id,
+                pending.DeploymentId,
+                $"{webService.Exposure.GeneratedHostnameLabelPrefix}-{webService.Id}");
+        }
+
+        var bindingsResult = await hostnameBindings.CreateGeneratedSetAsync(
+            bindingRequests,
+            session,
+            cancellationToken);
+        if (!bindingsResult.TryGetValue(out var bindings, out var bindingsFailure))
+            return bindingsFailure;
+
+        var requests = new List<CreateResourceDeploymentRequest>(deployments.Length);
+        for (var index = 0; index < deployments.Length; index++)
+        {
+            var pending = deployments[index];
+            var target = pending.Target;
+            var ingress = target.Target.Ingress!;
+            requests.Add(new CreateResourceDeploymentRequest(
+                pending.DeploymentId,
+                webService.TenantId,
+                WebServiceResourceDeployment.ResourceType,
+                webService.Id,
+                webService.ResourceGroupId,
+                webService.IsolationScopeId,
+                target.Target with
+                {
+                    Ingress = ResourceDeploymentIngressConfiguration.Create(
+                        ingress.IngressClassName,
+                        ingress.ClusterIssuerName,
+                        ingress.PublicBaseDomain,
+                        [bindings[index].Hostname])
+                },
+                computeByTarget[target.Target.DeploymentTargetId]
+                    .ToResourceDeploymentConfiguration(),
+                Storage: null,
+                ResourcePlacementCapability.MultiTarget,
+                target.Request.FixedReplicas,
+                webService.ActiveRevision));
+        }
+
+        return requests;
+    }
+
+    private static Result<IReadOnlyList<ResolvedTargetRequest>> AmbiguousPlacement() =>
+        Failures.SemanticValidation(new Dictionary<string, string[]>
+        {
+            ["Placement.Targets"] =
+            ["A deployment target must be selected when more than one target accepts public web-service workloads."]
+        });
+
+    private sealed record ResolvedTargetRequest(
+        WebServiceDeploymentTargetRequest Request,
         ResolvedResourceDeploymentTarget Target);
+
+    private sealed record PendingDeploymentRequest(
+        ResolvedTargetRequest Target,
+        string DeploymentId);
 }
 
 public sealed record CreateWebServiceRequest(
     [FromBody] CreateWebServiceRequestBody Body,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue<string> ActorUserId,
-    [FromClaim(Claims.Email)] ClaimValue<string> ActorEmail
-) : IMediatorRequest<CreateWebServiceResponse>, ITenantCreateOperation;
+    [FromClaim(Claims.Email)] ClaimValue<string> ActorEmail)
+    : IMediatorRequest<CreateWebServiceResponse>, ITenantCreateOperation;
 
 public sealed record CreateWebServiceRequestBody(
     string Name,
     string ResourceGroupId,
     WebServiceSpecDto Spec,
-    string DomainName,
-    ImmutableHashSet<string> Tags,
-    string? ComputeProfileId = null,
-    PlacementRequest? Placement = null);
+    WebServicePlacementRequest Placement,
+    ImmutableHashSet<string> Tags);
+
+public sealed record WebServicePlacementRequest(
+    string? IsolationScopeId,
+    ImmutableList<WebServiceDeploymentTargetRequest> Targets);
+
+public sealed record WebServiceDeploymentTargetRequest(
+    string? DeploymentTargetId,
+    int FixedReplicas = 1,
+    string? ComputeProfileId = null);
+
 public sealed record CreateWebServiceResponse(
     string WebServiceId,
-    PlacementSummaryDto Placement);
-
+    IReadOnlyList<PlacementSummaryDto> Deployments);
 
 public sealed class CreateWebServiceRequestValidator : AbstractValidator<CreateWebServiceRequest>
 {
     public CreateWebServiceRequestValidator()
     {
-        RuleFor(x => x.ActorUserId.Value).NotEmpty();
-        RuleFor(x => x.ActorEmail.Value).NotEmpty().EmailAddress();
-        RuleFor(x => x.Body).SetValidator(new CreateWebServiceRequestBodyValidator());
+        RuleFor(request => request.ActorUserId.Value).NotEmpty();
+        RuleFor(request => request.ActorEmail.Value).NotEmpty().EmailAddress();
+        RuleFor(request => request.Body).SetValidator(new CreateWebServiceRequestBodyValidator());
     }
 }
 
@@ -213,35 +372,54 @@ public sealed class CreateWebServiceRequestBodyValidator : AbstractValidator<Cre
 {
     public CreateWebServiceRequestBodyValidator()
     {
-        RuleFor(x => x.Name)
-            .NotEmpty()
-            .MaximumLength(30);
-        RuleFor(x => x.ResourceGroupId)
-            .NotEmpty();
-        RuleFor(x => x.Spec)
-            .SetValidator(new WebServiceSpecDtoValidator());
-        RuleFor(x => x.DomainName)
-            .NotEmpty()
-            .MaximumLength(100);
-        RuleFor(body => body.ComputeProfileId)
-            .OptionalMongoObjectId("Compute profile ID");
-        When(body => body.Placement is not null, () =>
-        {
-            RuleFor(body => body.Placement!.IsolationScopeId)
-                .OptionalMongoObjectId("Isolation scope ID");
-            RuleFor(body => body.Placement!.DeploymentTargetId)
-                .OptionalMongoObjectId("Deployment target ID");
-        });
+        RuleFor(body => body.Name).NotEmpty().MaximumLength(30);
+        RuleFor(body => body.ResourceGroupId).NotEmpty().MongoObjectId("Resource group ID");
+        RuleFor(body => body.Spec).NotNull().SetValidator(new WebServiceSpecDtoValidator());
+        RuleFor(body => body.Placement).NotNull().SetValidator(new WebServicePlacementRequestValidator());
     }
 }
 
-public sealed class DnsRecordDtoValidator : AbstractValidator<DnsRecordShortInfoDto>
+public sealed class WebServicePlacementRequestValidator : AbstractValidator<WebServicePlacementRequest>
 {
-    public DnsRecordDtoValidator()
+    public WebServicePlacementRequestValidator()
     {
-        RuleFor(x => x.Domain)
-            .NotEmpty()
-            .MaximumLength(253);
+        RuleFor(placement => placement.IsolationScopeId)
+            .OptionalMongoObjectId("Isolation scope ID");
+        RuleFor(placement => placement.Targets)
+            .NotNull()
+            .Must(targets => targets.Count > 0)
+            .WithMessage("At least one deployment target is required.");
+        RuleForEach(placement => placement.Targets)
+            .SetValidator(new WebServiceDeploymentTargetRequestValidator());
+        RuleFor(placement => placement.Targets)
+            .Must(HaveDistinctExplicitTargetIds)
+            .WithMessage("Deployment target IDs must be unique.");
+    }
+
+    private static bool HaveDistinctExplicitTargetIds(
+        ImmutableList<WebServiceDeploymentTargetRequest>? targets)
+    {
+        if (targets is null)
+            return true;
+        var ids = targets
+            .Select(target => target.DeploymentTargetId?.Trim())
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Cast<string>()
+            .ToArray();
+        return ids.Distinct(StringComparer.Ordinal).Count() == ids.Length;
+    }
+}
+
+public sealed class WebServiceDeploymentTargetRequestValidator
+    : AbstractValidator<WebServiceDeploymentTargetRequest>
+{
+    public WebServiceDeploymentTargetRequestValidator()
+    {
+        RuleFor(target => target.DeploymentTargetId)
+            .OptionalMongoObjectId("Deployment target ID");
+        RuleFor(target => target.ComputeProfileId)
+            .OptionalMongoObjectId("Compute profile ID");
+        RuleFor(target => target.FixedReplicas).InclusiveBetween(1, 1000);
     }
 }
 
@@ -249,104 +427,8 @@ public sealed class WebServiceSpecDtoValidator : AbstractValidator<WebServiceSpe
 {
     public WebServiceSpecDtoValidator()
     {
-        RuleFor(x => x.Image)
-            .SetValidator(new ImageInfoDtoValidator());
-        RuleFor(x => x.Replicas)
-            .GreaterThan(0);
-        RuleFor(x => x.Probes)
-            .SetValidator(new ProbeSpecDtoValidator());
-        RuleFor(x => x.Config)
-            .SetValidator(new WebServiceConfigDtoValidator());
-    }
-}
-
-public class ProbeSpecDtoValidator : AbstractValidator<ProbeSpecDto>
-{
-    public ProbeSpecDtoValidator()
-    {
-        RuleFor(x => x.Startup)
-            .SetValidator(new ProbeConfigDtoValidator());
-        RuleFor(x => x.Liveness)
-            .SetValidator(new ProbeConfigDtoValidator());
-        RuleFor(x => x.Readiness)
-            .SetValidator(new ProbeConfigDtoValidator());
-    }
-}
-
-public class ProbeConfigDtoValidator : AbstractValidator<ProbeConfigDto>
-{
-    public ProbeConfigDtoValidator()
-    {
-        RuleFor(x => x.Path)
-            .NotEmpty()
-            .MaximumLength(200);
-        RuleFor(x => x.Port)
-            .NotEmpty()
-            .MaximumLength(10);
-        RuleFor(x => x.InitialDelaySeconds)
-            .GreaterThanOrEqualTo(0)
-            .LessThanOrEqualTo(300);
-        RuleFor(x => x.PeriodSeconds)
-            .GreaterThan(0)
-            .LessThanOrEqualTo(120);
-        RuleFor(x => x.TimeoutSeconds)
-            .GreaterThan(0)
-            .LessThanOrEqualTo(60);
-        RuleFor(x => x.FailureThreshold)
-            .GreaterThan(0)
-            .LessThanOrEqualTo(10);
-        RuleFor(x => x.SuccessThreshold)
-            .GreaterThan(0)
-            .LessThanOrEqualTo(10);
-                
-    }
-}
-
-public sealed class ImageInfoDtoValidator : AbstractValidator<ImageInfoDto>
-{
-    public ImageInfoDtoValidator()
-    {
-        RuleFor(x => x.Server)
-            .NotEmpty()
-            .MaximumLength(255);
-        RuleFor(x => x.Name)
-            .NotEmpty()
-            .MaximumLength(255);
-        RuleFor(x => x.Tag)
-            .NotEmpty()
-            .MaximumLength(100);
-    }
-}
-
-public sealed class WebServiceConfigDtoValidator : AbstractValidator<WebServiceConfigDto>
-{
-    public WebServiceConfigDtoValidator()
-    {
-        RuleForEach(x => x.EnvironmentVariables)
-            .Must(kv => !string.IsNullOrWhiteSpace(kv.Key))
-            .WithMessage("Environment variable keys must not be empty.")
-            .Must(kv => kv.Key.Length <= 100)
-            .WithMessage("Environment variable keys must not exceed 100 characters.")
-            .Must(kv => kv.Value.Length <= 1000)
-            .WithMessage("Environment variable values must not exceed 1000 characters.");
-
-        RuleForEach(x => x.PortMappings)
-            .SetValidator(new PortMappingDtoValidator());
-    }
-}
-
-public sealed class PortMappingDtoValidator : AbstractValidator<PortMappingDto>
-{
-    public PortMappingDtoValidator()
-    {
-        RuleFor(x => x.ServicePort)
-            .InclusiveBetween(1, 65535);
-        RuleFor(x => x.TargetPort)
-            .NotEmpty()
-            .MaximumLength(10);
-        RuleFor(x => x.Protocol)
-            .NotEmpty()
-            .Must(p => p is "TCP" or "UDP" or "SCTP")
-            .WithMessage("Protocol must be either 'TCP' or 'UDP'.");
+        RuleFor(spec => spec.Image).NotNull();
+        RuleFor(spec => spec.Probes).NotNull();
+        RuleFor(spec => spec.Config).NotNull();
     }
 }

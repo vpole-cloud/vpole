@@ -156,6 +156,85 @@ public sealed class ResourceDeploymentDomainTests
         Assert.Equal(250, roundTripped.ResolvedPlacement.Compute.Requests.CpuMillis);
     }
 
+    [Fact]
+    public void Factory_PersistsLogicalRevisionAndPerTargetFixedReplicas()
+    {
+        var placement = ResolvedResourcePlacement.Create(
+            RuntimeCellId,
+            TargetId,
+            "pole-t-tenant-is-scope",
+            runtimeCellGeneration: 1,
+            targetWorkloadConfigurationRevision: 1,
+            ResolvedIngressConfiguration.Create(
+                "traefik",
+                "letsencrypt-prod",
+                "platform.example.test",
+                ["store.platform.example.test"]),
+            storage: null,
+            ResourceDeploymentTestData.Compute(),
+            CreatedAtUtc);
+
+        var deployment = ResourceDeploymentFactory.Create(
+            TenantId,
+            TestResourceType,
+            ResourceId,
+            ResourceGroupId,
+            ScopeId,
+            placement,
+            ResourcePlacementCapability.MultiTarget,
+            runtimeCellReady: true,
+            new ResourceDeploymentFactory.CreateOptions(
+                DeploymentId,
+                CreatedAtUtc,
+                ResourceRevision: 4,
+                FixedReplicas: 3));
+
+        Assert.Equal(4, deployment.ResourceRevision);
+        Assert.Equal(3, deployment.FixedReplicas);
+        Assert.Equal(
+            $"{TestResourceType.Value}:{ResourceId}:cell:{RuntimeCellId}",
+            deployment.PlacementKey);
+    }
+
+    [Fact]
+    public void ResolvedIngress_NormalizesAndOrdersHostnameSnapshot()
+    {
+        var ingress = ResolvedIngressConfiguration.Create(
+            "traefik",
+            "letsencrypt-prod",
+            "Platform.Example.Test.",
+            [
+                "B.Platform.Example.Test",
+                "a.platform.example.test",
+                "b.platform.example.test"
+            ]);
+
+        Assert.Equal("platform.example.test", ingress.PublicBaseDomain);
+        Assert.Equal(
+            ["a.platform.example.test", "b.platform.example.test"],
+            ingress.Hostnames);
+        Assert.Throws<ArgumentException>(() => ResolvedIngressConfiguration.Create(
+            "traefik",
+            "letsencrypt-prod",
+            "platform.example.test",
+            ["outside.example.test"]));
+    }
+
+    [Fact]
+    public void RequestReconciliation_RejectsLogicalRevisionRegression()
+    {
+        var deployment = CreateDeployment(runtimeCellReady: true) with
+        {
+            ResourceRevision = 3
+        };
+
+        Assert.Throws<InvalidOperationException>(() => deployment.RequestReconciliation(
+            deployment.ResolvedPlacement,
+            runtimeCellReady: true,
+            CreatedAtUtc.AddMinutes(1),
+            resourceRevision: 2));
+    }
+
     private static ResourceDeployment CreateDeployment(bool runtimeCellReady)
     {
         var placement = ResolvedResourcePlacement.Create(

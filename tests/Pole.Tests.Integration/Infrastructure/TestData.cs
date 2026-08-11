@@ -3,7 +3,6 @@ using Microsoft.FSharp.Core;
 using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.DnsRecords.Domain;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Endpoints;
@@ -45,13 +44,13 @@ public static class TestData
     public static CreateWebServiceRequest CreateWebServiceRequest(
         string resourceGroupId,
         string name = "web-api",
-        string domainName = "api.example.com",
         string tenantId = TenantId)
         => new(new CreateWebServiceRequestBody(
             Name: name,
             ResourceGroupId: resourceGroupId,
             Spec: ValidWebServiceSpec(),
-            DomainName: domainName,
+            Placement: new WebServicePlacementRequest(null,
+                [new WebServiceDeploymentTargetRequest(DefaultDeploymentTargetId, 2)]),
             Tags: ImmutableHashSet<string>.Empty),
             tenantId,
             new ClaimValue<string>(UserId),
@@ -90,7 +89,6 @@ public static class TestData
 
     public static WebServiceSpecDto ValidWebServiceSpec() => new(
         Image: new ImageInfoDto("docker.io", "nginx", "1.27"),
-        Replicas: 2,
         Config: new WebServiceConfigDto(
             EnvironmentVariables: ImmutableDictionary<string, string>.Empty
                 .Add("ASPNETCORE_ENVIRONMENT", "Development"),
@@ -154,7 +152,8 @@ public static class TestData
         long requestedMemoryMi = 256,
         long limitCpuMillis = 1000,
         long limitMemoryMi = 1024,
-        bool isDefault = true) =>
+        bool isDefault = true,
+        IEnumerable<string>? deploymentTargetIds = null) =>
         ComputeProfileFactory.Create(
             "Default",
             "Default test compute profile",
@@ -174,7 +173,8 @@ public static class TestData
                 ResourceTypeId.Create("pole/postgresql")
             ],
             AllTenantsComputeProfileAccess.Create(),
-            [ComputeProfileTargetMapping.Create(DefaultDeploymentTargetId)],
+            (deploymentTargetIds ?? [DefaultDeploymentTargetId])
+                .Select(targetId => ComputeProfileTargetMapping.Create(targetId)),
             isEnabled: true,
             isDefault,
             new ComputeProfileFactory.CreateOptions(
@@ -209,9 +209,8 @@ public static class TestData
         string resourceGroupId,
         string tenantId = TenantId,
         string name = "web-api",
-        string domain = "api.example.com",
         string? id = null,
-        int activeRevision = 1)
+        long activeRevision = 1)
     {
         var defaultOptions = WebServiceFactory.DefaultOptions;
         var options = defaultOptions with
@@ -224,8 +223,9 @@ public static class TestData
             name,
             tenantId,
             resourceGroupId,
+            ResourceGroupFactory.DefaultCreateOptions.DefaultIsolationScopeId,
             ValidWebServiceSpec().ToDomain(),
-            new DnsRecordShortInfo("dns-1", domain),
+            WebServiceExposure.Create(),
             options);
     }
 
@@ -234,7 +234,6 @@ public static class TestData
         var spec = ValidWebServiceSpec();
         return new WebServiceSpecSnapshot(
             new WebServiceImageInfoSnapshot(spec.Image.Server, spec.Image.Name, spec.Image.Tag),
-            spec.Replicas,
             new WebServiceConfigSnapshot(
                 spec.Config.EnvironmentVariables,
                 spec.Config.PortMappings
@@ -268,13 +267,4 @@ public static class TestData
                 probe.SuccessThreshold);
     }
 
-    public static DnsRecord SeedDnsRecord(string groupId, string resourceId, string name = "existing.example.com") =>
-        DnsRecordFactory.Create(
-            name: name,
-            tenantId: TenantId,
-            resourceType: ResourceType.WebService,
-            resourceId: resourceId,
-            resourceName: "existing-web",
-            groupId: groupId,
-            options: DnsRecordFactory.DefaultCreateOptions);
 }

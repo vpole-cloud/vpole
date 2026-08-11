@@ -85,8 +85,38 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         await completion.HandleAsync(new WebServiceDeploymentCompletedEvent(
             "release-1",
             job.WebServiceId,
-            true,
-            null)
+            "507f1f77bcf86cd799439071",
+            ResourceRevision: 2,
+            DeploymentGeneration: 3,
+            Operation: "Apply",
+            Succeeded: true,
+            Retryable: false,
+            FailureCode: null,
+            FailureMessage: null,
+            ReleaseOutcome: "Pending",
+            ReleaseTerminal: false)
+        {
+            EventCore = Pole.Features.Events.Abstractions.EventCore.Create(TestData.TenantId)
+        });
+
+        var stillDeployingJob = await Fixture.DbContext.SourceBuildJobs
+            .Find(item => item.Id == job.Id)
+            .SingleAsync();
+        Assert.IsType<DeployingSourceBuild>(stillDeployingJob.State);
+
+        await completion.HandleAsync(new WebServiceDeploymentCompletedEvent(
+            "release-1",
+            job.WebServiceId,
+            "507f1f77bcf86cd799439072",
+            ResourceRevision: 2,
+            DeploymentGeneration: 3,
+            Operation: "Apply",
+            Succeeded: true,
+            Retryable: false,
+            FailureCode: null,
+            FailureMessage: null,
+            ReleaseOutcome: "Succeeded",
+            ReleaseTerminal: true)
         {
             EventCore = Pole.Features.Events.Abstractions.EventCore.Create(TestData.TenantId)
         });

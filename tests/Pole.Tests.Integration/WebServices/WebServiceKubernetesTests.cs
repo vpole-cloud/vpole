@@ -42,7 +42,6 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     {
         var spec = new WebServiceSpec(
             new ImageInfo("docker.io", "library/nginx", "1.27"),
-            Replicas: 1,
             Config: new WebServiceConfig(
                 ImmutableDictionary<string, string>.Empty,
                 [new PortMapping(80, "8080", "TCP", "http")]),
@@ -55,10 +54,11 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         return WebServiceFactory.Create(
             name: "source-build-e2e",
             tenantId: TestData.TenantId,
-            resourceGroupId: "rg-k8s",
+            resourceGroupId: ResourceGroupId,
+            isolationScopeId: IsolationScopeId,
             spec: spec,
-            dnsRecord: new DnsRecordShortInfo("dns-k8s", BuildIngressHost()),
-            options: WebServiceFactory.DefaultOptions with { Id = "source-build-e2e" });
+            exposure: WebServiceExposure.Create(),
+            options: WebServiceFactory.DefaultOptions with { Id = SourceBuildWebServiceId });
     }
 
     private static void AssertResultSucceeded(Result result)
@@ -144,7 +144,6 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         var spec = TestData.ValidWebServiceSpec().ToDomain() with
         {
             Image = new ImageInfo("docker.io", "nginx", "1.27"),
-            Replicas = 1,
             Config = new WebServiceConfig(
                 EnvironmentVariables: new Dictionary<string, string>
                 {
@@ -162,15 +161,16 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
 
         var options = WebServiceFactory.DefaultOptions with
         {
-            Id = "web-service-k8s"
+            Id = WebServiceId
         };
 
         return WebServiceFactory.Create(
             name: "web-integration",
             tenantId: TestData.TenantId,
-            resourceGroupId: "rg-k8s",
+            resourceGroupId: ResourceGroupId,
+            isolationScopeId: IsolationScopeId,
             spec: spec,
-            dnsRecord: new DnsRecordShortInfo("dns-k8s", BuildIngressHost()),
+            exposure: WebServiceExposure.Create(),
             options: options);
     }
 
@@ -179,11 +179,19 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     private WebServiceInKubernetes ToKubernetes(WebService webService) =>
         webService.ToKubernetes(
             NamespaceName,
-            new ResourceDeploymentIngressConfiguration(
+            ResourceDeploymentIngressConfiguration.Create(
                 "traefik",
-                "letsencrypt-prod"),
+                "letsencrypt-prod",
+                "example.test",
+                [BuildIngressHost()]),
             ResourceDeploymentTestData.ContractCompute(
-                "507f1f77bcf86cd799439020"));
+                "507f1f77bcf86cd799439020"),
+            fixedReplicas: 1);
+
+    private const string SourceBuildWebServiceId = "507f1f77bcf86cd799439021";
+    private const string WebServiceId = "507f1f77bcf86cd799439022";
+    private const string ResourceGroupId = "507f1f77bcf86cd799439023";
+    private const string IsolationScopeId = "507f1f77bcf86cd799439024";
 
     private async Task WaitForDeploymentAvailableAsync(string deploymentName, int timeoutSeconds = 60)
     {

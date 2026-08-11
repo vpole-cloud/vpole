@@ -173,9 +173,11 @@ public sealed class RedisResourceDeploymentAdapterTests
             ResourceGroupId,
             IsolationScopeId,
             RuntimeCellId,
+            ResourceRevision: 1,
+            FixedReplicas: 1,
             DesiredGeneration: 1,
-            NowUtc,
-            placement);
+            UpdatedAtUtc: NowUtc,
+            Placement: placement);
 
         return new ResourceDeploymentReconciliationContext(deployment);
     }

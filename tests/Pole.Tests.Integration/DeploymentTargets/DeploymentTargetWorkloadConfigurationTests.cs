@@ -125,6 +125,32 @@ public sealed class DeploymentTargetWorkloadConfigurationTests
                 "letsencrypt-prod"));
     }
 
+    [Fact]
+    public void IngressConfigurationFactory_NormalizesPublicBaseDomainToCanonicalAscii()
+    {
+        var ingress = DeploymentTargetIngressConfiguration.Create(
+            "traefik",
+            "letsencrypt-prod",
+            "Store.Example.TEST.");
+
+        Assert.Equal("store.example.test", ingress.PublicBaseDomain);
+    }
+
+    [Theory]
+    [InlineData("https://example.test")]
+    [InlineData("example.test:443")]
+    [InlineData("*.example.test")]
+    [InlineData("127.0.0.1")]
+    [InlineData("привіт.example.test")]
+    public void IngressConfigurationFactory_RejectsNonDnsPublicBaseDomain(string publicBaseDomain)
+    {
+        Assert.Throws<ArgumentException>(
+            () => DeploymentTargetIngressConfiguration.Create(
+                "traefik",
+                "letsencrypt-prod",
+                publicBaseDomain));
+    }
+
     private static DeploymentTarget CreateTarget()
     {
         var id = ObjectId.GenerateNewId().ToString();

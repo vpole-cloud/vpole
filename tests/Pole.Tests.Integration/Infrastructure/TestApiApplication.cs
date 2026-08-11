@@ -16,7 +16,9 @@ using Pole.Features.ComputeProfiles.Application;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
 using Pole.Features.ComputeProfiles.Application.Migrations;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.Domains.Application.Common;
+using Pole.Features.Domains.Application.Migrations;
+using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
@@ -49,9 +51,11 @@ using Pole.Features.StorageProfiles.Application.Migrations;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Migrations;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Middleware;
+using Pole.Features.Tenants.Application.Common;
 using Pole.Observability;
 using Pole.Server.Database;
 using Pole.Server.Extensions;
@@ -74,7 +78,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         typeof(ResourceGroupEndpoints).Assembly,
         typeof(RedisServiceEndpoints).Assembly,
         typeof(ResourceDeploymentFeature).Assembly,
-        typeof(DnsRecordEndpoints).Assembly,
+        typeof(DomainZoneEndpoints).Assembly,
         typeof(GitProviderEndpoints).Assembly,
         typeof(ContainerRegistryFeature).Assembly,
         typeof(DeploymentTargetFeature).Assembly,
@@ -143,6 +147,8 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
         builder.Services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
         builder.Services.AddMongoDbContextInterfaces();
+        builder.Services.AddTenantContractCapabilities();
+        builder.Services.AddDomainPersistence();
         builder.Services.AddComputeProfiles();
         builder.Services.AddRedisPersistence();
         builder.Services.AddWebServicePersistence();
@@ -222,6 +228,11 @@ public sealed class TestApiApplication : IAsyncDisposable
         await new DeploymentTargetReferenceMigration().Up(fixture.Database);
         await new ResourceGroupPlacementMigration().Up(fixture.Database);
         await new ResourceDeploymentMigration().Up(fixture.Database);
+        await new ResourceDeploymentSchemaValidationMigration().Up(fixture.Database);
+        await new WebServiceReleaseSchemaValidationMigration().Up(fixture.Database);
+        await new TenantDomainZoneSchemaValidationMigration().Up(fixture.Database);
+        await new HostnameBindingSchemaValidationMigration().Up(fixture.Database);
+        await new DomainIndexesMigration().Up(fixture.Database);
         await new ComputeProfileSchemaValidationMigration().Up(fixture.Database);
         await new ComputeProfileIndexesMigration().Up(fixture.Database);
         await new ResourceDeploymentComputeProfileIndexMigration().Up(fixture.Database);
@@ -243,6 +254,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapResourceGroupEndpoints()
             .MapContainerRegistryEndpoints()
             .MapDeploymentTargetEndpoints()
+            .MapDeploymentTargetAvailabilityEndpoints()
             .MapDeploymentTargetEncryptionEndpoints()
             .MapWebServiceEndpoints()
             .MapRedisServiceEndpoints()
@@ -251,7 +263,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapPostgresClusterEndpoints()
             .MapQuotaEndpoints()
             .MapSearchEndpoints()
-            .MapDomainNameEndpoints()
+            .MapDomainZoneEndpoints()
             .MapStorageProfileEndpoints()
             .MapGitProviderEndpoints()
             .MapSourceBuildEndpoints();

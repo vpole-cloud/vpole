@@ -1,5 +1,7 @@
 import type {
   BeginGitHubInstallationResponse,
+  AvailableComputeProfile,
+  AvailableDeploymentTarget,
   GitProviderConnection,
   GitProviderPage,
   KubernetesPersistentVolume,
@@ -21,6 +23,12 @@ import type {
   WebService,
   Tenant,
   TenantRole,
+  TenantDomainZone,
+  HostnameBinding,
+  WebServiceDeployment,
+  WebServiceDeploymentInput,
+  WebServiceDeploymentUpdateInput,
+  WebServiceReleaseHistory,
 } from './types'
 
 type TenantResponse = Omit<Tenant, 'role'> & {
@@ -206,6 +214,83 @@ export async function fetchWebServices(
   )
 }
 
+const webServiceResourceType = 'pole/web-service'
+
+export async function fetchAvailableDeploymentTargets(
+  apiBaseUrl: string,
+  isolationScopeId: string | undefined,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  const query = new URLSearchParams({
+    resourceType: webServiceResourceType,
+    requiresPublicIngress: 'true',
+  })
+  if (isolationScopeId) {
+    query.set('isolationScopeId', isolationScopeId)
+  }
+
+  return fetchJson<AvailableDeploymentTarget[]>(
+    `${apiBaseUrl}/api/v1/deployment-targets/available?${query.toString()}`,
+    { headers: buildHeaders(token, tenantId), signal },
+  )
+}
+
+export async function fetchAvailableComputeProfiles(
+  apiBaseUrl: string,
+  deploymentTargetId: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  const query = new URLSearchParams({
+    deploymentTargetId,
+    resourceType: webServiceResourceType,
+  })
+  return fetchJson<AvailableComputeProfile[]>(
+    `${apiBaseUrl}/api/v1/compute-profiles/available?${query.toString()}`,
+    { headers: buildHeaders(token, tenantId), signal },
+  )
+}
+
+export async function fetchDomainZones(
+  apiBaseUrl: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<TenantDomainZone[]>(`${apiBaseUrl}/api/v1/domain-zones`, {
+    headers: buildHeaders(token, tenantId),
+    signal,
+  })
+}
+
+export async function createDomainZone(
+  apiBaseUrl: string,
+  input: { deploymentTargetId: string; label: string },
+  token?: string,
+  tenantId?: string,
+) {
+  return sendJson<TenantDomainZone>(`${apiBaseUrl}/api/v1/domain-zones`, {
+    method: 'POST',
+    headers: buildHeaders(token, tenantId),
+    body: JSON.stringify(input),
+  })
+}
+
+export async function deleteDomainZone(
+  apiBaseUrl: string,
+  id: string,
+  token?: string,
+  tenantId?: string,
+) {
+  return sendWithoutResponse(`${apiBaseUrl}/api/v1/domain-zones/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: buildHeaders(token, tenantId),
+  })
+}
+
 export async function fetchProtectedGreeting(
   apiBaseUrl: string,
   token?: string,
@@ -305,7 +390,6 @@ const buildWebServiceSpec = (input: WebServiceInput) => ({
     name: input.imageName,
     tag: input.imageTag,
   },
-  replicas: input.replicas,
   config: {
     environmentVariables: Object.fromEntries(
       input.environmentVariables.map((item) => [item.key, item.value]),
@@ -319,7 +403,7 @@ const buildWebServiceSpec = (input: WebServiceInput) => ({
       },
     ],
   },
-  autoscaling: null,
+  autoscaling: input.autoscaling ?? null,
   probes: {
     startup: {
       path: input.probePath,
@@ -351,6 +435,15 @@ const buildWebServiceSpec = (input: WebServiceInput) => ({
   },
 })
 
+const buildWebServicePlacement = (input: WebServiceInput) => ({
+  isolationScopeId: input.isolationScopeId || null,
+  targets: input.targets.map((target) => ({
+    deploymentTargetId: target.deploymentTargetId || null,
+    fixedReplicas: target.fixedReplicas,
+    computeProfileId: target.computeProfileId || null,
+  })),
+})
+
 export async function createWebService(
   apiBaseUrl: string,
   input: WebServiceInput,
@@ -363,9 +456,9 @@ export async function createWebService(
     body: JSON.stringify({
       name: input.name,
       resourceGroupId: input.resourceGroupId,
-      domainName: input.domainName,
       spec: buildWebServiceSpec(input),
-      computeProfileId: input.computeProfileId,
+      placement: buildWebServicePlacement(input),
+      tags: [],
     }),
   })
 }
@@ -381,11 +474,140 @@ export async function updateWebService(
     method: 'PUT',
     headers: buildHeaders(token, tenantId),
     body: JSON.stringify({
-      resourceGroupId: input.resourceGroupId,
       spec: buildWebServiceSpec(input),
-      computeProfileId: input.computeProfileId,
+      tags: [],
     }),
   })
+}
+
+export async function fetchWebServiceDeployments(
+  apiBaseUrl: string,
+  id: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<WebServiceDeployment[]>(
+    `${apiBaseUrl}/api/v1/web-services/${encodeURIComponent(id)}/deployments`,
+    { headers: buildHeaders(token, tenantId), signal },
+  )
+}
+
+export async function addWebServiceDeployment(
+  apiBaseUrl: string,
+  id: string,
+  input: WebServiceDeploymentInput,
+  token?: string,
+  tenantId?: string,
+) {
+  return sendJson<WebServiceDeployment>(
+    `${apiBaseUrl}/api/v1/web-services/${encodeURIComponent(id)}/deployments`,
+    {
+      method: 'POST',
+      headers: buildHeaders(token, tenantId),
+      body: JSON.stringify(input),
+    },
+  )
+}
+
+export async function updateWebServiceDeployment(
+  apiBaseUrl: string,
+  id: string,
+  deploymentId: string,
+  input: WebServiceDeploymentUpdateInput,
+  token?: string,
+  tenantId?: string,
+) {
+  return sendJson<WebServiceDeployment>(
+    `${apiBaseUrl}/api/v1/web-services/${encodeURIComponent(id)}/deployments/${encodeURIComponent(deploymentId)}`,
+    {
+      method: 'PUT',
+      headers: buildHeaders(token, tenantId),
+      body: JSON.stringify(input),
+    },
+  )
+}
+
+export async function deleteWebServiceDeployment(
+  apiBaseUrl: string,
+  id: string,
+  deploymentId: string,
+  token?: string,
+  tenantId?: string,
+) {
+  return sendWithoutResponse(
+    `${apiBaseUrl}/api/v1/web-services/${encodeURIComponent(id)}/deployments/${encodeURIComponent(deploymentId)}`,
+    { method: 'DELETE', headers: buildHeaders(token, tenantId) },
+  )
+}
+
+export async function retryWebServiceDeployment(
+  apiBaseUrl: string,
+  id: string,
+  deploymentId: string,
+  input: { expectedDeploymentRevision: number; expectedOperation: 'Apply' | 'Delete' },
+  token?: string,
+  tenantId?: string,
+) {
+  return sendJson<WebServiceDeployment>(
+    `${apiBaseUrl}/api/v1/web-services/${encodeURIComponent(id)}/deployments/${encodeURIComponent(deploymentId)}/retry`,
+    { method: 'POST', headers: buildHeaders(token, tenantId), body: JSON.stringify(input) },
+  )
+}
+
+export async function fetchWebServiceHostnameBindings(
+  apiBaseUrl: string,
+  id: string,
+  deploymentId: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<HostnameBinding[]>(
+    `${apiBaseUrl}/api/v1/web-services/${encodeURIComponent(id)}/deployments/${encodeURIComponent(deploymentId)}/hostnames`,
+    { headers: buildHeaders(token, tenantId), signal },
+  )
+}
+
+export async function addWebServiceHostnameBinding(
+  apiBaseUrl: string,
+  id: string,
+  deploymentId: string,
+  input: { tenantDomainZoneId: string; relativeName: string },
+  token?: string,
+  tenantId?: string,
+) {
+  return sendJson<WebServiceDeployment>(
+    `${apiBaseUrl}/api/v1/web-services/${encodeURIComponent(id)}/deployments/${encodeURIComponent(deploymentId)}/hostnames`,
+    { method: 'POST', headers: buildHeaders(token, tenantId), body: JSON.stringify(input) },
+  )
+}
+
+export async function deleteWebServiceHostnameBinding(
+  apiBaseUrl: string,
+  id: string,
+  deploymentId: string,
+  bindingId: string,
+  token?: string,
+  tenantId?: string,
+) {
+  return sendJson<WebServiceDeployment>(
+    `${apiBaseUrl}/api/v1/web-services/${encodeURIComponent(id)}/deployments/${encodeURIComponent(deploymentId)}/hostnames/${encodeURIComponent(bindingId)}`,
+    { method: 'DELETE', headers: buildHeaders(token, tenantId) },
+  )
+}
+
+export async function fetchWebServiceReleases(
+  apiBaseUrl: string,
+  id: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<WebServiceReleaseHistory>(
+    `${apiBaseUrl}/api/v1/web-services/${encodeURIComponent(id)}/releases?pageNumber=1&pageSize=10`,
+    { headers: buildHeaders(token, tenantId), signal },
+  )
 }
 
 export async function deleteWebService(

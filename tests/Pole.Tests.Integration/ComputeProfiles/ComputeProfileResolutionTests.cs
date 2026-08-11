@@ -75,6 +75,45 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
     }
 
     [Fact]
+    public async Task Resolve_many_resolves_default_and_explicit_profiles_for_each_target()
+    {
+        await PrepareDatabaseAsync();
+        var firstTarget = ComputeProfileTestData.CreateTarget();
+        var secondTarget = ComputeProfileTestData.CreateTarget();
+        await fixture.DbContext.DeploymentTargets.InsertManyAsync([firstTarget, secondTarget]);
+        using var host = new ComputeProfilePersistenceTestHost(fixture);
+        var create = host.GetRequiredService<PersistCreatedComputeProfile>();
+        var defaultProfile = (await create(ComputeProfileTestData.CreateProfile(
+            firstTarget.Id,
+            isDefault: true))).AssertSuccess();
+        var explicitProfile = (await create(ComputeProfileTestData.CreateProfile(
+            secondTarget.Id,
+            displayName: "Target specific"))).AssertSuccess();
+        var resolveMany = host.GetRequiredService<ResolveComputeProfiles>();
+
+        var resolved = (await resolveMany(new ComputeProfileBatchResolutionRequest(
+            ComputeProfileTestData.TenantId,
+            WebServiceType,
+            [
+                new ComputeProfileTargetResolutionRequest(firstTarget.Id, null),
+                new ComputeProfileTargetResolutionRequest(secondTarget.Id, explicitProfile.Id)
+            ]))).AssertSuccess();
+
+        Assert.Collection(
+            resolved,
+            profile =>
+            {
+                Assert.Equal(defaultProfile.Id, profile.ComputeProfileId);
+                Assert.Equal(firstTarget.Id, profile.DeploymentTargetId);
+            },
+            profile =>
+            {
+                Assert.Equal(explicitProfile.Id, profile.ComputeProfileId);
+                Assert.Equal(secondTarget.Id, profile.DeploymentTargetId);
+            });
+    }
+
+    [Fact]
     public async Task Fence_advances_coordination_state_and_rejects_stale_profile_revision()
     {
         await PrepareDatabaseAsync();
@@ -133,6 +172,60 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
                 session,
                 ct));
         Assert.IsType<ConflictFailure>((Failure)staleFence);
+    }
+
+    [Fact]
+    public async Task Fence_many_is_atomic_when_one_profile_snapshot_is_stale()
+    {
+        await PrepareDatabaseAsync();
+        var firstTarget = ComputeProfileTestData.CreateTarget();
+        var secondTarget = ComputeProfileTestData.CreateTarget();
+        await fixture.DbContext.DeploymentTargets.InsertManyAsync([firstTarget, secondTarget]);
+        using var host = new ComputeProfilePersistenceTestHost(fixture);
+        var create = host.GetRequiredService<PersistCreatedComputeProfile>();
+        var update = host.GetRequiredService<PersistUpdatedComputeProfile>();
+        var resolveMany = host.GetRequiredService<ResolveComputeProfiles>();
+        var fence = host.GetRequiredService<IComputeProfileResolutionFence>();
+        var runTransaction = host.GetRequiredService<RunMongoTransaction>();
+        var first = (await create(ComputeProfileTestData.CreateProfile(firstTarget.Id))).AssertSuccess();
+        var second = (await create(ComputeProfileTestData.CreateProfile(
+            secondTarget.Id,
+            displayName: "Second"))).AssertSuccess();
+        var resolved = (await resolveMany(new ComputeProfileBatchResolutionRequest(
+            ComputeProfileTestData.TenantId,
+            WebServiceType,
+            [
+                new ComputeProfileTargetResolutionRequest(firstTarget.Id, first.Id),
+                new ComputeProfileTargetResolutionRequest(secondTarget.Id, second.Id)
+            ]))).AssertSuccess();
+
+        var fenceRequests = resolved
+            .Select(profile => new ComputeProfileResolutionFenceRequest(
+                profile.ComputeProfileId,
+                profile.ComputeProfileRevision,
+                profile.DeploymentTargetId,
+                ComputeProfileTestData.TenantId,
+                WebServiceType))
+            .ToArray();
+        (await runTransaction(
+            (session, ct) => fence.FenceManyAsync(fenceRequests, session, ct))).AssertSuccess();
+        var firstAfterFence = await LoadAsync(first.Id);
+        var secondAfterFence = await LoadAsync(second.Id);
+        Assert.Equal(1, firstAfterFence.ResolutionFence);
+        Assert.Equal(1, secondAfterFence.ResolutionFence);
+        _ = (await update(
+            firstAfterFence,
+            Reconfigure(firstAfterFence, "Changed before batch fence"))).AssertSuccess();
+
+        var fenced = await runTransaction(
+            (session, ct) => fence.FenceManyAsync(
+                fenceRequests,
+                session,
+                ct));
+
+        Assert.IsType<ConflictFailure>((Failure)fenced);
+        Assert.Equal(1, (await LoadAsync(first.Id)).ResolutionFence);
+        Assert.Equal(1, (await LoadAsync(second.Id)).ResolutionFence);
     }
 
     [Fact]

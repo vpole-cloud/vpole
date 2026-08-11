@@ -21,9 +21,18 @@ public sealed class WebServiceBoundarySerializationTests
             "web-service-1",
             "api",
             "resource-group-1",
+            "isolation-scope-1",
+            1,
             spec,
-            new WebServiceDnsRecordSnapshot("dns-1", "api.example.com"),
-            ImmutableHashSet.Create("production"))
+            new WebServiceExposureSnapshot("api"),
+            ImmutableHashSet.Create("production"),
+            [new WebServiceDesiredDeploymentSnapshot(
+                "deployment-1",
+                "target-1",
+                1,
+                1,
+                "Apply",
+                ["api.example.com"])])
         {
             EventCore = new EventCore
             {
@@ -39,10 +48,9 @@ public sealed class WebServiceBoundarySerializationTests
             EventExtensions.SerializerOptions));
         var root = payload.RootElement;
 
-        Assert.Equal("dns-1", root.GetProperty("dnsRecord").GetProperty("id").GetString());
         Assert.Equal(
             "api.example.com",
-            root.GetProperty("dnsRecord").GetProperty("domain").GetString());
+            root.GetProperty("deployments")[0].GetProperty("hostnames")[0].GetString());
         var startup = root
             .GetProperty("spec")
             .GetProperty("probes")
@@ -74,9 +82,21 @@ public sealed class WebServiceBoundarySerializationTests
             TestData.UserId,
             TestData.UserEmail,
             TestData.ValidWebServiceSpec().ToDomain(),
+            [new WebServiceReleaseDeployment(
+                "deployment-1",
+                "target-1",
+                1,
+                1,
+                WebServiceReleaseDeploymentOperation.Apply,
+                WebServiceReleaseDeploymentOutcome.Pending,
+                null,
+                null,
+                null)],
             "trace-1",
             "correlation-1",
-            new DateTime(2026, 8, 9, 10, 0, 0, DateTimeKind.Utc));
+            new WebServiceReleaseFactory.CreateOptions(
+                ObjectId.GenerateNewId().ToString(),
+                new DateTime(2026, 8, 9, 10, 0, 0, DateTimeKind.Utc)));
 
         var document = release.ToBsonDocument();
         var spec = document["Spec"].AsBsonDocument;
@@ -88,7 +108,7 @@ public sealed class WebServiceBoundarySerializationTests
         var startup = probes["Startup"].AsBsonDocument;
 
         Assert.Equal("docker.io", image["Server"].AsString);
-        Assert.Equal(2, spec["Replicas"].AsInt32);
+        Assert.False(spec.Contains("Replicas"));
         Assert.Equal("/health", startup["Path"].AsString);
         Assert.Equal("8080", startup["Port"].AsString);
         Assert.Equal(5, startup["InitialDelaySeconds"].AsInt32);

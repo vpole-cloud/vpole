@@ -39,9 +39,8 @@ public sealed class DeleteWebServiceHandler(
     BeginWebServiceDeletion beginWebServiceDeletion,
     ISourceBuildReferenceLookup sourceBuildReferences,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    IResourceDeploymentComputeLookup deploymentComputeLookup,
-    IResourceDeploymentMutationWriter deploymentWriter,
-    IResourceDeploymentQueryService deploymentQuery,
+    IResourceDeploymentSetMutationWriter deploymentWriter,
+    IResourceDeploymentSetQueryService deploymentQuery,
     TimeProvider timeProvider
     ) : IMediatorHandler<DeleteWebServiceRequest, DeleteWebServiceResponse>
 {
@@ -63,31 +62,26 @@ public sealed class DeleteWebServiceHandler(
             return Failures.NotFound("Web service not found.", request.Id);
         if (webService.Lifecycle is DeletingWebServiceLifecycle)
         {
-            var deletingPlacement = await deploymentQuery.GetAsync(
+            var deletingPlacements = await deploymentQuery.GetAllAsync(
                 request.TenantId,
                 WebServiceResourceDeployment.ResourceType,
                 request.Id,
                 cancellationToken);
-            return deletingPlacement is null
+            return deletingPlacements.Count == 0
                 ? Failures.Conflict(
-                    "The deleting web service has no resource deployment.")
-                : new DeleteWebServiceResponse(request.Id, deletingPlacement);
+                    "The deleting web service has no resource deployments.")
+                : new DeleteWebServiceResponse(request.Id, deletingPlacements);
         }
 
-        var computeLookupResult = await deploymentComputeLookup.GetCurrentAsync(
+        var deployments = await deploymentQuery.GetAllAsync(
             webService.TenantId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
             cancellationToken);
-        if (!computeLookupResult.TryGetValue(
-                out var currentCompute,
-                out var computeLookupFailure))
-            return computeLookupFailure;
+        if (deployments.Count == 0)
+            return Failures.Conflict("The web service has no active resource deployments.");
 
-        var quotaInput = WebServiceQuotaInput.Create(
-            currentCompute.Compute.Requests.CpuMillis,
-            currentCompute.Compute.Requests.MemoryMi,
-            webService.Spec);
+        var quotaInput = WebServiceDeploymentWorkflow.ToQuotaInput(deployments, webService.Spec);
         return await quotaAdmissionExecutor.ExecuteAsync<
             WebServiceQuotaInput,
             DeleteWebServiceResponse>(
@@ -106,16 +100,20 @@ public sealed class DeleteWebServiceHandler(
                 if (replace is not ISuccess)
                     return (Failure)replace;
 
-                var deploymentResult = await deploymentWriter.RequestDeletionAsync(
-                    new ResourceDeploymentMutationRequest(
+                var deploymentResult = await deploymentWriter.RequestSetDeletionAsync(
+                    new ResourceDeploymentSetDeletionRequest(
                         webService.TenantId,
                         WebServiceResourceDeployment.ResourceType,
                         webService.Id,
-                        currentCompute.Compute.Profile),
+                        webService.ActiveRevision,
+                        deployments.Select(deployment => new ResourceDeploymentSetDeletionItem(
+                            deployment.DeploymentId,
+                            deployment.DeploymentRevision,
+                            deployment.Compute.Profile)).ToArray()),
                     session,
                     transactionCancellationToken);
                 if (!deploymentResult.TryGetValue(
-                        out var deployment,
+                        out var updatedDeployments,
                         out var deploymentFailure))
                 {
                     return deploymentFailure;
@@ -123,7 +121,7 @@ public sealed class DeleteWebServiceHandler(
 
                 return new DeleteWebServiceResponse(
                     request.Id,
-                    deployment);
+                    updatedDeployments);
             },
             cancellationToken);
     }
@@ -158,5 +156,5 @@ public sealed record DeleteWebServiceRequest(
 
 public sealed record DeleteWebServiceResponse(
     string Id,
-    PlacementSummaryDto Placement
+    IReadOnlyList<PlacementSummaryDto> Deployments
 );

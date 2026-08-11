@@ -6,7 +6,7 @@ namespace Pole.Features.WebServices.Application.Persistence;
 public delegate Task<WebServiceRelease?> LoadSucceededWebServiceRelease(
     string tenantId,
     string webServiceId,
-    int revision,
+    long revision,
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoLoadSucceededWebServiceRelease(
@@ -15,7 +15,7 @@ internal sealed class MongoLoadSucceededWebServiceRelease(
     public async Task<WebServiceRelease?> InvokeAsync(
         string tenantId,
         string webServiceId,
-        int revision,
+        long revision,
         CancellationToken cancellationToken = default) =>
         await releases.Find(WebServiceReleaseFilters.SucceededRevision(
                 tenantId,

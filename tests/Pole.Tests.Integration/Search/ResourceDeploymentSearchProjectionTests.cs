@@ -49,6 +49,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             resourceId,
             generation: 2,
             DateTime.UtcNow,
+            false,
             CancellationToken.None);
 
         var projected = await SourceDocuments
@@ -89,6 +90,60 @@ public sealed class ResourceDeploymentSearchProjectionTests(
     }
 
     [Fact]
+    public async Task MultiTargetProjection_AggregatesStatusRevisionAndObservedGeneration()
+    {
+        var tenantId = ObjectId.GenerateNewId().ToString();
+        var resourceId = ObjectId.GenerateNewId().ToString();
+        var appliedDeploymentId = ObjectId.GenerateNewId().ToString();
+        var failedDeploymentId = ObjectId.GenerateNewId().ToString();
+        await InsertSourceAsync(tenantId, resourceId, "multi-target-service");
+
+        var deployments = new[]
+        {
+            CreatePlacement(
+                appliedDeploymentId,
+                desiredGeneration: 4,
+                observedGeneration: 4,
+                status: "Applied",
+                failureCode: null),
+            CreatePlacement(
+                failedDeploymentId,
+                desiredGeneration: 5,
+                observedGeneration: 3,
+                status: "Failed",
+                failureCode: "ProviderUnavailable")
+        };
+        var consumer = new ResourceDeploymentSearchProjectionConsumer(
+            SearchService,
+            new StubResourceDeploymentQueryService(deployments));
+
+        await consumer.Handle(
+            tenantId,
+            failedDeploymentId,
+            WebServiceResourceType,
+            resourceId,
+            generation: 3,
+            DateTime.UtcNow,
+            false,
+            CancellationToken.None);
+
+        var projected = await SourceDocuments
+            .Find(document =>
+                document.TenantId == tenantId &&
+                document.SourceId == resourceId)
+            .SingleAsync();
+
+        Assert.NotNull(projected.OperationalStatus);
+        Assert.Equal("PartiallyFailed", projected.OperationalStatus.Value.Status);
+        Assert.Equal(5, projected.OperationalStatus.Value.DesiredGeneration);
+        Assert.Equal(3, projected.OperationalStatus.Value.ObservedGeneration);
+        Assert.NotNull(projected.OperationalStatus.Value.FailureCode);
+        Assert.Equal(
+            "ProviderUnavailable",
+            projected.OperationalStatus.Value.FailureCode.Value);
+    }
+
+    [Fact]
     public async Task Projection_IsTenantScoped_AndDoesNotAllowOlderGenerationToOverwrite()
     {
         var tenantId = ObjectId.GenerateNewId().ToString();
@@ -104,7 +159,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             observedGeneration: 3,
             status: "Applied",
             failureCode: null);
-        var stub = new StubResourceDeploymentQueryService(current);
+        var stub = new StubResourceDeploymentQueryService([current]);
         var consumer = new ResourceDeploymentSearchProjectionConsumer(
             SearchService,
             stub);
@@ -117,14 +172,18 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             resourceId,
             generation: 3,
             currentEventTime,
+            false,
             CancellationToken.None);
 
-        stub.Current = CreatePlacement(
-            deploymentId,
-            desiredGeneration: 2,
-            observedGeneration: 1,
-            status: "Failed",
-            failureCode: "ProviderUnavailable");
+        stub.Current =
+        [
+            CreatePlacement(
+                deploymentId,
+                desiredGeneration: 2,
+                observedGeneration: 1,
+                status: "Failed",
+                failureCode: "ProviderUnavailable")
+        ];
         await consumer.Handle(
             tenantId,
             deploymentId,
@@ -132,6 +191,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             resourceId,
             generation: 2,
             currentEventTime.AddMinutes(-1),
+            false,
             CancellationToken.None);
 
         await consumer.Handle(
@@ -141,6 +201,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             resourceId,
             generation: 2,
             currentEventTime.AddMinutes(1),
+            false,
             CancellationToken.None);
 
         var projected = await SourceDocuments
@@ -192,6 +253,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             resourceId,
             generation: 4,
             DateTime.UtcNow,
+            status == "Deleted",
             CancellationToken.None);
 
         var projected = await SourceDocuments
@@ -221,6 +283,42 @@ public sealed class ResourceDeploymentSearchProjectionTests(
     }
 
     [Fact]
+    public async Task DeletedProjection_AfterExactPurge_AggregatesRemainingDeployments()
+    {
+        var tenantId = ObjectId.GenerateNewId().ToString();
+        var resourceId = ObjectId.GenerateNewId().ToString();
+        var removedDeploymentId = ObjectId.GenerateNewId().ToString();
+        var remainingDeploymentId = ObjectId.GenerateNewId().ToString();
+        await InsertSourceAsync(tenantId, resourceId, "remaining-target");
+
+        var consumer = CreateConsumer(CreatePlacement(
+            remainingDeploymentId,
+            desiredGeneration: 6,
+            observedGeneration: 6,
+            status: "Applied",
+            failureCode: null));
+        await consumer.Handle(
+            tenantId,
+            removedDeploymentId,
+            WebServiceResourceType,
+            resourceId,
+            generation: 5,
+            DateTime.UtcNow,
+            true,
+            CancellationToken.None);
+
+        var projected = await SourceDocuments
+            .Find(document =>
+                document.TenantId == tenantId &&
+                document.SourceId == resourceId)
+            .SingleAsync();
+
+        Assert.NotNull(projected.OperationalStatus);
+        Assert.Equal("Applied", projected.OperationalStatus.Value.Status);
+        Assert.Equal(6, projected.OperationalStatus.Value.DesiredGeneration);
+    }
+
+    [Fact]
     public async Task LogicalProjectionRebuild_PreservesExistingOperationalStatus()
     {
         var tenantId = ObjectId.GenerateNewId().ToString();
@@ -242,6 +340,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             resourceId,
             generation: 1,
             DateTime.UtcNow,
+            false,
             CancellationToken.None);
 
         var replacementRow = new SearchDocument(
@@ -274,11 +373,67 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         Assert.Equal("Applied", projected.OperationalStatus.Value.Status);
     }
 
+    [Fact]
+    public async Task OperationalStatusDeliveredBeforeLogicalProjection_IsPreserved()
+    {
+        var tenantId = ObjectId.GenerateNewId().ToString();
+        var resourceId = ObjectId.GenerateNewId().ToString();
+        var resourceGroupId = ObjectId.GenerateNewId().ToString();
+        var deploymentId = ObjectId.GenerateNewId().ToString();
+        var consumer = CreateConsumer(CreatePlacement(
+            deploymentId,
+            desiredGeneration: 2,
+            observedGeneration: 2,
+            status: "Applied",
+            failureCode: null));
+
+        await consumer.Handle(
+            tenantId,
+            deploymentId,
+            WebServiceResourceType,
+            resourceId,
+            generation: 2,
+            DateTime.UtcNow,
+            false,
+            CancellationToken.None);
+
+        var row = new SearchDocument(
+            ObjectId.GenerateNewId().ToString(),
+            SearchDocumentType.WebService,
+            tenantId,
+            resourceId,
+            SearchKeyType.Name,
+            "eventually-created",
+            100_000,
+            "eventually-created",
+            FSharpOption<string>.Some(resourceGroupId),
+            FSharpOption<string>.None);
+        await SearchService.Create(
+            new SearchDocumentSet(
+                SearchDocumentType.WebService,
+                tenantId,
+                resourceId,
+                ListModule.OfSeq([row])),
+            CancellationToken.None);
+
+        var projected = await SourceDocuments
+            .Find(document =>
+                document.TenantId == tenantId &&
+                document.SourceId == resourceId)
+            .SingleAsync();
+        Assert.Equal("eventually-created", projected.Title);
+        Assert.Contains(projected.SearchKeys, key => key.Value == "eventually-created");
+        Assert.NotNull(projected.OperationalStatus);
+        Assert.Equal("Applied", projected.OperationalStatus.Value.Status);
+        Assert.Equal(2, projected.OperationalStatus.Value.DesiredGeneration);
+        Assert.Equal(2, projected.OperationalStatus.Value.ObservedGeneration);
+    }
+
     private ResourceDeploymentSearchProjectionConsumer CreateConsumer(
         PlacementSummaryDto placement) =>
         new(
             SearchService,
-            new StubResourceDeploymentQueryService(placement));
+            new StubResourceDeploymentQueryService([placement]));
 
     private async Task InsertSourceAsync(
         string tenantId,
@@ -337,27 +492,40 @@ public sealed class ResourceDeploymentSearchProjectionTests(
                     "Ingress",
                     "portal.example.com",
                     443,
-                    "https")));
+                    "https")),
+            ResourceRevision: desiredGeneration);
 
     private sealed class StubResourceDeploymentQueryService(
-        PlacementSummaryDto current)
-        : IResourceDeploymentQueryService
+        IReadOnlyList<PlacementSummaryDto> current)
+        : IResourceDeploymentSetQueryService
     {
-        public PlacementSummaryDto Current { get; set; } = current;
+        public IReadOnlyList<PlacementSummaryDto> Current { get; set; } = current;
 
-        public Task<PlacementSummaryDto?> GetAsync(
+        public Task<IReadOnlyList<PlacementSummaryDto>> GetAllAsync(
             string tenantId,
             ResourceTypeId resourceType,
             string resourceId,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<PlacementSummaryDto?>(Current);
+            Task.FromResult(Current);
 
-        public Task<IReadOnlyDictionary<string, PlacementSummaryDto>> GetManyAsync(
+        public Task<PlacementSummaryDto?> GetExactAsync(
+            string tenantId,
+            ResourceTypeId resourceType,
+            string resourceId,
+            string deploymentId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Current.SingleOrDefault(deployment =>
+                string.Equals(
+                    deployment.DeploymentId,
+                    deploymentId,
+                    StringComparison.Ordinal)));
+
+        public Task<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>> GetAllManyAsync(
             string tenantId,
             ResourceTypeId resourceType,
             IReadOnlyCollection<string> resourceIds,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyDictionary<string, PlacementSummaryDto>>(
+            Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>>(
                 resourceIds.ToDictionary(
                     resourceId => resourceId,
                     _ => Current,
