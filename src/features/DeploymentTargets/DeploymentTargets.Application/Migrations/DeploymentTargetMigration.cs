@@ -18,7 +18,7 @@ public sealed class DeploymentTargetMigration : IMigration
         [
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys.Ascending("ClusterIdentity"),
-                new CreateIndexOptions
+                new CreateIndexOptions<BsonDocument>
                 {
                     Unique = true,
                     Name = "UX_DeploymentTargets_ClusterIdentity"
@@ -31,6 +31,20 @@ public sealed class DeploymentTargetMigration : IMigration
                 new CreateIndexOptions
                 {
                     Name = "IX_DeploymentTargets_WorkloadAdmission_DisplayName"
+                }),
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys
+                    .Ascending("WorkloadConfiguration.Ingress.PublicBaseDomain"),
+                new CreateIndexOptions<BsonDocument>
+                {
+                    Unique = true,
+                    PartialFilterExpression = new BsonDocument
+                    {
+                        ["WorkloadConfiguration.Ingress.PublicBaseDomain"] =
+                            new BsonDocument("$type", "string"),
+                        ["DeletionRequestedAtUtc"] = BsonNull.Value
+                    },
+                    Name = "UX_DeploymentTargets_Active_PublicBaseDomain"
                 })
         ], cancellationToken);
 

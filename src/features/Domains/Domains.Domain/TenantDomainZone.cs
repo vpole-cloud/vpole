@@ -1,0 +1,104 @@
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
+using Pole.Dns;
+
+namespace Pole.Features.Domains.Domain;
+
+public enum TenantDomainZoneKind
+{
+    Generated,
+    ManagedReservation
+}
+
+public static class TenantDomainZoneLabelPolicy
+{
+    // Generated zones share the same global DNS tree as tenant-managed reservations. Reserving
+    // this prefix prevents a managed label from occupying a name the platform may generate.
+    public const string GeneratedPrefix = "pole-generated-";
+
+    public static bool IsManagedLabelAllowed(string? label) =>
+        label is not null &&
+        !label.Trim().StartsWith(GeneratedPrefix, StringComparison.OrdinalIgnoreCase);
+}
+
+public sealed record TenantDomainZone(
+    [property: BsonId]
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string Id,
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string TenantId,
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string DeploymentTargetId,
+    string Label,
+    string Domain,
+    [property: BsonRepresentation(BsonType.String)]
+    TenantDomainZoneKind Kind,
+    long Revision,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc);
+
+public static class TenantDomainZoneFactory
+{
+    public sealed record CreateOptions(string Id, DateTime CreatedAtUtc);
+
+    public static TenantDomainZone CreateGenerated(
+        string tenantId,
+        string deploymentTargetId,
+        string label,
+        DnsName publicBaseDomain,
+        CreateOptions options) =>
+        Create(
+            tenantId,
+            deploymentTargetId,
+            label,
+            publicBaseDomain,
+            TenantDomainZoneKind.Generated,
+            options);
+
+    public static TenantDomainZone CreateManagedReservation(
+        string tenantId,
+        string deploymentTargetId,
+        string label,
+        DnsName publicBaseDomain,
+        CreateOptions options)
+    {
+        if (!TenantDomainZoneLabelPolicy.IsManagedLabelAllowed(label))
+        {
+            throw new ArgumentException(
+                $"Labels beginning with '{TenantDomainZoneLabelPolicy.GeneratedPrefix}' are reserved for platform-generated zones.",
+                nameof(label));
+        }
+
+        return Create(
+            tenantId,
+            deploymentTargetId,
+            label,
+            publicBaseDomain,
+            TenantDomainZoneKind.ManagedReservation,
+            options);
+    }
+
+    private static TenantDomainZone Create(
+        string tenantId,
+        string deploymentTargetId,
+        string label,
+        DnsName publicBaseDomain,
+        TenantDomainZoneKind kind,
+        CreateOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(publicBaseDomain);
+        ArgumentNullException.ThrowIfNull(options);
+        var normalizedLabel = DnsLabel.Create(label);
+        var createdAtUtc = DomainValueGuard.Utc(options.CreatedAtUtc, nameof(options.CreatedAtUtc));
+        return new TenantDomainZone(
+            DomainValueGuard.ObjectId(options.Id, nameof(options.Id)),
+            DomainValueGuard.ObjectId(tenantId, nameof(tenantId)),
+            DomainValueGuard.ObjectId(deploymentTargetId, nameof(deploymentTargetId)),
+            normalizedLabel.Value,
+            DnsName.Combine(normalizedLabel, publicBaseDomain).Value,
+            kind,
+            Revision: 1,
+            createdAtUtc,
+            createdAtUtc);
+    }
+}

@@ -20,6 +20,7 @@ public sealed class DeploymentTargetBootstrapper(
     IDeploymentTargetDbContext dbContext,
     IDeploymentTargetConnectionPreparer connectionPreparer,
     IDeploymentTargetProbe probe,
+    DeploymentTargetDomainAdmission domainAdmission,
     DeploymentTargetOptions options,
     IHostEnvironment environment,
     TimeProvider timeProvider,
@@ -159,7 +160,8 @@ public sealed class DeploymentTargetBootstrapper(
             ? null
             : DeploymentTargetIngressConfiguration.Create(
                 configuredIngress.IngressClassName,
-                configuredIngress.ClusterIssuerName);
+                configuredIngress.ClusterIssuerName,
+                configuredIngress.PublicBaseDomain);
         return DeploymentTargetWorkloadConfiguration.Create(ingress);
     }
 
@@ -220,6 +222,14 @@ public sealed class DeploymentTargetBootstrapper(
             {
                 return await BindDefaultSettingsAsync(session, existing, ct);
             }
+
+            var admission = await domainAdmission.EnsureNoOverlappingPublicBaseDomainAsync(
+                target.Id,
+                target.WorkloadConfiguration.Ingress?.PublicBaseDomain,
+                session,
+                ct);
+            if (admission is not ISuccess)
+                return (Failure)admission;
 
             await dbContext.DeploymentTargets.InsertOneAsync(session, target, cancellationToken: ct);
             await dbContext.DeploymentTargetSettings.InsertOneAsync(

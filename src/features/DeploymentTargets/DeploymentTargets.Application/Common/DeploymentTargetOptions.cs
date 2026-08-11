@@ -38,6 +38,7 @@ public sealed class DeploymentTargetBootstrapIngressOptions
 {
     public string IngressClassName { get; init; } = "traefik";
     public string ClusterIssuerName { get; init; } = "letsencrypt-prod";
+    public string? PublicBaseDomain { get; init; }
 }
 
 public sealed class DeploymentTargetOptionsValidator : IValidateOptions<DeploymentTargetOptions>
@@ -94,6 +95,13 @@ public sealed class DeploymentTargetOptionsValidator : IValidateOptions<Deployme
                 failures.Add(
                     "DeploymentTargets:Bootstrap:WorkloadConfiguration:Ingress:ClusterIssuerName " +
                     "must be a valid Kubernetes resource name.");
+            }
+            if (ingress?.PublicBaseDomain is not null &&
+                !DeploymentTargetIngressConfiguration.IsValidPublicBaseDomain(ingress.PublicBaseDomain))
+            {
+                failures.Add(
+                    "DeploymentTargets:Bootstrap:WorkloadConfiguration:Ingress:PublicBaseDomain " +
+                    "must be a valid ASCII DNS name.");
             }
         }
 

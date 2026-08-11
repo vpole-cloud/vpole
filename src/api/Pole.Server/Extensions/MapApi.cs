@@ -2,7 +2,7 @@ using Pole.ASP.Helpers;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Application.Common;
-using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.Domains.Application.Common;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Postgres.Application.Endpoints;
@@ -29,6 +29,7 @@ public static class MapApi
         group.MapResourceGroupEndpoints()
             .MapContainerRegistryEndpoints()
             .MapDeploymentTargetEndpoints()
+            .MapDeploymentTargetAvailabilityEndpoints()
             .MapDeploymentTargetEncryptionEndpoints()
             .MapGitProviderEndpoints()
             .MapFunctionAppEndpoints()
@@ -42,7 +43,7 @@ public static class MapApi
             .MapQuotaEndpoints()
             .MapStorageProfileEndpoints()
             .MapSearchEndpoints()
-            .MapDomainNameEndpoints();
+            .MapDomainZoneEndpoints();
 
         group.MapGroup("/platform/compute-profiles")
             .WithTags("PlatformComputeProfiles")

@@ -38,3 +38,16 @@ mutable profile state.
 Resolution and mutation are coordinated by revision/fence updates. Profile target mappings also
 own transactional deployment-target references, and hard deletion is allowed only when no
 ResourceDeployment snapshot still references the profile.
+
+## DNS records became domain ownership
+
+The original `DnsRecord` model combined a user-facing URL, an ingress rule, and a global
+uniqueness reservation in one document. Multi-target placement made that model ambiguous because
+the same logical WebService can have independent public endpoints in different clusters.
+
+Pole replaced it with target-owned public base domains, tenant domain zones, and hostname
+bindings attached to exact ResourceDeployments. Each public deployment receives a permanent
+generated hostname below its target and tenant zone. Tenants may reserve child zones and add
+custom aliases, while a global hostname index prevents conflicting ownership. ResourceDeployment
+stores the ordered hostname snapshot used by reconciliation, so Kubernetes manifests are rendered
+from immutable desired state rather than mutable DNS or target configuration.

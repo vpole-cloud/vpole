@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
+using Pole.Database;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Domain;
@@ -30,6 +31,7 @@ public sealed record UpdateDeploymentTargetRequest(
 public sealed class UpdateDeploymentTargetHandler(
     IDeploymentTargetDbContext dbContext,
     DeploymentTargetReader reader,
+    DeploymentTargetDomainAdmission domainAdmission,
     IDeploymentTargetClientCache clientCache,
     TimeProvider timeProvider)
     : IMediatorHandler<UpdateDeploymentTargetRequest, DeploymentTargetDto>
@@ -59,32 +61,91 @@ public sealed class UpdateDeploymentTargetHandler(
             return target.ToDto(target.Id == existingDefaultId);
         }
 
-        var persisted = await dbContext.DeploymentTargets.FindOneAndUpdateAsync(
-            DeploymentTargetFilters.RevisionFilter(target),
-            Builders<DeploymentTarget>.Update.Combine(
-                Builders<DeploymentTarget>.Update.Set(item => item.DisplayName, updated.DisplayName),
-                Builders<DeploymentTarget>.Update.Set(item => item.Enabled, updated.Enabled),
-                Builders<DeploymentTarget>.Update.Set(
-                    item => item.AcceptsWorkloads,
-                    updated.AcceptsWorkloads),
-                Builders<DeploymentTarget>.Update.Set(
-                    item => item.WorkloadConfiguration,
-                    updated.WorkloadConfiguration),
-                Builders<DeploymentTarget>.Update.Set(item => item.Revision, updated.Revision),
-                Builders<DeploymentTarget>.Update.Set(item => item.UpdatedAtUtc, updated.UpdatedAtUtc)),
-            new FindOneAndUpdateOptions<DeploymentTarget>
-            {
-                ReturnDocument = ReturnDocument.After
-            },
-            cancellationToken);
-        if (persisted is null)
-            return Failures.Conflict("The deployment target changed. Reload it and retry.");
+        var publicBaseDomainChanged = !string.Equals(
+            target.WorkloadConfiguration.Ingress?.PublicBaseDomain,
+            updated.WorkloadConfiguration.Ingress?.PublicBaseDomain,
+            StringComparison.Ordinal);
+        var persistedResult = publicBaseDomainChanged
+            ? await ReplacePublicBaseDomainAsync(target, updated, cancellationToken)
+            : await ReplaceAsync(target, updated, cancellationToken);
+        if (!persistedResult.TryGetValue(out var persisted, out var persistenceFailure))
+            return persistenceFailure;
 
         if (!persisted.Enabled)
             clientCache.Invalidate(target.Id);
         var defaultId = await reader.GetDefaultIdAsync(cancellationToken);
         return persisted.ToDto(persisted.Id == defaultId);
     }
+
+    private async Task<Result<DeploymentTarget>> ReplaceAsync(
+        DeploymentTarget target,
+        DeploymentTarget updated,
+        CancellationToken cancellationToken)
+    {
+        var persisted = await dbContext.DeploymentTargets.FindOneAndUpdateAsync(
+            DeploymentTargetFilters.RevisionFilter(target),
+            ReplacementUpdate(updated),
+            new FindOneAndUpdateOptions<DeploymentTarget>
+            {
+                ReturnDocument = ReturnDocument.After
+            },
+            cancellationToken);
+        return persisted is null
+            ? Failures.Conflict("The deployment target changed. Reload it and retry.")
+            : persisted;
+    }
+
+    private Task<Result<DeploymentTarget>> ReplacePublicBaseDomainAsync(
+        DeploymentTarget target,
+        DeploymentTarget updated,
+        CancellationToken cancellationToken) =>
+        dbContext.RunInTransactionAsync<DeploymentTarget>(async (session, ct) =>
+        {
+            var references = await domainAdmission.EnsureNoPublicDomainReferencesAsync(
+                target.Id,
+                session,
+                ct);
+            if (references is not ISuccess)
+                return (Failure)references;
+
+            var overlap = await domainAdmission.EnsureNoOverlappingPublicBaseDomainAsync(
+                target.Id,
+                updated.WorkloadConfiguration.Ingress?.PublicBaseDomain,
+                session,
+                ct);
+            if (overlap is not ISuccess)
+                return (Failure)overlap;
+
+            var persisted = await dbContext.DeploymentTargets.FindOneAndUpdateAsync(
+                session,
+                Builders<DeploymentTarget>.Filter.And(
+                    DeploymentTargetFilters.RevisionFilter(target),
+                    Builders<DeploymentTarget>.Filter.Eq(
+                        item => item.ReferenceFence,
+                        target.ReferenceFence)),
+                ReplacementUpdate(updated),
+                new FindOneAndUpdateOptions<DeploymentTarget>
+                {
+                    ReturnDocument = ReturnDocument.After
+                },
+                ct);
+            return persisted is null
+                ? Failures.Conflict("The deployment target changed. Reload it and retry.")
+                : persisted;
+        }, cancellationToken: cancellationToken);
+
+    private static UpdateDefinition<DeploymentTarget> ReplacementUpdate(DeploymentTarget updated) =>
+        Builders<DeploymentTarget>.Update.Combine(
+            Builders<DeploymentTarget>.Update.Set(item => item.DisplayName, updated.DisplayName),
+            Builders<DeploymentTarget>.Update.Set(item => item.Enabled, updated.Enabled),
+            Builders<DeploymentTarget>.Update.Set(
+                item => item.AcceptsWorkloads,
+                updated.AcceptsWorkloads),
+            Builders<DeploymentTarget>.Update.Set(
+                item => item.WorkloadConfiguration,
+                updated.WorkloadConfiguration),
+            Builders<DeploymentTarget>.Update.Set(item => item.Revision, updated.Revision),
+            Builders<DeploymentTarget>.Update.Set(item => item.UpdatedAtUtc, updated.UpdatedAtUtc));
 }
 
 public sealed class UpdateDeploymentTargetRequestValidator

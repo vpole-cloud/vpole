@@ -83,7 +83,8 @@ Tenant-owned domain documents include `TenantId`:
 * `WebService`
 * `Redis`
 * `PostgresCluster`
-* `DnsRecord`
+* `TenantDomainZone`
+* `HostnameBinding`
 * `SearchDocument`
 * `SearchSourceDocument`
 * `OutboxMessage`
@@ -102,7 +103,9 @@ instead of producing an unscoped filter.
 
 When creating a resource that references another resource, the referenced resource must be loaded from the same tenant. For example, web service, Redis, and Postgres creation must validate that the target resource group has the same `TenantId` as the active tenant.
 
-Domain names are intentionally checked globally during web service creation. Even though DNS records carry `TenantId`, the actual host name is cluster-wide and ingress-wide, so two tenants cannot claim the same domain.
+Hostname ownership is intentionally unique across tenants. Tenant filters protect zone and binding
+access, while a global canonical-hostname index prevents two tenants or deployment targets from
+claiming the same DNS name.
 
 ## Kubernetes Isolation
 

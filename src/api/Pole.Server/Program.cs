@@ -7,7 +7,8 @@ using Pole.Features.ComputeProfiles.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
-using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.Domains.Application.Common;
+using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Runtime.Consumers;
@@ -42,7 +43,7 @@ Assembly[] assemblies = [
     typeof(FunctionRuntimeFeature).Assembly,
     typeof(PostgresClusterEndpoints).Assembly,
     typeof(QuotaEndpoints).Assembly,
-    typeof(DnsRecordEndpoints).Assembly,
+    typeof(DomainZoneEndpoints).Assembly,
     typeof(GitProviderEndpoints).Assembly,
     typeof(ContainerRegistryFeature).Assembly,
     typeof(ComputeProfileFeature).Assembly,
@@ -60,7 +61,6 @@ Assembly[] assemblies = [
 Assembly[] outboxEventAssemblies = [
     typeof(Pole.Features.WebServices.Events.WebServiceCreatedEvent).Assembly,
     typeof(Pole.Features.Functions.Events.FunctionAppCreatedEvent).Assembly,
-    typeof(Pole.Features.DnsRecords.Events.CommitDomainNameEvent).Assembly,
     typeof(Pole.Features.Postgres.Events.PostgresClusterCreatedEvent).Assembly,
     typeof(Pole.Features.RedisServices.Events.RedisServiceCreatedEvent).Assembly,
     typeof(Pole.Features.ResourceDeployments.Events.ResourceDeploymentAppliedEvent).Assembly,
@@ -78,6 +78,8 @@ builder.Services.AddKubernetes(configuration)
     .AddEventBus(configuration, assemblies)
     .AddOutboxEventAssemblies(outboxEventAssemblies)
     .AddDatabase()
+    .AddTenantContractCapabilities()
+    .AddDomainPersistence()
     .AddComputeProfiles()
     .AddRedisPersistence()
     .AddWebServicePersistence()

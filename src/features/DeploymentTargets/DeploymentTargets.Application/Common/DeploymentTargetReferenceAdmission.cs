@@ -144,31 +144,57 @@ public sealed class DeploymentTargetReferenceAdmission(
                 "Deployment-target references changed while removal was being accepted.");
     }
 
-    public async Task<Result> FenceAsync(
+    public Task<Result> FenceAsync(
         string deploymentTargetId,
         long expectedWorkloadConfigurationRevision,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default) =>
+        FenceManyAsync(
+            [new DeploymentTargetWorkloadConfigurationFenceRequest(
+                deploymentTargetId,
+                expectedWorkloadConfigurationRevision)],
+            session,
+            cancellationToken);
+
+    public async Task<Result> FenceManyAsync(
+        IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
-        if (!ObjectId.TryParse(deploymentTargetId, out _) ||
-            expectedWorkloadConfigurationRevision < 1)
+        ArgumentNullException.ThrowIfNull(requests);
+        if (requests.Count == 0)
+            return Result.Success();
+
+        var distinctRequests = requests
+            .DistinctBy(request => request.DeploymentTargetId, StringComparer.Ordinal)
+            .ToArray();
+        if (distinctRequests.Length != requests.Count ||
+            distinctRequests.Any(request =>
+                !ObjectId.TryParse(request.DeploymentTargetId, out _) ||
+                request.ExpectedWorkloadConfigurationRevision < 1))
         {
             return Failures.ValidationFailure(new Dictionary<string, string[]>
             {
-                ["DeploymentTargetId"] =
+                ["DeploymentTargets"] =
                 [
-                    "A valid deployment target and workload configuration revision are required."
+                    "Unique valid deployment targets and workload configuration revisions are required."
                 ]
             });
         }
 
-        var update = await dbContext.DeploymentTargets.UpdateOneAsync(
-            session,
+        var expectedTargets = distinctRequests.Select(request =>
             Builders<DeploymentTarget>.Filter.And(
                 Builders<DeploymentTarget>.Filter.Eq(
                     target => target.Id,
-                    deploymentTargetId),
+                    request.DeploymentTargetId),
+                Builders<DeploymentTarget>.Filter.Eq(
+                    target => target.WorkloadConfiguration.Revision,
+                    request.ExpectedWorkloadConfigurationRevision)));
+        var update = await dbContext.DeploymentTargets.UpdateManyAsync(
+            session,
+            Builders<DeploymentTarget>.Filter.And(
+                Builders<DeploymentTarget>.Filter.Or(expectedTargets),
                 Builders<DeploymentTarget>.Filter.Eq(
                     target => target.Enabled,
                     true),
@@ -178,9 +204,6 @@ public sealed class DeploymentTargetReferenceAdmission(
                 Builders<DeploymentTarget>.Filter.Eq(
                     target => target.DeletionRequestedAtUtc,
                     null),
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.WorkloadConfiguration.Revision,
-                    expectedWorkloadConfigurationRevision),
                 Builders<DeploymentTarget>.Filter.Lt(
                     target => target.ReferenceFence,
                     long.MaxValue)),
@@ -188,7 +211,7 @@ public sealed class DeploymentTargetReferenceAdmission(
                 target => target.ReferenceFence,
                 1),
             cancellationToken: cancellationToken);
-        return update.ModifiedCount == 1
+        return update.ModifiedCount == distinctRequests.Length
             ? Result.Success()
             : Failures.Conflict(
                 "The deployment target workload configuration changed or no longer accepts workloads.");

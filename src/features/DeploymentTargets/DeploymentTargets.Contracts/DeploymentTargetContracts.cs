@@ -1,6 +1,7 @@
 using k8s;
 using MongoDB.Driver;
 using Pole.ResultType;
+using Pole.Workloads;
 
 namespace Pole.Features.DeploymentTargets.Contracts;
 
@@ -72,7 +73,49 @@ public sealed record DeploymentTargetWorkloadConfigurationLookupDto(
 
 public sealed record DeploymentTargetIngressConfigurationLookupDto(
     string IngressClassName,
-    string ClusterIssuerName);
+    string ClusterIssuerName,
+    string? PublicBaseDomain = null);
+
+[Flags]
+public enum DeploymentTargetRequiredCapabilities
+{
+    None = 0,
+    PublicIngress = 1
+}
+
+/// <summary>
+/// Describes a placement-admission decision. Targets are currently platform-shared, but tenant
+/// and resource context are deliberately carried at this boundary so tenant-owned and allowlisted
+/// targets can be introduced without changing callers again.
+/// </summary>
+public sealed record DeploymentTargetAdmissionRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string? IsolationScopeId,
+    string? ExplicitDeploymentTargetId,
+    DeploymentTargetRequiredCapabilities RequiredCapabilities);
+
+/// <summary>
+/// Safe target information suitable for a tenant placement picker. It intentionally excludes
+/// cluster identity, credentials, connection state, and provider diagnostics.
+/// </summary>
+public sealed record AvailableDeploymentTargetDto(
+    string Id,
+    string DisplayName,
+    long WorkloadConfigurationRevision,
+    bool HasPublicIngress,
+    string? PublicBaseDomain);
+
+/// <summary>
+/// Immutable ingress configuration resolved for admission. Consumers snapshot this value instead
+/// of reloading mutable target configuration while creating their own aggregate.
+/// </summary>
+public sealed record DeploymentTargetPublicIngressDto(
+    string DeploymentTargetId,
+    long WorkloadConfigurationRevision,
+    string IngressClassName,
+    string ClusterIssuerName,
+    string PublicBaseDomain);
 
 public interface IDeploymentTargetLookup
 {
@@ -93,9 +136,55 @@ public interface IDeploymentTargetLookup
 
     Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>> ListEligibleForNewWorkloadAsync(
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Tenant-aware target admission for new placement. The legacy overloads above retain their
+    /// platform-shared behavior for feature slices that have not adopted #39 yet.
+    /// </summary>
+    Task<Result<DeploymentTargetLookupDto>> ResolveForNewWorkloadAsync(
+        DeploymentTargetAdmissionRequest request,
+        CancellationToken cancellationToken = default) =>
+        ResolveForNewWorkloadAsync(request.ExplicitDeploymentTargetId, cancellationToken);
+
+    /// <summary>
+    /// Lists targets eligible for this tenant/resource placement request. Implementations must
+    /// apply <see cref="DeploymentTargetRequiredCapabilities"/> before returning the list.
+    /// </summary>
+    Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>> ListEligibleForNewWorkloadAsync(
+        DeploymentTargetAdmissionRequest request,
+        CancellationToken cancellationToken = default) =>
+        ListEligibleForNewWorkloadAsync(cancellationToken);
+
+    /// <summary>
+    /// Resolves the public ingress snapshot required by an admitted placement. The caller must
+    /// pass its tenant/resource/isolation context through <paramref name="request"/>.
+    /// </summary>
+    Task<Result<DeploymentTargetPublicIngressDto>> ResolvePublicIngressForNewWorkloadAsync(
+        DeploymentTargetAdmissionRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves public ingress for reserving a tenant domain zone. Domain zones are DNS
+    /// control-plane objects, not workloads, so this admission path deliberately does not invent
+    /// a resource type or apply workload-type eligibility policy.
+    /// </summary>
+    Task<Result<DeploymentTargetPublicIngressDto>> ResolvePublicIngressForDomainReservationAsync(
+        string tenantId,
+        string deploymentTargetId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record DeploymentTargetReferenceOwner(string Type, string Id);
+
+/// <summary>
+/// Stable owner discriminators used by target-owned reference fencing. They are deliberately
+/// contracts rather than feature-domain types so a target can guard domain-zone references
+/// without taking a dependency back on its provider.
+/// </summary>
+public static class DeploymentTargetReferenceOwnerTypes
+{
+    public const string DomainZone = "domain-zone";
+}
 
 /// <summary>
 /// Owns the central registry and write fence for durable deployment-target references. Resource
@@ -126,9 +215,41 @@ public interface IDeploymentTargetReferenceAdmission
 
 public interface IDeploymentTargetWorkloadConfigurationFence
 {
+    Task<Result> FenceManyAsync(
+        IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(requests);
+        return FenceManyFallbackAsync(requests, session, cancellationToken);
+
+        async Task<Result> FenceManyFallbackAsync(
+            IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> items,
+            IClientSessionHandle activeSession,
+            CancellationToken ct)
+        {
+            foreach (var request in items)
+            {
+                var result = await FenceAsync(
+                    request.DeploymentTargetId,
+                    request.ExpectedWorkloadConfigurationRevision,
+                    activeSession,
+                    ct);
+                if (result is not ISuccess)
+                    return result;
+            }
+
+            return Result.Success();
+        }
+    }
+
     Task<Result> FenceAsync(
         string deploymentTargetId,
         long expectedWorkloadConfigurationRevision,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 }
+
+public sealed record DeploymentTargetWorkloadConfigurationFenceRequest(
+    string DeploymentTargetId,
+    long ExpectedWorkloadConfigurationRevision);
