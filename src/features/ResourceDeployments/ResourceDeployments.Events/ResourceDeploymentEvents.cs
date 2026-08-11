@@ -7,7 +7,8 @@ namespace Pole.Features.ResourceDeployments.Events;
 public sealed record ResourceDeploymentReconciliationRequestedEvent(
     string ResourceDeploymentId,
     string RuntimeCellId,
-    long Generation) : IPoleEvent
+    long Generation,
+    long ResourceRevision = 1) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
@@ -16,7 +17,8 @@ public sealed record ResourceDeploymentReconciliationRequestedEvent(
 public sealed record ResourceDeploymentDeletionRequestedEvent(
     string ResourceDeploymentId,
     string RuntimeCellId,
-    long Generation) : IPoleEvent
+    long Generation,
+    long ResourceRevision = 1) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
@@ -27,7 +29,8 @@ public sealed record ResourceDeploymentAppliedEvent(
     string ResourceType,
     string ResourceId,
     string RuntimeCellId,
-    long Generation) : IPoleEvent
+    long Generation,
+    long ResourceRevision = 1) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
@@ -41,7 +44,8 @@ public sealed record ResourceDeploymentFailedEvent(
     long Generation,
     string Operation,
     string FailureCode,
-    bool Retryable) : IPoleEvent
+    bool Retryable,
+    long ResourceRevision = 1) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
@@ -52,7 +56,8 @@ public sealed record ResourceDeploymentDeletedEvent(
     string ResourceType,
     string ResourceId,
     string RuntimeCellId,
-    long Generation) : IPoleEvent
+    long Generation,
+    long ResourceRevision = 1) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

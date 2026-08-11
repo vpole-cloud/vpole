@@ -113,7 +113,9 @@ internal sealed class ResourceDeploymentWriter(
             runtimeCellReady: placement.State == ResourcePlacementState.Ready,
             new ResourceDeploymentFactory.CreateOptions(
                 request.DeploymentId,
-                now));
+                now,
+                request.ResourceRevision,
+                request.FixedReplicas));
         await dbContext.ResourceDeployments.InsertOneAsync(
             session,
             deployment,
@@ -127,6 +129,183 @@ internal sealed class ResourceDeploymentWriter(
         }
 
         return deployment.ToPlacementSummaryDto();
+    }
+
+    public async Task<Result<IReadOnlyList<PlacementSummaryDto>>> InvokeSetAsync(
+        CreateResourceDeploymentSetRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureTransaction(session);
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Deployments.Count == 0)
+        {
+            return Failures.ValidationFailure(new Dictionary<string, string[]>
+            {
+                ["Deployments"] = ["At least one resource deployment is required."]
+            });
+        }
+
+        var duplicateDeployment = request.Deployments
+            .GroupBy(item => item.DeploymentId, StringComparer.Ordinal)
+            .FirstOrDefault(group => group.Count() > 1);
+        if (duplicateDeployment is not null)
+        {
+            return Failures.ValidationFailure(new Dictionary<string, string[]>
+            {
+                ["Deployments"] = ["Resource deployment IDs must be unique."]
+            });
+        }
+        var first = request.Deployments[0];
+        if (request.Deployments.Any(item =>
+                !string.Equals(item.TenantId, first.TenantId, StringComparison.Ordinal) ||
+                !string.Equals(item.ResourceType.Value, first.ResourceType.Value, StringComparison.Ordinal) ||
+                !string.Equals(item.ResourceId, first.ResourceId, StringComparison.Ordinal) ||
+                !string.Equals(item.ResourceGroupId, first.ResourceGroupId, StringComparison.Ordinal) ||
+                !string.Equals(item.IsolationScopeId, first.IsolationScopeId, StringComparison.Ordinal) ||
+                item.ResourceRevision != first.ResourceRevision ||
+                item.PlacementCapability != first.PlacementCapability))
+        {
+            return Failures.ValidationFailure(new Dictionary<string, string[]>
+            {
+                ["Deployments"] =
+                    ["A deployment set must belong to one tenant, resource, resource revision, resource group, isolation scope, and placement capability."]
+            });
+        }
+        if (request.Deployments.Any(item => !string.Equals(
+                item.Compute.DeploymentTargetId,
+                item.Target.DeploymentTargetId,
+                StringComparison.Ordinal)) ||
+            request.Deployments
+                .Select(item => item.Target.DeploymentTargetId)
+                .Distinct(StringComparer.Ordinal)
+                .Count() != request.Deployments.Count)
+        {
+            return Failures.ValidationFailure(new Dictionary<string, string[]>
+            {
+                ["Deployments"] =
+                    ["Each deployment must have one unique target matching its compute snapshot."]
+            });
+        }
+
+        var targetFenceRequests = request.Deployments
+            .Select(item => new DeploymentTargetWorkloadConfigurationFenceRequest(
+                item.Target.DeploymentTargetId,
+                item.Target.WorkloadConfigurationRevision))
+            .Distinct()
+            .ToArray();
+        var targetFence = await targetConfigurationFence.FenceManyAsync(
+            targetFenceRequests,
+            session,
+            cancellationToken);
+        if (targetFence is not ISuccess)
+            return (Failure)targetFence;
+
+        var computeFenceRequests = request.Deployments
+            .Select(item => new ComputeProfileResolutionFenceRequest(
+                item.Compute.ComputeProfileId,
+                item.Compute.ComputeProfileRevision,
+                item.Compute.DeploymentTargetId,
+                item.TenantId,
+                item.ResourceType))
+            .Distinct()
+            .ToArray();
+        var computeFence = await computeProfileFence.FenceManyAsync(
+            computeFenceRequests,
+            session,
+            cancellationToken);
+        if (computeFence is not ISuccess)
+            return (Failure)computeFence;
+
+        foreach (var storage in request.Deployments
+                     .Where(item => item.Storage is not null)
+                     .Select(item => new StorageProfileResolutionFenceRequest(
+                         item.Storage!.StorageProfileId,
+                         item.Storage.StorageProfileRevision,
+                         item.Target.DeploymentTargetId,
+                         item.Storage.StorageClassName))
+                     .Distinct())
+        {
+            var storageFence = await storageConfigurationFence.FenceAsync(
+                storage,
+                session,
+                cancellationToken);
+            if (storageFence is not ISuccess)
+                return (Failure)storageFence;
+        }
+
+        var placementResult = await placementService.ResolveOrCreateManyAsync(
+            first.TenantId,
+            first.ResourceGroupId,
+            first.IsolationScopeId,
+            request.Deployments
+                .Select(item => item.Target.DeploymentTargetId)
+                .ToArray(),
+            session,
+            cancellationToken);
+        if (!placementResult.TryGetValue(out var placements, out var placementFailure))
+            return placementFailure;
+        if (placements.Count != request.Deployments.Count)
+            throw new InvalidOperationException("Resource placement returned an incomplete deployment set.");
+        if (placements.Any(placement =>
+                placement.State is ResourcePlacementState.Deleting or
+                    ResourcePlacementState.Deleted))
+        {
+            return Failures.Conflict("A selected runtime cell is being deleted.");
+        }
+
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var deployments = request.Deployments
+            .Select((item, index) =>
+            {
+                var placement = placements[index];
+                if (!string.Equals(
+                        placement.DeploymentTargetId,
+                        item.Target.DeploymentTargetId,
+                        StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        "Resource placement returned deployment targets in an unexpected order.");
+                }
+                return ResourceDeploymentFactory.Create(
+                    item.TenantId,
+                    item.ResourceType,
+                    item.ResourceId,
+                    item.ResourceGroupId,
+                    placement.IsolationScopeId,
+                    ResolvedResourcePlacement.Create(
+                        placement.RuntimeCellId,
+                        placement.DeploymentTargetId,
+                        placement.KubernetesNamespace,
+                        placement.RuntimeCellGeneration,
+                        item.Target.WorkloadConfigurationRevision,
+                        item.Target.Ingress.ToDomain(),
+                        item.Storage.ToDomain(),
+                        item.Compute.ToDomain(),
+                        now),
+                    item.PlacementCapability,
+                    runtimeCellReady: placement.State == ResourcePlacementState.Ready,
+                    new ResourceDeploymentFactory.CreateOptions(
+                        item.DeploymentId,
+                        now,
+                        item.ResourceRevision,
+                        item.FixedReplicas));
+            })
+            .ToArray();
+        await dbContext.ResourceDeployments.InsertManyAsync(
+            session,
+            deployments,
+            cancellationToken: cancellationToken);
+        await dbContext.StoreEventAsync(
+            deployments
+                .Where(deployment => deployment.State is PendingResourceDeploymentState)
+                .Select(deployment => deployment.ToCurrentRequestWrite()),
+            session,
+            cancellationToken);
+
+        return deployments
+            .Select(deployment => deployment.ToPlacementSummaryDto())
+            .ToArray();
     }
 
     private static void EnsureTransaction(IClientSessionHandle session)

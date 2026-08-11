@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Contracts;
 
 namespace Pole.Features.ResourceDeployments.Application.Placement;
@@ -20,6 +22,22 @@ public static class ResourceDeploymentPlacementRegistration
             serviceProvider
                 .GetRequiredService<ResourceDeploymentWriter>()
                 .InvokeAsync);
+        services.TryAddScoped<CreateResourceDeploymentSet>(serviceProvider =>
+            serviceProvider
+                .GetRequiredService<ResourceDeploymentWriter>()
+                .InvokeSetAsync);
+        services.TryAddScoped<
+            IResourceDeploymentSetMutationWriter,
+            ResourceDeploymentMutationWriter>();
+        services.TryAddScoped<
+            IResourceDeploymentExactRetryWriter,
+            ResourceDeploymentMutationWriter>();
+        services.TryAddScoped<
+            IResourceDeploymentSetQueryService,
+            ResourceDeploymentQueryService>();
+        services.TryAddScoped<
+            IResourceDeploymentExactFinalizationService,
+            ResourceDeploymentFinalizationService>();
 
         return services;
     }

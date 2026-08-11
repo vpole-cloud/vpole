@@ -171,6 +171,175 @@ public sealed class ResourcePlacementService(
         return runtimeCell.ToPlacement();
     }
 
+    public async Task<Result<IReadOnlyList<ResourcePlacement>>> ResolveOrCreateManyAsync(
+        string tenantId,
+        string resourceGroupId,
+        string? isolationScopeId,
+        IReadOnlyList<string> deploymentTargetIds,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureTransaction(session);
+        ArgumentNullException.ThrowIfNull(deploymentTargetIds);
+        var normalizedTargetIds = deploymentTargetIds
+            .Select(targetId => string.IsNullOrWhiteSpace(targetId)
+                ? string.Empty
+                : targetId.Trim())
+            .ToArray();
+        if (normalizedTargetIds.Length == 0 ||
+            normalizedTargetIds.Any(string.IsNullOrEmpty) ||
+            normalizedTargetIds.Distinct(StringComparer.Ordinal).Count() !=
+            normalizedTargetIds.Length)
+        {
+            return Failures.ValidationFailure(new Dictionary<string, string[]>
+            {
+                ["DeploymentTargetIds"] =
+                    ["At least one unique deployment target ID is required."]
+            });
+        }
+
+        var resourceGroup = await dbContext.ResourceGroups
+            .Find(session, group =>
+                group.Id == resourceGroupId &&
+                group.TenantId == tenantId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (resourceGroup is null)
+            return Failures.NotFound("Resource group not found.", resourceGroupId);
+        if (resourceGroup.Lifecycle is not ActiveResourceGroupLifecycleState)
+            return Failures.Conflict("The resource group is being deleted.");
+
+        var resolvedScopeId = string.IsNullOrWhiteSpace(isolationScopeId)
+            ? resourceGroup.DefaultIsolationScopeId
+            : isolationScopeId.Trim();
+        var scope = await dbContext.IsolationScopes
+            .Find(session, item =>
+                item.Id == resolvedScopeId &&
+                item.ResourceGroupId == resourceGroup.Id &&
+                item.TenantId == tenantId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (scope is null)
+            return Failures.NotFound("Isolation scope not found.", resolvedScopeId);
+        if (scope.Lifecycle is not ActiveIsolationScopeLifecycleState)
+            return Failures.Conflict("The isolation scope is being deleted.");
+
+        var existing = await dbContext.RuntimeCells
+            .Find(
+                session,
+                Builders<RuntimeCell>.Filter.And(
+                    Builders<RuntimeCell>.Filter.Eq(cell => cell.TenantId, tenantId),
+                    Builders<RuntimeCell>.Filter.Eq(
+                        cell => cell.ResourceGroupId,
+                        resourceGroup.Id),
+                    Builders<RuntimeCell>.Filter.Eq(
+                        cell => cell.IsolationScopeId,
+                        scope.Id),
+                    Builders<RuntimeCell>.Filter.In(
+                        cell => cell.DeploymentTargetId,
+                        normalizedTargetIds)))
+            .ToListAsync(cancellationToken);
+        var byTarget = existing.ToDictionary(
+            cell => cell.DeploymentTargetId,
+            StringComparer.Ordinal);
+
+        var missingTargetIds = normalizedTargetIds
+            .Where(targetId => !byTarget.ContainsKey(targetId))
+            .ToArray();
+        foreach (var targetId in missingTargetIds)
+        {
+            var admission = await deploymentTargetLookup.ResolveForNewWorkloadAsync(
+                targetId,
+                cancellationToken);
+            if (!admission.TryGetValue(out var admittedTarget, out var admissionFailure))
+                return admissionFailure;
+            if (!string.Equals(admittedTarget.Id, targetId, StringComparison.Ordinal))
+            {
+                return Failures.Conflict(
+                    "Deployment-target admission resolved a different explicit target.");
+            }
+        }
+
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var parentFence = await FenceParentsAsync(
+            resourceGroup,
+            scope,
+            now,
+            session,
+            cancellationToken);
+        if (parentFence is not ISuccess)
+            return (Failure)parentFence;
+
+        foreach (var targetId in missingTargetIds)
+        {
+            var candidate = RuntimeCellFactory.Create(
+                tenantId,
+                resourceGroup.Id,
+                scope.Id,
+                targetId,
+                namespaceNameGenerator.Generate(tenantId, scope.Id),
+                RuntimeCellFactory.DefaultOptions with
+                {
+                    CreatedAtUtc = now
+                });
+            var filter = Builders<RuntimeCell>.Filter.And(
+                Builders<RuntimeCell>.Filter.Eq(cell => cell.TenantId, tenantId),
+                Builders<RuntimeCell>.Filter.Eq(
+                    cell => cell.ResourceGroupId,
+                    resourceGroup.Id),
+                Builders<RuntimeCell>.Filter.Eq(
+                    cell => cell.IsolationScopeId,
+                    scope.Id),
+                Builders<RuntimeCell>.Filter.Eq(
+                    cell => cell.DeploymentTargetId,
+                    targetId));
+            var runtimeCell = await dbContext.RuntimeCells.FindOneAndUpdateAsync(
+                session,
+                filter,
+                Builders<RuntimeCell>.Update
+                    .SetOnInsert(cell => cell.Id, candidate.Id)
+                    .SetOnInsert(cell => cell.TenantId, candidate.TenantId)
+                    .SetOnInsert(cell => cell.ResourceGroupId, candidate.ResourceGroupId)
+                    .SetOnInsert(cell => cell.IsolationScopeId, candidate.IsolationScopeId)
+                    .SetOnInsert(cell => cell.DeploymentTargetId, candidate.DeploymentTargetId)
+                    .SetOnInsert(cell => cell.KubernetesNamespace, candidate.KubernetesNamespace)
+                    .SetOnInsert(cell => cell.DesiredGeneration, candidate.DesiredGeneration)
+                    .SetOnInsert(cell => cell.ObservedGeneration, candidate.ObservedGeneration)
+                    .SetOnInsert(cell => cell.State, candidate.State)
+                    .SetOnInsert(cell => cell.CreatedAtUtc, candidate.CreatedAtUtc)
+                    .SetOnInsert(cell => cell.UpdatedAtUtc, candidate.UpdatedAtUtc),
+                new FindOneAndUpdateOptions<RuntimeCell>
+                {
+                    IsUpsert = true,
+                    ReturnDocument = ReturnDocument.After
+                },
+                cancellationToken);
+            byTarget[targetId] = runtimeCell;
+
+            if (!string.Equals(runtimeCell.Id, candidate.Id, StringComparison.Ordinal))
+                continue;
+
+            var referenceResult = await referenceAdmission.RegisterAsync(
+                runtimeCell.DeploymentTargetId,
+                new DeploymentTargetReferenceOwner(ReferenceOwnerType, runtimeCell.Id),
+                session,
+                cancellationToken);
+            if (referenceResult is not ISuccess)
+                return (Failure)referenceResult;
+
+            await dbContext.StoreEventAsync(
+                OutboxWrite.Create(
+                    runtimeCell.ToReconciliationRequestedEvent(),
+                    RuntimeCellPendingKey.Reconciliation(
+                        runtimeCell.Id,
+                        runtimeCell.DesiredGeneration)),
+                session,
+                cancellationToken);
+        }
+
+        return normalizedTargetIds
+            .Select(targetId => byTarget[targetId].ToPlacement())
+            .ToArray();
+    }
+
     private async Task<Result> FenceParentsAsync(
         ResourceGroup resourceGroup,
         IsolationScope scope,

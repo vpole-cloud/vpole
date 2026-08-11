@@ -27,3 +27,22 @@ public interface IResourceDeploymentFinalizationService
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 }
+
+public interface IResourceDeploymentExactFinalizationService
+{
+    Task<ResourceDeploymentFinalizationReadiness> GetExactReadinessAsync(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId,
+        string resourceDeploymentId,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);
+
+    Task<Result> PurgeExactDeletedAsync(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId,
+        string resourceDeploymentId,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);
+}

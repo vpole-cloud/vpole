@@ -6,7 +6,8 @@ using Pole.ResultType;
 
 namespace Pole.Features.ResourceGroups.Application.Services;
 
-public sealed class ResourceGroupLookup(IResourceGroupDbContext dbContext) : IResourceGroupLookup
+public sealed class ResourceGroupLookup(IResourceGroupDbContext dbContext)
+    : IResourceGroupLookup, IResourceGroupOwnershipLookup
 {
     public async Task<Result<ResourceGroupOwnership>> GetOwnershipAsync(
         string tenantId,

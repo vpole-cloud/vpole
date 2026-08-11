@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using MongoDB.Driver;
 using Pole.ResultType;
 using Pole.Workloads;
@@ -6,7 +7,21 @@ namespace Pole.Features.ResourceDeployments.Contracts;
 
 public sealed record ResourceDeploymentIngressConfiguration(
     string IngressClassName,
-    string ClusterIssuerName);
+    string ClusterIssuerName,
+    string? PublicBaseDomain,
+    ImmutableList<string> Hostnames)
+{
+    public static ResourceDeploymentIngressConfiguration Create(
+        string ingressClassName,
+        string clusterIssuerName,
+        string? publicBaseDomain,
+        IEnumerable<string>? hostnames) =>
+        new(
+            ingressClassName,
+            clusterIssuerName,
+            publicBaseDomain,
+            (hostnames ?? []).ToImmutableList());
+}
 
 public sealed record ResourceDeploymentStorageConfiguration(
     string StorageProfileId,
@@ -28,7 +43,12 @@ public sealed record CreateResourceDeploymentRequest(
     ResolvedResourceDeploymentTarget Target,
     ResourceDeploymentComputeConfiguration Compute,
     ResourceDeploymentStorageConfiguration? Storage,
-    ResourcePlacementCapability PlacementCapability);
+    ResourcePlacementCapability PlacementCapability,
+    int FixedReplicas = 1,
+    long ResourceRevision = 1);
+
+public sealed record CreateResourceDeploymentSetRequest(
+    IReadOnlyList<CreateResourceDeploymentRequest> Deployments);
 
 public delegate Task<Result<ResolvedResourceDeploymentTarget>> ResolveResourceDeploymentTarget(
     string? deploymentTargetId,
@@ -37,5 +57,10 @@ public delegate Task<Result<ResolvedResourceDeploymentTarget>> ResolveResourceDe
 
 public delegate Task<Result<PlacementSummaryDto>> CreateResourceDeployment(
     CreateResourceDeploymentRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<Result<IReadOnlyList<PlacementSummaryDto>>> CreateResourceDeploymentSet(
+    CreateResourceDeploymentSetRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
