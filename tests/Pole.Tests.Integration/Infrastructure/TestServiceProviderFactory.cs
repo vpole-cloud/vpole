@@ -67,7 +67,6 @@ public static class TestServiceProviderFactory
         services.AddComputeProfiles();
         services.AddRedisPersistence();
         services.AddWebServicePersistence();
-        services.AddWebServiceOperations();
         services.AddScoped<IFunctionRevisionLifecycleService, FunctionRevisionLifecycleService>();
         services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         services.AddSingleton(new PostgresSettings

@@ -152,7 +152,6 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddComputeProfiles();
         builder.Services.AddRedisPersistence();
         builder.Services.AddWebServicePersistence();
-        builder.Services.AddWebServiceOperations();
         builder.Services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         builder.Services.AddSingleton(new PostgresSettings
         {
