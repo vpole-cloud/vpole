@@ -45,6 +45,45 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task AddDeployment_PersistsTargetBindingAndAggregateRelease()
+    {
+        var secondTargetId = ObjectId.GenerateNewId().ToString();
+        Services.GetRequiredService<TestDeploymentTargetLookup>()
+            .AddEligibleTarget(secondTargetId, "apps.second.test.local");
+        await Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles")
+            .ReplaceOneAsync(
+                profile => profile.Id == TestData.DefaultComputeProfileId,
+                TestData.SeedComputeProfile(deploymentTargetIds:
+                    [TestData.DefaultDeploymentTargetId, secondTargetId]));
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id)))
+            .AssertSuccess();
+
+        var result = await Mediator.Send(new AddWebServiceDeploymentRequest(
+            created.WebServiceId,
+            new WebServiceDeploymentTargetRequest(secondTargetId, FixedReplicas: 3),
+            TestData.TenantId));
+        var added = result.AssertSuccess();
+
+        Assert.Equal(secondTargetId, added.DeploymentTargetId);
+        Assert.Equal(3, added.FixedReplicas);
+        Assert.Equal(2, added.ResourceRevision);
+        Assert.Equal(2, await DbContext.ResourceDeployments.CountDocumentsAsync(
+            deployment => deployment.ResourceId == created.WebServiceId));
+        Assert.Equal(1, await Fixture.Database
+            .GetCollection<HostnameBinding>("HostnameBindings")
+            .CountDocumentsAsync(binding =>
+                binding.ResourceDeploymentId == added.DeploymentId));
+        var release = await Fixture.Database.WebServiceReleases()
+            .Find(item =>
+                item.WebServiceId == created.WebServiceId &&
+                item.ResourceRevision == 2)
+            .SingleAsync();
+        Assert.Equal(WebServiceReleaseAction.AddDeployment, release.Action);
+        Assert.Equal(2, release.Deployments.Count);
+    }
+
+    [Fact]
     public async Task SharedUpdate_AdvancesEveryDeploymentAndCreatesAggregateRelease()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());

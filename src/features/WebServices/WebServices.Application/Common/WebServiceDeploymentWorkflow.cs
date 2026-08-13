@@ -41,6 +41,28 @@ internal static class WebServiceDeploymentWorkflow
                 spec.Autoscaling?.MaxReplicas ?? deployment.FixedReplicas)));
     }
 
+    public static WebServiceQuotaInput ToQuotaInputWithAdditionalDeployment(
+        IEnumerable<PlacementSummaryDto> currentDeployments,
+        WebServiceSpec spec,
+        ResolvedComputeProfile compute,
+        int fixedReplicas)
+    {
+        ArgumentNullException.ThrowIfNull(currentDeployments);
+        ArgumentNullException.ThrowIfNull(spec);
+        ArgumentNullException.ThrowIfNull(compute);
+
+        var deployments = currentDeployments
+            .Select(deployment => WebServiceDeploymentQuotaInput.Create(
+                deployment.Compute.Requests.CpuMillis,
+                deployment.Compute.Requests.MemoryMi,
+                spec.Autoscaling?.MaxReplicas ?? deployment.FixedReplicas))
+            .Append(WebServiceDeploymentQuotaInput.Create(
+                compute.Requests.CpuMillis,
+                compute.Requests.MemoryMi,
+                spec.Autoscaling?.MaxReplicas ?? fixedReplicas));
+        return WebServiceQuotaInput.Create(deployments);
+    }
+
     public static ImmutableList<WebServiceReleaseDeployment> ToReleaseDeployments(
         IEnumerable<PlacementSummaryDto> deployments,
         WebServiceReleaseDeploymentOperation operation = WebServiceReleaseDeploymentOperation.Apply) =>

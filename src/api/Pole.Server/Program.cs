@@ -83,6 +83,7 @@ builder.Services.AddKubernetes(configuration)
     .AddComputeProfiles()
     .AddRedisPersistence()
     .AddWebServicePersistence()
+    .AddWebServiceOperations()
     .AddQuotaFramework(
         typeof(RedisQuotaProfile).Assembly,
         typeof(FunctionAppQuotaProfile).Assembly,
