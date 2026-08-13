@@ -124,24 +124,17 @@ public sealed class AddWebServiceDeploymentHandler(
         WebService webService,
         CancellationToken cancellationToken)
     {
-        var targetResult = await targetLookup.ResolveForNewWorkloadAsync(
+        var targetResult = await targetLookup.ResolvePublicIngressForNewWorkloadAsync(
             CreateTargetAdmissionRequest(request, webService),
             cancellationToken);
         if (!targetResult.TryGetValue(out var target, out var targetFailure))
             return targetFailure;
 
-        var ingress = target.WorkloadConfiguration.Ingress;
-        if (ingress?.PublicBaseDomain is null)
-        {
-            throw new InvalidOperationException(
-                "Public-ingress target admission returned a target without a public base domain.");
-        }
-
         var computeResult = await resolveComputeProfiles(
-            CreateComputeResolutionRequest(request, target.Id),
+            CreateComputeResolutionRequest(request, target.DeploymentTargetId),
             cancellationToken);
         return computeResult.TryGetValue(out var computes, out var computeFailure)
-            ? new ResolvedAddition(target, ingress, computes.Single())
+            ? new ResolvedAddition(target, computes.Single())
             : computeFailure;
     }
 
@@ -256,9 +249,9 @@ public sealed class AddWebServiceDeploymentHandler(
         ResolvedAddition placement) =>
         new(
             webService.TenantId,
-            placement.Target.Id,
-            placement.Ingress.PublicBaseDomain!,
-            placement.Target.WorkloadConfiguration.Revision);
+            placement.PublicIngress.DeploymentTargetId,
+            placement.PublicIngress.PublicBaseDomain,
+            placement.PublicIngress.WorkloadConfigurationRevision);
 
     private static CreateGeneratedHostnameBindingRequest CreateGeneratedBindingRequest(
         WebService webService,
@@ -268,7 +261,7 @@ public sealed class AddWebServiceDeploymentHandler(
         new(
             webService.TenantId,
             zoneId,
-            placement.Target.Id,
+            placement.PublicIngress.DeploymentTargetId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
             deploymentId,
@@ -290,12 +283,12 @@ public sealed class AddWebServiceDeploymentHandler(
                 webService.ResourceGroupId,
                 webService.IsolationScopeId,
                 new ResolvedResourceDeploymentTarget(
-                    placement.Target.Id,
-                    placement.Target.WorkloadConfiguration.Revision,
+                    placement.PublicIngress.DeploymentTargetId,
+                    placement.PublicIngress.WorkloadConfigurationRevision,
                     ResourceDeploymentIngressConfiguration.Create(
-                        placement.Ingress.IngressClassName,
-                        placement.Ingress.ClusterIssuerName,
-                        placement.Ingress.PublicBaseDomain,
+                        placement.PublicIngress.IngressClassName,
+                        placement.PublicIngress.ClusterIssuerName,
+                        placement.PublicIngress.PublicBaseDomain,
                         [hostname])),
                 placement.Compute.ToResourceDeploymentConfiguration(),
                 Storage: null,
@@ -336,8 +329,7 @@ public sealed class AddWebServiceDeploymentHandler(
         IReadOnlyList<PlacementSummaryDto> Deployments);
 
     private sealed record ResolvedAddition(
-        DeploymentTargetLookupDto Target,
-        DeploymentTargetIngressConfigurationLookupDto Ingress,
+        DeploymentTargetPublicIngressDto PublicIngress,
         ResolvedComputeProfile Compute);
 }
 
