@@ -51,10 +51,6 @@ public sealed record DeploymentTargetIngressConfiguration(
                 nameof(clusterIssuerName)),
             NormalizePublicBaseDomain(publicBaseDomain));
 
-    /// <summary>
-    /// #39 deliberately accepts ASCII DNS input only. <see cref="DnsName"/> performs the shared
-    /// syntax, IP-literal, label and canonical lowercase/trailing-dot normalization rules.
-    /// </summary>
     public static bool IsValidPublicBaseDomain(string? value) =>
         !string.IsNullOrWhiteSpace(value) && DnsName.TryCreate(value, out _);
 

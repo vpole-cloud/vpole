@@ -263,7 +263,7 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
         Assert.Empty(coordinator.Unregistrations);
     }
 
-    private MongoDomainCapabilities CreateCapabilities(
+    private MongoDomainPersistence CreateCapabilities(
         string tenantId,
         RecordingTargetCoordinator coordinator) =>
         new(

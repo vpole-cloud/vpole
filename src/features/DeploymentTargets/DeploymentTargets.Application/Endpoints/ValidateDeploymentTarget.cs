@@ -44,11 +44,7 @@ public sealed class ValidateDeploymentTargetHandler(
             observation.Health,
             observation.Capabilities);
         var persisted = await dbContext.DeploymentTargets.FindOneAndUpdateAsync(
-            Builders<DeploymentTarget>.Filter.And(
-                DeploymentTargetFilters.RevisionFilter(target),
-                Builders<DeploymentTarget>.Filter.Eq(
-                    item => item.Connection.Version,
-                    target.Connection.Version)),
+            DeploymentTargetFilters.AtRevisionAndConnectionVersion(target),
             Builders<DeploymentTarget>.Update.Combine(
                 Builders<DeploymentTarget>.Update.Set(item => item.Health, updated.Health),
                 Builders<DeploymentTarget>.Update.Set(item => item.Capabilities, updated.Capabilities)),

@@ -24,6 +24,10 @@ public sealed class ResourceDeploymentContractTests
     {
         Assert.Equal("pole/test-resource", TestResourceType.Value);
         Assert.Equal("pole/test-resource", ResourceTypeId.Create(" pole/test-resource ").Value);
+        Assert.True(ResourceTypeId.TryCreate(" pole/test-resource ", out var resourceType));
+        Assert.Equal("pole/test-resource", resourceType.Value);
+        Assert.False(ResourceTypeId.TryCreate("WebService", out _));
+        Assert.False(ResourceTypeId.TryCreate(null, out _));
         Assert.Throws<ArgumentException>(() => ResourceTypeId.Create("WebService"));
         Assert.Throws<ArgumentException>(() => ResourceTypeId.Create("pole/"));
     }

@@ -158,4 +158,23 @@ internal sealed class TestDeploymentTargetLookup :
             : Failures.Conflict(
                 "The test deployment target workload configuration changed."));
     }
+
+    public async Task<Result> FenceManyAsync(
+        IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default)
+    {
+        foreach (var request in requests)
+        {
+            var result = await FenceAsync(
+                request.DeploymentTargetId,
+                request.ExpectedWorkloadConfigurationRevision,
+                session,
+                cancellationToken);
+            if (result is not ISuccess)
+                return result;
+        }
+
+        return Result.Success();
+    }
 }

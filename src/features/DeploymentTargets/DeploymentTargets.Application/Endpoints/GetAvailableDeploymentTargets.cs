@@ -65,19 +65,7 @@ public sealed class GetAvailableDeploymentTargetsRequestValidator
     public GetAvailableDeploymentTargetsRequestValidator()
     {
         RuleFor(request => request.ResourceType)
-            .Must(value =>
-            {
-                try
-                {
-                    ResourceTypeId.Create(value);
-                    return true;
-                }
-                catch (ArgumentException)
-                {
-                    return false;
-                }
-            })
-            .WithMessage("Resource type is invalid.");
+            .ResourceTypeId("Resource type");
         RuleFor(request => request.TenantId)
             .MongoObjectId(TenantHeaders.TenantId);
         When(

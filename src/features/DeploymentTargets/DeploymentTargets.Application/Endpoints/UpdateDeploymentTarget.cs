@@ -83,7 +83,7 @@ public sealed class UpdateDeploymentTargetHandler(
         CancellationToken cancellationToken)
     {
         var persisted = await dbContext.DeploymentTargets.FindOneAndUpdateAsync(
-            DeploymentTargetFilters.RevisionFilter(target),
+            DeploymentTargetFilters.AtRevision(target),
             ReplacementUpdate(updated),
             new FindOneAndUpdateOptions<DeploymentTarget>
             {
@@ -118,11 +118,7 @@ public sealed class UpdateDeploymentTargetHandler(
 
             var persisted = await dbContext.DeploymentTargets.FindOneAndUpdateAsync(
                 session,
-                Builders<DeploymentTarget>.Filter.And(
-                    DeploymentTargetFilters.RevisionFilter(target),
-                    Builders<DeploymentTarget>.Filter.Eq(
-                        item => item.ReferenceFence,
-                        target.ReferenceFence)),
+                DeploymentTargetFilters.AtRevisionAndReferenceFence(target),
                 ReplacementUpdate(updated),
                 new FindOneAndUpdateOptions<DeploymentTarget>
                 {

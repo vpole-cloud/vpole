@@ -35,22 +35,16 @@ public sealed class DeploymentTargetDomainAdmission(IDeploymentTargetDbContext d
             new UpdateOptions { IsUpsert = true },
             cancellationToken);
 
-        // Every overlap admission transaction writes this singleton before it reads the target
-        // set. Mongo's transaction retry then prevents two independent target updates from both
-        // accepting ancestor/descendant suffixes based on the same stale snapshot.
         var targets = await dbContext.DeploymentTargets
             .Find(
                 session,
-                target => target.WorkloadConfiguration.Ingress != null &&
-                          target.WorkloadConfiguration.Ingress.PublicBaseDomain != null)
+                DeploymentTargetFilters.WithConfiguredPublicBaseDomain())
             .ToListAsync(cancellationToken);
         foreach (var existing in targets)
         {
             if (string.Equals(existing.Id, targetId, StringComparison.Ordinal))
                 continue;
 
-            // New writes are canonicalized by DeploymentTargetIngressConfiguration. Ignore only
-            // malformed obsolete data here; it cannot safely establish a DNS-tree reservation.
             if (!DnsName.TryCreate(existing.WorkloadConfiguration.Ingress!.PublicBaseDomain, out var other))
                 continue;
             var otherDomain = other!;
@@ -73,8 +67,7 @@ public sealed class DeploymentTargetDomainAdmission(IDeploymentTargetDbContext d
         var reference = await dbContext.DeploymentTargetReferences
             .Find(
                 session,
-                reference => reference.DeploymentTargetId == targetId &&
-                             reference.OwnerType == DeploymentTargetReferenceOwnerTypes.DomainZone)
+                DeploymentTargetReferenceFilters.DomainZonesForTarget(targetId))
             .Project(reference => reference.Id)
             .FirstOrDefaultAsync(cancellationToken);
         return reference is null

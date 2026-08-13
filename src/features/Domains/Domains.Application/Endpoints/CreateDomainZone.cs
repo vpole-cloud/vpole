@@ -9,6 +9,7 @@ using Pole.Dns;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Domains.Contracts;
+using Pole.Features.Domains.Application.Persistence;
 using Pole.Database;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -61,7 +62,7 @@ public sealed class CreateDomainZoneRequestValidator : AbstractValidator<CreateD
 public sealed class CreateDomainZoneHandler(
     IDeploymentTargetLookup deploymentTargets,
     RunMongoTransaction<TenantDomainZoneSnapshot> runMongoTransaction,
-    ITenantDomainZoneCapability zones)
+    CreateManagedDomainZone createManagedDomainZone)
     : IMediatorHandler<CreateDomainZoneRequest, TenantDomainZoneSnapshot>
 {
     public async Task<Result<TenantDomainZoneSnapshot>> HandleAsync(
@@ -76,7 +77,7 @@ public sealed class CreateDomainZoneHandler(
             return failure;
 
         return await runMongoTransaction(
-            (transaction, transactionCancellationToken) => zones.CreateManagedReservationAsync(
+            (transaction, transactionCancellationToken) => createManagedDomainZone(
                 request.TenantId,
                 publicIngress.DeploymentTargetId,
                 request.Body.Label,

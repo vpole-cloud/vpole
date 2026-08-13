@@ -45,7 +45,7 @@ public sealed record GetWebServiceDeploymentHostnamesRequest(
 public sealed class GetWebServiceDeploymentHostnamesHandler(
     LoadWebServiceById loadWebService,
     IResourceDeploymentSetQueryService deploymentQuery,
-    IHostnameBindingCapability bindings)
+    LoadHostnameBindingsForDeployment loadHostnameBindingsForDeployment)
     : IMediatorHandler<
         GetWebServiceDeploymentHostnamesRequest,
         IReadOnlyList<HostnameBindingSnapshot>>
@@ -75,7 +75,7 @@ public sealed class GetWebServiceDeploymentHostnamesHandler(
                 request.DeploymentId);
         }
 
-        var snapshots = await bindings.ListForDeploymentAsync(
+        var snapshots = await loadHostnameBindingsForDeployment(
             request.TenantId,
             WebServiceResourceDeployment.ResourceType,
             request.Id,

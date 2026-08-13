@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Domains.Contracts;
+using Pole.Features.Domains.Application.Persistence;
 using Pole.Database;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -43,7 +44,7 @@ public sealed class DeleteDomainZoneRequestValidator : AbstractValidator<DeleteD
 
 public sealed class DeleteDomainZoneHandler(
     RunMongoTransaction<DeleteDomainZoneResponse> runMongoTransaction,
-    ITenantDomainZoneCapability zones)
+    DeleteManagedDomainZone deleteManagedDomainZone)
     : IMediatorHandler<DeleteDomainZoneRequest, DeleteDomainZoneResponse>
 {
     public async Task<Result<DeleteDomainZoneResponse>> HandleAsync(
@@ -52,7 +53,7 @@ public sealed class DeleteDomainZoneHandler(
     {
         return await runMongoTransaction(async (transaction, transactionCancellationToken) =>
         {
-            var deleted = await zones.DeleteManagedReservationAsync(
+            var deleted = await deleteManagedDomainZone(
                 request.TenantId,
                 request.Id,
                 transaction,

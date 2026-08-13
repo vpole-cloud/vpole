@@ -35,6 +35,22 @@ public readonly partial record struct ResourceTypeId
         return new ResourceTypeId(normalized);
     }
 
+    public static bool TryCreate(
+        string? value,
+        out ResourceTypeId resourceType)
+    {
+        try
+        {
+            resourceType = Create(value!);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            resourceType = default;
+            return false;
+        }
+    }
+
     public override string ToString() => Value;
 
     [GeneratedRegex("^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?:/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)+$")]

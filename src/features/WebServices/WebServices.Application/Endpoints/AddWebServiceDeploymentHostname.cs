@@ -54,7 +54,9 @@ public sealed record AddWebServiceDeploymentHostnameBody(
 public sealed class AddWebServiceDeploymentHostnameHandler(
     LoadWebServiceById loadWebService,
     IResourceDeploymentSetQueryService deploymentQuery,
-    IHostnameBindingCapability bindings,
+    CreateCustomHostnameBinding createCustomHostnameBinding,
+    LoadHostnameBindingsForDeploymentInTransaction
+        loadHostnameBindingsForDeploymentInTransaction,
     IResourceDeploymentSetMutationWriter deploymentWriter,
     PersistUpdatedWebService persistWebService,
     PersistCurrentWebServiceRelease persistRelease,
@@ -89,7 +91,7 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
         return await runTransaction(
             async (session, ct) =>
             {
-                var created = await bindings.CreateCustomAsync(
+                var created = await createCustomHostnameBinding(
                     new CreateCustomHostnameBindingRequest(
                         request.TenantId,
                         request.Body.TenantDomainZoneId,
@@ -120,7 +122,7 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
         IClientSessionHandle session,
         CancellationToken cancellationToken)
     {
-        var snapshots = await bindings.ListForDeploymentInTransactionAsync(
+        var snapshots = await loadHostnameBindingsForDeploymentInTransaction(
             request.TenantId,
             WebServiceResourceDeployment.ResourceType,
             request.Id,

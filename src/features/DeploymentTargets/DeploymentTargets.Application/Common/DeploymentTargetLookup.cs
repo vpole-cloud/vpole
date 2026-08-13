@@ -18,7 +18,7 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
             return idValidation;
 
         var target = await dbContext.DeploymentTargets
-            .Find(item => item.Id == deploymentTargetId)
+            .Find(DeploymentTargetFilters.ById(deploymentTargetId))
             .FirstOrDefaultAsync(cancellationToken);
 
         return target is null
@@ -30,7 +30,7 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
         CancellationToken cancellationToken = default)
     {
         var defaultTargetId = await dbContext.DeploymentTargetSettings
-            .Find(settings => settings.Id == DeploymentTargetSettings.SingletonId)
+            .Find(DeploymentTargetSettingsFilters.Singleton())
             .Project(settings => settings.DefaultDeploymentTargetId)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -57,8 +57,6 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
         if (!target.AcceptsWorkloads)
             return Failures.Conflict("The deployment target does not accept new workloads.");
 
-        // Health is observational and can recover. Admission is controlled only by the durable
-        // Enabled and AcceptsWorkloads flags; a stale degraded observation must not become a latch.
         return target;
     }
 
@@ -67,10 +65,7 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
             CancellationToken cancellationToken = default)
     {
         var targets = await dbContext.DeploymentTargets
-            .Find(target =>
-                target.Enabled &&
-                target.AcceptsWorkloads &&
-                target.DeletionRequestedAtUtc == null)
+            .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
             .SortBy(target => target.Id)
             .ToListAsync(cancellationToken);
         return targets
@@ -82,10 +77,6 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
         DeploymentTargetAdmissionRequest request,
         CancellationToken cancellationToken = default)
     {
-        var requestFailure = ValidateAdmissionRequest(request);
-        if (requestFailure is not null)
-            return requestFailure;
-
         if (!string.IsNullOrWhiteSpace(request.ExplicitDeploymentTargetId))
         {
             var resolved = await ResolveForNewWorkloadAsync(
@@ -121,17 +112,8 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
             DeploymentTargetAdmissionRequest request,
             CancellationToken cancellationToken = default)
     {
-        var requestFailure = ValidateAdmissionRequest(request);
-        if (requestFailure is not null)
-            return requestFailure;
-
-        // Target ownership is platform-shared in #39. Keeping this request-shaped filter is the
-        // admission boundary for the future PlatformShared || TenantOwned || Allowlisted policy.
         var targets = await dbContext.DeploymentTargets
-            .Find(target =>
-                target.Enabled &&
-                target.AcceptsWorkloads &&
-                target.DeletionRequestedAtUtc == null)
+            .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
             .SortBy(target => target.Id)
             .ToListAsync(cancellationToken);
         return targets
@@ -170,14 +152,6 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
             string deploymentTargetId,
             CancellationToken cancellationToken = default)
     {
-        if (!ObjectId.TryParse(tenantId, out _))
-        {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["TenantId"] = ["Tenant ID must be a MongoDB ObjectId."]
-            });
-        }
-
         var resolved = await ResolveForNewWorkloadAsync(
             deploymentTargetId,
             cancellationToken);
@@ -221,43 +195,6 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
         requiredCapabilities.HasFlag(DeploymentTargetRequiredCapabilities.PublicIngress)
             ? Failures.Conflict("No deployment target accepts public workloads.")
             : Failures.Conflict("No deployment target accepts new workloads.");
-
-    private static ValidationFailure? ValidateAdmissionRequest(
-        DeploymentTargetAdmissionRequest? request)
-    {
-        if (request is null || !ObjectId.TryParse(request.TenantId, out _))
-        {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["TenantId"] = ["Tenant ID must be a MongoDB ObjectId."]
-            });
-        }
-        if (request.IsolationScopeId is not null &&
-            !ObjectId.TryParse(request.IsolationScopeId, out _))
-        {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["IsolationScopeId"] = ["Isolation scope ID must be a MongoDB ObjectId when specified."]
-            });
-        }
-        if (request.ExplicitDeploymentTargetId is not null &&
-            !ObjectId.TryParse(request.ExplicitDeploymentTargetId, out _))
-        {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["DeploymentTargetId"] = ["Deployment target ID must be a MongoDB ObjectId when specified."]
-            });
-        }
-        if ((request.RequiredCapabilities & ~DeploymentTargetRequiredCapabilities.PublicIngress) != 0)
-        {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["RequiredCapabilities"] = ["The requested deployment target capability is not supported."]
-            });
-        }
-
-        return null;
-    }
 
     private static ValidationFailure? ValidateId(string? deploymentTargetId)
     {

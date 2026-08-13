@@ -16,7 +16,7 @@ public delegate Task<Result> FinalizeWebServiceDeletion(
 internal sealed class MongoFinalizeWebServiceDeletion(
     IMongoCollection<WebService> webServices,
     IResourceDeploymentFinalizationService deploymentFinalization,
-    IHostnameBindingCapability hostnameBindings,
+    DeleteHostnameBindingsForResource deleteHostnameBindingsForResource,
     RunMongoTransaction runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites)
 {
@@ -52,7 +52,7 @@ internal sealed class MongoFinalizeWebServiceDeletion(
             if (deleted.DeletedCount != 1)
                 return Result.Success();
 
-            var bindingCleanup = await hostnameBindings.DeleteAllForResourceAsync(
+            var bindingCleanup = await deleteHostnameBindingsForResource(
                 tenantId, WebServiceResourceDeployment.ResourceType, webServiceId, session, ct);
             if (bindingCleanup is not ISuccess)
                 return (Failure)bindingCleanup;

@@ -49,7 +49,9 @@ public sealed record DeleteWebServiceDeploymentHostnameRequest(
 public sealed class DeleteWebServiceDeploymentHostnameHandler(
     LoadWebServiceById loadWebService,
     IResourceDeploymentSetQueryService deploymentQuery,
-    IHostnameBindingCapability bindings,
+    DeleteCustomHostnameBinding deleteCustomHostnameBinding,
+    LoadHostnameBindingsForDeploymentInTransaction
+        loadHostnameBindingsForDeploymentInTransaction,
     IResourceDeploymentSetMutationWriter deploymentWriter,
     PersistUpdatedWebService persistWebService,
     PersistCurrentWebServiceRelease persistRelease,
@@ -98,7 +100,7 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
         MongoDB.Driver.IClientSessionHandle session,
         CancellationToken cancellationToken)
     {
-        var deleted = await bindings.DeleteCustomAsync(
+        var deleted = await deleteCustomHostnameBinding(
             new DeleteCustomHostnameBindingRequest(
                 request.TenantId,
                 WebServiceResourceDeployment.ResourceType,
@@ -110,7 +112,7 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
         if (deleted is not ISuccess)
             return (Failure)deleted;
 
-        var currentBindings = await bindings.ListForDeploymentInTransactionAsync(
+        var currentBindings = await loadHostnameBindingsForDeploymentInTransaction(
             request.TenantId,
             WebServiceResourceDeployment.ResourceType,
             request.Id,

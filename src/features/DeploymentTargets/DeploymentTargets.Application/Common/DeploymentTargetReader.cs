@@ -12,7 +12,7 @@ public sealed class DeploymentTargetReader(
         CancellationToken cancellationToken = default)
     {
         var target = await dbContext.DeploymentTargets
-            .Find(item => item.Id == id)
+            .Find(DeploymentTargetFilters.ById(id))
             .FirstOrDefaultAsync(cancellationToken);
 
         return target is null
@@ -23,7 +23,7 @@ public sealed class DeploymentTargetReader(
     public async Task<string?> GetDefaultIdAsync(
         CancellationToken cancellationToken = default) =>
         await dbContext.DeploymentTargetSettings
-            .Find(settings => settings.Id == DeploymentTargetSettings.SingletonId)
+            .Find(DeploymentTargetSettingsFilters.Singleton())
             .Project(settings => settings.DefaultDeploymentTargetId)
             .FirstOrDefaultAsync(cancellationToken);
 }

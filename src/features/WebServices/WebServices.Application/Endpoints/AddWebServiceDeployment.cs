@@ -55,8 +55,8 @@ public sealed class AddWebServiceDeploymentHandler(
     IResourceDeploymentSetQueryService deploymentQuery,
     IDeploymentTargetLookup targetLookup,
     ResolveComputeProfiles resolveComputeProfiles,
-    ITenantDomainZoneCapability domainZones,
-    IHostnameBindingCapability hostnameBindings,
+    GetOrCreateGeneratedDomainZone getOrCreateGeneratedDomainZone,
+    CreateGeneratedHostnameBinding createGeneratedHostnameBinding,
     CreateResourceDeploymentSet createDeployments,
     IResourceDeploymentSetMutationWriter deploymentWriter,
     PersistUpdatedWebService persistUpdatedWebService,
@@ -147,7 +147,7 @@ public sealed class AddWebServiceDeploymentHandler(
             {
                 var updatedWebService = webService.AdvancePlacementDesiredState();
                 var deploymentId = ObjectId.GenerateNewId().ToString();
-                var zoneResult = await domainZones.GetOrCreateGeneratedAsync(
+                var zoneResult = await getOrCreateGeneratedDomainZone(
                     new GetOrCreateGeneratedZoneRequest(
                         webService.TenantId,
                         target.Id,
@@ -157,7 +157,7 @@ public sealed class AddWebServiceDeploymentHandler(
                     ct);
                 if (!zoneResult.TryGetValue(out var zone, out var zoneFailure))
                     return zoneFailure;
-                var bindingResult = await hostnameBindings.CreateGeneratedAsync(
+                var bindingResult = await createGeneratedHostnameBinding(
                     new CreateGeneratedHostnameBindingRequest(
                         webService.TenantId,
                         zone.Id,

@@ -138,8 +138,8 @@ public interface IDeploymentTargetLookup
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Tenant-aware target admission for new placement. The legacy overloads above retain their
-    /// platform-shared behavior for feature slices that have not adopted #39 yet.
+    /// Tenant-aware target admission for new placement. The simpler overloads above retain
+    /// platform-shared behavior for callers that do not require contextual admission.
     /// </summary>
     Task<Result<DeploymentTargetLookupDto>> ResolveForNewWorkloadAsync(
         DeploymentTargetAdmissionRequest request,
@@ -218,30 +218,7 @@ public interface IDeploymentTargetWorkloadConfigurationFence
     Task<Result> FenceManyAsync(
         IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
         IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(requests);
-        return FenceManyFallbackAsync(requests, session, cancellationToken);
-
-        async Task<Result> FenceManyFallbackAsync(
-            IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> items,
-            IClientSessionHandle activeSession,
-            CancellationToken ct)
-        {
-            foreach (var request in items)
-            {
-                var result = await FenceAsync(
-                    request.DeploymentTargetId,
-                    request.ExpectedWorkloadConfigurationRevision,
-                    activeSession,
-                    ct);
-                if (result is not ISuccess)
-                    return result;
-            }
-
-            return Result.Success();
-        }
-    }
+        CancellationToken cancellationToken = default);
 
     Task<Result> FenceAsync(
         string deploymentTargetId,

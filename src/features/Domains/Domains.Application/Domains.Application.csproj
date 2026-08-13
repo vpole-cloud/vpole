@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <InternalsVisibleTo Include="Pole.Tests.Integration" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FluentValidation" />

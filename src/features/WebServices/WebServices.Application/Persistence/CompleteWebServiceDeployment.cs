@@ -32,7 +32,7 @@ internal sealed class MongoCompleteWebServiceDeployment(
     IMongoCollection<WebServiceRelease> releases,
     RunMongoTransaction runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites,
-    IHostnameBindingCapability hostnameBindings,
+    DeleteHostnameBindingsForDeployment deleteHostnameBindingsForDeployment,
     IResourceDeploymentExactFinalizationService exactFinalization)
 {
     public Task<Result> InvokeAsync(
@@ -90,7 +90,7 @@ internal sealed class MongoCompleteWebServiceDeployment(
                     completion.ResourceDeploymentId, session, ct);
                 if (readiness == ResourceDeploymentFinalizationReadiness.Ready)
                 {
-                    var bindings = await hostnameBindings.DeleteAllForDeploymentAsync(
+                    var bindings = await deleteHostnameBindingsForDeployment(
                         tenantId, WebServiceResourceDeployment.ResourceType, webServiceId,
                         completion.ResourceDeploymentId, session, ct);
                     if (bindings is not ISuccess)

@@ -107,16 +107,8 @@ public sealed class DeploymentTargetReferenceAdmission(
                 cancellationToken: cancellationToken);
         }
 
-        var normalizedOwnerType = owner.Type.Trim();
-        var normalizedOwnerId = owner.Id.Trim();
-        var removalFilter = Builders<DeploymentTargetReference>.Filter.And(
-            Builders<DeploymentTargetReference>.Filter.In(
-                item => item.DeploymentTargetId,
-                removedTargetIds),
-            Builders<DeploymentTargetReference>.Filter.Eq(
-                item => item.OwnerType,
-                normalizedOwnerType),
-            Builders<DeploymentTargetReference>.Filter.Eq(item => item.OwnerId, normalizedOwnerId));
+        var removalFilter = DeploymentTargetReferenceFilters
+            .OwnedReferencesForTargets(removedTargetIds, owner);
         var referencedTargetIds = removedTargetIds.Length == 0
             ? []
             : await dbContext.DeploymentTargetReferences
@@ -183,30 +175,10 @@ public sealed class DeploymentTargetReferenceAdmission(
             });
         }
 
-        var expectedTargets = distinctRequests.Select(request =>
-            Builders<DeploymentTarget>.Filter.And(
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.Id,
-                    request.DeploymentTargetId),
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.WorkloadConfiguration.Revision,
-                    request.ExpectedWorkloadConfigurationRevision)));
         var update = await dbContext.DeploymentTargets.UpdateManyAsync(
             session,
-            Builders<DeploymentTarget>.Filter.And(
-                Builders<DeploymentTarget>.Filter.Or(expectedTargets),
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.Enabled,
-                    true),
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.AcceptsWorkloads,
-                    true),
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.DeletionRequestedAtUtc,
-                    null),
-                Builders<DeploymentTarget>.Filter.Lt(
-                    target => target.ReferenceFence,
-                    long.MaxValue)),
+            DeploymentTargetFilters.FenceableWorkloadConfigurations(
+                distinctRequests),
             Builders<DeploymentTarget>.Update.Inc(
                 target => target.ReferenceFence,
                 1),
@@ -245,26 +217,11 @@ public sealed class DeploymentTargetReferenceAdmission(
         if (deploymentTargetIds.Count == 0)
             return Result.Success();
 
-        var filter = Builders<DeploymentTarget>.Filter.And(
-            Builders<DeploymentTarget>.Filter.In(
-                target => target.Id,
-                deploymentTargetIds),
-            Builders<DeploymentTarget>.Filter.Lt(
-                target => target.ReferenceFence,
-                long.MaxValue));
-        if (requireAdmission)
-        {
-            filter &= Builders<DeploymentTarget>.Filter.And(
-                Builders<DeploymentTarget>.Filter.Eq(target => target.Enabled, true),
-                Builders<DeploymentTarget>.Filter.Eq(target => target.AcceptsWorkloads, true),
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.DeletionRequestedAtUtc,
-                    null));
-        }
-
         var update = await dbContext.DeploymentTargets.UpdateManyAsync(
             session,
-            filter,
+            DeploymentTargetFilters.FenceableReferences(
+                deploymentTargetIds,
+                requireAdmission),
             Builders<DeploymentTarget>.Update.Inc(target => target.ReferenceFence, 1),
             cancellationToken: cancellationToken);
         if (update.ModifiedCount == deploymentTargetIds.Count)
@@ -278,16 +235,7 @@ public sealed class DeploymentTargetReferenceAdmission(
     private static FilterDefinition<DeploymentTargetReference> ReferenceFilter(
         string deploymentTargetId,
         DeploymentTargetReferenceOwner owner) =>
-        Builders<DeploymentTargetReference>.Filter.And(
-            Builders<DeploymentTargetReference>.Filter.Eq(
-                item => item.DeploymentTargetId,
-                deploymentTargetId),
-            Builders<DeploymentTargetReference>.Filter.Eq(
-                item => item.OwnerType,
-                owner.Type.Trim()),
-            Builders<DeploymentTargetReference>.Filter.Eq(
-                item => item.OwnerId,
-                owner.Id.Trim()));
+        DeploymentTargetReferenceFilters.ByOwner(deploymentTargetId, owner);
 
     private static ValidationFailure? ValidateOwner(DeploymentTargetReferenceOwner? owner)
     {

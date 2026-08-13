@@ -19,7 +19,7 @@ public sealed class DeploymentTargetDeletionGuard(
         CancellationToken cancellationToken = default)
     {
         var reference = await dbContext.DeploymentTargetReferences
-            .Find(item => item.DeploymentTargetId == deploymentTargetId)
+            .Find(DeploymentTargetReferenceFilters.ForTarget(deploymentTargetId))
             .Project(item => item.Id)
             .FirstOrDefaultAsync(cancellationToken);
 

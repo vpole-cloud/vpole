@@ -213,9 +213,7 @@ public sealed class DeploymentTargetBootstrapper(
             var existing = await dbContext.DeploymentTargets
                 .Find(
                     session,
-                    Builders<DeploymentTarget>.Filter.Eq(
-                        item => item.DeletionRequestedAtUtc,
-                        null))
+                    DeploymentTargetFilters.NotPendingDeletion())
                 .SortBy(item => item.CreatedAtUtc)
                 .FirstOrDefaultAsync(ct);
             if (existing is not null)
@@ -245,7 +243,7 @@ public sealed class DeploymentTargetBootstrapper(
         dbContext.RunInTransactionAsync(async (session, ct) =>
         {
             var target = await dbContext.DeploymentTargets
-                .Find(session, item => item.Id == targetId)
+                .Find(session, DeploymentTargetFilters.ById(targetId))
                 .FirstOrDefaultAsync(ct);
             return target is null
                 ? Failures.Conflict("The deployment target changed while its default binding was created.")
@@ -261,7 +259,7 @@ public sealed class DeploymentTargetBootstrapper(
             return Failures.Conflict("A deployment target pending deletion cannot become the default target.");
 
         var existing = await dbContext.DeploymentTargetSettings
-            .Find(session, settings => settings.Id == DeploymentTargetSettings.SingletonId)
+            .Find(session, DeploymentTargetSettingsFilters.Singleton())
             .FirstOrDefaultAsync(cancellationToken);
         if (existing is not null)
         {
@@ -275,12 +273,7 @@ public sealed class DeploymentTargetBootstrapper(
             updatedAtUtc = target.UpdatedAtUtc;
         var fenced = await dbContext.DeploymentTargets.UpdateOneAsync(
             session,
-            Builders<DeploymentTarget>.Filter.And(
-                Builders<DeploymentTarget>.Filter.Eq(item => item.Id, target.Id),
-                Builders<DeploymentTarget>.Filter.Eq(item => item.Revision, target.Revision),
-                Builders<DeploymentTarget>.Filter.Eq(
-                    item => item.DeletionRequestedAtUtc,
-                    null)),
+            DeploymentTargetFilters.AtRevisionAndNotPendingDeletion(target),
             Builders<DeploymentTarget>.Update
                 .Set(item => item.Revision, checked(target.Revision + 1))
                 .Set(item => item.UpdatedAtUtc, updatedAtUtc),
@@ -298,17 +291,15 @@ public sealed class DeploymentTargetBootstrapper(
     private async Task<BootstrapState> LoadCurrentAsync(CancellationToken cancellationToken)
     {
         var settings = await dbContext.DeploymentTargetSettings
-            .Find(item => item.Id == DeploymentTargetSettings.SingletonId)
+            .Find(DeploymentTargetSettingsFilters.Singleton())
             .FirstOrDefaultAsync(cancellationToken);
         var firstTarget = await dbContext.DeploymentTargets
-            .Find(Builders<DeploymentTarget>.Filter.Eq(
-                item => item.DeletionRequestedAtUtc,
-                null))
+            .Find(DeploymentTargetFilters.NotPendingDeletion())
             .SortBy(item => item.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
         var defaultTargetExists = settings is not null &&
             await dbContext.DeploymentTargets.CountDocumentsAsync(
-                item => item.Id == settings.DefaultDeploymentTargetId,
+                DeploymentTargetFilters.ById(settings.DefaultDeploymentTargetId),
                 cancellationToken: cancellationToken) == 1;
         return new BootstrapState(settings, firstTarget, defaultTargetExists);
     }

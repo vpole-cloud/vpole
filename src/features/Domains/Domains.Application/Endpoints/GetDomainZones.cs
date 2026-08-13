@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Domains.Contracts;
+using Pole.Features.Domains.Application.Persistence;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
@@ -44,11 +45,14 @@ public sealed class GetDomainZonesRequestValidator : AbstractValidator<GetDomain
     }
 }
 
-public sealed class GetDomainZonesHandler(ITenantDomainZoneCapability zones)
+public sealed class GetDomainZonesHandler(LoadTenantDomainZones loadTenantDomainZones)
     : IMediatorHandler<GetDomainZonesRequest, IReadOnlyList<TenantDomainZoneSnapshot>>
 {
     public async Task<Pole.ResultType.Result<IReadOnlyList<TenantDomainZoneSnapshot>>> HandleAsync(
         GetDomainZonesRequest request,
         CancellationToken cancellationToken = default) =>
-        Result.Success(await zones.ListAsync(request.TenantId, request.DeploymentTargetId, cancellationToken));
+        Result.Success(await loadTenantDomainZones(
+            request.TenantId,
+            request.DeploymentTargetId,
+            cancellationToken));
 }

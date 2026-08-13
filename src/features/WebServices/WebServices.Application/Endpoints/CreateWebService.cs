@@ -48,8 +48,8 @@ public sealed class CreateWebServiceHandler(
     IDeploymentTargetLookup deploymentTargetLookup,
     ResolveComputeProfiles resolveComputeProfiles,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    ITenantDomainZoneCapability domainZones,
-    IHostnameBindingCapability hostnameBindings,
+    GetOrCreateGeneratedDomainZones getOrCreateGeneratedDomainZones,
+    CreateGeneratedHostnameBindings createGeneratedHostnameBindings,
     CreateResourceDeploymentSet createResourceDeploymentSet,
     PersistCreatedWebService persistCreatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
@@ -255,7 +255,7 @@ public sealed class CreateWebServiceHandler(
                 target.Target.WorkloadConfigurationRevision);
         }
 
-        var zonesResult = await domainZones.GetOrCreateGeneratedSetAsync(
+        var zonesResult = await getOrCreateGeneratedDomainZones(
             zoneRequests,
             session,
             cancellationToken);
@@ -276,7 +276,7 @@ public sealed class CreateWebServiceHandler(
                 $"{webService.Exposure.GeneratedHostnameLabelPrefix}-{webService.Id}");
         }
 
-        var bindingsResult = await hostnameBindings.CreateGeneratedSetAsync(
+        var bindingsResult = await createGeneratedHostnameBindings(
             bindingRequests,
             session,
             cancellationToken);
