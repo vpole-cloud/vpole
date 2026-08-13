@@ -9,18 +9,18 @@ using Pole.Features.WebServices.Domain;
 namespace Pole.Features.WebServices.Application.Kubernetes;
 
 public abstract record WebServiceDeploymentMetadata(
-    int Revision,
+    long Revision,
     DateTime RequestedAtUtc);
 
 public sealed record WebServiceReleaseDeploymentMetadata(
     string ReleaseId,
-    int Revision,
+    long Revision,
     DateTime RequestedAtUtc)
     : WebServiceDeploymentMetadata(Revision, RequestedAtUtc)
 {
     public static WebServiceReleaseDeploymentMetadata Create(
         string releaseId,
-        int revision,
+        long revision,
         DateTime requestedAtUtc)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(releaseId);
@@ -38,7 +38,7 @@ public sealed record WebServiceResourceDeploymentMetadata(
     string RuntimeCellId,
     string DeploymentTargetId,
     long DesiredGeneration,
-    int Revision,
+    long Revision,
     DateTime RequestedAtUtc)
     : WebServiceDeploymentMetadata(Revision, RequestedAtUtc)
 {
@@ -48,7 +48,7 @@ public sealed record WebServiceResourceDeploymentMetadata(
         string runtimeCellId,
         string deploymentTargetId,
         long desiredGeneration,
-        int logicalRevision,
+        long logicalRevision,
         DateTime requestedAtUtc)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(releaseId);
@@ -75,24 +75,28 @@ public readonly record struct WebServiceInKubernetes(
     WebService WebService,
     string Namespace,
     ResourceDeploymentIngressConfiguration IngressConfiguration,
-    ResourceDeploymentComputeConfiguration ComputeConfiguration)
+    ResourceDeploymentComputeConfiguration ComputeConfiguration,
+    int FixedReplicas)
 {
     public static WebServiceInKubernetes Create(
         WebService webService,
         string kubernetesNamespace,
         ResourceDeploymentIngressConfiguration ingressConfiguration,
-        ResourceDeploymentComputeConfiguration computeConfiguration)
+        ResourceDeploymentComputeConfiguration computeConfiguration,
+        int fixedReplicas)
     {
         ArgumentNullException.ThrowIfNull(webService);
         ArgumentException.ThrowIfNullOrWhiteSpace(kubernetesNamespace);
         ArgumentNullException.ThrowIfNull(ingressConfiguration);
         ArgumentNullException.ThrowIfNull(computeConfiguration);
+        ArgumentOutOfRangeException.ThrowIfLessThan(fixedReplicas, 1);
 
         return new(
             webService,
             kubernetesNamespace.Trim(),
             ingressConfiguration,
-            computeConfiguration);
+            computeConfiguration,
+            fixedReplicas);
     }
 
     public string ConfigMapName => BuildConfigMapName(WebService.Name);
@@ -122,7 +126,7 @@ public readonly record struct WebServiceInKubernetes(
         },
         Spec = new V1DeploymentSpec()
         {
-            Replicas = WebService.Spec.Replicas,
+            Replicas = WebService.Spec.Autoscaling?.MinReplicas ?? FixedReplicas,
             Selector = new V1LabelSelector()
             {
                 MatchLabels = new Dictionary<string, string>()
@@ -272,62 +276,67 @@ public readonly record struct WebServiceInKubernetes(
         Data = WebService.Spec.Config.EnvironmentVariables.ToDictionary(),
     };
 
-    public V1Ingress ToIngress() => new()
+    public V1Ingress ToIngress()
     {
-        ApiVersion = "networking.k8s.io/v1",
-        Kind = "Ingress",
-        Metadata = new V1ObjectMeta
+        var serviceName = ServiceName;
+        var servicePort = GetIngressServicePort(WebService);
+        var hostnames = IngressConfiguration.Hostnames;
+        return new V1Ingress
         {
-            Name = IngressName,
-            NamespaceProperty = Namespace,
-            Labels = new Dictionary<string, string> { ["app"] = WebService.Name },
-            Annotations = _defaultAnnotations.Concat(new Dictionary<string, string>
+            ApiVersion = "networking.k8s.io/v1",
+            Kind = "Ingress",
+            Metadata = new V1ObjectMeta
             {
-                ["cert-manager.io/cluster-issuer"] = IngressConfiguration.ClusterIssuerName,
-            }).ToDictionary(),
-        },
-        Spec = new V1IngressSpec
-        {
-            IngressClassName = IngressConfiguration.IngressClassName,
-            Rules = new List<V1IngressRule>
-            {
-                new()
+                Name = IngressName,
+                NamespaceProperty = Namespace,
+                Labels = new Dictionary<string, string> { ["app"] = WebService.Name },
+                Annotations = _defaultAnnotations.Concat(new Dictionary<string, string>
                 {
-                    Host = WebService.DnsRecord.Domain, // e.g. myapp.vpole.space
-                    Http = new V1HTTPIngressRuleValue
+                    ["cert-manager.io/cluster-issuer"] = IngressConfiguration.ClusterIssuerName,
+                }).ToDictionary(),
+            },
+            Spec = new V1IngressSpec
+            {
+                IngressClassName = IngressConfiguration.IngressClassName,
+                Rules = hostnames
+                    .Select(hostname => new V1IngressRule
                     {
-                        Paths = new List<V1HTTPIngressPath>
+                        Host = hostname,
+                        Http = new V1HTTPIngressRuleValue
                         {
-                            new()
+                            Paths = new List<V1HTTPIngressPath>
                             {
-                                Path = "/",
-                                PathType = "Prefix",
-                                Backend = new V1IngressBackend
+                                new()
                                 {
-                                    Service = new V1IngressServiceBackend
+                                    Path = "/",
+                                    PathType = "Prefix",
+                                    Backend = new V1IngressBackend
                                     {
-                                        Name = ServiceName,
-                                        Port = new V1ServiceBackendPort
+                                        Service = new V1IngressServiceBackend
                                         {
-                                            Number = GetIngressServicePort(WebService)
+                                            Name = serviceName,
+                                            Port = new V1ServiceBackendPort
+                                            {
+                                                Number = servicePort
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
+                    })
+                    .ToList(),
+                Tls = new List<V1IngressTLS>
+                {
+                    new()
+                    {
+                        Hosts = hostnames.ToList(),
+                        SecretName = TlsSecretName
                     }
                 }
-            },
-            Tls = new List<V1IngressTLS>
-            {
-                new()
-                {
-                    Hosts = new List<string> { WebService.DnsRecord.Domain },
-                    SecretName = TlsSecretName
-                }
             }
-        }
-    };
+        };
+    }
         
     public V1HorizontalPodAutoscaler? ToHorizontalPodAutoscaler() => WebService.Spec.Autoscaling is null ? null : new V1HorizontalPodAutoscaler
     {

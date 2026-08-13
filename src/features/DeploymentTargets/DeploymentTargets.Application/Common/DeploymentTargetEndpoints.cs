@@ -33,5 +33,18 @@ public static class DeploymentTargetEndpoints
                 .MapRewrapDeploymentTargetCredentialsEndpoint();
             return app;
         }
+
+        /// <summary>
+        /// The server composes this group separately from platform administration so tenant
+        /// authorization and the active tenant header apply to placement discovery.
+        /// </summary>
+        public IEndpointRouteBuilder MapDeploymentTargetAvailabilityEndpoints()
+        {
+            app.MapGroup("/deployment-targets")
+                .WithTags("DeploymentTargets")
+                .MapGetAvailableDeploymentTargetsEndpoint();
+
+            return app;
+        }
     }
 }

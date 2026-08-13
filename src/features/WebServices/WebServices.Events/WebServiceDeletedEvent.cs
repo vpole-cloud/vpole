@@ -5,15 +5,14 @@ using Pole.Features.Events.Abstractions;
 namespace Pole.Features.WebServices.Events;
 
 [EntityName("web-service-deleted")]
-public record WebServiceDeletedEvent(
+public sealed record WebServiceDeletedEvent(
     string WebServiceId,
     string Name,
     string ResourceGroupId,
-    string DnsRecordId,
+    string IsolationScopeId,
+    long ResourceRevision,
     WebServiceSpecSnapshot Spec,
-    ImmutableHashSet<string> Tags
-) : IDeleteDnsRecordEvent
+    ImmutableHashSet<string> Tags) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
-

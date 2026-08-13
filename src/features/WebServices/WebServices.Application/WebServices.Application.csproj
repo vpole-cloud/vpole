@@ -13,9 +13,8 @@
       <ProjectReference Include="..\WebServices.Domain\WebServices.Domain.csproj" />
       <ProjectReference Include="..\WebServices.Contracts\WebServices.Contracts.csproj" />
       <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
-      <ProjectReference Include="..\..\DnsRecords\DnsRecords.Contracts\DnsRecords.Contracts.csproj" />
       <ProjectReference Include="..\..\ContainerRegistries\ContainerRegistries.Contracts\ContainerRegistries.Contracts.csproj" />
-      <ProjectReference Include="..\..\DnsRecords\DnsRecords.Events\DnsRecords.Events.csproj" />
+      <ProjectReference Include="..\..\Domains\Domains.Contracts\Domains.Contracts.csproj" />
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
       <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
       <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />

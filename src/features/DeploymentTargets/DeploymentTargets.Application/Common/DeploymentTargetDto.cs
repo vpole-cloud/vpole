@@ -53,7 +53,8 @@ public sealed record DeploymentTargetWorkloadConfigurationDto(
 
 public sealed record DeploymentTargetIngressConfigurationDto(
     string IngressClassName,
-    string ClusterIssuerName);
+    string ClusterIssuerName,
+    string? PublicBaseDomain = null);
 
 public static class DeploymentTargetDtoExtensions
 {
@@ -77,7 +78,8 @@ public static class DeploymentTargetDtoExtensions
                 target.WorkloadConfiguration.Ingress is { } ingress
                     ? new DeploymentTargetIngressConfigurationDto(
                         ingress.IngressClassName,
-                        ingress.ClusterIssuerName)
+                        ingress.ClusterIssuerName,
+                        ingress.PublicBaseDomain)
                     : null),
             target.Revision,
             target.Enabled,
@@ -99,13 +101,22 @@ public static class DeploymentTargetDtoExtensions
                 target.WorkloadConfiguration.Ingress is { } ingress
                     ? new DeploymentTargetIngressConfigurationLookupDto(
                         ingress.IngressClassName,
-                        ingress.ClusterIssuerName)
+                        ingress.ClusterIssuerName,
+                        ingress.PublicBaseDomain)
                     : null),
             target.Revision,
             target.Enabled,
             target.AcceptsWorkloads,
             target.DeletionRequestedAtUtc is not null,
             target.Health.Status.ToString());
+
+    public static AvailableDeploymentTargetDto ToAvailableDto(this DeploymentTarget target) =>
+        new(
+            target.Id,
+            target.DisplayName,
+            target.WorkloadConfiguration.Revision,
+            target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null,
+            target.WorkloadConfiguration.Ingress?.PublicBaseDomain);
 
     private static DeploymentTargetCapabilitiesDto ToDto(
         this DeploymentTargetCapabilities capabilities) =>

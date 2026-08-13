@@ -27,6 +27,7 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
     {
         await base.InitializeAsync();
         await new ResourceGroupPlacementMigration().Up(Fixture.Database);
+        await new RuntimeCellLookupMigration().Up(Fixture.Database);
     }
 
     [Fact]
@@ -106,6 +107,57 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
         Assert.NotEqual(first.RuntimeCellId, second.RuntimeCellId);
         Assert.NotEqual(first.DeploymentTargetId, second.DeploymentTargetId);
         Assert.Equal(first.KubernetesNamespace, second.KubernetesNamespace);
+    }
+
+    [Fact]
+    public async Task BatchResolve_CreatesCellsOnce_AndPreservesRequestedTargetOrder()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var service = CreateService(new PlacementTargetLookup());
+
+        var result = await DbContext.RunInTransactionAsync<IReadOnlyList<ResourcePlacement>>(
+            (session, cancellationToken) => service.ResolveOrCreateManyAsync(
+                resourceGroup.TenantId,
+                resourceGroup.Id,
+                resourceGroup.DefaultIsolationScopeId,
+                [SecondTargetId, DefaultTargetId],
+                session,
+                cancellationToken));
+
+        var placements = result.AssertSuccess();
+        Assert.Equal(
+            [SecondTargetId, DefaultTargetId],
+            placements.Select(placement => placement.DeploymentTargetId));
+        Assert.Equal(2L, await DbContext.RuntimeCells.CountDocumentsAsync(
+            cell => cell.ResourceGroupId == resourceGroup.Id));
+        Assert.Equal(2L, await DbContext.CountOutboxMessagesAsync(
+            "runtime-cell-reconciliation-requested"));
+    }
+
+    [Fact]
+    public async Task Find_many_returns_requested_tenant_scoped_placement_snapshots()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var service = CreateService(new PlacementTargetLookup());
+        var first = (await ResolveAsync(service, resourceGroup.Id, null, DefaultTargetId)).AssertSuccess();
+        var second = (await ResolveAsync(service, resourceGroup.Id, null, SecondTargetId)).AssertSuccess();
+        var lookup = new ResourcePlacementLookup(DbContext);
+
+        using var session = await Fixture.Client.StartSessionAsync();
+        session.StartTransaction();
+        var placements = await lookup.FindManyAsync(
+            resourceGroup.TenantId,
+            [first.RuntimeCellId, second.RuntimeCellId, ObjectId.GenerateNewId().ToString()],
+            session);
+        await session.CommitTransactionAsync();
+
+        Assert.Equal(
+            [first.RuntimeCellId, second.RuntimeCellId],
+            placements
+                .Select(placement => placement.RuntimeCellId)
+                .OrderBy(id => id, StringComparer.Ordinal));
+        Assert.All(placements, placement =>
+            Assert.Equal(resourceGroup.Id, placement.ResourceGroupId));
     }
 
     [Fact]
@@ -224,6 +276,21 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
                 RejectNewWorkloads
                     ? Array.Empty<DeploymentTargetLookupDto>()
                     : [CreateTarget(DefaultTargetId)]);
+
+        public Task<Result<DeploymentTargetPublicIngressDto>>
+            ResolvePublicIngressForNewWorkloadAsync(
+                DeploymentTargetAdmissionRequest request,
+                CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result<DeploymentTargetPublicIngressDto>>(
+                Failures.Conflict("Public ingress is not used by this placement test."));
+
+        public Task<Result<DeploymentTargetPublicIngressDto>>
+            ResolvePublicIngressForDomainReservationAsync(
+                string tenantId,
+                string deploymentTargetId,
+                CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result<DeploymentTargetPublicIngressDto>>(
+                Failures.Conflict("Domain reservation is not used by this placement test."));
 
         private static DeploymentTargetLookupDto CreateTarget(string id) =>
             new(

@@ -9,6 +9,10 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\Workloads\Workloads.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="FluentValidation" />
         <PackageReference Include="MongoDB.Driver" />
     </ItemGroup>

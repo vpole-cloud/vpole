@@ -3,7 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Pole.Encryption;
 using Pole.Features.ComputeProfiles.Application;
-using Pole.Features.DnsRecords.Application.Common;
+using Pole.Features.Domains.Application.Common;
+using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Application.Common;
@@ -22,6 +23,7 @@ using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
+using Pole.Features.Tenants.Application.Common;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.WebServices.Application.Common;
@@ -44,7 +46,7 @@ public static class TestServiceProviderFactory
         typeof(QuotaEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,
         typeof(RedisServiceEndpoints).Assembly,
-        typeof(DnsRecordEndpoints).Assembly,
+        typeof(DomainZoneEndpoints).Assembly,
         typeof(DeploymentTargetFeature).Assembly,
         typeof(SearchEndpoints).Assembly,
         typeof(StorageProfileEndpoints).Assembly
@@ -60,6 +62,8 @@ public static class TestServiceProviderFactory
         services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
         services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
         services.AddMongoDbContextInterfaces();
+        services.AddTenantContractCapabilities();
+        services.AddDomainPersistence();
         services.AddComputeProfiles();
         services.AddRedisPersistence();
         services.AddWebServicePersistence();

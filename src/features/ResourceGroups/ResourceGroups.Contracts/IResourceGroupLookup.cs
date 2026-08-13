@@ -2,6 +2,18 @@ using Pole.ResultType;
 
 namespace Pole.Features.ResourceGroups.Contracts;
 
+/// <summary>
+/// Narrow ownership boundary for logical resources. It deliberately excludes the
+/// transitional Kubernetes placement lookup retained for older adopters.
+/// </summary>
+public interface IResourceGroupOwnershipLookup
+{
+    Task<Result<ResourceGroupOwnership>> GetOwnershipAsync(
+        string tenantId,
+        string resourceGroupId,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IResourceGroupLookup
 {
     Task<Result<ResourceGroupOwnership>> GetOwnershipAsync(

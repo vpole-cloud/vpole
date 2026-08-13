@@ -38,13 +38,17 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         var result = await subject.ApplyAsync(context);
 
         var succeeded = Assert.IsType<ResourceDeploymentAdapterResult.Succeeded>(result);
-        var endpoint = Assert.Single(succeeded.Endpoints);
-        Assert.Equal("Ingress", endpoint.Kind);
-        Assert.Equal("api.example.test", endpoint.Host);
-        Assert.Equal(443, endpoint.Port);
-        Assert.Equal("https", endpoint.Scheme);
         Assert.Equal(
-            [(TenantId, ResourceId, 1L)],
+            ["api.example.test", "www.api.example.test"],
+            succeeded.Endpoints.Select(endpoint => endpoint.Host));
+        Assert.All(succeeded.Endpoints, endpoint =>
+        {
+            Assert.Equal("Ingress", endpoint.Kind);
+            Assert.Equal(443, endpoint.Port);
+            Assert.Equal("https", endpoint.Scheme);
+        });
+        Assert.Equal(
+            [(TenantId, ResourceId, DeploymentId, 1L, 1L)],
             reader.ApplyRequests);
         Assert.Equal(5, handler.Requests.Count);
         Assert.All(
@@ -176,7 +180,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             includeIngress
                 ? new ResourceDeploymentIngressConfiguration(
                     "nginx-private",
-                    "pole-private-issuer")
+                    "pole-private-issuer",
+                    "example.test",
+                    ["api.example.test", "www.api.example.test"])
                 : null,
             Storage: null,
             ResourceDeploymentTestData.ContractCompute(TargetId));
@@ -188,9 +194,11 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             ResourceGroupId,
             IsolationScopeId,
             RuntimeCellId,
+            ResourceRevision: 1,
+            FixedReplicas: 2,
             DesiredGeneration: 1,
-            NowUtc,
-            placement);
+            UpdatedAtUtc: NowUtc,
+            Placement: placement);
         return new ResourceDeploymentReconciliationContext(deployment);
     }
 
@@ -199,9 +207,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             name: "api",
             tenantId: TenantId,
             resourceGroupId: ResourceGroupId,
+            isolationScopeId: IsolationScopeId,
             spec: new WebServiceSpec(
                 new ImageInfo("registry.example.test", "pole/api", "1.0"),
-                Replicas: 2,
                 Config: new WebServiceConfig(
                     ImmutableDictionary<string, string>.Empty,
                     [new PortMapping(80, "8080", "TCP", "http")]),
@@ -210,9 +218,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
                     new ProbeConfig("/health", "8080"),
                     new ProbeConfig("/health", "8080"),
                     new ProbeConfig("/health", "8080"))),
-            dnsRecord: new DnsRecordShortInfo(
-                "507f1f77bcf86cd799439021",
-                "api.example.test"),
+            exposure: WebServiceExposure.Create(),
             options: WebServiceFactory.DefaultOptions with
             {
                 Id = ResourceId
@@ -220,22 +226,26 @@ public sealed class WebServiceResourceDeploymentAdapterTests
 
     private sealed class RecordingReader(WebService webService)
     {
-        public List<(string TenantId, string ResourceId, long Generation)>
+        public List<(string TenantId, string ResourceId, string DeploymentId, long ResourceRevision, long Generation)>
             ApplyRequests { get; } = [];
         public List<(string TenantId, string ResourceId)> DeleteRequests { get; } = [];
 
         public Task<WebServiceDeploymentPersistenceSnapshot?> LoadSnapshot(
             string tenantId,
             string webServiceId,
+            string resourceDeploymentId,
+            long resourceRevision,
             long deploymentGeneration,
             CancellationToken cancellationToken = default)
         {
-            ApplyRequests.Add((tenantId, webServiceId, deploymentGeneration));
+            ApplyRequests.Add((tenantId, webServiceId, resourceDeploymentId, resourceRevision, deploymentGeneration));
             return Task.FromResult<WebServiceDeploymentPersistenceSnapshot?>(
                 new WebServiceDeploymentPersistenceSnapshot(
                     webService,
                     ReleaseId,
                     webService.ActiveRevision,
+                    resourceDeploymentId,
+                    deploymentGeneration,
                     NowUtc));
         }
 

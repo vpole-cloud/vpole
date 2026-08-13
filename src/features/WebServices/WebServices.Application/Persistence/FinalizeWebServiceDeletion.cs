@@ -1,6 +1,7 @@
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.Domains.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
@@ -15,6 +16,7 @@ public delegate Task<Result> FinalizeWebServiceDeletion(
 internal sealed class MongoFinalizeWebServiceDeletion(
     IMongoCollection<WebService> webServices,
     IResourceDeploymentFinalizationService deploymentFinalization,
+    DeleteHostnameBindingsForResource deleteHostnameBindingsForResource,
     RunMongoTransaction runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites)
 {
@@ -49,6 +51,11 @@ internal sealed class MongoFinalizeWebServiceDeletion(
                 cancellationToken: ct);
             if (deleted.DeletedCount != 1)
                 return Result.Success();
+
+            var bindingCleanup = await deleteHostnameBindingsForResource(
+                tenantId, WebServiceResourceDeployment.ResourceType, webServiceId, session, ct);
+            if (bindingCleanup is not ISuccess)
+                return (Failure)bindingCleanup;
 
             var purge = await deploymentFinalization.PurgeDeletedAsync(
                 tenantId,

@@ -47,13 +47,14 @@ internal sealed class ResourceDeploymentPlacementResolver(
         }
 
         var ingress = target.WorkloadConfiguration.Ingress;
-        if (requiresIngress && ingress is null)
+        if (requiresIngress &&
+            (ingress is null || string.IsNullOrWhiteSpace(ingress.PublicBaseDomain)))
         {
             return Failures.SemanticValidation(new Dictionary<string, string[]>
             {
                 ["Placement.DeploymentTargetId"] =
                 [
-                    "The selected deployment target has no ingress configuration."
+                    "The selected deployment target has no public ingress base domain configuration."
                 ]
             });
         }
@@ -63,8 +64,10 @@ internal sealed class ResourceDeploymentPlacementResolver(
             target.WorkloadConfiguration.Revision,
             ingress is null
                 ? null
-                : new ResourceDeploymentIngressConfiguration(
+                : ResourceDeploymentIngressConfiguration.Create(
                     ingress.IngressClassName,
-                    ingress.ClusterIssuerName));
+                    ingress.ClusterIssuerName,
+                    ingress.PublicBaseDomain,
+                    hostnames: null));
     }
 }

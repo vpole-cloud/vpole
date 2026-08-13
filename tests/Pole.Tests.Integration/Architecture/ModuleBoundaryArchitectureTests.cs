@@ -12,11 +12,6 @@ public sealed class ModuleBoundaryArchitectureTests
         TemporarySharedProjectReferenceAllowlist =
         [
             DocumentedProjectException.Create(
-                "DnsRecords.Contracts",
-                "Models",
-                "The legacy ResourceType model is pending replacement.",
-                "#53"),
-            DocumentedProjectException.Create(
                 "StorageProfiles.Contracts",
                 "Models",
                 "The legacy ResourceType model is pending replacement.",

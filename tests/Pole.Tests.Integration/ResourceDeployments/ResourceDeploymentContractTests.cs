@@ -24,6 +24,10 @@ public sealed class ResourceDeploymentContractTests
     {
         Assert.Equal("pole/test-resource", TestResourceType.Value);
         Assert.Equal("pole/test-resource", ResourceTypeId.Create(" pole/test-resource ").Value);
+        Assert.True(ResourceTypeId.TryCreate(" pole/test-resource ", out var resourceType));
+        Assert.Equal("pole/test-resource", resourceType.Value);
+        Assert.False(ResourceTypeId.TryCreate("WebService", out _));
+        Assert.False(ResourceTypeId.TryCreate(null, out _));
         Assert.Throws<ArgumentException>(() => ResourceTypeId.Create("WebService"));
         Assert.Throws<ArgumentException>(() => ResourceTypeId.Create("pole/"));
     }
@@ -93,7 +97,8 @@ public sealed class ResourceDeploymentContractTests
         var @event = new ResourceDeploymentReconciliationRequestedEvent(
             DeploymentId,
             RuntimeCellId,
-            Generation: 4)
+            Generation: 4,
+            ResourceRevision: 7)
         {
             EventCore = EventCore.Create(TenantId)
         };
@@ -104,6 +109,7 @@ public sealed class ResourceDeploymentContractTests
 
         Assert.Equal(DeploymentId, root.GetProperty("resourceDeploymentId").GetString());
         Assert.Equal(RuntimeCellId, root.GetProperty("runtimeCellId").GetString());
+        Assert.Equal(7, root.GetProperty("resourceRevision").GetInt64());
         Assert.Equal(TenantId, root.GetProperty("eventCore").GetProperty("tenantId").GetString());
         Assert.False(root.TryGetProperty("kubernetesNamespace", out _));
         Assert.False(root.TryGetProperty("deploymentTargetId", out _));

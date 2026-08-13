@@ -107,7 +107,7 @@ public sealed class DeleteDeploymentTargetHandler(
 
     private static FilterDefinition<DeploymentTarget> ReferenceFenceFilter(DeploymentTarget target) =>
         Builders<DeploymentTarget>.Filter.And(
-            DeploymentTargetFilters.RevisionFilter(target),
+            DeploymentTargetFilters.AtRevision(target),
             Builders<DeploymentTarget>.Filter.Eq(
                 item => item.ReferenceFence,
                 target.ReferenceFence),
@@ -117,7 +117,7 @@ public sealed class DeleteDeploymentTargetHandler(
 
     private static FilterDefinition<DeploymentTarget> DeletionFenceFilter(DeploymentTarget target) =>
         Builders<DeploymentTarget>.Filter.And(
-            DeploymentTargetFilters.RevisionFilter(target),
+            DeploymentTargetFilters.AtRevision(target),
             Builders<DeploymentTarget>.Filter.Eq(
                 item => item.ReferenceFence,
                 target.ReferenceFence),

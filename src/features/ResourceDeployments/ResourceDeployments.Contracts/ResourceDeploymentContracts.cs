@@ -71,7 +71,12 @@ public sealed record PlacementSummaryDto(
     string Status,
     string? FailureCode,
     ComputeConfigurationSummaryDto Compute,
-    ImmutableList<ResourceDeploymentEndpointDto> Endpoints);
+    ImmutableList<ResourceDeploymentEndpointDto> Endpoints,
+    long ResourceRevision = 1,
+    int FixedReplicas = 1,
+    ResourceDeploymentIngressConfiguration? Ingress = null,
+    long DeploymentRevision = 1,
+    string DesiredOperation = "Apply");
 
 public sealed record ResourceDeploymentDto(
     string Id,
@@ -127,5 +132,31 @@ public interface IResourceDeploymentComputeLookup
         string tenantId,
         ResourceTypeId resourceType,
         string resourceId,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Multi-target read capability. Existing single-target callers intentionally
+/// continue to use <see cref="IResourceDeploymentQueryService"/>.
+/// </summary>
+public interface IResourceDeploymentSetQueryService
+{
+    Task<IReadOnlyList<PlacementSummaryDto>> GetAllAsync(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId,
+        CancellationToken cancellationToken = default);
+
+    Task<PlacementSummaryDto?> GetExactAsync(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId,
+        string deploymentId,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>> GetAllManyAsync(
+        string tenantId,
+        ResourceTypeId resourceType,
+        IReadOnlyCollection<string> resourceIds,
         CancellationToken cancellationToken = default);
 }

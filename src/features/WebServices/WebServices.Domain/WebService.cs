@@ -1,44 +1,49 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using Pole.Features.Shared.Models;
 
 namespace Pole.Features.WebServices.Domain;
 
-public record WebService(
+public sealed record WebService(
     [property: BsonId]
-    [property: BsonRepresentation(BsonType.ObjectId)]
-    string Id,
+    [property: BsonRepresentation(BsonType.ObjectId)] string Id,
     string TenantId,
     string Name,
     string ResourceGroupId,
+    string IsolationScopeId,
     WebServiceSpec Spec,
-    DnsRecordShortInfo DnsRecord,
-    int ActiveRevision,
+    WebServiceExposure Exposure,
+    long ActiveRevision,
     ImmutableHashSet<string> Tags,
     ImmutableList<ServiceEvent> Events,
     long Revision,
-    WebServiceLifecycle Lifecycle
-)
+    WebServiceLifecycle Lifecycle)
 {
-    public WebService UpdateDesiredState(
-        WebServiceSpec spec,
-        ImmutableHashSet<string> tags)
+    public WebService UpdateDesiredState(WebServiceSpec spec, IEnumerable<string> tags)
     {
         EnsureActive();
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(tags);
 
-        return this with
-        {
-            Spec = spec,
-            Tags = tags,
-            ActiveRevision = checked(ActiveRevision + 1),
-            Revision = checked(Revision + 1)
-        };
+        var normalizedTags = WebServiceFactory.NormalizeTags(tags);
+        return Equals(Spec, spec) && Tags.SetEquals(normalizedTags)
+            ? this
+            : this with
+            {
+                Spec = spec,
+                Tags = normalizedTags,
+                ActiveRevision = checked(ActiveRevision + 1),
+                Revision = checked(Revision + 1)
+            };
     }
 
-    public WebService Redeploy()
+    /// <summary>
+    /// Advances the complete logical desired state when only placement/binding state changed.
+    /// The placement documents are mutated by the application transaction; the logical revision
+    /// remains the fence consumers use to associate those exact physical snapshots with a release.
+    /// </summary>
+    public WebService AdvancePlacementDesiredState()
     {
         EnsureActive();
         return this with
@@ -47,21 +52,17 @@ public record WebService(
             Revision = checked(Revision + 1)
         };
     }
+
+    public WebService Redeploy() => AdvancePlacementDesiredState();
 
     public WebService BeginDeletion(DateTime requestedAtUtc)
     {
         if (Lifecycle is DeletingWebServiceLifecycle)
             return this;
 
-        var normalizedRequestedAtUtc = requestedAtUtc.Kind switch
-        {
-            DateTimeKind.Utc => requestedAtUtc,
-            DateTimeKind.Local => requestedAtUtc.ToUniversalTime(),
-            _ => DateTime.SpecifyKind(requestedAtUtc, DateTimeKind.Utc)
-        };
         return this with
         {
-            Lifecycle = new DeletingWebServiceLifecycle(normalizedRequestedAtUtc),
+            Lifecycle = new DeletingWebServiceLifecycle(WebServiceFactory.Utc(requestedAtUtc)),
             Revision = checked(Revision + 1)
         };
     }
@@ -81,92 +82,105 @@ public sealed record ActiveWebServiceLifecycle : WebServiceLifecycle;
 
 public sealed record DeletingWebServiceLifecycle(DateTime RequestedAtUtc) : WebServiceLifecycle;
 
-public record WebServiceSpec(
+/// <summary>Configuration shared by every physical deployment of a logical web service.</summary>
+public sealed record WebServiceSpec(
     ImageInfo Image,
-    int Replicas,
     WebServiceConfig Config,
     AutoscalingSpec? Autoscaling,
-    ProbeSpec Probes
-);
-
-public record AutoscalingSpec(
-    int MinReplicas,
-    int MaxReplicas,
-    AutoscalingMetric Metric
-);
-
-public record AutoscalingMetric(
-    string Type,
-    int TargetAverageUtilization
-);
-
-public record WebServiceConfig( 
-    ImmutableDictionary<string, string> EnvironmentVariables,
-    ImmutableList<PortMapping> PortMappings
-);
+    ProbeSpec Probes);
 
 /// <summary>
-/// 
+/// Logical exposure policy, deliberately not a concrete hostname. Deployment hostname ownership
+/// and concrete FQDNs are held by Domains/ResourceDeployments.
 /// </summary>
-/// <param name="ServicePort">Service Port</param>
-/// <param name="TargetPort">Container Port</param>
-/// <param name="Protocol">TCP, UDP, </param>
-public record PortMapping(
-    int ServicePort,
-    string TargetPort,
-    string Protocol,
-    string Name
-);
+public sealed record WebServiceExposure(string GeneratedHostnameLabelPrefix)
+{
+    public const string DefaultGeneratedHostnameLabelPrefix = "webservice";
 
-public record ImageInfo(
-    string Server,
-    string Name,
-    string Tag = "latest",
-    string? SecretName = null
-)
+    public static WebServiceExposure Create(string? generatedHostnameLabelPrefix = null) =>
+        new(string.IsNullOrWhiteSpace(generatedHostnameLabelPrefix)
+            ? DefaultGeneratedHostnameLabelPrefix
+            : generatedHostnameLabelPrefix.Trim().ToLowerInvariant());
+}
+
+public sealed record AutoscalingSpec(int MinReplicas, int MaxReplicas, AutoscalingMetric Metric);
+public sealed record AutoscalingMetric(string Type, int TargetAverageUtilization);
+public sealed record WebServiceConfig(
+    ImmutableDictionary<string, string> EnvironmentVariables,
+    ImmutableList<PortMapping> PortMappings);
+public sealed record PortMapping(int ServicePort, string TargetPort, string Protocol, string Name);
+public sealed record ImageInfo(string Server, string Name, string Tag = "latest", string? SecretName = null)
 {
     public string FullImageName => $"{Server}/{Name}:{Tag}";
 }
 
 public static class WebServiceFactory
 {
-    public sealed record CreateWebServiceOptions(
+    public sealed record CreateOptions(
         string Id,
-        int ActiveRevision,
+        long ActiveRevision,
         ImmutableHashSet<string> Tags,
         ImmutableList<ServiceEvent> Events,
         long Revision,
-        WebServiceLifecycle Lifecycle
-    );
-    
-    public static CreateWebServiceOptions DefaultOptions =>
-        new CreateWebServiceOptions(
-            Id: ObjectId.GenerateNewId().ToString(),
-            ActiveRevision: 1,
-            Tags: ImmutableHashSet<string>.Empty,
-            Events: ImmutableList<ServiceEvent>.Empty,
-            Revision: 1,
-            Lifecycle: new ActiveWebServiceLifecycle()
-        );
-    
+        WebServiceLifecycle Lifecycle);
+
+    public static CreateOptions DefaultOptions => new(
+        ObjectId.GenerateNewId().ToString(), 1, ImmutableHashSet<string>.Empty,
+        ImmutableList<ServiceEvent>.Empty, 1, new ActiveWebServiceLifecycle());
+
     public static WebService Create(
         string name,
         string tenantId,
         string resourceGroupId,
+        string isolationScopeId,
         WebServiceSpec spec,
-        DnsRecordShortInfo dnsRecord,
-        CreateWebServiceOptions options) =>
-        new(
-            options.Id,
-            TenantId: tenantId,
-            Name: name,
-            ResourceGroupId: resourceGroupId,
-            Spec: spec,
-            DnsRecord: dnsRecord,
-            ActiveRevision: options.ActiveRevision,
-            Tags: options.Tags,
-            Events: options.Events,
-            Revision: options.Revision,
-            Lifecycle: options.Lifecycle
-        );
+        WebServiceExposure exposure,
+        CreateOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+        ArgumentNullException.ThrowIfNull(exposure);
+        ArgumentNullException.ThrowIfNull(options);
+        return new WebService(
+            RequiredObjectId(options.Id, nameof(options.Id)),
+            RequiredObjectId(tenantId, nameof(tenantId)),
+            Required(name, nameof(name), 30),
+            RequiredObjectId(resourceGroupId, nameof(resourceGroupId)),
+            RequiredObjectId(isolationScopeId, nameof(isolationScopeId)),
+            spec,
+            WebServiceExposure.Create(exposure.GeneratedHostnameLabelPrefix),
+            Positive(options.ActiveRevision, nameof(options.ActiveRevision)),
+            NormalizeTags(options.Tags),
+            options.Events ?? ImmutableList<ServiceEvent>.Empty,
+            Positive(options.Revision, nameof(options.Revision)),
+            options.Lifecycle ?? throw new ArgumentNullException(nameof(options.Lifecycle)));
+    }
+
+    internal static ImmutableHashSet<string> NormalizeTags(IEnumerable<string> tags) =>
+        tags.Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .Select(tag => tag.Trim())
+            .ToImmutableHashSet(StringComparer.Ordinal);
+
+    internal static DateTime Utc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Utc => value,
+        DateTimeKind.Local => value.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+    };
+
+    private static string RequiredObjectId(string value, string name)
+    {
+        if (!ObjectId.TryParse(value, out _))
+            throw new ArgumentException("A MongoDB ObjectId is required.", name);
+        return value.Trim();
+    }
+
+    private static string Required(string? value, string name, int maximumLength)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Trim().Length > maximumLength)
+            throw new ArgumentException("A required value is invalid.", name);
+        return value.Trim();
+    }
+
+    private static long Positive(long value, string name) =>
+        value > 0 ? value : throw new ArgumentOutOfRangeException(name);
 }

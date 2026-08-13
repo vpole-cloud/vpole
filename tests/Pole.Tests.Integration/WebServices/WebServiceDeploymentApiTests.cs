@@ -7,6 +7,7 @@ using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Domains.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Domain;
@@ -38,12 +39,23 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         {
             name = "empty-environment",
             resourceGroupId = resourceGroup.Id,
-            domainName = "empty-environment.example.test",
             tags = Array.Empty<string>(),
+            placement = new
+            {
+                isolationScopeId = (string?)null,
+                targets = new[]
+                {
+                    new
+                    {
+                        deploymentTargetId = TestData.DefaultDeploymentTargetId,
+                        fixedReplicas = 2,
+                        computeProfileId = (string?)null
+                    }
+                }
+            },
             spec = new
             {
                 image = spec.Image,
-                spec.Replicas,
                 config = new
                 {
                     environmentVariables = new Dictionary<string, string>(),
@@ -64,7 +76,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             .Find(service => service.Id == created.WebServiceId)
             .SingleAsync();
         var release = await Fixture.Database.WebServiceReleases()
-            .Find(item => item.WebServiceId == created.WebServiceId && item.Revision == 1)
+            .Find(item => item.WebServiceId == created.WebServiceId && item.ResourceRevision == 1)
             .SingleAsync();
 
         Assert.NotNull(webService.Spec.Config.EnvironmentVariables);
@@ -79,7 +91,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         var webService = await InsertWebServiceAsync();
         await SetCurrentUserRoleAsync(TenantRole.Viewer);
 
-        var historyResponse = await Client.GetAsync($"/api/v1/web-services/{webService.Id}/deployments");
+        var historyResponse = await Client.GetAsync($"/api/v1/web-services/{webService.Id}/releases");
         var redeployResponse = await Client.PostAsync($"/api/v1/web-services/{webService.Id}/redeploy", null);
         var rollbackResponse = await Client.PostAsJsonAsync(
             $"/api/v1/web-services/{webService.Id}/rollback",
@@ -107,7 +119,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(2, saved.ActiveRevision);
 
         var release = await Fixture.Database.WebServiceReleases()
-            .Find(r => r.WebServiceId == webService.Id && r.Revision == 2)
+            .Find(r => r.WebServiceId == webService.Id && r.ResourceRevision == 2)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseAction.Redeploy, release.Action);
         Assert.Equal(TestData.UserId, release.ActorUserId);
@@ -158,7 +170,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             await updateResponse.Content.ReadAsStringAsync());
         var response = await updateResponse.Content.ReadFromJsonAsync<UpdateImageTagResponse>(JsonOptions);
         Assert.NotNull(response);
-        Assert.Equal(2, response.Revision);
+        Assert.Equal(2, response.ResourceRevision);
         Assert.Equal("2026.07.09-abc1234", response.Tag);
 
         var saved = await Fixture.Database.WebServices()
@@ -168,7 +180,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal("2026.07.09-abc1234", saved.Spec.Image.Tag);
 
         var release = await Fixture.Database.WebServiceReleases()
-            .Find(r => r.WebServiceId == webService.Id && r.Revision == 2)
+            .Find(r => r.WebServiceId == webService.Id && r.ResourceRevision == 2)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseAction.ImageTagUpdate, release.Action);
         Assert.Equal(WebServiceReleaseOutcome.Pending, release.Outcome);
@@ -261,6 +273,65 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(HttpStatusCode.Unauthorized, updateResponse.StatusCode);
     }
 
+    [Fact]
+    public async Task DeploymentHostnameRoutes_AddListAndDeleteOnlyCustomBinding()
+    {
+        var resourceGroupResponse = await Client.PostAsJsonAsync(
+            "/api/v1/resource-groups/",
+            TestData.CreateResourceGroupRequest("hostname-api").Body);
+        var resourceGroup = await resourceGroupResponse.Content
+            .ReadFromJsonAsync<ResourceGroupCreatedResponse>(JsonOptions);
+        Assert.NotNull(resourceGroup);
+        var createResponse = await Client.PostAsJsonAsync(
+            "/api/v1/web-services/",
+            TestData.CreateWebServiceRequest(resourceGroup.Id, "hostname-api").Body);
+        Assert.Equal(HttpStatusCode.Accepted, createResponse.StatusCode);
+        var created = await createResponse.Content
+            .ReadFromJsonAsync<CreateWebServiceResponse>(JsonOptions);
+        Assert.NotNull(created);
+        var deployment = Assert.Single(created.Deployments);
+
+        var generatedResponse = await Client.GetAsync(
+            $"/api/v1/web-services/{created.WebServiceId}/deployments/{deployment.DeploymentId}/hostnames");
+        Assert.Equal(HttpStatusCode.OK, generatedResponse.StatusCode);
+        var generated = Assert.Single((await generatedResponse.Content
+            .ReadFromJsonAsync<List<HostnameBindingSnapshot>>(JsonOptions))!);
+        Assert.Equal(HostnameBindingKinds.Generated, generated.Kind);
+
+        var zoneResponse = await Client.PostAsJsonAsync(
+            "/api/v1/domain-zones/",
+            new { deploymentTargetId = deployment.DeploymentTargetId, label = "company" });
+        Assert.Equal(HttpStatusCode.Created, zoneResponse.StatusCode);
+        var zone = await zoneResponse.Content
+            .ReadFromJsonAsync<TenantDomainZoneSnapshot>(JsonOptions);
+        Assert.NotNull(zone);
+        var addResponse = await Client.PostAsJsonAsync(
+            $"/api/v1/web-services/{created.WebServiceId}/deployments/{deployment.DeploymentId}/hostnames",
+            new { tenantDomainZoneId = zone.Id, relativeName = "api" });
+        Assert.Equal(HttpStatusCode.Accepted, addResponse.StatusCode);
+
+        var listResponse = await Client.GetAsync(
+            $"/api/v1/web-services/{created.WebServiceId}/deployments/{deployment.DeploymentId}/hostnames");
+        var bindings = (await listResponse.Content
+            .ReadFromJsonAsync<List<HostnameBindingSnapshot>>(JsonOptions))!;
+        Assert.Equal(2, bindings.Count);
+        var custom = Assert.Single(bindings, binding =>
+            binding.Kind == HostnameBindingKinds.Custom);
+        Assert.Equal("api.company.apps.test.local", custom.Hostname);
+
+        var generatedDelete = await Client.DeleteAsync(
+            $"/api/v1/web-services/{created.WebServiceId}/deployments/{deployment.DeploymentId}/hostnames/{generated.Id}");
+        Assert.Equal(HttpStatusCode.Conflict, generatedDelete.StatusCode);
+        var customDelete = await Client.DeleteAsync(
+            $"/api/v1/web-services/{created.WebServiceId}/deployments/{deployment.DeploymentId}/hostnames/{custom.Id}");
+        Assert.Equal(HttpStatusCode.Accepted, customDelete.StatusCode);
+        var finalBindings = await Client.GetFromJsonAsync<List<HostnameBindingSnapshot>>(
+            $"/api/v1/web-services/{created.WebServiceId}/deployments/{deployment.DeploymentId}/hostnames",
+            JsonOptions);
+        Assert.Single(finalBindings!);
+        Assert.Equal(HostnameBindingKinds.Generated, finalBindings![0].Kind);
+    }
+
     private async Task<WebService> InsertWebServiceAsync()
     {
         var resourceGroupId = ObjectId.GenerateNewId().ToString();
@@ -339,7 +410,13 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
 
     private sealed record UpdateImageTagResponse(
         string Id,
-        int Revision,
+        long ResourceRevision,
         string ReleaseId,
         string Tag);
+
+    private sealed record ResourceGroupCreatedResponse(
+        string Id,
+        string Name,
+        string Description,
+        IReadOnlyCollection<string> Tags);
 }

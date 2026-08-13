@@ -17,6 +17,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Tenants.Contracts\Tenants.Contracts.csproj" />
       <ProjectReference Include="..\Tenants.Domain\Tenants.Domain.csproj" />
       <ProjectReference Include="..\..\Users\Users.Events\Users.Events.csproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
@@ -27,4 +28,3 @@
     </ItemGroup>
 
 </Project>
-

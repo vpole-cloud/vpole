@@ -10,6 +10,11 @@ internal sealed class TestDeploymentTargetLookup :
     IDeploymentTargetWorkloadConfigurationFence
 {
     private int _rejectNewWorkloads;
+    private readonly Dictionary<string, DeploymentTargetLookupDto> _targets =
+        new(StringComparer.Ordinal)
+        {
+            [Target.Id] = Target
+        };
 
     private static readonly DeploymentTargetLookupDto Target = new(
         TestData.DefaultDeploymentTargetId,
@@ -21,7 +26,8 @@ internal sealed class TestDeploymentTargetLookup :
             Revision: 1,
             new DeploymentTargetIngressConfigurationLookupDto(
                 "traefik",
-                "letsencrypt-prod")),
+                "letsencrypt-prod",
+                "apps.test.local")),
         Revision: 1,
         Enabled: true,
         AcceptsWorkloads: true,
@@ -34,10 +40,30 @@ internal sealed class TestDeploymentTargetLookup :
         set => Volatile.Write(ref _rejectNewWorkloads, value ? 1 : 0);
     }
 
+    public void AddEligibleTarget(string id, string publicBaseDomain)
+    {
+        _targets[id] = Target with
+        {
+            Id = id,
+            DisplayName = $"Integration target {id}",
+            ClusterIdentity = $"test:kubernetes:{id}",
+            WorkloadConfiguration = Target.WorkloadConfiguration with
+            {
+                Ingress = Target.WorkloadConfiguration.Ingress! with
+                {
+                    PublicBaseDomain = publicBaseDomain
+                }
+            }
+        };
+    }
+
     public Task<Result<DeploymentTargetLookupDto>> GetAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default) =>
-        Task.FromResult<Result<DeploymentTargetLookupDto>>(Target);
+        Task.FromResult(_targets.TryGetValue(deploymentTargetId, out var target)
+            ? Result.Success(target)
+            : (Result<DeploymentTargetLookupDto>)Failures.NotFound(
+                "Deployment target not found.", deploymentTargetId));
 
     public Task<Result<DeploymentTargetLookupDto>> GetDefaultAsync(
         CancellationToken cancellationToken = default) =>
@@ -49,7 +75,12 @@ internal sealed class TestDeploymentTargetLookup :
         RejectNewWorkloads
             ? Task.FromResult<Result<DeploymentTargetLookupDto>>(
                 Failures.Conflict("The deployment target is not accepting new workloads."))
-            : Task.FromResult<Result<DeploymentTargetLookupDto>>(Target);
+            : deploymentTargetId is null
+                ? _targets.Count == 1
+                    ? Task.FromResult<Result<DeploymentTargetLookupDto>>(_targets.Values.Single())
+                    : Task.FromResult<Result<DeploymentTargetLookupDto>>(
+                        Failures.Conflict("A deployment target must be selected."))
+                : GetAsync(deploymentTargetId, cancellationToken);
 
     public Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>>
         ListEligibleForNewWorkloadAsync(
@@ -57,7 +88,39 @@ internal sealed class TestDeploymentTargetLookup :
         Task.FromResult<Result<IReadOnlyList<DeploymentTargetLookupDto>>>(
             RejectNewWorkloads
                 ? Array.Empty<DeploymentTargetLookupDto>()
-                : [Target]);
+                : _targets.Values.OrderBy(target => target.Id, StringComparer.Ordinal).ToArray());
+
+    public Task<Result<DeploymentTargetPublicIngressDto>>
+        ResolvePublicIngressForNewWorkloadAsync(
+            DeploymentTargetAdmissionRequest request,
+            CancellationToken cancellationToken = default) =>
+        RejectNewWorkloads
+            ? Task.FromResult<Result<DeploymentTargetPublicIngressDto>>(
+                Failures.Conflict("The deployment target is not accepting new workloads."))
+            : !_targets.TryGetValue(request.ExplicitDeploymentTargetId ?? string.Empty, out var target)
+                ? Task.FromResult<Result<DeploymentTargetPublicIngressDto>>(
+                    Failures.NotFound("Deployment target not found.", request.ExplicitDeploymentTargetId))
+                : Task.FromResult<Result<DeploymentTargetPublicIngressDto>>(
+                new DeploymentTargetPublicIngressDto(
+                    target.Id,
+                    target.WorkloadConfiguration.Revision,
+                    target.WorkloadConfiguration.Ingress!.IngressClassName,
+                    target.WorkloadConfiguration.Ingress.ClusterIssuerName,
+                    target.WorkloadConfiguration.Ingress.PublicBaseDomain!));
+
+    public Task<Result<DeploymentTargetPublicIngressDto>>
+        ResolvePublicIngressForDomainReservationAsync(
+            string tenantId,
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+        ResolvePublicIngressForNewWorkloadAsync(
+            new DeploymentTargetAdmissionRequest(
+                tenantId,
+                Pole.Workloads.ResourceTypeId.Create("pole/test-only"),
+                IsolationScopeId: null,
+                deploymentTargetId,
+                DeploymentTargetRequiredCapabilities.PublicIngress),
+            cancellationToken);
 
     public Task<Result> RegisterAsync(
         string deploymentTargetId,
@@ -85,15 +148,33 @@ internal sealed class TestDeploymentTargetLookup :
         string deploymentTargetId,
         long expectedWorkloadConfigurationRevision,
         IClientSessionHandle session,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult<Result>(
-            string.Equals(
-                deploymentTargetId,
-                Target.Id,
-                StringComparison.Ordinal) &&
-            expectedWorkloadConfigurationRevision ==
-            Target.WorkloadConfiguration.Revision
-                ? Result.Success()
-                : Failures.Conflict(
-                    "The test deployment target workload configuration changed."));
+        CancellationToken cancellationToken = default)
+    {
+        var accepted = _targets.TryGetValue(deploymentTargetId, out var target) &&
+                       expectedWorkloadConfigurationRevision ==
+                       target.WorkloadConfiguration.Revision;
+        return Task.FromResult<Result>(accepted
+            ? Result.Success()
+            : Failures.Conflict(
+                "The test deployment target workload configuration changed."));
+    }
+
+    public async Task<Result> FenceManyAsync(
+        IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default)
+    {
+        foreach (var request in requests)
+        {
+            var result = await FenceAsync(
+                request.DeploymentTargetId,
+                request.ExpectedWorkloadConfigurationRevision,
+                session,
+                cancellationToken);
+            if (result is not ISuccess)
+                return result;
+        }
+
+        return Result.Success();
+    }
 }

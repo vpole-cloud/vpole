@@ -8,7 +8,8 @@ public sealed record DeploymentTargetWorkloadConfigurationRequestBody(
 
 public sealed record DeploymentTargetIngressConfigurationRequestBody(
     string IngressClassName,
-    string ClusterIssuerName);
+    string ClusterIssuerName,
+    string? PublicBaseDomain = null);
 
 public sealed class DeploymentTargetWorkloadConfigurationRequestBodyValidator
     : AbstractValidator<DeploymentTargetWorkloadConfigurationRequestBody>
@@ -39,6 +40,9 @@ public sealed class DeploymentTargetIngressConfigurationRequestBodyValidator
             .MaximumLength(DeploymentTargetIngressConfiguration.MaximumNameLength)
             .Must(DeploymentTargetIngressConfiguration.IsValidKubernetesResourceName)
             .WithMessage("Cluster issuer name must be a valid Kubernetes resource name.");
+        RuleFor(body => body.PublicBaseDomain)
+            .Must(value => value is null || DeploymentTargetIngressConfiguration.IsValidPublicBaseDomain(value))
+            .WithMessage("Public base domain must be a valid ASCII DNS name.");
     }
 }
 
@@ -52,5 +56,6 @@ internal static class DeploymentTargetWorkloadConfigurationRequestBodyExtensions
         this DeploymentTargetIngressConfigurationRequestBody body) =>
         DeploymentTargetIngressConfiguration.Create(
             body.IngressClassName,
-            body.ClusterIssuerName);
+            body.ClusterIssuerName,
+            body.PublicBaseDomain);
 }

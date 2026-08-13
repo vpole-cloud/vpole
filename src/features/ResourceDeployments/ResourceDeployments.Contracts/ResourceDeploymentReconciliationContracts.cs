@@ -18,6 +18,8 @@ public sealed record ResourceDeploymentReconciliationSnapshot(
     string ResourceGroupId,
     string IsolationScopeId,
     string RuntimeCellId,
+    long ResourceRevision,
+    int FixedReplicas,
     long DesiredGeneration,
     DateTime UpdatedAtUtc,
     ResourceDeploymentResolvedPlacementSnapshot Placement);

@@ -17,15 +17,13 @@ using Pole.Features.ContainerRegistries.Application.Harbor;
 using Pole.Features.ContainerRegistries.Application.Provisioning;
 using Pole.Features.ContainerRegistries.Application.Security;
 using Pole.Features.ContainerRegistries.Contracts;
-using Pole.Features.DnsRecords.Application.Common;
-using Pole.Features.DnsRecords.Contracts;
-using Pole.Features.DnsRecords.Application.Filters;
 using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Security;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.GitProviders.Application.Analysis;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
@@ -249,6 +247,9 @@ public static class DependencyInjection
                 provider.GetRequiredService<DeploymentTargetConnectionService>());
             services.TryAddSingleton<IDeploymentTargetProbe, DeploymentTargetProbe>();
             services.TryAddScoped<DeploymentTargetValidationService>();
+            // Stateless admission depends only on the singleton Mongo context and is also used by
+            // the singleton startup bootstrapper.
+            services.TryAddSingleton<DeploymentTargetDomainAdmission>();
             services.TryAddSingleton<KubernetesClientProvider>();
             services.TryAddSingleton<IKubernetesClientProvider>(provider =>
                 provider.GetRequiredService<KubernetesClientProvider>());
@@ -276,7 +277,6 @@ public static class DependencyInjection
                     cfg.Host(configuration.GetConnectionString("pole-rabbitmq"));
                     cfg.UsePublishFilter(typeof(TraceContextPublishFilter<>), context);
                     cfg.UseConsumeFilter(typeof(TraceContextConsumeFilter<>), context);
-                    cfg.UseConsumeFilter(typeof(DeleteDnsRecordFilter<>), context);
                     cfg.ConfigureEndpoints(context);
                 });
                 configurator.AddConsumers(assemblies);
@@ -330,7 +330,6 @@ public static class DependencyInjection
             services.TryAddSingleton<IPostgresDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IQuotaDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IResourceGroupDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddSingleton<IDnsRecordDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ITenantDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IUserDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IStorageProfileDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
@@ -340,8 +339,11 @@ public static class DependencyInjection
             services.TryAddSingleton<ISourceBuildDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IFunctionAppDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.AddHttpContextAccessor();
-            services.TryAddScoped<IDomainNameReservationService, DomainNameReservationService>();
-            services.TryAddScoped<IResourceGroupLookup, ResourceGroupLookup>();
+            services.TryAddScoped<ResourceGroupLookup>();
+            services.TryAddScoped<IResourceGroupLookup>(provider =>
+                provider.GetRequiredService<ResourceGroupLookup>());
+            services.TryAddScoped<IResourceGroupOwnershipLookup>(provider =>
+                provider.GetRequiredService<ResourceGroupLookup>());
             services.TryAddScoped<IResourcePlacementService, ResourcePlacementService>();
             services.TryAddScoped<IResourcePlacementLookup, ResourcePlacementLookup>();
             services.TryAddScoped<ResourceDeploymentReconciler>();

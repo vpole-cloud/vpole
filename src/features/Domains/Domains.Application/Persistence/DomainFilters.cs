@@ -1,0 +1,143 @@
+using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.Domains.Contracts;
+using Pole.Features.Domains.Domain;
+using Pole.Workloads;
+
+namespace Pole.Features.Domains.Application.Persistence;
+
+internal static class DomainFilters
+{
+    public static FilterDefinition<TenantDomainZone> ZoneForTenant(string tenantId) =>
+        Builders<TenantDomainZone>.Filter.ForTenant(tenantId);
+
+    public static FilterDefinition<TenantDomainZone> ZoneById(
+        string tenantId,
+        string zoneId) =>
+        Builders<TenantDomainZone>.Filter.And(
+            ZoneForTenant(tenantId),
+            Builders<TenantDomainZone>.Filter.Eq(zone => zone.Id, zoneId));
+
+    public static FilterDefinition<TenantDomainZone> ZonesForTenant(
+        string tenantId,
+        string? deploymentTargetId) =>
+        string.IsNullOrWhiteSpace(deploymentTargetId)
+            ? ZoneForTenant(tenantId)
+            : Builders<TenantDomainZone>.Filter.And(
+                ZoneForTenant(tenantId),
+                Builders<TenantDomainZone>.Filter.Eq(
+                    zone => zone.DeploymentTargetId,
+                    deploymentTargetId));
+
+    public static FilterDefinition<TenantDomainZone> ZonesById(
+        string tenantId,
+        IReadOnlyCollection<string> zoneIds) =>
+        Builders<TenantDomainZone>.Filter.And(
+            ZoneForTenant(tenantId),
+            Builders<TenantDomainZone>.Filter.In(zone => zone.Id, zoneIds));
+
+    public static FilterDefinition<TenantDomainZone> GeneratedZonesForTargets(
+        string tenantId,
+        IReadOnlyCollection<string> deploymentTargetIds) =>
+        Builders<TenantDomainZone>.Filter.And(
+            ZoneForTenant(tenantId),
+            Builders<TenantDomainZone>.Filter.In(
+                zone => zone.DeploymentTargetId,
+                deploymentTargetIds),
+            Builders<TenantDomainZone>.Filter.Eq(
+                zone => zone.Kind,
+                TenantDomainZoneKind.Generated));
+
+    public static FilterDefinition<TenantDomainZone> AtRevision(
+        TenantDomainZone zone) =>
+        Builders<TenantDomainZone>.Filter.And(
+            Builders<TenantDomainZone>.Filter.Eq(item => item.Id, zone.Id),
+            Builders<TenantDomainZone>.Filter.Eq(
+                item => item.Revision,
+                zone.Revision));
+
+    public static FilterDefinition<TenantDomainZone> ZoneAtRevision(
+        string tenantId,
+        TenantDomainZone zone) =>
+        Builders<TenantDomainZone>.Filter.And(
+            ZoneById(tenantId, zone.Id),
+            AtRevision(zone));
+
+    public static FilterDefinition<TenantDomainZone> AtRevisions(
+        IReadOnlyCollection<TenantDomainZone> zones) =>
+        Builders<TenantDomainZone>.Filter.Or(zones.Select(AtRevision));
+
+    public static FilterDefinition<TenantDomainZone> GeneratedAtRevisions(
+        IReadOnlyCollection<TenantDomainZone> zones) =>
+        Builders<TenantDomainZone>.Filter.Or(zones.Select(zone =>
+            Builders<TenantDomainZone>.Filter.And(
+                AtRevision(zone),
+                Builders<TenantDomainZone>.Filter.Eq(
+                    item => item.Kind,
+                    TenantDomainZoneKind.Generated))));
+
+    public static FilterDefinition<HostnameBinding> BindingForDeployment(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId,
+        string resourceDeploymentId) =>
+        Builders<HostnameBinding>.Filter.And(
+            Builders<HostnameBinding>.Filter.ForTenant(tenantId),
+            Builders<HostnameBinding>.Filter.Eq(item => item.ResourceType, resourceType.Value),
+            Builders<HostnameBinding>.Filter.Eq(item => item.ResourceId, resourceId),
+            Builders<HostnameBinding>.Filter.Eq(item => item.ResourceDeploymentId, resourceDeploymentId));
+
+    public static FilterDefinition<HostnameBinding> BindingById(
+        DeleteCustomHostnameBindingRequest request) =>
+        Builders<HostnameBinding>.Filter.And(
+            BindingForDeployment(
+                request.TenantId,
+                request.ResourceType,
+                request.ResourceId,
+                request.ResourceDeploymentId),
+            Builders<HostnameBinding>.Filter.Eq(
+                binding => binding.Id,
+                request.BindingId));
+
+    public static FilterDefinition<HostnameBinding> BindingsForResource(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId) =>
+        Builders<HostnameBinding>.Filter.And(
+            Builders<HostnameBinding>.Filter.ForTenant(tenantId),
+            Builders<HostnameBinding>.Filter.Eq(
+                binding => binding.ResourceType,
+                resourceType.Value),
+            Builders<HostnameBinding>.Filter.Eq(
+                binding => binding.ResourceId,
+                resourceId));
+
+    public static FilterDefinition<HostnameBinding> BindingsForZones(
+        IReadOnlyCollection<string> zoneIds) =>
+        Builders<HostnameBinding>.Filter.In(
+            binding => binding.TenantDomainZoneId,
+            zoneIds);
+
+    public static FilterDefinition<HostnameBinding> BindingsForZone(string zoneId) =>
+        Builders<HostnameBinding>.Filter.Eq(
+            binding => binding.TenantDomainZoneId,
+            zoneId);
+
+    public static FilterDefinition<HostnameBinding> GeneratedBindingConflicts(
+        string tenantId,
+        IReadOnlyCollection<string> hostnames,
+        IReadOnlyCollection<string> deploymentIds) =>
+        Builders<HostnameBinding>.Filter.And(
+            Builders<HostnameBinding>.Filter.ForTenant(tenantId),
+            Builders<HostnameBinding>.Filter.Or(
+                Builders<HostnameBinding>.Filter.In(
+                    binding => binding.Hostname,
+                    hostnames),
+                Builders<HostnameBinding>.Filter.And(
+                    Builders<HostnameBinding>.Filter.In(
+                        binding => binding.ResourceDeploymentId,
+                        deploymentIds),
+                    Builders<HostnameBinding>.Filter.Eq(
+                        binding => binding.Kind,
+                        HostnameBindingKind.Generated))));
+}

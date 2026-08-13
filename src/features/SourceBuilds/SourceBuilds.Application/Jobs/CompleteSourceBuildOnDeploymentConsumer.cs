@@ -19,6 +19,9 @@ public sealed class CompleteSourceBuildOnDeploymentConsumer(
         WebServiceDeploymentCompletedEvent deployment,
         CancellationToken cancellationToken = default)
     {
+        if (!deployment.ReleaseTerminal)
+            return;
+
         var filter = Builders<SourceBuildJob>.Filter.And(
             Builders<SourceBuildJob>.Filter.Eq(item => item.TenantId, deployment.EventCore.TenantId),
             Builders<SourceBuildJob>.Filter.Eq(
@@ -33,7 +36,10 @@ public sealed class CompleteSourceBuildOnDeploymentConsumer(
             return;
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        var terminal = deployment.Succeeded
+        var terminal = string.Equals(
+            deployment.ReleaseOutcome,
+            "Succeeded",
+            StringComparison.Ordinal)
             ? job.Succeed(now)
             : job.Fail(
                 SourceBuildPhase.Deploying,

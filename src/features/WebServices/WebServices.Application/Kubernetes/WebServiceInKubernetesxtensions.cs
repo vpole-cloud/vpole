@@ -12,12 +12,14 @@ public static class WebServiceInKubernetesxtensions
         public WebServiceInKubernetes ToKubernetes(
             string kubernetesNamespace,
             ResourceDeploymentIngressConfiguration ingressConfiguration,
-            ResourceDeploymentComputeConfiguration computeConfiguration) =>
+            ResourceDeploymentComputeConfiguration computeConfiguration,
+            int fixedReplicas) =>
             WebServiceInKubernetes.Create(
                 webService,
                 kubernetesNamespace,
                 ingressConfiguration,
-                computeConfiguration);
+                computeConfiguration,
+                fixedReplicas);
     }
     extension(ProbeConfig probeConfig)
     {

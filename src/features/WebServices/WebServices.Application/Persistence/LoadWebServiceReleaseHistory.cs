@@ -42,7 +42,7 @@ internal sealed class MongoLoadWebServiceReleaseHistory(
             filter,
             cancellationToken: cancellationToken);
         var items = await releases.Find(filter)
-            .SortByDescending(item => item.Revision)
+            .SortByDescending(item => item.ResourceRevision)
             .Skip(query.Skip)
             .Limit(query.PageSize)
             .ToListAsync(cancellationToken);

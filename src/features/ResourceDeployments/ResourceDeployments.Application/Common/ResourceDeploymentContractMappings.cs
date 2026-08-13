@@ -47,7 +47,9 @@ internal static class ResourceDeploymentContractMappings
             ? null
             : ResolvedIngressConfiguration.Create(
                 ingress.IngressClassName,
-                ingress.ClusterIssuerName);
+                ingress.ClusterIssuerName,
+                ingress.PublicBaseDomain,
+                ingress.Hostnames);
 
     public static ResolvedStorageConfiguration? ToDomain(
         this ResourceDeploymentStorageConfiguration? storage) =>
@@ -71,6 +73,8 @@ internal static class ResourceDeploymentContractMappings
             deployment.ResourceGroupId,
             deployment.IsolationScopeId,
             deployment.RuntimeCellId,
+            deployment.ResourceRevision,
+            deployment.FixedReplicas,
             deployment.DesiredGeneration,
             deployment.UpdatedAtUtc,
             new ResourceDeploymentResolvedPlacementSnapshot(
@@ -80,7 +84,9 @@ internal static class ResourceDeploymentContractMappings
                     ? null
                     : new ResourceDeploymentIngressConfiguration(
                         deployment.ResolvedPlacement.Ingress.IngressClassName,
-                        deployment.ResolvedPlacement.Ingress.ClusterIssuerName),
+                        deployment.ResolvedPlacement.Ingress.ClusterIssuerName,
+                        deployment.ResolvedPlacement.Ingress.PublicBaseDomain,
+                        deployment.ResolvedPlacement.Ingress.Hostnames),
                 deployment.ResolvedPlacement.Storage is null
                     ? null
                     : new ResourceDeploymentStorageConfiguration(

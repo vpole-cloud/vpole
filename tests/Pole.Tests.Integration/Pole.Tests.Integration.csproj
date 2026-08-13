@@ -30,6 +30,9 @@
         <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Application\ComputeProfiles.Application.csproj" />
         <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj" />
         <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Domain\ComputeProfiles.Domain.csproj" />
+        <ProjectReference Include="..\..\src\features\Domains\Domains.Application\Domains.Application.csproj" />
+        <ProjectReference Include="..\..\src\features\Domains\Domains.Contracts\Domains.Contracts.csproj" />
+        <ProjectReference Include="..\..\src\features\Domains\Domains.Domain\Domains.Domain.csproj" />
         <ProjectReference Include="..\..\src\features\Quotas\Quotas.Application\Quotas.Application.csproj" />
         <ProjectReference Include="..\..\src\features\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
         <ProjectReference Include="..\..\src\features\Quotas\Quotas.Domain\Quotas.Domain.csproj" />
@@ -40,6 +43,7 @@
         <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />
         <ProjectReference Include="..\..\src\features\SourceBuilds\SourceBuilds.Application\SourceBuilds.Application.csproj" />
         <ProjectReference Include="..\..\src\shared\Encryption\Encryption.csproj" />
+        <ProjectReference Include="..\..\src\shared\Dns\Dns.csproj" />
         <ProjectReference Include="..\..\src\shared\Observability\Observability.csproj" />
     </ItemGroup>
 

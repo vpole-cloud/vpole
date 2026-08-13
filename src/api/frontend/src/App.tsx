@@ -9,6 +9,7 @@ import { SideNav } from './components/SideNav'
 import { StorageSettingsPage } from './components/StorageSettingsPage'
 import { TopBandPlaceholder } from './components/TopBandPlaceholder'
 import { WebServicesPage } from './components/WebServicesPage'
+import { DomainZonesPage } from './components/DomainZonesPage'
 import { useOverviewData } from './hooks/useOverviewData'
 import { useGitIntegrationsManager } from './hooks/useGitIntegrationsManager'
 import { useResourceGroupsManager } from './hooks/useResourceGroupsManager'
@@ -16,6 +17,7 @@ import { useStorageSettingsManager } from './hooks/useStorageSettingsManager'
 import { useSourceBuildsManager } from './hooks/useSourceBuildsManager'
 import { useTenants } from './hooks/useTenants'
 import { useWebServicesManager } from './hooks/useWebServicesManager'
+import { useDomainZonesManager } from './hooks/useDomainZonesManager'
 import {
   clearTransientIntegrationParams,
   readIntegrationNavigation,
@@ -87,6 +89,15 @@ function App() {
     token,
     tenantId: tenants.activeTenantId,
     enabled: initialized && currentView === 'web-services' && tenantReady,
+  })
+  const domainZones = useDomainZonesManager({
+    apiBaseUrl,
+    token,
+    tenantId: tenants.activeTenantId,
+    enabled:
+      initialized &&
+      tenantReady &&
+      (currentView === 'domains' || currentView === 'web-services'),
   })
   const storageSettings = useStorageSettingsManager({
     apiBaseUrl,
@@ -213,6 +224,36 @@ function App() {
           selectedId={selectedWebServiceId}
           onSelect={setSelectedWebServiceId}
           sourceBuilds={sourceBuilds}
+          canManage={canManageTenantResources}
+          availableTargets={webServices.availableTargets}
+          targetsStatus={webServices.targetsStatus}
+          targetsError={webServices.targetsError}
+          computeProfilesByTarget={webServices.computeProfilesByTarget}
+          zones={domainZones.items}
+          onLoadTargets={webServices.loadAvailableTargets}
+          onLoadComputeProfiles={webServices.loadComputeProfiles}
+          onLoadHostnameBindings={webServices.loadHostnameBindings}
+          onLoadReleases={webServices.loadReleases}
+          hostnameBindingsByDeployment={webServices.hostnameBindingsByDeployment}
+          releasesByWebService={webServices.releasesByWebService}
+          onAddDeployment={webServices.addDeployment}
+          onUpdateDeployment={webServices.updateDeployment}
+          onRemoveDeployment={webServices.removeDeployment}
+          onRetryDeployment={webServices.retryDeployment}
+          onAddHostname={webServices.addHostname}
+          onRemoveHostname={webServices.removeHostname}
+        />
+      ) : currentView === 'domains' ? (
+        <DomainZonesPage
+          items={domainZones.items}
+          targets={domainZones.targets}
+          status={domainZones.status}
+          error={domainZones.error}
+          submitStatus={domainZones.submitStatus}
+          submitError={domainZones.submitError}
+          onRefresh={domainZones.refresh}
+          onCreate={domainZones.create}
+          onDelete={domainZones.remove}
           canManage={canManageTenantResources}
         />
       ) : currentView === 'integrations' ? (

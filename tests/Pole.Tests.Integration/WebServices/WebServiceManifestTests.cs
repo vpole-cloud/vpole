@@ -24,7 +24,7 @@ public sealed class WebServiceManifestTests
         Assert.Equal("pole-apps", configMap.Metadata.NamespaceProperty);
         Assert.Equal("Development", configMap.Data["ASPNETCORE_ENVIRONMENT"]);
         Assert.Equal("pole-server", configMap.Metadata.Annotations["app.kubernetes.io/managed-by"]);
-        Assert.Equal("web-service-1", configMap.Metadata.Annotations["pole.server/webServiceId"]);
+        Assert.Equal(WebServiceId, configMap.Metadata.Annotations["pole.server/webServiceId"]);
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public sealed class WebServiceManifestTests
                 requestedAt));
 
         var annotations = deployment.Spec.Template.Metadata.Annotations;
-        Assert.Equal("web-service-1", annotations["pole.server/webServiceId"]);
+        Assert.Equal(WebServiceId, annotations["pole.server/webServiceId"]);
         Assert.Equal("release-7", annotations["pole.server/releaseId"]);
         Assert.Equal("7", annotations["pole.server/revision"]);
         Assert.Equal("2026-07-07T12:30:00.0000000Z", annotations["pole.server/deploymentRequestedAt"]);
@@ -127,23 +127,24 @@ public sealed class WebServiceManifestTests
     }
 
     [Fact]
-    public void ToIngress_UsesResolvedTargetConfigurationAndFirstServicePort()
+    public void ToIngress_UsesAllResolvedHostnamesAndFirstServicePort()
     {
         var manifest = CreateSubject();
 
         var ingress = manifest.ToIngress();
-        var rule = Assert.Single(ingress.Spec.Rules);
-        var path = Assert.Single(rule.Http.Paths);
+        Assert.Equal(
+            ["api.example.com", "api.example.net"],
+            ingress.Spec.Rules.Select(rule => rule.Host));
+        var path = Assert.Single(ingress.Spec.Rules[0].Http.Paths);
         var tls = Assert.Single(ingress.Spec.Tls);
 
         Assert.Equal("api-gateway-ing", ingress.Metadata.Name);
         Assert.Equal("pole-apps", ingress.Metadata.NamespaceProperty);
         Assert.Equal("nginx-private", ingress.Spec.IngressClassName);
-        Assert.Equal("api.example.com", rule.Host);
         Assert.Equal("api-gateway-svc", path.Backend.Service.Name);
         Assert.Equal(80, path.Backend.Service.Port.Number);
         Assert.Equal("pole-private-issuer", ingress.Metadata.Annotations["cert-manager.io/cluster-issuer"]);
-        Assert.Equal("api.example.com", Assert.Single(tls.Hosts));
+        Assert.Equal(["api.example.com", "api.example.net"], tls.Hosts);
         Assert.Equal("api-gateway-tls", tls.SecretName);
     }
 
@@ -248,21 +249,24 @@ public sealed class WebServiceManifestTests
 
         var options = WebServiceFactory.DefaultOptions with
         {
-            Id = "web-service-1"
+            Id = WebServiceId
         };
 
         var webService = WebServiceFactory.Create(
             name: "api-gateway",
             tenantId: TestData.TenantId,
-            resourceGroupId: "rg-1",
+            resourceGroupId: ResourceGroupId,
+            isolationScopeId: IsolationScopeId,
             spec: spec,
-            dnsRecord: new DnsRecordShortInfo("dns-1", "api.example.com"),
+            exposure: WebServiceExposure.Create(),
             options: options);
         return webService.ToKubernetes(
             "pole-apps",
-            new ResourceDeploymentIngressConfiguration(
+            ResourceDeploymentIngressConfiguration.Create(
                 "nginx-private",
-                "pole-private-issuer"),
+                "pole-private-issuer",
+                "example.com",
+                ["api.example.com", "api.example.net"]),
             new ResourceDeploymentComputeConfiguration(
                 "507f1f77bcf86cd799439035",
                 ComputeProfileRevision: 3,
@@ -282,6 +286,11 @@ public sealed class WebServiceManifestTests
                 RequiredNodeAffinity: [],
                 PreferredNodeAffinity: [],
                 Tolerations: [],
-                RuntimeClassName: "workload-runtime"));
+                RuntimeClassName: "workload-runtime"),
+            fixedReplicas: 2);
     }
+
+    private const string WebServiceId = "507f1f77bcf86cd799439031";
+    private const string ResourceGroupId = "507f1f77bcf86cd799439032";
+    private const string IsolationScopeId = "507f1f77bcf86cd799439033";
 }

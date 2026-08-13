@@ -8,7 +8,7 @@ namespace Pole.Features.ResourceDeployments.Application.Common;
 
 public sealed class ResourceDeploymentQueryService(
     IResourceDeploymentDbContext dbContext)
-    : IResourceDeploymentQueryService
+    : IResourceDeploymentQueryService, IResourceDeploymentSetQueryService
 {
     public async Task<PlacementSummaryDto?> GetAsync(
         string tenantId,
@@ -47,6 +47,63 @@ public sealed class ResourceDeploymentQueryService(
                         : throw new InvalidOperationException(
                             $"Single-target resource '{group.Key}' has multiple deployments.");
                 },
+                StringComparer.Ordinal);
+    }
+
+    public async Task<IReadOnlyList<PlacementSummaryDto>> GetAllAsync(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId,
+        CancellationToken cancellationToken = default) =>
+        (await dbContext.ResourceDeployments
+            .Find(ResourceDeploymentFilters.ForResource(
+                tenantId,
+                resourceType,
+                resourceId))
+            .SortBy(deployment => deployment.Id)
+            .ToListAsync(cancellationToken))
+        .Select(deployment => deployment.ToPlacementSummaryDto())
+        .ToArray();
+
+    public async Task<PlacementSummaryDto?> GetExactAsync(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId,
+        string deploymentId,
+        CancellationToken cancellationToken = default)
+    {
+        var deployment = await dbContext.ResourceDeployments
+            .Find(ResourceDeploymentFilters.ForExactDeployment(
+                tenantId,
+                resourceType,
+                resourceId,
+                deploymentId))
+            .FirstOrDefaultAsync(cancellationToken);
+        return deployment?.ToPlacementSummaryDto();
+    }
+
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>> GetAllManyAsync(
+        string tenantId,
+        ResourceTypeId resourceType,
+        IReadOnlyCollection<string> resourceIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(resourceIds);
+        if (resourceIds.Count == 0)
+            return new Dictionary<string, IReadOnlyList<PlacementSummaryDto>>();
+
+        var deployments = await dbContext.ResourceDeployments
+            .Find(BuildFilter(tenantId, resourceType, resourceIds))
+            .SortBy(deployment => deployment.ResourceId)
+            .ThenBy(deployment => deployment.Id)
+            .ToListAsync(cancellationToken);
+        return deployments
+            .GroupBy(deployment => deployment.ResourceId, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<PlacementSummaryDto>)group
+                    .Select(deployment => deployment.ToPlacementSummaryDto())
+                    .ToArray(),
                 StringComparer.Ordinal);
     }
 

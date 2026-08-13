@@ -17,6 +17,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
     {
         await base.InitializeAsync();
         await new ResourceGroupPlacementMigration().Up(Fixture.Database);
+        await new RuntimeCellLookupMigration().Up(Fixture.Database);
     }
 
     [Fact]
@@ -276,5 +277,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             index["name"] == "IX_RuntimeCells_State_Retry");
         Assert.Contains(cellIndexes, index =>
             index["name"] == "IX_RuntimeCells_State_UpdatedAt");
+        Assert.Contains(cellIndexes, index =>
+            index["name"] == "IX_RuntimeCells_Tenant_Id");
     }
 }

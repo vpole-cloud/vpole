@@ -10,6 +10,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\..\shared\Kubernetes.Validation\Kubernetes.Validation.csproj" />
+      <ProjectReference Include="..\..\..\shared\Dns\Dns.csproj" />
       <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
       <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
     </ItemGroup>

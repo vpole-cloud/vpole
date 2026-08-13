@@ -5,18 +5,25 @@ using Pole.Features.Events.Abstractions;
 namespace Pole.Features.WebServices.Events;
 
 [EntityName("web-service-created")]
-public record WebServiceCreatedEvent(
+public sealed record WebServiceCreatedEvent(
     string WebServiceId,
     string Name,
     string ResourceGroupId,
+    string IsolationScopeId,
+    long ResourceRevision,
     WebServiceSpecSnapshot Spec,
-    WebServiceDnsRecordSnapshot DnsRecord,
-    ImmutableHashSet<string> Tags
-) : IPoleEvent
+    WebServiceExposureSnapshot Exposure,
+    ImmutableHashSet<string> Tags,
+    ImmutableList<WebServiceDesiredDeploymentSnapshot> Deployments) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
-public sealed record WebServiceDnsRecordSnapshot(
-    string Id,
-    string Domain);
+public sealed record WebServiceExposureSnapshot(string GeneratedHostnameLabelPrefix);
+public sealed record WebServiceDesiredDeploymentSnapshot(
+    string ResourceDeploymentId,
+    string DeploymentTargetId,
+    long ResourceRevision,
+    long DeploymentGeneration,
+    string Operation,
+    ImmutableList<string> Hostnames);

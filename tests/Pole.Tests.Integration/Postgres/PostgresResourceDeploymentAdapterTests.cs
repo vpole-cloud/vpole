@@ -162,6 +162,8 @@ public sealed class PostgresResourceDeploymentAdapterTests
                 ResourceGroupId,
                 IsolationScopeId,
                 RuntimeCellId,
+                ResourceRevision: 1,
+                FixedReplicas: 1,
                 DesiredGeneration: 7,
                 UpdatedAtUtc: NowUtc,
                 placement));

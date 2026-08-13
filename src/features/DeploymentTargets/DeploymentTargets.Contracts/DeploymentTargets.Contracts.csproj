@@ -12,5 +12,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
+    <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
   </ItemGroup>
 </Project>

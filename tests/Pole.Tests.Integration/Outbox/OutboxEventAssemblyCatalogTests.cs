@@ -15,7 +15,6 @@ public sealed class OutboxEventAssemblyCatalogTests
         [
             typeof(Pole.Features.WebServices.Events.WebServiceCreatedEvent).Assembly,
             typeof(Pole.Features.Functions.Events.FunctionAppCreatedEvent).Assembly,
-            typeof(Pole.Features.DnsRecords.Events.CommitDomainNameEvent).Assembly,
             typeof(Pole.Features.Postgres.Events.PostgresClusterCreatedEvent).Assembly,
             typeof(Pole.Features.RedisServices.Events.RedisServiceCreatedEvent).Assembly,
             typeof(Pole.Features.ResourceDeployments.Events.ResourceDeploymentAppliedEvent).Assembly,
@@ -26,7 +25,6 @@ public sealed class OutboxEventAssemblyCatalogTests
 
         Assert.Contains("web-service-created", catalog.EventTypes.Keys);
         Assert.Contains("function-app-created", catalog.EventTypes.Keys);
-        Assert.Contains("commit-domain-name", catalog.EventTypes.Keys);
         Assert.Contains("postgres-cluster-created", catalog.EventTypes.Keys);
         Assert.Contains("redis-service-created", catalog.EventTypes.Keys);
         Assert.Contains("resource-deployment-applied", catalog.EventTypes.Keys);

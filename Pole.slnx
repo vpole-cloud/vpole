@@ -16,6 +16,7 @@
     <Project Path="src/shared/Failures/Failures.csproj" />
     <Project Path="src/shared/ResultType/ResultType.csproj" />
     <Project Path="src/shared/Database/Database.csproj" />
+    <Project Path="src/shared/Dns/Dns.csproj" />
     <Project Path="src/shared/Multitenancy/Multitenancy.csproj" />
     <Project Path="src/shared/Kubernetes/Kubernetes.csproj" />
     <Project Path="src/shared/Kubernetes.Validation/Kubernetes.Validation.csproj" />
@@ -70,11 +71,10 @@
     <Project Path="src/features/SourceBuilds/SourceBuilds.Events/SourceBuilds.Events.csproj" />
     <Project Path="src/features/SourceBuilds/SourceBuilds.Tests/SourceBuilds.Tests.csproj" />
   </Folder>
-  <Folder Name="/features/DnsRecords/">
-    <Project Path="src/features/DnsRecords/DnsRecords.Contracts/DnsRecords.Contracts.csproj" />
-    <Project Path="src/features/DnsRecords/DnsRecords.Domain/DnsRecords.Domain.csproj" />
-    <Project Path="src/features/DnsRecords/DnsRecords.Events/DnsRecords.Events.csproj" />
-    <Project Path="src/features/DnsRecords/DnsRecords.Application/DnsRecords.Application.csproj" />
+  <Folder Name="/features/Domains/">
+    <Project Path="src/features/Domains/Domains.Application/Domains.Application.csproj" />
+    <Project Path="src/features/Domains/Domains.Contracts/Domains.Contracts.csproj" />
+    <Project Path="src/features/Domains/Domains.Domain/Domains.Domain.csproj" />
   </Folder>
   <Folder Name="/features/RedisServices/">
     <Project Path="src/features/RedisServices/RedisServices.Application/RedisServices.Application.csproj" />
@@ -109,6 +109,7 @@
   </Folder>
   <Folder Name="/features/Tenants/">
     <Project Path="src/features/Tenants/Tenants.Application/Tenants.Application.csproj" />
+    <Project Path="src/features/Tenants/Tenants.Contracts/Tenants.Contracts.csproj" />
     <Project Path="src/features/Tenants/Tenants.Domain/Tenants.Domain.csproj" />
   </Folder>
   <Folder Name="/features/Users/">

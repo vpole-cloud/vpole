@@ -30,7 +30,18 @@ public static class ResourceDeploymentDtoExtensions
                 ? failed.FailureCode
                 : null,
             deployment.ResolvedPlacement.Compute.ToSummaryDto(),
-            deployment.Endpoints.Select(ToDto).ToImmutableList());
+            deployment.Endpoints.Select(ToDto).ToImmutableList(),
+            deployment.ResourceRevision,
+            deployment.FixedReplicas,
+            deployment.ResolvedPlacement.Ingress is null
+                ? null
+                : new ResourceDeploymentIngressConfiguration(
+                    deployment.ResolvedPlacement.Ingress.IngressClassName,
+                    deployment.ResolvedPlacement.Ingress.ClusterIssuerName,
+                    deployment.ResolvedPlacement.Ingress.PublicBaseDomain,
+                    deployment.ResolvedPlacement.Ingress.Hostnames),
+            deployment.Revision,
+            deployment.DesiredOperation.ToString());
 
     public static ComputeConfigurationSummaryDto ToSummaryDto(
         this ResolvedComputeConfiguration compute) =>

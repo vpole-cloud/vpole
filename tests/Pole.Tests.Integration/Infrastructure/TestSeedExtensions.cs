@@ -1,6 +1,5 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.DnsRecords.Domain;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.WebServices.Domain;
@@ -35,12 +34,6 @@ public static class TestSeedExtensions
             throw new InvalidOperationException("Failed to seed a resource group with its default isolation scope.");
 
         return resourceGroup;
-    }
-
-    public static async Task<DnsRecord> InsertDnsRecordAsync(this MongoDbContext dbContext, DnsRecord dnsRecord)
-    {
-        await dbContext.DnsRecords.InsertOneAsync(dnsRecord);
-        return dnsRecord;
     }
 
     public static async Task<WebService> InsertWebServiceAsync(this MongoDbContext dbContext, WebService webService)

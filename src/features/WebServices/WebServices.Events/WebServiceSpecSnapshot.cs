@@ -4,7 +4,6 @@ namespace Pole.Features.WebServices.Events;
 
 public sealed record WebServiceSpecSnapshot(
     WebServiceImageInfoSnapshot Image,
-    int Replicas,
     WebServiceConfigSnapshot Config,
     AutoscalingSpecSnapshot? Autoscaling,
     WebServiceProbeSpecSnapshot Probes);

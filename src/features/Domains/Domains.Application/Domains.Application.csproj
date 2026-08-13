@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Pole.Features.Domains.Application</AssemblyName>
+    <RootNamespace>Pole.Features.Domains.Application</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <InternalsVisibleTo Include="Pole.Tests.Integration" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\\Domains.Contracts\\Domains.Contracts.csproj" />
+    <ProjectReference Include="..\\Domains.Domain\\Domains.Domain.csproj" />
+    <ProjectReference Include="..\\..\\Tenants\\Tenants.Contracts\\Tenants.Contracts.csproj" />
+    <ProjectReference Include="..\\..\\DeploymentTargets\\DeploymentTargets.Contracts\\DeploymentTargets.Contracts.csproj" />
+    <ProjectReference Include="..\\..\\..\\shared\\Dns\\Dns.csproj" />
+    <ProjectReference Include="..\\..\\..\\shared\\Database\\Database.csproj" />
+    <ProjectReference Include="..\\..\\..\\shared\\helpers\\ASP\\ASP.csproj" />
+    <ProjectReference Include="..\\..\\..\\shared\\Mediator\\Mediator.csproj" />
+    <ProjectReference Include="..\\..\\..\\shared\\Mediator.Multitenancy\\Mediator.Multitenancy.csproj" />
+    <ProjectReference Include="..\\..\\..\\shared\\ResultType\\ResultType.csproj" />
+    <ProjectReference Include="..\\..\\..\\shared\\Validation\\Validation.csproj" />
+    <ProjectReference Include="..\\..\\..\\shared\\Workloads\\Workloads.csproj" />
+  </ItemGroup>
+</Project>

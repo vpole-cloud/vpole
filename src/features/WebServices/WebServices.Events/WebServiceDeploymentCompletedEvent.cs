@@ -7,8 +7,16 @@ namespace Pole.Features.WebServices.Events;
 public sealed record WebServiceDeploymentCompletedEvent(
     string ReleaseId,
     string WebServiceId,
+    string ResourceDeploymentId,
+    long ResourceRevision,
+    long DeploymentGeneration,
+    string Operation,
     bool Succeeded,
-    string? FailureMessage) : IPoleEvent
+    bool Retryable,
+    string? FailureCode,
+    string? FailureMessage,
+    string ReleaseOutcome,
+    bool ReleaseTerminal) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

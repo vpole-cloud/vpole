@@ -12,6 +12,7 @@ namespace Pole.Tests.Integration.WebServices;
 public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
 {
     private const string CollectionName = "WebServices";
+    private const string ReleaseCollectionName = "WebServiceReleases";
 
     public Task InitializeAsync() => fixture.ResetDatabaseAsync();
 
@@ -74,6 +75,41 @@ public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixtu
                 new BsonArray { "WebServiceLifecycle", "UnknownWebServiceLifecycle" });
     }
 
+    [Fact]
+    public async Task ReleaseMigration_accepts_retry_deployment_action()
+    {
+        await new WebServiceReleaseSchemaValidationMigration().Up(fixture.Database);
+        var deployment = new WebServiceReleaseDeployment(
+            ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString(),
+            ResourceRevision: 2,
+            DeploymentGeneration: 1,
+            WebServiceReleaseDeploymentOperation.Apply,
+            WebServiceReleaseDeploymentOutcome.Pending,
+            CompletedAtUtc: null,
+            FailureCode: null,
+            FailureMessage: null);
+        var release = WebServiceReleaseFactory.CreatePending(
+            TestData.TenantId,
+            ObjectId.GenerateNewId().ToString(),
+            2,
+            WebServiceReleaseAction.RetryDeployment,
+            null,
+            null,
+            CreateWebService(new ActiveWebServiceLifecycle()).Spec,
+            [deployment],
+            null,
+            null,
+            new WebServiceReleaseFactory.CreateOptions(
+                ObjectId.GenerateNewId().ToString(),
+                DateTime.UtcNow));
+
+        await new MongoDocumentContractTester<WebServiceRelease>(
+                fixture.Database,
+                ReleaseCollectionName)
+            .AssertAcceptsAsync([release]);
+    }
+
     private MongoDocumentContractTester<WebService> CreateContract() =>
         new(fixture.Database, CollectionName);
 
@@ -86,9 +122,9 @@ public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixtu
             "api",
             TestData.TenantId,
             ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString(),
             new WebServiceSpec(
                 new ImageInfo("registry.example.com", "team/api", "latest", secretName),
-                2,
                 new WebServiceConfig(
                     withConfiguration
                         ? ImmutableDictionary<string, string>.Empty.Add("ASPNETCORE_ENVIRONMENT", "Development")
@@ -98,7 +134,7 @@ public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixtu
                         : ImmutableList<PortMapping>.Empty),
                 autoscaling,
                 CreateProbes()),
-            new DnsRecordShortInfo(ObjectId.GenerateNewId().ToString(), "api.example.com"),
+            WebServiceExposure.Create("api"),
             WebServiceFactory.DefaultOptions with
             {
                 Id = ObjectId.GenerateNewId().ToString(),

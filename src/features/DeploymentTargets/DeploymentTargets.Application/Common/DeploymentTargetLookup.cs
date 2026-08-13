@@ -18,7 +18,7 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
             return idValidation;
 
         var target = await dbContext.DeploymentTargets
-            .Find(item => item.Id == deploymentTargetId)
+            .Find(DeploymentTargetFilters.ById(deploymentTargetId))
             .FirstOrDefaultAsync(cancellationToken);
 
         return target is null
@@ -30,7 +30,7 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
         CancellationToken cancellationToken = default)
     {
         var defaultTargetId = await dbContext.DeploymentTargetSettings
-            .Find(settings => settings.Id == DeploymentTargetSettings.SingletonId)
+            .Find(DeploymentTargetSettingsFilters.Singleton())
             .Project(settings => settings.DefaultDeploymentTargetId)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -57,8 +57,6 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
         if (!target.AcceptsWorkloads)
             return Failures.Conflict("The deployment target does not accept new workloads.");
 
-        // Health is observational and can recover. Admission is controlled only by the durable
-        // Enabled and AcceptsWorkloads flags; a stale degraded observation must not become a latch.
         return target;
     }
 
@@ -67,16 +65,136 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
             CancellationToken cancellationToken = default)
     {
         var targets = await dbContext.DeploymentTargets
-            .Find(target =>
-                target.Enabled &&
-                target.AcceptsWorkloads &&
-                target.DeletionRequestedAtUtc == null)
+            .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
             .SortBy(target => target.Id)
             .ToListAsync(cancellationToken);
         return targets
             .Select(target => target.ToLookupDto())
             .ToArray();
     }
+
+    public async Task<Result<DeploymentTargetLookupDto>> ResolveForNewWorkloadAsync(
+        DeploymentTargetAdmissionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!string.IsNullOrWhiteSpace(request.ExplicitDeploymentTargetId))
+        {
+            var resolved = await ResolveForNewWorkloadAsync(
+                request.ExplicitDeploymentTargetId,
+                cancellationToken);
+            if (!resolved.TryGetValue(out var target, out var failure))
+                return failure;
+
+            return HasRequiredCapabilities(target, request.RequiredCapabilities)
+                ? target
+                : RequiredCapabilitiesFailure(request.RequiredCapabilities);
+        }
+
+        var eligible = await ListEligibleForNewWorkloadAsync(request, cancellationToken);
+        if (!eligible.TryGetValue(out var targets, out var eligibilityFailure))
+            return eligibilityFailure;
+        if (targets.Count == 0)
+            return NoEligibleTargetsFailure(request.RequiredCapabilities);
+        if (targets.Count > 1)
+        {
+            return Failures.SemanticValidation(new Dictionary<string, string[]>
+            {
+                ["Placement.DeploymentTargetId"] =
+                ["Deployment target is required when more than one eligible target is available."]
+            });
+        }
+
+        return targets[0];
+    }
+
+    public async Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>>
+        ListEligibleForNewWorkloadAsync(
+            DeploymentTargetAdmissionRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        var targets = await dbContext.DeploymentTargets
+            .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
+            .SortBy(target => target.Id)
+            .ToListAsync(cancellationToken);
+        return targets
+            .Select(target => target.ToLookupDto())
+            .Where(target => HasRequiredCapabilities(target, request.RequiredCapabilities))
+            .ToArray();
+    }
+
+    public async Task<Result<DeploymentTargetPublicIngressDto>>
+        ResolvePublicIngressForNewWorkloadAsync(
+            DeploymentTargetAdmissionRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        var resolved = await ResolveForNewWorkloadAsync(
+            request with
+            {
+                RequiredCapabilities = request.RequiredCapabilities |
+                    DeploymentTargetRequiredCapabilities.PublicIngress
+            },
+            cancellationToken);
+        if (!resolved.TryGetValue(out var target, out var failure))
+            return failure;
+
+        var ingress = target.WorkloadConfiguration.Ingress!;
+        return new DeploymentTargetPublicIngressDto(
+            target.Id,
+            target.WorkloadConfiguration.Revision,
+            ingress.IngressClassName,
+            ingress.ClusterIssuerName,
+            ingress.PublicBaseDomain!);
+    }
+
+    public async Task<Result<DeploymentTargetPublicIngressDto>>
+        ResolvePublicIngressForDomainReservationAsync(
+            string tenantId,
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default)
+    {
+        var resolved = await ResolveForNewWorkloadAsync(
+            deploymentTargetId,
+            cancellationToken);
+        if (!resolved.TryGetValue(out var target, out var failure))
+            return failure;
+        if (!HasRequiredCapabilities(
+                target,
+                DeploymentTargetRequiredCapabilities.PublicIngress))
+        {
+            return RequiredCapabilitiesFailure(
+                DeploymentTargetRequiredCapabilities.PublicIngress);
+        }
+
+        var ingress = target.WorkloadConfiguration.Ingress!;
+        return new DeploymentTargetPublicIngressDto(
+            target.Id,
+            target.WorkloadConfiguration.Revision,
+            ingress.IngressClassName,
+            ingress.ClusterIssuerName,
+            ingress.PublicBaseDomain!);
+    }
+
+    private static bool HasRequiredCapabilities(
+        DeploymentTargetLookupDto target,
+        DeploymentTargetRequiredCapabilities requiredCapabilities) =>
+        !requiredCapabilities.HasFlag(DeploymentTargetRequiredCapabilities.PublicIngress) ||
+        target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null;
+
+    private static Failure RequiredCapabilitiesFailure(
+        DeploymentTargetRequiredCapabilities requiredCapabilities) =>
+        requiredCapabilities.HasFlag(DeploymentTargetRequiredCapabilities.PublicIngress)
+            ? Failures.SemanticValidation(new Dictionary<string, string[]>
+            {
+                ["Placement.DeploymentTargetId"] =
+                ["The selected deployment target does not provide public ingress with a public base domain."]
+            })
+            : Failures.Conflict("The deployment target does not satisfy the requested capabilities.");
+
+    private static Failure NoEligibleTargetsFailure(
+        DeploymentTargetRequiredCapabilities requiredCapabilities) =>
+        requiredCapabilities.HasFlag(DeploymentTargetRequiredCapabilities.PublicIngress)
+            ? Failures.Conflict("No deployment target accepts public workloads.")
+            : Failures.Conflict("No deployment target accepts new workloads.");
 
     private static ValidationFailure? ValidateId(string? deploymentTargetId)
     {

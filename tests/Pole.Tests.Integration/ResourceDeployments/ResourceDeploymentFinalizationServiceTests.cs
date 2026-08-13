@@ -116,6 +116,49 @@ public sealed class ResourceDeploymentFinalizationServiceTests(
                 deployment => deployment.TenantId == OtherTenantId));
     }
 
+    [Fact]
+    public async Task ExactFinalization_PurgesOnlyTheRequestedDeletedDeployment()
+    {
+        const string deletedDeploymentId = "507f1f77bcf86cd79943908d";
+        const string siblingDeploymentId = "507f1f77bcf86cd79943908e";
+        await fixture.DbContext.ResourceDeployments.InsertManyAsync(
+        [
+            CreateDeployment(deletedDeploymentId, TenantId, deleted: true),
+            CreateDeployment(siblingDeploymentId, TenantId, deleted: false)
+        ]);
+        var subject = new ResourceDeploymentFinalizationService(fixture.DbContext);
+
+        var result = await fixture.DbContext.RunInTransactionAsync(
+            async (session, cancellationToken) =>
+            {
+                var readiness = await subject.GetExactReadinessAsync(
+                    TenantId,
+                    ResourceType,
+                    ResourceId,
+                    deletedDeploymentId,
+                    session,
+                    cancellationToken);
+                Assert.Equal(ResourceDeploymentFinalizationReadiness.Ready, readiness);
+                return await subject.PurgeExactDeletedAsync(
+                    TenantId,
+                    ResourceType,
+                    ResourceId,
+                    deletedDeploymentId,
+                    session,
+                    cancellationToken);
+            });
+
+        Assert.IsAssignableFrom<ISuccess>(result);
+        Assert.Equal(
+            1,
+            await fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
+                deployment => deployment.TenantId == TenantId));
+        var remaining = await fixture.DbContext.ResourceDeployments
+            .Find(deployment => deployment.Id == siblingDeploymentId)
+            .SingleAsync();
+        Assert.IsNotType<DeletedResourceDeploymentState>(remaining.State);
+    }
+
     private static ResourceDeployment CreateDeployment(
         string deploymentId,
         string tenantId,

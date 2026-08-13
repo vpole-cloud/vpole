@@ -17,7 +17,8 @@ internal static class ResourceDeploymentEventExtensions
                 new ResourceDeploymentReconciliationRequestedEvent(
                     deployment.Id,
                     deployment.RuntimeCellId,
-                    deployment.DesiredGeneration)
+                    deployment.DesiredGeneration,
+                    deployment.ResourceRevision)
                 {
                     EventCore = core
                 },
@@ -28,7 +29,8 @@ internal static class ResourceDeploymentEventExtensions
                 new ResourceDeploymentDeletionRequestedEvent(
                     deployment.Id,
                     deployment.RuntimeCellId,
-                    deployment.DesiredGeneration)
+                    deployment.DesiredGeneration,
+                    deployment.ResourceRevision)
                 {
                     EventCore = core
                 },
@@ -48,7 +50,8 @@ internal static class ResourceDeploymentEventExtensions
             deployment.ResourceType,
             deployment.ResourceId,
             deployment.RuntimeCellId,
-            generation)
+            generation,
+            deployment.ResourceRevision)
         {
             EventCore = EventCore.Create(deployment.TenantId)
         };
@@ -64,7 +67,8 @@ internal static class ResourceDeploymentEventExtensions
             failed.Generation,
             failed.Operation.ToString(),
             failed.FailureCode,
-            failed.Retryable)
+            failed.Retryable,
+            deployment.ResourceRevision)
         {
             EventCore = EventCore.Create(deployment.TenantId)
         };
@@ -77,7 +81,8 @@ internal static class ResourceDeploymentEventExtensions
             deployment.ResourceType,
             deployment.ResourceId,
             deployment.RuntimeCellId,
-            generation)
+            generation,
+            deployment.ResourceRevision)
         {
             EventCore = EventCore.Create(deployment.TenantId)
         };

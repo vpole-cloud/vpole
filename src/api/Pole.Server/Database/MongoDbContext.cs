@@ -3,8 +3,6 @@ using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ContainerRegistries.Domain;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.Features.DnsRecords.Application.Common;
-using Pole.Features.DnsRecords.Domain;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
 using Pole.Features.Functions.Application.Common;
@@ -40,7 +38,6 @@ public class MongoDbContext(
     IPostgresDbContext,
     IQuotaDbContext,
     IStorageProfileDbContext,
-    IDnsRecordDbContext,
     ITenantDbContext,
     IUserDbContext,
     IGitProviderDbContext,
@@ -57,7 +54,6 @@ public class MongoDbContext(
     public IMongoCollection<IsolationScope> IsolationScopes { get; } = database.GetCollection<IsolationScope>("IsolationScopes");
     public IMongoCollection<RuntimeCell> RuntimeCells { get; } = database.GetCollection<RuntimeCell>("RuntimeCells");
     public IMongoCollection<ResourceDeployment> ResourceDeployments { get; } = database.GetCollection<ResourceDeployment>("ResourceDeployments");
-    public IMongoCollection<DnsRecord> DnsRecords { get; } = database.GetCollection<DnsRecord>("DnsRecords");
     public IMongoCollection<PostgresCluster>  Postgres { get; } = database.GetCollection<PostgresCluster>("Postgres");
     public IMongoCollection<TenantQuotaPolicy> TenantQuotaPolicies { get; } = database.GetCollection<TenantQuotaPolicy>("TenantQuotaPolicies");
     public IMongoCollection<TenantQuotaUsage> TenantQuotaUsages { get; } = database.GetCollection<TenantQuotaUsage>("TenantQuotaUsages");

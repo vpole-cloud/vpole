@@ -42,6 +42,7 @@ public static class WebServicePersistenceRegistration
         services.AddResultTransaction<RedeployWebServiceResponse>();
         services.AddResultTransaction<UpdateWebServiceImageTagResponse>();
         services.AddResultTransaction<SourceBuildDeploymentResult>();
+        services.AddResultTransaction<Pole.Features.ResourceDeployments.Contracts.PlacementSummaryDto>();
         return services;
     }
 

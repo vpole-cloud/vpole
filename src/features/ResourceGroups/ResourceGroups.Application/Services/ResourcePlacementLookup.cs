@@ -34,6 +34,33 @@ public sealed class ResourcePlacementLookup(IResourceGroupDbContext dbContext)
         return runtimeCell?.ToPlacement();
     }
 
+    public async Task<IReadOnlyList<ResourcePlacement>> FindManyAsync(
+        string tenantId,
+        IReadOnlyCollection<string> runtimeCellIds,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(runtimeCellIds);
+
+        var ids = runtimeCellIds
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (ids.Length == 0)
+            return [];
+
+        var runtimeCells = await dbContext.RuntimeCells
+            .Find(
+                session,
+                Builders<RuntimeCell>.Filter.And(
+                    Builders<RuntimeCell>.Filter.ForTenant(tenantId),
+                    Builders<RuntimeCell>.Filter.In(cell => cell.Id, ids)))
+            .ToListAsync(cancellationToken);
+
+        return runtimeCells
+            .Select(cell => cell.ToPlacement())
+            .ToArray();
+    }
+
     private static FilterDefinition<RuntimeCell> RuntimeCellFilter(
         string tenantId,
         string runtimeCellId) =>

@@ -10,6 +10,10 @@ internal static class ComputeProfileFilters
     public static FilterDefinition<ComputeProfile> ById(string computeProfileId) =>
         Builders<ComputeProfile>.Filter.Eq(profile => profile.Id, computeProfileId);
 
+    public static FilterDefinition<ComputeProfile> ByIds(
+        IEnumerable<string> computeProfileIds) =>
+        Builders<ComputeProfile>.Filter.In(profile => profile.Id, computeProfileIds);
+
     public static FilterDefinition<ComputeProfile> AtRevision(
         string computeProfileId,
         long revision) =>
@@ -52,21 +56,18 @@ internal static class ComputeProfileFilters
                         ((SelectedTenantsComputeProfileAccess)profile.TenantAccess).TenantIds,
                     tenantId)));
 
-    public static FilterDefinition<ComputeProfile> AvailableForResolutionFence(
-        ComputeProfileResolutionFenceRequest request) =>
+    public static FilterDefinition<ComputeProfile> AvailableAtSnapshot(
+        ComputeProfile profile,
+        string tenantId,
+        ResourceTypeId resourceType) =>
         Builders<ComputeProfile>.Filter.And(
-            AtRevision(
-                request.ComputeProfileId,
-                request.ComputeProfileRevision),
-            Builders<ComputeProfile>.Filter.Eq(profile => profile.IsEnabled, true),
+            AtSnapshot(profile),
+            Builders<ComputeProfile>.Filter.Eq(candidate => candidate.IsEnabled, true),
             Builders<ComputeProfile>.Filter.AnyEq(
-                profile => profile.AllowedResourceTypes,
-                request.ResourceType.Value),
-            Builders<ComputeProfile>.Filter.ElemMatch(
-                profile => profile.TargetMappings,
-                mapping => mapping.DeploymentTargetId == request.DeploymentTargetId),
-            AllowsTenant(request.TenantId),
+                candidate => candidate.AllowedResourceTypes,
+                resourceType.Value),
+            AllowsTenant(tenantId),
             Builders<ComputeProfile>.Filter.Lt(
-                profile => profile.ResolutionFence,
+                candidate => candidate.ResolutionFence,
                 long.MaxValue));
 }

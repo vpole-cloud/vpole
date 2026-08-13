@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { WebServiceForm } from './WebServiceForm'
+import { WebServiceDeploymentsPanel } from './WebServiceDeploymentsPanel'
 import { SourceBuildPanel } from './SourceBuildPanel'
 import type { SourceBuildsManager } from '../hooks/useSourceBuildsManager'
 import type {
   LoadStatus,
   ResourceGroup,
+  TenantDomainZone,
   WebService,
   WebServiceInput,
 } from '../types'
@@ -25,6 +27,23 @@ interface WebServicesPageProps {
   onSelect: (id: string | null) => void
   sourceBuilds: SourceBuildsManager
   canManage?: boolean
+  availableTargets: Parameters<typeof WebServiceForm>[0]['availableTargets']
+  targetsStatus: Parameters<typeof WebServiceForm>[0]['targetsStatus']
+  targetsError?: string
+  computeProfilesByTarget: Parameters<typeof WebServiceForm>[0]['computeProfilesByTarget']
+  zones: TenantDomainZone[]
+  onLoadTargets: Parameters<typeof WebServiceForm>[0]['onLoadTargets']
+  onLoadComputeProfiles: Parameters<typeof WebServiceForm>[0]['onLoadComputeProfiles']
+  onLoadHostnameBindings: Parameters<typeof WebServiceDeploymentsPanel>[0]['onLoadHostnameBindings']
+  onLoadReleases: Parameters<typeof WebServiceDeploymentsPanel>[0]['onLoadReleases']
+  hostnameBindingsByDeployment: Parameters<typeof WebServiceDeploymentsPanel>[0]['hostnameBindingsByDeployment']
+  releasesByWebService: Record<string, import('../types').WebServiceReleaseHistory>
+  onAddDeployment: Parameters<typeof WebServiceDeploymentsPanel>[0]['onAddDeployment']
+  onUpdateDeployment: Parameters<typeof WebServiceDeploymentsPanel>[0]['onUpdateDeployment']
+  onRemoveDeployment: Parameters<typeof WebServiceDeploymentsPanel>[0]['onRemoveDeployment']
+  onRetryDeployment: Parameters<typeof WebServiceDeploymentsPanel>[0]['onRetryDeployment']
+  onAddHostname: Parameters<typeof WebServiceDeploymentsPanel>[0]['onAddHostname']
+  onRemoveHostname: Parameters<typeof WebServiceDeploymentsPanel>[0]['onRemoveHostname']
 }
 
 export function WebServicesPage({
@@ -43,13 +62,30 @@ export function WebServicesPage({
   onSelect,
   sourceBuilds,
   canManage = true,
+  availableTargets,
+  targetsStatus,
+  targetsError,
+  computeProfilesByTarget,
+  zones,
+  onLoadTargets,
+  onLoadComputeProfiles,
+  onLoadHostnameBindings,
+  onLoadReleases,
+  hostnameBindingsByDeployment,
+  releasesByWebService,
+  onAddDeployment,
+  onUpdateDeployment,
+  onRemoveDeployment,
+  onRetryDeployment,
+  onAddHostname,
+  onRemoveHostname,
 }: WebServicesPageProps) {
   const [query, setQuery] = useState('')
 
   const filteredItems = items.filter((item) =>
     [
       item.name,
-      item.dnsRecordShortInfo?.domain ?? '',
+      ...item.deployments.flatMap((deployment) => deployment.ingress?.hostnames ?? []),
       item.spec.image.server,
       item.spec.image.name,
     ]
@@ -168,11 +204,11 @@ export function WebServicesPage({
                     >
                       <div className="list-row__primary">
                         <h3>{item.name}</h3>
-                        <p>{item.dnsRecordShortInfo?.domain || 'No public domain assigned yet.'}</p>
+                        <p>{item.deployments.flatMap((deployment) => deployment.ingress?.hostnames ?? []).join(', ') || 'No public hostname reported yet.'}</p>
                       </div>
                       <div className="list-row__secondary">
                         <span className="status-pill status-pill--accent">
-                          {item.spec.replicas} replicas
+                          {item.deployments.length} target{item.deployments.length === 1 ? '' : 's'}
                         </span>
                         <span className="list-row__meta">
                           {resolveResourceGroupName(item.resourceGroupId)} · {image}
@@ -206,8 +242,14 @@ export function WebServicesPage({
             mode={selectedService ? 'edit' : 'create'}
             resourceGroups={resourceGroups}
             initialValue={selectedService}
+            availableTargets={availableTargets}
+            targetsStatus={targetsStatus}
+            targetsError={targetsError}
+            computeProfilesByTarget={computeProfilesByTarget}
             submitStatus={submitStatus}
             submitError={submitError}
+            onLoadTargets={onLoadTargets}
+            onLoadComputeProfiles={onLoadComputeProfiles}
             onSubmit={async (input) => {
               if (selectedService) {
                 await onUpdate(selectedService.id, input)
@@ -224,6 +266,27 @@ export function WebServicesPage({
           </section>
         )}
       </div>
+      {selectedService && (
+        <WebServiceDeploymentsPanel
+          key={`deployments-${selectedService.id}`}
+          webService={selectedService}
+          availableTargets={availableTargets}
+          computeProfilesByTarget={computeProfilesByTarget}
+          hostnameBindingsByDeployment={hostnameBindingsByDeployment}
+          releases={releasesByWebService[selectedService.id]}
+          zones={zones}
+          canManage={canManage}
+          onLoadComputeProfiles={onLoadComputeProfiles}
+          onLoadHostnameBindings={onLoadHostnameBindings}
+          onLoadReleases={onLoadReleases}
+          onAddDeployment={onAddDeployment}
+          onUpdateDeployment={onUpdateDeployment}
+          onRemoveDeployment={onRemoveDeployment}
+          onRetryDeployment={onRetryDeployment}
+          onAddHostname={onAddHostname}
+          onRemoveHostname={onRemoveHostname}
+        />
+      )}
       {selectedService && (
         <SourceBuildPanel
           key={selectedService.id}

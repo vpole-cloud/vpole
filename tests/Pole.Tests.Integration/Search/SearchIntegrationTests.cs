@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Application.Endpoints;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Consumers;
 using Pole.Features.Search.Domain;
@@ -10,6 +11,7 @@ using Pole.Features.Search.Application.Projection;
 using Pole.Features.Search.Application.Services;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Endpoints;
+using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 using Pole.Features.RedisServices.Domain;
@@ -52,14 +54,14 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Contains(rows, row => row.KeyType == SearchKeyType.Name && row is { SearchValue: "web-api", Weight: SearchDocumentFactory.NameWeight });
         Assert.Contains(rows, row => row.KeyType == SearchKeyType.Name && row is { SearchValue: "web", Weight: SearchDocumentFactory.NameTokenWeight });
         Assert.Contains(rows, row => row.KeyType == SearchKeyType.Name && row is { SearchValue: "api", Weight: SearchDocumentFactory.NameTokenWeight });
-        Assert.Contains(rows, row => row.KeyType == SearchKeyType.Domain && row is { SearchValue: "api.example.com", Weight: SearchDocumentFactory.DomainWeight });
-        Assert.Contains(rows, row => row.KeyType == SearchKeyType.Domain && row is { SearchValue: "example", Weight: SearchDocumentFactory.DomainTokenWeight });
+        var generatedHostname = created.Deployments.Single().Ingress!.Hostnames.Single();
+        Assert.Contains(rows, row => row.KeyType == SearchKeyType.Domain && row is { SearchValue: var value, Weight: SearchDocumentFactory.DomainWeight } && value == generatedHostname);
         Assert.DoesNotContain(rows, row => row.SearchValue == "description");
         Assert.NotNull(sourceDocument);
         Assert.Equal("web-api", sourceDocument.Title);
         Assert.Contains(sourceDocument.SearchKeys, key => key.Value == "web-api" && key.Weight == SearchDocumentFactory.NameWeight);
         Assert.Contains(sourceDocument.SearchKeys, key => key.Value == "api" && key.Weight == SearchDocumentFactory.NameTokenWeight);
-        Assert.Contains(sourceDocument.SearchKeys, key => key.Value == "api.example.com" && key.Weight == SearchDocumentFactory.DomainWeight);
+        Assert.Contains(sourceDocument.SearchKeys, key => key.Value == generatedHostname && key.Weight == SearchDocumentFactory.DomainWeight);
     }
 
     [Fact]
@@ -69,7 +71,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
 
         await IndexResourceGroupCreatedAsync(resourceGroup.Id);
 
-        var webCreate = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, "alpha-web", "api.alpha.example.com"));
+        var webCreate = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, "alpha-web"));
         Assert.True(webCreate.TryGetValue(out var webResponse, out _));
         await IndexWebServiceCreatedAsync(webResponse.WebServiceId);
 
@@ -138,7 +140,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         await IndexWebServiceCreatedAsync(created.WebServiceId);
 
         var secondResourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("beta-shared"));
-        var otherCreate = await Mediator.Send(TestData.CreateWebServiceRequest(secondResourceGroup.Id, created.WebServiceId[..8], "other.example.com"));
+        var otherCreate = await Mediator.Send(TestData.CreateWebServiceRequest(secondResourceGroup.Id, created.WebServiceId[..8]));
         Assert.True(otherCreate.TryGetValue(out var otherCreated, out _));
         await IndexWebServiceCreatedAsync(otherCreated.WebServiceId);
 
@@ -203,30 +205,23 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     public async Task WebServiceDelete_RemovesAllRows()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("apps"));
-        var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, "portal", "portal.example.com"));
+        var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, "portal"));
         Assert.True(createResult.TryGetValue(out var created, out _));
 
         await IndexWebServiceCreatedAsync(created.WebServiceId);
-
-        var dnsRecord = await DbContext.DnsRecords.Find(record => record.Resource.Id == created.WebServiceId).FirstOrDefaultAsync();
-        Assert.NotNull(dnsRecord);
 
         var deleteResult = await Mediator.Send(new DeleteWebServiceRequest(created.WebServiceId, TestData.TenantId));
         Assert.True(deleteResult.TryGetValue(out _, out var deleteError));
         Assert.Null(deleteError);
 
         var deletedConsumer = new RemoveWebServiceFromSearchOnWebServiceDeletedConsumer(SearchService);
-        await deletedConsumer.Handle(TestData.TenantId, created.WebServiceId, dnsRecord.Id, CancellationToken.None);
+        await deletedConsumer.Handle(TestData.TenantId, created.WebServiceId, CancellationToken.None);
 
         var serviceRows = await SearchDocuments.CountDocumentsAsync(row => row.SourceType == SearchDocumentType.WebService && row.SourceId == created.WebServiceId);
-        var dnsRows = await SearchDocuments.CountDocumentsAsync(row => row.SourceType == SearchDocumentType.DnsRecord && row.SourceId == dnsRecord.Id);
         var serviceSourceRows = await SearchSourceDocuments.CountDocumentsAsync(row => row.SourceType == SearchDocumentType.WebService && row.SourceId == created.WebServiceId);
-        var dnsSourceRows = await SearchSourceDocuments.CountDocumentsAsync(row => row.SourceType == SearchDocumentType.DnsRecord && row.SourceId == dnsRecord.Id);
 
         Assert.Equal(0L, serviceRows);
-        Assert.Equal(0L, dnsRows);
         Assert.Equal(0L, serviceSourceRows);
-        Assert.Equal(0L, dnsSourceRows);
     }
 
     private async Task IndexResourceGroupCreatedAsync(string resourceGroupId)
@@ -266,16 +261,26 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     private async Task IndexWebServiceCreatedAsync(string webServiceId)
     {
         var webService = await Fixture.Database.WebServices().Find(service => service.Id == webServiceId).FirstAsync();
+        var placements = await Services.GetRequiredService<IResourceDeploymentSetQueryService>()
+            .GetAllAsync(webService.TenantId, WebServiceResourceDeployment.ResourceType, webService.Id);
         var consumer = new AddWebServiceToSearchOnWebServiceCreatedConsumer(SearchService);
         await consumer.Handle(new WebServiceCreateEvent(
             webService.Id,
             webService.Name,
             webService.ResourceGroupId,
+            webService.IsolationScopeId,
+            webService.ActiveRevision,
             ToSnapshot(webService.Spec),
-            new WebServiceDnsRecordSnapshot(
-                webService.DnsRecord.Id,
-                webService.DnsRecord.Domain),
-            webService.Tags)
+            new WebServiceExposureSnapshot(webService.Exposure.GeneratedHostnameLabelPrefix),
+            webService.Tags,
+            placements.Select(placement => new WebServiceDesiredDeploymentSnapshot(
+                    placement.DeploymentId,
+                    placement.DeploymentTargetId,
+                    placement.ResourceRevision,
+                    placement.DesiredGeneration,
+                    "Apply",
+                    placement.Ingress?.Hostnames ?? ImmutableList<string>.Empty))
+                .ToImmutableList())
         {
             EventCore = EventCore.Create(webService.TenantId)
         }, CancellationToken.None);
@@ -315,7 +320,6 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
                 spec.Image.Name,
                 spec.Image.Tag,
                 spec.Image.SecretName),
-            spec.Replicas,
             new WebServiceConfigSnapshot(
                 spec.Config.EnvironmentVariables,
                 spec.Config.PortMappings

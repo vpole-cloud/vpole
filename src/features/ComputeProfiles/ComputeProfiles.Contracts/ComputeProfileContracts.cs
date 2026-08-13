@@ -61,6 +61,23 @@ public delegate Task<Result<ResolvedComputeProfile>> ResolveComputeProfile(
     ComputeProfileResolutionRequest request,
     CancellationToken cancellationToken = default);
 
+public sealed record ComputeProfileTargetResolutionRequest(
+    string DeploymentTargetId,
+    string? ComputeProfileId);
+
+/// <summary>
+/// Resolves the compute profile required by each selected deployment target.
+/// Every target is resolved for one tenant and logical resource type.
+/// </summary>
+public sealed record ComputeProfileBatchResolutionRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    IReadOnlyList<ComputeProfileTargetResolutionRequest> Targets);
+
+public delegate Task<Result<IReadOnlyList<ResolvedComputeProfile>>> ResolveComputeProfiles(
+    ComputeProfileBatchResolutionRequest request,
+    CancellationToken cancellationToken = default);
+
 public sealed record ComputeProfileResolutionFenceRequest(
     string ComputeProfileId,
     long ComputeProfileRevision,
@@ -74,4 +91,25 @@ public interface IComputeProfileResolutionFence
         ComputeProfileResolutionFenceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fences all resolved profiles in the caller's MongoDB transaction.
+    /// Implementations should batch the persistence work. The default preserves
+    /// compatibility for feature-local fakes that only need the single fence.
+    /// </summary>
+    async Task<Result> FenceManyAsync(
+        IReadOnlyList<ComputeProfileResolutionFenceRequest> requests,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(requests);
+        foreach (var request in requests)
+        {
+            var result = await FenceAsync(request, session, cancellationToken);
+            if (result is not ISuccess)
+                return result;
+        }
+
+        return Result.Success();
+    }
 }

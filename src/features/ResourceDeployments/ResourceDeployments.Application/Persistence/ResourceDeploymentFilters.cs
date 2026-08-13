@@ -40,6 +40,17 @@ public static class ResourceDeploymentFilters
                 resourceIds));
     }
 
+    public static FilterDefinition<ResourceDeployment> ForExactDeployment(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId,
+        string deploymentId) =>
+        Builders<ResourceDeployment>.Filter.And(
+            ForResource(tenantId, resourceType, resourceId),
+            Builders<ResourceDeployment>.Filter.Eq(
+                deployment => deployment.Id,
+                deploymentId));
+
     public static FilterDefinition<ResourceDeployment> AtRevision(
         ResourceDeployment deployment) =>
         Builders<ResourceDeployment>.Filter.And(

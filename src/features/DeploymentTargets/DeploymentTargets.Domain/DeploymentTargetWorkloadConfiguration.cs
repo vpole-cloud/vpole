@@ -1,3 +1,5 @@
+using Pole.Dns;
+
 namespace Pole.Features.DeploymentTargets.Domain;
 
 public sealed record DeploymentTargetWorkloadConfiguration(
@@ -25,25 +27,50 @@ public sealed record DeploymentTargetWorkloadConfiguration(
             ? null
             : DeploymentTargetIngressConfiguration.Create(
                 ingress.IngressClassName,
-                ingress.ClusterIssuerName);
+                ingress.ClusterIssuerName,
+                ingress.PublicBaseDomain);
 }
 
 public sealed record DeploymentTargetIngressConfiguration(
     string IngressClassName,
-    string ClusterIssuerName)
+    string ClusterIssuerName,
+    string? PublicBaseDomain = null)
 {
     public const int MaximumNameLength = 253;
 
     public static DeploymentTargetIngressConfiguration Create(
         string ingressClassName,
-        string clusterIssuerName) =>
+        string clusterIssuerName,
+        string? publicBaseDomain = null) =>
         new(
             DeploymentTargetValueGuard.KubernetesResourceName(
                 ingressClassName,
                 nameof(ingressClassName)),
             DeploymentTargetValueGuard.KubernetesResourceName(
                 clusterIssuerName,
-                nameof(clusterIssuerName)));
+                nameof(clusterIssuerName)),
+            NormalizePublicBaseDomain(publicBaseDomain));
+
+    public static bool IsValidPublicBaseDomain(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && DnsName.TryCreate(value, out _);
+
+    private static string? NormalizePublicBaseDomain(string? publicBaseDomain)
+    {
+        if (publicBaseDomain is null)
+            return null;
+
+        try
+        {
+            return DnsName.Create(publicBaseDomain).Value;
+        }
+        catch (ArgumentException exception)
+        {
+            throw new ArgumentException(
+                "Public base domain must be a valid ASCII DNS name.",
+                nameof(publicBaseDomain),
+                exception);
+        }
+    }
 
     public static bool IsValidKubernetesResourceName(string? value)
     {

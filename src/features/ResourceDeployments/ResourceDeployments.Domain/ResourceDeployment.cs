@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Dns;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Domain;
@@ -23,6 +24,8 @@ public sealed record ResourceDeployment(
     string PlacementKey,
     ResourcePlacementCapability PlacementCapability,
     ResolvedResourcePlacement ResolvedPlacement,
+    long ResourceRevision,
+    int FixedReplicas,
     long Revision,
     long DesiredGeneration,
     ResourceDeploymentOperation DesiredOperation,
@@ -35,7 +38,9 @@ public sealed record ResourceDeployment(
     public ResourceDeployment RequestReconciliation(
         ResolvedResourcePlacement resolvedPlacement,
         bool runtimeCellReady,
-        DateTime requestedAtUtc)
+        DateTime requestedAtUtc,
+        long? resourceRevision = null,
+        int? fixedReplicas = null)
     {
         ArgumentNullException.ThrowIfNull(resolvedPlacement);
         EnsureSamePlacement(resolvedPlacement);
@@ -45,6 +50,21 @@ public sealed record ResourceDeployment(
             requestedAtUtc,
             UpdatedAtUtc,
             nameof(requestedAtUtc));
+        var nextResourceRevision = resourceRevision is null
+            ? ResourceRevision
+            : ResourceDeploymentValueGuard.Positive(
+                resourceRevision.Value,
+                nameof(resourceRevision));
+        if (nextResourceRevision < ResourceRevision)
+        {
+            throw new InvalidOperationException(
+                "A resource deployment cannot move to an older logical resource revision.");
+        }
+        var nextFixedReplicas = fixedReplicas is null
+            ? FixedReplicas
+            : ResourceDeploymentValueGuard.PositiveInt(
+                fixedReplicas.Value,
+                nameof(fixedReplicas));
         var nextGeneration = checked(DesiredGeneration + 1);
         var nextState = State is ReconcilingResourceDeploymentState
             ? State
@@ -61,6 +81,8 @@ public sealed record ResourceDeployment(
         return this with
         {
             ResolvedPlacement = resolvedPlacement,
+            ResourceRevision = nextResourceRevision,
+            FixedReplicas = nextFixedReplicas,
             Revision = checked(Revision + 1),
             DesiredGeneration = nextGeneration,
             DesiredOperation = ResourceDeploymentOperation.Apply,
@@ -92,14 +114,18 @@ public sealed record ResourceDeployment(
         };
     }
 
-    public ResourceDeployment RequestDeletion(DateTime requestedAtUtc)
+    public ResourceDeployment RequestDeletion(
+        DateTime requestedAtUtc,
+        long? resourceRevision = null)
     {
         if (State is DeletedResourceDeploymentState)
             return this;
         if (DesiredOperation == ResourceDeploymentOperation.Delete &&
             State is not FailedResourceDeploymentState)
         {
-            return this;
+            return resourceRevision is null
+                ? this
+                : AdvanceResourceRevision(resourceRevision.Value, requestedAtUtc);
         }
 
         var normalizedRequestedAtUtc = ResourceDeploymentValueGuard.UpdatedUtc(
@@ -107,8 +133,19 @@ public sealed record ResourceDeployment(
             UpdatedAtUtc,
             nameof(requestedAtUtc));
         var nextGeneration = checked(DesiredGeneration + 1);
+        var nextResourceRevision = resourceRevision is null
+            ? ResourceRevision
+            : ResourceDeploymentValueGuard.Positive(
+                resourceRevision.Value,
+                nameof(resourceRevision));
+        if (nextResourceRevision < ResourceRevision)
+        {
+            throw new InvalidOperationException(
+                "A resource deployment cannot move to an older logical resource revision.");
+        }
         return this with
         {
+            ResourceRevision = nextResourceRevision,
             Revision = checked(Revision + 1),
             DesiredGeneration = nextGeneration,
             DesiredOperation = ResourceDeploymentOperation.Delete,
@@ -119,6 +156,37 @@ public sealed record ResourceDeployment(
                     ResourceDeploymentOperation.Delete,
                     AttemptCount: 0,
                     normalizedRequestedAtUtc),
+            UpdatedAtUtc = normalizedRequestedAtUtc
+        };
+    }
+
+    /// <summary>
+    /// Stamps this physical deployment with a newer logical desired-state revision
+    /// without requesting another physical reconciliation generation.
+    /// </summary>
+    public ResourceDeployment AdvanceResourceRevision(
+        long resourceRevision,
+        DateTime requestedAtUtc)
+    {
+        var normalizedResourceRevision = ResourceDeploymentValueGuard.Positive(
+            resourceRevision,
+            nameof(resourceRevision));
+        if (normalizedResourceRevision == ResourceRevision)
+            return this;
+        if (normalizedResourceRevision < ResourceRevision)
+        {
+            throw new InvalidOperationException(
+                "A resource deployment cannot move to an older logical resource revision.");
+        }
+
+        var normalizedRequestedAtUtc = ResourceDeploymentValueGuard.UpdatedUtc(
+            requestedAtUtc,
+            UpdatedAtUtc,
+            nameof(requestedAtUtc));
+        return this with
+        {
+            ResourceRevision = normalizedResourceRevision,
+            Revision = checked(Revision + 1),
             UpdatedAtUtc = normalizedRequestedAtUtc
         };
     }
@@ -486,11 +554,20 @@ public sealed record ResolvedResourcePlacement(
 
 public sealed record ResolvedIngressConfiguration(
     string IngressClassName,
-    string ClusterIssuerName)
+    string ClusterIssuerName,
+    string? PublicBaseDomain,
+    ImmutableList<string> Hostnames)
 {
     public static ResolvedIngressConfiguration Create(
         string ingressClassName,
         string clusterIssuerName) =>
+        Create(ingressClassName, clusterIssuerName, null, []);
+
+    public static ResolvedIngressConfiguration Create(
+        string ingressClassName,
+        string clusterIssuerName,
+        string? publicBaseDomain,
+        IEnumerable<string>? hostnames) =>
         new(
             ResourceDeploymentValueGuard.Required(
                 ingressClassName,
@@ -499,7 +576,38 @@ public sealed record ResolvedIngressConfiguration(
             ResourceDeploymentValueGuard.Required(
                 clusterIssuerName,
                 nameof(clusterIssuerName),
-                ResourceDeploymentValueGuard.MaximumKubernetesNameLength));
+                ResourceDeploymentValueGuard.MaximumKubernetesNameLength),
+            publicBaseDomain is null
+                ? null
+                : DnsName.Create(publicBaseDomain).Value,
+            NormalizeHostnames(publicBaseDomain, hostnames));
+
+    private static ImmutableList<string> NormalizeHostnames(
+        string? publicBaseDomain,
+        IEnumerable<string>? hostnames)
+    {
+        var baseDomain = publicBaseDomain is null
+            ? null
+            : DnsName.Create(publicBaseDomain);
+        var normalized = (hostnames ?? [])
+            .Select(hostname => DnsName.Create(hostname))
+            .Select(hostname =>
+            {
+                if (baseDomain is not null && !hostname.IsSameOrDescendantOf(baseDomain))
+                {
+                    throw new ArgumentException(
+                        "Ingress hostnames must be under the public base domain.",
+                        nameof(hostnames));
+                }
+
+                return hostname.Value;
+            })
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToImmutableList();
+
+        return normalized;
+    }
 }
 
 public sealed record ResolvedStorageConfiguration(
@@ -574,7 +682,11 @@ public sealed record ResourceDeploymentEndpoint(
 
 public static class ResourceDeploymentFactory
 {
-    public sealed record CreateOptions(string Id, DateTime CreatedAtUtc);
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc,
+        long ResourceRevision = 1,
+        int FixedReplicas = 1);
 
     public static ResourceDeployment Create(
         string tenantId,
@@ -608,6 +720,12 @@ public static class ResourceDeploymentFactory
         var createdAtUtc = ResourceDeploymentValueGuard.Utc(
             options.CreatedAtUtc,
             nameof(options.CreatedAtUtc));
+        var resourceRevision = ResourceDeploymentValueGuard.Positive(
+            options.ResourceRevision,
+            nameof(options.ResourceRevision));
+        var fixedReplicas = ResourceDeploymentValueGuard.PositiveInt(
+            options.FixedReplicas,
+            nameof(options.FixedReplicas));
         const long initialGeneration = 1;
         var placementKey = placementCapability switch
         {
@@ -632,6 +750,8 @@ public static class ResourceDeploymentFactory
             placementKey,
             placementCapability,
             resolvedPlacement,
+            resourceRevision,
+            fixedReplicas,
             Revision: 1,
             DesiredGeneration: initialGeneration,
             ResourceDeploymentOperation.Apply,
@@ -746,6 +866,13 @@ internal static class ResourceDeploymentValueGuard
             _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
         };
     }
+
+    public static int PositiveInt(int value, string parameterName) =>
+        value > 0
+            ? value
+            : throw new ArgumentOutOfRangeException(
+                parameterName,
+                "The value must be positive.");
 
     public static DateTime UpdatedUtc(
         DateTime value,

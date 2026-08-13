@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -7,12 +6,10 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
-using Pole.Features.WebServices.Events;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -53,10 +50,10 @@ public sealed record UpdateWebServiceImageTagRequestBody(
 
 public sealed record UpdateWebServiceImageTagResponse(
     string Id,
-    int Revision,
+    long ResourceRevision,
     string ReleaseId,
     string Tag,
-    PlacementSummaryDto Placement);
+    IReadOnlyList<PlacementSummaryDto> Deployments);
 
 public sealed class UpdateWebServiceImageTagHandler(
     LoadWebServiceById loadWebServiceById,
@@ -66,8 +63,9 @@ public sealed class UpdateWebServiceImageTagHandler(
     TouchWebServiceDeploymentToken touchDeploymentToken,
     RunMongoTransaction<UpdateWebServiceImageTagResponse> runMongoTransaction,
     ITenantContextAccessor tenantContextAccessor,
-    IResourceDeploymentComputeLookup deploymentComputeLookup,
-    IResourceDeploymentMutationWriter deploymentWriter)
+    IResourceDeploymentSetQueryService deploymentQuery,
+    IResourceDeploymentSetMutationWriter deploymentWriter,
+    TimeProvider timeProvider)
     : IMediatorHandler<UpdateWebServiceImageTagRequest, UpdateWebServiceImageTagResponse>
 {
     public async Task<Result<UpdateWebServiceImageTagResponse>> HandleAsync(
@@ -88,19 +86,16 @@ public sealed class UpdateWebServiceImageTagHandler(
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
             return Failures.Conflict("A deleting web service cannot be updated.");
 
-        var computeLookupResult = await deploymentComputeLookup.GetCurrentAsync(
+        var deployments = await deploymentQuery.GetAllAsync(
             webService.TenantId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
             cancellationToken);
-        if (!computeLookupResult.TryGetValue(
-                out var currentCompute,
-                out var computeLookupFailure))
-            return computeLookupFailure;
+        if (deployments.Count == 0)
+            return Failures.Conflict("The web service has no active resource deployments.");
 
         return await runMongoTransaction(async (session, ct) =>
         {
-            var previousSpec = webService.Spec.ToSnapshot();
             var nextSpec = webService.Spec with
             {
                 Image = webService.Spec.Image with
@@ -111,29 +106,25 @@ public sealed class UpdateWebServiceImageTagHandler(
             var updatedWebService = webService.UpdateDesiredState(
                 nextSpec,
                 webService.Tags);
-            var nextSpecSnapshot = nextSpec.ToSnapshot();
-            var deploymentEventCore = EventCore.Create(webService.TenantId);
-
-            var changes = new WebServiceUpdatedEventChanges(
-                UpdateLog<WebServiceSpecSnapshot>.Of(previousSpec, nextSpecSnapshot),
-                UpdateLog<ImmutableHashSet<string>>.Of(webService.Tags, webService.Tags));
-            var updatedEvent = new WebServiceUpdatedEvent(
-                webService.Id,
-                webService.Name,
-                webService.ResourceGroupId,
-                webService.DnsRecord.ToSnapshot(),
-                changes)
-            {
-                EventCore = EventCore.Create(webService.TenantId)
-            };
-            var replace = await persistUpdatedWebService(
+            var applied = await deploymentWriter.RequestSetApplyAsync(
+                new ResourceDeploymentSetApplyRequest(
+                    webService.TenantId,
+                    WebServiceResourceDeployment.ResourceType,
+                    webService.Id,
+                    updatedWebService.ActiveRevision,
+                    deployments.Select(deployment =>
+                        WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
                 session,
-                webService,
-                updatedWebService,
-                updatedEvent,
                 ct);
-            if (replace is not ISuccess)
-                return (Failure)replace;
+            if (!applied.TryGetValue(out var updatedDeployments, out var applyFailure))
+                return applyFailure;
+
+            var persisted = await persistUpdatedWebService(
+                session, webService, updatedWebService,
+                updatedWebService.ToUpdatedEvent(
+                    WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments)), ct);
+            if (persisted is not ISuccess)
+                return (Failure)persisted;
 
             if (authorization.DeploymentTokenId is not null)
             {
@@ -142,24 +133,9 @@ public sealed class UpdateWebServiceImageTagHandler(
                     authorization.TenantId,
                     webService.Id,
                     authorization.DeploymentTokenId,
-                    deploymentEventCore.OccurredOn,
+                    timeProvider.GetUtcNow().UtcDateTime,
                     request.Body.Source,
                     ct);
-            }
-
-            var deploymentResult = await deploymentWriter.RequestApplyAsync(
-                new ResourceDeploymentMutationRequest(
-                    webService.TenantId,
-                    WebServiceResourceDeployment.ResourceType,
-                    webService.Id,
-                    currentCompute.Compute.Profile),
-                session,
-                ct);
-            if (!deploymentResult.TryGetValue(
-                    out var deployment,
-                    out var deploymentFailure))
-            {
-                return deploymentFailure;
             }
 
             var release = WebServiceReleaseFactory.CreatePending(
@@ -170,9 +146,12 @@ public sealed class UpdateWebServiceImageTagHandler(
                 authorization.ActorUserId,
                 authorization.ActorEmail,
                 nextSpec,
-                deploymentEventCore.TraceId,
-                deploymentEventCore.CorrelationId,
-                deploymentEventCore.OccurredOn,
+                WebServiceDeploymentWorkflow.ToReleaseDeployments(updatedDeployments),
+                traceId: null,
+                correlationId: null,
+                new WebServiceReleaseFactory.CreateOptions(
+                    MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
+                    timeProvider.GetUtcNow().UtcDateTime),
                 new ExternalImageTagUpdateProvenance(
                     request.Body.Source,
                     request.Body.CommitSha,
@@ -182,8 +161,7 @@ public sealed class UpdateWebServiceImageTagHandler(
                     request.Body.Tag,
                     authorization.ActorType,
                     authorization.DeploymentTokenId,
-                    authorization.DeploymentTokenName),
-                deployment.DesiredGeneration);
+                    authorization.DeploymentTokenName));
             await persistCurrentWebServiceRelease(
                 session,
                 release,
@@ -193,7 +171,7 @@ public sealed class UpdateWebServiceImageTagHandler(
                 updatedWebService.ActiveRevision,
                 release.Id,
                 request.Body.Tag,
-                deployment);
+                updatedDeployments);
         }, cancellationToken);
     }
 

@@ -107,16 +107,8 @@ public sealed class DeploymentTargetReferenceAdmission(
                 cancellationToken: cancellationToken);
         }
 
-        var normalizedOwnerType = owner.Type.Trim();
-        var normalizedOwnerId = owner.Id.Trim();
-        var removalFilter = Builders<DeploymentTargetReference>.Filter.And(
-            Builders<DeploymentTargetReference>.Filter.In(
-                item => item.DeploymentTargetId,
-                removedTargetIds),
-            Builders<DeploymentTargetReference>.Filter.Eq(
-                item => item.OwnerType,
-                normalizedOwnerType),
-            Builders<DeploymentTargetReference>.Filter.Eq(item => item.OwnerId, normalizedOwnerId));
+        var removalFilter = DeploymentTargetReferenceFilters
+            .OwnedReferencesForTargets(removedTargetIds, owner);
         var referencedTargetIds = removedTargetIds.Length == 0
             ? []
             : await dbContext.DeploymentTargetReferences
@@ -144,51 +136,54 @@ public sealed class DeploymentTargetReferenceAdmission(
                 "Deployment-target references changed while removal was being accepted.");
     }
 
-    public async Task<Result> FenceAsync(
+    public Task<Result> FenceAsync(
         string deploymentTargetId,
         long expectedWorkloadConfigurationRevision,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default) =>
+        FenceManyAsync(
+            [new DeploymentTargetWorkloadConfigurationFenceRequest(
+                deploymentTargetId,
+                expectedWorkloadConfigurationRevision)],
+            session,
+            cancellationToken);
+
+    public async Task<Result> FenceManyAsync(
+        IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
-        if (!ObjectId.TryParse(deploymentTargetId, out _) ||
-            expectedWorkloadConfigurationRevision < 1)
+        ArgumentNullException.ThrowIfNull(requests);
+        if (requests.Count == 0)
+            return Result.Success();
+
+        var distinctRequests = requests
+            .DistinctBy(request => request.DeploymentTargetId, StringComparer.Ordinal)
+            .ToArray();
+        if (distinctRequests.Length != requests.Count ||
+            distinctRequests.Any(request =>
+                !ObjectId.TryParse(request.DeploymentTargetId, out _) ||
+                request.ExpectedWorkloadConfigurationRevision < 1))
         {
             return Failures.ValidationFailure(new Dictionary<string, string[]>
             {
-                ["DeploymentTargetId"] =
+                ["DeploymentTargets"] =
                 [
-                    "A valid deployment target and workload configuration revision are required."
+                    "Unique valid deployment targets and workload configuration revisions are required."
                 ]
             });
         }
 
-        var update = await dbContext.DeploymentTargets.UpdateOneAsync(
+        var update = await dbContext.DeploymentTargets.UpdateManyAsync(
             session,
-            Builders<DeploymentTarget>.Filter.And(
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.Id,
-                    deploymentTargetId),
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.Enabled,
-                    true),
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.AcceptsWorkloads,
-                    true),
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.DeletionRequestedAtUtc,
-                    null),
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.WorkloadConfiguration.Revision,
-                    expectedWorkloadConfigurationRevision),
-                Builders<DeploymentTarget>.Filter.Lt(
-                    target => target.ReferenceFence,
-                    long.MaxValue)),
+            DeploymentTargetFilters.FenceableWorkloadConfigurations(
+                distinctRequests),
             Builders<DeploymentTarget>.Update.Inc(
                 target => target.ReferenceFence,
                 1),
             cancellationToken: cancellationToken);
-        return update.ModifiedCount == 1
+        return update.ModifiedCount == distinctRequests.Length
             ? Result.Success()
             : Failures.Conflict(
                 "The deployment target workload configuration changed or no longer accepts workloads.");
@@ -222,26 +217,11 @@ public sealed class DeploymentTargetReferenceAdmission(
         if (deploymentTargetIds.Count == 0)
             return Result.Success();
 
-        var filter = Builders<DeploymentTarget>.Filter.And(
-            Builders<DeploymentTarget>.Filter.In(
-                target => target.Id,
-                deploymentTargetIds),
-            Builders<DeploymentTarget>.Filter.Lt(
-                target => target.ReferenceFence,
-                long.MaxValue));
-        if (requireAdmission)
-        {
-            filter &= Builders<DeploymentTarget>.Filter.And(
-                Builders<DeploymentTarget>.Filter.Eq(target => target.Enabled, true),
-                Builders<DeploymentTarget>.Filter.Eq(target => target.AcceptsWorkloads, true),
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.DeletionRequestedAtUtc,
-                    null));
-        }
-
         var update = await dbContext.DeploymentTargets.UpdateManyAsync(
             session,
-            filter,
+            DeploymentTargetFilters.FenceableReferences(
+                deploymentTargetIds,
+                requireAdmission),
             Builders<DeploymentTarget>.Update.Inc(target => target.ReferenceFence, 1),
             cancellationToken: cancellationToken);
         if (update.ModifiedCount == deploymentTargetIds.Count)
@@ -255,16 +235,7 @@ public sealed class DeploymentTargetReferenceAdmission(
     private static FilterDefinition<DeploymentTargetReference> ReferenceFilter(
         string deploymentTargetId,
         DeploymentTargetReferenceOwner owner) =>
-        Builders<DeploymentTargetReference>.Filter.And(
-            Builders<DeploymentTargetReference>.Filter.Eq(
-                item => item.DeploymentTargetId,
-                deploymentTargetId),
-            Builders<DeploymentTargetReference>.Filter.Eq(
-                item => item.OwnerType,
-                owner.Type.Trim()),
-            Builders<DeploymentTargetReference>.Filter.Eq(
-                item => item.OwnerId,
-                owner.Id.Trim()));
+        DeploymentTargetReferenceFilters.ByOwner(deploymentTargetId, owner);
 
     private static ValidationFailure? ValidateOwner(DeploymentTargetReferenceOwner? owner)
     {

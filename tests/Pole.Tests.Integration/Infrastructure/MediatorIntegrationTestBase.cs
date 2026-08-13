@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Domain;
+using Pole.Features.Tenants.Domain;
 using Pole.Mediator;
 using Pole.Server.Database;
 using Xunit;
@@ -30,6 +31,9 @@ public abstract class MediatorIntegrationTestBase : IAsyncLifetime
         await Fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
             .InsertOneAsync(TestData.SeedComputeProfile());
+        await Fixture.DbContext.Tenants.InsertOneAsync(TenantFactory.Create(
+            "Test tenant",
+            TestData.TenantId));
         _serviceProvider = TestServiceProviderFactory.Create(Fixture);
         _scope = _serviceProvider.CreateScope();
     }

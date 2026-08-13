@@ -1,17 +1,18 @@
-using MongoDB.Driver;
 using Microsoft.Extensions.DependencyInjection;
-using Pole.ASP.Helpers;
-using Pole.Features.DnsRecords.Application.Consumers;
+using MongoDB.Bson;
+using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.DnsRecords.Contracts;
-using Pole.Features.DnsRecords.Domain;
-using Pole.Features.DnsRecords.Events;
+using Pole.Features.Domains.Domain;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.WebServices.Application.Endpoints;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
+using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.WebServices;
@@ -20,77 +21,307 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
     [Fact]
-    public async Task Create_Succeeds_WhenResourceGroupExists_AndDomainIsFree()
+    public async Task Create_PersistsGeneratedHostnameAndMultiTargetPlacementSnapshot()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var request = TestData.CreateWebServiceRequest(resourceGroup.Id);
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var result = await Mediator.Send(TestData.CreateWebServiceRequest(group.Id));
+        var created = result.AssertSuccess();
 
-        var result = await Mediator.Send(request);
+        var service = await Fixture.Database.WebServices()
+            .Find(item => item.Id == created.WebServiceId).SingleAsync();
+        Assert.Equal(group.DefaultIsolationScopeId, service.IsolationScopeId);
+        Assert.Single(created.Deployments);
+        Assert.Equal(ResourcePlacementCapability.MultiTarget,
+            (await DbContext.ResourceDeployments.Find(item => item.ResourceId == service.Id).SingleAsync())
+            .PlacementCapability);
 
-        result.TryGetValue(out var response, out var error);
-        Assert.Null(error);
-        Assert.NotNull(response);
-
-        var savedWebService = await Fixture.Database.WebServices().Find(service => service.Id == response.WebServiceId).FirstOrDefaultAsync();
-        Assert.NotNull(savedWebService);
-
-        var deployment = await DbContext.ResourceDeployments
-            .Find(item => item.ResourceId == response.WebServiceId)
-            .SingleAsync();
-        Assert.Equal(
-            TestData.DefaultComputeProfileId,
-            deployment.ResolvedPlacement.Compute.ComputeProfileId);
-        Assert.Equal(1, deployment.ResolvedPlacement.Compute.ComputeProfileRevision);
-        Assert.Equal(250, deployment.ResolvedPlacement.Compute.Requests.CpuMillis);
-
-        var savedDns = await DbContext.DnsRecords.Find(record => record.Resource.Id == response.WebServiceId).FirstOrDefaultAsync();
-        Assert.NotNull(savedDns);
-        Assert.Equal(request.Body.DomainName, savedDns.Domain);
-        Assert.IsType<Pending>(savedDns.Status);
-
-        var outboxCount = await DbContext.CountOutboxMessagesAsync("web-service-created");
-        Assert.Equal(1L, outboxCount);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("commit-domain-name"));
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
-            "runtime-cell-reconciliation-requested"));
-        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
-            "resource-deployment-reconciliation-requested"));
-
-        var release = await Fixture.Database.WebServiceReleases()
-            .Find(r => r.WebServiceId == response.WebServiceId && r.TenantId == TestData.TenantId)
-            .SingleAsync();
-        Assert.Equal(1, release.Revision);
-        Assert.Equal(WebServiceReleaseAction.Create, release.Action);
-        Assert.Equal(WebServiceReleaseOutcome.Pending, release.Outcome);
-        Assert.Equal(TestData.UserId, release.ActorUserId);
-        Assert.Equal(TestData.UserEmail, release.ActorEmail);
-
-        var reservationService = Services.GetRequiredService<IDomainNameReservationService>();
-        var commitConsumer = new CommitDomainNameReservationOnCommitDomainNameEventConsumer(reservationService);
-        await commitConsumer.Handle(new CommitDomainNameEvent(
-            savedDns.Id,
-            response.WebServiceId,
-            EventCore.Create(TestData.TenantId)));
-
-        var committedDns = await DbContext.DnsRecords.Find(record => record.Id == savedDns.Id).FirstOrDefaultAsync();
-        Assert.NotNull(committedDns);
-        Assert.IsType<Committed>(committedDns.Status);
+        var deployment = created.Deployments.Single();
+        Assert.Equal(2, deployment.FixedReplicas);
+        Assert.Single(deployment.Ingress!.Hostnames);
+        Assert.StartsWith("webservice-", deployment.Ingress.Hostnames.Single());
+        Assert.Equal(1, await Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings")
+            .CountDocumentsAsync(binding => binding.ResourceDeploymentId == deployment.DeploymentId));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("web-service-created"));
     }
 
     [Fact]
-    public async Task Update_OmissionPreservesComputeSnapshot_AndExplicitIdAdoptsLatestRevision()
+    public async Task AddDeployment_PersistsTargetBindingAndAggregateRelease()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(
-            TestData.SeedResourceGroup());
-        var createResult = await Mediator.Send(
-            TestData.CreateWebServiceRequest(resourceGroup.Id));
-        var created = createResult.AssertSuccess();
+        var secondTargetId = ObjectId.GenerateNewId().ToString();
+        Services.GetRequiredService<TestDeploymentTargetLookup>()
+            .AddEligibleTarget(secondTargetId, "apps.second.test.local");
+        await Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles")
+            .ReplaceOneAsync(
+                profile => profile.Id == TestData.DefaultComputeProfileId,
+                TestData.SeedComputeProfile(deploymentTargetIds:
+                    [TestData.DefaultDeploymentTargetId, secondTargetId]));
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id)))
+            .AssertSuccess();
 
-        var profiles = Fixture.Database
-            .GetCollection<ComputeProfile>("ComputeProfiles");
-        var currentProfile = await profiles
-            .Find(profile => profile.Id == TestData.DefaultComputeProfileId)
+        var result = await Mediator.Send(new AddWebServiceDeploymentRequest(
+            created.WebServiceId,
+            new WebServiceDeploymentTargetRequest(secondTargetId, FixedReplicas: 3),
+            TestData.TenantId));
+        var added = result.AssertSuccess();
+
+        Assert.Equal(secondTargetId, added.DeploymentTargetId);
+        Assert.Equal(3, added.FixedReplicas);
+        Assert.Equal(2, added.ResourceRevision);
+        Assert.Equal(2, await DbContext.ResourceDeployments.CountDocumentsAsync(
+            deployment => deployment.ResourceId == created.WebServiceId));
+        Assert.Equal(1, await Fixture.Database
+            .GetCollection<HostnameBinding>("HostnameBindings")
+            .CountDocumentsAsync(binding =>
+                binding.ResourceDeploymentId == added.DeploymentId));
+        var release = await Fixture.Database.WebServiceReleases()
+            .Find(item =>
+                item.WebServiceId == created.WebServiceId &&
+                item.ResourceRevision == 2)
             .SingleAsync();
+        Assert.Equal(WebServiceReleaseAction.AddDeployment, release.Action);
+        Assert.Equal(2, release.Deployments.Count);
+    }
+
+    [Fact]
+    public async Task SharedUpdate_AdvancesEveryDeploymentAndCreatesAggregateRelease()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id))).AssertSuccess();
+        var spec = TestData.ValidWebServiceSpec() with
+        {
+            Image = new Pole.Features.WebServices.Application.Common.ImageInfoDto("docker.io", "nginx", "1.28")
+        };
+
+        var result = await Mediator.Send(new UpdateWebServiceRequest(created.WebServiceId,
+            new UpdateWebServiceRequestBody(spec, ["stable"]), TestData.TenantId));
+        var updated = result.AssertSuccess();
+        Assert.Equal(2, updated.ResourceRevision);
+        Assert.All(updated.Deployments, deployment => Assert.Equal(2, deployment.ResourceRevision));
+        var release = await Fixture.Database.WebServiceReleases()
+            .Find(item => item.WebServiceId == created.WebServiceId && item.ResourceRevision == 2)
+            .SingleAsync();
+        Assert.Equal(WebServiceReleaseAction.Update, release.Action);
+        Assert.Equal(updated.Deployments.Count, release.Deployments.Count);
+    }
+
+    [Fact]
+    public async Task RemoveDeployment_RejectsLastDesiredDeployment()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id))).AssertSuccess();
+        var deployment = created.Deployments.Single();
+        var result = await Mediator.Send(new DeleteWebServiceDeploymentRequest(
+            created.WebServiceId, deployment.DeploymentId, TestData.TenantId));
+        Assert.IsType<Pole.ResultType.ConflictFailure>(result.AssertFailure());
+    }
+
+    [Fact]
+    public async Task RemoveDeployment_CreatesAggregateDeleteRelease_AndKeepsSibling()
+    {
+        var secondTargetId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+        Services.GetRequiredService<TestDeploymentTargetLookup>()
+            .AddEligibleTarget(secondTargetId, "apps.second.test.local");
+        await Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles")
+            .ReplaceOneAsync(
+                profile => profile.Id == TestData.DefaultComputeProfileId,
+                TestData.SeedComputeProfile(deploymentTargetIds:
+                    [TestData.DefaultDeploymentTargetId, secondTargetId]));
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var request = TestData.CreateWebServiceRequest(group.Id) with
+        {
+            Body = TestData.CreateWebServiceRequest(group.Id).Body with
+            {
+                Placement = new WebServicePlacementRequest(null,
+                [
+                    new WebServiceDeploymentTargetRequest(
+                        TestData.DefaultDeploymentTargetId, 2),
+                    new WebServiceDeploymentTargetRequest(secondTargetId, 1)
+                ])
+            }
+        };
+        var created = (await Mediator.Send(request)).AssertSuccess();
+        var removed = created.Deployments.Single(deployment =>
+            deployment.DeploymentTargetId == secondTargetId);
+
+        var result = await Mediator.Send(new DeleteWebServiceDeploymentRequest(
+            created.WebServiceId, removed.DeploymentId, TestData.TenantId));
+        var deleting = result.AssertSuccess();
+
+        Assert.Equal(removed.DeploymentId, deleting.DeploymentId);
+        Assert.Equal("Deleting", deleting.Status);
+        var release = await Fixture.Database.WebServiceReleases()
+            .Find(item => item.WebServiceId == created.WebServiceId &&
+                          item.ResourceRevision == 2)
+            .SingleAsync();
+        Assert.Equal(WebServiceReleaseAction.RemoveDeployment, release.Action);
+        Assert.Equal(2, release.Deployments.Count);
+        var removedEntry = Assert.Single(release.Deployments, entry =>
+            entry.ResourceDeploymentId == removed.DeploymentId);
+        Assert.Equal(WebServiceReleaseDeploymentOperation.Delete, removedEntry.Operation);
+        Assert.Equal(WebServiceReleaseDeploymentOutcome.Pending, removedEntry.Outcome);
+        Assert.Contains(release.Deployments, entry =>
+            entry.ResourceDeploymentId != removed.DeploymentId &&
+            entry.Operation == WebServiceReleaseDeploymentOperation.Apply);
+        Assert.Equal(2, await DbContext.ResourceDeployments.CountDocumentsAsync(
+            deployment => deployment.ResourceId == created.WebServiceId));
+
+        var deletingDeployment = await DbContext.ResourceDeployments
+            .Find(deployment => deployment.Id == removed.DeploymentId)
+            .SingleAsync();
+        var claimId = ObjectId.GenerateNewId().ToString();
+        var deletedAtUtc = deletingDeployment.UpdatedAtUtc;
+        var terminal = deletingDeployment
+            .Start(deletingDeployment.DesiredGeneration,
+                ResourceDeploymentOperation.Delete, claimId, deletedAtUtc,
+                deletedAtUtc.AddMinutes(1))
+            .Complete(deletingDeployment.DesiredGeneration,
+                ResourceDeploymentOperation.Delete, claimId, [], deletedAtUtc);
+        await DbContext.ResourceDeployments.ReplaceOneAsync(
+            deployment => deployment.Id == removed.DeploymentId, terminal);
+        (await Services.GetRequiredService<CompleteWebServiceDeployment>()(
+            TestData.TenantId,
+            created.WebServiceId,
+            new WebServiceDeploymentCompletion(
+                removed.DeploymentId,
+                deleting.ResourceRevision,
+                deleting.DesiredGeneration,
+                WebServiceReleaseDeploymentOperation.Delete,
+                Succeeded: true,
+                Retryable: false,
+                DateTime.UtcNow,
+                null,
+                null,
+                EventCore.Create(TestData.TenantId)))).AssertSuccess();
+
+        Assert.Equal(1, await DbContext.ResourceDeployments.CountDocumentsAsync(
+            deployment => deployment.ResourceId == created.WebServiceId));
+        Assert.Equal(0, await Fixture.Database
+            .GetCollection<HostnameBinding>("HostnameBindings")
+            .CountDocumentsAsync(binding =>
+                binding.ResourceDeploymentId == removed.DeploymentId));
+    }
+
+    [Fact]
+    public async Task RemoveDeployment_RejectsRemovingLastDesiredDeploymentWhileSiblingIsDeleting()
+    {
+        var secondTargetId = ObjectId.GenerateNewId().ToString();
+        Services.GetRequiredService<TestDeploymentTargetLookup>()
+            .AddEligibleTarget(secondTargetId, "apps.second.test.local");
+        await Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles")
+            .ReplaceOneAsync(
+                profile => profile.Id == TestData.DefaultComputeProfileId,
+                TestData.SeedComputeProfile(deploymentTargetIds:
+                    [TestData.DefaultDeploymentTargetId, secondTargetId]));
+        var group = await DbContext.InsertResourceGroupAsync(
+            TestData.SeedResourceGroup());
+        var request = TestData.CreateWebServiceRequest(group.Id) with
+        {
+            Body = TestData.CreateWebServiceRequest(group.Id).Body with
+            {
+                Placement = new WebServicePlacementRequest(
+                    null,
+                    [
+                        new WebServiceDeploymentTargetRequest(
+                            TestData.DefaultDeploymentTargetId,
+                            2),
+                        new WebServiceDeploymentTargetRequest(
+                            secondTargetId,
+                            1)
+                    ])
+            }
+        };
+        var created = (await Mediator.Send(request)).AssertSuccess();
+
+        _ = (await Mediator.Send(new DeleteWebServiceDeploymentRequest(
+            created.WebServiceId,
+            created.Deployments[0].DeploymentId,
+            TestData.TenantId))).AssertSuccess();
+
+        var secondRemoval = await Mediator.Send(
+            new DeleteWebServiceDeploymentRequest(
+                created.WebServiceId,
+                created.Deployments[1].DeploymentId,
+                TestData.TenantId));
+
+        Assert.IsType<ConflictFailure>(secondRemoval.AssertFailure());
+        var retained = await DbContext.ResourceDeployments
+            .Find(deployment =>
+                deployment.Id == created.Deployments[1].DeploymentId)
+            .SingleAsync();
+        Assert.Equal(ResourceDeploymentOperation.Apply, retained.DesiredOperation);
+    }
+
+    [Fact]
+    public async Task RetryDeployment_CreatesNewRelease_ThatCanCompleteSuccessfully()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id)))
+            .AssertSuccess();
+        var deployment = await DbContext.ResourceDeployments
+            .Find(item => item.Id == created.Deployments.Single().DeploymentId)
+            .SingleAsync();
+        var startedAtUtc = deployment.UpdatedAtUtc;
+        var claimId = ObjectId.GenerateNewId().ToString();
+        var ready = deployment.MarkRuntimeCellReady(deployment.UpdatedAtUtc);
+        var failed = ready
+            .Start(deployment.DesiredGeneration, ResourceDeploymentOperation.Apply,
+                claimId, startedAtUtc, startedAtUtc.AddMinutes(1))
+            .Fail(deployment.DesiredGeneration, ResourceDeploymentOperation.Apply,
+                claimId, "Transient", "Retry this deployment.", retryable: true,
+                startedAtUtc, startedAtUtc);
+        await DbContext.ResourceDeployments.ReplaceOneAsync(
+            item => item.Id == deployment.Id, failed);
+
+        var result = await Mediator.Send(new RetryWebServiceDeploymentRequest(
+            created.WebServiceId,
+            deployment.Id,
+            new RetryWebServiceDeploymentBody(failed.Revision, "Apply"),
+            TestData.TenantId));
+        var retried = result.AssertSuccess();
+
+        Assert.Equal(2, retried.ResourceRevision);
+        Assert.Equal("Pending", retried.Status);
+        var release = await Fixture.Database.WebServiceReleases()
+            .Find(item => item.WebServiceId == created.WebServiceId &&
+                          item.ResourceRevision == 2)
+            .SingleAsync();
+        Assert.Equal(WebServiceReleaseAction.RetryDeployment, release.Action);
+        var entry = Assert.Single(release.Deployments);
+        Assert.Equal(WebServiceReleaseDeploymentOutcome.Pending, entry.Outcome);
+
+        var completed = await Services.GetRequiredService<CompleteWebServiceDeployment>()(
+            TestData.TenantId,
+            created.WebServiceId,
+            new WebServiceDeploymentCompletion(
+                deployment.Id,
+                retried.ResourceRevision,
+                retried.DesiredGeneration,
+                WebServiceReleaseDeploymentOperation.Apply,
+                Succeeded: true,
+                Retryable: false,
+                DateTime.UtcNow,
+                null,
+                null,
+                EventCore.Create(TestData.TenantId)));
+        completed.AssertSuccess();
+
+        release = await Fixture.Database.WebServiceReleases()
+            .Find(item => item.Id == release.Id)
+            .SingleAsync();
+        Assert.Equal(WebServiceReleaseOutcome.Succeeded, release.Outcome);
+    }
+
+    [Fact]
+    public async Task UpdateDeployment_OmissionPreservesCompute_AndExplicitIdAdoptsLatestRevision()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id)))
+            .AssertSuccess();
+        var initial = Assert.Single(created.Deployments);
+        var profiles = Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles");
+        var currentProfile = await profiles.Find(profile =>
+            profile.Id == TestData.DefaultComputeProfileId).SingleAsync();
         var revisedProfile = currentProfile with
         {
             Resources = ComputeProfileResourceRequirements.Create(
@@ -99,310 +330,184 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             Revision = 2,
             UpdatedAtUtc = currentProfile.UpdatedAtUtc.AddMinutes(1)
         };
-        await profiles.ReplaceOneAsync(
-            profile => profile.Id == currentProfile.Id,
+        await profiles.ReplaceOneAsync(profile => profile.Id == currentProfile.Id,
             revisedProfile);
 
-        var updatedSpec = TestData.ValidWebServiceSpec() with
-        {
-            Image = new ImageInfoDto("docker.io", "nginx", "1.28")
-        };
-        var preserveResult = await Mediator.Send(new UpdateWebServiceRequest(
+        (await Mediator.Send(new UpdateWebServiceDeploymentRequest(
             created.WebServiceId,
-            new UpdateWebServiceRequestBody(updatedSpec, []),
-            TestData.TenantId));
-        preserveResult.AssertSuccess();
+            initial.DeploymentId,
+            new UpdateWebServiceDeploymentBody(initial.FixedReplicas),
+            TestData.TenantId))).AssertSuccess();
+        var preserved = await DbContext.ResourceDeployments
+            .Find(item => item.Id == initial.DeploymentId).SingleAsync();
+        Assert.Equal(1, preserved.ResolvedPlacement.Compute.ComputeProfileRevision);
+        Assert.Equal(250, preserved.ResolvedPlacement.Compute.Requests.CpuMillis);
 
-        var preservedDeployment = await DbContext.ResourceDeployments
-            .Find(item => item.ResourceId == created.WebServiceId)
-            .SingleAsync();
-        Assert.Equal(1, preservedDeployment.ResolvedPlacement.Compute.ComputeProfileRevision);
-        Assert.Equal(250, preservedDeployment.ResolvedPlacement.Compute.Requests.CpuMillis);
-
-        var adoptResult = await Mediator.Send(new UpdateWebServiceRequest(
+        (await Mediator.Send(new UpdateWebServiceDeploymentRequest(
             created.WebServiceId,
-            new UpdateWebServiceRequestBody(
-                updatedSpec,
-                [],
+            initial.DeploymentId,
+            new UpdateWebServiceDeploymentBody(
+                initial.FixedReplicas,
                 TestData.DefaultComputeProfileId),
-            TestData.TenantId));
-        adoptResult.AssertSuccess();
-
-        var adoptedDeployment = await DbContext.ResourceDeployments
-            .Find(item => item.ResourceId == created.WebServiceId)
-            .SingleAsync();
-        Assert.Equal(2, adoptedDeployment.ResolvedPlacement.Compute.ComputeProfileRevision);
-        Assert.Equal(500, adoptedDeployment.ResolvedPlacement.Compute.Requests.CpuMillis);
+            TestData.TenantId))).AssertSuccess();
+        var adopted = await DbContext.ResourceDeployments
+            .Find(item => item.Id == initial.DeploymentId).SingleAsync();
+        Assert.Equal(2, adopted.ResolvedPlacement.Compute.ComputeProfileRevision);
+        Assert.Equal(500, adopted.ResolvedPlacement.Compute.Requests.CpuMillis);
     }
 
     [Fact]
-    public async Task Update_CreatesNewRelease_AndIncrementsActiveRevision()
+    public async Task Rollback_RestoresSucceededReleaseSpec()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id));
-        Assert.True(createResult.TryGetValue(out var created, out _));
-
-        var updatedSpec = TestData.ValidWebServiceSpec() with
-        {
-            Image = new ImageInfoDto("docker.io", "nginx", "1.28")
-        };
-
-        var updateResult = await Mediator.Send(new UpdateWebServiceRequest(
-            created.WebServiceId,
-            new UpdateWebServiceRequestBody(
-                updatedSpec,
-                ["stable"]),
-            TestData.TenantId,
-            new ClaimValue<string?>(TestData.UserId),
-            new ClaimValue<string?>(TestData.UserEmail)));
-
-        Assert.True(updateResult.TryGetValue(out var response, out var error));
-        Assert.Null(error);
-        Assert.Equal(created.WebServiceId, response.Id);
-
-        var saved = await Fixture.Database.WebServices()
-            .Find(service => service.Id == created.WebServiceId)
-            .SingleAsync();
-        Assert.Equal(2, saved.ActiveRevision);
-        Assert.Equal("1.28", saved.Spec.Image.Tag);
-
-        var release = await Fixture.Database.WebServiceReleases()
-            .Find(r => r.WebServiceId == created.WebServiceId && r.Revision == 2)
-            .SingleAsync();
-        Assert.Equal(WebServiceReleaseAction.Update, release.Action);
-        Assert.Equal(WebServiceReleaseOutcome.Pending, release.Outcome);
-        Assert.Equal("1.28", release.Spec.Image.Tag);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
-            "runtime-cell-reconciliation-requested"));
-        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
-            "resource-deployment-reconciliation-requested"));
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("web-service-updated"));
-
-        var historyResult = await Mediator.Send(new GetWebServiceDeploymentsRequest
-        {
-            Id = created.WebServiceId,
-            TenantId = TestData.TenantId
-        });
-
-        Assert.True(historyResult.TryGetValue(out var history, out var historyError));
-        Assert.Null(historyError);
-        Assert.Equal(2, history.ActiveRevision);
-        Assert.Equal([2, 1], history.Releases.Items.Select(item => item.Revision).ToArray());
-    }
-
-    [Fact]
-    public async Task Redeploy_CreatesNewRelease_ForCurrentSpec()
-    {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id));
-        Assert.True(createResult.TryGetValue(out var created, out _));
-
-        var redeployResult = await Mediator.Send(new RedeployWebServiceRequest(
-            created.WebServiceId,
-            TestData.TenantId,
-            new ClaimValue<string?>(TestData.UserId),
-            new ClaimValue<string?>(TestData.UserEmail)));
-
-        Assert.True(redeployResult.TryGetValue(out var response, out var error));
-        Assert.Null(error);
-        Assert.Equal(2, response.Revision);
-
-        var saved = await Fixture.Database.WebServices()
-            .Find(service => service.Id == created.WebServiceId)
-            .SingleAsync();
-        Assert.Equal(2, saved.ActiveRevision);
-
-        var release = await Fixture.Database.WebServiceReleases()
-            .Find(r => r.Id == response.ReleaseId)
-            .SingleAsync();
-        Assert.Equal(WebServiceReleaseAction.Redeploy, release.Action);
-        Assert.Equal(saved.Spec.Image.Tag, release.Spec.Image.Tag);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
-            "runtime-cell-reconciliation-requested"));
-        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
-            "resource-deployment-reconciliation-requested"));
-    }
-
-    [Fact]
-    public async Task Rollback_CreatesNewRelease_AndRestoresPreviousSpec()
-    {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id));
-        Assert.True(createResult.TryGetValue(out var created, out _));
-
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id)))
+            .AssertSuccess();
         await Fixture.Database.WebServiceReleases().UpdateOneAsync(
-            r => r.WebServiceId == created.WebServiceId && r.Revision == 1,
+            release => release.WebServiceId == created.WebServiceId &&
+                       release.ResourceRevision == 1,
             Builders<WebServiceRelease>.Update
-                .Set(r => r.Outcome, WebServiceReleaseOutcome.Succeeded)
-                .Set(r => r.CompletedAtUtc, DateTime.UtcNow));
-
+                .Set(release => release.Outcome, WebServiceReleaseOutcome.Succeeded)
+                .Set(release => release.CompletedAtUtc, DateTime.UtcNow));
         var updatedSpec = TestData.ValidWebServiceSpec() with
         {
             Image = new ImageInfoDto("docker.io", "nginx", "1.28")
         };
-        await Mediator.Send(new UpdateWebServiceRequest(
+        (await Mediator.Send(new UpdateWebServiceRequest(
             created.WebServiceId,
             new UpdateWebServiceRequestBody(updatedSpec, []),
-            TestData.TenantId,
-            new ClaimValue<string?>(TestData.UserId),
-            new ClaimValue<string?>(TestData.UserEmail)));
+            TestData.TenantId))).AssertSuccess();
 
-        var rollbackResult = await Mediator.Send(new RollbackWebServiceRequest(
+        var rollback = (await Mediator.Send(new RollbackWebServiceRequest(
             created.WebServiceId,
             new RollbackWebServiceRequestBody(1),
-            TestData.TenantId,
-            new ClaimValue<string?>(TestData.UserId),
-            new ClaimValue<string?>(TestData.UserEmail)));
+            TestData.TenantId))).AssertSuccess();
 
-        Assert.True(rollbackResult.TryGetValue(out var rollback, out var error));
-        Assert.Null(error);
-        Assert.Equal(3, rollback.Revision);
-
+        Assert.Equal(3, rollback.ResourceRevision);
         var saved = await Fixture.Database.WebServices()
-            .Find(service => service.Id == created.WebServiceId)
-            .SingleAsync();
-        Assert.Equal(3, saved.ActiveRevision);
+            .Find(service => service.Id == created.WebServiceId).SingleAsync();
         Assert.Equal("1.27", saved.Spec.Image.Tag);
-
         var release = await Fixture.Database.WebServiceReleases()
-            .Find(r => r.Id == rollback.ReleaseId)
-            .SingleAsync();
+            .Find(item => item.Id == rollback.ReleaseId).SingleAsync();
         Assert.Equal(WebServiceReleaseAction.Rollback, release.Action);
         Assert.Equal("1.27", release.Spec.Image.Tag);
-        Assert.Equal(WebServiceReleaseOutcome.Pending, release.Outcome);
     }
 
     [Fact]
-    public async Task Rollback_DoesNotUseSucceededRelease_FromAnotherTenant()
+    public async Task Rollback_DoesNotReadSucceededReleaseFromAnotherTenant()
     {
         const string otherTenantId = "507f1f77bcf86cd799439022";
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup(name: "alpha"));
-        var otherResourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup(name: "alpha", tenantId: otherTenantId));
-
-        var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(
-            resourceGroup.Id,
-            name: "shared-api",
-            domainName: "shared-one.example.com"));
-        Assert.True(createResult.TryGetValue(out var created, out _));
-
-        var otherCreateResult = await Mediator.Send(TestData.CreateWebServiceRequest(
-            otherResourceGroup.Id,
-            name: "shared-api",
-            domainName: "shared-two.example.com",
-            tenantId: otherTenantId));
-        Assert.True(otherCreateResult.TryGetValue(out _, out _));
-
-        var foreignRelease = WebServiceReleaseFactory.CreatePending(
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id)))
+            .AssertSuccess();
+        var placement = Assert.Single(created.Deployments);
+        var foreign = WebServiceReleaseFactory.CreatePending(
             otherTenantId,
             created.WebServiceId,
             7,
-            WebServiceReleaseAction.Imported,
+            WebServiceReleaseAction.Update,
             null,
             null,
             TestData.ValidWebServiceSpec().ToDomain(),
+            [new WebServiceReleaseDeployment(
+                placement.DeploymentId,
+                placement.DeploymentTargetId,
+                7,
+                placement.DesiredGeneration,
+                WebServiceReleaseDeploymentOperation.Apply,
+                WebServiceReleaseDeploymentOutcome.Succeeded,
+                DateTime.UtcNow,
+                null,
+                null)],
             null,
-            null) with
+            null,
+            new WebServiceReleaseFactory.CreateOptions(
+                ObjectId.GenerateNewId().ToString(), DateTime.UtcNow)) with
         {
             Outcome = WebServiceReleaseOutcome.Succeeded,
             CompletedAtUtc = DateTime.UtcNow
         };
-        await Fixture.Database.WebServiceReleases().InsertOneAsync(foreignRelease);
+        await Fixture.Database.WebServiceReleases().InsertOneAsync(foreign);
 
-        var rollbackResult = await Mediator.Send(new RollbackWebServiceRequest(
+        var rollback = await Mediator.Send(new RollbackWebServiceRequest(
             created.WebServiceId,
             new RollbackWebServiceRequestBody(7),
-            TestData.TenantId,
-            new ClaimValue<string?>(TestData.UserId),
-            new ClaimValue<string?>(TestData.UserEmail)));
-
-        Assert.False(rollbackResult.TryGetValue(out _, out var error));
-        Assert.IsType<NotFoundFailure>(error);
-
-        var crossTenantHistory = await Mediator.Send(new GetWebServiceDeploymentsRequest
+            TestData.TenantId));
+        Assert.IsType<NotFoundFailure>(rollback.AssertFailure());
+        var history = await Mediator.Send(new GetWebServiceReleasesRequest
         {
             Id = created.WebServiceId,
             TenantId = otherTenantId
         });
-        Assert.False(crossTenantHistory.TryGetValue(out _, out var historyError));
-        Assert.IsType<NotFoundFailure>(historyError);
+        Assert.IsType<NotFoundFailure>(history.AssertFailure());
     }
 
     [Fact]
     public async Task Create_ReturnsNotFound_WhenResourceGroupDoesNotExist()
     {
-        var request = TestData.CreateWebServiceRequest("507f1f77bcf86cd799439011");
-
-        var result = await Mediator.Send(request);
-
-        Assert.False(result.TryGetValue(out _, out var error));
-        var notFound = Assert.IsType<NotFoundFailure>(error);
-        Assert.Equal("507f1f77bcf86cd799439011", notFound.Id);
-    }
-
-    [Fact]
-    public async Task Create_ReturnsConflict_WhenDomainAlreadyExists()
-    {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        await DbContext.InsertDnsRecordAsync(TestData.SeedDnsRecord(resourceGroup.Id, "existing-resource"));
-        var request = TestData.CreateWebServiceRequest(resourceGroup.Id, domainName: "existing.example.com");
-
-        var result = await Mediator.Send(request);
-
-        Assert.False(result.TryGetValue(out _, out var error));
-        Assert.IsType<ConflictFailure>(error);
-        Assert.Contains("already in use", error.Message);
+        var missingId = ObjectId.GenerateNewId().ToString();
+        var result = await Mediator.Send(TestData.CreateWebServiceRequest(missingId));
+        var failure = Assert.IsType<NotFoundFailure>(result.AssertFailure());
+        Assert.Equal(missingId, failure.Id);
     }
 
     [Fact]
     public async Task GetList_FiltersBySearch_AndAppliesPagination()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id, "api-alpha")))
+            .AssertSuccess();
+        (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id, "api-beta")))
+            .AssertSuccess();
 
-        await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, name: "api-alpha", domainName: "alpha.example.com"));
-        await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, name: "api-beta", domainName: "beta.example.com"));
-
-        var result = await Mediator.Send(new GetWebServicesRequest
+        var page = (await Mediator.Send(new GetWebServicesRequest
         {
             TenantId = TestData.TenantId,
             Search = "beta",
             PageNumber = 1,
             PageSize = 1
-        });
-
-        result.TryGetValue(out var response, out var error);
-        Assert.Null(error);
-        Assert.NotNull(response);
-        Assert.Single(response.Items);
-        Assert.Equal(1L, response.TotalCount);
-        Assert.Equal("api-beta", response.Items.Single().Name);
+        })).AssertSuccess();
+        var service = Assert.Single(page.Items);
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal("api-beta", service.Name);
+        Assert.Single(service.Deployments);
     }
 
     [Fact]
-    public async Task Delete_MarksWebServiceDeleting_AndRetainsDnsUntilFinalization()
+    public async Task Delete_RetainsBindingsUntilTerminalDeployment_ThenFinalizesEverything()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id));
-        Assert.True(createResult.TryGetValue(out var created, out _));
-        var savedDns = await DbContext.DnsRecords.Find(record => record.Resource.Id == created.WebServiceId).FirstOrDefaultAsync();
-        Assert.NotNull(savedDns);
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id)))
+            .AssertSuccess();
+        var deploymentId = Assert.Single(created.Deployments).DeploymentId;
 
-        var deleteResult = await Mediator.Send(new DeleteWebServiceRequest(created.WebServiceId, TestData.TenantId));
+        (await Mediator.Send(new DeleteWebServiceRequest(
+            created.WebServiceId, TestData.TenantId))).AssertSuccess();
+        Assert.Equal(1, await Fixture.Database
+            .GetCollection<HostnameBinding>("HostnameBindings")
+            .CountDocumentsAsync(binding => binding.ResourceDeploymentId == deploymentId));
+        var deleting = await DbContext.ResourceDeployments
+            .Find(item => item.Id == deploymentId).SingleAsync();
+        var startedAtUtc = deleting.UpdatedAtUtc.AddSeconds(1);
+        var claimId = ObjectId.GenerateNewId().ToString();
+        var deleted = deleting
+            .Start(deleting.DesiredGeneration, ResourceDeploymentOperation.Delete,
+                claimId, startedAtUtc, startedAtUtc.AddMinutes(1))
+            .Complete(deleting.DesiredGeneration, ResourceDeploymentOperation.Delete,
+                claimId, [], startedAtUtc.AddSeconds(1));
+        await DbContext.ResourceDeployments.ReplaceOneAsync(
+            item => item.Id == deploymentId, deleted);
 
-        Assert.True(deleteResult.TryGetValue(out var response, out var error));
-        Assert.Null(error);
-        Assert.NotNull(response);
-        Assert.Equal(created.WebServiceId, response.Id);
+        (await Services.GetRequiredService<FinalizeWebServiceDeletion>()(
+            TestData.TenantId, created.WebServiceId)).AssertSuccess();
 
-        var deletingService = await Fixture.Database.WebServices()
-            .Find(service => service.Id == created.WebServiceId)
-            .SingleAsync();
-        var retainedDns = await DbContext.DnsRecords.Find(record => record.Resource.Id == created.WebServiceId).FirstOrDefaultAsync();
-
-        Assert.IsType<DeletingWebServiceLifecycle>(deletingService.Lifecycle);
-        Assert.NotNull(retainedDns);
+        Assert.Equal(0, await Fixture.Database.WebServices()
+            .CountDocumentsAsync(service => service.Id == created.WebServiceId));
+        Assert.Equal(0, await DbContext.ResourceDeployments
+            .CountDocumentsAsync(item => item.ResourceId == created.WebServiceId));
+        Assert.Equal(0, await Fixture.Database
+            .GetCollection<HostnameBinding>("HostnameBindings")
+            .CountDocumentsAsync(binding => binding.ResourceId == created.WebServiceId));
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
-            "resource-deployment-deletion-requested"));
-        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
             "web-service-deleted"));
     }
 }
