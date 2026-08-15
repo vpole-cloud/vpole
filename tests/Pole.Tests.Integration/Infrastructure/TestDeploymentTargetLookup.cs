@@ -6,6 +6,7 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 internal sealed class TestDeploymentTargetLookup :
     IDeploymentTargetLookup,
+    IDeploymentTargetPublicIngressAdmission,
     IDeploymentTargetReferenceAdmission,
     IDeploymentTargetWorkloadConfigurationFence
 {
@@ -107,6 +108,37 @@ internal sealed class TestDeploymentTargetLookup :
                     target.WorkloadConfiguration.Ingress!.IngressClassName,
                     target.WorkloadConfiguration.Ingress.ClusterIssuerName,
                     target.WorkloadConfiguration.Ingress.PublicBaseDomain!));
+
+    public Task<DeploymentTargetPublicIngressAdmissionResult>
+        AdmitForNewWorkloadAsync(
+            DeploymentTargetAdmissionRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        DeploymentTargetPublicIngressAdmissionResult result;
+        if (RejectNewWorkloads)
+        {
+            result = new DeploymentTargetNewWorkloadsDisabled(
+                request.ExplicitDeploymentTargetId ?? string.Empty);
+        }
+        else if (!_targets.TryGetValue(
+                     request.ExplicitDeploymentTargetId ?? string.Empty,
+                     out var target))
+        {
+            result = new DeploymentTargetNotFound(
+                request.ExplicitDeploymentTargetId ?? string.Empty);
+        }
+        else
+        {
+            result = new DeploymentTargetPublicIngressDto(
+                target.Id,
+                target.WorkloadConfiguration.Revision,
+                target.WorkloadConfiguration.Ingress!.IngressClassName,
+                target.WorkloadConfiguration.Ingress.ClusterIssuerName,
+                target.WorkloadConfiguration.Ingress.PublicBaseDomain!);
+        }
+
+        return Task.FromResult(result);
+    }
 
     public Task<Result<DeploymentTargetPublicIngressDto>>
         ResolvePublicIngressForDomainReservationAsync(

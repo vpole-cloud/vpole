@@ -117,6 +117,47 @@ public sealed record DeploymentTargetPublicIngressDto(
     string ClusterIssuerName,
     string PublicBaseDomain);
 
+public sealed record InvalidDeploymentTargetId(string DeploymentTargetId);
+
+public sealed record DeploymentTargetNotFound(string DeploymentTargetId);
+
+public sealed record DeploymentTargetDisabled(string DeploymentTargetId);
+
+public sealed record DeploymentTargetDeletionRequested(string DeploymentTargetId);
+
+public sealed record DeploymentTargetNewWorkloadsDisabled(string DeploymentTargetId);
+
+public sealed record NoDeploymentTargetAcceptsPublicWorkloads;
+
+public sealed record DeploymentTargetSelectionRequired(
+    IReadOnlyList<string> EligibleDeploymentTargetIds);
+
+public sealed record DeploymentTargetPublicIngressUnavailable(
+    string DeploymentTargetId);
+
+public union DeploymentTargetPublicIngressAdmissionResult(
+    DeploymentTargetPublicIngressDto,
+    InvalidDeploymentTargetId,
+    DeploymentTargetNotFound,
+    DeploymentTargetDisabled,
+    DeploymentTargetDeletionRequested,
+    DeploymentTargetNewWorkloadsDisabled,
+    NoDeploymentTargetAcceptsPublicWorkloads,
+    DeploymentTargetSelectionRequired,
+    DeploymentTargetPublicIngressUnavailable);
+
+/// <summary>
+/// Provider-owned admission contract for consumers that require a stable public-ingress snapshot.
+/// Expected admission outcomes are represented by the closed result union; infrastructure failures
+/// remain exceptions.
+/// </summary>
+public interface IDeploymentTargetPublicIngressAdmission
+{
+    Task<DeploymentTargetPublicIngressAdmissionResult> AdmitForNewWorkloadAsync(
+        DeploymentTargetAdmissionRequest request,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IDeploymentTargetLookup
 {
     Task<Result<DeploymentTargetLookupDto>> GetAsync(
