@@ -54,7 +54,7 @@ public sealed record AddWebServiceDeploymentRequest(
 public sealed class AddWebServiceDeploymentHandler(
     LoadWebServiceById loadWebServiceById,
     IResourceDeploymentSetQueryService deploymentQuery,
-    IDeploymentTargetLookup targetLookup,
+    IDeploymentTargetPublicIngressAdmission targetAdmission,
     ResolveComputeProfiles resolveComputeProfiles,
     GetOrCreateGeneratedDomainZone getOrCreateGeneratedDomainZone,
     CreateGeneratedHostnameBinding createGeneratedHostnameBinding,
@@ -124,9 +124,10 @@ public sealed class AddWebServiceDeploymentHandler(
         WebService webService,
         CancellationToken cancellationToken)
     {
-        var targetResult = await targetLookup.ResolvePublicIngressForNewWorkloadAsync(
+        var admission = await targetAdmission.AdmitForNewWorkloadAsync(
             CreateTargetAdmissionRequest(request, webService),
             cancellationToken);
+        var targetResult = MapTargetAdmission(admission);
         if (!targetResult.TryGetValue(out var target, out var targetFailure))
             return targetFailure;
 
@@ -137,6 +138,41 @@ public sealed class AddWebServiceDeploymentHandler(
             ? new ResolvedAddition(target, computes.Single())
             : computeFailure;
     }
+
+    private static Result<DeploymentTargetPublicIngressDto> MapTargetAdmission(
+        DeploymentTargetPublicIngressAdmissionResult admission) => admission switch
+        {
+            DeploymentTargetPublicIngressDto ingress => ingress,
+            InvalidDeploymentTargetId => Failures.ValidationFailure(
+                new Dictionary<string, string[]>
+                {
+                    ["Body.DeploymentTargetId"] =
+                    ["Deployment target ID must be a MongoDB ObjectId."]
+                }),
+            DeploymentTargetNotFound notFound => Failures.NotFound(
+                "Deployment target not found.",
+                notFound.DeploymentTargetId),
+            DeploymentTargetDisabled =>
+                Failures.Conflict("The deployment target is disabled."),
+            DeploymentTargetDeletionRequested =>
+                Failures.Conflict("The deployment target is pending deletion."),
+            DeploymentTargetNewWorkloadsDisabled =>
+                Failures.Conflict("The deployment target does not accept new workloads."),
+            NoDeploymentTargetAcceptsPublicWorkloads =>
+                Failures.Conflict("No deployment target accepts public workloads."),
+            DeploymentTargetSelectionRequired => Failures.SemanticValidation(
+                new Dictionary<string, string[]>
+                {
+                    ["Body.DeploymentTargetId"] =
+                    ["Deployment target is required when more than one eligible target is available."]
+                }),
+            DeploymentTargetPublicIngressUnavailable => Failures.SemanticValidation(
+                new Dictionary<string, string[]>
+                {
+                    ["Body.DeploymentTargetId"] =
+                    ["The selected deployment target does not provide public ingress with a public base domain."]
+                })
+        };
 
     private Task<Result<PlacementSummaryDto>> ExecuteQuotaMutationAsync(
         AddWebServiceDeploymentRequest request,

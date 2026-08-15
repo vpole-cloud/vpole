@@ -102,6 +102,31 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
     }
 
     [Fact]
+    public async Task PublicIngressAdmission_ReturnsTypedUnavailableCase()
+    {
+        var privateTarget = CreateTarget(publicBaseDomain: null);
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(privateTarget);
+        IDeploymentTargetPublicIngressAdmission admission =
+            new DeploymentTargetLookup(fixture.DbContext);
+
+        var result = await admission.AdmitForNewWorkloadAsync(
+            new DeploymentTargetAdmissionRequest(
+                ObjectId.GenerateNewId().ToString(),
+                ResourceTypeId.Create("pole/web-service"),
+                IsolationScopeId: null,
+                ExplicitDeploymentTargetId: privateTarget.Id,
+                DeploymentTargetRequiredCapabilities.PublicIngress));
+
+        var unavailable = result switch
+        {
+            DeploymentTargetPublicIngressUnavailable value => value,
+            _ => throw new Xunit.Sdk.XunitException(
+                $"Expected {nameof(DeploymentTargetPublicIngressUnavailable)}.")
+        };
+        Assert.Equal(privateTarget.Id, unavailable.DeploymentTargetId);
+    }
+
+    [Fact]
     public async Task DomainReservationAdmission_UsesNarrowPublicIngressPath()
     {
         var target = CreateTarget("apps.example.test");

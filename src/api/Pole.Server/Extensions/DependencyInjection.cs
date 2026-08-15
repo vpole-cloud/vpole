@@ -256,7 +256,11 @@ public static class DependencyInjection
             services.TryAddSingleton<IDeploymentTargetClientCache>(provider =>
                 provider.GetRequiredService<KubernetesClientProvider>());
             services.TryAddSingleton<IDeploymentTargetBootstrapper, DeploymentTargetBootstrapper>();
-            services.TryAddScoped<IDeploymentTargetLookup, DeploymentTargetLookup>();
+            services.TryAddScoped<DeploymentTargetLookup>();
+            services.TryAddScoped<IDeploymentTargetLookup>(provider =>
+                provider.GetRequiredService<DeploymentTargetLookup>());
+            services.TryAddScoped<IDeploymentTargetPublicIngressAdmission>(provider =>
+                provider.GetRequiredService<DeploymentTargetLookup>());
             services.TryAddScoped<DeploymentTargetReferenceAdmission>();
             services.TryAddScoped<IDeploymentTargetReferenceAdmission>(
                 provider => provider.GetRequiredService<DeploymentTargetReferenceAdmission>());

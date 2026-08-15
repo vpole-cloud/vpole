@@ -175,10 +175,13 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.RemoveAll<IDeploymentTargetProbe>();
         builder.Services.AddSingleton<IDeploymentTargetProbe, TestDeploymentTargetProbe>();
         builder.Services.RemoveAll<IDeploymentTargetLookup>();
+        builder.Services.RemoveAll<IDeploymentTargetPublicIngressAdmission>();
         builder.Services.RemoveAll<IDeploymentTargetReferenceAdmission>();
         builder.Services.RemoveAll<IDeploymentTargetWorkloadConfigurationFence>();
         var deploymentTargetLookup = new TestDeploymentTargetLookup();
         builder.Services.AddSingleton<IDeploymentTargetLookup>(deploymentTargetLookup);
+        builder.Services.AddSingleton<IDeploymentTargetPublicIngressAdmission>(
+            deploymentTargetLookup);
         builder.Services.AddSingleton<IDeploymentTargetReferenceAdmission>(
             deploymentTargetLookup);
         builder.Services.AddSingleton<IDeploymentTargetWorkloadConfigurationFence>(

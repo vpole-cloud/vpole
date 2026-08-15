@@ -7,7 +7,8 @@ using Pole.ResultType;
 namespace Pole.Features.DeploymentTargets.Application.Common;
 
 public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
-    : IDeploymentTargetLookup
+    : IDeploymentTargetLookup,
+      IDeploymentTargetPublicIngressAdmission
 {
     public async Task<Result<DeploymentTargetLookupDto>> GetAsync(
         string deploymentTargetId,
@@ -127,23 +128,96 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
             DeploymentTargetAdmissionRequest request,
             CancellationToken cancellationToken = default)
     {
-        var resolved = await ResolveForNewWorkloadAsync(
-            request with
-            {
-                RequiredCapabilities = request.RequiredCapabilities |
-                    DeploymentTargetRequiredCapabilities.PublicIngress
-            },
-            cancellationToken);
-        if (!resolved.TryGetValue(out var target, out var failure))
-            return failure;
+        var admission = await AdmitForNewWorkloadAsync(request, cancellationToken);
+        return admission switch
+        {
+            DeploymentTargetPublicIngressDto ingress => ingress,
+            InvalidDeploymentTargetId => Failures.ValidationFailure(
+                new Dictionary<string, string[]>
+                {
+                    ["DeploymentTargetId"] =
+                    ["Deployment target ID must be a MongoDB ObjectId."]
+                }),
+            DeploymentTargetNotFound notFound => Failures.NotFound(
+                "Deployment target not found.",
+                notFound.DeploymentTargetId),
+            DeploymentTargetDisabled =>
+                Failures.Conflict("The deployment target is disabled."),
+            DeploymentTargetDeletionRequested =>
+                Failures.Conflict("The deployment target is pending deletion."),
+            DeploymentTargetNewWorkloadsDisabled =>
+                Failures.Conflict("The deployment target does not accept new workloads."),
+            NoDeploymentTargetAcceptsPublicWorkloads =>
+                Failures.Conflict("No deployment target accepts public workloads."),
+            DeploymentTargetSelectionRequired => Failures.SemanticValidation(
+                new Dictionary<string, string[]>
+                {
+                    ["Placement.DeploymentTargetId"] =
+                    ["Deployment target is required when more than one eligible target is available."]
+                }),
+            DeploymentTargetPublicIngressUnavailable =>
+                RequiredCapabilitiesFailure(DeploymentTargetRequiredCapabilities.PublicIngress)
+        };
+    }
 
-        var ingress = target.WorkloadConfiguration.Ingress!;
-        return new DeploymentTargetPublicIngressDto(
-            target.Id,
-            target.WorkloadConfiguration.Revision,
-            ingress.IngressClassName,
-            ingress.ClusterIssuerName,
-            ingress.PublicBaseDomain!);
+    public async Task<DeploymentTargetPublicIngressAdmissionResult>
+        AdmitForNewWorkloadAsync(
+            DeploymentTargetAdmissionRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        if (!string.IsNullOrWhiteSpace(request.ExplicitDeploymentTargetId))
+        {
+            var deploymentTargetId = request.ExplicitDeploymentTargetId.Trim();
+            if (ValidateId(deploymentTargetId) is not null)
+                return new InvalidDeploymentTargetId(deploymentTargetId);
+
+            var target = await dbContext.DeploymentTargets
+                .Find(DeploymentTargetFilters.ById(deploymentTargetId))
+                .FirstOrDefaultAsync(cancellationToken);
+            if (target is null)
+                return new DeploymentTargetNotFound(deploymentTargetId);
+
+            var lookup = target.ToLookupDto();
+            if (!lookup.Enabled)
+            {
+                return new DeploymentTargetDisabled(lookup.Id);
+            }
+
+            if (lookup.DeletionRequested)
+            {
+                return new DeploymentTargetDeletionRequested(lookup.Id);
+            }
+
+            if (!lookup.AcceptsWorkloads)
+            {
+                return new DeploymentTargetNewWorkloadsDisabled(lookup.Id);
+            }
+
+            return HasRequiredCapabilities(
+                    lookup,
+                    DeploymentTargetRequiredCapabilities.PublicIngress)
+                ? ToPublicIngressDto(lookup)
+                : new DeploymentTargetPublicIngressUnavailable(lookup.Id);
+        }
+
+        var targets = await dbContext.DeploymentTargets
+            .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
+            .SortBy(target => target.Id)
+            .ToListAsync(cancellationToken);
+        var eligible = targets
+            .Select(target => target.ToLookupDto())
+            .Where(target => HasRequiredCapabilities(
+                target,
+                DeploymentTargetRequiredCapabilities.PublicIngress))
+            .ToArray();
+
+        return eligible.Length switch
+        {
+            0 => new NoDeploymentTargetAcceptsPublicWorkloads(),
+            > 1 => new DeploymentTargetSelectionRequired(
+                eligible.Select(target => target.Id).ToArray()),
+            _ => ToPublicIngressDto(eligible[0])
+        };
     }
 
     public async Task<Result<DeploymentTargetPublicIngressDto>>
@@ -179,6 +253,18 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
         DeploymentTargetRequiredCapabilities requiredCapabilities) =>
         !requiredCapabilities.HasFlag(DeploymentTargetRequiredCapabilities.PublicIngress) ||
         target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null;
+
+    private static DeploymentTargetPublicIngressDto ToPublicIngressDto(
+        DeploymentTargetLookupDto target)
+    {
+        var ingress = target.WorkloadConfiguration.Ingress!;
+        return new DeploymentTargetPublicIngressDto(
+            target.Id,
+            target.WorkloadConfiguration.Revision,
+            ingress.IngressClassName,
+            ingress.ClusterIssuerName,
+            ingress.PublicBaseDomain!);
+    }
 
     private static Failure RequiredCapabilitiesFailure(
         DeploymentTargetRequiredCapabilities requiredCapabilities) =>

@@ -84,6 +84,38 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task AddDeployment_MapsTargetAdmissionRejectionWithoutPersistingMutation()
+    {
+        var secondTargetId = ObjectId.GenerateNewId().ToString();
+        var targetLookup = Services.GetRequiredService<TestDeploymentTargetLookup>();
+        targetLookup.AddEligibleTarget(secondTargetId, "apps.second.test.local");
+        await Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles")
+            .ReplaceOneAsync(
+                profile => profile.Id == TestData.DefaultComputeProfileId,
+                TestData.SeedComputeProfile(deploymentTargetIds:
+                    [TestData.DefaultDeploymentTargetId, secondTargetId]));
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id)))
+            .AssertSuccess();
+        targetLookup.RejectNewWorkloads = true;
+
+        var result = await Mediator.Send(new AddWebServiceDeploymentRequest(
+            created.WebServiceId,
+            new WebServiceDeploymentTargetRequest(secondTargetId, FixedReplicas: 3),
+            TestData.TenantId));
+
+        Assert.False(result.TryGetValue(out _, out var failure));
+        var conflict = Assert.IsType<ConflictFailure>(failure);
+        Assert.Equal("The deployment target does not accept new workloads.", conflict.Message);
+        Assert.Single(await DbContext.ResourceDeployments
+            .Find(deployment => deployment.ResourceId == created.WebServiceId)
+            .ToListAsync());
+        Assert.Single(await Fixture.Database.WebServiceReleases()
+            .Find(release => release.WebServiceId == created.WebServiceId)
+            .ToListAsync());
+    }
+
+    [Fact]
     public async Task SharedUpdate_AdvancesEveryDeploymentAndCreatesAggregateRelease()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
