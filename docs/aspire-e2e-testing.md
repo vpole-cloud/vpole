@@ -23,7 +23,7 @@ Install frontend and browser dependencies once:
 
 ```powershell
 npm ci --prefix src/api/frontend
-pwsh tests/Pole.Tests.E2E/bin/Debug/net10.0/playwright.ps1 install chromium
+pwsh tests/Pole.Tests.E2E/bin/Debug/net11.0/playwright.ps1 install chromium
 ```
 
 Build the test project first if the Playwright script has not been generated yet.

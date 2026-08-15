@@ -38,7 +38,7 @@ public sealed class FakeGitHubAppClient : IGitHubAppClient
         const string project = """
                                <Project Sdk="Microsoft.NET.Sdk.Web">
                                  <PropertyGroup>
-                                   <TargetFramework>net10.0</TargetFramework>
+                                   <TargetFramework>net11.0</TargetFramework>
                                    <AssemblyName>Pole.Sample</AssemblyName>
                                  </PropertyGroup>
                                </Project>

@@ -13,7 +13,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.100-preview.7.26381.103
 
       - uses: actions/setup-node@v4
         with:
@@ -28,7 +28,7 @@ jobs:
         shell: pwsh
         run: |
           dotnet build tests/Pole.Tests.E2E/Pole.Tests.E2E.csproj --nologo
-          ./tests/Pole.Tests.E2E/bin/Debug/net10.0/playwright.ps1 install chromium
+          ./tests/Pole.Tests.E2E/bin/Debug/net11.0/playwright.ps1 install chromium
 
       - name: Run Aspire E2E tests
         run: dotnet test tests/Pole.Tests.E2E/Pole.Tests.E2E.csproj --no-build --nologo -maxcpucount:1

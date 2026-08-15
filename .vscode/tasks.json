@@ -7,7 +7,7 @@
             "type": "process",
             "args": [
                 "build",
-                "${workspaceFolder}/src/Pole.AppHost/Pole.AppHost.csproj",
+                "${workspaceFolder}/src/api/Pole.AppHost/Pole.AppHost.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary;ForceNoAlign"
             ],
@@ -19,7 +19,7 @@
             "type": "process",
             "args": [
                 "publish",
-                "${workspaceFolder}/src/Pole.AppHost/Pole.AppHost.csproj",
+                "${workspaceFolder}/src/api/Pole.AppHost/Pole.AppHost.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary;ForceNoAlign"
             ],
@@ -33,7 +33,7 @@
                 "watch",
                 "run",
                 "--project",
-                "${workspaceFolder}/src/Pole.AppHost/Pole.AppHost.csproj"
+                "${workspaceFolder}/src/api/Pole.AppHost/Pole.AppHost.csproj"
             ],
             "problemMatcher": "$msCompile"
         }
