@@ -149,7 +149,7 @@ app.MapGet("/repos/pole-e2e/source-build-sample/contents/src/Pole.E2E.Sample.csp
     state.Record(request);
     var content = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("""
         <Project Sdk="Microsoft.NET.Sdk.Web">
-          <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+          <PropertyGroup><TargetFramework>net11.0</TargetFramework></PropertyGroup>
         </Project>
         """));
     return Results.Ok(new { encoding = "base64", content });

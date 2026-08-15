@@ -83,7 +83,7 @@ public sealed class RepositorySourceAnalyzer(TimeProvider timeProvider) : IRepos
         {
             var root = NormalizeRoot(Path.GetDirectoryName(path));
             var projectName = Path.GetFileNameWithoutExtension(path);
-            var targetFramework = "net10.0";
+            var targetFramework = "net11.0";
             var assemblyName = projectName;
             var outputType = string.Empty;
             var sdk = string.Empty;

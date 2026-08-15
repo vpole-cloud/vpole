@@ -109,7 +109,7 @@ public sealed class GitHubStubState
     private const string ProjectFile = """
         <Project Sdk="Microsoft.NET.Sdk.Web">
           <PropertyGroup>
-            <TargetFramework>net10.0</TargetFramework>
+            <TargetFramework>net11.0</TargetFramework>
             <AssemblyName>Pole.E2E.Sample</AssemblyName>
           </PropertyGroup>
         </Project>

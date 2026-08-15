@@ -10,9 +10,9 @@
             "request": "launch",
             "preLaunchTask": "build",
             // If you have changed target frameworks, make sure to update the program path.
-            "program": "${workspaceFolder}/src/Pole.AppHost/bin/Debug/net10.0/Pole.AppHost.dll",
+            "program": "${workspaceFolder}/src/api/Pole.AppHost/bin/Debug/net11.0/Pole.AppHost.dll",
             "args": [],
-            "cwd": "${workspaceFolder}/src/Pole.AppHost",
+            "cwd": "${workspaceFolder}/src/api/Pole.AppHost",
             // For more information about the 'console' field, see https://aka.ms/VSCode-CS-LaunchJson-Console
             "console": "internalConsole",
             "stopAtEntry": false
