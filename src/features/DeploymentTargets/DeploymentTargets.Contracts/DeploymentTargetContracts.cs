@@ -146,6 +146,14 @@ public union DeploymentTargetPublicIngressAdmissionResult(
     DeploymentTargetSelectionRequired,
     DeploymentTargetPublicIngressUnavailable);
 
+public union DeploymentTargetDomainReservationAdmissionError(
+    InvalidDeploymentTargetId,
+    DeploymentTargetNotFound,
+    DeploymentTargetDisabled,
+    DeploymentTargetDeletionRequested,
+    DeploymentTargetNewWorkloadsDisabled,
+    DeploymentTargetPublicIngressUnavailable);
+
 /// <summary>
 /// Provider-owned admission contract for consumers that require a stable public-ingress snapshot.
 /// Expected admission outcomes are represented by the closed result union; infrastructure failures
@@ -155,6 +163,17 @@ public interface IDeploymentTargetPublicIngressAdmission
 {
     Task<DeploymentTargetPublicIngressAdmissionResult> AdmitForNewWorkloadAsync(
         DeploymentTargetAdmissionRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves public ingress for a tenant domain reservation without forcing the domain feature
+    /// to translate provider-owned expected errors into shared application failures.
+    /// </summary>
+    Task<Result<
+        DeploymentTargetPublicIngressDto,
+        DeploymentTargetDomainReservationAdmissionError>> AdmitForDomainReservationAsync(
+        string tenantId,
+        string deploymentTargetId,
         CancellationToken cancellationToken = default);
 }
 

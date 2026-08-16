@@ -226,26 +226,102 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
             string deploymentTargetId,
             CancellationToken cancellationToken = default)
     {
-        var resolved = await ResolveForNewWorkloadAsync(
+        var admission = await AdmitForDomainReservationAsync(
+            tenantId,
             deploymentTargetId,
             cancellationToken);
-        if (!resolved.TryGetValue(out var target, out var failure))
-            return failure;
-        if (!HasRequiredCapabilities(
-                target,
-                DeploymentTargetRequiredCapabilities.PublicIngress))
+        if (admission.TryGetValue(out var ingress, out var error))
+            return ingress;
+
+        return error switch
         {
-            return RequiredCapabilitiesFailure(
-                DeploymentTargetRequiredCapabilities.PublicIngress);
+            InvalidDeploymentTargetId => Failures.ValidationFailure(
+                new Dictionary<string, string[]>
+                {
+                    ["DeploymentTargetId"] =
+                    ["Deployment target ID must be a MongoDB ObjectId."]
+                }),
+            DeploymentTargetNotFound notFound => Failures.NotFound(
+                "Deployment target not found.",
+                notFound.DeploymentTargetId),
+            DeploymentTargetDisabled =>
+                Failures.Conflict("The deployment target is disabled."),
+            DeploymentTargetDeletionRequested =>
+                Failures.Conflict("The deployment target is pending deletion."),
+            DeploymentTargetNewWorkloadsDisabled =>
+                Failures.Conflict("The deployment target does not accept new workloads."),
+            DeploymentTargetPublicIngressUnavailable =>
+                RequiredCapabilitiesFailure(
+                    DeploymentTargetRequiredCapabilities.PublicIngress)
+        };
+    }
+
+    public async Task<Result<
+        DeploymentTargetPublicIngressDto,
+        DeploymentTargetDomainReservationAdmissionError>> AdmitForDomainReservationAsync(
+        string tenantId,
+        string deploymentTargetId,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedDeploymentTargetId = deploymentTargetId?.Trim() ?? string.Empty;
+        if (ValidateId(normalizedDeploymentTargetId) is not null)
+        {
+            return new Error<
+                DeploymentTargetPublicIngressDto,
+                DeploymentTargetDomainReservationAdmissionError>(
+                new InvalidDeploymentTargetId(normalizedDeploymentTargetId));
         }
 
-        var ingress = target.WorkloadConfiguration.Ingress!;
-        return new DeploymentTargetPublicIngressDto(
-            target.Id,
-            target.WorkloadConfiguration.Revision,
-            ingress.IngressClassName,
-            ingress.ClusterIssuerName,
-            ingress.PublicBaseDomain!);
+        var target = await dbContext.DeploymentTargets
+            .Find(DeploymentTargetFilters.ById(normalizedDeploymentTargetId))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (target is null)
+        {
+            return new Error<
+                DeploymentTargetPublicIngressDto,
+                DeploymentTargetDomainReservationAdmissionError>(
+                new DeploymentTargetNotFound(normalizedDeploymentTargetId));
+        }
+
+        var lookup = target.ToLookupDto();
+        if (!lookup.Enabled)
+        {
+            return new Error<
+                DeploymentTargetPublicIngressDto,
+                DeploymentTargetDomainReservationAdmissionError>(
+                new DeploymentTargetDisabled(lookup.Id));
+        }
+
+        if (lookup.DeletionRequested)
+        {
+            return new Error<
+                DeploymentTargetPublicIngressDto,
+                DeploymentTargetDomainReservationAdmissionError>(
+                new DeploymentTargetDeletionRequested(lookup.Id));
+        }
+
+        if (!lookup.AcceptsWorkloads)
+        {
+            return new Error<
+                DeploymentTargetPublicIngressDto,
+                DeploymentTargetDomainReservationAdmissionError>(
+                new DeploymentTargetNewWorkloadsDisabled(lookup.Id));
+        }
+
+        if (!HasRequiredCapabilities(
+                lookup,
+                DeploymentTargetRequiredCapabilities.PublicIngress))
+        {
+            return new Error<
+                DeploymentTargetPublicIngressDto,
+                DeploymentTargetDomainReservationAdmissionError>(
+                new DeploymentTargetPublicIngressUnavailable(lookup.Id));
+        }
+
+        return new Success<
+            DeploymentTargetPublicIngressDto,
+            DeploymentTargetDomainReservationAdmissionError>(
+            ToPublicIngressDto(lookup));
     }
 
     private static bool HasRequiredCapabilities(
