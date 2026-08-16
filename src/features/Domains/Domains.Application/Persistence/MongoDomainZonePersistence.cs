@@ -179,6 +179,42 @@ internal sealed partial class MongoDomainPersistence
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
+        var result = await CreateManagedReservationOutcomeAsync(
+            tenantId,
+            deploymentTargetId,
+            label,
+            publicBaseDomain,
+            expectedWorkloadConfigurationRevision,
+            session,
+            cancellationToken);
+        if (result.TryGetValue(out var zone, out var error))
+            return zone;
+
+        return error switch
+        {
+            InvalidManagedDomainZone invalid =>
+                Invalid("DomainZone", invalid.Message),
+            ManagedDomainZoneAlreadyReserved =>
+                Failures.Conflict("The requested domain zone is already reserved."),
+            ManagedDomainZoneDeploymentTargetChanged =>
+                Failures.Conflict(
+                    "The deployment target workload configuration changed or no longer accepts workloads."),
+            ManagedDomainZoneReferenceRejected =>
+                Failures.Conflict(
+                    "The deployment target no longer accepts durable references.")
+        };
+    }
+
+    public async Task<Result<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>>
+        CreateManagedReservationOutcomeAsync(
+            string tenantId,
+            string deploymentTargetId,
+            string label,
+            string publicBaseDomain,
+            long expectedWorkloadConfigurationRevision,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
+    {
         EnsureTransaction(session);
         TenantDomainZone zone;
         try
@@ -192,7 +228,8 @@ internal sealed partial class MongoDomainPersistence
         }
         catch (ArgumentException exception)
         {
-            return Invalid("DomainZone", exception.Message);
+            return new Error<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>(
+                new InvalidManagedDomainZone(exception.Message));
         }
 
         var fence = await targetWorkloadConfigurationFence.FenceAsync(
@@ -201,7 +238,10 @@ internal sealed partial class MongoDomainPersistence
             session,
             cancellationToken);
         if (fence is not ISuccess)
-            return (Failure)fence;
+        {
+            return new Error<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>(
+                new ManagedDomainZoneDeploymentTargetChanged(deploymentTargetId));
+        }
 
         try
         {
@@ -209,7 +249,8 @@ internal sealed partial class MongoDomainPersistence
         }
         catch (MongoWriteException exception) when (exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
         {
-            return Failures.Conflict("The requested domain zone is already reserved.");
+            return new Error<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>(
+                new ManagedDomainZoneAlreadyReserved(zone.Domain));
         }
 
         var registered = await targetReferenceAdmission.RegisterAsync(
@@ -217,7 +258,11 @@ internal sealed partial class MongoDomainPersistence
             new DeploymentTargetReferenceOwner(DeploymentTargetReferenceOwnerTypes.DomainZone, zone.Id),
             session,
             cancellationToken);
-        return registered is ISuccess ? zone.ToSnapshot() : (Failure)registered;
+        return registered is ISuccess
+            ? new Success<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>(
+                zone.ToSnapshot())
+            : new Error<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>(
+                new ManagedDomainZoneReferenceRejected(deploymentTargetId));
     }
 
     public async Task<Result> DeleteManagedReservationAsync(
