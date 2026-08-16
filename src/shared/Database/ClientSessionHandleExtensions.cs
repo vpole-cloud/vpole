@@ -5,6 +5,21 @@ namespace Pole.Database;
 
 public static class ClientSessionHandleExtensions
 {
+    public static Task<TOutcome> RunOutcomeInTransactionAsync<TOutcome>(
+        this IMongoDbContext dbContext,
+        Func<
+            MongoTransactionContext<TOutcome>,
+            CancellationToken,
+            Task<MongoTransactionDecision<TOutcome>>> callbackAsync,
+        TransactionOptions? transactionOptions = null,
+        CancellationToken cancellationToken = default)
+        where TOutcome : notnull =>
+        MongoTransactionPersistence.RunOutcomeAsync(
+            dbContext.Client,
+            callbackAsync,
+            transactionOptions,
+            cancellationToken);
+
     public static Task<Result> RunInTransactionAsync(
         this IMongoDbContext dbContext,
         Func<IClientSessionHandle, CancellationToken, Task<Result>> callbackAsync,

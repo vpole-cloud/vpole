@@ -43,6 +43,39 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task OutcomeTransaction_AbortRollsBackMutationAndOutboxTogether()
+    {
+        var documents = fixture.Database.GetCollection<BsonDocument>(
+            "transaction-outcome-outbox-tests");
+        var runtimeCellId = ObjectId.GenerateNewId().ToString();
+
+        var outcome = await fixture.DbContext.RunOutcomeInTransactionAsync<string>(
+            async (transaction, cancellationToken) =>
+            {
+                await documents.InsertOneAsync(
+                    transaction.Session,
+                    new BsonDocument("name", "must-not-commit"),
+                    cancellationToken: cancellationToken);
+                await fixture.DbContext.StoreEventAsync(
+                    CreateWrite(runtimeCellId, pendingKey: null),
+                    transaction.Session,
+                    cancellationToken);
+
+                return transaction.Abort("rejected");
+            });
+
+        Assert.Equal("rejected", outcome);
+        Assert.Equal(
+            0L,
+            await documents.CountDocumentsAsync(
+                FilterDefinition<BsonDocument>.Empty));
+        Assert.Equal(
+            0L,
+            await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
+                Builders<OutboxMessage>.Filter.Empty));
+    }
+
+    [Fact]
     public async Task KeyedWrite_ConcurrentTransactions_CreateOnePendingMessage()
     {
         var runtimeCellId = ObjectId.GenerateNewId().ToString();
@@ -148,7 +181,7 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
 
     private static OutboxWrite CreateWrite(
         string runtimeCellId,
-        string pendingKey) =>
+        string? pendingKey) =>
         OutboxWrite.Create(
             new RuntimeCellReconciliationRequestedEvent(runtimeCellId, 1)
             {
