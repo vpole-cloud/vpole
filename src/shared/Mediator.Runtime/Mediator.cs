@@ -13,10 +13,24 @@ public sealed class Mediator(IServiceProvider sp) : IMediator
         if (request is null) throw new ArgumentNullException(nameof(request));
 
         var requestType = request.GetType();
-        var handlerType = typeof(IMediatorHandler<,>).MakeGenericType(requestType, typeof(TResponse));
-        var handler = sp.GetRequiredService(handlerType);
-        var handleAsyncMethod = handlerType.GetMethod(nameof(IMediatorHandler<IMediatorRequest<TResponse>, TResponse>.HandleAsync))
-            ?? throw new InvalidOperationException($"HandleAsync was not found on handler type '{handlerType.FullName}'.");
+        var resultHandlerType = typeof(IMediatorHandler<,>)
+            .MakeGenericType(requestType, typeof(TResponse));
+        var outcomeHandlerType = typeof(IMediatorOutcomeHandler<,>)
+            .MakeGenericType(requestType, typeof(TResponse));
+        var resultHandler = sp.GetService(resultHandlerType);
+        var outcomeHandler = sp.GetService(outcomeHandlerType);
+
+        if (resultHandler is not null && outcomeHandler is not null)
+        {
+            throw new InvalidOperationException(
+                $"Request '{requestType.FullName}' has both a result handler and an outcome handler.");
+        }
+
+        if (resultHandler is null && outcomeHandler is null)
+        {
+            throw new InvalidOperationException(
+                $"No mediator handler is registered for request '{requestType.FullName}'.");
+        }
 
         var behaviorsType = typeof(IPipelineBehavior<,>).MakeGenericType(requestType, typeof(TResponse));
         var behaviors = sp.GetServices(behaviorsType)
@@ -24,8 +38,31 @@ public sealed class Mediator(IServiceProvider sp) : IMediator
                             .ToArray()
                         ?? Array.Empty<dynamic>();
 
-        RequestHandlerDelegate<TResponse> next = () =>
-            (Task<Result<TResponse>>)handleAsyncMethod.Invoke(handler, [request, cancellationToken])!;
+        RequestHandlerDelegate<TResponse> next;
+        if (outcomeHandler is not null)
+        {
+            var handleAsyncMethod = outcomeHandlerType.GetMethod(
+                    nameof(IMediatorOutcomeHandler<
+                        IMediatorRequest<TResponse>,
+                        TResponse>.HandleAsync))
+                ?? throw new InvalidOperationException(
+                    $"HandleAsync was not found on handler type '{outcomeHandlerType.FullName}'.");
+            next = async () => Result.Success(await (Task<TResponse>)handleAsyncMethod.Invoke(
+                outcomeHandler,
+                [request, cancellationToken])!);
+        }
+        else
+        {
+            var handleAsyncMethod = resultHandlerType.GetMethod(
+                    nameof(IMediatorHandler<
+                        IMediatorRequest<TResponse>,
+                        TResponse>.HandleAsync))
+                ?? throw new InvalidOperationException(
+                    $"HandleAsync was not found on handler type '{resultHandlerType.FullName}'.");
+            next = () => (Task<Result<TResponse>>)handleAsyncMethod.Invoke(
+                resultHandler,
+                [request, cancellationToken])!;
+        }
 
         for (var i = behaviors.Length - 1; i >= 0; i--)
         {
