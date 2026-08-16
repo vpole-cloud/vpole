@@ -131,15 +131,38 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
     {
         var target = CreateTarget("apps.example.test");
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
-        var lookup = new DeploymentTargetLookup(fixture.DbContext);
+        IDeploymentTargetPublicIngressAdmission admission =
+            new DeploymentTargetLookup(fixture.DbContext);
 
-        var result = await lookup.ResolvePublicIngressForDomainReservationAsync(
+        var result = await admission.AdmitForDomainReservationAsync(
             ObjectId.GenerateNewId().ToString(),
             target.Id);
 
-        var ingress = result.AssertSuccess();
+        Assert.True(result.TryGetValue(out var ingress, out _));
         Assert.Equal(target.Id, ingress.DeploymentTargetId);
         Assert.Equal("apps.example.test", ingress.PublicBaseDomain);
+    }
+
+    [Fact]
+    public async Task DomainReservationAdmission_ReturnsProviderOwnedTypedError()
+    {
+        var target = CreateTarget(publicBaseDomain: null);
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        IDeploymentTargetPublicIngressAdmission admission =
+            new DeploymentTargetLookup(fixture.DbContext);
+
+        var result = await admission.AdmitForDomainReservationAsync(
+            ObjectId.GenerateNewId().ToString(),
+            target.Id);
+
+        Assert.False(result.TryGetValue(out _, out var error));
+        var unavailable = error switch
+        {
+            DeploymentTargetPublicIngressUnavailable value => value,
+            _ => throw new Xunit.Sdk.XunitException(
+                $"Expected {nameof(DeploymentTargetPublicIngressUnavailable)}.")
+        };
+        Assert.Equal(target.Id, unavailable.DeploymentTargetId);
     }
 
     [Fact]

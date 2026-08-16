@@ -140,6 +140,46 @@ internal sealed class TestDeploymentTargetLookup :
         return Task.FromResult(result);
     }
 
+    public Task<Result<
+        DeploymentTargetPublicIngressDto,
+        DeploymentTargetDomainReservationAdmissionError>> AdmitForDomainReservationAsync(
+        string tenantId,
+        string deploymentTargetId,
+        CancellationToken cancellationToken = default)
+    {
+        Result<
+            DeploymentTargetPublicIngressDto,
+            DeploymentTargetDomainReservationAdmissionError> result;
+        if (RejectNewWorkloads)
+        {
+            result = new Error<
+                DeploymentTargetPublicIngressDto,
+                DeploymentTargetDomainReservationAdmissionError>(
+                new DeploymentTargetNewWorkloadsDisabled(deploymentTargetId));
+        }
+        else if (!_targets.TryGetValue(deploymentTargetId, out var target))
+        {
+            result = new Error<
+                DeploymentTargetPublicIngressDto,
+                DeploymentTargetDomainReservationAdmissionError>(
+                new DeploymentTargetNotFound(deploymentTargetId));
+        }
+        else
+        {
+            result = new Success<
+                DeploymentTargetPublicIngressDto,
+                DeploymentTargetDomainReservationAdmissionError>(
+                new DeploymentTargetPublicIngressDto(
+                    target.Id,
+                    target.WorkloadConfiguration.Revision,
+                    target.WorkloadConfiguration.Ingress!.IngressClassName,
+                    target.WorkloadConfiguration.Ingress.ClusterIssuerName,
+                    target.WorkloadConfiguration.Ingress.PublicBaseDomain!));
+        }
+
+        return Task.FromResult(result);
+    }
+
     public Task<Result<DeploymentTargetPublicIngressDto>>
         ResolvePublicIngressForDomainReservationAsync(
             string tenantId,
