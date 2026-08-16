@@ -152,30 +152,22 @@ internal sealed class TestDeploymentTargetLookup :
             DeploymentTargetDomainReservationAdmissionError> result;
         if (RejectNewWorkloads)
         {
-            result = new Error<
-                DeploymentTargetPublicIngressDto,
-                DeploymentTargetDomainReservationAdmissionError>(
+            result = new Err<DeploymentTargetDomainReservationAdmissionError>(
                 new DeploymentTargetNewWorkloadsDisabled(deploymentTargetId));
         }
         else if (!_targets.TryGetValue(deploymentTargetId, out var target))
         {
-            result = new Error<
-                DeploymentTargetPublicIngressDto,
-                DeploymentTargetDomainReservationAdmissionError>(
+            result = new Err<DeploymentTargetDomainReservationAdmissionError>(
                 new DeploymentTargetNotFound(deploymentTargetId));
         }
         else if (target.WorkloadConfiguration.Ingress?.PublicBaseDomain is null)
         {
-            result = new Error<
-                DeploymentTargetPublicIngressDto,
-                DeploymentTargetDomainReservationAdmissionError>(
+            result = new Err<DeploymentTargetDomainReservationAdmissionError>(
                 new DeploymentTargetPublicIngressUnavailable(deploymentTargetId));
         }
         else
         {
-            result = new Success<
-                DeploymentTargetPublicIngressDto,
-                DeploymentTargetDomainReservationAdmissionError>(
+            result = new Ok<DeploymentTargetPublicIngressDto>(
                 new DeploymentTargetPublicIngressDto(
                     target.Id,
                     target.WorkloadConfiguration.Revision,

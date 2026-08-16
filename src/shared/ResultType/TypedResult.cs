@@ -6,34 +6,33 @@ namespace Pole.ResultType;
 /// Represents the success or the provider-owned expected error of an operation.
 /// Infrastructure failures remain exceptions.
 /// </summary>
-public abstract record Result<T, TError>
+public union Result<T, TError>(Ok<T>, Err<TError>)
     where T : notnull
-    where TError : notnull
+    where TError : notnull;
+
+public sealed record Ok<T>(T Value)
+    where T : notnull;
+
+public sealed record Err<TError>(TError Value)
+    where TError : notnull;
+
+public static class TypedResultExtensions
 {
-    public bool TryGetValue(
+    public static bool TryGetValue<T, TError>(
+        this Result<T, TError> result,
         [MaybeNullWhen(false)] out T value,
         [MaybeNullWhen(true)] out TError error)
+        where T : notnull
+        where TError : notnull
     {
-        switch (this)
+        var extracted = result switch
         {
-            case Success<T, TError> success:
-                value = success.Value;
-                error = default!;
-                return true;
-            case Error<T, TError> failure:
-                value = default!;
-                error = failure.Value;
-                return false;
-            default:
-                throw new InvalidOperationException("Unknown typed Result type.");
-        }
+            Ok<T> success => (Succeeded: true, Value: success.Value, Error: default(TError)),
+            Err<TError> failure => (Succeeded: false, Value: default(T), Error: failure.Value)
+        };
+
+        value = extracted.Value!;
+        error = extracted.Error!;
+        return extracted.Succeeded;
     }
 }
-
-public sealed record Success<T, TError>(T Value) : Result<T, TError>
-    where T : notnull
-    where TError : notnull;
-
-public sealed record Error<T, TError>(TError Value) : Result<T, TError>
-    where T : notnull
-    where TError : notnull;

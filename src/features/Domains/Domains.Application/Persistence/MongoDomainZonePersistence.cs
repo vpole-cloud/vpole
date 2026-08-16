@@ -193,7 +193,7 @@ internal sealed partial class MongoDomainPersistence
         }
         catch (ArgumentException exception)
         {
-            return new Error<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>(
+            return new Err<CreateManagedDomainZoneError>(
                 new InvalidManagedDomainZone(exception.Message));
         }
 
@@ -204,7 +204,7 @@ internal sealed partial class MongoDomainPersistence
             cancellationToken);
         if (fence is not ISuccess)
         {
-            return new Error<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>(
+            return new Err<CreateManagedDomainZoneError>(
                 new ManagedDomainZoneDeploymentTargetChanged(deploymentTargetId));
         }
 
@@ -214,7 +214,7 @@ internal sealed partial class MongoDomainPersistence
         }
         catch (MongoWriteException exception) when (exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
         {
-            return new Error<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>(
+            return new Err<CreateManagedDomainZoneError>(
                 new ManagedDomainZoneAlreadyReserved(zone.Domain));
         }
 
@@ -224,9 +224,9 @@ internal sealed partial class MongoDomainPersistence
             session,
             cancellationToken);
         return registered is ISuccess
-            ? new Success<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>(
+            ? new Ok<TenantDomainZoneSnapshot>(
                 zone.ToSnapshot())
-            : new Error<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>(
+            : new Err<CreateManagedDomainZoneError>(
                 new ManagedDomainZoneReferenceRejected(deploymentTargetId));
     }
 
