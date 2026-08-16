@@ -266,9 +266,7 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
         var normalizedDeploymentTargetId = deploymentTargetId?.Trim() ?? string.Empty;
         if (ValidateId(normalizedDeploymentTargetId) is not null)
         {
-            return new Error<
-                DeploymentTargetPublicIngressDto,
-                DeploymentTargetDomainReservationAdmissionError>(
+            return new Err<DeploymentTargetDomainReservationAdmissionError>(
                 new InvalidDeploymentTargetId(normalizedDeploymentTargetId));
         }
 
@@ -277,34 +275,26 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
             .FirstOrDefaultAsync(cancellationToken);
         if (target is null)
         {
-            return new Error<
-                DeploymentTargetPublicIngressDto,
-                DeploymentTargetDomainReservationAdmissionError>(
+            return new Err<DeploymentTargetDomainReservationAdmissionError>(
                 new DeploymentTargetNotFound(normalizedDeploymentTargetId));
         }
 
         var lookup = target.ToLookupDto();
         if (!lookup.Enabled)
         {
-            return new Error<
-                DeploymentTargetPublicIngressDto,
-                DeploymentTargetDomainReservationAdmissionError>(
+            return new Err<DeploymentTargetDomainReservationAdmissionError>(
                 new DeploymentTargetDisabled(lookup.Id));
         }
 
         if (lookup.DeletionRequested)
         {
-            return new Error<
-                DeploymentTargetPublicIngressDto,
-                DeploymentTargetDomainReservationAdmissionError>(
+            return new Err<DeploymentTargetDomainReservationAdmissionError>(
                 new DeploymentTargetDeletionRequested(lookup.Id));
         }
 
         if (!lookup.AcceptsWorkloads)
         {
-            return new Error<
-                DeploymentTargetPublicIngressDto,
-                DeploymentTargetDomainReservationAdmissionError>(
+            return new Err<DeploymentTargetDomainReservationAdmissionError>(
                 new DeploymentTargetNewWorkloadsDisabled(lookup.Id));
         }
 
@@ -312,15 +302,11 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
                 lookup,
                 DeploymentTargetRequiredCapabilities.PublicIngress))
         {
-            return new Error<
-                DeploymentTargetPublicIngressDto,
-                DeploymentTargetDomainReservationAdmissionError>(
+            return new Err<DeploymentTargetDomainReservationAdmissionError>(
                 new DeploymentTargetPublicIngressUnavailable(lookup.Id));
         }
 
-        return new Success<
-            DeploymentTargetPublicIngressDto,
-            DeploymentTargetDomainReservationAdmissionError>(
+        return new Ok<DeploymentTargetPublicIngressDto>(
             ToPublicIngressDto(lookup));
     }
 
