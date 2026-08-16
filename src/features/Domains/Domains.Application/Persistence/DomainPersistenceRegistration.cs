@@ -18,6 +18,9 @@ public static class DomainPersistenceRegistration
         services.AddScoped<CreateManagedDomainZone>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
                 .CreateManagedReservationAsync);
+        services.AddScoped<CreateManagedDomainZoneReservation>(provider =>
+            provider.GetRequiredService<MongoDomainPersistence>()
+                .CreateManagedReservationOutcomeAsync);
         services.AddScoped<DeleteManagedDomainZone>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
                 .DeleteManagedReservationAsync);

@@ -23,6 +23,32 @@ public delegate Task<Result<TenantDomainZoneSnapshot>> CreateManagedDomainZone(
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
+public sealed record InvalidManagedDomainZone(string Message);
+
+public sealed record ManagedDomainZoneAlreadyReserved(string Domain);
+
+public sealed record ManagedDomainZoneDeploymentTargetChanged(
+    string DeploymentTargetId);
+
+public sealed record ManagedDomainZoneReferenceRejected(
+    string DeploymentTargetId);
+
+public union CreateManagedDomainZoneError(
+    InvalidManagedDomainZone,
+    ManagedDomainZoneAlreadyReserved,
+    ManagedDomainZoneDeploymentTargetChanged,
+    ManagedDomainZoneReferenceRejected);
+
+public delegate Task<Result<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>>
+    CreateManagedDomainZoneReservation(
+        string tenantId,
+        string deploymentTargetId,
+        string label,
+        string publicBaseDomain,
+        long expectedWorkloadConfigurationRevision,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);
+
 public delegate Task<Result> DeleteManagedDomainZone(
     string tenantId,
     string zoneId,
