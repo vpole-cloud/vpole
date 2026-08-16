@@ -97,18 +97,26 @@ public static class DependencyInjection
             foreach (var assembly in assemblies)
             {
                 var handlerTypes = assembly.GetTypes()
-                    .Where(t => t is { IsClass: true, IsAbstract: false } && t.GetInterfaces()
-                        .Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IMediatorHandler<,>)));
+                    .Where(t => t is { IsClass: true, IsAbstract: false } &&
+                                t.GetInterfaces().Any(IsMediatorHandler));
 
                 foreach (var handlerType in handlerTypes)
                 {
-                    var interfaceType = handlerType.GetInterfaces()
-                        .First(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IMediatorHandler<,>));
-                    services.AddScoped(interfaceType, handlerType);
+                    foreach (var interfaceType in handlerType.GetInterfaces()
+                                 .Where(IsMediatorHandler))
+                    {
+                        services.AddScoped(interfaceType, handlerType);
+                    }
                 }
             }
 
             return services;
+
+            static bool IsMediatorHandler(Type interfaceType) =>
+                interfaceType.IsGenericType &&
+                interfaceType.GetGenericTypeDefinition() is var definition &&
+                (definition == typeof(IMediatorHandler<,>) ||
+                 definition == typeof(IMediatorOutcomeHandler<,>));
         }
         
         public IServiceCollection AddValidatorsFromAssemblies(params Assembly[] assemblies)
