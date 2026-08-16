@@ -164,6 +164,13 @@ internal sealed class TestDeploymentTargetLookup :
                 DeploymentTargetDomainReservationAdmissionError>(
                 new DeploymentTargetNotFound(deploymentTargetId));
         }
+        else if (target.WorkloadConfiguration.Ingress?.PublicBaseDomain is null)
+        {
+            result = new Error<
+                DeploymentTargetPublicIngressDto,
+                DeploymentTargetDomainReservationAdmissionError>(
+                new DeploymentTargetPublicIngressUnavailable(deploymentTargetId));
+        }
         else
         {
             result = new Success<
@@ -174,7 +181,7 @@ internal sealed class TestDeploymentTargetLookup :
                     target.WorkloadConfiguration.Revision,
                     target.WorkloadConfiguration.Ingress!.IngressClassName,
                     target.WorkloadConfiguration.Ingress.ClusterIssuerName,
-                    target.WorkloadConfiguration.Ingress.PublicBaseDomain!));
+                    target.WorkloadConfiguration.Ingress.PublicBaseDomain));
         }
 
         return Task.FromResult(result);

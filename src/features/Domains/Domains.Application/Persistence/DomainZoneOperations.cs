@@ -14,15 +14,6 @@ public delegate Task<IReadOnlyList<TenantDomainZoneSnapshot>> LoadTenantDomainZo
     string? deploymentTargetId = null,
     CancellationToken cancellationToken = default);
 
-public delegate Task<Result<TenantDomainZoneSnapshot>> CreateManagedDomainZone(
-    string tenantId,
-    string deploymentTargetId,
-    string label,
-    string publicBaseDomain,
-    long expectedWorkloadConfigurationRevision,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
-
 public sealed record InvalidManagedDomainZone(string Message);
 
 public sealed record ManagedDomainZoneAlreadyReserved(string Domain);

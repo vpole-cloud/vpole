@@ -15,9 +15,6 @@ public static class DomainPersistenceRegistration
             provider.GetRequiredService<MongoDomainPersistence>().GetAsync);
         services.AddScoped<LoadTenantDomainZones>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>().ListAsync);
-        services.AddScoped<CreateManagedDomainZone>(provider =>
-            provider.GetRequiredService<MongoDomainPersistence>()
-                .CreateManagedReservationAsync);
         services.AddScoped<CreateManagedDomainZoneReservation>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
                 .CreateManagedReservationOutcomeAsync);
@@ -54,9 +51,11 @@ public static class DomainPersistenceRegistration
         services.AddScoped<DeleteHostnameBindingsForResource>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
                 .DeleteAllForResourceAsync);
-        services.TryAddSingleton<RunMongoTransaction<TenantDomainZoneSnapshot>>(provider =>
+        services.TryAddSingleton<RunMongoOutcomeTransaction<
+            Pole.Features.Domains.Application.Endpoints.CreateDomainZoneOutcome>>(provider =>
             provider.GetRequiredService<MongoRunTransaction>()
-                .InvokeAsync<TenantDomainZoneSnapshot>);
+                .InvokeOutcomeAsync<
+                    Pole.Features.Domains.Application.Endpoints.CreateDomainZoneOutcome>);
         services.TryAddSingleton<RunMongoTransaction<Pole.Features.Domains.Application.Endpoints.DeleteDomainZoneResponse>>(provider =>
             provider.GetRequiredService<MongoRunTransaction>()
                 .InvokeAsync<Pole.Features.Domains.Application.Endpoints.DeleteDomainZoneResponse>);
