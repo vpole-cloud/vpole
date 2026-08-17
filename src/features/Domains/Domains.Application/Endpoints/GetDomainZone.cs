@@ -21,17 +21,36 @@ public static class GetDomainZone
                 IMediator mediator,
                 [AsParameters] GetDomainZoneRequest request,
                 CancellationToken cancellationToken) =>
-                (await mediator.Send(request, cancellationToken)).ToHttpResult(Results.Ok))
+                (await mediator.Send(request, cancellationToken)).ToHttpResult(ToHttpResult))
             .WithName("GetDomainZone")
-            .Produces<TenantDomainZoneSnapshot>();
+            .Produces<TenantDomainZoneSnapshot>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
         return app;
     }
+
+    private static IResult ToHttpResult(GetDomainZoneOutcome outcome) => outcome switch
+    {
+        TenantDomainZoneSnapshot zone => Results.Ok(zone),
+        DomainZoneNotFound notFound => Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Domain zone not found",
+            type: "https://pole.dev/problems/domain-zone-not-found",
+            extensions: new Dictionary<string, object?>
+            {
+                ["code"] = "domains.zone.not-found",
+                ["domainZoneId"] = notFound.ZoneId
+            })
+    };
 }
 
 public sealed record GetDomainZoneRequest(
     [FromRoute] string Id,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<TenantDomainZoneSnapshot>, ITenantReadOperation;
+    : IMediatorRequest<GetDomainZoneOutcome>, ITenantReadOperation;
+
+public union GetDomainZoneOutcome(
+    TenantDomainZoneSnapshot,
+    DomainZoneNotFound);
 
 public sealed class GetDomainZoneRequestValidator : AbstractValidator<GetDomainZoneRequest>
 {
@@ -43,10 +62,19 @@ public sealed class GetDomainZoneRequestValidator : AbstractValidator<GetDomainZ
 }
 
 public sealed class GetDomainZoneHandler(LoadTenantDomainZone loadTenantDomainZone)
-    : IMediatorHandler<GetDomainZoneRequest, TenantDomainZoneSnapshot>
+    : IMediatorOutcomeHandler<GetDomainZoneRequest, GetDomainZoneOutcome>
 {
-    public Task<Result<TenantDomainZoneSnapshot>> HandleAsync(
+    public async Task<GetDomainZoneOutcome> HandleAsync(
         GetDomainZoneRequest request,
-        CancellationToken cancellationToken = default) =>
-        loadTenantDomainZone(request.TenantId, request.Id, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        var result = await loadTenantDomainZone(
+            request.TenantId,
+            request.Id,
+            cancellationToken);
+
+        return result.Match(
+            GetDomainZoneOutcome (zone) => zone,
+            GetDomainZoneOutcome (error) => error);
+    }
 }

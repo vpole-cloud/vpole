@@ -14,7 +14,7 @@ namespace Pole.Features.Domains.Application.Persistence;
 
 internal sealed partial class MongoDomainPersistence
 {
-    public async Task<Result<TenantDomainZoneSnapshot>> GetAsync(
+    public async Task<Result<TenantDomainZoneSnapshot, DomainZoneNotFound>> GetAsync(
         string tenantId,
         string zoneId,
         CancellationToken cancellationToken = default)
@@ -22,8 +22,8 @@ internal sealed partial class MongoDomainPersistence
         var zone = await _zones.Find(DomainFilters.ZoneById(tenantId, zoneId))
             .FirstOrDefaultAsync(cancellationToken);
         return zone is null
-            ? Failures.NotFound("Domain zone not found.", zoneId)
-            : zone.ToSnapshot();
+            ? new Err<DomainZoneNotFound>(new DomainZoneNotFound(zoneId))
+            : new Ok<TenantDomainZoneSnapshot>(zone.ToSnapshot());
     }
 
     public async Task<IReadOnlyList<TenantDomainZoneSnapshot>> ListAsync(
