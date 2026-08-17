@@ -16,6 +16,25 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
     [Fact]
+    public async Task GetAll_ReturnsTenantZonesThroughOutcomeHandler()
+    {
+        using var created = await CreateAsync(
+            TestData.DefaultDeploymentTargetId,
+            "company");
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+
+        using var response = await Client.GetAsync("/api/v1/domain-zones/");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var zones = await response.Content
+            .ReadFromJsonAsync<IReadOnlyList<TenantDomainZoneSnapshot>>();
+        Assert.NotNull(zones);
+        var zone = Assert.Single(zones);
+        Assert.Equal(TestData.TenantId, zone.TenantId);
+        Assert.Equal("company.apps.test.local", zone.Domain);
+    }
+
+    [Fact]
     public async Task Create_ReturnsCreatedSnapshotAndCommitsReservation()
     {
         using var response = await CreateAsync(

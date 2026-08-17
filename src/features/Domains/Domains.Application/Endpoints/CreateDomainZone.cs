@@ -216,15 +216,15 @@ public sealed class CreateDomainZoneHandler(
                 request.TenantId,
                 request.Body.DeploymentTargetId,
                 cancellationToken)
-            .MapErrorAsync(error => (CreateDomainZoneError)error)
+            .MapErrorAsync(CreateDomainZoneError (error) => error)
             .ThenAsync(publicIngress => ReserveAsync(
                 request,
                 publicIngress,
                 cancellationToken));
 
         return result.Match(
-            zone => (CreateDomainZoneOutcome)zone,
-            error => (CreateDomainZoneOutcome)error);
+            CreateDomainZoneOutcome (zone) => zone,
+            CreateDomainZoneOutcome (error) => error);
     }
 
     private Task<Result<TenantDomainZoneSnapshot, CreateDomainZoneError>> ReserveAsync(
@@ -242,7 +242,7 @@ public sealed class CreateDomainZoneHandler(
                         publicIngress.WorkloadConfigurationRevision,
                         transaction.Session,
                         transactionCancellationToken))
-                    .MapError(error => (CreateDomainZoneError)error);
+                    .MapError(CreateDomainZoneError (error) => error);
 
                 return result.Match(
                     zone => transaction.Commit(new Ok<TenantDomainZoneSnapshot>(zone)),
