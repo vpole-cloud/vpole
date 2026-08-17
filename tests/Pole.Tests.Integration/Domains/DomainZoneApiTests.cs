@@ -2,7 +2,9 @@ using System.Collections.Immutable;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Dns;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
@@ -15,6 +17,71 @@ namespace Pole.Tests.Integration.Domains;
 public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
+    private const string OtherTenantId = "507f1f77bcf86cd799439099";
+
+    [Fact]
+    public async Task GetById_ReturnsTenantZoneThroughTypedOutcome()
+    {
+        using var created = await CreateAsync(
+            TestData.DefaultDeploymentTargetId,
+            "company");
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var createdZone = await created.Content
+            .ReadFromJsonAsync<TenantDomainZoneSnapshot>();
+        Assert.NotNull(createdZone);
+
+        using var response = await Client.GetAsync(
+            $"/api/v1/domain-zones/{createdZone.Id}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var zone = await response.Content
+            .ReadFromJsonAsync<TenantDomainZoneSnapshot>();
+        Assert.NotNull(zone);
+        Assert.Equal(createdZone.Id, zone.Id);
+        Assert.Equal(createdZone.TenantId, zone.TenantId);
+        Assert.Equal(createdZone.DeploymentTargetId, zone.DeploymentTargetId);
+        Assert.Equal(createdZone.Domain, zone.Domain);
+        Assert.Equal(createdZone.Revision, zone.Revision);
+    }
+
+    [Fact]
+    public async Task GetById_ReturnsNotFoundWithoutLeakingAnotherTenantZone()
+    {
+        var foreignZone = TenantDomainZoneFactory.CreateManagedReservation(
+            OtherTenantId,
+            TestData.DefaultDeploymentTargetId,
+            "foreign",
+            DnsName.Create("apps.test.local"),
+            new TenantDomainZoneFactory.CreateOptions(
+                ObjectId.GenerateNewId().ToString(),
+                DateTime.UtcNow));
+        await Fixture.Database
+            .GetCollection<TenantDomainZone>("TenantDomainZones")
+            .InsertOneAsync(foreignZone);
+
+        using var response = await Client.GetAsync(
+            $"/api/v1/domain-zones/{foreignZone.Id}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(
+            "application/problem+json",
+            response.Content.Headers.ContentType?.MediaType);
+        using var problem = JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync());
+        Assert.Equal(
+            "https://pole.dev/problems/domain-zone-not-found",
+            problem.RootElement.GetProperty("type").GetString());
+        Assert.Equal(
+            "domains.zone.not-found",
+            problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal(
+            foreignZone.Id,
+            problem.RootElement.GetProperty("domainZoneId").GetString());
+        Assert.Equal(
+            (int)HttpStatusCode.NotFound,
+            problem.RootElement.GetProperty("status").GetInt32());
+    }
+
     [Fact]
     public async Task GetAll_ReturnsTenantZonesThroughOutcomeHandler()
     {

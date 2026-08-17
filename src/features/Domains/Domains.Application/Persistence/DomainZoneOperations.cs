@@ -4,7 +4,10 @@ using Pole.ResultType;
 
 namespace Pole.Features.Domains.Application.Persistence;
 
-public delegate Task<Result<TenantDomainZoneSnapshot>> LoadTenantDomainZone(
+public sealed record DomainZoneNotFound(string ZoneId);
+
+public delegate Task<Result<TenantDomainZoneSnapshot, DomainZoneNotFound>>
+    LoadTenantDomainZone(
     string tenantId,
     string zoneId,
     CancellationToken cancellationToken = default);
