@@ -58,9 +58,10 @@ public static class DomainPersistenceRegistration
             provider.GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<
                     Result<TenantDomainZoneSnapshot, CreateDomainZoneError>>);
-        services.TryAddSingleton<RunMongoTransaction<Pole.Features.Domains.Application.Endpoints.DeleteDomainZoneResponse>>(provider =>
+        services.TryAddSingleton<RunMongoOutcomeTransaction<
+            DeleteDomainZoneOutcome>>(provider =>
             provider.GetRequiredService<MongoRunTransaction>()
-                .InvokeAsync<Pole.Features.Domains.Application.Endpoints.DeleteDomainZoneResponse>);
+                .InvokeOutcomeAsync<DeleteDomainZoneOutcome>);
         return services;
     }
 }

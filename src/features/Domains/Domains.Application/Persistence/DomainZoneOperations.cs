@@ -8,9 +8,9 @@ public sealed record DomainZoneNotFound(string ZoneId);
 
 public delegate Task<Result<TenantDomainZoneSnapshot, DomainZoneNotFound>>
     LoadTenantDomainZone(
-    string tenantId,
-    string zoneId,
-    CancellationToken cancellationToken = default);
+        string tenantId,
+        string zoneId,
+        CancellationToken cancellationToken = default);
 
 public delegate Task<IReadOnlyList<TenantDomainZoneSnapshot>> LoadTenantDomainZones(
     string tenantId,
@@ -33,6 +33,27 @@ public union CreateManagedDomainZoneError(
     ManagedDomainZoneDeploymentTargetChanged,
     ManagedDomainZoneReferenceRejected);
 
+public sealed record ManagedDomainZoneDeleted(string ZoneId);
+
+public sealed record GeneratedDomainZoneDeletionRejected(string ZoneId);
+
+public sealed record DomainZoneHasHostnameBindings(
+    string ZoneId,
+    long BindingCount);
+
+public sealed record DomainZoneDeletionConflict(string ZoneId);
+
+public sealed record ManagedDomainZoneReferenceRemovalRejected(
+    string ZoneId,
+    string DeploymentTargetId);
+
+public union DeleteManagedDomainZoneError(
+    DomainZoneNotFound,
+    GeneratedDomainZoneDeletionRejected,
+    DomainZoneHasHostnameBindings,
+    DomainZoneDeletionConflict,
+    ManagedDomainZoneReferenceRemovalRejected);
+
 public delegate Task<Result<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>>
     CreateManagedDomainZoneReservation(
         string tenantId,
@@ -43,8 +64,9 @@ public delegate Task<Result<TenantDomainZoneSnapshot, CreateManagedDomainZoneErr
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result> DeleteManagedDomainZone(
-    string tenantId,
-    string zoneId,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
+public delegate Task<Result<ManagedDomainZoneDeleted, DeleteManagedDomainZoneError>>
+    DeleteManagedDomainZone(
+        string tenantId,
+        string zoneId,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);

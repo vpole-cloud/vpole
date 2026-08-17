@@ -22,6 +22,8 @@ public abstract class ApiIntegrationTestBase : IAsyncLifetime
     protected FakeGitHubAppClient GitHubClient => _application!.GitHubClient;
     protected void RejectNewDeploymentTargetWorkloads() =>
         _application!.RejectNewDeploymentTargetWorkloads();
+    protected void RejectDeploymentTargetReferenceRemoval() =>
+        _application!.RejectDeploymentTargetReferenceRemoval();
 
     public virtual async Task InitializeAsync()
     {
