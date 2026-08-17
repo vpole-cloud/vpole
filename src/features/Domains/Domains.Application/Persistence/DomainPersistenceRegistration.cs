@@ -1,7 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.Database;
+using Pole.Features.Domains.Application.Endpoints;
 using Pole.Features.Domains.Contracts;
+using Pole.ResultType;
 
 namespace Pole.Features.Domains.Application.Persistence;
 
@@ -52,10 +54,10 @@ public static class DomainPersistenceRegistration
             provider.GetRequiredService<MongoDomainPersistence>()
                 .DeleteAllForResourceAsync);
         services.TryAddSingleton<RunMongoOutcomeTransaction<
-            Pole.Features.Domains.Application.Endpoints.CreateDomainZoneOutcome>>(provider =>
+            Result<TenantDomainZoneSnapshot, CreateDomainZoneError>>>(provider =>
             provider.GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<
-                    Pole.Features.Domains.Application.Endpoints.CreateDomainZoneOutcome>);
+                    Result<TenantDomainZoneSnapshot, CreateDomainZoneError>>);
         services.TryAddSingleton<RunMongoTransaction<Pole.Features.Domains.Application.Endpoints.DeleteDomainZoneResponse>>(provider =>
             provider.GetRequiredService<MongoRunTransaction>()
                 .InvokeAsync<Pole.Features.Domains.Application.Endpoints.DeleteDomainZoneResponse>);

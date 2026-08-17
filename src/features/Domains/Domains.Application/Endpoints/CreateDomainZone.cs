@@ -36,10 +36,15 @@ public static class CreateDomainZone
     {
         TenantDomainZoneSnapshot zone =>
             Results.Created($"/api/v1/domain-zones/{zone.Id}", zone),
-        DeploymentTargetDomainReservationAdmissionError error =>
-            ToDeploymentTargetProblem(error),
-        CreateManagedDomainZoneError error =>
-            ToDomainZoneProblem(error)
+        CreateDomainZoneError error => ToProblem(error)
+    };
+
+    private static IResult ToProblem(CreateDomainZoneError error) => error switch
+    {
+        DeploymentTargetDomainReservationAdmissionError deploymentTargetError =>
+            ToDeploymentTargetProblem(deploymentTargetError),
+        CreateManagedDomainZoneError domainZoneError =>
+            ToDomainZoneProblem(domainZoneError)
     };
 
     private static IResult ToDeploymentTargetProblem(
@@ -165,10 +170,13 @@ public sealed record CreateDomainZoneRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
     : IMediatorRequest<CreateDomainZoneOutcome>, ITenantCreateOperation;
 
-public union CreateDomainZoneOutcome(
-    TenantDomainZoneSnapshot,
+public union CreateDomainZoneError(
     DeploymentTargetDomainReservationAdmissionError,
     CreateManagedDomainZoneError);
+
+public union CreateDomainZoneOutcome(
+    TenantDomainZoneSnapshot,
+    CreateDomainZoneError);
 
 public sealed class CreateDomainZoneRequestValidator : AbstractValidator<CreateDomainZoneRequest>
 {
@@ -193,7 +201,9 @@ public sealed class CreateDomainZoneRequestValidator : AbstractValidator<CreateD
 
 public sealed class CreateDomainZoneHandler(
     IDeploymentTargetPublicIngressAdmission deploymentTargets,
-    RunMongoOutcomeTransaction<CreateDomainZoneOutcome> runMongoTransaction,
+    RunMongoOutcomeTransaction<Result<
+        TenantDomainZoneSnapshot,
+        CreateDomainZoneError>> runMongoTransaction,
     CreateManagedDomainZoneReservation createManagedDomainZone)
     : IMediatorOutcomeHandler<CreateDomainZoneRequest, CreateDomainZoneOutcome>
 {
@@ -201,33 +211,42 @@ public sealed class CreateDomainZoneHandler(
         CreateDomainZoneRequest request,
         CancellationToken cancellationToken = default)
     {
-        var target = await deploymentTargets.AdmitForDomainReservationAsync(
-            request.TenantId,
-            request.Body.DeploymentTargetId,
-            cancellationToken);
-        if (!target.TryGetValue(out var publicIngress, out var targetError))
-            return targetError;
+        var result = await deploymentTargets
+            .AdmitForDomainReservationAsync(
+                request.TenantId,
+                request.Body.DeploymentTargetId,
+                cancellationToken)
+            .MapErrorAsync(error => (CreateDomainZoneError)error)
+            .ThenAsync(publicIngress => ReserveAsync(
+                request,
+                publicIngress,
+                cancellationToken));
 
-        return await runMongoTransaction(
+        return result.Match(
+            zone => (CreateDomainZoneOutcome)zone,
+            error => (CreateDomainZoneOutcome)error);
+    }
+
+    private Task<Result<TenantDomainZoneSnapshot, CreateDomainZoneError>> ReserveAsync(
+        CreateDomainZoneRequest request,
+        DeploymentTargetPublicIngressDto publicIngress,
+        CancellationToken cancellationToken) =>
+        runMongoTransaction(
             async (transaction, transactionCancellationToken) =>
             {
-                var result = await createManagedDomainZone(
-                    request.TenantId,
-                    publicIngress.DeploymentTargetId,
-                    request.Body.Label,
-                    publicIngress.PublicBaseDomain,
-                    publicIngress.WorkloadConfigurationRevision,
-                    transaction.Session,
-                    transactionCancellationToken);
-                if (result.TryGetValue(out var zone, out var error))
-                {
-                    CreateDomainZoneOutcome outcome = zone;
-                    return transaction.Commit(outcome);
-                }
+                var result = (await createManagedDomainZone(
+                        request.TenantId,
+                        publicIngress.DeploymentTargetId,
+                        request.Body.Label,
+                        publicIngress.PublicBaseDomain,
+                        publicIngress.WorkloadConfigurationRevision,
+                        transaction.Session,
+                        transactionCancellationToken))
+                    .MapError(error => (CreateDomainZoneError)error);
 
-                CreateDomainZoneOutcome aborted = error;
-                return transaction.Abort(aborted);
+                return result.Match(
+                    zone => transaction.Commit(new Ok<TenantDomainZoneSnapshot>(zone)),
+                    error => transaction.Abort(new Err<CreateDomainZoneError>(error)));
             },
             cancellationToken);
-    }
 }
