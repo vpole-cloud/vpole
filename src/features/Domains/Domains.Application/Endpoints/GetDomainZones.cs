@@ -8,7 +8,6 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Application.Persistence;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 
 namespace Pole.Features.Domains.Application.Endpoints;
@@ -46,13 +45,13 @@ public sealed class GetDomainZonesRequestValidator : AbstractValidator<GetDomain
 }
 
 public sealed class GetDomainZonesHandler(LoadTenantDomainZones loadTenantDomainZones)
-    : IMediatorHandler<GetDomainZonesRequest, IReadOnlyList<TenantDomainZoneSnapshot>>
+    : IMediatorOutcomeHandler<GetDomainZonesRequest, IReadOnlyList<TenantDomainZoneSnapshot>>
 {
-    public async Task<Pole.ResultType.Result<IReadOnlyList<TenantDomainZoneSnapshot>>> HandleAsync(
+    public Task<IReadOnlyList<TenantDomainZoneSnapshot>> HandleAsync(
         GetDomainZonesRequest request,
         CancellationToken cancellationToken = default) =>
-        Result.Success(await loadTenantDomainZones(
+        loadTenantDomainZones(
             request.TenantId,
             request.DeploymentTargetId,
-            cancellationToken));
+            cancellationToken);
 }
