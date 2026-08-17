@@ -10,6 +10,7 @@ using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 using Pole.Features.Tenants.Domain;
 using Pole.Tests.Integration.Infrastructure;
+using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.Domains;
@@ -99,6 +100,147 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
         var zone = Assert.Single(zones);
         Assert.Equal(TestData.TenantId, zone.TenantId);
         Assert.Equal("company.apps.test.local", zone.Domain);
+    }
+
+    [Fact]
+    public async Task Delete_ReturnsNoContentAndCommitsDeletion()
+    {
+        var zone = await CreateZoneAsync("delete-success");
+
+        using var response = await DeleteAsync(zone.Id);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.False(await ZoneExistsAsync(zone.Id));
+    }
+
+    [Fact]
+    public async Task Delete_RejectsGeneratedZoneAndKeepsIt()
+    {
+        var zone = TenantDomainZoneFactory.CreateGenerated(
+            TestData.TenantId,
+            TestData.DefaultDeploymentTargetId,
+            $"{TenantDomainZoneLabelPolicy.GeneratedPrefix}delete",
+            DnsName.Create("apps.test.local"),
+            new TenantDomainZoneFactory.CreateOptions(
+                ObjectId.GenerateNewId().ToString(),
+                DateTime.UtcNow));
+        await Fixture.Database
+            .GetCollection<TenantDomainZone>("TenantDomainZones")
+            .InsertOneAsync(zone);
+
+        using var response = await DeleteAsync(zone.Id);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        await AssertDomainProblemAsync(
+            response,
+            "https://pole.dev/problems/domain-zone-generated",
+            "domains.zone.delete.generated",
+            problem => Assert.Equal(
+                zone.Id,
+                problem.GetProperty("domainZoneId").GetString()));
+        Assert.True(await ZoneExistsAsync(zone.Id));
+    }
+
+    [Fact]
+    public async Task Delete_RejectsZoneWithHostnameBindingsAndKeepsIt()
+    {
+        var zone = await CreateZoneAsync("delete-bound");
+        var binding = HostnameBindingFactory.CreateCustom(
+            TestData.TenantId,
+            zone.Id,
+            TestData.DefaultDeploymentTargetId,
+            ResourceTypeId.Create("pole/web-service"),
+            ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString(),
+            "api",
+            DnsName.Create(zone.Domain),
+            new HostnameBindingFactory.CreateOptions(
+                ObjectId.GenerateNewId().ToString(),
+                DateTime.UtcNow));
+        await Fixture.Database
+            .GetCollection<HostnameBinding>("HostnameBindings")
+            .InsertOneAsync(binding);
+
+        using var response = await DeleteAsync(zone.Id);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        await AssertDomainProblemAsync(
+            response,
+            "https://pole.dev/problems/domain-zone-has-hostname-bindings",
+            "domains.zone.delete.has-hostname-bindings",
+            problem =>
+            {
+                Assert.Equal(
+                    zone.Id,
+                    problem.GetProperty("domainZoneId").GetString());
+                Assert.Equal(1, problem.GetProperty("bindingCount").GetInt64());
+            });
+        Assert.True(await ZoneExistsAsync(zone.Id));
+    }
+
+    [Fact]
+    public async Task Delete_AbortsDeletionWhenReferenceRemovalIsRejected()
+    {
+        var zone = await CreateZoneAsync("delete-reference");
+        RejectDeploymentTargetReferenceRemoval();
+
+        using var response = await DeleteAsync(zone.Id);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        await AssertDomainProblemAsync(
+            response,
+            "https://pole.dev/problems/domain-zone-reference-removal-rejected",
+            "domains.zone.delete.reference-removal-rejected",
+            problem =>
+            {
+                Assert.Equal(
+                    zone.Id,
+                    problem.GetProperty("domainZoneId").GetString());
+                Assert.Equal(
+                    TestData.DefaultDeploymentTargetId,
+                    problem.GetProperty("deploymentTargetId").GetString());
+            });
+        Assert.True(await ZoneExistsAsync(zone.Id));
+    }
+
+    [Fact]
+    public async Task Delete_ReturnsNotFoundWithoutDeletingAnotherTenantZone()
+    {
+        var foreignZone = TenantDomainZoneFactory.CreateManagedReservation(
+            OtherTenantId,
+            TestData.DefaultDeploymentTargetId,
+            "foreign-delete",
+            DnsName.Create("apps.test.local"),
+            new TenantDomainZoneFactory.CreateOptions(
+                ObjectId.GenerateNewId().ToString(),
+                DateTime.UtcNow));
+        await Fixture.Database
+            .GetCollection<TenantDomainZone>("TenantDomainZones")
+            .InsertOneAsync(foreignZone);
+
+        using var response = await DeleteAsync(foreignZone.Id);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        await AssertDomainProblemAsync(
+            response,
+            "https://pole.dev/problems/domain-zone-not-found",
+            "domains.zone.not-found",
+            problem => Assert.Equal(
+                foreignZone.Id,
+                problem.GetProperty("domainZoneId").GetString()));
+        Assert.True(await ZoneExistsAsync(foreignZone.Id));
+    }
+
+    [Fact]
+    public async Task Delete_AuthorizationPipelineShortCircuitsWithoutDeleting()
+    {
+        var zone = await CreateZoneAsync("delete-forbidden");
+        await SetCurrentUserRoleAsync(TenantRole.Viewer);
+
+        using var response = await DeleteAsync(zone.Id);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.True(await ZoneExistsAsync(zone.Id));
     }
 
     [Fact]
@@ -209,6 +351,26 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
             "/api/v1/domain-zones/",
             new { deploymentTargetId, label });
 
+    private async Task<TenantDomainZoneSnapshot> CreateZoneAsync(string label)
+    {
+        using var response = await CreateAsync(
+            TestData.DefaultDeploymentTargetId,
+            label);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var zone = await response.Content
+            .ReadFromJsonAsync<TenantDomainZoneSnapshot>();
+        Assert.NotNull(zone);
+        return zone;
+    }
+
+    private Task<HttpResponseMessage> DeleteAsync(string zoneId) =>
+        Client.DeleteAsync($"/api/v1/domain-zones/{zoneId}");
+
+    private async Task<bool> ZoneExistsAsync(string zoneId) =>
+        await Fixture.Database
+            .GetCollection<TenantDomainZone>("TenantDomainZones")
+            .CountDocumentsAsync(zone => zone.Id == zoneId) == 1;
+
     private Task<long> ZoneCountAsync() =>
         Fixture.Database
             .GetCollection<TenantDomainZone>("TenantDomainZones")
@@ -233,6 +395,25 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(
             (int)response.StatusCode,
             problem.RootElement.GetProperty("status").GetInt32());
+    }
+
+    private static async Task AssertDomainProblemAsync(
+        HttpResponseMessage response,
+        string type,
+        string code,
+        Action<JsonElement>? assertExtensions = null)
+    {
+        Assert.Equal(
+            "application/problem+json",
+            response.Content.Headers.ContentType?.MediaType);
+        using var problem = JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync());
+        Assert.Equal(type, problem.RootElement.GetProperty("type").GetString());
+        Assert.Equal(code, problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal(
+            (int)response.StatusCode,
+            problem.RootElement.GetProperty("status").GetInt32());
+        assertExtensions?.Invoke(problem.RootElement);
     }
 
     private async Task SetCurrentUserRoleAsync(TenantRole role)

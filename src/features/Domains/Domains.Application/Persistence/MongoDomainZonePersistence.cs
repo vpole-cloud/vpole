@@ -230,36 +230,57 @@ internal sealed partial class MongoDomainPersistence
                 new ManagedDomainZoneReferenceRejected(deploymentTargetId));
     }
 
-    public async Task<Result> DeleteManagedReservationAsync(
-        string tenantId,
-        string zoneId,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
+    public async Task<Result<ManagedDomainZoneDeleted, DeleteManagedDomainZoneError>>
+        DeleteManagedReservationAsync(
+            string tenantId,
+            string zoneId,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
         var zoneFilter = DomainFilters.ZoneById(tenantId, zoneId);
         var zone = await _zones.Find(session, zoneFilter).FirstOrDefaultAsync(cancellationToken);
         if (zone is null)
-            return Failures.NotFound("Domain zone not found.", zoneId);
+        {
+            return new Err<DeleteManagedDomainZoneError>(
+                new DomainZoneNotFound(zoneId));
+        }
         if (zone.Kind == TenantDomainZoneKind.Generated)
-            return Failures.Conflict("Generated domain zones are managed by the platform.");
+        {
+            return new Err<DeleteManagedDomainZoneError>(
+                new GeneratedDomainZoneDeletionRejected(zoneId));
+        }
         var bindingCount = await _bindings.CountDocumentsAsync(
             session,
             DomainFilters.BindingsForZone(zoneId),
             cancellationToken: cancellationToken);
         if (bindingCount > 0)
-            return Failures.Conflict("A domain zone cannot be deleted while hostname bindings refer to it.");
+        {
+            return new Err<DeleteManagedDomainZoneError>(
+                new DomainZoneHasHostnameBindings(zoneId, bindingCount));
+        }
         var deleted = await _zones.DeleteOneAsync(
             session,
             DomainFilters.ZoneAtRevision(tenantId, zone),
             cancellationToken: cancellationToken);
         if (deleted.DeletedCount != 1)
-            return Failures.Conflict("The domain zone changed while deletion was being accepted.");
-        return await targetReferenceAdmission.UnregisterAsync(
+        {
+            return new Err<DeleteManagedDomainZoneError>(
+                new DomainZoneDeletionConflict(zoneId));
+        }
+
+        var unregistered = await targetReferenceAdmission.UnregisterAsync(
             zone.DeploymentTargetId,
             new DeploymentTargetReferenceOwner(DeploymentTargetReferenceOwnerTypes.DomainZone, zone.Id),
             session,
             cancellationToken);
+        return unregistered is ISuccess
+            ? new Ok<ManagedDomainZoneDeleted>(
+                new ManagedDomainZoneDeleted(zone.Id))
+            : new Err<DeleteManagedDomainZoneError>(
+                new ManagedDomainZoneReferenceRemovalRejected(
+                    zone.Id,
+                    zone.DeploymentTargetId));
     }
 
 }

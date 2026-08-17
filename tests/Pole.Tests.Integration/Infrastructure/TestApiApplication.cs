@@ -108,6 +108,9 @@ public sealed class TestApiApplication : IAsyncDisposable
     public void RejectNewDeploymentTargetWorkloads() =>
         DeploymentTargetLookup.RejectNewWorkloads = true;
 
+    public void RejectDeploymentTargetReferenceRemoval() =>
+        DeploymentTargetLookup.RejectReferenceRemoval = true;
+
     public static async Task<TestApiApplication> StartAsync(MongoReplicaSetFixture fixture)
     {
         var encryptionKeyDirectory = Path.Combine(

@@ -11,6 +11,7 @@ internal sealed class TestDeploymentTargetLookup :
     IDeploymentTargetWorkloadConfigurationFence
 {
     private int _rejectNewWorkloads;
+    private int _rejectReferenceRemoval;
     private readonly Dictionary<string, DeploymentTargetLookupDto> _targets =
         new(StringComparer.Ordinal)
         {
@@ -39,6 +40,12 @@ internal sealed class TestDeploymentTargetLookup :
     {
         get => Volatile.Read(ref _rejectNewWorkloads) == 1;
         set => Volatile.Write(ref _rejectNewWorkloads, value ? 1 : 0);
+    }
+
+    public bool RejectReferenceRemoval
+    {
+        get => Volatile.Read(ref _rejectReferenceRemoval) == 1;
+        set => Volatile.Write(ref _rejectReferenceRemoval, value ? 1 : 0);
     }
 
     public void AddEligibleTarget(string id, string publicBaseDomain)
@@ -205,7 +212,10 @@ internal sealed class TestDeploymentTargetLookup :
         DeploymentTargetReferenceOwner owner,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default) =>
-        Task.FromResult<Result>(Result.Success());
+        Task.FromResult<Result>(RejectReferenceRemoval
+            ? Failures.Conflict(
+                "The test deployment target rejected reference removal.")
+            : Result.Success());
 
     public Task<Result> ApplyChangesAsync(
         DeploymentTargetReferenceOwner owner,
