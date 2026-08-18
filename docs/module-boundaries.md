@@ -50,6 +50,19 @@ primitives project.
 
 Contract operations return contract representations, not domain aggregates.
 
+### Contract HTTP mapping
+
+`Feature.Contracts.HttpMapping` is an optional companion for the default HTTP representation of
+provider-owned synchronous contract errors. It depends on `Feature.Contracts` and the shared HTTP
+mapping abstraction; the Contracts project never depends on it. A consuming Application continues
+to reference only the provider Contracts, while `Pole.Server` composes the mapping companion.
+
+Contract HTTP mappings define provider-owned defaults. A consuming HTTP boundary may supply an
+explicit local override when its endpoint gives a contract error different HTTP semantics. Global
+duplicate registrations and order-dependent "last registration wins" behavior are not allowed.
+Map a closed contract error union with an exhaustive switch and treat non-exhaustive switch
+diagnostics as build errors in the companion project.
+
 ### Events
 
 `Feature.Events` contains serialized integration events published through the outbox. Event types
@@ -101,6 +114,7 @@ Consumer.Application -> Provider.Events -> consumer
 | Primitives | None | Every feature project |
 | Domain | Own Primitives | Contracts, Events, Application, another feature |
 | Contracts | Own Primitives | Domain, Events, Application, another feature's Contracts/Primitives |
+| Contracts.HttpMapping | Own Contracts; shared HTTP mapping abstraction | Domain, Events, Application, another feature project |
 | Events | Own Primitives | Domain, Contracts, Application, another feature |
 | Application | Own Primitives/Domain/Contracts/Events; foreign Contracts/Events; contract-exposed foreign Primitives | Foreign Domain/Application |
 | Pole.Server | Application projects required for composition | None imposed by this policy |

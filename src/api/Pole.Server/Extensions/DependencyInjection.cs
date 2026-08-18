@@ -23,6 +23,7 @@ using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Security;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.GitProviders.Application.Analysis;
 using Pole.Features.GitProviders.Application.Common;
@@ -238,6 +239,8 @@ public static class DependencyInjection
 
         public IServiceCollection AddDeploymentTargetsFeature(IConfiguration configuration)
         {
+            services.AddHttpProblemMappings(
+                DeploymentTargetContractHttpMappings.All);
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddEnumerable(
                 ServiceDescriptor.Singleton<IValidateOptions<DeploymentTargetOptions>, DeploymentTargetOptionsValidator>());

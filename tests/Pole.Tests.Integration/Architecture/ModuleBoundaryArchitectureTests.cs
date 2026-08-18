@@ -64,7 +64,10 @@ public sealed class ModuleBoundaryArchitectureTests
         var sharedRoot = Path.Combine(repositoryRoot, "src", "shared");
         var projects = LoadProductionFeatureProjects(featureRoot);
         var violations = projects.Values
-            .Where(project => project.Role is ProjectRole.Contracts or ProjectRole.Events)
+            .Where(project => project.Role is
+                ProjectRole.Contracts or
+                ProjectRole.ContractHttpMapping or
+                ProjectRole.Events)
             .SelectMany(project => LoadSharedReferences(project, sharedRoot))
             .Where(edge => !IsAllowedSharedReference(edge.Source.Role, edge.TargetIdentity))
             .Select(edge => new ProjectEdge(edge.Source.Identity, edge.TargetIdentity))
@@ -179,6 +182,7 @@ public sealed class ModuleBoundaryArchitectureTests
         sourceRole switch
         {
             ProjectRole.Contracts => targetIdentity is "ResultType" or "Workloads",
+            ProjectRole.ContractHttpMapping => targetIdentity is "ASP",
             ProjectRole.Events => targetIdentity is "Events" or "Workloads",
             _ => true
         };
@@ -191,6 +195,9 @@ public sealed class ModuleBoundaryArchitectureTests
                 when source.Feature == target.Feature =>
                 target.Role is ProjectRole.Primitives,
             ProjectRole.Domain or ProjectRole.Contracts or ProjectRole.Events => false,
+            ProjectRole.ContractHttpMapping when source.Feature == target.Feature =>
+                target.Role is ProjectRole.Contracts,
+            ProjectRole.ContractHttpMapping => false,
             ProjectRole.Application when source.Feature == target.Feature =>
                 target.Role is ProjectRole.Primitives or
                     ProjectRole.Domain or
@@ -273,6 +280,8 @@ public sealed class ModuleBoundaryArchitectureTests
 
         private static ProjectRole GetRole(string identity)
         {
+            if (identity.EndsWith(".Contracts.HttpMapping", StringComparison.Ordinal))
+                return ProjectRole.ContractHttpMapping;
             if (identity.EndsWith(".Domain", StringComparison.Ordinal))
                 return ProjectRole.Domain;
             if (identity.EndsWith(".Contracts", StringComparison.Ordinal))
@@ -338,6 +347,7 @@ public sealed class ModuleBoundaryArchitectureTests
         Other,
         Domain,
         Contracts,
+        ContractHttpMapping,
         Events,
         Application,
         Runtime,

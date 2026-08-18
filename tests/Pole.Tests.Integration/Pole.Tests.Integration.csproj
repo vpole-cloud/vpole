@@ -38,6 +38,7 @@
         <ProjectReference Include="..\..\src\features\Quotas\Quotas.Domain\Quotas.Domain.csproj" />
         <ProjectReference Include="..\..\src\features\ContainerRegistries\ContainerRegistries.Application\ContainerRegistries.Application.csproj" />
         <ProjectReference Include="..\..\src\features\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
+        <ProjectReference Include="..\..\src\features\DeploymentTargets\DeploymentTargets.Contracts.HttpMapping\DeploymentTargets.Contracts.HttpMapping.csproj" />
         <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Application\ResourceDeployments.Application.csproj" />
         <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Domain\ResourceDeployments.Domain.csproj" />
         <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />
