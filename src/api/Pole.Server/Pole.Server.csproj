@@ -35,6 +35,7 @@
       <ProjectReference Include="..\..\features\ContainerRegistries\ContainerRegistries.Application\ContainerRegistries.Application.csproj" />
       <ProjectReference Include="..\..\features\ComputeProfiles\ComputeProfiles.Application\ComputeProfiles.Application.csproj" />
       <ProjectReference Include="..\..\features\DeploymentTargets\DeploymentTargets.Application\DeploymentTargets.Application.csproj" />
+      <ProjectReference Include="..\..\features\DeploymentTargets\DeploymentTargets.Contracts.HttpMapping\DeploymentTargets.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\features\SourceBuilds\SourceBuilds.Application\SourceBuilds.Application.csproj" />
       <ProjectReference Include="..\..\shared\Events\Events.csproj" />
       <ProjectReference Include="..\..\shared\Encryption\Encryption.csproj" />
@@ -64,5 +65,4 @@
     </ItemGroup>
 
 </Project>
-
 

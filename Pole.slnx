@@ -57,6 +57,7 @@
   <Folder Name="/features/DeploymentTargets/">
     <Project Path="src/features/DeploymentTargets/DeploymentTargets.Application/DeploymentTargets.Application.csproj" />
     <Project Path="src/features/DeploymentTargets/DeploymentTargets.Contracts/DeploymentTargets.Contracts.csproj" />
+    <Project Path="src/features/DeploymentTargets/DeploymentTargets.Contracts.HttpMapping/DeploymentTargets.Contracts.HttpMapping.csproj" />
     <Project Path="src/features/DeploymentTargets/DeploymentTargets.Domain/DeploymentTargets.Domain.csproj" />
   </Folder>
   <Folder Name="/features/ComputeProfiles/">

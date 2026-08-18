@@ -21,89 +21,35 @@ public static class CreateDomainZone
 {
     public static IEndpointRouteBuilder MapCreateDomainZoneEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/", async (IMediator mediator, [AsParameters] CreateDomainZoneRequest request, CancellationToken cancellationToken) =>
+        app.MapPost("/", async (IMediator mediator, IHttpProblemMapper httpProblems, [AsParameters] CreateDomainZoneRequest request, CancellationToken cancellationToken) =>
                 (await mediator.Send(request, cancellationToken)).ToHttpResult(
-                    ToHttpResult))
+                    outcome => ToHttpResult(outcome, httpProblems)))
             .WithName("CreateDomainZone")
             .Produces<TenantDomainZoneSnapshot>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
         return app;
     }
 
-    private static IResult ToHttpResult(CreateDomainZoneOutcome outcome) => outcome switch
+    private static IResult ToHttpResult(
+        CreateDomainZoneOutcome outcome,
+        IHttpProblemMapper httpProblems) => outcome switch
     {
         TenantDomainZoneSnapshot zone =>
             Results.Created($"/api/v1/domain-zones/{zone.Id}", zone),
-        CreateDomainZoneError error => ToProblem(error)
+        CreateDomainZoneError error => ToProblem(error, httpProblems)
     };
 
-    private static IResult ToProblem(CreateDomainZoneError error) => error switch
+    private static IResult ToProblem(
+        CreateDomainZoneError error,
+        IHttpProblemMapper httpProblems) => error switch
     {
         DeploymentTargetDomainReservationAdmissionError deploymentTargetError =>
-            ToDeploymentTargetProblem(deploymentTargetError),
+            httpProblems.Map(deploymentTargetError).ToHttpResult(),
         CreateManagedDomainZoneError domainZoneError =>
             ToDomainZoneProblem(domainZoneError)
-    };
-
-    private static IResult ToDeploymentTargetProblem(
-        DeploymentTargetDomainReservationAdmissionError error) => error switch
-    {
-        InvalidDeploymentTargetId invalid => Problem(
-            StatusCodes.Status400BadRequest,
-            "deployment-target-id-invalid",
-            "Deployment target ID is invalid",
-            "deployment-targets.id.invalid",
-            new Dictionary<string, object?>
-            {
-                ["deploymentTargetId"] = invalid.DeploymentTargetId
-            }),
-        DeploymentTargetNotFound notFound => Problem(
-            StatusCodes.Status404NotFound,
-            "deployment-target-not-found",
-            "Deployment target not found",
-            "deployment-targets.not-found",
-            new Dictionary<string, object?>
-            {
-                ["deploymentTargetId"] = notFound.DeploymentTargetId
-            }),
-        DeploymentTargetDisabled disabled => Problem(
-            StatusCodes.Status409Conflict,
-            "deployment-target-disabled",
-            "Deployment target is disabled",
-            "deployment-targets.disabled",
-            new Dictionary<string, object?>
-            {
-                ["deploymentTargetId"] = disabled.DeploymentTargetId
-            }),
-        DeploymentTargetDeletionRequested deleting => Problem(
-            StatusCodes.Status409Conflict,
-            "deployment-target-deletion-requested",
-            "Deployment target is pending deletion",
-            "deployment-targets.deletion-requested",
-            new Dictionary<string, object?>
-            {
-                ["deploymentTargetId"] = deleting.DeploymentTargetId
-            }),
-        DeploymentTargetNewWorkloadsDisabled unavailable => Problem(
-            StatusCodes.Status409Conflict,
-            "deployment-target-new-workloads-disabled",
-            "Deployment target does not accept new reservations",
-            "deployment-targets.new-workloads-disabled",
-            new Dictionary<string, object?>
-            {
-                ["deploymentTargetId"] = unavailable.DeploymentTargetId
-            }),
-        DeploymentTargetPublicIngressUnavailable unavailable => Problem(
-            StatusCodes.Status422UnprocessableEntity,
-            "deployment-target-public-ingress-unavailable",
-            "Deployment target has no public ingress",
-            "deployment-targets.public-ingress-unavailable",
-            new Dictionary<string, object?>
-            {
-                ["deploymentTargetId"] = unavailable.DeploymentTargetId
-            })
     };
 
     private static IResult ToDomainZoneProblem(CreateManagedDomainZoneError error) =>
@@ -150,17 +96,17 @@ public static class CreateDomainZone
         string title,
         string code,
         IDictionary<string, object?>? extensions = null,
-        string? detail = null)
-    {
-        extensions ??= new Dictionary<string, object?>();
-        extensions["code"] = code;
-        return Results.Problem(
-            detail: detail,
-            statusCode: status,
-            title: title,
-            type: $"https://pole.dev/problems/{type}",
-            extensions: extensions);
-    }
+        string? detail = null) =>
+        new HttpProblem(
+                status,
+                $"https://pole.dev/problems/{type}",
+                title,
+                code,
+                detail,
+                extensions is null
+                    ? null
+                    : new Dictionary<string, object?>(extensions))
+            .ToHttpResult();
 }
 
 public sealed record CreateDomainZoneBody(string DeploymentTargetId, string Label);
