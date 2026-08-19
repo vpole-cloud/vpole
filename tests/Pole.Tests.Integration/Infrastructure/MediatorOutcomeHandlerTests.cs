@@ -69,7 +69,7 @@ public sealed class MediatorOutcomeHandlerTests
     }
 
     [Fact]
-    public async Task OutcomeHandler_ReturnsMediatorOutcomeThroughTheLegacyPipeline()
+    public async Task OutcomeHandler_ReturnsOutcomeThroughMediatorPipeline()
     {
         var handler = new OutcomeHandler();
         await using var provider = CreateProvider(handler);
@@ -89,7 +89,7 @@ public sealed class MediatorOutcomeHandlerTests
     }
 
     [Fact]
-    public async Task LegacyPipelineFailureBecomesATypedMediatorRejection()
+    public async Task PluginBehavior_CanRejectBeforeOutcomeHandler()
     {
         var handler = new OutcomeHandler();
         await using var provider = CreateProvider(handler, shortCircuit: true);
@@ -97,17 +97,65 @@ public sealed class MediatorOutcomeHandlerTests
 
         var result = await mediator.Send(new OutcomeRequest("not-reached"));
 
-        var failure = result switch
+        var reason = result switch
         {
             string => throw new Xunit.Sdk.XunitException(
                 "Expected a pipeline rejection."),
+            PipelineRejected rejected => rejected.Reason
+        };
+
+        var rejection = Assert.IsType<PluginPolicyRejected>(reason);
+        Assert.Equal("plugin.policy.denied", rejection.Code);
+        Assert.Equal(0, handler.Calls);
+    }
+
+    [Fact]
+    public async Task LegacyResultHandlerFailureBecomesATypedMediatorRejection()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IMediator, Pole.Mediator.Mediator>();
+        services.AddSingleton<IMediatorHandler<LegacyRequest, string>, LegacyResultHandler>();
+        await using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+
+        var result = await mediator.Send(new LegacyRequest());
+
+        var failure = result switch
+        {
+            string => throw new Xunit.Sdk.XunitException(
+                "Expected a legacy handler rejection."),
             PipelineRejected { Reason: LegacyResultRejected legacy } => legacy.Failure,
             PipelineRejected rejected => throw new Xunit.Sdk.XunitException(
                 $"Expected a legacy rejection, but received '{rejected.Reason.GetType().FullName}'.")
         };
 
         Assert.IsType<ForbiddenFailure>(failure);
-        Assert.Equal(0, handler.Calls);
+    }
+
+    [Fact]
+    public async Task PipelineBehaviors_PreserveRegistrationOrder()
+    {
+        var trace = new List<string>();
+        var handler = new OutcomeHandler(trace);
+        var services = new ServiceCollection();
+        services.AddSingleton<IMediator, Pole.Mediator.Mediator>();
+        services.AddSingleton<IMediatorOutcomeHandler<OutcomeRequest, string>>(handler);
+        services.AddSingleton<IPipelineBehavior<OutcomeRequest, string>>(
+            new RecordingBehavior("outer", trace));
+        services.AddSingleton<IPipelineBehavior<OutcomeRequest, string>>(
+            new RecordingBehavior("inner", trace));
+        await using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+
+        var result = await mediator.Send(new OutcomeRequest("created"));
+
+        var outcome = result.Match(
+            value => value,
+            _ => throw new Xunit.Sdk.XunitException("Expected a request outcome."));
+        Assert.Equal("created", outcome);
+        Assert.Equal(
+            ["outer:before", "inner:before", "handler", "inner:after", "outer:after"],
+            trace);
     }
 
     private static ServiceProvider CreateProvider(
@@ -124,10 +172,12 @@ public sealed class MediatorOutcomeHandlerTests
 
     public sealed record OutcomeRequest(string Outcome) : IMediatorRequest<string>;
 
+    public sealed record LegacyRequest : IMediatorRequest<string>;
+
     private sealed record PluginPolicyRejected(string Code)
         : IMediatorRejection;
 
-    public sealed class OutcomeHandler
+    public sealed class OutcomeHandler(ICollection<string>? trace = null)
         : IMediatorOutcomeHandler<OutcomeRequest, string>
     {
         public int Calls { get; private set; }
@@ -137,20 +187,48 @@ public sealed class MediatorOutcomeHandlerTests
             CancellationToken cancellationToken = default)
         {
             Calls++;
+            trace?.Add("handler");
             return Task.FromResult(request.Outcome);
         }
+    }
+
+    public sealed class LegacyResultHandler : IMediatorHandler<LegacyRequest, string>
+    {
+        public Task<Result<string>> HandleAsync(
+            LegacyRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result<string>>(
+                Failures.Forbidden("Blocked by the legacy handler.", "Test"));
     }
 
     public sealed class ShortCircuitBehavior(bool shortCircuit)
         : IPipelineBehavior<OutcomeRequest, string>
     {
-        public Task<Result<string>> Handle(
+        public Task<MediatorResult<string>> Handle(
             OutcomeRequest request,
             RequestHandlerDelegate<string> next,
             CancellationToken cancellationToken) =>
             shortCircuit
-                ? Task.FromResult<Result<string>>(
-                    Failures.Forbidden("Blocked for the test.", "Test"))
+                ? Task.FromResult<MediatorResult<string>>(
+                    new PipelineRejected(
+                        new PluginPolicyRejected("plugin.policy.denied")))
                 : next();
+    }
+
+    public sealed class RecordingBehavior(
+        string name,
+        ICollection<string> trace)
+        : IPipelineBehavior<OutcomeRequest, string>
+    {
+        public async Task<MediatorResult<string>> Handle(
+            OutcomeRequest request,
+            RequestHandlerDelegate<string> next,
+            CancellationToken cancellationToken)
+        {
+            trace.Add($"{name}:before");
+            var result = await next();
+            trace.Add($"{name}:after");
+            return result;
+        }
     }
 }
