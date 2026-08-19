@@ -9,6 +9,45 @@ namespace Pole.Tests.Integration.Infrastructure;
 public sealed class MediatorOutcomeHandlerTests
 {
     [Fact]
+    public void MediatorResultCarriesTheRequestOutcome()
+    {
+        MediatorResult<string> result = "created";
+
+        var outcome = result switch
+        {
+            string value => value,
+            PipelineRejected => throw new Xunit.Sdk.XunitException(
+                "Expected a request outcome.")
+        };
+
+        Assert.Equal("created", outcome);
+    }
+
+    [Fact]
+    public void MediatorResultAcceptsAPluginDefinedRejection()
+    {
+        MediatorResult<string> result = new PipelineRejected(
+            new PluginPolicyRejected("plugin.policy.denied"));
+
+        var reason = result switch
+        {
+            string => throw new Xunit.Sdk.XunitException(
+                "Expected a pipeline rejection."),
+            PipelineRejected rejected => rejected.Reason
+        };
+
+        var rejection = Assert.IsType<PluginPolicyRejected>(reason);
+        Assert.Equal("plugin.policy.denied", rejection.Code);
+    }
+
+    [Fact]
+    public void PipelineRejectionRequiresATypedReason()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            new PipelineRejected(null!));
+    }
+
+    [Fact]
     public async Task RegistrationScanner_DiscoversOutcomeHandler()
     {
         var services = new ServiceCollection();
@@ -63,6 +102,9 @@ public sealed class MediatorOutcomeHandlerTests
     }
 
     public sealed record OutcomeRequest(string Outcome) : IMediatorRequest<string>;
+
+    private sealed record PluginPolicyRejected(string Code)
+        : IMediatorRejection;
 
     public sealed class OutcomeHandler
         : IMediatorOutcomeHandler<OutcomeRequest, string>
