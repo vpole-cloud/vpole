@@ -5,6 +5,7 @@ using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.Endpoints;
 using Pole.Features.Domains.Application.Persistence;
+using Pole.Mediator;
 using Xunit;
 
 namespace Pole.Tests.Integration.Api;
@@ -149,6 +150,23 @@ public sealed class HttpProblemMapperTests
             typeof(DeploymentTargetNotFound).FullName!,
             exception.Message,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TenantPlatformAdminRejectionHasAStableProblemMapping()
+    {
+        var mapper = new HttpProblemMapper(
+            TenantAuthorizationHttpProblemMappings.All);
+
+        var problem = mapper.Map(new TenantPlatformAdminRequired());
+
+        Assert.Equal((int)HttpStatusCode.Forbidden, problem.StatusCode);
+        Assert.Equal(
+            "tag:pole.dev,2026:problem:tenant.authorization.platform-admin-required",
+            problem.Type);
+        Assert.Equal(
+            "tenant.authorization.platform-admin-required",
+            problem.Code);
     }
 
     [Fact]

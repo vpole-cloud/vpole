@@ -83,10 +83,12 @@ core union. Pipeline behavior delegates also return `MediatorResult<TOutcome>`, 
 can stop execution with its own rejection type without changing a request handler contract.
 
 Existing `Result<TResponse>` handlers remain an internal compatibility path until they migrate. The
-runtime translates their failures into `LegacyResultRejected`. Built-in authorization behaviors
-temporarily use the same wrapper for their old failures. Request validation instead stops the
+runtime translates their failures into `LegacyResultRejected`. Request validation stops the
 pipeline with `RequestValidationRejected`, which retains structured field errors without depending
-on the legacy failure hierarchy.
+on the legacy failure hierarchy. Base tenant authorization emits `TenantPlatformAdminRequired` or
+`TenantRoleRequired`; its missing-tenant case reuses `RequestValidationRejected`. The feature-owned
+tenant-member authorization behavior temporarily remains on the legacy wrapper while its broader
+unauthorized, not-found, membership, and owner-management outcomes are migrated separately.
 
 New rejection reasons require an explicit transport mapping. The HTTP adapter resolves the existing
 `IHttpProblemMapper` from the active request when its deferred result executes. This lets a plugin
