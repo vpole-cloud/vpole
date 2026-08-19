@@ -371,8 +371,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             created.FunctionAppId,
             "507f1f77bcf86cd799439012"));
 
-        Assert.IsType<Failure<FunctionAppDetailsDto>>(get);
-        Assert.IsType<Failure<DeleteFunctionAppResponse>>(delete);
+        get.AssertFailure();
+        delete.AssertFailure();
         var app = await DbContext.FunctionApps.Find(value => value.Id == created.FunctionAppId).SingleAsync();
         Assert.Equal(FunctionAppDesiredState.Enabled, app.DesiredState);
     }

@@ -1,10 +1,23 @@
 ﻿using Microsoft.AspNetCore.Http;
+using Pole.Mediator;
 using Pole.ResultType;
 
 namespace Pole.ASP.Helpers;
 
 public static class ResultExtensions
 {
+    public static IResult ToHttpResult<T>(
+        this MediatorResult<T> result,
+        Func<T, IResult>? transformer = null)
+        where T : notnull =>
+        result.Match(
+            value => transformer is not null ? transformer(value) : Results.Ok(value),
+            rejected => rejected.Reason switch
+            {
+                LegacyResultRejected legacy => ToHttpResult(legacy.Failure),
+                var reason => UnmappedMediatorRejection(reason)
+            });
+
     public static IResult ToHttpResult<T>(this Result<T> result, Func<T, IResult>? transformer = null) where T : notnull
     {
         if (result.TryGetValue(out var value, out var error))
@@ -12,7 +25,11 @@ public static class ResultExtensions
             return transformer is not null ? transformer(value) : Results.Ok(value);
         }
 
-        return error switch
+        return ToHttpResult(error);
+    }
+
+    private static IResult ToHttpResult(Failure error) =>
+        error switch
         {
             NotFoundFailure => Results.NotFound(ToErrorResponse(error)),
             SemanticValidationFailure => Results.UnprocessableEntity(ToErrorResponse(error)),
@@ -24,7 +41,10 @@ public static class ResultExtensions
             ExternalServiceFailure => Results.Json(ToErrorResponse(error), statusCode: StatusCodes.Status502BadGateway),
             _ => UnexpectedFailure()
         };
-    }
+
+    private static IResult UnmappedMediatorRejection(IMediatorRejection rejection) =>
+        throw new InvalidOperationException(
+            $"No HTTP mapping is registered for mediator rejection '{rejection.GetType().FullName}'.");
 
     private static object ToErrorResponse(Failure failure) => failure switch
     {

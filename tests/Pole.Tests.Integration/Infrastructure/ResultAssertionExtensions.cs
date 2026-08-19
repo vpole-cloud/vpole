@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+using Pole.Mediator;
 using Pole.ResultType;
 using Xunit.Sdk;
 
@@ -5,6 +7,53 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 public static class ResultAssertionExtensions
 {
+    public static bool TryGetValue<T>(
+        this MediatorResult<T> result,
+        [MaybeNullWhen(false)] out T value,
+        [MaybeNullWhen(true)] out Failure failure)
+        where T : notnull
+    {
+        var extracted = result.Match(
+            outcome => (Succeeded: true, Value: outcome, Failure: default(Failure)),
+            rejected => rejected.Reason switch
+            {
+                LegacyResultRejected legacy =>
+                    (Succeeded: false, Value: default(T), Failure: legacy.Failure),
+                var reason => throw new XunitException(
+                    $"The test compatibility adapter cannot unwrap mediator rejection " +
+                    $"'{reason.GetType().FullName}'.")
+            });
+
+        value = extracted.Value!;
+        failure = extracted.Failure!;
+        return extracted.Succeeded;
+    }
+
+    public static T AssertSuccess<T>(this MediatorResult<T> result)
+        where T : notnull
+    {
+        if (TryGetValue(result, out var value, out var failure))
+        {
+            return value;
+        }
+
+        throw new XunitException(
+            $"Expected a successful mediator result, but received " +
+            $"{failure.GetType().Name}: {failure.Message}");
+    }
+
+    public static Failure AssertFailure<T>(this MediatorResult<T> result)
+        where T : notnull
+    {
+        if (!TryGetValue(result, out _, out var failure))
+        {
+            return failure;
+        }
+
+        throw new XunitException(
+            "Expected a failed mediator result, but received an outcome.");
+    }
+
     public static void AssertSuccess(this Result result)
     {
         if (result is ISuccess)

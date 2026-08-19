@@ -5,7 +5,7 @@ namespace Pole.Mediator;
 
 public sealed class Mediator(IServiceProvider sp) : IMediator
 {
-    public async Task<Result<TResponse>> Send<TResponse>(
+    public async Task<MediatorResult<TResponse>> Send<TResponse>(
         IMediatorRequest<TResponse> request,
         CancellationToken cancellationToken = default)
         where TResponse : notnull
@@ -71,6 +71,12 @@ public sealed class Mediator(IServiceProvider sp) : IMediator
             next = () => behavior.Handle((dynamic)request, currentNext, cancellationToken);
         }
 
-        return await next();
+        var result = await next();
+        if (result.TryGetValue(out var outcome, out var failure))
+        {
+            return outcome;
+        }
+
+        return new PipelineRejected(new LegacyResultRejected(failure));
     }
 }

@@ -48,6 +48,13 @@ public sealed class MediatorOutcomeHandlerTests
     }
 
     [Fact]
+    public void LegacyResultRejectionRequiresAFailure()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            new LegacyResultRejected(null!));
+    }
+
+    [Fact]
     public async Task RegistrationScanner_DiscoversOutcomeHandler()
     {
         var services = new ServiceCollection();
@@ -62,7 +69,7 @@ public sealed class MediatorOutcomeHandlerTests
     }
 
     [Fact]
-    public async Task OutcomeHandler_IsWrappedForTheExistingPipeline()
+    public async Task OutcomeHandler_ReturnsMediatorOutcomeThroughTheLegacyPipeline()
     {
         var handler = new OutcomeHandler();
         await using var provider = CreateProvider(handler);
@@ -70,13 +77,19 @@ public sealed class MediatorOutcomeHandlerTests
 
         var result = await mediator.Send(new OutcomeRequest("created"));
 
-        Assert.True(result.TryGetValue(out var outcome, out _));
+        var outcome = result switch
+        {
+            string value => value,
+            PipelineRejected => throw new Xunit.Sdk.XunitException(
+                "Expected a request outcome.")
+        };
+
         Assert.Equal("created", outcome);
         Assert.Equal(1, handler.Calls);
     }
 
     [Fact]
-    public async Task Pipeline_CanShortCircuitBeforeOutcomeHandler()
+    public async Task LegacyPipelineFailureBecomesATypedMediatorRejection()
     {
         var handler = new OutcomeHandler();
         await using var provider = CreateProvider(handler, shortCircuit: true);
@@ -84,7 +97,15 @@ public sealed class MediatorOutcomeHandlerTests
 
         var result = await mediator.Send(new OutcomeRequest("not-reached"));
 
-        Assert.False(result.TryGetValue(out _, out var failure));
+        var failure = result switch
+        {
+            string => throw new Xunit.Sdk.XunitException(
+                "Expected a pipeline rejection."),
+            PipelineRejected { Reason: LegacyResultRejected legacy } => legacy.Failure,
+            PipelineRejected rejected => throw new Xunit.Sdk.XunitException(
+                $"Expected a legacy rejection, but received '{rejected.Reason.GetType().FullName}'.")
+        };
+
         Assert.IsType<ForbiddenFailure>(failure);
         Assert.Equal(0, handler.Calls);
     }

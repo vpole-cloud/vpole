@@ -41,8 +41,8 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
 
         var hiddenHistory = await Mediator.Send(new GetFunctionInvocationsRequest(appId, 50, otherTenant));
         var hiddenRetry = await Mediator.Send(new RetryFunctionInvocationRequest(appId, failed.Id, otherTenant));
-        Assert.IsType<Failure<IReadOnlyList<FunctionInvocationDto>>>(hiddenHistory);
-        Assert.IsType<Failure<RetryFunctionInvocationResponse>>(hiddenRetry);
+        hiddenHistory.AssertFailure();
+        hiddenRetry.AssertFailure();
 
         var history = await Mediator.Send(new GetFunctionInvocationsRequest(appId, 50, TestData.TenantId));
         Assert.True(history.TryGetValue(out var items, out var historyFailure), historyFailure?.Message);
