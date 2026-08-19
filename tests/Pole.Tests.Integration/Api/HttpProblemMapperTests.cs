@@ -22,7 +22,7 @@ public sealed class HttpProblemMapperTests
 
         Assert.Equal((int)HttpStatusCode.NotFound, problem.StatusCode);
         Assert.Equal(
-            "https://pole.dev/problems/deployment-target-not-found",
+            "tag:pole.dev,2026:problem:deployment-targets.not-found",
             problem.Type);
         Assert.Equal("deployment-targets.not-found", problem.Code);
         Assert.Equal("target-1", problem.Extensions["deploymentTargetId"]);
@@ -40,7 +40,7 @@ public sealed class HttpProblemMapperTests
 
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
         Assert.Equal(
-            "https://pole.dev/problems/deployment-target-disabled",
+            "tag:pole.dev,2026:problem:deployment-targets.disabled",
             problem.Type);
         Assert.Equal("deployment-targets.disabled", problem.Code);
         Assert.Equal("target-2", problem.Extensions["deploymentTargetId"]);
@@ -58,7 +58,7 @@ public sealed class HttpProblemMapperTests
 
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
         Assert.Equal(
-            "https://pole.dev/problems/domain-zone-already-reserved",
+            "tag:pole.dev,2026:problem:domains.zone.already-reserved",
             problem.Type);
         Assert.Equal("domains.zone.already-reserved", problem.Code);
         Assert.Equal("app.example.test", problem.Extensions["domain"]);
@@ -88,7 +88,7 @@ public sealed class HttpProblemMapperTests
             HttpProblemMapping.For<DeploymentTargetNotFound>(notFound =>
                 new HttpProblem(
                     (int)HttpStatusCode.UnprocessableEntity,
-                    "https://pole.dev/problems/domain-zone-target-unavailable",
+                    PoleProblemTypeId.FromCode("domains.zone.target-unavailable"),
                     "Domain zone target is unavailable",
                     "domains.zone.target-unavailable",
                     extensions: new Dictionary<string, object>
@@ -157,7 +157,7 @@ public sealed class HttpProblemMapperTests
         var exception = Assert.Throws<ArgumentException>(() =>
             new HttpProblem(
                 (int)HttpStatusCode.Conflict,
-                "https://pole.dev/problems/example",
+                PoleProblemTypeId.FromCode("example.problem"),
                 "Example problem",
                 "example.problem",
                 extensions: new Dictionary<string, object>
@@ -169,6 +169,18 @@ public sealed class HttpProblemMapperTests
             "cannot be null",
             exception.Message,
             StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Domains.zone.not-found")]
+    [InlineData("domains..not-found")]
+    [InlineData("domains.zone.not_found")]
+    public void PoleProblemTypeRejectsInvalidCodes(string code)
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+            PoleProblemTypeId.FromCode(code));
+
+        Assert.Equal("code", exception.ParamName);
     }
 
     private static HttpProblemMapper CreateMapper() =>
