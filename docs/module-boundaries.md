@@ -88,8 +88,10 @@ behaviors temporarily use the same wrapper for their old failures. The HTTP adap
 reason through the existing failure mapping, so endpoint behavior can remain unchanged during the
 migration.
 
-New rejection reasons require an explicit transport mapping. The compatibility HTTP adapter fails
-fast for an unknown reason instead of guessing a status code or leaking a transport-shaped contract
+New rejection reasons require an explicit transport mapping. The HTTP adapter resolves the existing
+`IHttpProblemMapper` from the active request when its deferred result executes. This lets a plugin
+register `HttpProblemMapping.For<TRejection>` through DI without changing every endpoint. A missing
+mapping fails explicitly instead of guessing a status code or leaking a transport-shaped contract
 into the mediator abstraction.
 
 Rejection reasons do not expose generic transport members such as an HTTP status, error kind, or
