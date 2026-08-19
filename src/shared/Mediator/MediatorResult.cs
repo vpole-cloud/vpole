@@ -1,3 +1,5 @@
+using Pole.ResultType;
+
 namespace Pole.Mediator;
 
 /// <summary>
@@ -6,6 +8,21 @@ namespace Pole.Mediator;
 /// without adding transport concerns to the Mediator contract.
 /// </summary>
 public interface IMediatorRejection;
+
+/// <summary>
+/// Preserves a failure produced by the legacy Result-based pipeline while
+/// handlers and behaviors migrate to typed mediator outcomes and rejections.
+/// </summary>
+public sealed record LegacyResultRejected : IMediatorRejection
+{
+    public LegacyResultRejected(Failure failure)
+    {
+        ArgumentNullException.ThrowIfNull(failure);
+        Failure = failure;
+    }
+
+    public Failure Failure { get; }
+}
 
 public sealed record PipelineRejected
 {
