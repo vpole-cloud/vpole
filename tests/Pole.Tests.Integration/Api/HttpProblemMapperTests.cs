@@ -5,6 +5,7 @@ using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.Endpoints;
 using Pole.Features.Domains.Application.Persistence;
+using Pole.Features.Tenants;
 using Pole.Mediator;
 using Xunit;
 
@@ -167,6 +168,52 @@ public sealed class HttpProblemMapperTests
         Assert.Equal(
             "tenant.authorization.platform-admin-required",
             problem.Code);
+    }
+
+    [Fact]
+    public void TenantMemberAuthorizationRejectionsHaveStableProblemMappings()
+    {
+        var mapper = new HttpProblemMapper(
+            TenantMemberAuthorizationHttpProblemMappings.All);
+        (IMediatorRejection Rejection, HttpStatusCode Status, string Code)[] cases =
+        [
+            (
+                new TenantAuthenticationRequired(),
+                HttpStatusCode.Unauthorized,
+                "tenant.authorization.authentication-required"),
+            (
+                new TenantUserIdentityRequired(),
+                HttpStatusCode.Unauthorized,
+                "tenant.authorization.user-identity-required"),
+            (
+                new TenantNotFound("tenant-1"),
+                HttpStatusCode.NotFound,
+                "tenants.not-found"),
+            (
+                new TenantMembershipRequired("tenant-1"),
+                HttpStatusCode.Forbidden,
+                "tenant.authorization.membership-required"),
+            (
+                new TenantMemberNotFound("tenant-1", "member-1"),
+                HttpStatusCode.NotFound,
+                "tenants.member.not-found")
+        ];
+
+        foreach (var testCase in cases)
+        {
+            var problem = mapper.Map(testCase.Rejection);
+
+            Assert.Equal((int)testCase.Status, problem.StatusCode);
+            Assert.Equal(testCase.Code, problem.Code);
+            Assert.Equal(
+                PoleProblemTypeId.FromCode(testCase.Code),
+                problem.Type);
+        }
+
+        var memberNotFound = mapper.Map(
+            new TenantMemberNotFound("tenant-1", "member-1"));
+        Assert.Equal("tenant-1", memberNotFound.Extensions["tenantId"]);
+        Assert.Equal("member-1", memberNotFound.Extensions["memberId"]);
     }
 
     [Fact]

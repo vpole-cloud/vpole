@@ -87,8 +87,9 @@ runtime translates their failures into `LegacyResultRejected`. Request validatio
 pipeline with `RequestValidationRejected`, which retains structured field errors without depending
 on the legacy failure hierarchy. Base tenant authorization emits `TenantPlatformAdminRequired` or
 `TenantRoleRequired`; its missing-tenant case reuses `RequestValidationRejected`. The feature-owned
-tenant-member authorization behavior temporarily remains on the legacy wrapper while its broader
-unauthorized, not-found, membership, and owner-management outcomes are migrated separately.
+tenant-member authorization behavior emits feature-owned authentication, identity, tenant,
+membership, and member-not-found rejections, and reuses `TenantRoleRequired` for its Viewer, Admin,
+and Owner requirements.
 
 New rejection reasons require an explicit transport mapping. The HTTP adapter resolves the existing
 `IHttpProblemMapper` from the active request when its deferred result executes. This lets a plugin

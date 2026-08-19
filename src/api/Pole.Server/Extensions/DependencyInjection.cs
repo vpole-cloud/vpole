@@ -92,6 +92,8 @@ public static class DependencyInjection
             services.AddHttpProblemMappings(MediatorHttpProblemMappings.All);
             services.AddHttpProblemMappings(
                 TenantAuthorizationHttpProblemMappings.All);
+            services.AddHttpProblemMappings(
+                TenantMemberAuthorizationHttpProblemMappings.All);
             services.AddScoped<IMediator, Pole.Mediator.Mediator>();
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));

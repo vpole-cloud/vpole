@@ -5,7 +5,6 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Mediator;
-using Pole.ResultType;
 
 namespace Pole.Features.Tenants;
 
@@ -26,49 +25,37 @@ public sealed class TenantMemberAuthorizationBehavior<TRequest, TResponse>(
 
         var user = httpContextAccessor.HttpContext?.User;
         if (user is null || user.Identity?.IsAuthenticated != true)
-            return RejectLegacy(Failures.Unauthorized(
-                "Authenticated user is required.",
-                "Tenant member authorization"));
+            return Reject(new TenantAuthenticationRequired());
 
         if (user.Claims.Any(c => c.Type == Claims.Roles && c.Value == Roles.Admin))
             return await next();
 
         var userId = user.FindFirstValue(Claims.UserId);
         if (string.IsNullOrWhiteSpace(userId))
-            return RejectLegacy(Failures.Unauthorized(
-                "Authenticated user id is required.",
-                "Tenant member authorization"));
+            return Reject(new TenantUserIdentityRequired());
 
         var tenant = await dbContext.Tenants
             .Find(t => t.Id == tenantOperation.TenantId)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (tenant is null)
-            return RejectLegacy(Failures.NotFound("Tenant not found.", tenantOperation.TenantId));
+            return Reject(new TenantNotFound(tenantOperation.TenantId));
 
         var currentMember = tenant.Members.FirstOrDefault(m => m.UserId == userId);
         if (currentMember is null)
-            return RejectLegacy(Failures.Forbidden(
-                "Tenant membership is required.",
-                "Tenant member authorization"));
+            return Reject(new TenantMembershipRequired(tenantOperation.TenantId));
 
         if (request is ITenantMemberReadOperation && !currentMember.Role.CanRead())
-            return RejectLegacy(Failures.Forbidden(
-                "Tenant viewer role is required.",
-                "Tenant member authorization"));
+            return Reject(new TenantRoleRequired(TenantRole.Viewer));
 
         if (request is ITenantMemberManageOperation && !currentMember.Role.CanManageMembers())
-            return RejectLegacy(Failures.Forbidden(
-                "Tenant admin role is required.",
-                "Tenant member authorization"));
+            return Reject(new TenantRoleRequired(TenantRole.Admin));
 
         if (request is ITenantMemberRoleOperation roleOperation &&
             roleOperation.Role == TenantRole.Owner &&
             !currentMember.Role.CanManageTenant())
         {
-            return RejectLegacy(Failures.Forbidden(
-                "Tenant owner role is required to grant owner role.",
-                "Tenant member authorization"));
+            return Reject(new TenantRoleRequired(TenantRole.Owner));
         }
 
         var targetMemberId = request switch
@@ -82,17 +69,18 @@ public sealed class TenantMemberAuthorizationBehavior<TRequest, TResponse>(
         {
             var targetMember = tenant.Members.FirstOrDefault(m => m.Id == targetMemberId);
             if (targetMember is null)
-                return RejectLegacy(Failures.NotFound("Tenant member not found.", targetMemberId));
+                return Reject(new TenantMemberNotFound(
+                    tenantOperation.TenantId,
+                    targetMemberId));
 
             if (targetMember.Role == TenantRole.Owner && !currentMember.Role.CanManageTenant())
-                return RejectLegacy(Failures.Forbidden(
-                    "Tenant owner role is required to manage owners.",
-                    "Tenant member authorization"));
+                return Reject(new TenantRoleRequired(TenantRole.Owner));
         }
 
         return await next();
     }
 
-    private static MediatorResult<TResponse> RejectLegacy(Failure failure) =>
-        new PipelineRejected(new LegacyResultRejected(failure));
+    private static MediatorResult<TResponse> Reject(
+        IMediatorRejection rejection) =>
+        new PipelineRejected(rejection);
 }
