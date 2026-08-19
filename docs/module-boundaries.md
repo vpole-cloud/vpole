@@ -73,6 +73,19 @@ Core Pole problem types use stable, non-dereferenceable identifiers derived from
 changes with a self-hosted installation's hostname. A plugin owns the namespace and HTTP mapping
 for its own problem types; the host does not rewrite those identities.
 
+### Mediator outcomes
+
+A request handler owns its closed application outcome. `MediatorResult<TOutcome>` defines the
+target pipeline envelope, whose only control-flow alternatives are the request outcome and
+`PipelineRejected`. A rejection carries an `IMediatorRejection` reason. This marker is intentionally
+open so a host or plugin can add a rejecting behavior without changing the core union. The existing
+`Result<TResponse>` pipeline remains a compatibility path until the runtime and behaviors migrate.
+
+Rejection reasons do not expose generic transport members such as an HTTP status, error kind, or
+message. Each concrete reason remains typed, and the relevant transport adapter owns its external
+mapping. Unexpected, infrastructure, and cancellation failures remain exceptions rather than
+pipeline rejections.
+
 ### Events
 
 `Feature.Events` contains serialized integration events published through the outbox. Event types
