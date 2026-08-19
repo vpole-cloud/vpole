@@ -2,7 +2,6 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.ResultType;
 
 namespace Pole.Mediator;
 
@@ -24,19 +23,19 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
         if (!isRead && !isWrite)
             return await next();
 
-        var failure = Authorize(request);
-        if (failure is not null)
-            return RejectLegacy(failure);
+        var rejection = Authorize(request);
+        if (rejection is not null)
+            return new PipelineRejected(rejection);
 
         return await next();
     }
 
-    private Failure? Authorize(TRequest request)
+    private IMediatorRejection? Authorize(TRequest request)
     {
         if (request is ITenantOperation operation &&
             string.IsNullOrWhiteSpace(operation.TenantId))
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
+            return new RequestValidationRejected(new Dictionary<string, string[]>
             {
                 [TenantHeaders.TenantId] =
                 [
@@ -52,7 +51,7 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
         if (tenantContext is null)
         {
             if (!isPlatformAdmin)
-                return Forbidden("Platform admin role is required for tenant-wide operations.");
+                return new TenantPlatformAdminRequired();
 
             return null;
         }
@@ -62,19 +61,14 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
             switch (request)
             {
                 case ITenantWriteOperation when !tenantContext.Role.CanWrite():
-                    return Forbidden("Tenant member role is required.");
+                    return new TenantRoleRequired(TenantRole.Member);
                 case ITenantReadOperation when !tenantContext.Role.CanRead():
-                    return Forbidden("Tenant viewer role is required.");
+                    return new TenantRoleRequired(TenantRole.Viewer);
             }
         }
 
         return null;
     }
-
-    private static Failure Forbidden(string message) => Failures.Forbidden(message, "Tenant authorization");
-
-    private static MediatorResult<TResponse> RejectLegacy(Failure failure) =>
-        new PipelineRejected(new LegacyResultRejected(failure));
 }
 
 public static class ClaimPrincipalExtensions

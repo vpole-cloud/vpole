@@ -358,6 +358,23 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
             "company");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(
+            "application/problem+json",
+            response.Content.Headers.ContentType?.MediaType);
+        using var problem = JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync());
+        Assert.Equal(
+            "tag:pole.dev,2026:problem:tenant.authorization.role-required",
+            problem.RootElement.GetProperty("type").GetString());
+        Assert.Equal(
+            "tenant.authorization.role-required",
+            problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal(
+            (int)HttpStatusCode.Forbidden,
+            problem.RootElement.GetProperty("status").GetInt32());
+        Assert.Equal(
+            "member",
+            problem.RootElement.GetProperty("minimumRole").GetString());
         Assert.Equal(0L, await ZoneCountAsync());
     }
 

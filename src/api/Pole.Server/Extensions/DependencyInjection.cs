@@ -90,6 +90,8 @@ public static class DependencyInjection
         public IServiceCollection AddPoleMediator(params Assembly[] assemblies)
         {
             services.AddHttpProblemMappings(MediatorHttpProblemMappings.All);
+            services.AddHttpProblemMappings(
+                TenantAuthorizationHttpProblemMappings.All);
             services.AddScoped<IMediator, Pole.Mediator.Mediator>();
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
