@@ -39,74 +39,8 @@ public static class CreateDomainZone
     {
         TenantDomainZoneSnapshot zone =>
             Results.Created($"/api/v1/domain-zones/{zone.Id}", zone),
-        CreateDomainZoneError error => ToProblem(error, httpProblems)
+        CreateDomainZoneError error => httpProblems.Map(error).ToHttpResult()
     };
-
-    private static IResult ToProblem(
-        CreateDomainZoneError error,
-        IHttpProblemMapper httpProblems) => error switch
-    {
-        DeploymentTargetDomainReservationAdmissionError deploymentTargetError =>
-            httpProblems.Map(deploymentTargetError).ToHttpResult(),
-        CreateManagedDomainZoneError domainZoneError =>
-            ToDomainZoneProblem(domainZoneError)
-    };
-
-    private static IResult ToDomainZoneProblem(CreateManagedDomainZoneError error) =>
-        error switch
-        {
-            InvalidManagedDomainZone invalid => Problem(
-                StatusCodes.Status422UnprocessableEntity,
-                "domain-zone-invalid",
-                "Domain zone is invalid",
-                "domains.zone.invalid",
-                detail: invalid.Message),
-            ManagedDomainZoneAlreadyReserved reserved => Problem(
-                StatusCodes.Status409Conflict,
-                "domain-zone-already-reserved",
-                "Domain zone is already reserved",
-                "domains.zone.already-reserved",
-                new Dictionary<string, object?>
-                {
-                    ["domain"] = reserved.Domain
-                }),
-            ManagedDomainZoneDeploymentTargetChanged changed => Problem(
-                StatusCodes.Status409Conflict,
-                "domain-zone-deployment-target-changed",
-                "Deployment target changed during reservation",
-                "domains.zone.deployment-target-changed",
-                new Dictionary<string, object?>
-                {
-                    ["deploymentTargetId"] = changed.DeploymentTargetId
-                }),
-            ManagedDomainZoneReferenceRejected rejected => Problem(
-                StatusCodes.Status409Conflict,
-                "domain-zone-reference-rejected",
-                "Deployment target rejected the domain reservation",
-                "domains.zone.deployment-target-reference-rejected",
-                new Dictionary<string, object?>
-                {
-                    ["deploymentTargetId"] = rejected.DeploymentTargetId
-                })
-        };
-
-    private static IResult Problem(
-        int status,
-        string type,
-        string title,
-        string code,
-        IDictionary<string, object?>? extensions = null,
-        string? detail = null) =>
-        new HttpProblem(
-                status,
-                $"https://pole.dev/problems/{type}",
-                title,
-                code,
-                detail,
-                extensions is null
-                    ? null
-                    : new Dictionary<string, object?>(extensions))
-            .ToHttpResult();
 }
 
 public sealed record CreateDomainZoneBody(string DeploymentTargetId, string Label);

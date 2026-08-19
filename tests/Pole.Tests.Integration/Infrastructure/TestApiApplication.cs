@@ -152,6 +152,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddMongoDbContextInterfaces();
         builder.Services.AddTenantContractCapabilities();
         builder.Services.AddDomainPersistence();
+        builder.Services.AddDomainHttpMappings();
         builder.Services.AddComputeProfiles();
         builder.Services.AddRedisPersistence();
         builder.Services.AddWebServicePersistence();

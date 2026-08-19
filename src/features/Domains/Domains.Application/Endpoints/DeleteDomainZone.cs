@@ -18,8 +18,13 @@ public static class DeleteDomainZone
 {
     public static IEndpointRouteBuilder MapDeleteDomainZoneEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{Id}", async (IMediator mediator, [AsParameters] DeleteDomainZoneRequest request, CancellationToken cancellationToken) =>
-                (await mediator.Send(request, cancellationToken)).ToHttpResult(ToHttpResult))
+        app.MapDelete("/{Id}", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
+                [AsParameters] DeleteDomainZoneRequest request,
+                CancellationToken cancellationToken) =>
+                (await mediator.Send(request, cancellationToken)).ToHttpResult(
+                    outcome => ToHttpResult(outcome, httpProblems)))
             .WithName("DeleteDomainZone")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -27,77 +32,14 @@ public static class DeleteDomainZone
         return app;
     }
 
-    private static IResult ToHttpResult(DeleteDomainZoneOutcome outcome) => outcome switch
+    private static IResult ToHttpResult(
+        DeleteDomainZoneOutcome outcome,
+        IHttpProblemMapper httpProblems) => outcome switch
     {
         ManagedDomainZoneDeleted => Results.NoContent(),
-        DeleteManagedDomainZoneError error => ToProblem(error)
+        DeleteManagedDomainZoneError error =>
+            httpProblems.Map(error).ToHttpResult()
     };
-
-    private static IResult ToProblem(DeleteManagedDomainZoneError error) => error switch
-    {
-        DomainZoneNotFound notFound => Problem(
-            StatusCodes.Status404NotFound,
-            "domain-zone-not-found",
-            "Domain zone not found",
-            "domains.zone.not-found",
-            new Dictionary<string, object?>
-            {
-                ["domainZoneId"] = notFound.ZoneId
-            }),
-        GeneratedDomainZoneDeletionRejected generated => Problem(
-            StatusCodes.Status409Conflict,
-            "domain-zone-generated",
-            "Generated domain zone cannot be deleted",
-            "domains.zone.delete.generated",
-            new Dictionary<string, object?>
-            {
-                ["domainZoneId"] = generated.ZoneId
-            }),
-        DomainZoneHasHostnameBindings referenced => Problem(
-            StatusCodes.Status409Conflict,
-            "domain-zone-has-hostname-bindings",
-            "Domain zone still has hostname bindings",
-            "domains.zone.delete.has-hostname-bindings",
-            new Dictionary<string, object?>
-            {
-                ["domainZoneId"] = referenced.ZoneId,
-                ["bindingCount"] = referenced.BindingCount
-            }),
-        DomainZoneDeletionConflict conflict => Problem(
-            StatusCodes.Status409Conflict,
-            "domain-zone-deletion-conflict",
-            "Domain zone changed during deletion",
-            "domains.zone.delete.conflict",
-            new Dictionary<string, object?>
-            {
-                ["domainZoneId"] = conflict.ZoneId
-            }),
-        ManagedDomainZoneReferenceRemovalRejected rejected => Problem(
-            StatusCodes.Status409Conflict,
-            "domain-zone-reference-removal-rejected",
-            "Deployment target rejected domain zone deletion",
-            "domains.zone.delete.reference-removal-rejected",
-            new Dictionary<string, object?>
-            {
-                ["domainZoneId"] = rejected.ZoneId,
-                ["deploymentTargetId"] = rejected.DeploymentTargetId
-            })
-    };
-
-    private static IResult Problem(
-        int status,
-        string type,
-        string title,
-        string code,
-        IDictionary<string, object?> extensions)
-    {
-        extensions["code"] = code;
-        return Results.Problem(
-            statusCode: status,
-            title: title,
-            type: $"https://pole.dev/problems/{type}",
-            extensions: extensions);
-    }
 }
 
 public sealed record DeleteDomainZoneRequest(

@@ -11,7 +11,7 @@ public sealed record HttpProblem
         string title,
         string code,
         string? detail = null,
-        IReadOnlyDictionary<string, object?>? extensions = null)
+        IReadOnlyDictionary<string, object>? extensions = null)
     {
         if (statusCode is < 400 or > 599)
         {
@@ -30,16 +30,22 @@ public sealed record HttpProblem
                 "The 'code' extension is reserved by the HTTP problem model.",
                 nameof(extensions));
         }
+        if (extensions?.Any(extension => extension.Value is null) is true)
+        {
+            throw new ArgumentException(
+                "HTTP problem extension values cannot be null; omit an absent extension instead.",
+                nameof(extensions));
+        }
 
         StatusCode = statusCode;
         Type = type;
         Title = title;
         Code = code;
         Detail = detail;
-        Extensions = new ReadOnlyDictionary<string, object?>(
+        Extensions = new ReadOnlyDictionary<string, object>(
             extensions is null
-                ? new Dictionary<string, object?>()
-                : new Dictionary<string, object?>(extensions));
+                ? new Dictionary<string, object>()
+                : new Dictionary<string, object>(extensions));
     }
 
     public int StatusCode { get; }
@@ -47,14 +53,14 @@ public sealed record HttpProblem
     public string Title { get; }
     public string Code { get; }
     public string? Detail { get; }
-    public IReadOnlyDictionary<string, object?> Extensions { get; }
+    public IReadOnlyDictionary<string, object> Extensions { get; }
 
     public IResult ToHttpResult()
     {
-        var extensions = new Dictionary<string, object?>(Extensions)
-        {
-            ["code"] = Code
-        };
+        var extensions = Extensions.ToDictionary(
+            extension => extension.Key,
+            extension => (object?)extension.Value);
+        extensions["code"] = Code;
         return Results.Problem(
             detail: Detail,
             statusCode: StatusCode,
