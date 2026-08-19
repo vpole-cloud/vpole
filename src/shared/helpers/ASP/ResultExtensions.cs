@@ -15,7 +15,7 @@ public static class ResultExtensions
             rejected => rejected.Reason switch
             {
                 LegacyResultRejected legacy => ToHttpResult(legacy.Failure),
-                var reason => UnmappedMediatorRejection(reason)
+                var reason => new MediatorRejectionHttpResult(reason)
             });
 
     public static IResult ToHttpResult<T>(this Result<T> result, Func<T, IResult>? transformer = null) where T : notnull
@@ -41,10 +41,6 @@ public static class ResultExtensions
             ExternalServiceFailure => Results.Json(ToErrorResponse(error), statusCode: StatusCodes.Status502BadGateway),
             _ => UnexpectedFailure()
         };
-
-    private static IResult UnmappedMediatorRejection(IMediatorRejection rejection) =>
-        throw new InvalidOperationException(
-            $"No HTTP mapping is registered for mediator rejection '{rejection.GetType().FullName}'.");
 
     private static object ToErrorResponse(Failure failure) => failure switch
     {
