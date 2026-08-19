@@ -1,6 +1,5 @@
 using FluentValidation;
 using Microsoft.Extensions.Logging;
-using Pole.ResultType;
 using ValidationFailure = FluentValidation.Results.ValidationFailure;
 
 namespace Pole.Mediator;
@@ -42,9 +41,7 @@ public class ValidationBehavior<TRequest, TResponse>(
             typeof(TRequest).Name,
             errorMap);
 
-        return RejectLegacy(Failures.ValidationFailure(errorMap));
+        return new PipelineRejected(
+            new RequestValidationRejected(errorMap));
     }
-
-    private static MediatorResult<TResponse> RejectLegacy(Failure failure) =>
-        new PipelineRejected(new LegacyResultRejected(failure));
 }

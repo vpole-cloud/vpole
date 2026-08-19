@@ -328,6 +328,23 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
         using var response = await CreateAsync("not-an-object-id", "not valid");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(
+            "application/problem+json",
+            response.Content.Headers.ContentType?.MediaType);
+        using var problem = JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync());
+        Assert.Equal(
+            "tag:pole.dev,2026:problem:request.validation.failed",
+            problem.RootElement.GetProperty("type").GetString());
+        Assert.Equal(
+            "request.validation.failed",
+            problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal(
+            (int)HttpStatusCode.BadRequest,
+            problem.RootElement.GetProperty("status").GetInt32());
+        var errors = problem.RootElement.GetProperty("errors");
+        Assert.True(errors.TryGetProperty("Body.DeploymentTargetId", out _));
+        Assert.True(errors.TryGetProperty("Body.Label", out _));
         Assert.Equal(0L, await ZoneCountAsync());
     }
 
