@@ -68,6 +68,11 @@ They are not cross-feature contracts, so they do not justify another companion p
 mapping separate from endpoint methods, register it at the server composition root, and apply the
 same exhaustive-switch rule to closed local error unions.
 
+Core Pole problem types use stable, non-dereferenceable identifiers derived from their codes:
+`tag:pole.dev,2026:problem:<code>`. The tag authority is part of the public contract and never
+changes with a self-hosted installation's hostname. A plugin owns the namespace and HTTP mapping
+for its own problem types; the host does not rewrite those identities.
+
 ### Events
 
 `Feature.Events` contains serialized integration events published through the outbox. Event types

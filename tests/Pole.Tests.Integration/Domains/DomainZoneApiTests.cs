@@ -70,7 +70,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
         using var problem = JsonDocument.Parse(
             await response.Content.ReadAsStringAsync());
         Assert.Equal(
-            "https://pole.dev/problems/domain-zone-not-found",
+            "tag:pole.dev,2026:problem:domains.zone.not-found",
             problem.RootElement.GetProperty("type").GetString());
         Assert.Equal(
             "domains.zone.not-found",
@@ -133,7 +133,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         await AssertDomainProblemAsync(
             response,
-            "https://pole.dev/problems/domain-zone-generated",
+            "tag:pole.dev,2026:problem:domains.zone.delete.generated",
             "domains.zone.delete.generated",
             problem => Assert.Equal(
                 zone.Id,
@@ -166,7 +166,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         await AssertDomainProblemAsync(
             response,
-            "https://pole.dev/problems/domain-zone-has-hostname-bindings",
+            "tag:pole.dev,2026:problem:domains.zone.delete.has-hostname-bindings",
             "domains.zone.delete.has-hostname-bindings",
             problem =>
             {
@@ -189,7 +189,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         await AssertDomainProblemAsync(
             response,
-            "https://pole.dev/problems/domain-zone-reference-removal-rejected",
+            "tag:pole.dev,2026:problem:domains.zone.delete.reference-removal-rejected",
             "domains.zone.delete.reference-removal-rejected",
             problem =>
             {
@@ -223,7 +223,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         await AssertDomainProblemAsync(
             response,
-            "https://pole.dev/problems/domain-zone-not-found",
+            "tag:pole.dev,2026:problem:domains.zone.not-found",
             "domains.zone.not-found",
             problem => Assert.Equal(
                 foreignZone.Id,
@@ -271,7 +271,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         await AssertProblemAsync(
             response,
-            "https://pole.dev/problems/deployment-target-not-found",
+            "tag:pole.dev,2026:problem:deployment-targets.not-found",
             "deployment-targets.not-found",
             deploymentTargetId);
         Assert.Equal(0L, await ZoneCountAsync());
@@ -289,7 +289,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         await AssertProblemAsync(
             response,
-            "https://pole.dev/problems/deployment-target-new-workloads-disabled",
+            "tag:pole.dev,2026:problem:deployment-targets.new-workloads-disabled",
             "deployment-targets.new-workloads-disabled",
             TestData.DefaultDeploymentTargetId);
         Assert.Equal(0L, await ZoneCountAsync());
@@ -311,7 +311,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
         using var problem = JsonDocument.Parse(
             await duplicate.Content.ReadAsStringAsync());
         Assert.Equal(
-            "https://pole.dev/problems/domain-zone-already-reserved",
+            "tag:pole.dev,2026:problem:domains.zone.already-reserved",
             problem.RootElement.GetProperty("type").GetString());
         Assert.Equal(
             "domains.zone.already-reserved",
