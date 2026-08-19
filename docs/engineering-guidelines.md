@@ -35,7 +35,15 @@ Domain validation checks business rules, aggregate invariants, or facts that dep
 
 ## Expected failures
 
-Use `Result` for expected failures that callers are required to handle, such as validation failures, conflicts, missing resources, denied operations, and known provider failures.
+Represent expected failures that callers must handle as explicit typed values rather than
+exceptions. Choose the result shape at the boundary that owns the decision:
+
+- Cross-feature synchronous contracts use `Result<T, TError>` with provider-owned error types.
+- A Mediator request handler owns a closed application outcome containing its expected results.
+- A pipeline behavior stops request execution with `PipelineRejected` and a typed
+  `IMediatorRejection`; request validation uses `RequestValidationRejected`.
+
+Legacy `Result<T>` handlers remain supported while feature slices migrate to closed outcomes.
 
 - Define failures at the boundary that understands their meaning and map them when crossing abstraction layers.
 - Do not require every caller to catch the same exception and repeat the same mapping logic.

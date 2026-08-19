@@ -83,10 +83,10 @@ core union. Pipeline behavior delegates also return `MediatorResult<TOutcome>`, 
 can stop execution with its own rejection type without changing a request handler contract.
 
 Existing `Result<TResponse>` handlers remain an internal compatibility path until they migrate. The
-runtime translates their failures into `LegacyResultRejected`. Built-in validation and authorization
-behaviors temporarily use the same wrapper for their old failures. The HTTP adapter unwraps that
-reason through the existing failure mapping, so endpoint behavior can remain unchanged during the
-migration.
+runtime translates their failures into `LegacyResultRejected`. Built-in authorization behaviors
+temporarily use the same wrapper for their old failures. Request validation instead stops the
+pipeline with `RequestValidationRejected`, which retains structured field errors without depending
+on the legacy failure hierarchy.
 
 New rejection reasons require an explicit transport mapping. The HTTP adapter resolves the existing
 `IHttpProblemMapper` from the active request when its deferred result executes. This lets a plugin

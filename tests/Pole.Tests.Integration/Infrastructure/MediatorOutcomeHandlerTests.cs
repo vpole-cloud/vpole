@@ -55,6 +55,42 @@ public sealed class MediatorOutcomeHandlerTests
     }
 
     [Fact]
+    public void RequestValidationRejectionRequiresFieldErrors()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            new RequestValidationRejected(null!));
+        Assert.Throws<ArgumentException>(() =>
+            new RequestValidationRejected(
+                new Dictionary<string, string[]>()));
+        Assert.Throws<ArgumentException>(() =>
+            new RequestValidationRejected(
+                new Dictionary<string, string[]>
+                {
+                    ["Body.Name"] = []
+                }));
+    }
+
+    [Fact]
+    public void RequestValidationRejectionOwnsAnImmutableSnapshot()
+    {
+        var messages = new[] { "Name is required." };
+        var errors = new Dictionary<string, string[]>
+        {
+            ["Body.Name"] = messages
+        };
+
+        var rejection = new RequestValidationRejected(errors);
+        messages[0] = "Changed.";
+        errors["Body.Name"] = ["Replaced."];
+
+        Assert.Equal(
+            "Name is required.",
+            Assert.Single(rejection.Errors["Body.Name"]));
+        Assert.IsAssignableFrom<IReadOnlyList<string>>(
+            rejection.Errors["Body.Name"]);
+    }
+
+    [Fact]
     public async Task RegistrationScanner_DiscoversOutcomeHandler()
     {
         var services = new ServiceCollection();
