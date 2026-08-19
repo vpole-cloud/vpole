@@ -170,7 +170,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var result = await behavior.Handle(request, () =>
         {
             nextCalled = true;
-            return Task.FromResult<Result<TenantMemberDto>>(
+            return Task.FromResult<MediatorResult<TenantMemberDto>>(
                 new TenantMemberDto("member-2", tenant.Id, "user-2", "other@example.com", TenantRole.Member));
         }, CancellationToken.None);
 
@@ -192,7 +192,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var result = await behavior.Handle(request, () =>
         {
             nextCalled = true;
-            return Task.FromResult<Result<TenantMemberDto>>(
+            return Task.FromResult<MediatorResult<TenantMemberDto>>(
                 new TenantMemberDto("member-2", tenant.Id, "user-2", "other@example.com", TenantRole.Member));
         }, CancellationToken.None);
 
@@ -212,7 +212,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var behavior = CreateTenantMemberAuthorizationBehavior<AddTenantMemberRequest, TenantMemberDto>("user-1");
 
         var result = await behavior.Handle(request, () =>
-            Task.FromResult<Result<TenantMemberDto>>(
+            Task.FromResult<MediatorResult<TenantMemberDto>>(
                 new TenantMemberDto("member-2", tenant.Id, "user-2", "other@example.com", TenantRole.Owner)),
             CancellationToken.None);
 

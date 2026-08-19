@@ -12,7 +12,7 @@ public class ValidationBehavior<TRequest, TResponse>(
     where TRequest : IMediatorRequest<TResponse>
     where TResponse : notnull
 {
-    public async Task<Result<TResponse>> Handle(
+    public async Task<MediatorResult<TResponse>> Handle(
         TRequest request,
         RequestHandlerDelegate<TResponse> next,
         CancellationToken cancellationToken)
@@ -42,6 +42,9 @@ public class ValidationBehavior<TRequest, TResponse>(
             typeof(TRequest).Name,
             errorMap);
 
-        return Failures.ValidationFailure(errorMap);
+        return RejectLegacy(Failures.ValidationFailure(errorMap));
     }
+
+    private static MediatorResult<TResponse> RejectLegacy(Failure failure) =>
+        new PipelineRejected(new LegacyResultRejected(failure));
 }

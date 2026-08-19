@@ -79,11 +79,14 @@ A request handler owns its closed application outcome. `MediatorResult<TOutcome>
 public pipeline envelope returned by `IMediator.Send`, whose only control-flow alternatives are the
 request outcome and `PipelineRejected`. A rejection carries an `IMediatorRejection` reason. This
 marker is intentionally open so a host or plugin can add a rejecting behavior without changing the
-core union. The existing
-`Result<TResponse>` handlers and behavior delegates remain an internal compatibility path until they
-migrate. The runtime translates their failures into `LegacyResultRejected`; the HTTP adapter unwraps
-that reason through the existing failure mapping, so endpoint behavior can remain unchanged during
-the migration.
+core union. Pipeline behavior delegates also return `MediatorResult<TOutcome>`, so a plugin behavior
+can stop execution with its own rejection type without changing a request handler contract.
+
+Existing `Result<TResponse>` handlers remain an internal compatibility path until they migrate. The
+runtime translates their failures into `LegacyResultRejected`. Built-in validation and authorization
+behaviors temporarily use the same wrapper for their old failures. The HTTP adapter unwraps that
+reason through the existing failure mapping, so endpoint behavior can remain unchanged during the
+migration.
 
 New rejection reasons require an explicit transport mapping. The compatibility HTTP adapter fails
 fast for an unknown reason instead of guessing a status code or leaking a transport-shaped contract

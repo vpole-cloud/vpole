@@ -13,7 +13,7 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
     where TRequest : IMediatorRequest<TResponse>
     where TResponse : notnull
 {
-    public async Task<Result<TResponse>> Handle(
+    public async Task<MediatorResult<TResponse>> Handle(
         TRequest request,
         RequestHandlerDelegate<TResponse> next,
         CancellationToken cancellationToken)
@@ -26,7 +26,7 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
 
         var failure = Authorize(request);
         if (failure is not null)
-            return failure;
+            return RejectLegacy(failure);
 
         return await next();
     }
@@ -72,6 +72,9 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
     }
 
     private static Failure Forbidden(string message) => Failures.Forbidden(message, "Tenant authorization");
+
+    private static MediatorResult<TResponse> RejectLegacy(Failure failure) =>
+        new PipelineRejected(new LegacyResultRejected(failure));
 }
 
 public static class ClaimPrincipalExtensions

@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Pole.ResultType;
 
 namespace Pole.Mediator;
 
@@ -9,7 +8,7 @@ public sealed class LoggingBehavior<TRequest, TResponse>(
     where TRequest : IMediatorRequest<TResponse>
     where TResponse : notnull
 {
-    public async Task<Result<TResponse>> Handle(
+    public async Task<MediatorResult<TResponse>> Handle(
         TRequest request,
         RequestHandlerDelegate<TResponse> next,
         CancellationToken cancellationToken)

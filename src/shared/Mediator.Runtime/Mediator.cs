@@ -47,9 +47,9 @@ public sealed class Mediator(IServiceProvider sp) : IMediator
                         TResponse>.HandleAsync))
                 ?? throw new InvalidOperationException(
                     $"HandleAsync was not found on handler type '{outcomeHandlerType.FullName}'.");
-            next = async () => Result.Success(await (Task<TResponse>)handleAsyncMethod.Invoke(
+            next = async () => await (Task<TResponse>)handleAsyncMethod.Invoke(
                 outcomeHandler,
-                [request, cancellationToken])!);
+                [request, cancellationToken])!;
         }
         else
         {
@@ -59,9 +59,10 @@ public sealed class Mediator(IServiceProvider sp) : IMediator
                         TResponse>.HandleAsync))
                 ?? throw new InvalidOperationException(
                     $"HandleAsync was not found on handler type '{resultHandlerType.FullName}'.");
-            next = () => (Task<Result<TResponse>>)handleAsyncMethod.Invoke(
-                resultHandler,
-                [request, cancellationToken])!;
+            next = async () => ToMediatorResult(
+                await (Task<Result<TResponse>>)handleAsyncMethod.Invoke(
+                    resultHandler,
+                    [request, cancellationToken])!);
         }
 
         for (var i = behaviors.Length - 1; i >= 0; i--)
@@ -71,7 +72,13 @@ public sealed class Mediator(IServiceProvider sp) : IMediator
             next = () => behavior.Handle((dynamic)request, currentNext, cancellationToken);
         }
 
-        var result = await next();
+        return await next();
+    }
+
+    private static MediatorResult<TResponse> ToMediatorResult<TResponse>(
+        Result<TResponse> result)
+        where TResponse : notnull
+    {
         if (result.TryGetValue(out var outcome, out var failure))
         {
             return outcome;

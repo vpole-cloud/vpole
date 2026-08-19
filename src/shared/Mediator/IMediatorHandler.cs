@@ -13,7 +13,7 @@ public interface IMediatorHandler<in TRequest, TResponse>
 
 /// <summary>
 /// Handles a request whose application outcome is already represented by its own closed type.
-/// The mediator wraps that outcome in <see cref="Result{T}"/> only for pipeline short-circuiting.
+/// The mediator passes that outcome through its pipeline envelope without requiring a legacy result.
 /// </summary>
 public interface IMediatorOutcomeHandler<in TRequest, TOutcome>
     where TRequest : IMediatorRequest<TOutcome>
@@ -24,13 +24,13 @@ public interface IMediatorOutcomeHandler<in TRequest, TOutcome>
         CancellationToken cancellationToken = default);
 }
 
-public delegate Task<Result<TResponse>> RequestHandlerDelegate<TResponse>() where TResponse : notnull;
+public delegate Task<MediatorResult<TResponse>> RequestHandlerDelegate<TResponse>() where TResponse : notnull;
 
 public interface IPipelineBehavior<in TRequest, TResponse>
     where TRequest : IMediatorRequest<TResponse>
     where TResponse : notnull
 {
-    Task<Result<TResponse>> Handle(
+    Task<MediatorResult<TResponse>> Handle(
         TRequest request,
         RequestHandlerDelegate<TResponse> next,
         CancellationToken cancellationToken);
