@@ -2,7 +2,9 @@ using System.Net;
 using Pole.ASP.Helpers;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
+using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.Endpoints;
+using Pole.Features.Domains.Application.Persistence;
 using Xunit;
 
 namespace Pole.Tests.Integration.Api;
@@ -45,6 +47,39 @@ public sealed class HttpProblemMapperTests
     }
 
     [Fact]
+    public void NestedConsumerUnionUsesTheApplicationMapping()
+    {
+        var mapper = CreateMapper();
+        CreateManagedDomainZoneError applicationError =
+            new ManagedDomainZoneAlreadyReserved("app.example.test");
+        CreateDomainZoneError consumerError = applicationError;
+
+        var problem = mapper.Map(consumerError);
+
+        Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
+        Assert.Equal(
+            "https://pole.dev/problems/domain-zone-already-reserved",
+            problem.Type);
+        Assert.Equal("domains.zone.already-reserved", problem.Code);
+        Assert.Equal("app.example.test", problem.Extensions["domain"]);
+    }
+
+    [Fact]
+    public void ApplicationUnionMappingPreservesStructuredExtensions()
+    {
+        var mapper = CreateMapper();
+        DeleteManagedDomainZoneError error =
+            new DomainZoneHasHostnameBindings("zone-1", 3);
+
+        var problem = mapper.Map(error);
+
+        Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
+        Assert.Equal("domains.zone.delete.has-hostname-bindings", problem.Code);
+        Assert.Equal("zone-1", problem.Extensions["domainZoneId"]);
+        Assert.Equal(3L, problem.Extensions["bindingCount"]);
+    }
+
+    [Fact]
     public void ConsumerLeafOverrideWinsOverTheProviderUnionDefault()
     {
         var mapper = CreateMapper();
@@ -56,7 +91,7 @@ public sealed class HttpProblemMapperTests
                     "https://pole.dev/problems/domain-zone-target-unavailable",
                     "Domain zone target is unavailable",
                     "domains.zone.target-unavailable",
-                    extensions: new Dictionary<string, object?>
+                    extensions: new Dictionary<string, object>
                     {
                         ["deploymentTargetId"] = notFound.DeploymentTargetId
                     }))
@@ -116,6 +151,30 @@ public sealed class HttpProblemMapperTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void NullExtensionValueIsRejected()
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+            new HttpProblem(
+                (int)HttpStatusCode.Conflict,
+                "https://pole.dev/problems/example",
+                "Example problem",
+                "example.problem",
+                extensions: new Dictionary<string, object>
+                {
+                    ["optional"] = null!
+                }));
+
+        Assert.Contains(
+            "cannot be null",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
     private static HttpProblemMapper CreateMapper() =>
-        new(DeploymentTargetContractHttpMappings.All);
+        new(
+        [
+            .. DeploymentTargetContractHttpMappings.All,
+            .. DomainHttpMappings.All
+        ]);
 }

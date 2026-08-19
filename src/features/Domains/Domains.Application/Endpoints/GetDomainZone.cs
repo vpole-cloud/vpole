@@ -19,27 +19,23 @@ public static class GetDomainZone
     {
         app.MapGet("/{Id}", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] GetDomainZoneRequest request,
                 CancellationToken cancellationToken) =>
-                (await mediator.Send(request, cancellationToken)).ToHttpResult(ToHttpResult))
+                (await mediator.Send(request, cancellationToken)).ToHttpResult(
+                    outcome => ToHttpResult(outcome, httpProblems)))
             .WithName("GetDomainZone")
             .Produces<TenantDomainZoneSnapshot>()
             .ProducesProblem(StatusCodes.Status404NotFound);
         return app;
     }
 
-    private static IResult ToHttpResult(GetDomainZoneOutcome outcome) => outcome switch
+    private static IResult ToHttpResult(
+        GetDomainZoneOutcome outcome,
+        IHttpProblemMapper httpProblems) => outcome switch
     {
         TenantDomainZoneSnapshot zone => Results.Ok(zone),
-        DomainZoneNotFound notFound => Results.Problem(
-            statusCode: StatusCodes.Status404NotFound,
-            title: "Domain zone not found",
-            type: "https://pole.dev/problems/domain-zone-not-found",
-            extensions: new Dictionary<string, object?>
-            {
-                ["code"] = "domains.zone.not-found",
-                ["domainZoneId"] = notFound.ZoneId
-            })
+        DomainZoneNotFound notFound => httpProblems.Map(notFound).ToHttpResult()
     };
 }
 

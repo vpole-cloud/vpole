@@ -3,33 +3,34 @@ using System.Runtime.CompilerServices;
 
 namespace Pole.ASP.Helpers;
 
-public sealed class HttpProblemMapping
+public abstract class HttpProblemMapping
 {
-    private readonly Func<object, HttpProblem> map;
+    private protected HttpProblemMapping() { }
 
-    private HttpProblemMapping(
-        Type mappedType,
-        Func<object, HttpProblem> map)
-    {
-        MappedType = mappedType;
-        this.map = map;
-    }
-
-    public Type MappedType { get; }
+    public abstract Type MappedType { get; }
 
     public static HttpProblemMapping For<TError>(
         Func<TError, HttpProblem> map)
         where TError : notnull
     {
         ArgumentNullException.ThrowIfNull(map);
-        return new HttpProblemMapping(
-            typeof(TError),
-            value => map((TError)value) ??
-                     throw new InvalidOperationException(
-                         $"The HTTP problem mapping for '{typeof(TError).FullName}' returned null."));
+        return new TypedHttpProblemMapping<TError>(map);
     }
 
-    internal HttpProblem Map(object value) => map(value);
+    internal abstract HttpProblem Map(object value);
+
+    private sealed class TypedHttpProblemMapping<TError>(
+        Func<TError, HttpProblem> map)
+        : HttpProblemMapping
+        where TError : notnull
+    {
+        public override Type MappedType => typeof(TError);
+
+        internal override HttpProblem Map(object value) =>
+            map((TError)value) ??
+            throw new InvalidOperationException(
+                $"The HTTP problem mapping for '{typeof(TError).FullName}' returned null.");
+    }
 }
 
 public sealed class HttpProblemMappingSet

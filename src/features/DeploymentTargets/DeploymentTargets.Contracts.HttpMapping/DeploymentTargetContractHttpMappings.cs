@@ -64,7 +64,7 @@ public static class DeploymentTargetContractHttpMappings
             $"https://pole.dev/problems/{type}",
             title,
             code,
-            extensions: new Dictionary<string, object?>
+            extensions: new Dictionary<string, object>
             {
                 ["deploymentTargetId"] = deploymentTargetId
             });

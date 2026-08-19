@@ -63,6 +63,11 @@ duplicate registrations and order-dependent "last registration wins" behavior ar
 Map a closed contract error union with an exhaustive switch and treat non-exhaustive switch
 diagnostics as build errors in the companion project.
 
+HTTP mappings for feature-local Application errors stay in that feature's Application project.
+They are not cross-feature contracts, so they do not justify another companion project. Keep the
+mapping separate from endpoint methods, register it at the server composition root, and apply the
+same exhaustive-switch rule to closed local error unions.
+
 ### Events
 
 `Feature.Events` contains serialized integration events published through the outbox. Event types
