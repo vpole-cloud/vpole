@@ -18,13 +18,7 @@ using Pole.Features.ContainerRegistries.Application.Provisioning;
 using Pole.Features.ContainerRegistries.Application.Security;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ComputeProfiles.Contracts.HttpMapping;
-using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Common;
-using Pole.Features.DeploymentTargets.Application.Connections;
-using Pole.Features.DeploymentTargets.Application.Security;
-using Pole.Features.DeploymentTargets.Application.Validation;
-using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.Domains.Contracts.HttpMapping;
 using Pole.Features.GitProviders.Application.Analysis;
@@ -250,52 +244,6 @@ public static class DependencyInjection
             return services;
         }
 
-        public IServiceCollection AddDeploymentTargetsFeature(IConfiguration configuration)
-        {
-            services.AddHttpProblemMappings(
-                DeploymentTargetContractHttpMappings.All);
-            services.TryAddSingleton(TimeProvider.System);
-            services.TryAddEnumerable(
-                ServiceDescriptor.Singleton<IValidateOptions<DeploymentTargetOptions>, DeploymentTargetOptionsValidator>());
-            services.AddOptions<DeploymentTargetOptions>()
-                .Bind(configuration.GetSection(DeploymentTargetOptions.SectionName))
-                .ValidateOnStart();
-            services.TryAddSingleton(provider =>
-                provider.GetRequiredService<IOptions<DeploymentTargetOptions>>().Value);
-
-            services.TryAddSingleton<IDeploymentTargetConnectionProtector, DeploymentTargetConnectionProtector>();
-            services.TryAddSingleton<DeploymentTargetConnectionService>();
-            services.TryAddSingleton<IDeploymentTargetConnectionPreparer>(provider =>
-                provider.GetRequiredService<DeploymentTargetConnectionService>());
-            services.TryAddSingleton<IDeploymentTargetKubernetesClientFactory>(provider =>
-                provider.GetRequiredService<DeploymentTargetConnectionService>());
-            services.TryAddSingleton<IDeploymentTargetProbe, DeploymentTargetProbe>();
-            services.TryAddScoped<DeploymentTargetValidationService>();
-            // Stateless admission depends only on the singleton Mongo context and is also used by
-            // the singleton startup bootstrapper.
-            services.TryAddSingleton<DeploymentTargetDomainAdmission>();
-            services.TryAddSingleton<KubernetesClientProvider>();
-            services.TryAddSingleton<IKubernetesClientProvider>(provider =>
-                provider.GetRequiredService<KubernetesClientProvider>());
-            services.TryAddSingleton<IDeploymentTargetClientCache>(provider =>
-                provider.GetRequiredService<KubernetesClientProvider>());
-            services.TryAddSingleton<IDeploymentTargetBootstrapper, DeploymentTargetBootstrapper>();
-            services.TryAddScoped<DeploymentTargetLookup>();
-            services.TryAddScoped<IDeploymentTargetLookup>(provider =>
-                provider.GetRequiredService<DeploymentTargetLookup>());
-            services.TryAddScoped<IDeploymentTargetPublicIngressAdmission>(provider =>
-                provider.GetRequiredService<DeploymentTargetLookup>());
-            services.TryAddScoped<DeploymentTargetReferenceAdmission>();
-            services.TryAddScoped<IDeploymentTargetReferenceAdmission>(
-                provider => provider.GetRequiredService<DeploymentTargetReferenceAdmission>());
-            services.TryAddScoped<IDeploymentTargetWorkloadConfigurationFence>(
-                provider => provider.GetRequiredService<DeploymentTargetReferenceAdmission>());
-            services.TryAddScoped<IDeploymentTargetDeletionGuard, DeploymentTargetDeletionGuard>();
-            services.TryAddScoped<DeploymentTargetReader>();
-            services.TryAddScoped<DeploymentTargetPersistence>();
-            services.TryAddScoped<IDeploymentTargetCredentialRewrapService, DeploymentTargetCredentialRewrapService>();
-            return services;
-        }
         public IServiceCollection AddEventBus(IConfiguration configuration, Assembly[] assemblies)
         {
             services.AddMassTransit(configurator =>

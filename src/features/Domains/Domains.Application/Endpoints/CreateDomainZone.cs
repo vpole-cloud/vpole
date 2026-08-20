@@ -80,7 +80,7 @@ public sealed class CreateDomainZoneRequestValidator : AbstractValidator<CreateD
 }
 
 public sealed class CreateDomainZoneHandler(
-    IDeploymentTargetPublicIngressAdmission deploymentTargets,
+    AdmitDeploymentTargetPublicIngressForDomainReservation admitPublicIngress,
     RunMongoOutcomeTransaction<Result<
         TenantDomainZoneSnapshot,
         CreateDomainZoneError>> runMongoTransaction,
@@ -91,8 +91,7 @@ public sealed class CreateDomainZoneHandler(
         CreateDomainZoneRequest request,
         CancellationToken cancellationToken = default)
     {
-        var result = await deploymentTargets
-            .AdmitForDomainReservationAsync(
+        var result = await admitPublicIngress(
                 request.TenantId,
                 request.Body.DeploymentTargetId,
                 cancellationToken)

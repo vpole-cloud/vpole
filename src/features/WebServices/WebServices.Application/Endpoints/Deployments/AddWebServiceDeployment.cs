@@ -93,7 +93,7 @@ public union AddWebServiceDeploymentOutcome(
 public sealed class AddWebServiceDeploymentHandler(
     LoadWebServiceById loadWebServiceById,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
-    IDeploymentTargetPublicIngressAdmission targetAdmission,
+    AdmitDeploymentTargetPublicIngressForNewWorkload admitPublicIngress,
     ResolveComputeProfilesOutcome resolveComputeProfiles,
     GetOrCreateGeneratedDomainZoneOutcome getOrCreateGeneratedDomainZone,
     CreateGeneratedHostnameBindingOutcome createGeneratedHostnameBinding,
@@ -178,7 +178,7 @@ public sealed class AddWebServiceDeploymentHandler(
         WebService webService,
         CancellationToken cancellationToken)
     {
-        var admission = await targetAdmission.AdmitForNewWorkloadAsync(
+        var admission = await admitPublicIngress(
             CreateTargetAdmissionRequest(request, webService),
             cancellationToken);
         var targetResult = ToTargetResult(admission);

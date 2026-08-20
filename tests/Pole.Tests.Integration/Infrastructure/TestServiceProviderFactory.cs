@@ -89,7 +89,10 @@ public static class TestServiceProviderFactory
         var deploymentTargetLookup = new TestDeploymentTargetLookup();
         services.AddSingleton(deploymentTargetLookup);
         services.AddSingleton<IDeploymentTargetLookup>(deploymentTargetLookup);
-        services.AddSingleton<IDeploymentTargetPublicIngressAdmission>(deploymentTargetLookup);
+        services.AddSingleton<AdmitDeploymentTargetPublicIngressForNewWorkload>(
+            deploymentTargetLookup.AdmitForNewWorkloadAsync);
+        services.AddSingleton<AdmitDeploymentTargetPublicIngressForDomainReservation>(
+            deploymentTargetLookup.AdmitForDomainReservationAsync);
         services.AddSingleton<IDeploymentTargetReferenceAdmission>(
             deploymentTargetLookup);
         services.AddSingleton<IDeploymentTargetWorkloadConfigurationFence>(

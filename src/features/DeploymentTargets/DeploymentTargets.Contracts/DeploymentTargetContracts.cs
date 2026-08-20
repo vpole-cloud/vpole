@@ -169,23 +169,22 @@ public union DeploymentTargetDomainReservationAdmissionError(
 /// Expected admission outcomes are represented by the closed result union; infrastructure failures
 /// remain exceptions.
 /// </summary>
-public interface IDeploymentTargetPublicIngressAdmission
-{
-    Task<DeploymentTargetPublicIngressAdmissionResult> AdmitForNewWorkloadAsync(
+public delegate Task<DeploymentTargetPublicIngressAdmissionResult>
+    AdmitDeploymentTargetPublicIngressForNewWorkload(
         DeploymentTargetAdmissionRequest request,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Resolves public ingress for a tenant domain reservation without forcing the domain feature
-    /// to translate provider-owned expected errors into shared application failures.
-    /// </summary>
-    Task<Result<
-        DeploymentTargetPublicIngressDto,
-        DeploymentTargetDomainReservationAdmissionError>> AdmitForDomainReservationAsync(
+/// <summary>
+/// Resolves public ingress for a tenant domain reservation without forcing the domain feature to
+/// translate provider-owned expected errors into shared application failures.
+/// </summary>
+public delegate Task<Result<
+    DeploymentTargetPublicIngressDto,
+    DeploymentTargetDomainReservationAdmissionError>>
+    AdmitDeploymentTargetPublicIngressForDomainReservation(
         string tenantId,
         string deploymentTargetId,
         CancellationToken cancellationToken = default);
-}
 
 public interface IDeploymentTargetLookup
 {
@@ -225,23 +224,6 @@ public interface IDeploymentTargetLookup
         CancellationToken cancellationToken = default) =>
         ListEligibleForNewWorkloadAsync(cancellationToken);
 
-    /// <summary>
-    /// Resolves the public ingress snapshot required by an admitted placement. The caller must
-    /// pass its tenant/resource/isolation context through <paramref name="request"/>.
-    /// </summary>
-    Task<Result<DeploymentTargetPublicIngressDto>> ResolvePublicIngressForNewWorkloadAsync(
-        DeploymentTargetAdmissionRequest request,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Resolves public ingress for reserving a tenant domain zone. Domain zones are DNS
-    /// control-plane objects, not workloads, so this admission path deliberately does not invent
-    /// a resource type or apply workload-type eligibility policy.
-    /// </summary>
-    Task<Result<DeploymentTargetPublicIngressDto>> ResolvePublicIngressForDomainReservationAsync(
-        string tenantId,
-        string deploymentTargetId,
-        CancellationToken cancellationToken = default);
 }
 
 public sealed record DeploymentTargetReferenceOwner(string Type, string Id);

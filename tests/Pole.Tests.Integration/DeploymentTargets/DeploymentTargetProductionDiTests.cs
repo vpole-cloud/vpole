@@ -1,7 +1,11 @@
 using k8s;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Driver;
+using Pole.Features.DeploymentTargets.Application;
+using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.RedisServices.Application.Endpoints;
@@ -33,6 +37,26 @@ public sealed class DeploymentTargetProductionDiTests
         Assert.Contains(services, descriptor =>
             descriptor.ServiceType == typeof(IKubernetesClientProvider) &&
             descriptor.Lifetime == ServiceLifetime.Singleton);
+        Assert.Contains(services, descriptor =>
+            descriptor.ServiceType ==
+                typeof(AdmitDeploymentTargetPublicIngressForNewWorkload) &&
+            descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(services, descriptor =>
+            descriptor.ServiceType ==
+                typeof(AdmitDeploymentTargetPublicIngressForDomainReservation) &&
+            descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(services, descriptor =>
+            descriptor.ServiceType == typeof(DeploymentTargetLookup) &&
+            descriptor.Lifetime == ServiceLifetime.Scoped);
+
+        services.AddSingleton<IDeploymentTargetDbContext, ResolveOnlyDeploymentTargetDbContext>();
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        Assert.NotNull(scope.ServiceProvider
+            .GetRequiredService<AdmitDeploymentTargetPublicIngressForNewWorkload>());
+        Assert.NotNull(scope.ServiceProvider
+            .GetRequiredService<AdmitDeploymentTargetPublicIngressForDomainReservation>());
 
         var consumerAssemblies = new[]
         {
@@ -93,4 +117,20 @@ public sealed class DeploymentTargetProductionDiTests
     private const string DeploymentTargetId = "507f1f77bcf86cd799439098";
 
     private sealed class TestProviderInfrastructureException : Exception;
+
+    private sealed class ResolveOnlyDeploymentTargetDbContext : IDeploymentTargetDbContext
+    {
+        public IMongoClient Client => throw new NotSupportedException();
+
+        public IMongoDatabase Database => throw new NotSupportedException();
+
+        public IMongoCollection<DeploymentTarget> DeploymentTargets =>
+            throw new NotSupportedException();
+
+        public IMongoCollection<DeploymentTargetReference> DeploymentTargetReferences =>
+            throw new NotSupportedException();
+
+        public IMongoCollection<DeploymentTargetSettings> DeploymentTargetSettings =>
+            throw new NotSupportedException();
+    }
 }

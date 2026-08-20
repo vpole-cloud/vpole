@@ -86,21 +86,6 @@ public sealed class ComputeProfileBootstrapperTests
             Task.FromResult<Result<IReadOnlyList<DeploymentTargetLookupDto>>>(
                 new[] { CreateTarget(DeploymentTargetId) });
 
-        public Task<Result<DeploymentTargetPublicIngressDto>>
-            ResolvePublicIngressForNewWorkloadAsync(
-                DeploymentTargetAdmissionRequest request,
-                CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<DeploymentTargetPublicIngressDto>>(
-                Failures.Conflict("Public ingress is not used by this bootstrap test."));
-
-        public Task<Result<DeploymentTargetPublicIngressDto>>
-            ResolvePublicIngressForDomainReservationAsync(
-                string tenantId,
-                string deploymentTargetId,
-                CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<DeploymentTargetPublicIngressDto>>(
-                Failures.Conflict("Domain reservation is not used by this bootstrap test."));
-
         private static DeploymentTargetLookupDto CreateTarget(string id) =>
             new(
                 id,
