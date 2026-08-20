@@ -4,8 +4,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
+using Pole.Database;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -32,12 +32,23 @@ public static class AddWebServiceDeployment
                     "/{Id}/deployments",
                     async (
                         IMediator mediator,
+                        IHttpProblemMapper httpProblems,
                         [AsParameters] AddWebServiceDeploymentRequest request,
                         CancellationToken cancellationToken) =>
                         (await mediator.Send(request, cancellationToken))
-                        .ToHttpResult(value => Results.Accepted(value: value)))
+                        .ToHttpResult(outcome => outcome switch
+                        {
+                            PlacementSummaryDto value =>
+                                Results.Accepted(value: value),
+                            AddWebServiceDeploymentError error =>
+                                httpProblems.Map(error).ToHttpResult()
+                        }))
                 .WithName("AddWebServiceDeployment")
-                .Produces<PlacementSummaryDto>(StatusCodes.Status202Accepted);
+                .Produces<PlacementSummaryDto>(StatusCodes.Status202Accepted)
+                .ProducesProblem(StatusCodes.Status400BadRequest)
+                .ProducesProblem(StatusCodes.Status404NotFound)
+                .ProducesProblem(StatusCodes.Status409Conflict)
+                .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
             return app;
         }
     }
@@ -49,37 +60,67 @@ public sealed record AddWebServiceDeploymentRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default,
     [FromClaim(Claims.Email)] ClaimValue<string?> ActorEmail = default)
-    : IMediatorRequest<PlacementSummaryDto>, ITenantWriteOperation;
+    : IMediatorRequest<AddWebServiceDeploymentOutcome>, ITenantWriteOperation;
+
+public sealed record WebServiceDeploymentNotFound(string WebServiceId);
+
+public sealed record WebServiceDeploymentUpdateUnavailable(string WebServiceId);
+
+public sealed record WebServiceDeploymentTargetAlreadyExists(
+    string WebServiceId,
+    string DeploymentTargetId);
+
+public union AddWebServiceDeploymentStateError(
+    WebServiceDeploymentNotFound,
+    WebServiceDeploymentUpdateUnavailable,
+    WebServiceDeploymentTargetAlreadyExists);
+
+public union AddWebServiceDeploymentError(
+    AddWebServiceDeploymentStateError,
+    DeploymentTargetPublicIngressAdmissionError,
+    ComputeProfileResolutionError,
+    GeneratedDomainZoneError,
+    GeneratedHostnameBindingError,
+    CreateResourceDeploymentSetError,
+    AdvanceResourceDeploymentRevisionError,
+    WebServiceUpdateConflict,
+    QuotaExecutionError);
+
+public union AddWebServiceDeploymentOutcome(
+    PlacementSummaryDto,
+    AddWebServiceDeploymentError);
 
 public sealed class AddWebServiceDeploymentHandler(
     LoadWebServiceById loadWebServiceById,
     IResourceDeploymentSetQueryService deploymentQuery,
     IDeploymentTargetPublicIngressAdmission targetAdmission,
-    ResolveComputeProfiles resolveComputeProfiles,
-    GetOrCreateGeneratedDomainZone getOrCreateGeneratedDomainZone,
-    CreateGeneratedHostnameBinding createGeneratedHostnameBinding,
-    CreateResourceDeploymentSet createDeployments,
-    IResourceDeploymentSetMutationWriter deploymentWriter,
-    PersistUpdatedWebService persistUpdatedWebService,
+    ResolveComputeProfilesOutcome resolveComputeProfiles,
+    GetOrCreateGeneratedDomainZoneOutcome getOrCreateGeneratedDomainZone,
+    CreateGeneratedHostnameBindingOutcome createGeneratedHostnameBinding,
+    CreateResourceDeploymentSetOutcome createDeployments,
+    IResourceDeploymentSetOutcomeMutationWriter deploymentWriter,
+    PersistUpdatedWebServiceOutcome persistUpdatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     TimeProvider timeProvider)
-    : IMediatorHandler<AddWebServiceDeploymentRequest, PlacementSummaryDto>
+    : IMediatorOutcomeHandler<
+        AddWebServiceDeploymentRequest,
+        AddWebServiceDeploymentOutcome>
 {
-    public async Task<Result<PlacementSummaryDto>> HandleAsync(
+    public async Task<AddWebServiceDeploymentOutcome> HandleAsync(
         AddWebServiceDeploymentRequest request,
         CancellationToken cancellationToken = default)
     {
         var stateResult = await LoadCurrentStateAsync(request, cancellationToken);
-        if (!stateResult.TryGetValue(out var state, out var stateFailure))
-            return stateFailure;
+        if (!stateResult.TryGetValue(out var state, out var stateError))
+            return Error(new AddWebServiceDeploymentError(stateError));
 
         var placementResult = await ResolvePlacementAsync(
             request,
             state.WebService,
             cancellationToken);
-        if (!placementResult.TryGetValue(out var placement, out var placementFailure))
-            return placementFailure;
+        if (!placementResult.TryGetValue(out var placement, out var placementError))
+            return Error(placementError);
 
         return await ExecuteQuotaMutationAsync(
             request,
@@ -88,7 +129,8 @@ public sealed class AddWebServiceDeploymentHandler(
             cancellationToken);
     }
 
-    private async Task<Result<CurrentState>> LoadCurrentStateAsync(
+    private async Task<Result<CurrentState, AddWebServiceDeploymentStateError>>
+        LoadCurrentStateAsync(
         AddWebServiceDeploymentRequest request,
         CancellationToken cancellationToken)
     {
@@ -97,9 +139,17 @@ public sealed class AddWebServiceDeploymentHandler(
             request.Id,
             cancellationToken);
         if (webService is null)
-            return Failures.NotFound("Web service not found.", request.Id);
+        {
+            return new Err<AddWebServiceDeploymentStateError>(
+                new AddWebServiceDeploymentStateError(
+                    new WebServiceDeploymentNotFound(request.Id)));
+        }
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
-            return Failures.Conflict("A deleting web service cannot be updated.");
+        {
+            return new Err<AddWebServiceDeploymentStateError>(
+                new AddWebServiceDeploymentStateError(
+                    new WebServiceDeploymentUpdateUnavailable(request.Id)));
+        }
 
         var deployments = await deploymentQuery.GetAllAsync(
             request.TenantId,
@@ -112,14 +162,18 @@ public sealed class AddWebServiceDeploymentHandler(
                 deploymentTargetId,
                 StringComparison.Ordinal)))
         {
-            return Failures.Conflict(
-                "The web service already has a deployment on the selected target.");
+            return new Err<AddWebServiceDeploymentStateError>(
+                new AddWebServiceDeploymentStateError(
+                    new WebServiceDeploymentTargetAlreadyExists(
+                        request.Id,
+                        deploymentTargetId)));
         }
 
-        return new CurrentState(webService, deployments);
+        return new Ok<CurrentState>(new CurrentState(webService, deployments));
     }
 
-    private async Task<Result<ResolvedAddition>> ResolvePlacementAsync(
+    private async Task<Result<ResolvedAddition, AddWebServiceDeploymentError>>
+        ResolvePlacementAsync(
         AddWebServiceDeploymentRequest request,
         WebService webService,
         CancellationToken cancellationToken)
@@ -127,54 +181,49 @@ public sealed class AddWebServiceDeploymentHandler(
         var admission = await targetAdmission.AdmitForNewWorkloadAsync(
             CreateTargetAdmissionRequest(request, webService),
             cancellationToken);
-        var targetResult = MapTargetAdmission(admission);
-        if (!targetResult.TryGetValue(out var target, out var targetFailure))
-            return targetFailure;
+        var targetResult = ToTargetResult(admission);
+        if (!targetResult.TryGetValue(out var target, out var targetError))
+        {
+            return new Err<AddWebServiceDeploymentError>(
+                new AddWebServiceDeploymentError(targetError));
+        }
 
         var computeResult = await resolveComputeProfiles(
             CreateComputeResolutionRequest(request, target.DeploymentTargetId),
             cancellationToken);
-        return computeResult.TryGetValue(out var computes, out var computeFailure)
-            ? new ResolvedAddition(target, computes.Single())
-            : computeFailure;
+        return computeResult.TryGetValue(out var computes, out var computeError)
+            ? new Ok<ResolvedAddition>(
+                new ResolvedAddition(target, computes.Single()))
+            : new Err<AddWebServiceDeploymentError>(
+                new AddWebServiceDeploymentError(computeError));
     }
 
-    private static Result<DeploymentTargetPublicIngressDto> MapTargetAdmission(
+    private static Result<
+        DeploymentTargetPublicIngressDto,
+        DeploymentTargetPublicIngressAdmissionError> ToTargetResult(
         DeploymentTargetPublicIngressAdmissionResult admission) => admission switch
         {
-            DeploymentTargetPublicIngressDto ingress => ingress,
-            InvalidDeploymentTargetId => Failures.ValidationFailure(
-                new Dictionary<string, string[]>
-                {
-                    ["Body.DeploymentTargetId"] =
-                    ["Deployment target ID must be a MongoDB ObjectId."]
-                }),
-            DeploymentTargetNotFound notFound => Failures.NotFound(
-                "Deployment target not found.",
-                notFound.DeploymentTargetId),
-            DeploymentTargetDisabled =>
-                Failures.Conflict("The deployment target is disabled."),
-            DeploymentTargetDeletionRequested =>
-                Failures.Conflict("The deployment target is pending deletion."),
-            DeploymentTargetNewWorkloadsDisabled =>
-                Failures.Conflict("The deployment target does not accept new workloads."),
-            NoDeploymentTargetAcceptsPublicWorkloads =>
-                Failures.Conflict("No deployment target accepts public workloads."),
-            DeploymentTargetSelectionRequired => Failures.SemanticValidation(
-                new Dictionary<string, string[]>
-                {
-                    ["Body.DeploymentTargetId"] =
-                    ["Deployment target is required when more than one eligible target is available."]
-                }),
-            DeploymentTargetPublicIngressUnavailable => Failures.SemanticValidation(
-                new Dictionary<string, string[]>
-                {
-                    ["Body.DeploymentTargetId"] =
-                    ["The selected deployment target does not provide public ingress with a public base domain."]
-                })
+            DeploymentTargetPublicIngressDto ingress =>
+                new Ok<DeploymentTargetPublicIngressDto>(ingress),
+            InvalidDeploymentTargetId error =>
+                TargetError(new DeploymentTargetPublicIngressAdmissionError(error)),
+            DeploymentTargetNotFound error =>
+                TargetError(new DeploymentTargetPublicIngressAdmissionError(error)),
+            DeploymentTargetDisabled error =>
+                TargetError(new DeploymentTargetPublicIngressAdmissionError(error)),
+            DeploymentTargetDeletionRequested error =>
+                TargetError(new DeploymentTargetPublicIngressAdmissionError(error)),
+            DeploymentTargetNewWorkloadsDisabled error =>
+                TargetError(new DeploymentTargetPublicIngressAdmissionError(error)),
+            NoDeploymentTargetAcceptsPublicWorkloads error =>
+                TargetError(new DeploymentTargetPublicIngressAdmissionError(error)),
+            DeploymentTargetSelectionRequired error =>
+                TargetError(new DeploymentTargetPublicIngressAdmissionError(error)),
+            DeploymentTargetPublicIngressUnavailable error =>
+                TargetError(new DeploymentTargetPublicIngressAdmissionError(error))
         };
 
-    private Task<Result<PlacementSummaryDto>> ExecuteQuotaMutationAsync(
+    private Task<AddWebServiceDeploymentOutcome> ExecuteQuotaMutationAsync(
         AddWebServiceDeploymentRequest request,
         CurrentState state,
         ResolvedAddition placement,
@@ -189,21 +238,29 @@ public sealed class AddWebServiceDeploymentHandler(
             placement.Compute,
             request.Body.FixedReplicas);
 
-        return quotaAdmissionExecutor.ExecuteAsync<
+        return quotaAdmissionExecutor.ExecuteOutcomeAsync<
             WebServiceQuotaInput,
-            PlacementSummaryDto>(
+            AddWebServiceDeploymentOutcome>(
             state.WebService.TenantId,
             WebServiceQuotaResourceKey.Create(state.WebService.Id),
             new UpdateQuotaMutation<WebServiceQuotaInput>(currentQuota, nextQuota),
-            (session, ct) => PersistAsync(request, state, placement, session, ct),
+            quotaError => Error(
+                new AddWebServiceDeploymentError(quotaError)),
+            (transaction, ct) => PersistAsync(
+                request,
+                state,
+                placement,
+                transaction,
+                ct),
             cancellationToken);
     }
 
-    private async Task<Result<PlacementSummaryDto>> PersistAsync(
+    private async Task<MongoTransactionDecision<AddWebServiceDeploymentOutcome>>
+        PersistAsync(
         AddWebServiceDeploymentRequest request,
         CurrentState state,
         ResolvedAddition placement,
-        IClientSessionHandle session,
+        MongoTransactionContext<AddWebServiceDeploymentOutcome> transaction,
         CancellationToken cancellationToken)
     {
         var current = state.WebService;
@@ -212,17 +269,21 @@ public sealed class AddWebServiceDeploymentHandler(
 
         var zoneResult = await getOrCreateGeneratedDomainZone(
             CreateGeneratedZoneRequest(current, placement),
-            session,
+            transaction.Session,
             cancellationToken);
-        if (!zoneResult.TryGetValue(out var zone, out var zoneFailure))
-            return zoneFailure;
+        if (!zoneResult.TryGetValue(out var zone, out var zoneError))
+            return Abort(
+                transaction,
+                new AddWebServiceDeploymentError(zoneError));
 
         var bindingResult = await createGeneratedHostnameBinding(
             CreateGeneratedBindingRequest(current, placement, zone.Id, deploymentId),
-            session,
+            transaction.Session,
             cancellationToken);
-        if (!bindingResult.TryGetValue(out var binding, out var bindingFailure))
-            return bindingFailure;
+        if (!bindingResult.TryGetValue(out var binding, out var bindingError))
+            return Abort(
+                transaction,
+                new AddWebServiceDeploymentError(bindingError));
 
         var createdResult = await createDeployments(
             CreateDeploymentSetRequest(
@@ -231,34 +292,55 @@ public sealed class AddWebServiceDeploymentHandler(
                 placement,
                 binding.Hostname,
                 deploymentId),
-            session,
+            transaction.Session,
             cancellationToken);
-        if (!createdResult.TryGetValue(out var created, out var createdFailure))
-            return createdFailure;
+        if (!createdResult.TryGetValue(out var created, out var createdError))
+            return Abort(
+                transaction,
+                new AddWebServiceDeploymentError(createdError));
 
-        var advancedResult = await deploymentWriter.AdvanceResourceRevisionAsync(
+        var advancedResult = await deploymentWriter.AdvanceResourceRevisionOutcomeAsync(
             CreateResourceRevisionRequest(updated),
-            session,
+            transaction.Session,
             cancellationToken);
-        if (!advancedResult.TryGetValue(out var deployments, out var advancedFailure))
-            return advancedFailure;
+        if (!advancedResult.TryGetValue(out var deployments, out var advancedError))
+            return Abort(
+                transaction,
+                new AddWebServiceDeploymentError(advancedError));
 
         var persisted = await persistUpdatedWebService(
-            session,
+            transaction.Session,
             current,
             updated,
             updated.ToUpdatedEvent(
                 WebServiceDeploymentWorkflow.ToEventDeployments(deployments)),
             cancellationToken);
-        if (persisted is not ISuccess)
-            return (Failure)persisted;
+        if (!persisted.TryGetValue(out _, out var persistenceError))
+            return Abort(
+                transaction,
+                new AddWebServiceDeploymentError(persistenceError));
 
         await persistCurrentWebServiceRelease(
-            session,
+            transaction.Session,
             CreateRelease(request, updated, deployments),
             cancellationToken);
-        return created.Single();
+        return transaction.Commit(
+            new AddWebServiceDeploymentOutcome(created.Single()));
     }
+
+    private static Err<DeploymentTargetPublicIngressAdmissionError>
+        TargetError(DeploymentTargetPublicIngressAdmissionError error) =>
+        new(error);
+
+    private static AddWebServiceDeploymentOutcome Error(
+        AddWebServiceDeploymentError error) =>
+        new(error);
+
+    private static MongoTransactionDecision<AddWebServiceDeploymentOutcome>
+        Abort(
+            MongoTransactionContext<AddWebServiceDeploymentOutcome> transaction,
+            AddWebServiceDeploymentError error) =>
+        transaction.Abort(Error(error));
 
     private static DeploymentTargetAdmissionRequest CreateTargetAdmissionRequest(
         AddWebServiceDeploymentRequest request,

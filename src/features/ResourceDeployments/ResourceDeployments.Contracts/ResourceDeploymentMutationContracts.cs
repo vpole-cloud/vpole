@@ -125,4 +125,26 @@ public interface IResourceDeploymentSetMutationWriter
         ResourceDeploymentResourceRevisionRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
+
 }
+
+public interface IResourceDeploymentSetOutcomeMutationWriter
+{
+    Task<Result<
+        IReadOnlyList<PlacementSummaryDto>,
+        AdvanceResourceDeploymentRevisionError>> AdvanceResourceRevisionOutcomeAsync(
+        ResourceDeploymentResourceRevisionRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record ResourceDeploymentsNotFound(string ResourceId);
+
+public sealed record ResourceDeploymentsHaveNoActivePlacement(string ResourceId);
+
+public sealed record ResourceDeploymentRevisionConflict(string ResourceId);
+
+public union AdvanceResourceDeploymentRevisionError(
+    ResourceDeploymentsNotFound,
+    ResourceDeploymentsHaveNoActivePlacement,
+    ResourceDeploymentRevisionConflict);

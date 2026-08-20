@@ -17,6 +17,7 @@ public sealed class ResourceDeploymentMutationWriter(
     TimeProvider timeProvider)
     : IResourceDeploymentMutationWriter,
         IResourceDeploymentSetMutationWriter,
+        IResourceDeploymentSetOutcomeMutationWriter,
         IResourceDeploymentExactRetryWriter
 {
     public async Task<Result<PlacementSummaryDto>> RequestApplyAsync(
@@ -353,6 +354,26 @@ public sealed class ResourceDeploymentMutationWriter(
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
+        var result = await AdvanceResourceRevisionOutcomeAsync(
+            command,
+            session,
+            cancellationToken);
+        return result switch
+        {
+            Ok<IReadOnlyList<PlacementSummaryDto>> success =>
+                new Success<IReadOnlyList<PlacementSummaryDto>>(success.Value),
+            Err<AdvanceResourceDeploymentRevisionError> error =>
+                ToLegacyFailure(error.Value)
+        };
+    }
+
+    public async Task<Result<
+        IReadOnlyList<PlacementSummaryDto>,
+        AdvanceResourceDeploymentRevisionError>> AdvanceResourceRevisionOutcomeAsync(
+        ResourceDeploymentResourceRevisionRequest command,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default)
+    {
         EnsureTransaction(session);
         var current = await dbContext.ResourceDeployments
             .Find(
@@ -365,9 +386,9 @@ public sealed class ResourceDeploymentMutationWriter(
             .ToListAsync(cancellationToken);
         if (current.Count == 0)
         {
-            return Failures.NotFound(
-                "Resource deployments were not found.",
-                command.ResourceId);
+            return new Err<AdvanceResourceDeploymentRevisionError>(
+                new AdvanceResourceDeploymentRevisionError(
+                    new ResourceDeploymentsNotFound(command.ResourceId)));
         }
 
         var active = current
@@ -375,8 +396,10 @@ public sealed class ResourceDeploymentMutationWriter(
             .ToArray();
         if (active.Length == 0)
         {
-            return Failures.Conflict(
-                "The logical resource has no active resource deployments to advance.");
+            return new Err<AdvanceResourceDeploymentRevisionError>(
+                new AdvanceResourceDeploymentRevisionError(
+                    new ResourceDeploymentsHaveNoActivePlacement(
+                        command.ResourceId)));
         }
 
         var updatedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
@@ -395,16 +418,30 @@ public sealed class ResourceDeploymentMutationWriter(
                     cancellationToken: cancellationToken);
                 if (replacement.ModifiedCount != 1)
                 {
-                    return Failures.Conflict(
-                        "A resource deployment changed while the logical resource revision was being advanced.");
+                    return new Err<AdvanceResourceDeploymentRevisionError>(
+                        new AdvanceResourceDeploymentRevisionError(
+                            new ResourceDeploymentRevisionConflict(
+                                command.ResourceId)));
                 }
             }
 
             results.Add(updated.ToPlacementSummaryDto());
         }
 
-        return results;
+        return new Ok<IReadOnlyList<PlacementSummaryDto>>(results);
     }
+
+    private static Failure ToLegacyFailure(
+        AdvanceResourceDeploymentRevisionError error) => error switch
+        {
+            ResourceDeploymentsNotFound notFound => Failures.NotFound(
+                "Resource deployments were not found.",
+                notFound.ResourceId),
+            ResourceDeploymentsHaveNoActivePlacement => Failures.Conflict(
+                "The logical resource has no active resource deployments to advance."),
+            ResourceDeploymentRevisionConflict => Failures.Conflict(
+                "A resource deployment changed while the logical resource revision was being advanced.")
+        };
 
     public async Task<Result<IReadOnlyList<PlacementSummaryDto>>> RequestSetApplyAsync(
         ResourceDeploymentSetApplyRequest command,

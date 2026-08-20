@@ -14,10 +14,29 @@ internal sealed class MongoResolveComputeProfiles(
         ComputeProfileBatchResolutionRequest request,
         CancellationToken cancellationToken = default)
     {
+        var result = await InvokeOutcomeAsync(request, cancellationToken);
+        return result switch
+        {
+            Ok<IReadOnlyList<ResolvedComputeProfile>> success =>
+                new Success<IReadOnlyList<ResolvedComputeProfile>>(success.Value),
+            Err<ComputeProfileResolutionError> error =>
+                ToLegacyFailure(error.Value)
+        };
+    }
+
+    public async Task<Result<
+        IReadOnlyList<ResolvedComputeProfile>,
+        ComputeProfileResolutionError>> InvokeOutcomeAsync(
+        ComputeProfileBatchResolutionRequest request,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(request);
         var validation = Validate(request);
         if (validation is not null)
-            return validation;
+        {
+            return new Err<ComputeProfileResolutionError>(
+                new ComputeProfileResolutionError(validation));
+        }
 
         var requestedProfileIds = request.Targets
             .Where(target => !string.IsNullOrWhiteSpace(target.ComputeProfileId))
@@ -43,11 +62,13 @@ internal sealed class MongoResolveComputeProfiles(
                 : profilesById.GetValueOrDefault(target.ComputeProfileId.Trim());
             if (profile is null)
             {
-                return string.IsNullOrWhiteSpace(target.ComputeProfileId)
-                    ? Failures.Conflict("The default compute profile is not configured.")
-                    : Failures.NotFound(
-                        "Compute profile not found.",
-                        target.ComputeProfileId.Trim());
+                return new Err<ComputeProfileResolutionError>(
+                    string.IsNullOrWhiteSpace(target.ComputeProfileId)
+                        ? new ComputeProfileResolutionError(
+                            new DefaultComputeProfileNotConfigured())
+                        : new ComputeProfileResolutionError(
+                            new ComputeProfileNotFound(
+                                target.ComputeProfileId.Trim())));
             }
 
             var availability = ValidateAvailability(
@@ -56,7 +77,10 @@ internal sealed class MongoResolveComputeProfiles(
                 request.ResourceType,
                 target.DeploymentTargetId);
             if (availability is not null)
-                return availability;
+            {
+                return new Err<ComputeProfileResolutionError>(
+                    new ComputeProfileResolutionError(availability));
+            }
 
             var mapping = profile.TargetMappings.Single(mapping =>
                 string.Equals(
@@ -66,43 +90,34 @@ internal sealed class MongoResolveComputeProfiles(
             resolved.Add(ToResolved(profile, mapping));
         }
 
-        return resolved;
+        return new Ok<IReadOnlyList<ResolvedComputeProfile>>(resolved);
     }
 
-    internal static SemanticValidationFailure? ValidateAvailability(
+    internal static ComputeProfileUnavailable? ValidateAvailability(
         ComputeProfile profile,
         string tenantId,
         ResourceTypeId resourceType,
         string deploymentTargetId)
     {
-        var errors = new Dictionary<string, string[]>();
+        ComputeProfileUnavailableReason? reason = null;
         if (!profile.IsEnabled)
-            errors["ComputeProfileId"] = ["Compute profile is disabled."];
+            reason = ComputeProfileUnavailableReason.Disabled;
         else if (!profile.AllowedResourceTypes.Contains(resourceType.Value))
-        {
-            errors["ComputeProfileId"] =
-                ["Compute profile is not available for this resource type."];
-        }
+            reason = ComputeProfileUnavailableReason.ResourceTypeNotAllowed;
         else if (!MongoLoadAvailableComputeProfiles.AllowsTenant(
                      profile.TenantAccess,
                      tenantId))
-        {
-            errors["ComputeProfileId"] =
-                ["Compute profile is not available to the active tenant."];
-        }
+            reason = ComputeProfileUnavailableReason.TenantNotAllowed;
         else if (!profile.TargetMappings.Any(mapping =>
                      string.Equals(
                          mapping.DeploymentTargetId,
                          deploymentTargetId.Trim(),
                          StringComparison.Ordinal)))
-        {
-            errors["ComputeProfileId"] =
-                ["Compute profile is not configured for the selected deployment target."];
-        }
+            reason = ComputeProfileUnavailableReason.DeploymentTargetNotConfigured;
 
-        return errors.Count == 0
+        return reason is null
             ? null
-            : Failures.SemanticValidation(errors);
+            : new ComputeProfileUnavailable(profile.Id, reason.Value);
     }
 
     internal static ResolvedComputeProfile ToResolved(
@@ -148,7 +163,7 @@ internal sealed class MongoResolveComputeProfiles(
                 .ToImmutableList(),
             mapping.RuntimeClassName);
 
-    private static ValidationFailure? Validate(
+    private static InvalidComputeProfileResolutionRequest? Validate(
         ComputeProfileBatchResolutionRequest request)
     {
         var errors = new Dictionary<string, string[]>();
@@ -185,8 +200,40 @@ internal sealed class MongoResolveComputeProfiles(
 
         return errors.Count == 0
             ? null
-            : Failures.ValidationFailure(errors);
+            : new InvalidComputeProfileResolutionRequest(errors);
     }
+
+    private static Failure ToLegacyFailure(
+        ComputeProfileResolutionError error) => error switch
+        {
+            InvalidComputeProfileResolutionRequest invalid =>
+                Failures.ValidationFailure(
+                    invalid.Errors.ToDictionary(item => item.Key, item => item.Value)),
+            DefaultComputeProfileNotConfigured =>
+                Failures.Conflict("The default compute profile is not configured."),
+            ComputeProfileNotFound notFound => Failures.NotFound(
+                "Compute profile not found.",
+                notFound.ComputeProfileId),
+            ComputeProfileUnavailable unavailable => Failures.SemanticValidation(
+                new Dictionary<string, string[]>
+                {
+                    ["ComputeProfileId"] = [UnavailableMessage(unavailable.Reason)]
+                })
+        };
+
+    private static string UnavailableMessage(
+        ComputeProfileUnavailableReason reason) => reason switch
+        {
+            ComputeProfileUnavailableReason.Disabled =>
+                "Compute profile is disabled.",
+            ComputeProfileUnavailableReason.ResourceTypeNotAllowed =>
+                "Compute profile is not available for this resource type.",
+            ComputeProfileUnavailableReason.TenantNotAllowed =>
+                "Compute profile is not available to the active tenant.",
+            ComputeProfileUnavailableReason.DeploymentTargetNotConfigured =>
+                "Compute profile is not configured for the selected deployment target.",
+            _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, null)
+        };
 
     private static ComputeNodeAffinityTermValue ToValue(
         ComputeProfileNodeAffinityTerm term) =>

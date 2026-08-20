@@ -26,12 +26,20 @@ public static class ResourceDeploymentPlacementRegistration
             serviceProvider
                 .GetRequiredService<ResourceDeploymentWriter>()
                 .InvokeSetAsync);
-        services.TryAddScoped<
-            IResourceDeploymentSetMutationWriter,
-            ResourceDeploymentMutationWriter>();
-        services.TryAddScoped<
-            IResourceDeploymentExactRetryWriter,
-            ResourceDeploymentMutationWriter>();
+        services.TryAddScoped<CreateResourceDeploymentSetOutcome>(serviceProvider =>
+            serviceProvider
+                .GetRequiredService<ResourceDeploymentWriter>()
+                .InvokeSetOutcomeAsync);
+        services.TryAddScoped<ResourceDeploymentMutationWriter>();
+        services.TryAddScoped<IResourceDeploymentSetMutationWriter>(
+            serviceProvider => serviceProvider
+                .GetRequiredService<ResourceDeploymentMutationWriter>());
+        services.TryAddScoped<IResourceDeploymentSetOutcomeMutationWriter>(
+            serviceProvider => serviceProvider
+                .GetRequiredService<ResourceDeploymentMutationWriter>());
+        services.TryAddScoped<IResourceDeploymentExactRetryWriter>(
+            serviceProvider => serviceProvider
+                .GetRequiredService<ResourceDeploymentMutationWriter>());
         services.TryAddScoped<
             IResourceDeploymentSetQueryService,
             ResourceDeploymentQueryService>();

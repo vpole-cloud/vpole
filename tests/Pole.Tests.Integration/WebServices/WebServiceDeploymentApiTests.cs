@@ -7,7 +7,11 @@ using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.Domains.Contracts;
+using Pole.Features.Domains.Domain;
+using Pole.Features.Quotas.Contracts;
+using Pole.Features.Quotas.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Domain;
@@ -83,6 +87,71 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.Empty(webService.Spec.Config.EnvironmentVariables);
         Assert.NotNull(release.Spec.Config.EnvironmentVariables);
         Assert.Empty(release.Spec.Config.EnvironmentVariables);
+    }
+
+    [Fact]
+    public async Task AddDeployment_ReturnsTypedQuotaProblem_AndAbortsTheMutation()
+    {
+        await Fixture.DbContext.TenantQuotaPolicies.InsertOneAsync(
+            QuotaDomainFactory.CreatePolicy(
+                TestData.TenantId,
+                QuotaDelta.From(CpuQuota.QuotaKey, 500),
+                DateTime.UtcNow));
+        var secondTargetId = ObjectId.GenerateNewId().ToString();
+        var groupResponse = await Client.PostAsJsonAsync(
+            "/api/v1/resource-groups/",
+            TestData.CreateResourceGroupRequest("typed-quota-add").Body);
+        var group = await groupResponse.Content
+            .ReadFromJsonAsync<ResourceGroupCreatedResponse>(JsonOptions);
+        Assert.NotNull(group);
+        var createResponse = await Client.PostAsJsonAsync(
+            "/api/v1/web-services/",
+            TestData.CreateWebServiceRequest(group.Id, "typed-quota-add").Body);
+        Assert.True(
+            createResponse.StatusCode == HttpStatusCode.Accepted,
+            await createResponse.Content.ReadAsStringAsync());
+        var created = await createResponse.Content
+            .ReadFromJsonAsync<CreateWebServiceResponse>(JsonOptions);
+        Assert.NotNull(created);
+        AddEligibleDeploymentTarget(
+            secondTargetId,
+            "apps.second.test.local");
+        await Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles")
+            .ReplaceOneAsync(
+                profile => profile.Id == TestData.DefaultComputeProfileId,
+                TestData.SeedComputeProfile(deploymentTargetIds:
+                    [TestData.DefaultDeploymentTargetId, secondTargetId]));
+
+        var addResponse = await Client.PostAsJsonAsync(
+            $"/api/v1/web-services/{created.WebServiceId}/deployments",
+            new
+            {
+                deploymentTargetId = secondTargetId,
+                fixedReplicas = 1,
+                computeProfileId = (string?)null
+            });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, addResponse.StatusCode);
+        using var problem = JsonDocument.Parse(
+            await addResponse.Content.ReadAsStringAsync());
+        var root = problem.RootElement;
+        Assert.Equal(
+            "quotas.reservation.exceeded",
+            root.GetProperty("code").GetString());
+        Assert.Equal("CpuMillis", root.GetProperty("quota").GetString());
+        Assert.Equal(500, root.GetProperty("limit").GetInt64());
+        Assert.Single(await Fixture.DbContext.ResourceDeployments
+            .Find(deployment => deployment.ResourceId == created.WebServiceId)
+            .ToListAsync());
+        Assert.Single(await Fixture.Database.WebServiceReleases()
+            .Find(release => release.WebServiceId == created.WebServiceId)
+            .ToListAsync());
+        Assert.Empty(await Fixture.Database
+            .GetCollection<HostnameBinding>("HostnameBindings")
+            .Find(binding =>
+                binding.ResourceId == created.WebServiceId &&
+                binding.DeploymentTargetId == secondTargetId)
+            .ToListAsync());
     }
 
     [Fact]

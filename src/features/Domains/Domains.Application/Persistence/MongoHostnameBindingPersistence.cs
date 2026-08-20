@@ -49,13 +49,30 @@ internal sealed partial class MongoDomainPersistence
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        var result = await CreateGeneratedSetAsync(
+        var result = await CreateGeneratedOutcomeAsync(
+            request,
+            session,
+            cancellationToken);
+        return result switch
+        {
+            Ok<HostnameBindingSnapshot> success =>
+                new Success<HostnameBindingSnapshot>(success.Value),
+            Err<GeneratedHostnameBindingError> error =>
+                ToLegacyFailure(error.Value)
+        };
+    }
+
+    public async Task<Result<HostnameBindingSnapshot, GeneratedHostnameBindingError>>
+        CreateGeneratedOutcomeAsync(
+            CreateGeneratedHostnameBindingRequest request,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
+    {
+        var result = await CreateGeneratedSetOutcomeAsync(
             [request],
             session,
             cancellationToken);
-        return result.TryGetValue(out var bindings, out var failure)
-            ? bindings[0]
-            : failure;
+        return result.Map(bindings => bindings[0]);
     }
 
     public async Task<Result<IReadOnlyList<HostnameBindingSnapshot>>> CreateGeneratedSetAsync(
@@ -63,10 +80,33 @@ internal sealed partial class MongoDomainPersistence
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
+        var result = await CreateGeneratedSetOutcomeAsync(
+            requests,
+            session,
+            cancellationToken);
+        return result switch
+        {
+            Ok<IReadOnlyList<HostnameBindingSnapshot>> success =>
+                new Success<IReadOnlyList<HostnameBindingSnapshot>>(success.Value),
+            Err<GeneratedHostnameBindingError> error =>
+                ToLegacyFailure(error.Value)
+        };
+    }
+
+    private async Task<Result<
+        IReadOnlyList<HostnameBindingSnapshot>,
+        GeneratedHostnameBindingError>> CreateGeneratedSetOutcomeAsync(
+        IReadOnlyList<CreateGeneratedHostnameBindingRequest> requests,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default)
+    {
         EnsureTransaction(session);
         var validation = ValidateGeneratedBindingSet(requests);
         if (validation is not null)
-            return validation;
+        {
+            return new Err<GeneratedHostnameBindingError>(
+                new GeneratedHostnameBindingError(validation));
+        }
 
         var tenantId = requests[0].TenantId;
         var zoneIds = requests
@@ -81,7 +121,13 @@ internal sealed partial class MongoDomainPersistence
             zone => CanonicalObjectId(zone.Id),
             StringComparer.Ordinal);
         if (zoneIds.Any(zoneId => !zonesById.ContainsKey(CanonicalObjectId(zoneId))))
-            return Failures.NotFound("One or more domain zones were not found.");
+        {
+            var missingZoneId = zoneIds.First(zoneId =>
+                !zonesById.ContainsKey(CanonicalObjectId(zoneId)));
+            return new Err<GeneratedHostnameBindingError>(
+                new GeneratedHostnameBindingError(
+                    new GeneratedHostnameBindingZoneNotFound(missingZoneId)));
+        }
 
         var bindings = new List<HostnameBinding>(requests.Count);
         foreach (var request in requests)
@@ -92,8 +138,11 @@ internal sealed partial class MongoDomainPersistence
                     request.DeploymentTargetId,
                     StringComparison.Ordinal))
             {
-                return Failures.Conflict(
-                    "A domain zone belongs to another deployment target.");
+                return new Err<GeneratedHostnameBindingError>(
+                    new GeneratedHostnameBindingError(
+                        new GeneratedHostnameBindingTargetMismatch(
+                            zone.Id,
+                            request.DeploymentTargetId)));
             }
 
             try
@@ -111,7 +160,7 @@ internal sealed partial class MongoDomainPersistence
             }
             catch (ArgumentException exception)
             {
-                return Invalid("Hostname", exception.Message);
+                return InvalidGeneratedBinding("Hostname", exception.Message);
             }
         }
 
@@ -119,7 +168,7 @@ internal sealed partial class MongoDomainPersistence
             .GroupBy(binding => binding.Hostname, StringComparer.Ordinal)
             .Any(group => group.Skip(1).Any()))
         {
-            return Invalid(
+            return InvalidGeneratedBinding(
                 "Requests",
                 "Generated hostnames must be unique within a binding set.");
         }
@@ -137,15 +186,21 @@ internal sealed partial class MongoDomainPersistence
             .Limit(1)
             .AnyAsync(cancellationToken);
         if (existingConflict)
-            return Failures.Conflict(
-                "A generated hostname or deployment binding is already reserved.");
+        {
+            return GeneratedBindingConflict(bindings);
+        }
 
         var advancedZones = await AdvanceZoneRevisionsAsync(
             zones,
             session,
             cancellationToken);
         if (advancedZones is not ISuccess)
-            return (Failure)advancedZones;
+        {
+            return new Err<GeneratedHostnameBindingError>(
+                new GeneratedHostnameBindingError(
+                    new GeneratedHostnameBindingZoneChanged(
+                        zones.Select(zone => zone.Id).ToArray())));
+        }
 
         try
         {
@@ -158,17 +213,31 @@ internal sealed partial class MongoDomainPersistence
         catch (MongoWriteException exception) when (
             exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
         {
-            return GeneratedHostnameConflict();
+            return GeneratedBindingConflict(bindings);
         }
         catch (MongoBulkWriteException<HostnameBinding> exception) when (
             exception.WriteErrors.Any(error =>
                 error.Category == ServerErrorCategory.DuplicateKey))
         {
-            return GeneratedHostnameConflict();
+            return GeneratedBindingConflict(bindings);
         }
 
-        return bindings.Select(DomainContractMappings.ToSnapshot).ToArray();
+        return new Ok<IReadOnlyList<HostnameBindingSnapshot>>(
+            bindings.Select(DomainContractMappings.ToSnapshot).ToArray());
     }
+
+    private static Err<GeneratedHostnameBindingError> InvalidGeneratedBinding(
+        string field,
+        string message) =>
+        new(new GeneratedHostnameBindingError(
+            new InvalidGeneratedHostnameBindingRequest(
+                new Dictionary<string, string[]> { [field] = [message] })));
+
+    private static Err<GeneratedHostnameBindingError> GeneratedBindingConflict(
+        IReadOnlyList<HostnameBinding> bindings) =>
+        new(new GeneratedHostnameBindingError(
+            new GeneratedHostnameBindingConflict(
+                bindings.Select(binding => binding.Hostname).ToArray())));
 
     public async Task<Result<HostnameBindingSnapshot>> CreateCustomAsync(
         CreateCustomHostnameBindingRequest request,

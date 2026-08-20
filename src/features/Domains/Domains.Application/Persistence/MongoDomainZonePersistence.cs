@@ -43,13 +43,30 @@ internal sealed partial class MongoDomainPersistence
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        var result = await GetOrCreateGeneratedSetAsync(
+        var result = await GetOrCreateGeneratedOutcomeAsync(
+            request,
+            session,
+            cancellationToken);
+        return result switch
+        {
+            Ok<TenantDomainZoneSnapshot> success =>
+                new Success<TenantDomainZoneSnapshot>(success.Value),
+            Err<GeneratedDomainZoneError> error =>
+                ToLegacyFailure(error.Value)
+        };
+    }
+
+    public async Task<Result<TenantDomainZoneSnapshot, GeneratedDomainZoneError>>
+        GetOrCreateGeneratedOutcomeAsync(
+            GetOrCreateGeneratedZoneRequest request,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
+    {
+        var result = await GetOrCreateGeneratedSetOutcomeAsync(
             [request],
             session,
             cancellationToken);
-        return result.TryGetValue(out var zones, out var failure)
-            ? zones[0]
-            : failure;
+        return result.Map(zones => zones[0]);
     }
 
     public async Task<Result<IReadOnlyList<TenantDomainZoneSnapshot>>> GetOrCreateGeneratedSetAsync(
@@ -57,15 +74,42 @@ internal sealed partial class MongoDomainPersistence
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
+        var result = await GetOrCreateGeneratedSetOutcomeAsync(
+            requests,
+            session,
+            cancellationToken);
+        return result switch
+        {
+            Ok<IReadOnlyList<TenantDomainZoneSnapshot>> success =>
+                new Success<IReadOnlyList<TenantDomainZoneSnapshot>>(success.Value),
+            Err<GeneratedDomainZoneError> error =>
+                ToLegacyFailure(error.Value)
+        };
+    }
+
+    private async Task<Result<
+        IReadOnlyList<TenantDomainZoneSnapshot>,
+        GeneratedDomainZoneError>> GetOrCreateGeneratedSetOutcomeAsync(
+        IReadOnlyList<GetOrCreateGeneratedZoneRequest> requests,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default)
+    {
         EnsureTransaction(session);
         var validation = ValidateGeneratedZoneSet(requests);
         if (validation is not null)
-            return validation;
+        {
+            return new Err<GeneratedDomainZoneError>(
+                new GeneratedDomainZoneError(validation));
+        }
 
         var tenantId = requests[0].TenantId;
         var identity = await tenantIdentityLookup.GetAsync(tenantId, cancellationToken);
-        if (!identity.TryGetValue(out var tenant, out var identityFailure))
-            return identityFailure;
+        if (!identity.TryGetValue(out var tenant, out _))
+        {
+            return new Err<GeneratedDomainZoneError>(
+                new GeneratedDomainZoneError(
+                    new GeneratedDomainZoneTenantUnavailable(tenantId)));
+        }
 
         var candidates = new List<TenantDomainZone>(requests.Count);
         foreach (var request in requests)
@@ -74,9 +118,10 @@ internal sealed partial class MongoDomainPersistence
                     request,
                     tenant.DisplayName,
                     out var candidate,
-                    out var failure))
+                    out var error))
             {
-                return failure!;
+                return new Err<GeneratedDomainZoneError>(
+                    new GeneratedDomainZoneError(error!));
             }
             candidates.Add(candidate!);
         }
@@ -97,8 +142,10 @@ internal sealed partial class MongoDomainPersistence
                     out var persisted) &&
                 !string.Equals(candidate.Domain, persisted.Domain, StringComparison.Ordinal))
             {
-                return Failures.Conflict(
-                    "The generated domain zone does not match the target public base domain.");
+                return new Err<GeneratedDomainZoneError>(
+                    new GeneratedDomainZoneError(
+                        new GeneratedDomainZoneMismatch(
+                            candidate.DeploymentTargetId)));
             }
         }
 
@@ -125,7 +172,14 @@ internal sealed partial class MongoDomainPersistence
                 session,
                 cancellationToken);
             if (fence is not ISuccess)
-                return (Failure)fence;
+            {
+                return new Err<GeneratedDomainZoneError>(
+                    new GeneratedDomainZoneError(
+                        new GeneratedDomainZoneTargetChanged(
+                            missing
+                                .Select(candidate => candidate.DeploymentTargetId)
+                                .ToArray())));
+            }
 
             try
             {
@@ -138,13 +192,13 @@ internal sealed partial class MongoDomainPersistence
             catch (MongoWriteException exception) when (
                 exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
             {
-                return ConcurrentGeneratedZoneConflict();
+                return GeneratedZoneConflict(missing);
             }
             catch (MongoBulkWriteException<TenantDomainZone> exception) when (
                 exception.WriteErrors.Any(error =>
                     error.Category == ServerErrorCategory.DuplicateKey))
             {
-                return ConcurrentGeneratedZoneConflict();
+                return GeneratedZoneConflict(missing);
             }
 
             foreach (var candidate in missing)
@@ -157,18 +211,32 @@ internal sealed partial class MongoDomainPersistence
                     session,
                     cancellationToken);
                 if (registered is not ISuccess)
-                    return (Failure)registered;
+                {
+                    return new Err<GeneratedDomainZoneError>(
+                        new GeneratedDomainZoneError(
+                            new GeneratedDomainZoneTargetChanged(
+                                [candidate.DeploymentTargetId])));
+                }
                 existingByTarget.Add(
                     CanonicalObjectId(candidate.DeploymentTargetId),
                     candidate);
             }
         }
 
-        return requests
-            .Select(request => existingByTarget[
-                CanonicalObjectId(request.DeploymentTargetId)].ToSnapshot())
-            .ToArray();
+        return new Ok<IReadOnlyList<TenantDomainZoneSnapshot>>(
+            requests
+                .Select(request => existingByTarget[
+                    CanonicalObjectId(request.DeploymentTargetId)].ToSnapshot())
+                .ToArray());
     }
+
+    private static Err<GeneratedDomainZoneError> GeneratedZoneConflict(
+        IReadOnlyList<TenantDomainZone> zones) =>
+        new(new GeneratedDomainZoneError(
+            new GeneratedDomainZoneConflict(
+                zones
+                    .Select(zone => zone.DeploymentTargetId)
+                    .ToArray())));
 
     public async Task<Result<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>>
         CreateManagedReservationOutcomeAsync(

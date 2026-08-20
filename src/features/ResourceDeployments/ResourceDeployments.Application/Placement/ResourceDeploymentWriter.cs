@@ -136,14 +136,28 @@ internal sealed class ResourceDeploymentWriter(
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
+        var result = await InvokeSetOutcomeAsync(request, session, cancellationToken);
+        return result switch
+        {
+            Ok<IReadOnlyList<PlacementSummaryDto>> success =>
+                new Success<IReadOnlyList<PlacementSummaryDto>>(success.Value),
+            Err<CreateResourceDeploymentSetError> error =>
+                ToLegacyFailure(error.Value)
+        };
+    }
+
+    public async Task<Result<
+        IReadOnlyList<PlacementSummaryDto>,
+        CreateResourceDeploymentSetError>> InvokeSetOutcomeAsync(
+        CreateResourceDeploymentSetRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default)
+    {
         EnsureTransaction(session);
         ArgumentNullException.ThrowIfNull(request);
         if (request.Deployments.Count == 0)
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Deployments"] = ["At least one resource deployment is required."]
-            });
+            return InvalidSet("At least one resource deployment is required.");
         }
 
         var duplicateDeployment = request.Deployments
@@ -151,10 +165,7 @@ internal sealed class ResourceDeploymentWriter(
             .FirstOrDefault(group => group.Count() > 1);
         if (duplicateDeployment is not null)
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Deployments"] = ["Resource deployment IDs must be unique."]
-            });
+            return InvalidSet("Resource deployment IDs must be unique.");
         }
         var first = request.Deployments[0];
         if (request.Deployments.Any(item =>
@@ -166,11 +177,8 @@ internal sealed class ResourceDeploymentWriter(
                 item.ResourceRevision != first.ResourceRevision ||
                 item.PlacementCapability != first.PlacementCapability))
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Deployments"] =
-                    ["A deployment set must belong to one tenant, resource, resource revision, resource group, isolation scope, and placement capability."]
-            });
+            return InvalidSet(
+                "A deployment set must belong to one tenant, resource, resource revision, resource group, isolation scope, and placement capability.");
         }
         if (request.Deployments.Any(item => !string.Equals(
                 item.Compute.DeploymentTargetId,
@@ -181,11 +189,8 @@ internal sealed class ResourceDeploymentWriter(
                 .Distinct(StringComparer.Ordinal)
                 .Count() != request.Deployments.Count)
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Deployments"] =
-                    ["Each deployment must have one unique target matching its compute snapshot."]
-            });
+            return InvalidSet(
+                "Each deployment must have one unique target matching its compute snapshot.");
         }
 
         var targetFenceRequests = request.Deployments
@@ -199,7 +204,14 @@ internal sealed class ResourceDeploymentWriter(
             session,
             cancellationToken);
         if (targetFence is not ISuccess)
-            return (Failure)targetFence;
+        {
+            return new Err<CreateResourceDeploymentSetError>(
+                new CreateResourceDeploymentSetError(
+                    new ResourceDeploymentTargetConfigurationChanged(
+                        targetFenceRequests
+                            .Select(request => request.DeploymentTargetId)
+                            .ToArray())));
+        }
 
         var computeFenceRequests = request.Deployments
             .Select(item => new ComputeProfileResolutionFenceRequest(
@@ -215,7 +227,14 @@ internal sealed class ResourceDeploymentWriter(
             session,
             cancellationToken);
         if (computeFence is not ISuccess)
-            return (Failure)computeFence;
+        {
+            return new Err<CreateResourceDeploymentSetError>(
+                new CreateResourceDeploymentSetError(
+                    new ResourceDeploymentComputeConfigurationChanged(
+                        computeFenceRequests
+                            .Select(request => request.ComputeProfileId)
+                            .ToArray())));
+        }
 
         foreach (var storage in request.Deployments
                      .Where(item => item.Storage is not null)
@@ -231,7 +250,12 @@ internal sealed class ResourceDeploymentWriter(
                 session,
                 cancellationToken);
             if (storageFence is not ISuccess)
-                return (Failure)storageFence;
+            {
+                return new Err<CreateResourceDeploymentSetError>(
+                    new CreateResourceDeploymentSetError(
+                        new ResourceDeploymentStorageConfigurationChanged(
+                            storage.StorageProfileId)));
+            }
         }
 
         var placementResult = await placementService.ResolveOrCreateManyAsync(
@@ -244,14 +268,29 @@ internal sealed class ResourceDeploymentWriter(
             session,
             cancellationToken);
         if (!placementResult.TryGetValue(out var placements, out var placementFailure))
-            return placementFailure;
+        {
+            return new Err<CreateResourceDeploymentSetError>(
+                placementFailure is NotFoundFailure
+                    ? new CreateResourceDeploymentSetError(
+                        new ResourcePlacementResourceGroupNotFound(
+                            first.ResourceGroupId))
+                    : new CreateResourceDeploymentSetError(
+                        new ResourcePlacementUnavailable(
+                            first.ResourceGroupId)));
+        }
         if (placements.Count != request.Deployments.Count)
             throw new InvalidOperationException("Resource placement returned an incomplete deployment set.");
         if (placements.Any(placement =>
                 placement.State is ResourcePlacementState.Deleting or
                     ResourcePlacementState.Deleted))
         {
-            return Failures.Conflict("A selected runtime cell is being deleted.");
+            var deleting = placements.First(placement =>
+                placement.State is ResourcePlacementState.Deleting or
+                    ResourcePlacementState.Deleted);
+            return new Err<CreateResourceDeploymentSetError>(
+                new CreateResourceDeploymentSetError(
+                    new ResourcePlacementDeleting(
+                        deleting.DeploymentTargetId)));
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -303,10 +342,40 @@ internal sealed class ResourceDeploymentWriter(
             session,
             cancellationToken);
 
-        return deployments
-            .Select(deployment => deployment.ToPlacementSummaryDto())
-            .ToArray();
+        return new Ok<IReadOnlyList<PlacementSummaryDto>>(
+            deployments
+                .Select(deployment => deployment.ToPlacementSummaryDto())
+                .ToArray());
     }
+
+    private static Err<CreateResourceDeploymentSetError> InvalidSet(
+        string message) =>
+        new(new CreateResourceDeploymentSetError(
+            new InvalidResourceDeploymentSet(
+                new Dictionary<string, string[]>
+                {
+                    ["Deployments"] = [message]
+                })));
+
+    private static Failure ToLegacyFailure(
+        CreateResourceDeploymentSetError error) => error switch
+        {
+            InvalidResourceDeploymentSet invalid => Failures.ValidationFailure(
+                invalid.Errors.ToDictionary(item => item.Key, item => item.Value)),
+            ResourceDeploymentTargetConfigurationChanged => Failures.Conflict(
+                "The deployment target workload configuration changed or no longer accepts workloads."),
+            ResourceDeploymentComputeConfigurationChanged => Failures.Conflict(
+                "The compute profile changed or is no longer available."),
+            ResourceDeploymentStorageConfigurationChanged => Failures.Conflict(
+                "The storage profile changed or is no longer available."),
+            ResourcePlacementResourceGroupNotFound notFound => Failures.NotFound(
+                "Resource group not found.",
+                notFound.ResourceGroupId),
+            ResourcePlacementUnavailable => Failures.Conflict(
+                "Resource placement could not be resolved."),
+            ResourcePlacementDeleting => Failures.Conflict(
+                "A selected runtime cell is being deleted.")
+        };
 
     private static void EnsureTransaction(IClientSessionHandle session)
     {

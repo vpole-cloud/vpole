@@ -26,6 +26,9 @@ public static class DomainPersistenceRegistration
         services.AddScoped<GetOrCreateGeneratedDomainZone>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
                 .GetOrCreateGeneratedAsync);
+        services.AddScoped<GetOrCreateGeneratedDomainZoneOutcome>(provider =>
+            provider.GetRequiredService<MongoDomainPersistence>()
+                .GetOrCreateGeneratedOutcomeAsync);
         services.AddScoped<GetOrCreateGeneratedDomainZones>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
                 .GetOrCreateGeneratedSetAsync);
@@ -38,6 +41,9 @@ public static class DomainPersistenceRegistration
         services.AddScoped<CreateGeneratedHostnameBinding>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
                 .CreateGeneratedAsync);
+        services.AddScoped<CreateGeneratedHostnameBindingOutcome>(provider =>
+            provider.GetRequiredService<MongoDomainPersistence>()
+                .CreateGeneratedOutcomeAsync);
         services.AddScoped<CreateGeneratedHostnameBindings>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
                 .CreateGeneratedSetAsync);

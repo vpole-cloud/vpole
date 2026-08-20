@@ -109,6 +109,13 @@ public sealed class TestApiApplication : IAsyncDisposable
     public void RejectNewDeploymentTargetWorkloads() =>
         DeploymentTargetLookup.RejectNewWorkloads = true;
 
+    public void AddEligibleDeploymentTarget(
+        string deploymentTargetId,
+        string publicBaseDomain) =>
+        DeploymentTargetLookup.AddEligibleTarget(
+            deploymentTargetId,
+            publicBaseDomain);
+
     public void RejectDeploymentTargetReferenceRemoval() =>
         DeploymentTargetLookup.RejectReferenceRemoval = true;
 

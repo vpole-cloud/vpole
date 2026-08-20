@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Domain;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Domains.Domain;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.WebServices.Application.Common;
@@ -63,7 +64,8 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             created.WebServiceId,
             new WebServiceDeploymentTargetRequest(secondTargetId, FixedReplicas: 3),
             TestData.TenantId));
-        var added = result.AssertSuccess();
+        var added = Assert.IsType<PlacementSummaryDto>(
+            result.AssertSuccess().Value);
 
         Assert.Equal(secondTargetId, added.DeploymentTargetId);
         Assert.Equal(3, added.FixedReplicas);
@@ -104,9 +106,13 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             new WebServiceDeploymentTargetRequest(secondTargetId, FixedReplicas: 3),
             TestData.TenantId));
 
-        Assert.False(result.TryGetValue(out _, out var failure));
-        var conflict = Assert.IsType<ConflictFailure>(failure);
-        Assert.Equal("The deployment target does not accept new workloads.", conflict.Message);
+        var outcome = result.AssertSuccess();
+        var addError = Assert.IsType<AddWebServiceDeploymentError>(outcome.Value);
+        var targetError = Assert.IsType<DeploymentTargetPublicIngressAdmissionError>(
+            addError.Value);
+        var unavailable = Assert.IsType<DeploymentTargetNewWorkloadsDisabled>(
+            targetError.Value);
+        Assert.Equal(secondTargetId, unavailable.DeploymentTargetId);
         Assert.Single(await DbContext.ResourceDeployments
             .Find(deployment => deployment.ResourceId == created.WebServiceId)
             .ToListAsync());
