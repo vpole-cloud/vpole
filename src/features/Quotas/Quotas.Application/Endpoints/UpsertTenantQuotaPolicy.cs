@@ -18,11 +18,17 @@ public static class UpsertTenantQuotaPolicy
     {
         app.MapPut("/{tenantId}/quota", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] UpsertTenantQuotaPolicyRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    TenantQuotaPolicyDto policy => Results.Ok(policy),
+                    InvalidTenantQuotaPolicy invalid =>
+                        httpProblems.Map(invalid).ToHttpResult()
+                });
             })
             .WithName("UpsertTenantQuotaPolicy")
             .RequireAuthorization(Policy.Admin)
@@ -35,21 +41,30 @@ public static class UpsertTenantQuotaPolicy
 public sealed record UpsertTenantQuotaPolicyRequest(
     [FromRoute] string TenantId,
     [FromBody] UpsertTenantQuotaPolicyRequestBody Body)
-    : IMediatorRequest<TenantQuotaPolicyDto>;
+    : IMediatorRequest<UpsertTenantQuotaPolicyOutcome>;
+
+public sealed record InvalidTenantQuotaPolicy(
+    IReadOnlyDictionary<string, string[]> Errors);
+
+public union UpsertTenantQuotaPolicyOutcome(
+    TenantQuotaPolicyDto,
+    InvalidTenantQuotaPolicy);
 
 public sealed class UpsertTenantQuotaPolicyHandler(
     IQuotaDbContext dbContext,
     QuotaCatalog catalog,
     TimeProvider timeProvider)
-    : IMediatorHandler<UpsertTenantQuotaPolicyRequest, TenantQuotaPolicyDto>
+    : IMediatorOutcomeHandler<
+        UpsertTenantQuotaPolicyRequest,
+        UpsertTenantQuotaPolicyOutcome>
 {
-    public async Task<Result<TenantQuotaPolicyDto>> HandleAsync(
+    public async Task<UpsertTenantQuotaPolicyOutcome> HandleAsync(
         UpsertTenantQuotaPolicyRequest request,
         CancellationToken cancellationToken = default)
     {
         var limitsResult = request.Body.ToQuotaLimits(catalog);
-        if (!limitsResult.TryGetValue(out var limits, out var failure))
-            return failure;
+        if (!limitsResult.TryGetValue(out var limits, out var error))
+            return error;
 
         var existing = await dbContext.TenantQuotaPolicies
             .Find(candidate => candidate.TenantId == request.TenantId)

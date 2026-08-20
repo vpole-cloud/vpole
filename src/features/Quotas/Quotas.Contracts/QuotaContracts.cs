@@ -96,9 +96,27 @@ public sealed record QuotaReservationLease(
     DateTime ExpiresAtUtc,
     QuotaResourceKey ResourceKey);
 
+public sealed record InvalidQuotaReservationRequest(
+    IReadOnlyDictionary<string, string[]> Errors);
+
+public sealed record QuotaExceeded(
+    QuotaKey Quota,
+    long Limit,
+    long Requested,
+    long Current);
+
+public sealed record QuotaReservationConflict(
+    string TenantId,
+    QuotaResourceKey ResourceKey);
+
+public union QuotaReservationError(
+    InvalidQuotaReservationRequest,
+    QuotaExceeded,
+    QuotaReservationConflict);
+
 public interface IQuotaAdmissionService
 {
-    Task<Result<QuotaReservationLease>> ReserveAsync(
+    Task<Result<QuotaReservationLease, QuotaReservationError>> ReserveAsync(
         string tenantId,
         QuotaDelta delta,
         QuotaResourceKey resourceKey,

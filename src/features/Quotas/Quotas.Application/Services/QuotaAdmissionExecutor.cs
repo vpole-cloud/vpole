@@ -51,8 +51,8 @@ public sealed class QuotaAdmissionExecutor(
                 positiveDelta,
                 resourceKey,
                 cancellationToken);
-            if (!reservationResult.TryGetValue(out reservation, out var reservationFailure))
-                return reservationFailure;
+            if (!reservationResult.TryGetValue(out reservation, out var reservationError))
+                return ToLegacyFailure(reservationError);
         }
 
         TPreparation preparation;
@@ -127,6 +127,22 @@ public sealed class QuotaAdmissionExecutor(
                 catalog.Calculate(delete.Spec)),
             _ => throw new InvalidOperationException(
                 $"Unknown quota mutation type '{mutation.GetType().FullName}'.")
+        };
+
+    private static Failure ToLegacyFailure(
+        QuotaReservationError error) => error switch
+        {
+            InvalidQuotaReservationRequest invalid =>
+                Failures.ValidationFailure(
+                    invalid.Errors.ToDictionary(
+                        item => item.Key,
+                        item => item.Value)),
+            QuotaExceeded exceeded => Failures.Conflict(
+                $"Quota exceeded for {exceeded.Quota.Value}: requested total " +
+                $"{checked(exceeded.Current + exceeded.Requested)}, limit " +
+                $"{exceeded.Limit}."),
+            QuotaReservationConflict => Failures.Conflict(
+                "Quota admission conflicted with another request. Please retry.")
         };
 
     private async Task CancelBestEffortAsync(QuotaReservationLease? reservation)

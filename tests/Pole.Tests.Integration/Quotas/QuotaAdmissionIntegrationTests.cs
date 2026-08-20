@@ -7,8 +7,6 @@ using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Domain;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Endpoints;
-using Pole.Features.Shared.Models;
-using Pole.Features.WebServices.Application.Common;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -157,6 +155,38 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
     }
 
     [Fact]
+    public async Task ReservationReturnsStructuredQuotaExceededError()
+    {
+        await SeedPolicyAsync(
+            TestData.TenantId,
+            [new(RedisServiceCountQuota.QuotaKey, 1)]);
+        var admission = Services.GetRequiredService<IQuotaAdmissionService>();
+        var requested = QuotaDelta.From(
+            RedisServiceCountQuota.QuotaKey,
+            1);
+        var first = await admission.ReserveAsync(
+            TestData.TenantId,
+            requested,
+            QuotaResourceKey.Create("test", "first"));
+        Assert.True(first.TryGetValue(out var lease, out _));
+
+        var second = await admission.ReserveAsync(
+            TestData.TenantId,
+            requested,
+            QuotaResourceKey.Create("test", "second"));
+
+        Assert.False(second.TryGetValue(out _, out var error));
+        var exceeded = Assert.IsType<QuotaExceeded>(error.Value);
+        Assert.Equal(RedisServiceCountQuota.QuotaKey, exceeded.Quota);
+        Assert.Equal(1, exceeded.Limit);
+        Assert.Equal(1, exceeded.Requested);
+        Assert.Equal(1, exceeded.Current);
+
+        var cancel = await admission.CancelAsync(lease.ReservationId);
+        Assert.IsType<Success>(cancel);
+    }
+
+    [Fact]
     public async Task UsageIsTenantScoped()
     {
         const string otherTenantId = "507f1f77bcf86cd799439022";
@@ -175,31 +205,29 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
     }
 
     [Fact]
-    public async Task WebServicePreparationFailureCancelsQuotaReservation()
+    public async Task ExecutorPreparationFailureCancelsQuotaReservation()
     {
         await SeedPolicyAsync(
             TestData.TenantId,
             [
-                new(CpuQuota.QuotaKey, 10_000),
-                new(RamQuota.QuotaKey, 10_000),
-                new(WorkloadInstancesQuota.QuotaKey, 10),
-                new(WebServiceCountQuota.QuotaKey, 10)
+                new(RedisServiceCountQuota.QuotaKey, 10)
             ]);
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var executor = Services.GetRequiredService<IQuotaAdmissionExecutor>();
 
-        var first = await Mediator.Send(TestData.CreateWebServiceRequest(
-            resourceGroup.Id,
-            "web-a",
-            "duplicate.example.com"));
-        var second = await Mediator.Send(TestData.CreateWebServiceRequest(
-            resourceGroup.Id,
-            "web-b",
-            "duplicate.example.com"));
+        var result = await executor.ExecuteAsync<
+            RedisQuotaInput,
+            string,
+            bool>(
+            TestData.TenantId,
+            QuotaResourceKey.Create("test", "preparation-failure"),
+            new CreateQuotaMutation<RedisQuotaInput>(
+                new RedisQuotaInput(100, 128, 1)),
+            _ => Task.FromResult<Result<string>>(
+                Failures.Conflict("Preparation failed.")),
+            (_, _, _) => Task.FromResult<Result<bool>>(true));
 
-        Assert.True(first.TryGetValue(out _, out _));
-        Assert.False(second.TryGetValue(out _, out _));
-        var usage = await GetUsageAsync(TestData.TenantId);
-        Assert.Equal(1, QuotaValues.GetValue(usage.Values, WebServiceCountQuota.QuotaKey));
+        Assert.False(result.TryGetValue(out _, out var failure));
+        Assert.IsType<ConflictFailure>(failure);
         var reservations = await DbContext.QuotaReservations
             .Find(reservation => reservation.TenantId == TestData.TenantId)
             .ToListAsync();

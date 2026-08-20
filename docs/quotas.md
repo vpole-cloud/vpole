@@ -34,9 +34,20 @@ Handlers call `IQuotaAdmissionExecutor` with:
 
 The executor calculates the delta from the registered profile. Positive changes are reserved before the mutation. Inside one Mongo transaction it commits the reservation, applies reductions, persists the resource, and stores outbox events. A returned failure aborts the transaction. If preparation or the transaction fails, the executor makes a best-effort cancellation of the active reservation without masking the original failure.
 
-WebService creation uses the executor's preparation callback so ordering remains quota reservation, DNS reservation, then Mongo transaction.
+WebService creation reserves quota before entering the transaction callback;
+generated DNS reservations, resource deployments, the logical resource, and
+their outbox writes are then persisted in that caller-owned transaction.
 
 `MongoQuotaAdmissionService` owns only low-level reservation and committed-usage persistence. Feature handlers must not call it directly.
+
+Reservation admission exposes a provider-owned `Result<QuotaReservationLease,
+QuotaReservationError>`. Invalid requests, exceeded quotas, and reservation
+conflicts are distinct union cases; `QuotaExceeded` carries the quota key,
+limit, requested delta, and current reserved-plus-committed usage. The optional
+`Quotas.Contracts.HttpMapping` companion supplies stable default ProblemDetails
+representations without coupling `Quotas.Contracts` to HTTP. Legacy
+`IQuotaAdmissionExecutor` consumers are adapted in one place while feature
+handlers migrate to typed outcomes.
 
 ## Reservation states and cleanup
 

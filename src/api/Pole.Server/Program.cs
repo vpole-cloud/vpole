@@ -1,4 +1,5 @@
 using System.Reflection;
+using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Application.Common;
@@ -18,6 +19,7 @@ using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
+using Pole.Features.Quotas.Contracts.HttpMapping;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.ResourceDeployments.Application;
@@ -74,6 +76,8 @@ builder.AddMongoDBClient("pole-database");
 builder.AddFunctionOrleansHosting();
 builder.AddSecurity();
 
+builder.Services.AddHttpProblemMappings(QuotaContractHttpMappings.All);
+
 builder.Services.AddKubernetes(configuration)
     .AddEventBus(configuration, assemblies)
     .AddOutboxEventAssemblies(outboxEventAssemblies)
@@ -89,6 +93,7 @@ builder.Services.AddKubernetes(configuration)
         typeof(FunctionAppQuotaProfile).Assembly,
         typeof(WebServiceQuotaProfile).Assembly,
         typeof(PostgresQuotaProfile).Assembly)
+    .AddQuotaHttpMappings()
     .AddMigrations(assemblies)
     .AddEnvelopeEncryption(configuration)
     .AddDeploymentTargetsFeature(configuration)
