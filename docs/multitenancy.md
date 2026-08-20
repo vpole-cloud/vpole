@@ -51,6 +51,7 @@ The tenant middleware runs after authentication and before endpoint execution. I
 * `/api/v1/web-services`
 * `/api/v1/redis-services`
 * `/api/v1/postgres`
+* `/api/v1/resource-deployments`
 * `/api/v1/domain-names`
 * `/api/v1/search`
 

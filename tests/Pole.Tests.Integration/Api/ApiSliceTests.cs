@@ -49,6 +49,32 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task RetryResourceDeployment_ReturnsTypedNotFoundProblem()
+    {
+        const string missingDeploymentId = "507f1f77bcf86cd799439099";
+
+        using var response = await Client.PostAsync(
+            $"/api/v1/resource-deployments/{missingDeploymentId}/retry",
+            content: null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(
+            "application/problem+json",
+            response.Content.Headers.ContentType?.MediaType);
+        using var problem = JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync());
+        Assert.Equal(
+            "tag:pole.dev,2026:problem:resource-deployments.not-found",
+            problem.RootElement.GetProperty("type").GetString());
+        Assert.Equal(
+            "resource-deployments.not-found",
+            problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal(
+            missingDeploymentId,
+            problem.RootElement.GetProperty("deploymentId").GetString());
+    }
+
+    [Fact]
     public async Task GetWebServiceById_ReturnsNotFound_ForMissingResource()
     {
         const string missingId = "507f1f77bcf86cd799439013";

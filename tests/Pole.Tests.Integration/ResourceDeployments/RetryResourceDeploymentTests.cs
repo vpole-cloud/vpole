@@ -1,0 +1,189 @@
+using MongoDB.Driver;
+using Pole.Features.ResourceDeployments.Application.Endpoints;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Events;
+using Pole.Mediator;
+using Pole.Tests.Integration.Infrastructure;
+using Xunit;
+using Xunit.Sdk;
+
+namespace Pole.Tests.Integration.ResourceDeployments;
+
+public sealed class RetryResourceDeploymentTests(
+    MongoReplicaSetFixture fixture)
+    : MediatorIntegrationTestBase(fixture)
+{
+    private const string TenantId = "507f1f77bcf86cd799439011";
+    private const string OtherTenantId = "507f1f77bcf86cd799439012";
+    private const string ResourceId = "507f1f77bcf86cd799439013";
+    private const string ResourceGroupId = "507f1f77bcf86cd799439014";
+    private const string ScopeId = "507f1f77bcf86cd799439015";
+    private const string RuntimeCellId = "507f1f77bcf86cd799439016";
+    private const string TargetId = "507f1f77bcf86cd799439017";
+    private const string DeploymentId = "507f1f77bcf86cd799439018";
+    private const string ClaimId = "507f1f77bcf86cd799439020";
+    private static readonly ResourceTypeId TestResourceType =
+        ResourceTypeId.Create("pole/test-retry");
+    private static readonly DateTime CreatedAtUtc =
+        new(2026, 1, 1, 8, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public async Task Retry_IsTenantScopedAndAbortsWithoutOutbox()
+    {
+        var deployment = CreateFailedDeployment(retryable: true);
+        await DbContext.ResourceDeployments.InsertOneAsync(deployment);
+
+        var result = await Mediator.Send(
+            new RetryResourceDeploymentRequest(
+                DeploymentId,
+                OtherTenantId));
+
+        var notFound = AssertRetryError<ResourceDeploymentNotFound>(result);
+        Assert.Equal(DeploymentId, notFound.DeploymentId);
+        var persisted = await LoadDeploymentAsync();
+        Assert.Equal(deployment.Revision, persisted.Revision);
+        Assert.IsType<FailedResourceDeploymentState>(persisted.State);
+        Assert.Equal(
+            0,
+            await DbContext.OutboxMessages.CountDocumentsAsync(
+                FilterDefinition<Pole.Features.Shared.Models.OutboxMessage>.Empty));
+    }
+
+    [Fact]
+    public async Task Retry_NonRetryableFailureAbortsWithoutMutationOrOutbox()
+    {
+        var deployment = CreateFailedDeployment(retryable: false);
+        await DbContext.ResourceDeployments.InsertOneAsync(deployment);
+
+        var result = await Mediator.Send(
+            new RetryResourceDeploymentRequest(
+                DeploymentId,
+                TenantId));
+
+        var notRetryable =
+            AssertRetryError<ResourceDeploymentNotRetryable>(result);
+        Assert.Equal(DeploymentId, notRetryable.DeploymentId);
+        var persisted = await LoadDeploymentAsync();
+        Assert.Equal(deployment.Revision, persisted.Revision);
+        Assert.IsType<FailedResourceDeploymentState>(persisted.State);
+        Assert.Equal(
+            0,
+            await DbContext.OutboxMessages.CountDocumentsAsync(
+                FilterDefinition<Pole.Features.Shared.Models.OutboxMessage>.Empty));
+    }
+
+    [Fact]
+    public async Task Retry_CommitsMutationAndTenantOutboxTogether()
+    {
+        var deployment = CreateFailedDeployment(retryable: true);
+        await DbContext.ResourceDeployments.InsertOneAsync(deployment);
+
+        var result = await Mediator.Send(
+            new RetryResourceDeploymentRequest(
+                DeploymentId,
+                TenantId));
+
+        var retried = AssertRetrySuccess(result);
+        Assert.Equal(DeploymentId, retried.Id);
+        Assert.Equal(deployment.Revision + 1, retried.Placement.DeploymentRevision);
+        var persisted = await LoadDeploymentAsync();
+        var pending = Assert.IsType<PendingResourceDeploymentState>(
+            persisted.State);
+        Assert.Equal(ResourceDeploymentOperation.Apply, pending.Operation);
+        Assert.Equal(deployment.Revision + 1, persisted.Revision);
+        var message = await DbContext.OutboxMessages
+            .Find(FilterDefinition<Pole.Features.Shared.Models.OutboxMessage>.Empty)
+            .SingleAsync();
+        Assert.Equal(
+            "resource-deployment-reconciliation-requested",
+            message.EventType);
+        Assert.Equal(TenantId, message.TenantId);
+        Assert.Equal(
+            ResourceDeploymentPendingKey.Apply(
+                DeploymentId,
+                deployment.DesiredGeneration),
+            message.PendingKey);
+    }
+
+    private Task<ResourceDeployment> LoadDeploymentAsync() =>
+        DbContext.ResourceDeployments
+            .Find(deployment => deployment.Id == DeploymentId)
+            .SingleAsync();
+
+    private static ResourceDeployment CreateFailedDeployment(
+        bool retryable)
+    {
+        var placement = ResolvedResourcePlacement.Create(
+            RuntimeCellId,
+            TargetId,
+            "pole-t-retry-is-scope",
+            runtimeCellGeneration: 1,
+            targetWorkloadConfigurationRevision: 1,
+            ResolvedIngressConfiguration.Create(
+                "traefik",
+                "letsencrypt-prod"),
+            storage: null,
+            ResourceDeploymentTestData.Compute(),
+            CreatedAtUtc);
+        var deployment = ResourceDeploymentFactory.Create(
+            TenantId,
+            TestResourceType,
+            ResourceId,
+            ResourceGroupId,
+            ScopeId,
+            placement,
+            ResourcePlacementCapability.SingleTarget,
+            runtimeCellReady: true,
+            new ResourceDeploymentFactory.CreateOptions(
+                DeploymentId,
+                CreatedAtUtc));
+        var claimed = deployment.Start(
+            expectedGeneration: 1,
+            ResourceDeploymentOperation.Apply,
+            ClaimId,
+            CreatedAtUtc.AddMinutes(1),
+            CreatedAtUtc.AddMinutes(5));
+        return claimed.Fail(
+            expectedGeneration: 1,
+            ResourceDeploymentOperation.Apply,
+            ClaimId,
+            "ProviderUnavailable",
+            "The provider was unavailable.",
+            retryable,
+            CreatedAtUtc.AddMinutes(2),
+            CreatedAtUtc.AddMinutes(2));
+    }
+
+    private static TError AssertRetryError<TError>(
+        MediatorResult<RetryResourceDeploymentOutcome> result)
+        where TError : notnull
+    {
+        var outcome = HandlerOutcome(result);
+        var error = outcome switch
+        {
+            ResourceDeploymentDto => throw new XunitException(
+                "Expected a retry error, but received a deployment."),
+            RetryResourceDeploymentError retryError => retryError
+        };
+        return Assert.IsType<TError>(error.Value);
+    }
+
+    private static ResourceDeploymentDto AssertRetrySuccess(
+        MediatorResult<RetryResourceDeploymentOutcome> result) =>
+        HandlerOutcome(result) switch
+        {
+            ResourceDeploymentDto deployment => deployment,
+            RetryResourceDeploymentError error => throw new XunitException(
+                $"Expected a deployment, but received " +
+                $"'{error.Value.GetType().Name}'.")
+        };
+
+    private static RetryResourceDeploymentOutcome HandlerOutcome(
+        MediatorResult<RetryResourceDeploymentOutcome> result) =>
+        result.Match(
+            outcome => outcome,
+            rejected => throw new XunitException(
+                $"Expected a handler outcome, but the pipeline returned " +
+                $"'{rejected.Reason.GetType().Name}'."));
+}
