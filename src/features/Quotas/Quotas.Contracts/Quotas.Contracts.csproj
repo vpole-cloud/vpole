@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Quotas.Primitives\Quotas.Primitives.csproj" />
+    <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
     <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
   </ItemGroup>
 

@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Features.Quotas.Primitives;
 using Pole.ResultType;
 
@@ -114,6 +115,33 @@ public union QuotaReservationError(
     QuotaExceeded,
     QuotaReservationConflict);
 
+public sealed record QuotaReservationCommitted;
+
+public sealed record InvalidQuotaReservationCommit(
+    IReadOnlyDictionary<string, string[]> Errors);
+
+public sealed record QuotaReservationNotFound(string ReservationId);
+
+public sealed record QuotaReservationCancelled(string ReservationId);
+
+public sealed record QuotaReservationExpired(string ReservationId);
+
+public union QuotaReservationCommitError(
+    InvalidQuotaReservationCommit,
+    QuotaReservationNotFound,
+    QuotaReservationCancelled,
+    QuotaReservationExpired);
+
+public sealed record QuotaUsageAdjusted;
+
+public sealed record InvalidQuotaUsageAdjustment(
+    IReadOnlyDictionary<string, string[]> Errors);
+
+public union QuotaExecutionError(
+    QuotaReservationError,
+    QuotaReservationCommitError,
+    InvalidQuotaUsageAdjustment);
+
 public interface IQuotaAdmissionService
 {
     Task<Result<QuotaReservationLease, QuotaReservationError>> ReserveAsync(
@@ -122,7 +150,7 @@ public interface IQuotaAdmissionService
         QuotaResourceKey resourceKey,
         CancellationToken cancellationToken = default);
 
-    Task<Result> CommitAsync(
+    Task<Result<QuotaReservationCommitted, QuotaReservationCommitError>> CommitAsync(
         string reservationId,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
@@ -131,7 +159,7 @@ public interface IQuotaAdmissionService
         string reservationId,
         CancellationToken cancellationToken = default);
 
-    Task<Result> ApplyUsageDeltaAsync(
+    Task<Result<QuotaUsageAdjusted, InvalidQuotaUsageAdjustment>> ApplyUsageDeltaAsync(
         string tenantId,
         QuotaDelta delta,
         IClientSessionHandle session,
@@ -140,6 +168,18 @@ public interface IQuotaAdmissionService
 
 public interface IQuotaAdmissionExecutor
 {
+    Task<TOutcome> ExecuteOutcomeAsync<TSpec, TOutcome>(
+        string tenantId,
+        QuotaResourceKey resourceKey,
+        QuotaMutation<TSpec> mutation,
+        Func<QuotaExecutionError, TOutcome> quotaError,
+        Func<
+            MongoTransactionContext<TOutcome>,
+            CancellationToken,
+            Task<MongoTransactionDecision<TOutcome>>> mutationCallback,
+        CancellationToken cancellationToken = default)
+        where TOutcome : notnull;
+
     Task<Result<TResponse>> ExecuteAsync<TSpec, TResponse>(
         string tenantId,
         QuotaResourceKey resourceKey,

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using MongoDB.Bson;
+using Pole.Database;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Quotas.Contracts;
@@ -234,6 +235,39 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.DoesNotContain(reservations, reservation => reservation.State is ActiveQuotaReservationState);
     }
 
+    [Fact]
+    public async Task TypedExecutorAbortCancelsReservationAndDoesNotChargeUsage()
+    {
+        await SeedPolicyAsync(
+            TestData.TenantId,
+            [new(RedisServiceCountQuota.QuotaKey, 10)]);
+        var executor = Services.GetRequiredService<IQuotaAdmissionExecutor>();
+
+        var outcome = await executor.ExecuteOutcomeAsync<RedisQuotaInput, TestQuotaOutcome>(
+            TestData.TenantId,
+            QuotaResourceKey.Create("test", "typed-abort"),
+            new CreateQuotaMutation<RedisQuotaInput>(
+                new RedisQuotaInput(100, 128, 1)),
+            error => new TestQuotaOutcome(error),
+            (transaction, _) => Task.FromResult(
+                transaction.Abort(
+                    new TestQuotaOutcome(new TestMutationRejected()))));
+
+        Assert.IsType<TestMutationRejected>(outcome.Value);
+        var usage = await GetUsageAsync(TestData.TenantId);
+        Assert.Equal(
+            0,
+            QuotaValues.GetValue(
+                usage.Values,
+                RedisServiceCountQuota.QuotaKey));
+        var reservations = await DbContext.QuotaReservations
+            .Find(reservation => reservation.TenantId == TestData.TenantId)
+            .ToListAsync();
+        Assert.DoesNotContain(
+            reservations,
+            reservation => reservation.State is ActiveQuotaReservationState);
+    }
+
     private async Task SeedPolicyAsync(string tenantId, IEnumerable<QuotaValue> limits)
     {
         var policy = QuotaDomainFactory.CreatePolicy(tenantId, QuotaDelta.Create(limits), DateTime.UtcNow);
@@ -243,3 +277,12 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
     private async Task<TenantQuotaUsage> GetUsageAsync(string tenantId) =>
         await DbContext.TenantQuotaUsages.Find(usage => usage.TenantId == tenantId).SingleAsync();
 }
+
+public sealed record TestMutationAccepted;
+
+public sealed record TestMutationRejected;
+
+public union TestQuotaOutcome(
+    TestMutationAccepted,
+    TestMutationRejected,
+    QuotaExecutionError);

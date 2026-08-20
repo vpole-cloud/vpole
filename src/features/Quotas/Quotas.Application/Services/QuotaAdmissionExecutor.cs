@@ -13,6 +13,93 @@ public sealed class QuotaAdmissionExecutor(
     IQuotaAdmissionService admissionService,
     ILogger<QuotaAdmissionExecutor> logger) : IQuotaAdmissionExecutor
 {
+    public async Task<TOutcome> ExecuteOutcomeAsync<TSpec, TOutcome>(
+        string tenantId,
+        QuotaResourceKey resourceKey,
+        QuotaMutation<TSpec> mutation,
+        Func<QuotaExecutionError, TOutcome> quotaError,
+        Func<
+            MongoTransactionContext<TOutcome>,
+            CancellationToken,
+            Task<MongoTransactionDecision<TOutcome>>> mutationCallback,
+        CancellationToken cancellationToken = default)
+        where TOutcome : notnull
+    {
+        ArgumentNullException.ThrowIfNull(quotaError);
+        ArgumentNullException.ThrowIfNull(mutationCallback);
+
+        var delta = CalculateDelta(catalog, mutation);
+        var positiveDelta = QuotaDelta.PositivePart(delta);
+        var negativeDelta = QuotaDelta.NegativePart(delta);
+
+        QuotaReservationLease? reservation = null;
+        if (!positiveDelta.IsEmpty)
+        {
+            var reservationResult = await admissionService.ReserveAsync(
+                tenantId,
+                positiveDelta,
+                resourceKey,
+                cancellationToken);
+            if (!reservationResult.TryGetValue(out reservation, out var reservationError))
+            {
+                return quotaError(new QuotaExecutionError(reservationError));
+            }
+        }
+
+        var committed = false;
+        try
+        {
+            var outcome = await dbContext.RunOutcomeInTransactionAsync<TOutcome>(
+                async (transaction, transactionCancellationToken) =>
+                {
+                    committed = false;
+                    if (reservation is not null)
+                    {
+                        var commitResult = await admissionService.CommitAsync(
+                            reservation.ReservationId,
+                            transaction.Session,
+                            transactionCancellationToken);
+                        if (!commitResult.TryGetValue(out _, out var commitError))
+                        {
+                            return transaction.Abort(
+                                quotaError(new QuotaExecutionError(commitError)));
+                        }
+                    }
+
+                    if (!negativeDelta.IsEmpty)
+                    {
+                        var releaseResult = await admissionService.ApplyUsageDeltaAsync(
+                            tenantId,
+                            negativeDelta,
+                            transaction.Session,
+                            transactionCancellationToken);
+                        if (!releaseResult.TryGetValue(out _, out var releaseError))
+                        {
+                            return transaction.Abort(
+                                quotaError(new QuotaExecutionError(releaseError)));
+                        }
+                    }
+
+                    var decision = await mutationCallback(
+                        transaction,
+                        transactionCancellationToken);
+                    committed = decision is MongoTransactionCommit<TOutcome>;
+                    return decision;
+                },
+                cancellationToken: cancellationToken);
+
+            if (!committed)
+                await CancelBestEffortAsync(reservation);
+
+            return outcome;
+        }
+        catch
+        {
+            await CancelBestEffortAsync(reservation);
+            throw;
+        }
+    }
+
     public Task<Result<TResponse>> ExecuteAsync<TSpec, TResponse>(
         string tenantId,
         QuotaResourceKey resourceKey,
@@ -83,8 +170,8 @@ public sealed class QuotaAdmissionExecutor(
                         reservation.ReservationId,
                         session,
                         transactionCancellationToken);
-                    if (commitResult is Failure commitFailure)
-                        return commitFailure;
+                    if (!commitResult.TryGetValue(out _, out var commitError))
+                        return ToLegacyFailure(commitError);
                 }
 
                 if (!negativeDelta.IsEmpty)
@@ -94,8 +181,8 @@ public sealed class QuotaAdmissionExecutor(
                         negativeDelta,
                         session,
                         transactionCancellationToken);
-                    if (releaseResult is Failure releaseFailure)
-                        return releaseFailure;
+                    if (!releaseResult.TryGetValue(out _, out var releaseError))
+                        return ToLegacyFailure(releaseError);
                 }
 
                 return await mutationCallback(preparation, session, transactionCancellationToken);
@@ -144,6 +231,26 @@ public sealed class QuotaAdmissionExecutor(
             QuotaReservationConflict => Failures.Conflict(
                 "Quota admission conflicted with another request. Please retry.")
         };
+
+    private static Failure ToLegacyFailure(
+        QuotaReservationCommitError error) => error switch
+        {
+            InvalidQuotaReservationCommit invalid =>
+                Failures.ValidationFailure(
+                    invalid.Errors.ToDictionary(item => item.Key, item => item.Value)),
+            QuotaReservationNotFound notFound => Failures.NotFound(
+                "Quota reservation not found.",
+                notFound.ReservationId),
+            QuotaReservationCancelled => Failures.Conflict(
+                "Quota reservation has already been cancelled."),
+            QuotaReservationExpired => Failures.Conflict(
+                "Quota reservation has expired and cannot be committed.")
+        };
+
+    private static Failure ToLegacyFailure(
+        InvalidQuotaUsageAdjustment error) =>
+        Failures.ValidationFailure(
+            error.Errors.ToDictionary(item => item.Key, item => item.Value));
 
     private async Task CancelBestEffortAsync(QuotaReservationLease? reservation)
     {

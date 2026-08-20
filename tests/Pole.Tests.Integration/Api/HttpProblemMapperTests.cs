@@ -311,6 +311,23 @@ public sealed class HttpProblemMapperTests
     }
 
     [Fact]
+    public void QuotaExecutionErrorsUnwrapToStableProblemMappings()
+    {
+        var mapper = new HttpProblemMapper(
+            QuotaContractHttpMappings.All);
+        QuotaExecutionError error = new QuotaReservationCommitError(
+            new QuotaReservationExpired("reservation-1"));
+
+        var problem = mapper.Map(error);
+
+        Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
+        Assert.Equal("quotas.reservation.commit-expired", problem.Code);
+        Assert.Equal(
+            PoleProblemTypeId.FromCode(problem.Code),
+            problem.Type);
+    }
+
+    [Fact]
     public void InvalidQuotaPolicyHasFeatureLocalProblemMapping()
     {
         var mapper = new HttpProblemMapper(QuotaHttpMappings.All);

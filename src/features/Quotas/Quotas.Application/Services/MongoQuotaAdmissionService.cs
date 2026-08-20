@@ -106,13 +106,18 @@ public sealed class MongoQuotaAdmissionService(
                 new QuotaReservationConflict(tenantId, resourceKey)));
     }
 
-    public async Task<Result> CommitAsync(
+    public async Task<Result<QuotaReservationCommitted, QuotaReservationCommitError>> CommitAsync(
         string reservationId,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(reservationId))
-            return ValidationFailure("ReservationId", "Quota reservation id is required.");
+        {
+            return new Err<QuotaReservationCommitError>(
+                new QuotaReservationCommitError(
+                    new InvalidQuotaReservationCommit(
+                        Errors("ReservationId", "Quota reservation id is required."))));
+        }
 
         var nowUtc = UtcNow();
         var finalized = await dbContext.QuotaReservations.FindOneAndUpdateAsync(
@@ -135,12 +140,17 @@ public sealed class MongoQuotaAdmissionService(
 
             return existing?.State switch
             {
-                null => Failures.NotFound("Quota reservation not found.", reservationId),
-                CommittedQuotaReservationState => Result.Success(),
-                CancelledQuotaReservationState => Failures.Conflict(
-                    "Quota reservation has already been cancelled."),
-                ActiveQuotaReservationState => Failures.Conflict(
-                    "Quota reservation has expired and cannot be committed."),
+                null => new Err<QuotaReservationCommitError>(
+                    new QuotaReservationCommitError(
+                        new QuotaReservationNotFound(reservationId))),
+                CommittedQuotaReservationState =>
+                    new Ok<QuotaReservationCommitted>(new QuotaReservationCommitted()),
+                CancelledQuotaReservationState => new Err<QuotaReservationCommitError>(
+                    new QuotaReservationCommitError(
+                        new QuotaReservationCancelled(reservationId))),
+                ActiveQuotaReservationState => new Err<QuotaReservationCommitError>(
+                    new QuotaReservationCommitError(
+                        new QuotaReservationExpired(reservationId))),
                 _ => throw new InvalidOperationException("Unknown quota reservation state.")
             };
         }
@@ -159,7 +169,7 @@ public sealed class MongoQuotaAdmissionService(
                 .Set(candidate => candidate.UpdatedAtUtc, nowUtc),
             cancellationToken: cancellationToken);
 
-        return Result.Success();
+        return new Ok<QuotaReservationCommitted>(new QuotaReservationCommitted());
     }
 
     public async Task<Result> CancelAsync(
@@ -198,7 +208,7 @@ public sealed class MongoQuotaAdmissionService(
         };
     }
 
-    public async Task<Result> ApplyUsageDeltaAsync(
+    public async Task<Result<QuotaUsageAdjusted, InvalidQuotaUsageAdjustment>> ApplyUsageDeltaAsync(
         string tenantId,
         QuotaDelta delta,
         IClientSessionHandle session,
@@ -210,10 +220,13 @@ public sealed class MongoQuotaAdmissionService(
             requireStrictlyPositive: false,
             allowEmpty: true);
         if (validationFailure is not null)
-            return validationFailure;
+        {
+            return new Err<InvalidQuotaUsageAdjustment>(
+                new InvalidQuotaUsageAdjustment(validationFailure));
+        }
 
         if (delta.IsEmpty)
-            return Result.Success();
+            return new Ok<QuotaUsageAdjusted>(new QuotaUsageAdjusted());
 
         var nowUtc = UtcNow();
         var usage = await TouchUsageAsync(session, tenantId, nowUtc, cancellationToken);
@@ -226,7 +239,7 @@ public sealed class MongoQuotaAdmissionService(
                 .Set(candidate => candidate.UpdatedAtUtc, nowUtc),
             cancellationToken: cancellationToken);
 
-        return Result.Success();
+        return new Ok<QuotaUsageAdjusted>(new QuotaUsageAdjusted());
     }
 
     private async Task<TenantQuotaUsage> TouchUsageAsync(
@@ -306,25 +319,25 @@ public sealed class MongoQuotaAdmissionService(
             : new InvalidQuotaReservationRequest(errors);
     }
 
-    private static Failure? ValidateTenantAndDelta(
+    private static IReadOnlyDictionary<string, string[]>? ValidateTenantAndDelta(
         string tenantId,
         QuotaDelta delta,
         bool requireStrictlyPositive,
         bool allowEmpty = false)
     {
         if (string.IsNullOrWhiteSpace(tenantId))
-            return ValidationFailure("TenantId", "Tenant id is required.");
+            return Errors("TenantId", "Tenant id is required.");
 
         if (!allowEmpty && delta.IsEmpty)
-            return ValidationFailure("Delta", "Quota delta must contain at least one quota.");
+            return Errors("Delta", "Quota delta must contain at least one quota.");
 
         foreach (var value in delta.Values)
         {
             if (requireStrictlyPositive && value.Value <= 0)
-                return ValidationFailure("Delta", "Reserved quota values must be greater than zero.");
+                return Errors("Delta", "Reserved quota values must be greater than zero.");
 
             if (!requireStrictlyPositive && value.Value >= 0)
-                return ValidationFailure("Delta", "Usage-release values must be less than zero.");
+                return Errors("Delta", "Usage-release values must be less than zero.");
         }
 
         return null;
@@ -333,7 +346,12 @@ public sealed class MongoQuotaAdmissionService(
     private DateTime UtcNow() => timeProvider.GetUtcNow().UtcDateTime;
 
     private static ValidationFailure ValidationFailure(string field, string message) =>
-        Failures.ValidationFailure(new Dictionary<string, string[]> { [field] = [message] });
+        Failures.ValidationFailure(Errors(field, message));
+
+    private static Dictionary<string, string[]> Errors(
+        string field,
+        string message) =>
+        new Dictionary<string, string[]> { [field] = [message] };
 
     private sealed class QuotaAdmissionDeniedException(QuotaExceeded error)
         : Exception
