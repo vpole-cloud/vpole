@@ -29,9 +29,11 @@
         <ProjectReference Include="..\..\src\api\Pole.Server\Pole.Server.csproj" />
         <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Application\ComputeProfiles.Application.csproj" />
         <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj" />
+        <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Contracts.HttpMapping\ComputeProfiles.Contracts.HttpMapping.csproj" />
         <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Domain\ComputeProfiles.Domain.csproj" />
         <ProjectReference Include="..\..\src\features\Domains\Domains.Application\Domains.Application.csproj" />
         <ProjectReference Include="..\..\src\features\Domains\Domains.Contracts\Domains.Contracts.csproj" />
+        <ProjectReference Include="..\..\src\features\Domains\Domains.Contracts.HttpMapping\Domains.Contracts.HttpMapping.csproj" />
         <ProjectReference Include="..\..\src\features\Domains\Domains.Domain\Domains.Domain.csproj" />
         <ProjectReference Include="..\..\src\features\Quotas\Quotas.Application\Quotas.Application.csproj" />
         <ProjectReference Include="..\..\src\features\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
@@ -41,6 +43,7 @@
         <ProjectReference Include="..\..\src\features\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
         <ProjectReference Include="..\..\src\features\DeploymentTargets\DeploymentTargets.Contracts.HttpMapping\DeploymentTargets.Contracts.HttpMapping.csproj" />
         <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Application\ResourceDeployments.Application.csproj" />
+        <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Contracts.HttpMapping\ResourceDeployments.Contracts.HttpMapping.csproj" />
         <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Domain\ResourceDeployments.Domain.csproj" />
         <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />
         <ProjectReference Include="..\..\src\features\SourceBuilds\SourceBuilds.Application\SourceBuilds.Application.csproj" />

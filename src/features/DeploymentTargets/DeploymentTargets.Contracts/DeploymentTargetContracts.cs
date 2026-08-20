@@ -146,6 +146,16 @@ public union DeploymentTargetPublicIngressAdmissionResult(
     DeploymentTargetSelectionRequired,
     DeploymentTargetPublicIngressUnavailable);
 
+public union DeploymentTargetPublicIngressAdmissionError(
+    InvalidDeploymentTargetId,
+    DeploymentTargetNotFound,
+    DeploymentTargetDisabled,
+    DeploymentTargetDeletionRequested,
+    DeploymentTargetNewWorkloadsDisabled,
+    NoDeploymentTargetAcceptsPublicWorkloads,
+    DeploymentTargetSelectionRequired,
+    DeploymentTargetPublicIngressUnavailable);
+
 public union DeploymentTargetDomainReservationAdmissionError(
     InvalidDeploymentTargetId,
     DeploymentTargetNotFound,

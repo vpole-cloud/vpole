@@ -50,6 +50,33 @@ public sealed record CreateResourceDeploymentRequest(
 public sealed record CreateResourceDeploymentSetRequest(
     IReadOnlyList<CreateResourceDeploymentRequest> Deployments);
 
+public sealed record InvalidResourceDeploymentSet(
+    IReadOnlyDictionary<string, string[]> Errors);
+
+public sealed record ResourceDeploymentTargetConfigurationChanged(
+    IReadOnlyList<string> DeploymentTargetIds);
+
+public sealed record ResourceDeploymentComputeConfigurationChanged(
+    IReadOnlyList<string> ComputeProfileIds);
+
+public sealed record ResourceDeploymentStorageConfigurationChanged(
+    string StorageProfileId);
+
+public sealed record ResourcePlacementUnavailable(string ResourceGroupId);
+
+public sealed record ResourcePlacementResourceGroupNotFound(string ResourceGroupId);
+
+public sealed record ResourcePlacementDeleting(string DeploymentTargetId);
+
+public union CreateResourceDeploymentSetError(
+    InvalidResourceDeploymentSet,
+    ResourceDeploymentTargetConfigurationChanged,
+    ResourceDeploymentComputeConfigurationChanged,
+    ResourceDeploymentStorageConfigurationChanged,
+    ResourcePlacementResourceGroupNotFound,
+    ResourcePlacementUnavailable,
+    ResourcePlacementDeleting);
+
 public delegate Task<Result<ResolvedResourceDeploymentTarget>> ResolveResourceDeploymentTarget(
     string? deploymentTargetId,
     bool requiresIngress,
@@ -61,6 +88,13 @@ public delegate Task<Result<PlacementSummaryDto>> CreateResourceDeployment(
     CancellationToken cancellationToken = default);
 
 public delegate Task<Result<IReadOnlyList<PlacementSummaryDto>>> CreateResourceDeploymentSet(
+    CreateResourceDeploymentSetRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<Result<
+    IReadOnlyList<PlacementSummaryDto>,
+    CreateResourceDeploymentSetError>> CreateResourceDeploymentSetOutcome(
     CreateResourceDeploymentSetRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);

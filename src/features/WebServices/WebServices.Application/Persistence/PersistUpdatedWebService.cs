@@ -13,6 +13,18 @@ public delegate Task<Result> PersistUpdatedWebService(
     WebServiceUpdatedEvent updatedEvent,
     CancellationToken cancellationToken = default);
 
+public sealed record WebServiceUpdateAccepted;
+
+public sealed record WebServiceUpdateConflict(string WebServiceId);
+
+public delegate Task<Result<WebServiceUpdateAccepted, WebServiceUpdateConflict>>
+    PersistUpdatedWebServiceOutcome(
+        IClientSessionHandle session,
+        WebService current,
+        WebService replacement,
+        WebServiceUpdatedEvent updatedEvent,
+        CancellationToken cancellationToken = default);
+
 internal sealed class MongoPersistUpdatedWebService(
     IMongoCollection<WebService> webServices,
     StoreOutboxWrites storeOutboxWrites)
@@ -23,6 +35,28 @@ internal sealed class MongoPersistUpdatedWebService(
         WebService replacement,
         WebServiceUpdatedEvent updatedEvent,
         CancellationToken cancellationToken = default)
+    {
+        var result = await InvokeOutcomeAsync(
+            session,
+            current,
+            replacement,
+            updatedEvent,
+            cancellationToken);
+        return result switch
+        {
+            Ok<WebServiceUpdateAccepted> => Result.Success(),
+            Err<WebServiceUpdateConflict> => Failures.Conflict(
+                "The web service changed while the update was being accepted.")
+        };
+    }
+
+    public async Task<Result<WebServiceUpdateAccepted, WebServiceUpdateConflict>>
+        InvokeOutcomeAsync(
+            IClientSessionHandle session,
+            WebService current,
+            WebService replacement,
+            WebServiceUpdatedEvent updatedEvent,
+            CancellationToken cancellationToken = default)
     {
         WebServicePersistenceGuards.EnsureTransaction(session, "Web service update");
         WebServicePersistenceGuards.EnsureSameIdentity(current, replacement);
@@ -45,13 +79,15 @@ internal sealed class MongoPersistUpdatedWebService(
             replacement,
             cancellationToken: cancellationToken);
         if (result.ModifiedCount != 1)
-            return Failures.Conflict(
-                "The web service changed while the update was being accepted.");
+        {
+            return new Err<WebServiceUpdateConflict>(
+                new WebServiceUpdateConflict(current.Id));
+        }
 
         await storeOutboxWrites(
             session,
             [OutboxWrite.Create(updatedEvent)],
             cancellationToken);
-        return Result.Success();
+        return new Ok<WebServiceUpdateAccepted>(new WebServiceUpdateAccepted());
     }
 }

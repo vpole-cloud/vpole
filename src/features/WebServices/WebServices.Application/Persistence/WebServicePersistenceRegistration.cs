@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.WebServices.Application.Endpoints;
+using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Domain;
 
@@ -12,6 +13,7 @@ public static class WebServicePersistenceRegistration
 {
     public static IServiceCollection AddWebServicePersistence(this IServiceCollection services)
     {
+        services.AddWebServiceHttpMappings();
         services.TryAddSingleton(serviceProvider => serviceProvider
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<WebService>("WebServices"));
@@ -29,6 +31,7 @@ public static class WebServicePersistenceRegistration
         services.AddCapability<MongoLoadWebServiceDeploymentSnapshot, LoadWebServiceDeploymentSnapshot>(x => x.InvokeAsync);
         services.AddCapability<MongoPersistCreatedWebService, PersistCreatedWebService>(x => x.InvokeAsync);
         services.AddCapability<MongoPersistUpdatedWebService, PersistUpdatedWebService>(x => x.InvokeAsync);
+        services.AddCapability<MongoPersistUpdatedWebService, PersistUpdatedWebServiceOutcome>(x => x.InvokeOutcomeAsync);
         services.AddCapability<MongoPersistRedeployedWebService, PersistRedeployedWebService>(x => x.InvokeAsync);
         services.AddCapability<MongoPersistCurrentWebServiceRelease, PersistCurrentWebServiceRelease>(x => x.InvokeAsync);
         services.AddCapability<MongoBeginWebServiceDeletion, BeginWebServiceDeletion>(x => x.InvokeAsync);

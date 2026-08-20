@@ -17,6 +17,7 @@ using Pole.Features.ContainerRegistries.Application.Harbor;
 using Pole.Features.ContainerRegistries.Application.Provisioning;
 using Pole.Features.ContainerRegistries.Application.Security;
 using Pole.Features.ContainerRegistries.Contracts;
+using Pole.Features.ComputeProfiles.Contracts.HttpMapping;
 using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
@@ -25,6 +26,7 @@ using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 using Pole.Features.Domains.Application.Persistence;
+using Pole.Features.Domains.Contracts.HttpMapping;
 using Pole.Features.GitProviders.Application.Analysis;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
@@ -56,6 +58,7 @@ using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Application.Placement;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Jobs;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
@@ -97,6 +100,12 @@ public static class DependencyInjection
                 TenantMemberAuthorizationHttpProblemMappings.All);
             services.AddHttpProblemMappings(
                 ResourceDeploymentHttpMappings.All);
+            services.AddHttpProblemMappings(
+                ComputeProfileContractHttpMappings.All);
+            services.AddHttpProblemMappings(
+                DomainContractHttpMappings.All);
+            services.AddHttpProblemMappings(
+                ResourceDeploymentContractHttpMappings.All);
             services.AddScoped<IMediator, Pole.Mediator.Mediator>();
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));

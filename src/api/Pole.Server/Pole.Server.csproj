@@ -29,11 +29,13 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\features\Domains\Domains.Application\Domains.Application.csproj" />
+      <ProjectReference Include="..\..\features\Domains\Domains.Contracts.HttpMapping\Domains.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\features\Functions\Functions.Application\Functions.Application.csproj" />
       <ProjectReference Include="..\..\features\Functions\Functions.Runtime\Functions.Runtime.csproj" />
       <ProjectReference Include="..\..\features\GitProviders\GitProviders.Application\GitProviders.Application.csproj" />
       <ProjectReference Include="..\..\features\ContainerRegistries\ContainerRegistries.Application\ContainerRegistries.Application.csproj" />
       <ProjectReference Include="..\..\features\ComputeProfiles\ComputeProfiles.Application\ComputeProfiles.Application.csproj" />
+      <ProjectReference Include="..\..\features\ComputeProfiles\ComputeProfiles.Contracts.HttpMapping\ComputeProfiles.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\features\DeploymentTargets\DeploymentTargets.Application\DeploymentTargets.Application.csproj" />
       <ProjectReference Include="..\..\features\DeploymentTargets\DeploymentTargets.Contracts.HttpMapping\DeploymentTargets.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\features\SourceBuilds\SourceBuilds.Application\SourceBuilds.Application.csproj" />
@@ -47,6 +49,7 @@
       <ProjectReference Include="..\..\features\Quotas\Quotas.Domain\Quotas.Domain.csproj" />
       <ProjectReference Include="..\..\features\RedisServices\RedisServices.Application\RedisServices.Application.csproj" />
       <ProjectReference Include="..\..\features\ResourceDeployments\ResourceDeployments.Application\ResourceDeployments.Application.csproj" />
+      <ProjectReference Include="..\..\features\ResourceDeployments\ResourceDeployments.Contracts.HttpMapping\ResourceDeployments.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\features\ResourceGroups\ResourceGroups.Application\ResourceGroups.Application.csproj" />
       <ProjectReference Include="..\..\features\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
       <ProjectReference Include="..\..\features\Search\Search.Application\Search.Application.fsproj" />

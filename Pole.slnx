@@ -64,6 +64,7 @@
   <Folder Name="/features/ComputeProfiles/">
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Application/ComputeProfiles.Application.csproj" />
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Contracts/ComputeProfiles.Contracts.csproj" />
+    <Project Path="src/features/ComputeProfiles/ComputeProfiles.Contracts.HttpMapping/ComputeProfiles.Contracts.HttpMapping.csproj" />
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Domain/ComputeProfiles.Domain.csproj" />
   </Folder>
   <Folder Name="/features/SourceBuilds/">
@@ -76,6 +77,7 @@
   <Folder Name="/features/Domains/">
     <Project Path="src/features/Domains/Domains.Application/Domains.Application.csproj" />
     <Project Path="src/features/Domains/Domains.Contracts/Domains.Contracts.csproj" />
+    <Project Path="src/features/Domains/Domains.Contracts.HttpMapping/Domains.Contracts.HttpMapping.csproj" />
     <Project Path="src/features/Domains/Domains.Domain/Domains.Domain.csproj" />
   </Folder>
   <Folder Name="/features/RedisServices/">
@@ -97,6 +99,7 @@
   <Folder Name="/features/ResourceDeployments/">
     <Project Path="src/features/ResourceDeployments/ResourceDeployments.Application/ResourceDeployments.Application.csproj" />
     <Project Path="src/features/ResourceDeployments/ResourceDeployments.Contracts/ResourceDeployments.Contracts.csproj" />
+    <Project Path="src/features/ResourceDeployments/ResourceDeployments.Contracts.HttpMapping/ResourceDeployments.Contracts.HttpMapping.csproj" />
     <Project Path="src/features/ResourceDeployments/ResourceDeployments.Domain/ResourceDeployments.Domain.csproj" />
     <Project Path="src/features/ResourceDeployments/ResourceDeployments.Events/ResourceDeployments.Events.csproj" />
   </Folder>

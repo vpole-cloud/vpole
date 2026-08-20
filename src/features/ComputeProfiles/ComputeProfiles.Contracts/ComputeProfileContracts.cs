@@ -74,7 +74,38 @@ public sealed record ComputeProfileBatchResolutionRequest(
     ResourceTypeId ResourceType,
     IReadOnlyList<ComputeProfileTargetResolutionRequest> Targets);
 
+public sealed record InvalidComputeProfileResolutionRequest(
+    IReadOnlyDictionary<string, string[]> Errors);
+
+public sealed record DefaultComputeProfileNotConfigured;
+
+public sealed record ComputeProfileNotFound(string ComputeProfileId);
+
+public enum ComputeProfileUnavailableReason
+{
+    Disabled,
+    ResourceTypeNotAllowed,
+    TenantNotAllowed,
+    DeploymentTargetNotConfigured
+}
+
+public sealed record ComputeProfileUnavailable(
+    string ComputeProfileId,
+    ComputeProfileUnavailableReason Reason);
+
+public union ComputeProfileResolutionError(
+    InvalidComputeProfileResolutionRequest,
+    DefaultComputeProfileNotConfigured,
+    ComputeProfileNotFound,
+    ComputeProfileUnavailable);
+
 public delegate Task<Result<IReadOnlyList<ResolvedComputeProfile>>> ResolveComputeProfiles(
+    ComputeProfileBatchResolutionRequest request,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<Result<
+    IReadOnlyList<ResolvedComputeProfile>,
+    ComputeProfileResolutionError>> ResolveComputeProfilesOutcome(
     ComputeProfileBatchResolutionRequest request,
     CancellationToken cancellationToken = default);
 

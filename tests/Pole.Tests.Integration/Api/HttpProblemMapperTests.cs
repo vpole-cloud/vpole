@@ -2,6 +2,8 @@ using System.Net;
 using Pole.ASP.Helpers;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
+using Pole.Features.ComputeProfiles.Contracts;
+using Pole.Features.ComputeProfiles.Contracts.HttpMapping;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.Endpoints;
 using Pole.Features.Domains.Application.Persistence;
@@ -12,6 +14,8 @@ using Pole.Features.Quotas.Contracts.HttpMapping;
 using Pole.Features.Quotas.Primitives;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
+using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.Tenants;
 using Pole.Mediator;
 using Xunit;
@@ -20,6 +24,25 @@ namespace Pole.Tests.Integration.Api;
 
 public sealed class HttpProblemMapperTests
 {
+    [Fact]
+    public void WebServiceOutcomeUnwrapsProviderOwnedComputeError()
+    {
+        var mapper = new HttpProblemMapper(
+        [
+            .. WebServiceHttpMappings.All,
+            .. ComputeProfileContractHttpMappings.All
+        ]);
+        AddWebServiceDeploymentError error = new(
+            new ComputeProfileResolutionError(
+                new ComputeProfileNotFound("compute-1")));
+
+        var problem = mapper.Map(error);
+
+        Assert.Equal((int)HttpStatusCode.NotFound, problem.StatusCode);
+        Assert.Equal("compute-profiles.not-found", problem.Code);
+        Assert.Equal("compute-1", problem.Extensions["computeProfileId"]);
+    }
+
     [Fact]
     public void ContractUnionMappingProvidesTheDefaultProblem()
     {

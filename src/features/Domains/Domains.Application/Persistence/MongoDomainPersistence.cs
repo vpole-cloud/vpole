@@ -152,7 +152,7 @@ internal sealed partial class MongoDomainPersistence(
         GetOrCreateGeneratedZoneRequest request,
         string tenantDisplayName,
         out TenantDomainZone? zone,
-        out Failure? failure)
+        out InvalidGeneratedDomainZoneRequest? error)
     {
         try
         {
@@ -162,13 +162,17 @@ internal sealed partial class MongoDomainPersistence(
                 GeneratedZoneLabel(tenantDisplayName, request.TenantId),
                 DnsName.Create(request.PublicBaseDomain),
                 CreateOptions());
-            failure = null;
+            error = null;
             return true;
         }
         catch (ArgumentException exception)
         {
             zone = null;
-            failure = Invalid("GeneratedZone", exception.Message);
+            error = new InvalidGeneratedDomainZoneRequest(
+                new Dictionary<string, string[]>
+                {
+                    ["GeneratedZone"] = [exception.Message]
+                });
             return false;
         }
     }
@@ -195,12 +199,12 @@ internal sealed partial class MongoDomainPersistence(
         return $"{TenantDomainZoneLabelPolicy.GeneratedPrefix}{slug[..Math.Min(slug.Length, maximumSlugLength)].TrimEnd('-')}-{tenantId[..8]}";
     }
 
-    private static ValidationFailure? ValidateGeneratedZoneSet(
+    private static InvalidGeneratedDomainZoneRequest? ValidateGeneratedZoneSet(
         IReadOnlyList<GetOrCreateGeneratedZoneRequest>? requests)
     {
         if (requests is null || requests.Count is < 1 or > DomainCapabilityLimits.MaximumSetSize)
         {
-            return Invalid(
+            return InvalidGeneratedZone(
                 "Requests",
                 $"Between 1 and {DomainCapabilityLimits.MaximumSetSize} generated-zone requests are required.");
         }
@@ -211,7 +215,7 @@ internal sealed partial class MongoDomainPersistence(
                 request.ExpectedWorkloadConfigurationRevision < 1 ||
                 !DnsName.TryCreate(request.PublicBaseDomain, out _)))
         {
-            return Invalid(
+            return InvalidGeneratedZone(
                 "Requests",
                 "Each generated-zone request requires valid tenant, target, revision, and public-domain values.");
         }
@@ -223,7 +227,7 @@ internal sealed partial class MongoDomainPersistence(
                     tenantId,
                     StringComparison.Ordinal)))
         {
-            return Invalid(
+            return InvalidGeneratedZone(
                 "Requests",
                 "All generated-zone requests in a set must belong to one tenant.");
         }
@@ -234,7 +238,7 @@ internal sealed partial class MongoDomainPersistence(
                 StringComparer.Ordinal)
             .Any(group => group.Skip(1).Any()))
         {
-            return Invalid(
+            return InvalidGeneratedZone(
                 "Requests",
                 "A generated-zone set may contain each deployment target only once.");
         }
@@ -242,12 +246,12 @@ internal sealed partial class MongoDomainPersistence(
         return null;
     }
 
-    private static ValidationFailure? ValidateGeneratedBindingSet(
+    private static InvalidGeneratedHostnameBindingRequest? ValidateGeneratedBindingSet(
         IReadOnlyList<CreateGeneratedHostnameBindingRequest>? requests)
     {
         if (requests is null || requests.Count is < 1 or > DomainCapabilityLimits.MaximumSetSize)
         {
-            return Invalid(
+            return InvalidGeneratedBindingRequest(
                 "Requests",
                 $"Between 1 and {DomainCapabilityLimits.MaximumSetSize} generated-binding requests are required.");
         }
@@ -260,7 +264,7 @@ internal sealed partial class MongoDomainPersistence(
                 !ObjectId.TryParse(request.ResourceDeploymentId, out _) ||
                 string.IsNullOrWhiteSpace(request.ResourceType.Value)))
         {
-            return Invalid(
+            return InvalidGeneratedBindingRequest(
                 "Requests",
                 "Each generated-binding request requires valid tenant, zone, target, resource, and deployment values.");
         }
@@ -273,7 +277,7 @@ internal sealed partial class MongoDomainPersistence(
                 !string.Equals(request.ResourceType.Value, first.ResourceType.Value, StringComparison.Ordinal) ||
                 !string.Equals(CanonicalObjectId(request.ResourceId), resourceId, StringComparison.Ordinal)))
         {
-            return Invalid(
+            return InvalidGeneratedBindingRequest(
                 "Requests",
                 "All generated bindings in a set must belong to one tenant and logical resource.");
         }
@@ -284,7 +288,7 @@ internal sealed partial class MongoDomainPersistence(
                 StringComparer.Ordinal)
             .Any(group => group.Skip(1).Any()))
         {
-            return Invalid(
+            return InvalidGeneratedBindingRequest(
                 "Requests",
                 "A generated-binding set may contain each resource deployment only once.");
         }
@@ -305,6 +309,48 @@ internal sealed partial class MongoDomainPersistence(
 
     private static ValidationFailure Invalid(string field, string message) =>
         Failures.ValidationFailure(new Dictionary<string, string[]> { [field] = [message] });
+
+    private static InvalidGeneratedDomainZoneRequest InvalidGeneratedZone(
+        string field,
+        string message) =>
+        new(new Dictionary<string, string[]> { [field] = [message] });
+
+    private static InvalidGeneratedHostnameBindingRequest InvalidGeneratedBindingRequest(
+        string field,
+        string message) =>
+        new(new Dictionary<string, string[]> { [field] = [message] });
+
+    private static Failure ToLegacyFailure(
+        GeneratedDomainZoneError error) => error switch
+        {
+            InvalidGeneratedDomainZoneRequest invalid =>
+                Failures.ValidationFailure(
+                    invalid.Errors.ToDictionary(item => item.Key, item => item.Value)),
+            GeneratedDomainZoneTenantUnavailable unavailable => Failures.NotFound(
+                "Tenant identity not found.",
+                unavailable.TenantId),
+            GeneratedDomainZoneTargetChanged => Failures.Conflict(
+                "The deployment target workload configuration changed or no longer accepts workloads."),
+            GeneratedDomainZoneMismatch => Failures.Conflict(
+                "The generated domain zone does not match the target public base domain."),
+            GeneratedDomainZoneConflict => ConcurrentGeneratedZoneConflict()
+        };
+
+    private static Failure ToLegacyFailure(
+        GeneratedHostnameBindingError error) => error switch
+        {
+            InvalidGeneratedHostnameBindingRequest invalid =>
+                Failures.ValidationFailure(
+                    invalid.Errors.ToDictionary(item => item.Key, item => item.Value)),
+            GeneratedHostnameBindingZoneNotFound notFound => Failures.NotFound(
+                "Domain zone not found.",
+                notFound.TenantDomainZoneId),
+            GeneratedHostnameBindingTargetMismatch => Failures.Conflict(
+                "A domain zone belongs to another deployment target."),
+            GeneratedHostnameBindingZoneChanged => Failures.Conflict(
+                "A domain zone changed while hostname ownership was being updated."),
+            GeneratedHostnameBindingConflict => GeneratedHostnameConflict()
+        };
 
     private static void EnsureTransaction(IClientSessionHandle session)
     {

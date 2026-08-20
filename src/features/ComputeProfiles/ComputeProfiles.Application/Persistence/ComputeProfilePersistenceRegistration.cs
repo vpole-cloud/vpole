@@ -35,6 +35,8 @@ public static class ComputeProfilePersistenceRegistration
             implementation => implementation.InvokeAsync);
         services.AddCapability<MongoResolveComputeProfiles, ResolveComputeProfiles>(
             implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoResolveComputeProfiles, ResolveComputeProfilesOutcome>(
+            implementation => implementation.InvokeOutcomeAsync);
         services.AddCapability<MongoResolveComputeProfile, ResolveComputeProfile>(
             implementation => implementation.InvokeAsync);
         services.AddScoped<MongoFenceResolvedComputeProfile>();
