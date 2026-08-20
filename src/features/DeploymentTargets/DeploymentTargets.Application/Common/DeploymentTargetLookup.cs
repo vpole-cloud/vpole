@@ -7,8 +7,7 @@ using Pole.ResultType;
 namespace Pole.Features.DeploymentTargets.Application.Common;
 
 public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
-    : IDeploymentTargetLookup,
-      IDeploymentTargetPublicIngressAdmission
+    : IDeploymentTargetLookup
 {
     public async Task<Result<DeploymentTargetLookupDto>> GetAsync(
         string deploymentTargetId,
@@ -123,43 +122,6 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
             .ToArray();
     }
 
-    public async Task<Result<DeploymentTargetPublicIngressDto>>
-        ResolvePublicIngressForNewWorkloadAsync(
-            DeploymentTargetAdmissionRequest request,
-            CancellationToken cancellationToken = default)
-    {
-        var admission = await AdmitForNewWorkloadAsync(request, cancellationToken);
-        return admission switch
-        {
-            DeploymentTargetPublicIngressDto ingress => ingress,
-            InvalidDeploymentTargetId => Failures.ValidationFailure(
-                new Dictionary<string, string[]>
-                {
-                    ["DeploymentTargetId"] =
-                    ["Deployment target ID must be a MongoDB ObjectId."]
-                }),
-            DeploymentTargetNotFound notFound => Failures.NotFound(
-                "Deployment target not found.",
-                notFound.DeploymentTargetId),
-            DeploymentTargetDisabled =>
-                Failures.Conflict("The deployment target is disabled."),
-            DeploymentTargetDeletionRequested =>
-                Failures.Conflict("The deployment target is pending deletion."),
-            DeploymentTargetNewWorkloadsDisabled =>
-                Failures.Conflict("The deployment target does not accept new workloads."),
-            NoDeploymentTargetAcceptsPublicWorkloads =>
-                Failures.Conflict("No deployment target accepts public workloads."),
-            DeploymentTargetSelectionRequired => Failures.SemanticValidation(
-                new Dictionary<string, string[]>
-                {
-                    ["Placement.DeploymentTargetId"] =
-                    ["Deployment target is required when more than one eligible target is available."]
-                }),
-            DeploymentTargetPublicIngressUnavailable =>
-                RequiredCapabilitiesFailure(DeploymentTargetRequiredCapabilities.PublicIngress)
-        };
-    }
-
     public async Task<DeploymentTargetPublicIngressAdmissionResult>
         AdmitForNewWorkloadAsync(
             DeploymentTargetAdmissionRequest request,
@@ -217,42 +179,6 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
             > 1 => new DeploymentTargetSelectionRequired(
                 eligible.Select(target => target.Id).ToArray()),
             _ => ToPublicIngressDto(eligible[0])
-        };
-    }
-
-    public async Task<Result<DeploymentTargetPublicIngressDto>>
-        ResolvePublicIngressForDomainReservationAsync(
-            string tenantId,
-            string deploymentTargetId,
-            CancellationToken cancellationToken = default)
-    {
-        var admission = await AdmitForDomainReservationAsync(
-            tenantId,
-            deploymentTargetId,
-            cancellationToken);
-        if (admission.TryGetValue(out var ingress, out var error))
-            return ingress;
-
-        return error switch
-        {
-            InvalidDeploymentTargetId => Failures.ValidationFailure(
-                new Dictionary<string, string[]>
-                {
-                    ["DeploymentTargetId"] =
-                    ["Deployment target ID must be a MongoDB ObjectId."]
-                }),
-            DeploymentTargetNotFound notFound => Failures.NotFound(
-                "Deployment target not found.",
-                notFound.DeploymentTargetId),
-            DeploymentTargetDisabled =>
-                Failures.Conflict("The deployment target is disabled."),
-            DeploymentTargetDeletionRequested =>
-                Failures.Conflict("The deployment target is pending deletion."),
-            DeploymentTargetNewWorkloadsDisabled =>
-                Failures.Conflict("The deployment target does not accept new workloads."),
-            DeploymentTargetPublicIngressUnavailable =>
-                RequiredCapabilitiesFailure(
-                    DeploymentTargetRequiredCapabilities.PublicIngress)
         };
     }
 

@@ -106,10 +106,11 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
     {
         var privateTarget = CreateTarget(publicBaseDomain: null);
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(privateTarget);
-        IDeploymentTargetPublicIngressAdmission admission =
-            new DeploymentTargetLookup(fixture.DbContext);
+        var lookup = new DeploymentTargetLookup(fixture.DbContext);
+        AdmitDeploymentTargetPublicIngressForNewWorkload admission =
+            lookup.AdmitForNewWorkloadAsync;
 
-        var result = await admission.AdmitForNewWorkloadAsync(
+        var result = await admission(
             new DeploymentTargetAdmissionRequest(
                 ObjectId.GenerateNewId().ToString(),
                 ResourceTypeId.Create("pole/web-service"),
@@ -131,10 +132,11 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
     {
         var target = CreateTarget("apps.example.test");
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
-        IDeploymentTargetPublicIngressAdmission admission =
-            new DeploymentTargetLookup(fixture.DbContext);
+        var lookup = new DeploymentTargetLookup(fixture.DbContext);
+        AdmitDeploymentTargetPublicIngressForDomainReservation admission =
+            lookup.AdmitForDomainReservationAsync;
 
-        var result = await admission.AdmitForDomainReservationAsync(
+        var result = await admission(
             ObjectId.GenerateNewId().ToString(),
             target.Id);
 
@@ -148,10 +150,11 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
     {
         var target = CreateTarget(publicBaseDomain: null);
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
-        IDeploymentTargetPublicIngressAdmission admission =
-            new DeploymentTargetLookup(fixture.DbContext);
+        var lookup = new DeploymentTargetLookup(fixture.DbContext);
+        AdmitDeploymentTargetPublicIngressForDomainReservation admission =
+            lookup.AdmitForDomainReservationAsync;
 
-        var result = await admission.AdmitForDomainReservationAsync(
+        var result = await admission(
             ObjectId.GenerateNewId().ToString(),
             target.Id);
 

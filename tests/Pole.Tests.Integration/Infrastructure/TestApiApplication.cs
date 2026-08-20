@@ -20,11 +20,13 @@ using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.Migrations;
 using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.ContainerRegistries.Application.Common;
+using Pole.Features.DeploymentTargets.Application;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Application.Migrations;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.Functions.Application.Common;
@@ -162,6 +164,8 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddResourceDeploymentsFeature(builder.Configuration);
         builder.Services.AddHttpProblemMappings(
             ResourceDeploymentContractHttpMappings.All);
+        builder.Services.AddHttpProblemMappings(
+            DeploymentTargetContractHttpMappings.All);
         builder.Services.AddTenantContractCapabilities();
         builder.Services.AddDomainPersistence();
         builder.Services.AddDomainHttpMappings();
@@ -192,13 +196,17 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.RemoveAll<IDeploymentTargetProbe>();
         builder.Services.AddSingleton<IDeploymentTargetProbe, TestDeploymentTargetProbe>();
         builder.Services.RemoveAll<IDeploymentTargetLookup>();
-        builder.Services.RemoveAll<IDeploymentTargetPublicIngressAdmission>();
+        builder.Services.RemoveAll<AdmitDeploymentTargetPublicIngressForNewWorkload>();
+        builder.Services.RemoveAll<AdmitDeploymentTargetPublicIngressForDomainReservation>();
         builder.Services.RemoveAll<IDeploymentTargetReferenceAdmission>();
         builder.Services.RemoveAll<IDeploymentTargetWorkloadConfigurationFence>();
         var deploymentTargetLookup = new TestDeploymentTargetLookup();
         builder.Services.AddSingleton<IDeploymentTargetLookup>(deploymentTargetLookup);
-        builder.Services.AddSingleton<IDeploymentTargetPublicIngressAdmission>(
-            deploymentTargetLookup);
+        builder.Services.AddSingleton<AdmitDeploymentTargetPublicIngressForNewWorkload>(
+            deploymentTargetLookup.AdmitForNewWorkloadAsync);
+        builder.Services.AddSingleton<
+            AdmitDeploymentTargetPublicIngressForDomainReservation>(
+            deploymentTargetLookup.AdmitForDomainReservationAsync);
         builder.Services.AddSingleton<IDeploymentTargetReferenceAdmission>(
             deploymentTargetLookup);
         builder.Services.AddSingleton<IDeploymentTargetWorkloadConfigurationFence>(

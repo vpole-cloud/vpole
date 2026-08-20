@@ -5,6 +5,7 @@ using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ComputeProfiles.Application;
 using Pole.Features.ComputeProfiles.Application.Bootstrap;
+using Pole.Features.DeploymentTargets.Application;
 using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
@@ -20,6 +21,7 @@ using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Contracts.HttpMapping;
+using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Persistence;
@@ -79,6 +81,7 @@ builder.AddSecurity();
 
 builder.Services.AddHttpProblemMappings(QuotaContractHttpMappings.All);
 builder.Services.AddHttpProblemMappings(ResourceDeploymentContractHttpMappings.All);
+builder.Services.AddHttpProblemMappings(DeploymentTargetContractHttpMappings.All);
 
 builder.Services.AddKubernetes(configuration)
     .AddEventBus(configuration, assemblies)

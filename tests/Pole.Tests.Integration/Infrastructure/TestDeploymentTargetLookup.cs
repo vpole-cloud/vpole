@@ -6,7 +6,6 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 internal sealed class TestDeploymentTargetLookup :
     IDeploymentTargetLookup,
-    IDeploymentTargetPublicIngressAdmission,
     IDeploymentTargetReferenceAdmission,
     IDeploymentTargetWorkloadConfigurationFence
 {
@@ -98,24 +97,6 @@ internal sealed class TestDeploymentTargetLookup :
                 ? Array.Empty<DeploymentTargetLookupDto>()
                 : _targets.Values.OrderBy(target => target.Id, StringComparer.Ordinal).ToArray());
 
-    public Task<Result<DeploymentTargetPublicIngressDto>>
-        ResolvePublicIngressForNewWorkloadAsync(
-            DeploymentTargetAdmissionRequest request,
-            CancellationToken cancellationToken = default) =>
-        RejectNewWorkloads
-            ? Task.FromResult<Result<DeploymentTargetPublicIngressDto>>(
-                Failures.Conflict("The deployment target is not accepting new workloads."))
-            : !_targets.TryGetValue(request.ExplicitDeploymentTargetId ?? string.Empty, out var target)
-                ? Task.FromResult<Result<DeploymentTargetPublicIngressDto>>(
-                    Failures.NotFound("Deployment target not found.", request.ExplicitDeploymentTargetId))
-                : Task.FromResult<Result<DeploymentTargetPublicIngressDto>>(
-                new DeploymentTargetPublicIngressDto(
-                    target.Id,
-                    target.WorkloadConfiguration.Revision,
-                    target.WorkloadConfiguration.Ingress!.IngressClassName,
-                    target.WorkloadConfiguration.Ingress.ClusterIssuerName,
-                    target.WorkloadConfiguration.Ingress.PublicBaseDomain!));
-
     public Task<DeploymentTargetPublicIngressAdmissionResult>
         AdmitForNewWorkloadAsync(
             DeploymentTargetAdmissionRequest request,
@@ -185,20 +166,6 @@ internal sealed class TestDeploymentTargetLookup :
 
         return Task.FromResult(result);
     }
-
-    public Task<Result<DeploymentTargetPublicIngressDto>>
-        ResolvePublicIngressForDomainReservationAsync(
-            string tenantId,
-            string deploymentTargetId,
-            CancellationToken cancellationToken = default) =>
-        ResolvePublicIngressForNewWorkloadAsync(
-            new DeploymentTargetAdmissionRequest(
-                tenantId,
-                Pole.Workloads.ResourceTypeId.Create("pole/test-only"),
-                IsolationScopeId: null,
-                deploymentTargetId,
-                DeploymentTargetRequiredCapabilities.PublicIngress),
-            cancellationToken);
 
     public Task<Result> RegisterAsync(
         string deploymentTargetId,
