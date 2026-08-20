@@ -50,6 +50,7 @@ using Pole.Features.Quotas.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Application.Jobs;
 using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Application.Placement;
@@ -94,6 +95,8 @@ public static class DependencyInjection
                 TenantAuthorizationHttpProblemMappings.All);
             services.AddHttpProblemMappings(
                 TenantMemberAuthorizationHttpProblemMappings.All);
+            services.AddHttpProblemMappings(
+                ResourceDeploymentHttpMappings.All);
             services.AddScoped<IMediator, Pole.Mediator.Mediator>();
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
@@ -329,6 +332,11 @@ public static class DependencyInjection
                     .GetRequiredService<MongoStoreOutboxWrites>()
                     .InvokeAsync);
             services.TryAddSingleton<MongoRunTransaction>();
+            services.TryAddSingleton<RunMongoOutcomeTransaction<
+                RetryResourceDeploymentOutcome>>(serviceProvider =>
+                serviceProvider
+                    .GetRequiredService<MongoRunTransaction>()
+                    .InvokeOutcomeAsync<RetryResourceDeploymentOutcome>);
             services.TryAddSingleton<RunMongoTransaction>(serviceProvider =>
                 serviceProvider
                     .GetRequiredService<MongoRunTransaction>()

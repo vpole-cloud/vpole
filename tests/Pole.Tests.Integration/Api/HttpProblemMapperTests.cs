@@ -5,6 +5,8 @@ using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.Endpoints;
 using Pole.Features.Domains.Application.Persistence;
+using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.Tenants;
 using Pole.Mediator;
 using Xunit;
@@ -214,6 +216,43 @@ public sealed class HttpProblemMapperTests
             new TenantMemberNotFound("tenant-1", "member-1"));
         Assert.Equal("tenant-1", memberNotFound.Extensions["tenantId"]);
         Assert.Equal("member-1", memberNotFound.Extensions["memberId"]);
+    }
+
+    [Fact]
+    public void ResourceDeploymentRetryErrorsHaveStableProblemMappings()
+    {
+        var mapper = new HttpProblemMapper(
+            ResourceDeploymentHttpMappings.All);
+        (RetryResourceDeploymentError Error, HttpStatusCode Status, string Code)[]
+            cases =
+            [
+                (
+                    new ResourceDeploymentNotFound("deployment-1"),
+                    HttpStatusCode.NotFound,
+                    "resource-deployments.not-found"),
+                (
+                    new ResourceDeploymentNotRetryable("deployment-1"),
+                    HttpStatusCode.Conflict,
+                    "resource-deployments.retry.not-retryable"),
+                (
+                    new ResourceDeploymentRetryConflict("deployment-1"),
+                    HttpStatusCode.Conflict,
+                    "resource-deployments.retry.concurrent-change")
+            ];
+
+        foreach (var testCase in cases)
+        {
+            var problem = mapper.Map(testCase.Error);
+
+            Assert.Equal((int)testCase.Status, problem.StatusCode);
+            Assert.Equal(testCase.Code, problem.Code);
+            Assert.Equal(
+                PoleProblemTypeId.FromCode(testCase.Code),
+                problem.Type);
+            Assert.Equal(
+                "deployment-1",
+                problem.Extensions["deploymentId"]);
+        }
     }
 
     [Fact]

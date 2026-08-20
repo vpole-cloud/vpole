@@ -11,26 +11,44 @@ using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 
 namespace Pole.Features.ResourceDeployments.Application.Endpoints;
 
+public sealed record ResourceDeploymentNotFound(string DeploymentId);
+
+public sealed record ResourceDeploymentNotRetryable(string DeploymentId);
+
+public sealed record ResourceDeploymentRetryConflict(string DeploymentId);
+
+public union RetryResourceDeploymentError(
+    ResourceDeploymentNotFound,
+    ResourceDeploymentNotRetryable,
+    ResourceDeploymentRetryConflict);
+
+public union RetryResourceDeploymentOutcome(
+    ResourceDeploymentDto,
+    RetryResourceDeploymentError);
+
 public sealed record RetryResourceDeploymentRequest(
     [FromRoute] string DeploymentId,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<ResourceDeploymentDto>, ITenantWriteOperation;
+    : IMediatorRequest<RetryResourceDeploymentOutcome>, ITenantWriteOperation;
 
 public sealed class RetryResourceDeploymentHandler(
+    RunMongoOutcomeTransaction<RetryResourceDeploymentOutcome>
+        runMongoTransaction,
     IResourceDeploymentDbContext dbContext,
     TimeProvider timeProvider)
-    : IMediatorHandler<RetryResourceDeploymentRequest, ResourceDeploymentDto>
+    : IMediatorOutcomeHandler<
+        RetryResourceDeploymentRequest,
+        RetryResourceDeploymentOutcome>
 {
-    public Task<Result<ResourceDeploymentDto>> HandleAsync(
+    public Task<RetryResourceDeploymentOutcome> HandleAsync(
         RetryResourceDeploymentRequest request,
         CancellationToken cancellationToken = default) =>
-        dbContext.RunInTransactionAsync<ResourceDeploymentDto>(
-            async (session, ct) =>
+        runMongoTransaction(
+            async (transaction, ct) =>
             {
                 var filter = Builders<ResourceDeployment>.Filter.And(
                     Builders<ResourceDeployment>.Filter.Eq(
@@ -38,26 +56,29 @@ public sealed class RetryResourceDeploymentHandler(
                         request.DeploymentId),
                     Builders<ResourceDeployment>.Filter.ForTenant(request.TenantId));
                 var current = await dbContext.ResourceDeployments
-                    .Find(session, filter)
+                    .Find(transaction.Session, filter)
                     .FirstOrDefaultAsync(ct);
                 if (current is null)
                 {
-                    return Failures.NotFound(
-                        "Resource deployment not found.",
-                        request.DeploymentId);
+                    return Abort(
+                        transaction,
+                        new ResourceDeploymentNotFound(
+                            request.DeploymentId));
                 }
                 if (current.State is not FailedResourceDeploymentState
                     {
                         Retryable: true
                     })
                 {
-                    return Failures.Conflict(
-                        "Only a retryable failed resource deployment can be retried.");
+                    return Abort(
+                        transaction,
+                        new ResourceDeploymentNotRetryable(
+                            request.DeploymentId));
                 }
 
                 var retried = current.Retry(timeProvider.GetUtcNow().UtcDateTime);
                 var replacement = await dbContext.ResourceDeployments.ReplaceOneAsync(
-                    session,
+                    transaction.Session,
                     Builders<ResourceDeployment>.Filter.And(
                         filter,
                         Builders<ResourceDeployment>.Filter.Eq(
@@ -70,17 +91,25 @@ public sealed class RetryResourceDeploymentHandler(
                     cancellationToken: ct);
                 if (replacement.ModifiedCount != 1)
                 {
-                    return Failures.Conflict(
-                        "The resource deployment changed while retry was being requested.");
+                    return Abort(
+                        transaction,
+                        new ResourceDeploymentRetryConflict(
+                            request.DeploymentId));
                 }
 
                 await dbContext.StoreEventAsync(
                     retried.ToCurrentRequestWrite(),
-                    session,
+                    transaction.Session,
                     ct);
-                return retried.ToDto();
+                return transaction.Commit(retried.ToDto());
             },
-            cancellationToken: cancellationToken);
+            cancellationToken);
+
+    private static MongoTransactionDecision<RetryResourceDeploymentOutcome>
+        Abort(
+            MongoTransactionContext<RetryResourceDeploymentOutcome> transaction,
+            RetryResourceDeploymentError error) =>
+        transaction.Abort(error);
 }
 
 public sealed class RetryResourceDeploymentRequestValidator
@@ -100,16 +129,25 @@ public static class RetryResourceDeploymentEndpoint
     {
         app.MapPost("/{DeploymentId}/retry", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] RetryResourceDeploymentRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(
-                    deployment => Results.Accepted(value: deployment));
+                    outcome => outcome switch
+                    {
+                        ResourceDeploymentDto deployment =>
+                            Results.Accepted(value: deployment),
+                        RetryResourceDeploymentError error =>
+                            httpProblems.Map(error).ToHttpResult()
+                    });
             })
             .WithName("RetryResourceDeployment")
             .WithSummary("Requests another attempt for a failed resource deployment.")
-            .Produces<ResourceDeploymentDto>(StatusCodes.Status202Accepted);
+            .Produces<ResourceDeploymentDto>(StatusCodes.Status202Accepted)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return app;
     }

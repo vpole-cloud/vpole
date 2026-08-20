@@ -17,6 +17,7 @@ using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Persistence;
+using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.Search.Application.Common;
@@ -46,6 +47,7 @@ public static class TestServiceProviderFactory
         typeof(QuotaEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,
         typeof(RedisServiceEndpoints).Assembly,
+        typeof(ResourceDeploymentFeature).Assembly,
         typeof(DomainZoneEndpoints).Assembly,
         typeof(DeploymentTargetFeature).Assembly,
         typeof(SearchEndpoints).Assembly,
