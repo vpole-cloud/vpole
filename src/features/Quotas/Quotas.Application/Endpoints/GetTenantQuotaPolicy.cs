@@ -6,7 +6,6 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Mediator;
-using Pole.ResultType;
 
 namespace Pole.Features.Quotas.Application.Endpoints;
 
@@ -37,9 +36,11 @@ public sealed record GetTenantQuotaPolicyRequest(
 public sealed class GetTenantQuotaPolicyHandler(
     IQuotaDbContext dbContext,
     QuotaCatalog catalog)
-    : IMediatorHandler<GetTenantQuotaPolicyRequest, TenantQuotaPolicyDto>
+    : IMediatorOutcomeHandler<
+        GetTenantQuotaPolicyRequest,
+        TenantQuotaPolicyDto>
 {
-    public async Task<Result<TenantQuotaPolicyDto>> HandleAsync(
+    public async Task<TenantQuotaPolicyDto> HandleAsync(
         GetTenantQuotaPolicyRequest request,
         CancellationToken cancellationToken = default)
     {

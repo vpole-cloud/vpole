@@ -40,6 +40,7 @@
   <Folder Name="/features/Quotas/">
     <Project Path="src/features/Quotas/Quotas.Application/Quotas.Application.csproj" />
     <Project Path="src/features/Quotas/Quotas.Contracts/Quotas.Contracts.csproj" />
+    <Project Path="src/features/Quotas/Quotas.Contracts.HttpMapping/Quotas.Contracts.HttpMapping.csproj" />
     <Project Path="src/features/Quotas/Quotas.Domain/Quotas.Domain.csproj" />
     <Project Path="src/features/Quotas/Quotas.Primitives/Quotas.Primitives.csproj" />
   </Folder>

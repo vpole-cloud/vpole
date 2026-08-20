@@ -5,6 +5,11 @@ using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.Endpoints;
 using Pole.Features.Domains.Application.Persistence;
+using Pole.Features.Quotas.Application.Common;
+using Pole.Features.Quotas.Application.Endpoints;
+using Pole.Features.Quotas.Contracts;
+using Pole.Features.Quotas.Contracts.HttpMapping;
+using Pole.Features.Quotas.Primitives;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.Tenants;
@@ -253,6 +258,73 @@ public sealed class HttpProblemMapperTests
                 "deployment-1",
                 problem.Extensions["deploymentId"]);
         }
+    }
+
+    [Fact]
+    public void QuotaReservationErrorsHaveStableProblemMappings()
+    {
+        var mapper = new HttpProblemMapper(
+            QuotaContractHttpMappings.All);
+        QuotaReservationError exceeded = new QuotaExceeded(
+            new QuotaKey("CpuMillis"),
+            Limit: 8_000,
+            Requested: 2_000,
+            Current: 7_000);
+        (QuotaReservationError Error, HttpStatusCode Status, string Code)[]
+            cases =
+            [
+                (
+                    new InvalidQuotaReservationRequest(
+                        new Dictionary<string, string[]>
+                        {
+                            ["TenantId"] = ["Tenant id is required."]
+                        }),
+                    HttpStatusCode.BadRequest,
+                    "quotas.reservation.invalid"),
+                (
+                    exceeded,
+                    HttpStatusCode.UnprocessableEntity,
+                    "quotas.reservation.exceeded"),
+                (
+                    new QuotaReservationConflict(
+                        "tenant-1",
+                        QuotaResourceKey.Create("web-service", "resource-1")),
+                    HttpStatusCode.Conflict,
+                    "quotas.reservation.conflict")
+            ];
+
+        foreach (var testCase in cases)
+        {
+            var mapped = mapper.Map(testCase.Error);
+            Assert.Equal((int)testCase.Status, mapped.StatusCode);
+            Assert.Equal(testCase.Code, mapped.Code);
+            Assert.Equal(
+                PoleProblemTypeId.FromCode(testCase.Code),
+                mapped.Type);
+        }
+
+        var problem = mapper.Map(exceeded);
+        Assert.Equal("CpuMillis", problem.Extensions["quota"]);
+        Assert.Equal(8_000L, problem.Extensions["limit"]);
+        Assert.Equal(2_000L, problem.Extensions["requested"]);
+        Assert.Equal(7_000L, problem.Extensions["current"]);
+    }
+
+    [Fact]
+    public void InvalidQuotaPolicyHasFeatureLocalProblemMapping()
+    {
+        var mapper = new HttpProblemMapper(QuotaHttpMappings.All);
+        var invalid = new InvalidTenantQuotaPolicy(
+            new Dictionary<string, string[]>
+            {
+                ["Body.Limits[0].Key"] = ["Quota key is invalid."]
+            });
+
+        var problem = mapper.Map(invalid);
+
+        Assert.Equal((int)HttpStatusCode.BadRequest, problem.StatusCode);
+        Assert.Equal("quotas.policy.invalid", problem.Code);
+        Assert.Same(invalid.Errors, problem.Extensions["errors"]);
     }
 
     [Fact]

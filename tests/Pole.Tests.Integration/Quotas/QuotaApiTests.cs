@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Pole.Features.Core.Multitenancy;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -54,5 +55,17 @@ public sealed class QuotaApiTests(MongoReplicaSetFixture fixture)
             });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(
+            "application/problem+json",
+            response.Content.Headers.ContentType?.MediaType);
+        using var problem = JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync());
+        Assert.Equal(
+            "quotas.policy.invalid",
+            problem.RootElement.GetProperty("code").GetString());
+        Assert.True(
+            problem.RootElement
+                .GetProperty("errors")
+                .TryGetProperty("Body.Limits[0].Key", out _));
     }
 }

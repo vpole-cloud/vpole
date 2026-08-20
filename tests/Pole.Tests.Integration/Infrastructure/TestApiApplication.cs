@@ -35,6 +35,7 @@ using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Outbox.Application.Migrations;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
+using Pole.Features.Quotas.Contracts.HttpMapping;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.ResourceDeployments.Application;
@@ -153,6 +154,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddTenantContractCapabilities();
         builder.Services.AddDomainPersistence();
         builder.Services.AddDomainHttpMappings();
+        builder.Services.AddHttpProblemMappings(QuotaContractHttpMappings.All);
         builder.Services.AddComputeProfiles();
         builder.Services.AddRedisPersistence();
         builder.Services.AddWebServicePersistence();
@@ -169,6 +171,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             typeof(FunctionAppQuotaProfile).Assembly,
             typeof(WebServiceQuotaProfile).Assembly,
             typeof(PostgresQuotaProfile).Assembly);
+        builder.Services.AddQuotaHttpMappings();
         builder.Services.AddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
         builder.Services.AddMigrations(Assemblies);
         builder.Services.AddSearchFeature();

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Pole.Features.Quotas.Application.Endpoints;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Domain;
 using Pole.ResultType;
@@ -62,7 +63,7 @@ public static class QuotaDtoExtensions
             usage?.UpdatedAtUtc);
     }
 
-    public static Result<QuotaDelta> ToQuotaLimits(
+    public static Result<QuotaDelta, InvalidTenantQuotaPolicy> ToQuotaLimits(
         this UpsertTenantQuotaPolicyRequestBody body,
         QuotaCatalog catalog)
     {
@@ -70,7 +71,8 @@ public static class QuotaDtoExtensions
         if (body.Limits is null)
         {
             errors["Body.Limits"] = ["Limits is required. Send an empty collection to make every quota unlimited."];
-            return Failures.ValidationFailure(errors);
+            return new Err<InvalidTenantQuotaPolicy>(
+                new InvalidTenantQuotaPolicy(errors));
         }
 
         var definitions = catalog.Definitions.ToDictionary(
@@ -99,9 +101,12 @@ public static class QuotaDtoExtensions
         }
 
         if (errors.Count > 0)
-            return Failures.ValidationFailure(errors);
+        {
+            return new Err<InvalidTenantQuotaPolicy>(
+                new InvalidTenantQuotaPolicy(errors));
+        }
 
-        return QuotaDelta.Create(parsed);
+        return new Ok<QuotaDelta>(QuotaDelta.Create(parsed));
     }
 
     private static IReadOnlyCollection<QuotaValueDto> ToValueDtos(

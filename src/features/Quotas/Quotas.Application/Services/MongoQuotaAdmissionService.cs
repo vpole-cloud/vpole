@@ -14,28 +14,28 @@ public sealed class MongoQuotaAdmissionService(
 {
     private const int InitialUpsertRetryCount = 3;
 
-    public async Task<Result<QuotaReservationLease>> ReserveAsync(
+    public async Task<Result<QuotaReservationLease, QuotaReservationError>> ReserveAsync(
         string tenantId,
         QuotaDelta delta,
         QuotaResourceKey resourceKey,
         CancellationToken cancellationToken = default)
     {
-        var validationFailure = ValidateTenantAndDelta(
+        var validationError = ValidateReservation(
             tenantId,
             delta,
-            requireStrictlyPositive: true);
-        if (validationFailure is not null)
-            return validationFailure;
-
-        if (string.IsNullOrWhiteSpace(resourceKey.Value))
-            return ValidationFailure("ResourceKey", "Quota resource key is required.");
+            resourceKey);
+        if (validationError is not null)
+        {
+            return new Err<QuotaReservationError>(
+                new QuotaReservationError(validationError));
+        }
 
         for (var attempt = 0; attempt < InitialUpsertRetryCount; attempt++)
         {
             using var session = await dbContext.Client.StartSessionAsync(cancellationToken: cancellationToken);
             try
             {
-                return await session.WithTransactionAsync(
+                var lease = await session.WithTransactionAsync(
                     async (transactionSession, transactionCancellationToken) =>
                     {
                         var nowUtc = UtcNow();
@@ -56,7 +56,11 @@ public sealed class MongoQuotaAdmissionService(
                             .Find(transactionSession, activeReservationFilter)
                             .ToListAsync(transactionCancellationToken);
 
-                        var denial = GetAdmissionDenial(policy, usage, activeReservations, delta);
+                        var denial = GetAdmissionDenial(
+                            policy,
+                            usage,
+                            activeReservations,
+                            delta);
                         if (denial is not null)
                             throw new QuotaAdmissionDeniedException(denial);
 
@@ -82,10 +86,12 @@ public sealed class MongoQuotaAdmissionService(
                             reservation.ResourceKey);
                     },
                     cancellationToken: cancellationToken);
+                return new Ok<QuotaReservationLease>(lease);
             }
             catch (QuotaAdmissionDeniedException exception)
             {
-                return exception.Failure;
+                return new Err<QuotaReservationError>(
+                    new QuotaReservationError(exception.Error));
             }
             catch (MongoWriteException exception) when (
                 exception.WriteError?.Category == ServerErrorCategory.DuplicateKey &&
@@ -95,7 +101,9 @@ public sealed class MongoQuotaAdmissionService(
             }
         }
 
-        return Failures.Conflict("Quota admission conflicted with another request. Please retry.");
+        return new Err<QuotaReservationError>(
+            new QuotaReservationError(
+                new QuotaReservationConflict(tenantId, resourceKey)));
     }
 
     public async Task<Result> CommitAsync(
@@ -240,7 +248,7 @@ public sealed class MongoQuotaAdmissionService(
             },
             cancellationToken);
 
-    private static Failure? GetAdmissionDenial(
+    private static QuotaExceeded? GetAdmissionDenial(
         TenantQuotaPolicy? policy,
         TenantQuotaUsage usage,
         IReadOnlyCollection<QuotaReservation> activeReservations,
@@ -252,18 +260,50 @@ public sealed class MongoQuotaAdmissionService(
         var activeValues = QuotaValues.Sum(activeReservations.Select(reservation => reservation.Delta));
         foreach (var limit in policy.Limits)
         {
-            var projected = checked(
+            var current = checked(
                 QuotaValues.GetValue(usage.Values, limit.Key) +
-                QuotaValues.GetValue(activeValues, limit.Key) +
-                requestedDelta[limit.Key]);
+                QuotaValues.GetValue(activeValues, limit.Key));
+            var requested = requestedDelta[limit.Key];
+            var projected = checked(current + requested);
             if (projected > limit.Value)
             {
-                return Failures.Conflict(
-                    $"Quota exceeded for {limit.Key}: requested total {projected}, limit {limit.Value}.");
+                return new QuotaExceeded(
+                    limit.Key,
+                    limit.Value,
+                    requested,
+                    current);
             }
         }
 
         return null;
+    }
+
+    private static InvalidQuotaReservationRequest? ValidateReservation(
+        string tenantId,
+        QuotaDelta delta,
+        QuotaResourceKey resourceKey)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(tenantId))
+            errors["TenantId"] = ["Tenant id is required."];
+
+        if (delta.IsEmpty)
+        {
+            errors["Delta"] =
+                ["Quota delta must contain at least one quota."];
+        }
+        else if (delta.Values.Any(value => value.Value <= 0))
+        {
+            errors["Delta"] =
+                ["Reserved quota values must be greater than zero."];
+        }
+
+        if (string.IsNullOrWhiteSpace(resourceKey.Value))
+            errors["ResourceKey"] = ["Quota resource key is required."];
+
+        return errors.Count == 0
+            ? null
+            : new InvalidQuotaReservationRequest(errors);
     }
 
     private static Failure? ValidateTenantAndDelta(
@@ -295,8 +335,9 @@ public sealed class MongoQuotaAdmissionService(
     private static ValidationFailure ValidationFailure(string field, string message) =>
         Failures.ValidationFailure(new Dictionary<string, string[]> { [field] = [message] });
 
-    private sealed class QuotaAdmissionDeniedException(Failure failure) : Exception
+    private sealed class QuotaAdmissionDeniedException(QuotaExceeded error)
+        : Exception
     {
-        public Failure Failure { get; } = failure;
+        public QuotaExceeded Error { get; } = error;
     }
 }

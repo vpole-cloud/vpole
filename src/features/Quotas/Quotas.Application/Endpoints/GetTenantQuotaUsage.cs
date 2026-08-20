@@ -8,7 +8,6 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
 
 namespace Pole.Features.Quotas.Application.Endpoints;
 
@@ -39,9 +38,11 @@ public sealed class GetTenantQuotaUsageHandler(
     IQuotaDbContext dbContext,
     TimeProvider timeProvider,
     QuotaCatalog catalog)
-    : IMediatorHandler<GetTenantQuotaUsageRequest, TenantQuotaUsageDto>
+    : IMediatorOutcomeHandler<
+        GetTenantQuotaUsageRequest,
+        TenantQuotaUsageDto>
 {
-    public async Task<Result<TenantQuotaUsageDto>> HandleAsync(
+    public async Task<TenantQuotaUsageDto> HandleAsync(
         GetTenantQuotaUsageRequest request,
         CancellationToken cancellationToken = default)
     {
