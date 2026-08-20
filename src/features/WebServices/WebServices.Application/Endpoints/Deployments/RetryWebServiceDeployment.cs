@@ -50,9 +50,9 @@ public sealed record RetryWebServiceDeploymentBody(
 
 public sealed class RetryWebServiceDeploymentHandler(
     LoadWebServiceById loadWebService,
-    IResourceDeploymentSetQueryService deploymentQuery,
-    IResourceDeploymentExactRetryWriter retryWriter,
-    IResourceDeploymentSetMutationWriter mutationWriter,
+    LoadExactResourceDeployment loadExactResourceDeployment,
+    RetryExactResourceDeploymentLegacy retryExactResourceDeployment,
+    AdvanceResourceDeploymentRevisionLegacy advanceResourceDeploymentRevision,
     PersistUpdatedWebService persistWebService,
     PersistCurrentWebServiceRelease persistRelease,
     TimeProvider timeProvider,
@@ -70,7 +70,7 @@ public sealed class RetryWebServiceDeploymentHandler(
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
 
-        var deployment = await deploymentQuery.GetExactAsync(
+        var deployment = await loadExactResourceDeployment(
             request.TenantId,
             WebServiceResourceDeployment.ResourceType,
             request.Id,
@@ -102,7 +102,7 @@ public sealed class RetryWebServiceDeploymentHandler(
         CancellationToken cancellationToken)
     {
         var updated = webService.AdvancePlacementDesiredState();
-        var retried = await retryWriter.RequestRetryAsync(
+        var retried = await retryExactResourceDeployment(
             new ResourceDeploymentExactRetryRequest(
                 request.TenantId,
                 WebServiceResourceDeployment.ResourceType,
@@ -115,7 +115,7 @@ public sealed class RetryWebServiceDeploymentHandler(
         if (!retried.TryGetValue(out _, out var failure))
             return failure;
 
-        var stamped = await mutationWriter.AdvanceResourceRevisionAsync(
+        var stamped = await advanceResourceDeploymentRevision(
             new ResourceDeploymentResourceRevisionRequest(
                 request.TenantId,
                 WebServiceResourceDeployment.ResourceType,

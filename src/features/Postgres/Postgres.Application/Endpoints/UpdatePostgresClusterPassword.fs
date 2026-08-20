@@ -37,8 +37,8 @@ type UpdatePostgresClusterPasswordRequest =
 type UpdatePostgresClusterPasswordHandler(
     dbContext : IPostgresDbContext,
     credentialService : IPostgresCredentialService,
-    deploymentComputeLookup : IResourceDeploymentComputeLookup,
-    deploymentWriter : IResourceDeploymentMutationWriter) =
+    loadDeploymentCompute : LoadCurrentResourceDeploymentComputeLegacy,
+    requestDeploymentApply : RequestResourceDeploymentApplyLegacy) =
     interface IMediatorHandler<UpdatePostgresClusterPasswordRequest, UpdatePostgresClusterPasswordResponse> with
         member _.HandleAsync(request, cancellationToken) =
             task {
@@ -68,7 +68,7 @@ type UpdatePostgresClusterPasswordHandler(
                         |> ResultF.ofFailure
                 | Some cluster ->
                     let! currentComputeResult =
-                        deploymentComputeLookup.GetCurrentAsync(
+                        loadDeploymentCompute.Invoke(
                             cluster.TenantId,
                             PostgresResourceDeployment.ResourceType,
                             cluster.Id,
@@ -125,7 +125,7 @@ type UpdatePostgresClusterPasswordHandler(
                                                         |> ResultF.ofFailure
                                                 else
                                                     let! deploymentResult =
-                                                        deploymentWriter.RequestApplyAsync(
+                                                        requestDeploymentApply.Invoke(
                                                             ResourceDeploymentMutationRequest(
                                                                 cluster.TenantId,
                                                                 PostgresResourceDeployment.ResourceType,

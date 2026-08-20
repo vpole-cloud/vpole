@@ -37,7 +37,7 @@ public static class GetWebServices
 
 public sealed class GetWebServicesHandler(
     LoadWebServicePage loadWebServicePage,
-    IResourceDeploymentSetQueryService deploymentQuery)
+    LoadResourceDeploymentSets loadResourceDeploymentSets)
     : IMediatorHandler<GetWebServicesRequest, PaginatedResponse<WebServiceDto>>
 {
     public async Task<Result<PaginatedResponse<WebServiceDto>>> HandleAsync(
@@ -52,7 +52,7 @@ public sealed class GetWebServicesHandler(
                 request.PageNumber,
                 request.PageSize),
             cancellationToken);
-        var placements = await deploymentQuery.GetAllManyAsync(
+        var placements = await loadResourceDeploymentSets(
             request.TenantId,
             WebServiceResourceDeployment.ResourceType,
             page.Items.Select(service => service.Id).ToArray(),

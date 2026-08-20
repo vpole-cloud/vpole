@@ -20,6 +20,7 @@ using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Contracts.HttpMapping;
+using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.ResourceDeployments.Application;
@@ -77,11 +78,13 @@ builder.AddFunctionOrleansHosting();
 builder.AddSecurity();
 
 builder.Services.AddHttpProblemMappings(QuotaContractHttpMappings.All);
+builder.Services.AddHttpProblemMappings(ResourceDeploymentContractHttpMappings.All);
 
 builder.Services.AddKubernetes(configuration)
     .AddEventBus(configuration, assemblies)
     .AddOutboxEventAssemblies(outboxEventAssemblies)
     .AddDatabase()
+    .AddResourceDeploymentsFeature(configuration)
     .AddTenantContractCapabilities()
     .AddDomainPersistence()
     .AddDomainHttpMappings()

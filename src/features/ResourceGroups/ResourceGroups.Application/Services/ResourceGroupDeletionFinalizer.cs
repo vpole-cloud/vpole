@@ -18,7 +18,7 @@ public interface IResourceGroupDeletionFinalizer
 
 public sealed class ResourceGroupDeletionFinalizer(
     IResourceGroupDbContext dbContext,
-    IResourceDeploymentReferenceLookup deploymentReferences,
+    EnsureNoUnfinishedIsolationScopeDeploymentsLegacy ensureNoUnfinishedDeployments,
     TimeProvider timeProvider)
     : IResourceGroupDeletionFinalizer
 {
@@ -54,7 +54,7 @@ public sealed class ResourceGroupDeletionFinalizer(
                 return Result.Success();
 
             var deploymentGuard =
-                await deploymentReferences.EnsureNoUnfinishedForIsolationScopeAsync(
+                await ensureNoUnfinishedDeployments(
                     tenantId,
                     resourceGroupId,
                     isolationScopeId,

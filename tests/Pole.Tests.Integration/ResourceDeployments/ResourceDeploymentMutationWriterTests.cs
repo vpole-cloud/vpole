@@ -213,6 +213,30 @@ public sealed class ResourceDeploymentMutationWriterTests(
     }
 
     [Fact]
+    public async Task Mutation_ReturnsProviderOwnedNotFoundError()
+    {
+        var writer = CreateTypedWriter(new RecordingComputeProfileFence());
+        using var session = await fixture.DbContext.Client.StartSessionAsync();
+        session.StartTransaction();
+        try
+        {
+            var result = await writer.RequestApplyAsync(
+                CreateCommand(),
+                session);
+
+            Assert.False(result.TryGetValue(out _, out var error));
+            var notFound = Assert.IsType<ResourceDeploymentMutationNotFound>(
+                error.Value);
+            Assert.Equal(ResourceId, notFound.ResourceId);
+        }
+        finally
+        {
+            if (session.IsInTransaction)
+                await session.AbortTransactionAsync();
+        }
+    }
+
+    [Fact]
     public async Task RequestApply_WithReplacement_FencesAndAdoptsResolvedComputeSnapshot()
     {
         var (runtimeCell, deployment) = CreateAggregate(runtimeCellReady: true);
@@ -278,14 +302,15 @@ public sealed class ResourceDeploymentMutationWriterTests(
     {
         var (runtimeCell, deployment) = CreateAggregate(runtimeCellReady: true);
         await InsertAsync(runtimeCell, deployment);
-        var lookup = new ResourceDeploymentComputeLookup(fixture.DbContext);
+        var lookup = new ResourceDeploymentComputeLookup(
+            fixture.DbContext.ResourceDeployments);
 
         var result = await lookup.GetCurrentAsync(
             TenantId,
             TestResourceType,
             ResourceId);
 
-        var compute = result.AssertSuccess();
+        Assert.True(result.TryGetValue(out var compute, out var error), error.ToString());
         Assert.Equal(TargetId, compute.DeploymentTargetId);
         Assert.Equal(
             ResourceDeploymentTestData.ComputeProfileId,
@@ -463,6 +488,37 @@ public sealed class ResourceDeploymentMutationWriterTests(
     }
 
     [Fact]
+    public async Task SetMutation_RejectsEmptyAndDuplicateDeploymentSets()
+    {
+        var writer = CreateTypedWriter(new RecordingComputeProfileFence());
+        var item = new ResourceDeploymentSetApplyItem(
+            DeploymentId,
+            ExpectedDeploymentRevision: 1,
+            new ComputeProfileReference(
+                ResourceDeploymentTestData.ComputeProfileId,
+                ComputeProfileRevision: 1));
+
+        await AssertStructuralRequestRejectedAsync(session =>
+            writer.RequestSetApplyAsync(
+                new ResourceDeploymentSetApplyRequest(
+                    TenantId,
+                    TestResourceType,
+                    ResourceId,
+                    ResourceRevision: 2,
+                    []),
+                session));
+        await AssertStructuralRequestRejectedAsync(session =>
+            writer.RequestSetApplyAsync(
+                new ResourceDeploymentSetApplyRequest(
+                    TenantId,
+                    TestResourceType,
+                    ResourceId,
+                    ResourceRevision: 2,
+                    [item, item]),
+                session));
+    }
+
+    [Fact]
     public async Task Mutation_RequiresCallerOwnedTransaction()
     {
         var writer = CreateWriter();
@@ -477,19 +533,44 @@ public sealed class ResourceDeploymentMutationWriterTests(
             StringComparison.Ordinal);
     }
 
-    private ResourceDeploymentMutationWriter CreateWriter() =>
+    private ResourceDeploymentLegacyMutationAdapters CreateWriter() =>
         CreateWriter(new RecordingComputeProfileFence());
 
-    private ResourceDeploymentMutationWriter CreateWriter(
+    private ResourceDeploymentLegacyMutationAdapters CreateWriter(
+        RecordingComputeProfileFence fence,
+        IResourcePlacementLookup? placementLookup = null) =>
+        new(CreateTypedWriter(fence, placementLookup));
+
+    private ResourceDeploymentMutationWriter CreateTypedWriter(
         RecordingComputeProfileFence fence,
         IResourcePlacementLookup? placementLookup = null) =>
         new(
-            fixture.DbContext,
+            fixture.DbContext.ResourceDeployments,
+            (session, writes, cancellationToken) => fixture.DbContext.StoreEventAsync(
+                writes,
+                session,
+                cancellationToken),
             placementLookup ?? new ResourcePlacementLookup(fixture.DbContext),
             fence,
             new FixedTimeProvider(new DateTimeOffset(
                 MutationAtUtc,
                 TimeSpan.Zero)));
+
+    private async Task AssertStructuralRequestRejectedAsync(
+        Func<IClientSessionHandle, Task> operation)
+    {
+        using var session = await fixture.DbContext.Client.StartSessionAsync();
+        session.StartTransaction();
+        try
+        {
+            await Assert.ThrowsAsync<ArgumentException>(() => operation(session));
+        }
+        finally
+        {
+            if (session.IsInTransaction)
+                await session.AbortTransactionAsync();
+        }
+    }
 
     private static ResourceDeploymentMutationRequest CreateCommand() =>
         new(

@@ -9,6 +9,7 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.ResultType;
 using Pole.Tests.Integration.DeploymentTargets;
 using Pole.Tests.Integration.Infrastructure;
 
@@ -96,9 +97,22 @@ internal sealed class ComputeProfilePersistenceTestHost : IDisposable
         var services = new ServiceCollection();
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
-        services.AddSingleton<IResourceDeploymentDbContext>(fixture.DbContext);
-        services.AddSingleton<IResourceDeploymentComputeProfileReferenceGuard,
-            ResourceDeploymentComputeProfileReferenceGuard>();
+        services.AddSingleton(fixture.DbContext.ResourceDeployments);
+        services.AddSingleton<ResourceDeploymentComputeProfileReferenceGuard>();
+        services.AddSingleton<EnsureComputeProfileUnreferencedLegacy>(provider =>
+            async (computeProfileId, session, cancellationToken) =>
+            {
+                var result = await provider
+                    .GetRequiredService<ResourceDeploymentComputeProfileReferenceGuard>()
+                    .EnsureUnreferencedAsync(
+                        computeProfileId,
+                        session,
+                        cancellationToken);
+                return result.TryGetValue(out _, out _)
+                    ? Result.Success()
+                    : Failures.Conflict(
+                        "The compute profile is still referenced by a resource deployment.");
+            });
         services.AddSingleton<MongoRunTransaction>();
         services.AddSingleton<RunMongoTransaction>(provider =>
             provider.GetRequiredService<MongoRunTransaction>().InvokeAsync);

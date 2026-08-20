@@ -6,10 +6,8 @@ using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Common;
 
-public sealed class ResourceDeploymentFinalizationService(
-    IResourceDeploymentDbContext dbContext)
-    : IResourceDeploymentFinalizationService,
-      IResourceDeploymentExactFinalizationService
+internal sealed class ResourceDeploymentFinalizationService(
+    IMongoCollection<ResourceDeployment> resourceDeployments)
 {
     public async Task<ResourceDeploymentFinalizationReadiness> GetReadinessAsync(
         string tenantId,
@@ -19,7 +17,7 @@ public sealed class ResourceDeploymentFinalizationService(
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
-        var states = await dbContext.ResourceDeployments
+        var states = await resourceDeployments
             .Find(
                 session,
                 ResourceDeploymentFilters.ForResource(
@@ -36,7 +34,8 @@ public sealed class ResourceDeploymentFinalizationService(
             : ResourceDeploymentFinalizationReadiness.Waiting;
     }
 
-    public async Task<Result> PurgeDeletedAsync(
+    public async Task<Result<Unit, ResourceDeploymentFinalizationConflict>>
+        PurgeDeletedAsync(
         string tenantId,
         ResourceTypeId resourceType,
         string resourceId,
@@ -48,25 +47,25 @@ public sealed class ResourceDeploymentFinalizationService(
             tenantId,
             resourceType,
             resourceId);
-        var states = await dbContext.ResourceDeployments
+        var states = await resourceDeployments
             .Find(session, filter)
             .Project(deployment => deployment.State)
             .ToListAsync(cancellationToken);
         if (states.Count == 0 ||
             states.Any(state => state is not DeletedResourceDeploymentState))
         {
-            return Failures.Conflict(
-                "The resource deployment is not ready for finalization.");
+            return new Err<ResourceDeploymentFinalizationConflict>(
+                new ResourceDeploymentFinalizationConflict(resourceId));
         }
 
-        var deletion = await dbContext.ResourceDeployments.DeleteManyAsync(
+        var deletion = await resourceDeployments.DeleteManyAsync(
             session,
             filter,
             cancellationToken: cancellationToken);
         return deletion.DeletedCount == states.Count
-            ? Result.Success()
-            : Failures.Conflict(
-                "The resource deployment changed while finalization was being completed.");
+            ? new Ok<Unit>(Unit.Value)
+            : new Err<ResourceDeploymentFinalizationConflict>(
+                new ResourceDeploymentFinalizationConflict(resourceId));
     }
 
     public async Task<ResourceDeploymentFinalizationReadiness> GetExactReadinessAsync(
@@ -78,7 +77,7 @@ public sealed class ResourceDeploymentFinalizationService(
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
-        var state = await dbContext.ResourceDeployments
+        var state = await resourceDeployments
             .Find(
                 session,
                 ResourceDeploymentFilters.ForExactDeployment(
@@ -96,7 +95,8 @@ public sealed class ResourceDeploymentFinalizationService(
         };
     }
 
-    public async Task<Result> PurgeExactDeletedAsync(
+    public async Task<Result<Unit, ResourceDeploymentFinalizationConflict>>
+        PurgeExactDeletedAsync(
         string tenantId,
         ResourceTypeId resourceType,
         string resourceId,
@@ -110,16 +110,18 @@ public sealed class ResourceDeploymentFinalizationService(
             resourceType,
             resourceId,
             resourceDeploymentId);
-        var deployment = await dbContext.ResourceDeployments
+        var deployment = await resourceDeployments
             .Find(session, filter)
             .FirstOrDefaultAsync(cancellationToken);
         if (deployment is null || deployment.State is not DeletedResourceDeploymentState)
         {
-            return Failures.Conflict(
-                "The resource deployment is not ready for exact finalization.");
+            return new Err<ResourceDeploymentFinalizationConflict>(
+                new ResourceDeploymentFinalizationConflict(
+                    resourceId,
+                    resourceDeploymentId));
         }
 
-        var deletion = await dbContext.ResourceDeployments.DeleteManyAsync(
+        var deletion = await resourceDeployments.DeleteManyAsync(
             session,
             Builders<ResourceDeployment>.Filter.And(
                 filter,
@@ -128,9 +130,11 @@ public sealed class ResourceDeploymentFinalizationService(
                     deployment.Revision)),
             cancellationToken: cancellationToken);
         return deletion.DeletedCount == 1
-            ? Result.Success()
-            : Failures.Conflict(
-                "The resource deployment changed while exact finalization was being completed.");
+            ? new Ok<Unit>(Unit.Value)
+            : new Err<ResourceDeploymentFinalizationConflict>(
+                new ResourceDeploymentFinalizationConflict(
+                    resourceId,
+                    resourceDeploymentId));
     }
 
     private static void EnsureTransaction(IClientSessionHandle session)

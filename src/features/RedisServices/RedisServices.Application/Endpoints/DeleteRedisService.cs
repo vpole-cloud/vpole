@@ -36,9 +36,9 @@ public sealed class DeleteRedisServiceHandler(
     LoadRedisById loadRedisById,
     BeginRedisDeletion beginRedisDeletion,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    IResourceDeploymentMutationWriter deploymentWriter,
-    IResourceDeploymentQueryService deploymentQuery,
-    IResourceDeploymentComputeLookup deploymentComputeLookup,
+    RequestResourceDeploymentDeletionLegacy requestDeploymentDeletion,
+    LoadResourceDeployment loadDeployment,
+    LoadCurrentResourceDeploymentComputeLegacy loadDeploymentCompute,
     TimeProvider timeProvider
     ) : IMediatorHandler<DeleteRedisServiceRequest, DeleteRedisServiceResponse>
 {
@@ -53,7 +53,7 @@ public sealed class DeleteRedisServiceHandler(
             return Failures.NotFound("Redis service not found.", request.Id);
         if (redis.Lifecycle is DeletingRedisLifecycle)
         {
-            var deletingPlacement = await deploymentQuery.GetAsync(
+            var deletingPlacement = await loadDeployment(
                 request.TenantId,
                 RedisResourceDeployment.ResourceType,
                 request.Id,
@@ -64,7 +64,7 @@ public sealed class DeleteRedisServiceHandler(
                 : new DeleteRedisServiceResponse(request.Id, deletingPlacement);
         }
         
-        var currentComputeResult = await deploymentComputeLookup.GetCurrentAsync(
+        var currentComputeResult = await loadDeploymentCompute(
             redis.TenantId,
             RedisResourceDeployment.ResourceType,
             redis.Id,
@@ -95,7 +95,7 @@ public sealed class DeleteRedisServiceHandler(
                 if (persistenceResult is Failure persistenceFailure)
                     return persistenceFailure;
 
-                var deploymentResult = await deploymentWriter.RequestDeletionAsync(
+                var deploymentResult = await requestDeploymentDeletion(
                     new ResourceDeploymentMutationRequest(
                         redis.TenantId,
                         RedisResourceDeployment.ResourceType,

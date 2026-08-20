@@ -1,9 +1,10 @@
 using k8s;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
@@ -81,9 +82,6 @@ public sealed class ResourceDeploymentTargetRoutingTests(
                 [TargetBId] = targetB
             });
         var adapter = new RecordingAdapter(provider);
-        using var services = new ServiceCollection()
-            .AddSingleton(adapter)
-            .BuildServiceProvider();
         var settings = new ResourceDeploymentSettings
         {
             ClaimLeaseSeconds = 30,
@@ -91,20 +89,14 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             MaximumRetryDelaySeconds = 10
         };
         using var metrics = new ResourceDeploymentMetrics();
+        var persistence = CreateReconciliationPersistence(settings);
         var reconciler = new ResourceDeploymentReconciler(
-            fixture.DbContext,
+            persistence.ClaimAsync,
+            persistence.PersistSuccessAsync,
+            persistence.PersistFailureAsync,
             new ResourcePlacementLookup(fixture.DbContext),
-            new ResourceDeploymentAdapterCatalog(
-            [
-                ResourceDeploymentAdapterDescriptor.Create<RecordingAdapter>(
-                    TestResourceType,
-                    ResourcePlacementCapability.SingleTarget)
-            ]),
-            services,
-            settings,
-            new ResourceDeploymentRetryDelayPolicy(settings),
+            _ => (adapter, ResourcePlacementCapability.SingleTarget),
             metrics,
-            TimeProvider.System,
             NullLogger<ResourceDeploymentReconciler>.Instance);
 
         await reconciler.HandleAsync(
@@ -169,9 +161,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             {
                 [TargetBId] = kubernetes
             });
-        using var services = new ServiceCollection()
-            .AddSingleton(new ThrowingTransportAdapter(provider))
-            .BuildServiceProvider();
+        var adapter = new ThrowingTransportAdapter(provider);
         var settings = new ResourceDeploymentSettings
         {
             ClaimLeaseSeconds = 30,
@@ -179,20 +169,14 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             MaximumRetryDelaySeconds = 10
         };
         using var metrics = new ResourceDeploymentMetrics();
+        var persistence = CreateReconciliationPersistence(settings);
         var reconciler = new ResourceDeploymentReconciler(
-            fixture.DbContext,
+            persistence.ClaimAsync,
+            persistence.PersistSuccessAsync,
+            persistence.PersistFailureAsync,
             new ResourcePlacementLookup(fixture.DbContext),
-            new ResourceDeploymentAdapterCatalog(
-            [
-                ResourceDeploymentAdapterDescriptor.Create<ThrowingTransportAdapter>(
-                    TestResourceType,
-                    ResourcePlacementCapability.SingleTarget)
-            ]),
-            services,
-            settings,
-            new ResourceDeploymentRetryDelayPolicy(settings),
+            _ => (adapter, ResourcePlacementCapability.SingleTarget),
             metrics,
-            TimeProvider.System,
             NullLogger<ResourceDeploymentReconciler>.Instance);
 
         await reconciler.HandleAsync(
@@ -214,6 +198,22 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             await fixture.DbContext.CountOutboxMessagesAsync(
                 "resource-deployment-failed"));
     }
+
+    private ResourceDeploymentReconciliationPersistence
+        CreateReconciliationPersistence(ResourceDeploymentSettings settings) =>
+        new(
+            fixture.DbContext.ResourceDeployments,
+            (operation, cancellationToken) => fixture.DbContext
+                .RunInTransactionAsync(
+                    operation,
+                    cancellationToken: cancellationToken),
+            (session, writes, cancellationToken) => fixture.DbContext.StoreEventAsync(
+                writes,
+                session,
+                cancellationToken),
+            settings,
+            new ResourceDeploymentRetryDelayPolicy(settings),
+            TimeProvider.System);
 
     private static Kubernetes CreateKubernetes(string host) =>
         new(new KubernetesClientConfiguration

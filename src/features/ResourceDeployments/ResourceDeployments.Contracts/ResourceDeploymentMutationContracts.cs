@@ -11,18 +11,58 @@ public sealed record ResourceDeploymentMutationRequest(
     ComputeProfileReference ExpectedCompute,
     ResourceDeploymentComputeConfiguration? ReplacementCompute = null);
 
-public interface IResourceDeploymentMutationWriter
-{
-    Task<Result<PlacementSummaryDto>> RequestApplyAsync(
-        ResourceDeploymentMutationRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+public sealed record ResourceDeploymentMutationNotFound(
+    string ResourceId,
+    string? ResourceDeploymentId = null);
 
-    Task<Result<PlacementSummaryDto>> RequestDeletionAsync(
-        ResourceDeploymentMutationRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
-}
+public sealed record ResourceDeploymentChanged(
+    string ResourceId,
+    string? ResourceDeploymentId = null);
+
+public sealed record ResourceDeploymentCardinalityConflict(string ResourceId);
+
+public sealed record ResourceDeploymentPendingDeletion(
+    string ResourceId,
+    string? ResourceDeploymentId = null);
+
+public sealed record ResourceDeploymentPlacementUnavailable(
+    string ResourceId,
+    string? ResourceDeploymentId = null);
+
+public sealed record ResourceDeploymentReplacementTargetMismatch(
+    string ResourceId,
+    string? ResourceDeploymentId = null);
+
+public sealed record ResourceDeploymentIngressConfigurationChanged(
+    string ResourceId,
+    string ResourceDeploymentId);
+
+public sealed record ResourceDeploymentRetryUnavailable(
+    string ResourceId,
+    string ResourceDeploymentId);
+
+public union ResourceDeploymentMutationError(
+    ResourceDeploymentMutationNotFound,
+    ResourceDeploymentChanged,
+    ResourceDeploymentCardinalityConflict,
+    ResourceDeploymentPendingDeletion,
+    ResourceDeploymentPlacementUnavailable,
+    ResourceDeploymentReplacementTargetMismatch,
+    ResourceDeploymentIngressConfigurationChanged,
+    ResourceDeploymentRetryUnavailable,
+    ResourceDeploymentComputeConfigurationChanged);
+
+public delegate Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+    RequestResourceDeploymentApply(
+    ResourceDeploymentMutationRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+    RequestResourceDeploymentDeletion(
+    ResourceDeploymentMutationRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
 public sealed record ResourceDeploymentExactMutationRequest(
     string TenantId,
@@ -60,13 +100,11 @@ public sealed record ResourceDeploymentExactRetryRequest(
 /// Retries one exact failed physical deployment inside the caller-owned
 /// transaction so the logical resource mutation and retry outbox commit together.
 /// </summary>
-public interface IResourceDeploymentExactRetryWriter
-{
-    Task<Result<PlacementSummaryDto>> RequestRetryAsync(
-        ResourceDeploymentExactRetryRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
-}
+public delegate Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+    RetryExactResourceDeployment(
+    ResourceDeploymentExactRetryRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
 public sealed record ResourceDeploymentSetApplyItem(
     string ResourceDeploymentId,
@@ -95,48 +133,87 @@ public sealed record ResourceDeploymentSetDeletionRequest(
     long ResourceRevision,
     IReadOnlyList<ResourceDeploymentSetDeletionItem> Deployments);
 
-/// <summary>
-/// Set-aware mutation surface for resources that own more than one physical
-/// deployment. Each mutation remains caller-transactional and tenant scoped.
-/// </summary>
-public interface IResourceDeploymentSetMutationWriter
-{
-    Task<Result<PlacementSummaryDto>> RequestExactApplyAsync(
-        ResourceDeploymentExactMutationRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+public delegate Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+    RequestExactResourceDeploymentApply(
+    ResourceDeploymentExactMutationRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
-    Task<Result<PlacementSummaryDto>> RequestExactDeletionAsync(
-        ResourceDeploymentExactMutationRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+public delegate Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+    RequestExactResourceDeploymentDeletion(
+    ResourceDeploymentExactMutationRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
-    Task<Result<IReadOnlyList<PlacementSummaryDto>>> RequestSetApplyAsync(
+public delegate Task<Result<
+    IReadOnlyList<PlacementSummaryDto>,
+    ResourceDeploymentMutationError>>
+    RequestResourceDeploymentSetApply(
         ResourceDeploymentSetApplyRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-    Task<Result<IReadOnlyList<PlacementSummaryDto>>> RequestSetDeletionAsync(
+public delegate Task<Result<
+    IReadOnlyList<PlacementSummaryDto>,
+    ResourceDeploymentMutationError>>
+    RequestResourceDeploymentSetDeletion(
         ResourceDeploymentSetDeletionRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-    Task<Result<IReadOnlyList<PlacementSummaryDto>>> AdvanceResourceRevisionAsync(
+public delegate Task<Result<IReadOnlyList<PlacementSummaryDto>>>
+    AdvanceResourceDeploymentRevisionLegacy(
         ResourceDeploymentResourceRevisionRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-}
+public delegate Task<Result<
+    IReadOnlyList<PlacementSummaryDto>,
+    AdvanceResourceDeploymentRevisionError>> AdvanceResourceDeploymentRevision(
+    ResourceDeploymentResourceRevisionRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
-public interface IResourceDeploymentSetOutcomeMutationWriter
-{
-    Task<Result<
-        IReadOnlyList<PlacementSummaryDto>,
-        AdvanceResourceDeploymentRevisionError>> AdvanceResourceRevisionOutcomeAsync(
-        ResourceDeploymentResourceRevisionRequest request,
+/// <summary>
+/// Temporary shared-result adapters for wave 1 consumers that do not yet expose
+/// ResourceDeploymentMutationError in their own outcome unions.
+/// </summary>
+public delegate Task<Result<PlacementSummaryDto>> RequestResourceDeploymentApplyLegacy(
+    ResourceDeploymentMutationRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<Result<PlacementSummaryDto>> RequestResourceDeploymentDeletionLegacy(
+    ResourceDeploymentMutationRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<Result<PlacementSummaryDto>> RetryExactResourceDeploymentLegacy(
+    ResourceDeploymentExactRetryRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<Result<PlacementSummaryDto>> RequestExactResourceDeploymentApplyLegacy(
+    ResourceDeploymentExactMutationRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<Result<PlacementSummaryDto>> RequestExactResourceDeploymentDeletionLegacy(
+    ResourceDeploymentExactMutationRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<Result<IReadOnlyList<PlacementSummaryDto>>>
+    RequestResourceDeploymentSetApplyLegacy(
+        ResourceDeploymentSetApplyRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
-}
+
+public delegate Task<Result<IReadOnlyList<PlacementSummaryDto>>>
+    RequestResourceDeploymentSetDeletionLegacy(
+        ResourceDeploymentSetDeletionRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);
 
 public sealed record ResourceDeploymentsNotFound(string ResourceId);
 

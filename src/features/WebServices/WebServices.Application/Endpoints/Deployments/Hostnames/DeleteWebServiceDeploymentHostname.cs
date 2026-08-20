@@ -48,11 +48,12 @@ public sealed record DeleteWebServiceDeploymentHostnameRequest(
 
 public sealed class DeleteWebServiceDeploymentHostnameHandler(
     LoadWebServiceById loadWebService,
-    IResourceDeploymentSetQueryService deploymentQuery,
+    LoadExactResourceDeployment loadExactResourceDeployment,
     DeleteCustomHostnameBinding deleteCustomHostnameBinding,
     LoadHostnameBindingsForDeploymentInTransaction
         loadHostnameBindingsForDeploymentInTransaction,
-    IResourceDeploymentSetMutationWriter deploymentWriter,
+    RequestExactResourceDeploymentApplyLegacy requestExactResourceDeploymentApply,
+    AdvanceResourceDeploymentRevisionLegacy advanceResourceDeploymentRevision,
     PersistUpdatedWebService persistWebService,
     PersistCurrentWebServiceRelease persistRelease,
     RunMongoTransaction<PlacementSummaryDto> runTransaction,
@@ -70,7 +71,7 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
 
-        var deployment = await deploymentQuery.GetExactAsync(
+        var deployment = await loadExactResourceDeployment(
             request.TenantId,
             WebServiceResourceDeployment.ResourceType,
             request.Id,
@@ -120,7 +121,7 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
             session,
             cancellationToken);
         var updated = webService.AdvancePlacementDesiredState();
-        var applied = await deploymentWriter.RequestExactApplyAsync(
+        var applied = await requestExactResourceDeploymentApply(
             WebServiceDeploymentWorkflow.ToExactApplyRequest(
                 request.TenantId,
                 request.Id,
@@ -134,7 +135,7 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
         if (!applied.TryGetValue(out var changed, out var failure))
             return failure;
 
-        var advanced = await deploymentWriter.AdvanceResourceRevisionAsync(
+        var advanced = await advanceResourceDeploymentRevision(
             new ResourceDeploymentResourceRevisionRequest(
                 request.TenantId,
                 WebServiceResourceDeployment.ResourceType,

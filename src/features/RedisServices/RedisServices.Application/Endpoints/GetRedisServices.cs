@@ -36,7 +36,7 @@ public static class GetRedisServices
 
 public sealed class GetRedisServicesHandler(
     LoadRedisPage loadRedisPage,
-    IResourceDeploymentQueryService deploymentQuery)
+    LoadResourceDeployments loadDeployments)
     : IMediatorHandler<GetRedisServicesRequest, PaginatedResponse<RedisDto>>
 {
     public async Task<Result<PaginatedResponse<RedisDto>>> HandleAsync(
@@ -51,7 +51,7 @@ public sealed class GetRedisServicesHandler(
                 request.PageNumber,
                 request.PageSize),
             cancellationToken);
-        var placements = await deploymentQuery.GetManyAsync(
+        var placements = await loadDeployments(
             request.TenantId,
             RedisResourceDeployment.ResourceType,
             page.Items.Select(redis => redis.Id).ToArray(),

@@ -39,8 +39,8 @@ public sealed class DeleteWebServiceHandler(
     BeginWebServiceDeletion beginWebServiceDeletion,
     ISourceBuildReferenceLookup sourceBuildReferences,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    IResourceDeploymentSetMutationWriter deploymentWriter,
-    IResourceDeploymentSetQueryService deploymentQuery,
+    RequestResourceDeploymentSetDeletionLegacy requestResourceDeploymentSetDeletion,
+    LoadResourceDeploymentSet loadResourceDeploymentSet,
     TimeProvider timeProvider
     ) : IMediatorHandler<DeleteWebServiceRequest, DeleteWebServiceResponse>
 {
@@ -62,7 +62,7 @@ public sealed class DeleteWebServiceHandler(
             return Failures.NotFound("Web service not found.", request.Id);
         if (webService.Lifecycle is DeletingWebServiceLifecycle)
         {
-            var deletingPlacements = await deploymentQuery.GetAllAsync(
+            var deletingPlacements = await loadResourceDeploymentSet(
                 request.TenantId,
                 WebServiceResourceDeployment.ResourceType,
                 request.Id,
@@ -73,7 +73,7 @@ public sealed class DeleteWebServiceHandler(
                 : new DeleteWebServiceResponse(request.Id, deletingPlacements);
         }
 
-        var deployments = await deploymentQuery.GetAllAsync(
+        var deployments = await loadResourceDeploymentSet(
             webService.TenantId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
@@ -100,7 +100,7 @@ public sealed class DeleteWebServiceHandler(
                 if (replace is not ISuccess)
                     return (Failure)replace;
 
-                var deploymentResult = await deploymentWriter.RequestSetDeletionAsync(
+                var deploymentResult = await requestResourceDeploymentSetDeletion(
                     new ResourceDeploymentSetDeletionRequest(
                         webService.TenantId,
                         WebServiceResourceDeployment.ResourceType,

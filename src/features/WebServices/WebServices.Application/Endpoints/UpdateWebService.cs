@@ -54,8 +54,9 @@ public sealed record UpdateWebServiceResponse(
 
 public sealed class UpdateWebServiceHandler(
     LoadWebServiceById loadWebServiceById,
-    IResourceDeploymentSetQueryService deploymentQuery,
-    IResourceDeploymentSetMutationWriter deploymentWriter,
+    LoadResourceDeploymentSet loadResourceDeploymentSet,
+    RequestResourceDeploymentSetApplyLegacy requestResourceDeploymentSetApply,
+    AdvanceResourceDeploymentRevisionLegacy advanceResourceDeploymentRevision,
     PersistUpdatedWebService persistUpdatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
@@ -72,7 +73,7 @@ public sealed class UpdateWebServiceHandler(
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
             return Failures.Conflict("A deleting web service cannot be updated.");
 
-        var deployments = await deploymentQuery.GetAllAsync(
+        var deployments = await loadResourceDeploymentSet(
             webService.TenantId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
@@ -102,7 +103,7 @@ public sealed class UpdateWebServiceHandler(
             {
                 var physicalChanges = !Equals(webService.Spec, nextSpec);
                 Result<IReadOnlyList<PlacementSummaryDto>> deploymentsResult = physicalChanges
-                    ? await deploymentWriter.RequestSetApplyAsync(
+                    ? await requestResourceDeploymentSetApply(
                         new ResourceDeploymentSetApplyRequest(
                             webService.TenantId,
                             WebServiceResourceDeployment.ResourceType,
@@ -112,7 +113,7 @@ public sealed class UpdateWebServiceHandler(
                                 WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
                         session,
                         ct)
-                    : await deploymentWriter.AdvanceResourceRevisionAsync(
+                    : await advanceResourceDeploymentRevision(
                         new ResourceDeploymentResourceRevisionRequest(
                             webService.TenantId,
                             WebServiceResourceDeployment.ResourceType,

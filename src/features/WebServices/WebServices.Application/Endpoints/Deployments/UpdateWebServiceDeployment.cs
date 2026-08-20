@@ -51,9 +51,10 @@ public sealed record UpdateWebServiceDeploymentBody(
 
 public sealed class UpdateWebServiceDeploymentHandler(
     LoadWebServiceById loadWebService,
-    IResourceDeploymentSetQueryService deploymentQuery,
+    LoadResourceDeploymentSet loadResourceDeploymentSet,
     ResolveComputeProfiles resolveComputeProfiles,
-    IResourceDeploymentSetMutationWriter deploymentWriter,
+    RequestExactResourceDeploymentApplyLegacy requestExactResourceDeploymentApply,
+    AdvanceResourceDeploymentRevisionLegacy advanceResourceDeploymentRevision,
     PersistUpdatedWebService persistWebService,
     PersistCurrentWebServiceRelease persistRelease,
     IQuotaAdmissionExecutor quotaAdmission,
@@ -71,7 +72,7 @@ public sealed class UpdateWebServiceDeploymentHandler(
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
 
-        var deployments = await deploymentQuery.GetAllAsync(
+        var deployments = await loadResourceDeploymentSet(
             request.TenantId,
             WebServiceResourceDeployment.ResourceType,
             request.Id,
@@ -117,7 +118,7 @@ public sealed class UpdateWebServiceDeploymentHandler(
             async (session, token) =>
             {
                 var updated = webService.AdvancePlacementDesiredState();
-                var result = await deploymentWriter.RequestExactApplyAsync(
+                var result = await requestExactResourceDeploymentApply(
                     WebServiceDeploymentWorkflow.ToExactApplyRequest(
                         webService.TenantId,
                         webService.Id,
@@ -130,7 +131,7 @@ public sealed class UpdateWebServiceDeploymentHandler(
                 if (!result.TryGetValue(out var changed, out var failure))
                     return failure;
 
-                var advanced = await deploymentWriter.AdvanceResourceRevisionAsync(
+                var advanced = await advanceResourceDeploymentRevision(
                     new ResourceDeploymentResourceRevisionRequest(
                         webService.TenantId,
                         WebServiceResourceDeployment.ResourceType,

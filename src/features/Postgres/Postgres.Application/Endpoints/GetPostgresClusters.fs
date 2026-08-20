@@ -33,7 +33,7 @@ type GetPostgresClustersRequest() =
 
 type GetPostgresClustersHandler(
     dbContext : IPostgresDbContext,
-    deploymentQuery : IResourceDeploymentQueryService) =
+    loadDeployments : LoadResourceDeployments) =
     interface IMediatorHandler<GetPostgresClustersRequest, PaginatedResponse<PostgresClusterDto>> with
         member _.HandleAsync(request, cancellationToken) =
             task {
@@ -55,7 +55,7 @@ type GetPostgresClustersHandler(
                     |> Seq.map _.Id
                     |> Seq.toArray
                 let! placements =
-                    deploymentQuery.GetManyAsync(
+                    loadDeployments.Invoke(
                         request.TenantId,
                         PostgresResourceDeployment.ResourceType,
                         clusterIds,

@@ -44,9 +44,10 @@ public sealed class ResourceDeploymentFinalizationServiceTests(
                 TenantId,
                 deleted: false)
         ]);
-        var subject = new ResourceDeploymentFinalizationService(fixture.DbContext);
+        var subject = new ResourceDeploymentFinalizationService(
+            fixture.DbContext.ResourceDeployments);
 
-        var result = await fixture.DbContext.RunInTransactionAsync(
+        var result = await RunTypedTransactionAsync(
             async (session, cancellationToken) =>
             {
                 var readiness = await subject.GetReadinessAsync(
@@ -64,7 +65,8 @@ public sealed class ResourceDeploymentFinalizationServiceTests(
                     cancellationToken);
             });
 
-        Assert.IsType<ConflictFailure>(result);
+        Assert.False(result.TryGetValue(out _, out var error));
+        Assert.Equal(ResourceId, error.ResourceId);
         Assert.Equal(
             2,
             await fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
@@ -85,9 +87,10 @@ public sealed class ResourceDeploymentFinalizationServiceTests(
                 OtherTenantId,
                 deleted: true)
         ]);
-        var subject = new ResourceDeploymentFinalizationService(fixture.DbContext);
+        var subject = new ResourceDeploymentFinalizationService(
+            fixture.DbContext.ResourceDeployments);
 
-        var result = await fixture.DbContext.RunInTransactionAsync(
+        var result = await RunTypedTransactionAsync(
             async (session, cancellationToken) =>
             {
                 var readiness = await subject.GetReadinessAsync(
@@ -105,7 +108,7 @@ public sealed class ResourceDeploymentFinalizationServiceTests(
                     cancellationToken);
             });
 
-        Assert.IsAssignableFrom<ISuccess>(result);
+        Assert.True(result.TryGetValue(out _, out _));
         Assert.Equal(
             0,
             await fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
@@ -126,9 +129,10 @@ public sealed class ResourceDeploymentFinalizationServiceTests(
             CreateDeployment(deletedDeploymentId, TenantId, deleted: true),
             CreateDeployment(siblingDeploymentId, TenantId, deleted: false)
         ]);
-        var subject = new ResourceDeploymentFinalizationService(fixture.DbContext);
+        var subject = new ResourceDeploymentFinalizationService(
+            fixture.DbContext.ResourceDeployments);
 
-        var result = await fixture.DbContext.RunInTransactionAsync(
+        var result = await RunTypedTransactionAsync(
             async (session, cancellationToken) =>
             {
                 var readiness = await subject.GetExactReadinessAsync(
@@ -148,7 +152,7 @@ public sealed class ResourceDeploymentFinalizationServiceTests(
                     cancellationToken);
             });
 
-        Assert.IsAssignableFrom<ISuccess>(result);
+        Assert.True(result.TryGetValue(out _, out _));
         Assert.Equal(
             1,
             await fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
@@ -157,6 +161,17 @@ public sealed class ResourceDeploymentFinalizationServiceTests(
             .Find(deployment => deployment.Id == siblingDeploymentId)
             .SingleAsync();
         Assert.IsNotType<DeletedResourceDeploymentState>(remaining.State);
+    }
+
+    private async Task<Result<Unit, ResourceDeploymentFinalizationConflict>>
+        RunTypedTransactionAsync(
+            Func<
+                IClientSessionHandle,
+                CancellationToken,
+                Task<Result<Unit, ResourceDeploymentFinalizationConflict>>> operation)
+    {
+        using var session = await fixture.DbContext.Client.StartSessionAsync();
+        return await session.WithTransactionAsync(operation);
     }
 
     private static ResourceDeployment CreateDeployment(

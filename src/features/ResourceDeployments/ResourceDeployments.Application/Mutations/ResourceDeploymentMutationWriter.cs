@@ -10,34 +10,32 @@ using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Mutations;
 
-public sealed class ResourceDeploymentMutationWriter(
-    IResourceDeploymentDbContext dbContext,
+internal sealed class ResourceDeploymentMutationWriter(
+    IMongoCollection<ResourceDeployment> resourceDeployments,
+    StoreOutboxWrites storeOutboxWrites,
     IResourcePlacementLookup placementLookup,
     IComputeProfileResolutionFence computeProfileFence,
     TimeProvider timeProvider)
-    : IResourceDeploymentMutationWriter,
-        IResourceDeploymentSetMutationWriter,
-        IResourceDeploymentSetOutcomeMutationWriter,
-        IResourceDeploymentExactRetryWriter
 {
-    public async Task<Result<PlacementSummaryDto>> RequestApplyAsync(
+    public async Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+        RequestApplyAsync(
         ResourceDeploymentMutationRequest command,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
+        ArgumentNullException.ThrowIfNull(command);
 
         var loadResult = await LoadSingleAsync(command, session, cancellationToken);
         if (!loadResult.TryGetValue(out var current, out var loadFailure))
-            return loadFailure;
+            return Error(loadFailure);
         var computeExpectation = EnsureExpectedCompute(command, current);
         if (computeExpectation is not null)
-            return computeExpectation;
+            return Error(computeExpectation.Value);
         if (current.DesiredOperation == ResourceDeploymentOperation.Delete ||
             current.State is DeletedResourceDeploymentState)
         {
-            return Failures.Conflict(
-                "A resource deployment pending deletion cannot be reconciled.");
+            return Error(new ResourceDeploymentPendingDeletion(command.ResourceId));
         }
 
         var runtimeCell = await placementLookup.FindAsync(
@@ -55,8 +53,7 @@ public sealed class ResourceDeploymentMutationWriter(
                 current.ResolvedPlacement.KubernetesNamespace,
                 StringComparison.Ordinal))
         {
-            return Failures.Conflict(
-                "The resource deployment runtime-cell placement is unavailable.");
+            return Error(new ResourceDeploymentPlacementUnavailable(command.ResourceId));
         }
 
         var resolvedPlacement = current.ResolvedPlacement;
@@ -67,8 +64,8 @@ public sealed class ResourceDeploymentMutationWriter(
                     current.ResolvedPlacement.DeploymentTargetId,
                     StringComparison.Ordinal))
             {
-                return Failures.Conflict(
-                    "The replacement compute profile belongs to a different deployment target.");
+                return Error(new ResourceDeploymentReplacementTargetMismatch(
+                    command.ResourceId));
             }
 
             var computeFence = await computeProfileFence.FenceAsync(
@@ -81,7 +78,10 @@ public sealed class ResourceDeploymentMutationWriter(
                 session,
                 cancellationToken);
             if (computeFence is not ISuccess)
-                return (Failure)computeFence;
+            {
+                return Error(new ResourceDeploymentComputeConfigurationChanged(
+                    [command.ReplacementCompute.ComputeProfileId]));
+            }
 
             resolvedPlacement = resolvedPlacement with
             {
@@ -101,32 +101,32 @@ public sealed class ResourceDeploymentMutationWriter(
             cancellationToken);
     }
 
-    public async Task<Result<PlacementSummaryDto>> RequestDeletionAsync(
+    public async Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+        RequestDeletionAsync(
         ResourceDeploymentMutationRequest command,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
+        ArgumentNullException.ThrowIfNull(command);
 
         var loadResult = await LoadSingleAsync(command, session, cancellationToken);
         if (!loadResult.TryGetValue(out var current, out var loadFailure))
-            return loadFailure;
+            return Error(loadFailure);
         var computeExpectation = EnsureExpectedCompute(command, current);
         if (computeExpectation is not null)
-            return computeExpectation;
+            return Error(computeExpectation.Value);
         if (command.ReplacementCompute is not null)
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["ComputeProfileId"] =
-                    ["Compute profile adoption is not valid for resource deletion."]
-            });
+            throw new ArgumentException(
+                "Compute profile adoption is not valid for resource deletion.",
+                nameof(command));
         }
 
         var updated = current.RequestDeletion(
             timeProvider.GetUtcNow().UtcDateTime);
         if (updated.Revision == current.Revision)
-            return current.ToPlacementSummaryDto();
+            return Success(current.ToPlacementSummaryDto());
 
         return await ReplaceAndEnqueueAsync(
             command,
@@ -136,15 +136,17 @@ public sealed class ResourceDeploymentMutationWriter(
             cancellationToken);
     }
 
-    public async Task<Result<PlacementSummaryDto>> RequestExactApplyAsync(
+    public async Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+        RequestExactApplyAsync(
         ResourceDeploymentExactMutationRequest command,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
+        ArgumentNullException.ThrowIfNull(command);
         var loadResult = await LoadExactAsync(command, session, cancellationToken);
         if (!loadResult.TryGetValue(out var current, out var loadFailure))
-            return loadFailure;
+            return Error(loadFailure);
         return await RequestLoadedApplyAsync(
             current,
             command,
@@ -152,7 +154,8 @@ public sealed class ResourceDeploymentMutationWriter(
             cancellationToken);
     }
 
-    private async Task<Result<PlacementSummaryDto>> RequestLoadedApplyAsync(
+    private async Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+        RequestLoadedApplyAsync(
         ResourceDeployment current,
         ResourceDeploymentExactMutationRequest command,
         IClientSessionHandle session,
@@ -160,18 +163,23 @@ public sealed class ResourceDeploymentMutationWriter(
     {
         if (current.Revision != command.ExpectedDeploymentRevision)
         {
-            return Failures.Conflict(
-                "The resource deployment changed while the exact mutation was being prepared.");
+            return Error(new ResourceDeploymentChanged(
+                command.ResourceId,
+                command.ResourceDeploymentId));
         }
 
-        var computeExpectation = EnsureExpectedCompute(command.ExpectedCompute, current);
+        var computeExpectation = EnsureExpectedCompute(
+            command.ResourceId,
+            command.ExpectedCompute,
+            current);
         if (computeExpectation is not null)
-            return computeExpectation;
+            return Error(computeExpectation.Value);
         if (current.DesiredOperation == ResourceDeploymentOperation.Delete ||
             current.State is DeletedResourceDeploymentState)
         {
-            return Failures.Conflict(
-                "A resource deployment pending deletion cannot be reconciled.");
+            return Error(new ResourceDeploymentPendingDeletion(
+                command.ResourceId,
+                command.ResourceDeploymentId));
         }
 
         var runtimeCell = await placementLookup.FindAsync(
@@ -189,8 +197,9 @@ public sealed class ResourceDeploymentMutationWriter(
                 current.ResolvedPlacement.KubernetesNamespace,
                 StringComparison.Ordinal))
         {
-            return Failures.Conflict(
-                "The resource deployment runtime-cell placement is unavailable.");
+            return Error(new ResourceDeploymentPlacementUnavailable(
+                command.ResourceId,
+                command.ResourceDeploymentId));
         }
 
         var placement = current.ResolvedPlacement;
@@ -201,8 +210,9 @@ public sealed class ResourceDeploymentMutationWriter(
                     placement.DeploymentTargetId,
                     StringComparison.Ordinal))
             {
-                return Failures.Conflict(
-                    "The replacement compute profile belongs to a different deployment target.");
+                return Error(new ResourceDeploymentReplacementTargetMismatch(
+                    command.ResourceId,
+                    command.ResourceDeploymentId));
             }
 
             var computeFence = await computeProfileFence.FenceAsync(
@@ -215,7 +225,10 @@ public sealed class ResourceDeploymentMutationWriter(
                 session,
                 cancellationToken);
             if (computeFence is not ISuccess)
-                return (Failure)computeFence;
+            {
+                return Error(new ResourceDeploymentComputeConfigurationChanged(
+                    [command.ReplacementCompute.ComputeProfileId]));
+            }
             placement = placement with
             {
                 Compute = command.ReplacementCompute.ToDomain()
@@ -228,8 +241,9 @@ public sealed class ResourceDeploymentMutationWriter(
                     current.ResolvedPlacement.Ingress,
                     command.ReplacementIngress))
             {
-                return Failures.Conflict(
-                    "The resolved ingress identity changed while the resource deployment mutation was being prepared.");
+                return Error(new ResourceDeploymentIngressConfigurationChanged(
+                    command.ResourceId,
+                    command.ResourceDeploymentId));
             }
 
             placement = placement with { Ingress = command.ReplacementIngress.ToDomain() };
@@ -248,40 +262,44 @@ public sealed class ResourceDeploymentMutationWriter(
             cancellationToken);
     }
 
-    public async Task<Result<PlacementSummaryDto>> RequestExactDeletionAsync(
+    public async Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+        RequestExactDeletionAsync(
         ResourceDeploymentExactMutationRequest command,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
+        ArgumentNullException.ThrowIfNull(command);
         var loadResult = await LoadExactAsync(command, session, cancellationToken);
         if (!loadResult.TryGetValue(out var current, out var loadFailure))
-            return loadFailure;
+            return Error(loadFailure);
         if (current.Revision != command.ExpectedDeploymentRevision)
         {
-            return Failures.Conflict(
-                "The resource deployment changed while the exact deletion was being prepared.");
+            return Error(new ResourceDeploymentChanged(
+                command.ResourceId,
+                command.ResourceDeploymentId));
         }
 
-        var computeExpectation = EnsureExpectedCompute(command.ExpectedCompute, current);
+        var computeExpectation = EnsureExpectedCompute(
+            command.ResourceId,
+            command.ExpectedCompute,
+            current);
         if (computeExpectation is not null)
-            return computeExpectation;
+            return Error(computeExpectation.Value);
         if (command.ReplacementCompute is not null ||
             command.ReplacementIngress is not null ||
             command.FixedReplicas is not null)
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Mutation"] =
-                ["Compute, ingress, and replica updates are not valid for resource deployment deletion."]
-            });
+            throw new ArgumentException(
+                "Compute, ingress, and replica updates are not valid for resource deployment deletion.",
+                nameof(command));
         }
 
         var updated = current.RequestDeletion(
             timeProvider.GetUtcNow().UtcDateTime,
             command.ResourceRevision);
         if (updated.Revision == current.Revision)
-            return current.ToPlacementSummaryDto();
+            return Success(current.ToPlacementSummaryDto());
         return await ReplaceExactAndEnqueueAsync(
             current,
             updated,
@@ -289,14 +307,15 @@ public sealed class ResourceDeploymentMutationWriter(
             cancellationToken);
     }
 
-    public async Task<Result<PlacementSummaryDto>> RequestRetryAsync(
+    public async Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+        RequestRetryAsync(
         ResourceDeploymentExactRetryRequest command,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
         ArgumentNullException.ThrowIfNull(command);
-        var current = await dbContext.ResourceDeployments
+        var current = await resourceDeployments
             .Find(
                 session,
                 ResourceDeploymentFilters.ForExactDeployment(
@@ -307,14 +326,15 @@ public sealed class ResourceDeploymentMutationWriter(
             .FirstOrDefaultAsync(cancellationToken);
         if (current is null)
         {
-            return Failures.NotFound(
-                "Resource deployment not found.",
-                command.ResourceDeploymentId);
+            return Error(new ResourceDeploymentMutationNotFound(
+                command.ResourceId,
+                command.ResourceDeploymentId));
         }
         if (current.Revision != command.ExpectedDeploymentRevision)
         {
-            return Failures.Conflict(
-                "The resource deployment changed while exact retry was being prepared.");
+            return Error(new ResourceDeploymentChanged(
+                command.ResourceId,
+                command.ResourceDeploymentId));
         }
         if (current.State is not FailedResourceDeploymentState
             {
@@ -322,12 +342,13 @@ public sealed class ResourceDeploymentMutationWriter(
             } failed ||
             !Matches(command.ExpectedOperation, failed.Operation))
         {
-            return Failures.Conflict(
-                "Only the expected retryable failed resource deployment operation can be retried.");
+            return Error(new ResourceDeploymentRetryUnavailable(
+                command.ResourceId,
+                command.ResourceDeploymentId));
         }
 
         var retried = current.Retry(timeProvider.GetUtcNow().UtcDateTime);
-        var replacement = await dbContext.ResourceDeployments.ReplaceOneAsync(
+        var replacement = await resourceDeployments.ReplaceOneAsync(
             session,
             Builders<ResourceDeployment>.Filter.And(
                 ResourceDeploymentFilters.AtRevision(current),
@@ -338,33 +359,16 @@ public sealed class ResourceDeploymentMutationWriter(
             cancellationToken: cancellationToken);
         if (replacement.ModifiedCount != 1)
         {
-            return Failures.Conflict(
-                "The resource deployment changed while exact retry was being requested.");
+            return Error(new ResourceDeploymentChanged(
+                command.ResourceId,
+                command.ResourceDeploymentId));
         }
 
-        await dbContext.StoreEventAsync(
-            retried.ToCurrentRequestWrite(),
+        await storeOutboxWrites(
             session,
+            [retried.ToCurrentRequestWrite()],
             cancellationToken);
-        return retried.ToPlacementSummaryDto();
-    }
-
-    public async Task<Result<IReadOnlyList<PlacementSummaryDto>>> AdvanceResourceRevisionAsync(
-        ResourceDeploymentResourceRevisionRequest command,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await AdvanceResourceRevisionOutcomeAsync(
-            command,
-            session,
-            cancellationToken);
-        return result switch
-        {
-            Ok<IReadOnlyList<PlacementSummaryDto>> success =>
-                new Success<IReadOnlyList<PlacementSummaryDto>>(success.Value),
-            Err<AdvanceResourceDeploymentRevisionError> error =>
-                ToLegacyFailure(error.Value)
-        };
+        return Success(retried.ToPlacementSummaryDto());
     }
 
     public async Task<Result<
@@ -375,7 +379,8 @@ public sealed class ResourceDeploymentMutationWriter(
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
-        var current = await dbContext.ResourceDeployments
+        ArgumentNullException.ThrowIfNull(command);
+        var current = await resourceDeployments
             .Find(
                 session,
                 ResourceDeploymentFilters.ForResource(
@@ -411,7 +416,7 @@ public sealed class ResourceDeploymentMutationWriter(
                 updatedAtUtc);
             if (updated.Revision != deployment.Revision)
             {
-                var replacement = await dbContext.ResourceDeployments.ReplaceOneAsync(
+                var replacement = await resourceDeployments.ReplaceOneAsync(
                     session,
                     ResourceDeploymentFilters.AtRevision(deployment),
                     updated,
@@ -431,31 +436,27 @@ public sealed class ResourceDeploymentMutationWriter(
         return new Ok<IReadOnlyList<PlacementSummaryDto>>(results);
     }
 
-    private static Failure ToLegacyFailure(
-        AdvanceResourceDeploymentRevisionError error) => error switch
-        {
-            ResourceDeploymentsNotFound notFound => Failures.NotFound(
-                "Resource deployments were not found.",
-                notFound.ResourceId),
-            ResourceDeploymentsHaveNoActivePlacement => Failures.Conflict(
-                "The logical resource has no active resource deployments to advance."),
-            ResourceDeploymentRevisionConflict => Failures.Conflict(
-                "A resource deployment changed while the logical resource revision was being advanced.")
-        };
-
-    public async Task<Result<IReadOnlyList<PlacementSummaryDto>>> RequestSetApplyAsync(
+    public async Task<Result<
+        IReadOnlyList<PlacementSummaryDto>,
+        ResourceDeploymentMutationError>> RequestSetApplyAsync(
         ResourceDeploymentSetApplyRequest command,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
         ArgumentNullException.ThrowIfNull(command);
+        ArgumentNullException.ThrowIfNull(command.Deployments);
+        if (command.Deployments.Any(static deployment => deployment is null))
+        {
+            throw new ArgumentException(
+                "A deployment set cannot contain null entries.",
+                nameof(command));
+        }
         if (command.Deployments.Count == 0)
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Deployments"] = ["At least one resource deployment is required."]
-            });
+            throw new ArgumentException(
+                "At least one resource deployment is required.",
+                nameof(command));
         }
 
         var deploymentIds = command.Deployments
@@ -463,10 +464,9 @@ public sealed class ResourceDeploymentMutationWriter(
             .ToArray();
         if (deploymentIds.Distinct(StringComparer.Ordinal).Count() != deploymentIds.Length)
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Deployments"] = ["Resource deployment IDs must be unique."]
-            });
+            throw new ArgumentException(
+                "Resource deployment IDs must be unique.",
+                nameof(command));
         }
 
         var filter = Builders<ResourceDeployment>.Filter.And(
@@ -477,14 +477,12 @@ public sealed class ResourceDeploymentMutationWriter(
             Builders<ResourceDeployment>.Filter.In(
                 deployment => deployment.Id,
                 deploymentIds));
-        var current = await dbContext.ResourceDeployments
+        var current = await resourceDeployments
             .Find(session, filter)
             .ToListAsync(cancellationToken);
         if (current.Count != command.Deployments.Count)
         {
-            return Failures.NotFound(
-                "One or more resource deployments were not found.",
-                command.ResourceId);
+            return Error(new ResourceDeploymentMutationNotFound(command.ResourceId));
         }
 
         var byId = current.ToDictionary(deployment => deployment.Id, StringComparer.Ordinal);
@@ -493,32 +491,39 @@ public sealed class ResourceDeploymentMutationWriter(
             var deployment = byId[item.ResourceDeploymentId];
             if (deployment.Revision != item.ExpectedDeploymentRevision)
             {
-                return Failures.Conflict(
-                    "A resource deployment changed while the set mutation was being prepared.");
+                return Error(new ResourceDeploymentChanged(
+                    command.ResourceId,
+                    item.ResourceDeploymentId));
             }
-            var computeExpectation = EnsureExpectedCompute(item.ExpectedCompute, deployment);
+            var computeExpectation = EnsureExpectedCompute(
+                command.ResourceId,
+                item.ExpectedCompute,
+                deployment);
             if (computeExpectation is not null)
-                return computeExpectation;
+                return Error(computeExpectation.Value);
             if (deployment.DesiredOperation == ResourceDeploymentOperation.Delete ||
                 deployment.State is DeletedResourceDeploymentState)
             {
-                return Failures.Conflict(
-                    "A resource deployment pending deletion cannot be reconciled.");
+                return Error(new ResourceDeploymentPendingDeletion(
+                    command.ResourceId,
+                    item.ResourceDeploymentId));
             }
             if (item.ReplacementCompute is not null && !string.Equals(
                     item.ReplacementCompute.DeploymentTargetId,
                     deployment.ResolvedPlacement.DeploymentTargetId,
                     StringComparison.Ordinal))
             {
-                return Failures.Conflict(
-                    "A replacement compute profile belongs to a different deployment target.");
+                return Error(new ResourceDeploymentReplacementTargetMismatch(
+                    command.ResourceId,
+                    item.ResourceDeploymentId));
             }
             if (item.ReplacementIngress is not null && !HasSameIngressIdentity(
                     deployment.ResolvedPlacement.Ingress,
                     item.ReplacementIngress))
             {
-                return Failures.Conflict(
-                    "The resolved ingress identity changed while the resource deployment set mutation was being prepared.");
+                return Error(new ResourceDeploymentIngressConfigurationChanged(
+                    command.ResourceId,
+                    item.ResourceDeploymentId));
             }
         }
 
@@ -535,8 +540,7 @@ public sealed class ResourceDeploymentMutationWriter(
                 .Distinct(StringComparer.Ordinal)
                 .Count())
         {
-            return Failures.Conflict(
-                "One or more resource deployment runtime-cell placements are unavailable.");
+            return Error(new ResourceDeploymentPlacementUnavailable(command.ResourceId));
         }
         foreach (var deployment in current)
         {
@@ -550,8 +554,9 @@ public sealed class ResourceDeploymentMutationWriter(
                     deployment.ResolvedPlacement.KubernetesNamespace,
                     StringComparison.Ordinal))
             {
-                return Failures.Conflict(
-                    "A resource deployment runtime-cell placement is unavailable.");
+                return Error(new ResourceDeploymentPlacementUnavailable(
+                    command.ResourceId,
+                    deployment.Id));
             }
         }
 
@@ -573,7 +578,12 @@ public sealed class ResourceDeploymentMutationWriter(
                 session,
                 cancellationToken);
             if (computeFence is not ISuccess)
-                return (Failure)computeFence;
+            {
+                return Error(new ResourceDeploymentComputeConfigurationChanged(
+                    computeFenceRequests
+                        .Select(request => request.ComputeProfileId)
+                        .ToArray()));
+            }
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -599,42 +609,53 @@ public sealed class ResourceDeploymentMutationWriter(
         foreach (var updated in updatedDeployments)
         {
             var original = byId[updated.Id];
-            var replacement = await dbContext.ResourceDeployments.ReplaceOneAsync(
+            var replacement = await resourceDeployments.ReplaceOneAsync(
                 session,
                 ResourceDeploymentFilters.AtRevision(original),
                 updated,
                 cancellationToken: cancellationToken);
             if (replacement.ModifiedCount != 1)
             {
-                return Failures.Conflict(
-                    "A resource deployment changed while the set operation was being requested.");
+                return Error(new ResourceDeploymentChanged(
+                    command.ResourceId,
+                    original.Id));
             }
         }
-        await dbContext.StoreEventAsync(
+        await storeOutboxWrites(
+            session,
             updatedDeployments
                 .Where(deployment => deployment.State is PendingResourceDeploymentState)
-                .Select(deployment => deployment.ToCurrentRequestWrite()),
-            session,
+                .Select(deployment => deployment.ToCurrentRequestWrite())
+                .ToArray(),
             cancellationToken);
 
-        return updatedDeployments
-            .Select(deployment => deployment.ToPlacementSummaryDto())
-            .ToArray();
+        return Success<IReadOnlyList<PlacementSummaryDto>>(
+            updatedDeployments
+                .Select(deployment => deployment.ToPlacementSummaryDto())
+                .ToArray());
     }
 
-    public async Task<Result<IReadOnlyList<PlacementSummaryDto>>> RequestSetDeletionAsync(
+    public async Task<Result<
+        IReadOnlyList<PlacementSummaryDto>,
+        ResourceDeploymentMutationError>> RequestSetDeletionAsync(
         ResourceDeploymentSetDeletionRequest command,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
         ArgumentNullException.ThrowIfNull(command);
+        ArgumentNullException.ThrowIfNull(command.Deployments);
+        if (command.Deployments.Any(static deployment => deployment is null))
+        {
+            throw new ArgumentException(
+                "A deployment set cannot contain null entries.",
+                nameof(command));
+        }
         if (command.Deployments.Count == 0)
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Deployments"] = ["At least one resource deployment is required."]
-            });
+            throw new ArgumentException(
+                "At least one resource deployment is required.",
+                nameof(command));
         }
 
         var deploymentIds = command.Deployments
@@ -642,13 +663,12 @@ public sealed class ResourceDeploymentMutationWriter(
             .ToArray();
         if (deploymentIds.Distinct(StringComparer.Ordinal).Count() != deploymentIds.Length)
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Deployments"] = ["Resource deployment IDs must be unique."]
-            });
+            throw new ArgumentException(
+                "Resource deployment IDs must be unique.",
+                nameof(command));
         }
 
-        var current = await dbContext.ResourceDeployments
+        var current = await resourceDeployments
             .Find(
                 session,
                 Builders<ResourceDeployment>.Filter.And(
@@ -662,9 +682,7 @@ public sealed class ResourceDeploymentMutationWriter(
             .ToListAsync(cancellationToken);
         if (current.Count != command.Deployments.Count)
         {
-            return Failures.NotFound(
-                "One or more resource deployments were not found.",
-                command.ResourceId);
+            return Error(new ResourceDeploymentMutationNotFound(command.ResourceId));
         }
 
         var byId = current.ToDictionary(deployment => deployment.Id, StringComparer.Ordinal);
@@ -673,12 +691,16 @@ public sealed class ResourceDeploymentMutationWriter(
             var deployment = byId[item.ResourceDeploymentId];
             if (deployment.Revision != item.ExpectedDeploymentRevision)
             {
-                return Failures.Conflict(
-                    "A resource deployment changed while set deletion was being prepared.");
+                return Error(new ResourceDeploymentChanged(
+                    command.ResourceId,
+                    item.ResourceDeploymentId));
             }
-            var computeExpectation = EnsureExpectedCompute(item.ExpectedCompute, deployment);
+            var computeExpectation = EnsureExpectedCompute(
+                command.ResourceId,
+                item.ExpectedCompute,
+                deployment);
             if (computeExpectation is not null)
-                return computeExpectation;
+                return Error(computeExpectation.Value);
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -693,30 +715,34 @@ public sealed class ResourceDeploymentMutationWriter(
         foreach (var updated in changedDeployments)
         {
             var original = byId[updated.Id];
-            var replacement = await dbContext.ResourceDeployments.ReplaceOneAsync(
+            var replacement = await resourceDeployments.ReplaceOneAsync(
                 session,
                 ResourceDeploymentFilters.AtRevision(original),
                 updated,
                 cancellationToken: cancellationToken);
             if (replacement.ModifiedCount != 1)
             {
-                return Failures.Conflict(
-                    "A resource deployment changed while set deletion was being requested.");
+                return Error(new ResourceDeploymentChanged(
+                    command.ResourceId,
+                    original.Id));
             }
         }
-        await dbContext.StoreEventAsync(
+        await storeOutboxWrites(
+            session,
             changedDeployments
                 .Where(deployment => deployment.State is PendingResourceDeploymentState)
-                .Select(deployment => deployment.ToCurrentRequestWrite()),
-            session,
+                .Select(deployment => deployment.ToCurrentRequestWrite())
+                .ToArray(),
             cancellationToken);
 
-        return updatedDeployments
-            .Select(deployment => deployment.ToPlacementSummaryDto())
-            .ToArray();
+        return Success<IReadOnlyList<PlacementSummaryDto>>(
+            updatedDeployments
+                .Select(deployment => deployment.ToPlacementSummaryDto())
+                .ToArray());
     }
 
-    private async Task<Result<ResourceDeployment>> LoadSingleAsync(
+    private async Task<Result<ResourceDeployment, ResourceDeploymentMutationError>>
+        LoadSingleAsync(
         ResourceDeploymentMutationRequest command,
         IClientSessionHandle session,
         CancellationToken cancellationToken)
@@ -724,7 +750,7 @@ public sealed class ResourceDeploymentMutationWriter(
         if (string.IsNullOrWhiteSpace(command.ResourceType.Value))
             throw new ArgumentException("Resource type is required.", nameof(command));
 
-        var deployments = await dbContext.ResourceDeployments
+        var deployments = await resourceDeployments
             .Find(
                 session,
                 ResourceDeploymentFilters.ForResource(
@@ -736,16 +762,14 @@ public sealed class ResourceDeploymentMutationWriter(
             .ToListAsync(cancellationToken);
         return deployments.Count switch
         {
-            0 => Failures.NotFound(
-                "Resource deployment not found.",
-                command.ResourceId),
-            1 => deployments[0],
-            _ => Failures.Conflict(
-                "The logical resource has multiple deployments and cannot be mutated as a single-target resource.")
+            0 => Error(new ResourceDeploymentMutationNotFound(command.ResourceId)),
+            1 => Success(deployments[0]),
+            _ => Error(new ResourceDeploymentCardinalityConflict(command.ResourceId))
         };
     }
 
-    private async Task<Result<ResourceDeployment>> LoadExactAsync(
+    private async Task<Result<ResourceDeployment, ResourceDeploymentMutationError>>
+        LoadExactAsync(
         ResourceDeploymentExactMutationRequest command,
         IClientSessionHandle session,
         CancellationToken cancellationToken)
@@ -753,7 +777,7 @@ public sealed class ResourceDeploymentMutationWriter(
         if (string.IsNullOrWhiteSpace(command.ResourceType.Value))
             throw new ArgumentException("Resource type is required.", nameof(command));
 
-        var deployment = await dbContext.ResourceDeployments
+        var deployment = await resourceDeployments
             .Find(
                 session,
                 ResourceDeploymentFilters.ForExactDeployment(
@@ -763,26 +787,28 @@ public sealed class ResourceDeploymentMutationWriter(
                     command.ResourceDeploymentId))
             .FirstOrDefaultAsync(cancellationToken);
         return deployment is null
-            ? Failures.NotFound(
-                "Resource deployment not found.",
-                command.ResourceDeploymentId)
-            : deployment;
+            ? Error(new ResourceDeploymentMutationNotFound(
+                command.ResourceId,
+                command.ResourceDeploymentId))
+            : Success(deployment);
     }
 
-    private static ConflictFailure? EnsureExpectedCompute(
+    private static ResourceDeploymentMutationError? EnsureExpectedCompute(
         ResourceDeploymentMutationRequest command,
         ResourceDeployment current) =>
-        EnsureExpectedCompute(command.ExpectedCompute, current);
+        EnsureExpectedCompute(command.ResourceId, command.ExpectedCompute, current);
 
-    private static ConflictFailure? EnsureExpectedCompute(
+    private static ResourceDeploymentMutationError? EnsureExpectedCompute(
+        string resourceId,
         ComputeProfileReference expectedCompute,
         ResourceDeployment current) =>
         current.ResolvedPlacement.Compute.Matches(
             expectedCompute.ComputeProfileId,
             expectedCompute.ComputeProfileRevision)
-            ? null
-            : Failures.Conflict(
-                "The resource deployment compute configuration changed while the logical resource mutation was being prepared.");
+            ? (ResourceDeploymentMutationError?)null
+            : new ResourceDeploymentMutationError(
+                new ResourceDeploymentComputeConfigurationChanged(
+                    [expectedCompute.ComputeProfileId]));
 
     private static bool HasSameIngressIdentity(
         ResolvedIngressConfiguration? current,
@@ -813,62 +839,70 @@ public sealed class ResourceDeploymentMutationWriter(
             _ => false
         };
 
-    private async Task<Result<PlacementSummaryDto>> ReplaceAndEnqueueAsync(
+    private async Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+        ReplaceAndEnqueueAsync(
         ResourceDeploymentMutationRequest command,
         ResourceDeployment current,
         ResourceDeployment updated,
         IClientSessionHandle session,
         CancellationToken cancellationToken)
     {
-        var replacement = await dbContext.ResourceDeployments.ReplaceOneAsync(
+        var replacement = await resourceDeployments.ReplaceOneAsync(
             session,
             ResourceDeploymentFilters.AtRevision(current),
             updated,
             cancellationToken: cancellationToken);
         if (replacement.ModifiedCount != 1)
         {
-            return Failures.Conflict(
-                "The resource deployment changed while the operation was being requested.");
+            return Error(new ResourceDeploymentChanged(command.ResourceId, current.Id));
         }
 
         if (updated.State is PendingResourceDeploymentState)
         {
-            await dbContext.StoreEventAsync(
-                updated.ToCurrentRequestWrite(),
+            await storeOutboxWrites(
                 session,
+                [updated.ToCurrentRequestWrite()],
                 cancellationToken);
         }
 
-        return updated.ToPlacementSummaryDto();
+        return Success(updated.ToPlacementSummaryDto());
     }
 
-    private async Task<Result<PlacementSummaryDto>> ReplaceExactAndEnqueueAsync(
+    private async Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+        ReplaceExactAndEnqueueAsync(
         ResourceDeployment current,
         ResourceDeployment updated,
         IClientSessionHandle session,
         CancellationToken cancellationToken)
     {
-        var replacement = await dbContext.ResourceDeployments.ReplaceOneAsync(
+        var replacement = await resourceDeployments.ReplaceOneAsync(
             session,
             ResourceDeploymentFilters.AtRevision(current),
             updated,
             cancellationToken: cancellationToken);
         if (replacement.ModifiedCount != 1)
         {
-            return Failures.Conflict(
-                "The resource deployment changed while the exact operation was being requested.");
+            return Error(new ResourceDeploymentChanged(
+                current.ResourceId,
+                current.Id));
         }
 
         if (updated.State is PendingResourceDeploymentState)
         {
-            await dbContext.StoreEventAsync(
-                updated.ToCurrentRequestWrite(),
+            await storeOutboxWrites(
                 session,
+                [updated.ToCurrentRequestWrite()],
                 cancellationToken);
         }
 
-        return updated.ToPlacementSummaryDto();
+        return Success(updated.ToPlacementSummaryDto());
     }
+
+    private static Err<ResourceDeploymentMutationError> Error(
+        ResourceDeploymentMutationError error) => new(error);
+
+    private static Ok<T> Success<T>(T value)
+        where T : notnull => new(value);
 
     private static void EnsureTransaction(IClientSessionHandle session)
     {

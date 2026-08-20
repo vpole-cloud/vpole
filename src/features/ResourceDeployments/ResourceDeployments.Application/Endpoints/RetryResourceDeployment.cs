@@ -7,10 +7,9 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Domain;
 using Pole.Mediator;
+using Pole.ResultType;
 using Pole.Validation;
 
 namespace Pole.Features.ResourceDeployments.Application.Endpoints;
@@ -30,6 +29,17 @@ public union RetryResourceDeploymentOutcome(
     ResourceDeploymentDto,
     RetryResourceDeploymentError);
 
+/// <summary>
+/// Retries one deployment inside a caller-owned transaction so the state
+/// mutation and reconciliation outbox write commit atomically.
+/// </summary>
+public delegate Task<Result<ResourceDeploymentDto, RetryResourceDeploymentError>>
+    RetryResourceDeployment(
+        string tenantId,
+        string deploymentId,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);
+
 public sealed record RetryResourceDeploymentRequest(
     [FromRoute] string DeploymentId,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
@@ -38,8 +48,7 @@ public sealed record RetryResourceDeploymentRequest(
 public sealed class RetryResourceDeploymentHandler(
     RunMongoOutcomeTransaction<RetryResourceDeploymentOutcome>
         runMongoTransaction,
-    IResourceDeploymentDbContext dbContext,
-    TimeProvider timeProvider)
+    RetryResourceDeployment retryResourceDeployment)
     : IMediatorOutcomeHandler<
         RetryResourceDeploymentRequest,
         RetryResourceDeploymentOutcome>
@@ -50,58 +59,14 @@ public sealed class RetryResourceDeploymentHandler(
         runMongoTransaction(
             async (transaction, ct) =>
             {
-                var filter = Builders<ResourceDeployment>.Filter.And(
-                    Builders<ResourceDeployment>.Filter.Eq(
-                        deployment => deployment.Id,
-                        request.DeploymentId),
-                    Builders<ResourceDeployment>.Filter.ForTenant(request.TenantId));
-                var current = await dbContext.ResourceDeployments
-                    .Find(transaction.Session, filter)
-                    .FirstOrDefaultAsync(ct);
-                if (current is null)
-                {
-                    return Abort(
-                        transaction,
-                        new ResourceDeploymentNotFound(
-                            request.DeploymentId));
-                }
-                if (current.State is not FailedResourceDeploymentState
-                    {
-                        Retryable: true
-                    })
-                {
-                    return Abort(
-                        transaction,
-                        new ResourceDeploymentNotRetryable(
-                            request.DeploymentId));
-                }
-
-                var retried = current.Retry(timeProvider.GetUtcNow().UtcDateTime);
-                var replacement = await dbContext.ResourceDeployments.ReplaceOneAsync(
-                    transaction.Session,
-                    Builders<ResourceDeployment>.Filter.And(
-                        filter,
-                        Builders<ResourceDeployment>.Filter.Eq(
-                            deployment => deployment.Revision,
-                            current.Revision),
-                        Builders<ResourceDeployment>.Filter
-                            .OfType<ResourceDeploymentState, FailedResourceDeploymentState>(
-                                deployment => deployment.State)),
-                    retried,
-                    cancellationToken: ct);
-                if (replacement.ModifiedCount != 1)
-                {
-                    return Abort(
-                        transaction,
-                        new ResourceDeploymentRetryConflict(
-                            request.DeploymentId));
-                }
-
-                await dbContext.StoreEventAsync(
-                    retried.ToCurrentRequestWrite(),
+                var result = await retryResourceDeployment(
+                    request.TenantId,
+                    request.DeploymentId,
                     transaction.Session,
                     ct);
-                return transaction.Commit(retried.ToDto());
+                return result.TryGetValue(out var deployment, out var error)
+                    ? transaction.Commit(deployment)
+                    : Abort(transaction, error);
             },
             cancellationToken);
 

@@ -34,7 +34,7 @@ public sealed record GetWebServiceResourceDeploymentsRequest(
 
 public sealed class GetWebServiceResourceDeploymentsHandler(
     LoadWebServiceById loadWebServiceById,
-    IResourceDeploymentSetQueryService deployments)
+    LoadResourceDeploymentSet loadResourceDeploymentSet)
     : IMediatorHandler<GetWebServiceResourceDeploymentsRequest, IReadOnlyList<PlacementSummaryDto>>
 {
     public async Task<Result<IReadOnlyList<PlacementSummaryDto>>> HandleAsync(
@@ -45,7 +45,7 @@ public sealed class GetWebServiceResourceDeploymentsHandler(
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
 
-        return Result.Success<IReadOnlyList<PlacementSummaryDto>>(await deployments.GetAllAsync(
+        return Result.Success<IReadOnlyList<PlacementSummaryDto>>(await loadResourceDeploymentSet(
             request.TenantId,
             WebServiceResourceDeployment.ResourceType,
             request.Id,

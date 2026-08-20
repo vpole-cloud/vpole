@@ -309,7 +309,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
     private ResourceGroupDeletionFinalizer CreateDeletionFinalizer(DateTime utcNow) =>
         new(
             DbContext,
-            new NoUnfinishedDeploymentReferences(),
+            new NoUnfinishedDeploymentReferences().EnsureNoUnfinishedForIsolationScopeAsync,
             new FixedTimeProvider(utcNow));
 
     private static RuntimeCellReconciliationRequestedEvent ReconciliationEvent(RuntimeCell cell) =>
@@ -375,7 +375,6 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
     }
 
     private sealed class NoUnfinishedDeploymentReferences
-        : IResourceDeploymentReferenceLookup
     {
         public Task<Result> EnsureNoUnfinishedForResourceGroupAsync(
             string tenantId,

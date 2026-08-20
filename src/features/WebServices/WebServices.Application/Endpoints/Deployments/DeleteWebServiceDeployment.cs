@@ -48,8 +48,9 @@ public sealed record DeleteWebServiceDeploymentRequest(
 
 public sealed class DeleteWebServiceDeploymentHandler(
     LoadWebServiceById loadWebService,
-    IResourceDeploymentSetQueryService deploymentQuery,
-    IResourceDeploymentSetMutationWriter deploymentWriter,
+    LoadResourceDeploymentSet loadResourceDeploymentSet,
+    RequestExactResourceDeploymentDeletionLegacy requestExactResourceDeploymentDeletion,
+    AdvanceResourceDeploymentRevisionLegacy advanceResourceDeploymentRevision,
     PersistUpdatedWebService persistWebService,
     PersistCurrentWebServiceRelease persistRelease,
     IQuotaAdmissionExecutor quotaAdmission,
@@ -67,7 +68,7 @@ public sealed class DeleteWebServiceDeploymentHandler(
         if (webService is null)
             return Failures.NotFound("Web service not found.", request.Id);
 
-        var deployments = await deploymentQuery.GetAllAsync(
+        var deployments = await loadResourceDeploymentSet(
             request.TenantId,
             WebServiceResourceDeployment.ResourceType,
             request.Id,
@@ -115,7 +116,7 @@ public sealed class DeleteWebServiceDeploymentHandler(
             async (session, token) =>
             {
                 var updated = webService.AdvancePlacementDesiredState();
-                var deleted = await deploymentWriter.RequestExactDeletionAsync(
+                var deleted = await requestExactResourceDeploymentDeletion(
                     new ResourceDeploymentExactMutationRequest(
                         webService.TenantId,
                         WebServiceResourceDeployment.ResourceType,
@@ -129,7 +130,7 @@ public sealed class DeleteWebServiceDeploymentHandler(
                 if (!deleted.TryGetValue(out var result, out var failure))
                     return failure;
 
-                var stamped = await deploymentWriter.AdvanceResourceRevisionAsync(
+                var stamped = await advanceResourceDeploymentRevision(
                     new ResourceDeploymentResourceRevisionRequest(
                         webService.TenantId,
                         WebServiceResourceDeployment.ResourceType,

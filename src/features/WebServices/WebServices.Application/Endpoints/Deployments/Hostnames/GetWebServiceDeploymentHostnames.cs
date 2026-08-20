@@ -44,7 +44,7 @@ public sealed record GetWebServiceDeploymentHostnamesRequest(
 
 public sealed class GetWebServiceDeploymentHostnamesHandler(
     LoadWebServiceById loadWebService,
-    IResourceDeploymentSetQueryService deploymentQuery,
+    LoadExactResourceDeployment loadExactResourceDeployment,
     LoadHostnameBindingsForDeployment loadHostnameBindingsForDeployment)
     : IMediatorHandler<
         GetWebServiceDeploymentHostnamesRequest,
@@ -62,7 +62,7 @@ public sealed class GetWebServiceDeploymentHostnamesHandler(
             return Failures.NotFound("Web service not found.", request.Id);
         }
 
-        var deployment = await deploymentQuery.GetExactAsync(
+        var deployment = await loadExactResourceDeployment(
             request.TenantId,
             WebServiceResourceDeployment.ResourceType,
             request.Id,

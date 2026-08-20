@@ -3,6 +3,10 @@ using Pole.Features.ResourceDeployments.Contracts;
 
 namespace Pole.Features.ResourceDeployments.Application.Reconciliation;
 
+public delegate (IResourceDeploymentAdapter Adapter,
+    ResourcePlacementCapability PlacementCapability)
+    ResolveResourceDeploymentAdapter(string resourceType);
+
 public sealed class ResourceDeploymentAdapterCatalog(
     IEnumerable<ResourceDeploymentAdapterDescriptor> descriptors)
 {

@@ -53,6 +53,26 @@ public sealed class ResourceDeploymentSchemaValidationTests(MongoReplicaSetFixtu
             document => document["Unexpected"] = new BsonString("not allowed"));
     }
 
+    [Fact]
+    public async Task RecoveryMigration_indexes_state_update_time_and_identity()
+    {
+        await new ResourceDeploymentRecoveryIndexMigration().Up(fixture.Database);
+        var deployments = fixture.Database
+            .GetCollection<BsonDocument>(CollectionName);
+        var indexes = await (await deployments.Indexes.ListAsync()).ToListAsync();
+
+        var recoveryIndex = Assert.Single(indexes, index =>
+            index["name"] == "IX_ResourceDeployments_State_Updated");
+        Assert.Equal(
+            new BsonDocument
+            {
+                ["State._t"] = 1,
+                ["UpdatedAtUtc"] = 1,
+                ["_id"] = 1
+            },
+            recoveryIndex["key"].AsBsonDocument);
+    }
+
     private static ResourceDeployment CreateDeployment() =>
         ResourceDeploymentFactory.Create(
             "507f1f77bcf86cd799439011",

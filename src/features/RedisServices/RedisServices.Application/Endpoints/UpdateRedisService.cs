@@ -58,8 +58,8 @@ public sealed class UpdateRedisServiceHandler(
     PersistUpdatedRedis persistUpdatedRedis,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     ResolveComputeProfile resolveComputeProfile,
-    IResourceDeploymentComputeLookup deploymentComputeLookup,
-    IResourceDeploymentMutationWriter deploymentWriter)
+    LoadCurrentResourceDeploymentComputeLegacy loadDeploymentCompute,
+    RequestResourceDeploymentApplyLegacy requestDeploymentApply)
     : IMediatorHandler<UpdateRedisServiceRequest, UpdateRedisServiceResponse>
 {
     public async Task<Result<UpdateRedisServiceResponse>> HandleAsync(
@@ -88,7 +88,7 @@ public sealed class UpdateRedisServiceHandler(
         }
 
         var nextSpec = request.Body.Spec.ToDomain();
-        var currentComputeResult = await deploymentComputeLookup.GetCurrentAsync(
+        var currentComputeResult = await loadDeploymentCompute(
             redis.TenantId,
             RedisResourceDeployment.ResourceType,
             redis.Id,
@@ -147,7 +147,7 @@ public sealed class UpdateRedisServiceHandler(
                 if (persistenceResult is Failure persistenceFailure)
                     return persistenceFailure;
 
-                var deploymentResult = await deploymentWriter.RequestApplyAsync(
+                var deploymentResult = await requestDeploymentApply(
                     new ResourceDeploymentMutationRequest(
                         redis.TenantId,
                         RedisResourceDeployment.ResourceType,

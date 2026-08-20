@@ -87,76 +87,111 @@ public sealed record ResourceDeploymentDto(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
 
-public interface IResourceDeploymentReferenceLookup
-{
-    Task<Result> EnsureNoUnfinishedForResourceGroupAsync(
-        string tenantId,
-        string resourceGroupId,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+public sealed record ResourceGroupHasUnfinishedDeployments(string ResourceGroupId);
 
-    Task<Result> EnsureNoUnfinishedForIsolationScopeAsync(
-        string tenantId,
-        string resourceGroupId,
-        string isolationScopeId,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
-}
+public sealed record IsolationScopeHasUnfinishedDeployments(
+    string ResourceGroupId,
+    string IsolationScopeId);
 
-public interface IResourceDeploymentComputeProfileReferenceGuard
-{
-    Task<Result> EnsureUnreferencedAsync(
-        string computeProfileId,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
-}
+public sealed record ComputeProfileReferencedByResourceDeployment(
+    string ComputeProfileId);
 
-public interface IResourceDeploymentQueryService
-{
-    Task<PlacementSummaryDto?> GetAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
-        CancellationToken cancellationToken = default);
+public sealed record CurrentResourceDeploymentComputeNotFound(string ResourceId);
 
-    Task<IReadOnlyDictionary<string, PlacementSummaryDto>> GetManyAsync(
+public sealed record CurrentResourceDeploymentComputeCardinalityConflict(
+    string ResourceId);
+
+public union LoadCurrentResourceDeploymentComputeError(
+    CurrentResourceDeploymentComputeNotFound,
+    CurrentResourceDeploymentComputeCardinalityConflict);
+
+public delegate Task<Result<Unit, ResourceGroupHasUnfinishedDeployments>>
+    EnsureNoUnfinishedResourceGroupDeployments(
+    string tenantId,
+    string resourceGroupId,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<Result<Unit, IsolationScopeHasUnfinishedDeployments>>
+    EnsureNoUnfinishedIsolationScopeDeployments(
+    string tenantId,
+    string resourceGroupId,
+    string isolationScopeId,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<Result<Unit, ComputeProfileReferencedByResourceDeployment>>
+    EnsureComputeProfileUnreferenced(
+    string computeProfileId,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<PlacementSummaryDto?> LoadResourceDeployment(
+    string tenantId,
+    ResourceTypeId resourceType,
+    string resourceId,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<IReadOnlyDictionary<string, PlacementSummaryDto>>
+    LoadResourceDeployments(
         string tenantId,
         ResourceTypeId resourceType,
         IReadOnlyCollection<string> resourceIds,
         CancellationToken cancellationToken = default);
-}
 
-public interface IResourceDeploymentComputeLookup
-{
-    Task<Result<CurrentResourceDeploymentComputeDto>> GetCurrentAsync(
+public delegate Task<Result<
+    CurrentResourceDeploymentComputeDto,
+    LoadCurrentResourceDeploymentComputeError>>
+    LoadCurrentResourceDeploymentCompute(
         string tenantId,
         ResourceTypeId resourceType,
         string resourceId,
         CancellationToken cancellationToken = default);
-}
+
+public delegate Task<IReadOnlyList<PlacementSummaryDto>> LoadResourceDeploymentSet(
+    string tenantId,
+    ResourceTypeId resourceType,
+    string resourceId,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<PlacementSummaryDto?> LoadExactResourceDeployment(
+    string tenantId,
+    ResourceTypeId resourceType,
+    string resourceId,
+    string deploymentId,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>>
+    LoadResourceDeploymentSets(
+        string tenantId,
+        ResourceTypeId resourceType,
+        IReadOnlyCollection<string> resourceIds,
+        CancellationToken cancellationToken = default);
 
 /// <summary>
-/// Multi-target read capability. Existing single-target callers intentionally
-/// continue to use <see cref="IResourceDeploymentQueryService"/>.
+/// Temporary shared-result adapters for wave 1 consumers.
 /// </summary>
-public interface IResourceDeploymentSetQueryService
-{
-    Task<IReadOnlyList<PlacementSummaryDto>> GetAllAsync(
+public delegate Task<Result> EnsureNoUnfinishedResourceGroupDeploymentsLegacy(
+    string tenantId,
+    string resourceGroupId,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<Result> EnsureNoUnfinishedIsolationScopeDeploymentsLegacy(
+    string tenantId,
+    string resourceGroupId,
+    string isolationScopeId,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<Result> EnsureComputeProfileUnreferencedLegacy(
+    string computeProfileId,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<Result<CurrentResourceDeploymentComputeDto>>
+    LoadCurrentResourceDeploymentComputeLegacy(
         string tenantId,
         ResourceTypeId resourceType,
         string resourceId,
         CancellationToken cancellationToken = default);
-
-    Task<PlacementSummaryDto?> GetExactAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
-        string deploymentId,
-        CancellationToken cancellationToken = default);
-
-    Task<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>> GetAllManyAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        IReadOnlyCollection<string> resourceIds,
-        CancellationToken cancellationToken = default);
-}

@@ -50,9 +50,6 @@ public sealed record CreateResourceDeploymentRequest(
 public sealed record CreateResourceDeploymentSetRequest(
     IReadOnlyList<CreateResourceDeploymentRequest> Deployments);
 
-public sealed record InvalidResourceDeploymentSet(
-    IReadOnlyDictionary<string, string[]> Errors);
-
 public sealed record ResourceDeploymentTargetConfigurationChanged(
     IReadOnlyList<string> DeploymentTargetIds);
 
@@ -68,8 +65,7 @@ public sealed record ResourcePlacementResourceGroupNotFound(string ResourceGroup
 
 public sealed record ResourcePlacementDeleting(string DeploymentTargetId);
 
-public union CreateResourceDeploymentSetError(
-    InvalidResourceDeploymentSet,
+public union CreateResourceDeploymentError(
     ResourceDeploymentTargetConfigurationChanged,
     ResourceDeploymentComputeConfigurationChanged,
     ResourceDeploymentStorageConfigurationChanged,
@@ -77,24 +73,41 @@ public union CreateResourceDeploymentSetError(
     ResourcePlacementUnavailable,
     ResourcePlacementDeleting);
 
-public delegate Task<Result<ResolvedResourceDeploymentTarget>> ResolveResourceDeploymentTarget(
+/// <summary>
+/// Temporary shared-result adapter. Remove when DeploymentTargets consumers in
+/// migration wave 1 expose the provider-owned admission union directly.
+/// </summary>
+public delegate Task<Result<ResolvedResourceDeploymentTarget>> ResolveResourceDeploymentTargetLegacy(
     string? deploymentTargetId,
     bool requiresIngress,
     CancellationToken cancellationToken = default);
 
-public delegate Task<Result<PlacementSummaryDto>> CreateResourceDeployment(
+public delegate Task<Result<PlacementSummaryDto, CreateResourceDeploymentError>>
+    CreateResourceDeployment(
     CreateResourceDeploymentRequest request,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
-
-public delegate Task<Result<IReadOnlyList<PlacementSummaryDto>>> CreateResourceDeploymentSet(
-    CreateResourceDeploymentSetRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
 public delegate Task<Result<
     IReadOnlyList<PlacementSummaryDto>,
-    CreateResourceDeploymentSetError>> CreateResourceDeploymentSetOutcome(
+    CreateResourceDeploymentError>> CreateResourceDeploymentSet(
+    CreateResourceDeploymentSetRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+/// <summary>
+/// Temporary shared-result adapter for consumers not yet migrated in wave 1.
+/// </summary>
+public delegate Task<Result<PlacementSummaryDto>> CreateResourceDeploymentLegacy(
+    CreateResourceDeploymentRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+/// <summary>
+/// Temporary shared-result adapter for consumers not yet migrated in wave 1.
+/// </summary>
+public delegate Task<Result<IReadOnlyList<PlacementSummaryDto>>>
+    CreateResourceDeploymentSetLegacy(
     CreateResourceDeploymentSetRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);

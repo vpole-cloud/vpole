@@ -65,7 +65,7 @@ public sealed record DeleteResourceGroupResponse(
 
 public sealed class DeleteResourceGroupHandler(
     IResourceGroupDbContext dbContext,
-    IResourceDeploymentReferenceLookup deploymentReferences,
+    EnsureNoUnfinishedResourceGroupDeploymentsLegacy ensureNoUnfinishedDeployments,
     TimeProvider timeProvider)
     : IMediatorHandler<DeleteResourceGroupRequest, DeleteResourceGroupResponse>
 {
@@ -89,7 +89,7 @@ public sealed class DeleteResourceGroupHandler(
             return loadFailure;
 
         var deploymentGuard =
-            await deploymentReferences.EnsureNoUnfinishedForResourceGroupAsync(
+            await ensureNoUnfinishedDeployments(
                 context.ResourceGroup.TenantId,
                 context.ResourceGroup.Id,
                 session,

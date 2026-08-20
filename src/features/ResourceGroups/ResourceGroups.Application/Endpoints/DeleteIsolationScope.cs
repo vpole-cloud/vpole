@@ -73,7 +73,7 @@ public sealed class DeleteIsolationScopeRequestValidator
 
 public sealed class DeleteIsolationScopeHandler(
     IResourceGroupDbContext dbContext,
-    IResourceDeploymentReferenceLookup deploymentReferences,
+    EnsureNoUnfinishedIsolationScopeDeploymentsLegacy ensureNoUnfinishedDeployments,
     TimeProvider timeProvider)
     : IMediatorHandler<DeleteIsolationScopeRequest, DeleteIsolationScopeResponse>
 {
@@ -97,7 +97,7 @@ public sealed class DeleteIsolationScopeHandler(
             return loadFailure;
 
         var deploymentGuard =
-            await deploymentReferences.EnsureNoUnfinishedForIsolationScopeAsync(
+            await ensureNoUnfinishedDeployments(
                 context.ResourceGroup.TenantId,
                 context.ResourceGroup.Id,
                 context.Scope.Id,
