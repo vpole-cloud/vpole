@@ -12,8 +12,8 @@ public sealed class WebServiceSourceBuildDeploymentService(
     PersistUpdatedWebService persistUpdatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     RunMongoTransaction<SourceBuildDeploymentResult> runMongoTransaction,
-    IResourceDeploymentSetQueryService deploymentQuery,
-    IResourceDeploymentSetMutationWriter deploymentWriter,
+    LoadResourceDeploymentSet loadResourceDeploymentSet,
+    RequestResourceDeploymentSetApplyLegacy requestResourceDeploymentSetApply,
     TimeProvider timeProvider)
     : IWebServiceSourceBuildDeploymentService
 {
@@ -30,7 +30,7 @@ public sealed class WebServiceSourceBuildDeploymentService(
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
             return Failures.Conflict("A deleting web service cannot accept a source build.");
 
-        var deployments = await deploymentQuery.GetAllAsync(
+        var deployments = await loadResourceDeploymentSet(
             webService.TenantId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
@@ -50,7 +50,7 @@ public sealed class WebServiceSourceBuildDeploymentService(
             var updatedWebService = webService.UpdateDesiredState(
                 nextSpec,
                 webService.Tags);
-            var deploymentResult = await deploymentWriter.RequestSetApplyAsync(
+            var deploymentResult = await requestResourceDeploymentSetApply(
                 new ResourceDeploymentSetApplyRequest(
                     webService.TenantId,
                     WebServiceResourceDeployment.ResourceType,

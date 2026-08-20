@@ -81,7 +81,7 @@ public union AddWebServiceDeploymentError(
     ComputeProfileResolutionError,
     GeneratedDomainZoneError,
     GeneratedHostnameBindingError,
-    CreateResourceDeploymentSetError,
+    CreateResourceDeploymentError,
     AdvanceResourceDeploymentRevisionError,
     WebServiceUpdateConflict,
     QuotaExecutionError);
@@ -92,13 +92,13 @@ public union AddWebServiceDeploymentOutcome(
 
 public sealed class AddWebServiceDeploymentHandler(
     LoadWebServiceById loadWebServiceById,
-    IResourceDeploymentSetQueryService deploymentQuery,
+    LoadResourceDeploymentSet loadResourceDeploymentSet,
     IDeploymentTargetPublicIngressAdmission targetAdmission,
     ResolveComputeProfilesOutcome resolveComputeProfiles,
     GetOrCreateGeneratedDomainZoneOutcome getOrCreateGeneratedDomainZone,
     CreateGeneratedHostnameBindingOutcome createGeneratedHostnameBinding,
-    CreateResourceDeploymentSetOutcome createDeployments,
-    IResourceDeploymentSetOutcomeMutationWriter deploymentWriter,
+    CreateResourceDeploymentSet createDeployments,
+    AdvanceResourceDeploymentRevision advanceResourceDeploymentRevision,
     PersistUpdatedWebServiceOutcome persistUpdatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
@@ -151,7 +151,7 @@ public sealed class AddWebServiceDeploymentHandler(
                     new WebServiceDeploymentUpdateUnavailable(request.Id)));
         }
 
-        var deployments = await deploymentQuery.GetAllAsync(
+        var deployments = await loadResourceDeploymentSet(
             request.TenantId,
             WebServiceResourceDeployment.ResourceType,
             request.Id,
@@ -299,7 +299,7 @@ public sealed class AddWebServiceDeploymentHandler(
                 transaction,
                 new AddWebServiceDeploymentError(createdError));
 
-        var advancedResult = await deploymentWriter.AdvanceResourceRevisionOutcomeAsync(
+        var advancedResult = await advanceResourceDeploymentRevision(
             CreateResourceRevisionRequest(updated),
             transaction.Session,
             cancellationToken);

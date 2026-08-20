@@ -14,7 +14,8 @@ public delegate Task<Result> FinalizeRedisDeletion(
 
 internal sealed class MongoFinalizeRedisDeletion(
     IMongoCollection<Redis> redisServices,
-    IResourceDeploymentFinalizationService deploymentFinalization,
+    GetResourceDeploymentFinalizationReadiness getDeploymentReadiness,
+    PurgeDeletedResourceDeploymentsLegacy purgeDeployments,
     RunMongoTransaction runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites)
 {
@@ -33,7 +34,7 @@ internal sealed class MongoFinalizeRedisDeletion(
             if (redis is null)
                 return Result.Success();
 
-            var readiness = await deploymentFinalization.GetReadinessAsync(
+            var readiness = await getDeploymentReadiness(
                 tenantId,
                 RedisResourceDeployment.ResourceType,
                 redisId,
@@ -51,7 +52,7 @@ internal sealed class MongoFinalizeRedisDeletion(
             if (deleted.DeletedCount != 1)
                 return Result.Success();
 
-            var purge = await deploymentFinalization.PurgeDeletedAsync(
+            var purge = await purgeDeployments(
                 tenantId,
                 RedisResourceDeployment.ResourceType,
                 redisId,

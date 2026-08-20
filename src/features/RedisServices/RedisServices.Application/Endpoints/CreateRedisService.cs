@@ -44,9 +44,9 @@ public sealed class CreateRedisServiceHandler(
     PersistCreatedRedis persistCreatedRedis,
     IStorageProfileResolver storageProfileResolver,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    ResolveResourceDeploymentTarget resolveResourceDeploymentTarget,
+    ResolveResourceDeploymentTargetLegacy resolveResourceDeploymentTarget,
     ResolveComputeProfile resolveComputeProfile,
-    CreateResourceDeployment createResourceDeployment)
+    CreateResourceDeploymentLegacy createResourceDeployment)
     : IMediatorHandler<CreateRedisServiceRequest, CreateRedisServiceResponse>
 {
     public async Task<Result<CreateRedisServiceResponse>> HandleAsync(CreateRedisServiceRequest request,

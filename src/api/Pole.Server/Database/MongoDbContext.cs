@@ -44,8 +44,7 @@ public class MongoDbContext(
     IContainerRegistryDbContext,
     IDeploymentTargetDbContext,
     ISourceBuildDbContext,
-    IFunctionAppDbContext,
-    IResourceDeploymentDbContext
+    IFunctionAppDbContext
 {
     public IMongoDatabase Database { get; } = database;
     public IMongoClient Client { get; } = client;

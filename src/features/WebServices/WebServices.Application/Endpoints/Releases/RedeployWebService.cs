@@ -46,8 +46,8 @@ public sealed record RedeployWebServiceResponse(
 
 public sealed class RedeployWebServiceHandler(
     LoadWebServiceById loadWebServiceById,
-    IResourceDeploymentSetQueryService deploymentQuery,
-    IResourceDeploymentSetMutationWriter deploymentWriter,
+    LoadResourceDeploymentSet loadResourceDeploymentSet,
+    RequestResourceDeploymentSetApplyLegacy requestResourceDeploymentSetApply,
     PersistUpdatedWebService persistUpdatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     RunMongoTransaction<RedeployWebServiceResponse> runMongoTransaction,
@@ -64,7 +64,7 @@ public sealed class RedeployWebServiceHandler(
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
             return Failures.Conflict("A deleting web service cannot be redeployed.");
 
-        var deployments = await deploymentQuery.GetAllAsync(
+        var deployments = await loadResourceDeploymentSet(
             webService.TenantId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
@@ -75,7 +75,7 @@ public sealed class RedeployWebServiceHandler(
         return await runMongoTransaction(async (session, ct) =>
         {
             var updated = webService.Redeploy();
-            var deploymentsResult = await deploymentWriter.RequestSetApplyAsync(
+            var deploymentsResult = await requestResourceDeploymentSetApply(
                 new ResourceDeploymentSetApplyRequest(
                     webService.TenantId,
                     WebServiceResourceDeployment.ResourceType,

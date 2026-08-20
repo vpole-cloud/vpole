@@ -41,6 +41,7 @@ using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Migrations;
+using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Migrations;
 using Pole.Features.ResourceGroups.Application.Services;
@@ -158,6 +159,9 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
         builder.Services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
         builder.Services.AddMongoDbContextInterfaces();
+        builder.Services.AddResourceDeploymentsFeature(builder.Configuration);
+        builder.Services.AddHttpProblemMappings(
+            ResourceDeploymentContractHttpMappings.All);
         builder.Services.AddTenantContractCapabilities();
         builder.Services.AddDomainPersistence();
         builder.Services.AddDomainHttpMappings();
@@ -172,7 +176,6 @@ public sealed class TestApiApplication : IAsyncDisposable
             SupportedVersions = new PostgresSupportedVersionsSettings { From = 16, To = 17 }
         });
         builder.Services.AddSingleton(new QuotaSettings());
-        builder.Services.AddSingleton(new ResourceDeploymentSettings());
         builder.Services.AddQuotaFramework(
             typeof(RedisQuotaProfile).Assembly,
             typeof(FunctionAppQuotaProfile).Assembly,
@@ -253,6 +256,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         await new ComputeProfileSchemaValidationMigration().Up(fixture.Database);
         await new ComputeProfileIndexesMigration().Up(fixture.Database);
         await new ResourceDeploymentComputeProfileIndexMigration().Up(fixture.Database);
+        await new ResourceDeploymentRecoveryIndexMigration().Up(fixture.Database);
         await ((IMigration)new PostgresCredentialMigration()).Up(fixture.Database);
         await new StorageProfileMigration().Up(fixture.Database);
         await new OutboxMessageMigration().Up(fixture.Database);

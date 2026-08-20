@@ -15,7 +15,7 @@ public delegate Task<Result> DeleteComputeProfile(
 internal sealed class MongoDeleteComputeProfile(
     IMongoCollection<ComputeProfile> computeProfiles,
     IDeploymentTargetReferenceAdmission referenceAdmission,
-    IResourceDeploymentComputeProfileReferenceGuard resourceDeploymentReferences,
+    EnsureComputeProfileUnreferencedLegacy ensureResourceDeploymentUnreferenced,
     RunMongoTransaction runMongoTransaction)
 {
     public Task<Result> InvokeAsync(
@@ -44,8 +44,10 @@ internal sealed class MongoDeleteComputeProfile(
                     "Promote another compute profile before deleting the current default.");
             }
 
-            var unreferenced = await resourceDeploymentReferences
-                .EnsureUnreferencedAsync(computeProfileId, session, ct);
+            var unreferenced = await ensureResourceDeploymentUnreferenced(
+                computeProfileId,
+                session,
+                ct);
             if (unreferenced is not ISuccess)
                 return (Failure)unreferenced;
 

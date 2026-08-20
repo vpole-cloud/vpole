@@ -5,17 +5,23 @@ using Pole.Features.ResourceDeployments.Domain;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence;
 
-public static class ResourceDeploymentFilters
+internal static class ResourceDeploymentFilters
 {
     public static FilterDefinition<ResourceDeployment> VisibleToTenant(
-        string tenantId) =>
-        Builders<ResourceDeployment>.Filter.ForTenant(tenantId);
+        string tenantId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        return Builders<ResourceDeployment>.Filter.ForTenant(tenantId);
+    }
 
     public static FilterDefinition<ResourceDeployment> ForResource(
         string tenantId,
         ResourceTypeId resourceType,
-        string resourceId) =>
-        Builders<ResourceDeployment>.Filter.And(
+        string resourceId)
+    {
+        EnsureResourceType(resourceType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(resourceId);
+        return Builders<ResourceDeployment>.Filter.And(
             VisibleToTenant(tenantId),
             Builders<ResourceDeployment>.Filter.Eq(
                 deployment => deployment.ResourceType,
@@ -23,6 +29,7 @@ public static class ResourceDeploymentFilters
             Builders<ResourceDeployment>.Filter.Eq(
                 deployment => deployment.ResourceId,
                 resourceId));
+    }
 
     public static FilterDefinition<ResourceDeployment> ForResources(
         string tenantId,
@@ -30,6 +37,14 @@ public static class ResourceDeploymentFilters
         IReadOnlyCollection<string> resourceIds)
     {
         ArgumentNullException.ThrowIfNull(resourceIds);
+        EnsureResourceType(resourceType);
+        if (resourceIds.Any(string.IsNullOrWhiteSpace))
+        {
+            throw new ArgumentException(
+                "Resource IDs cannot contain null or whitespace values.",
+                nameof(resourceIds));
+        }
+
         return Builders<ResourceDeployment>.Filter.And(
             VisibleToTenant(tenantId),
             Builders<ResourceDeployment>.Filter.Eq(
@@ -44,16 +59,21 @@ public static class ResourceDeploymentFilters
         string tenantId,
         ResourceTypeId resourceType,
         string resourceId,
-        string deploymentId) =>
-        Builders<ResourceDeployment>.Filter.And(
+        string deploymentId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(deploymentId);
+        return Builders<ResourceDeployment>.Filter.And(
             ForResource(tenantId, resourceType, resourceId),
             Builders<ResourceDeployment>.Filter.Eq(
                 deployment => deployment.Id,
                 deploymentId));
+    }
 
     public static FilterDefinition<ResourceDeployment> AtRevision(
-        ResourceDeployment deployment) =>
-        Builders<ResourceDeployment>.Filter.And(
+        ResourceDeployment deployment)
+    {
+        ArgumentNullException.ThrowIfNull(deployment);
+        return Builders<ResourceDeployment>.Filter.And(
             ForResource(
                 deployment.TenantId,
                 ResourceTypeId.Create(deployment.ResourceType),
@@ -64,10 +84,20 @@ public static class ResourceDeploymentFilters
             Builders<ResourceDeployment>.Filter.Eq(
                 item => item.Revision,
                 deployment.Revision));
+    }
 
     public static FilterDefinition<ResourceDeployment> ReferencesComputeProfile(
-        string computeProfileId) =>
-        Builders<ResourceDeployment>.Filter.Eq(
+        string computeProfileId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(computeProfileId);
+        return Builders<ResourceDeployment>.Filter.Eq(
             deployment => deployment.ResolvedPlacement.Compute.ComputeProfileId,
             computeProfileId);
+    }
+
+    private static void EnsureResourceType(ResourceTypeId resourceType)
+    {
+        if (string.IsNullOrWhiteSpace(resourceType.Value))
+            throw new ArgumentException("Resource type is required.", nameof(resourceType));
+    }
 }

@@ -33,7 +33,7 @@ public static class GetRedisServiceById
 
 public sealed class GetRedisServiceByIdHandler(
     LoadRedisById loadRedisById,
-    IResourceDeploymentQueryService deploymentQuery)
+    LoadResourceDeployment loadDeployment)
     : IMediatorHandler<GetRedisServiceByIdRequest, RedisDto>
 {
     public async Task<Result<RedisDto>> HandleAsync(
@@ -48,7 +48,7 @@ public sealed class GetRedisServiceByIdHandler(
         if (redis is null)
             return Failures.NotFound("Redis service not found.", request.Id);
 
-        var placement = await deploymentQuery.GetAsync(
+        var placement = await loadDeployment(
             redis.TenantId,
             RedisResourceDeployment.ResourceType,
             redis.Id,

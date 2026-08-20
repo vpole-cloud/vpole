@@ -51,6 +51,7 @@ using Pole.Features.Quotas.Application.Services;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Kubernetes;
+using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Application.Jobs;
@@ -58,7 +59,6 @@ using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Application.Placement;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Jobs;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
@@ -99,13 +99,9 @@ public static class DependencyInjection
             services.AddHttpProblemMappings(
                 TenantMemberAuthorizationHttpProblemMappings.All);
             services.AddHttpProblemMappings(
-                ResourceDeploymentHttpMappings.All);
-            services.AddHttpProblemMappings(
                 ComputeProfileContractHttpMappings.All);
             services.AddHttpProblemMappings(
                 DomainContractHttpMappings.All);
-            services.AddHttpProblemMappings(
-                ResourceDeploymentContractHttpMappings.All);
             services.AddScoped<IMediator, Pole.Mediator.Mediator>();
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
@@ -341,28 +337,10 @@ public static class DependencyInjection
                     .GetRequiredService<MongoStoreOutboxWrites>()
                     .InvokeAsync);
             services.TryAddSingleton<MongoRunTransaction>();
-            services.TryAddSingleton<RunMongoOutcomeTransaction<
-                RetryResourceDeploymentOutcome>>(serviceProvider =>
-                serviceProvider
-                    .GetRequiredService<MongoRunTransaction>()
-                    .InvokeOutcomeAsync<RetryResourceDeploymentOutcome>);
             services.TryAddSingleton<RunMongoTransaction>(serviceProvider =>
                 serviceProvider
                     .GetRequiredService<MongoRunTransaction>()
                     .InvokeAsync);
-            services.TryAddSingleton<IResourceDeploymentDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddScoped<
-                IResourceDeploymentReferenceLookup,
-                ResourceDeploymentReferenceLookup>();
-            services.TryAddScoped<
-                IResourceDeploymentComputeProfileReferenceGuard,
-                ResourceDeploymentComputeProfileReferenceGuard>();
-            services.TryAddScoped<
-                IResourceDeploymentComputeLookup,
-                ResourceDeploymentComputeLookup>();
-            services.TryAddScoped<
-                IResourceDeploymentFinalizationService,
-                ResourceDeploymentFinalizationService>();
             services.TryAddSingleton<ISearchDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IPostgresDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IQuotaDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
@@ -383,27 +361,15 @@ public static class DependencyInjection
                 provider.GetRequiredService<ResourceGroupLookup>());
             services.TryAddScoped<IResourcePlacementService, ResourcePlacementService>();
             services.TryAddScoped<IResourcePlacementLookup, ResourcePlacementLookup>();
-            services.TryAddScoped<ResourceDeploymentReconciler>();
-            services.TryAddSingleton<ResourceDeploymentMetrics>();
-            services.AddResourceDeploymentPlacementCapabilities();
             services.TryAddScoped<
                 IStorageProfileResolutionFence,
                 StorageProfileResolutionFence>();
-            services.TryAddScoped<
-                IResourceDeploymentMutationWriter,
-                ResourceDeploymentMutationWriter>();
-            services.TryAddScoped<
-                Pole.Features.ResourceDeployments.Contracts.IResourceDeploymentQueryService,
-                ResourceDeploymentQueryService>();
             services.AddSingleton(
                 WebServiceResourceDeploymentAdapterRegistration.Descriptor);
             services.AddSingleton(
                 RedisResourceDeploymentAdapterRegistration.Descriptor);
             services.AddSingleton(
                 PostgresResourceDeploymentAdapterRegistration.Descriptor);
-            services.TryAddSingleton<ResourceDeploymentAdapterCatalog>();
-            services.TryAddSingleton<ResourceDeploymentRetryDelayPolicy>();
-            services.TryAddScoped<ResourceDeploymentRecoveryJob>();
             services.TryAddScoped<IResourceGroupDeletionFinalizer, ResourceGroupDeletionFinalizer>();
             services.TryAddSingleton<IRuntimeCellNamespaceNameGenerator, RuntimeCellNamespaceNameGenerator>();
             services.TryAddScoped<IRuntimeCellNamespaceManager, KubernetesRuntimeCellNamespaceManager>();
@@ -494,14 +460,6 @@ public static class DependencyInjection
                 .ValidateOnStart();
             services.AddSingleton(
                 sp => sp.GetRequiredService<IOptions<KubernetesOptions>>().Value);
-            services.AddSingleton<
-                IValidateOptions<ResourceDeploymentSettings>,
-                ResourceDeploymentSettingsValidator>();
-            services.AddOptions<ResourceDeploymentSettings>()
-                .Bind(configuration.GetSection(ResourceDeploymentSettings.SectionName))
-                .ValidateOnStart();
-            services.AddSingleton(
-                sp => sp.GetRequiredService<IOptions<ResourceDeploymentSettings>>().Value);
             services.AddSettingsSection<PostgresSettings>(PostgresSettings.SectionName, configuration);
             services.AddOptions<QuotaSettings>()
                 .Bind(configuration.GetSection(QuotaSettings.SectionName))

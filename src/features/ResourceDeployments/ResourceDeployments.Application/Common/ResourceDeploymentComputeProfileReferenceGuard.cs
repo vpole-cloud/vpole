@@ -1,31 +1,37 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Domain;
 using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Common;
 
-public sealed class ResourceDeploymentComputeProfileReferenceGuard(
-    IResourceDeploymentDbContext dbContext)
-    : IResourceDeploymentComputeProfileReferenceGuard
+internal sealed class ResourceDeploymentComputeProfileReferenceGuard(
+    IMongoCollection<ResourceDeployment> resourceDeployments)
 {
-    public async Task<Result> EnsureUnreferencedAsync(
+    public async Task<Result<Unit, ComputeProfileReferencedByResourceDeployment>>
+        EnsureUnreferencedAsync(
         string computeProfileId,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(computeProfileId);
         ArgumentNullException.ThrowIfNull(session);
+        if (!session.IsInTransaction)
+        {
+            throw new InvalidOperationException(
+                "Resource deployment reference checks must run inside the logical resource transaction.");
+        }
 
-        var referenced = await dbContext.ResourceDeployments
+        var referenced = await resourceDeployments
             .Find(
                 session,
                 ResourceDeploymentFilters.ReferencesComputeProfile(computeProfileId))
             .Limit(1)
             .AnyAsync(cancellationToken);
         return referenced
-            ? Failures.Conflict(
-                "The compute profile is still referenced by a resource deployment.")
-            : Result.Success();
+            ? new Err<ComputeProfileReferencedByResourceDeployment>(
+                new ComputeProfileReferencedByResourceDeployment(computeProfileId))
+            : new Ok<Unit>(Unit.Value);
     }
 }

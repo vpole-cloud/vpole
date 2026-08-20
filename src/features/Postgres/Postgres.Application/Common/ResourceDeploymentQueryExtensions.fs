@@ -7,7 +7,7 @@ open Pole.Workloads
 
 [<AutoOpen>]
 module ResourceDeploymentQueryExtensions =
-    type IResourceDeploymentQueryService with
+    type LoadResourceDeployment with
         member this.FindOptionAsync(
             tenantId : string,
             resourceType : ResourceTypeId,
@@ -15,7 +15,7 @@ module ResourceDeploymentQueryExtensions =
             cancellationToken : CancellationToken) : Task<PlacementSummaryDto option> =
             task {
                 let! placement =
-                    this.GetAsync(
+                    this.Invoke(
                         tenantId,
                         resourceType,
                         resourceId,

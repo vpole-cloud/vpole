@@ -1,14 +1,12 @@
 using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Application.Persistence;
 
 namespace Pole.Features.ResourceDeployments.Application.Common;
 
-public sealed class ResourceDeploymentQueryService(
-    IResourceDeploymentDbContext dbContext)
-    : IResourceDeploymentQueryService, IResourceDeploymentSetQueryService
+internal sealed class ResourceDeploymentQueryService(
+    IMongoCollection<ResourceDeployment> resourceDeployments)
 {
     public async Task<PlacementSummaryDto?> GetAsync(
         string tenantId,
@@ -16,7 +14,7 @@ public sealed class ResourceDeploymentQueryService(
         string resourceId,
         CancellationToken cancellationToken = default)
     {
-        var deployment = await dbContext.ResourceDeployments
+        var deployment = await resourceDeployments
             .Find(BuildFilter(tenantId, resourceType, [resourceId]))
             .FirstOrDefaultAsync(cancellationToken);
         return deployment?.ToPlacementSummaryDto();
@@ -32,7 +30,7 @@ public sealed class ResourceDeploymentQueryService(
         if (resourceIds.Count == 0)
             return new Dictionary<string, PlacementSummaryDto>();
 
-        var deployments = await dbContext.ResourceDeployments
+        var deployments = await resourceDeployments
             .Find(BuildFilter(tenantId, resourceType, resourceIds))
             .ToListAsync(cancellationToken);
         return deployments
@@ -55,7 +53,7 @@ public sealed class ResourceDeploymentQueryService(
         ResourceTypeId resourceType,
         string resourceId,
         CancellationToken cancellationToken = default) =>
-        (await dbContext.ResourceDeployments
+        (await resourceDeployments
             .Find(ResourceDeploymentFilters.ForResource(
                 tenantId,
                 resourceType,
@@ -72,7 +70,7 @@ public sealed class ResourceDeploymentQueryService(
         string deploymentId,
         CancellationToken cancellationToken = default)
     {
-        var deployment = await dbContext.ResourceDeployments
+        var deployment = await resourceDeployments
             .Find(ResourceDeploymentFilters.ForExactDeployment(
                 tenantId,
                 resourceType,
@@ -92,7 +90,7 @@ public sealed class ResourceDeploymentQueryService(
         if (resourceIds.Count == 0)
             return new Dictionary<string, IReadOnlyList<PlacementSummaryDto>>();
 
-        var deployments = await dbContext.ResourceDeployments
+        var deployments = await resourceDeployments
             .Find(BuildFilter(tenantId, resourceType, resourceIds))
             .SortBy(deployment => deployment.ResourceId)
             .ThenBy(deployment => deployment.Id)

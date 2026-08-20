@@ -14,6 +14,8 @@ using Pole.Features.Quotas.Contracts.HttpMapping;
 using Pole.Features.Quotas.Primitives;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.Tenants;
@@ -147,7 +149,9 @@ public sealed class HttpProblemMapperTests
     public void DuplicateDefaultMappingsAreRejected()
     {
         var duplicate =
-            DeploymentTargetContractHttpMappings.All.Single();
+            DeploymentTargetContractHttpMappings.All.Single(mapping =>
+                mapping.MappedType ==
+                typeof(DeploymentTargetDomainReservationAdmissionError));
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
             new HttpProblemMapper([duplicate, duplicate]));
@@ -280,6 +284,147 @@ public sealed class HttpProblemMapperTests
             Assert.Equal(
                 "deployment-1",
                 problem.Extensions["deploymentId"]);
+        }
+    }
+
+    [Fact]
+    public void ResourceDeploymentContractErrorsHaveStableProblemMappings()
+    {
+        var mapper = new HttpProblemMapper(
+            ResourceDeploymentContractHttpMappings.All);
+        (object Error, HttpStatusCode Status, string Code)[] cases =
+        [
+            (
+                new CreateResourceDeploymentError(
+                    new ResourceDeploymentTargetConfigurationChanged(["target-1"])),
+                HttpStatusCode.Conflict,
+                "resource-deployments.target-changed"),
+            (
+                new CreateResourceDeploymentError(
+                    new ResourceDeploymentComputeConfigurationChanged(["compute-1"])),
+                HttpStatusCode.Conflict,
+                "resource-deployments.compute-profile-changed"),
+            (
+                new CreateResourceDeploymentError(
+                    new ResourceDeploymentStorageConfigurationChanged("storage-1")),
+                HttpStatusCode.Conflict,
+                "resource-deployments.storage-profile-changed"),
+            (
+                new CreateResourceDeploymentError(
+                    new ResourcePlacementResourceGroupNotFound("group-1")),
+                HttpStatusCode.NotFound,
+                "resource-groups.not-found"),
+            (
+                new CreateResourceDeploymentError(
+                    new ResourcePlacementUnavailable("group-1")),
+                HttpStatusCode.Conflict,
+                "resource-deployments.placement-unavailable"),
+            (
+                new CreateResourceDeploymentError(
+                    new ResourcePlacementDeleting("target-1")),
+                HttpStatusCode.Conflict,
+                "resource-deployments.placement-deleting"),
+            (
+                new ResourceDeploymentMutationError(
+                    new ResourceDeploymentMutationNotFound("resource-1")),
+                HttpStatusCode.NotFound,
+                "resource-deployments.not-found"),
+            (
+                new ResourceDeploymentMutationError(
+                    new ResourceDeploymentChanged("resource-1")),
+                HttpStatusCode.Conflict,
+                "resource-deployments.changed"),
+            (
+                new ResourceDeploymentMutationError(
+                    new ResourceDeploymentCardinalityConflict("resource-1")),
+                HttpStatusCode.Conflict,
+                "resource-deployments.cardinality-conflict"),
+            (
+                new ResourceDeploymentMutationError(
+                    new ResourceDeploymentPendingDeletion("resource-1")),
+                HttpStatusCode.Conflict,
+                "resource-deployments.pending-deletion"),
+            (
+                new ResourceDeploymentMutationError(
+                    new ResourceDeploymentPlacementUnavailable("resource-1")),
+                HttpStatusCode.Conflict,
+                "resource-deployments.placement-unavailable"),
+            (
+                new ResourceDeploymentMutationError(
+                    new ResourceDeploymentReplacementTargetMismatch("resource-1")),
+                HttpStatusCode.Conflict,
+                "resource-deployments.replacement-target-mismatch"),
+            (
+                new ResourceDeploymentMutationError(
+                    new ResourceDeploymentIngressConfigurationChanged(
+                        "resource-1",
+                        "deployment-1")),
+                HttpStatusCode.Conflict,
+                "resource-deployments.ingress-changed"),
+            (
+                new ResourceDeploymentMutationError(
+                    new ResourceDeploymentRetryUnavailable(
+                        "resource-1",
+                        "deployment-1")),
+                HttpStatusCode.Conflict,
+                "resource-deployments.retry-unavailable"),
+            (
+                new ResourceDeploymentMutationError(
+                    new ResourceDeploymentComputeConfigurationChanged(["compute-1"])),
+                HttpStatusCode.Conflict,
+                "resource-deployments.compute-profile-changed"),
+            (
+                new LoadCurrentResourceDeploymentComputeError(
+                    new CurrentResourceDeploymentComputeNotFound("resource-1")),
+                HttpStatusCode.NotFound,
+                "resource-deployments.not-found"),
+            (
+                new LoadCurrentResourceDeploymentComputeError(
+                    new CurrentResourceDeploymentComputeCardinalityConflict("resource-1")),
+                HttpStatusCode.Conflict,
+                "resource-deployments.compute-cardinality-conflict"),
+            (
+                new AdvanceResourceDeploymentRevisionError(
+                    new ResourceDeploymentsNotFound("resource-1")),
+                HttpStatusCode.NotFound,
+                "resource-deployments.not-found"),
+            (
+                new AdvanceResourceDeploymentRevisionError(
+                    new ResourceDeploymentsHaveNoActivePlacement("resource-1")),
+                HttpStatusCode.Conflict,
+                "resource-deployments.no-active-placement"),
+            (
+                new AdvanceResourceDeploymentRevisionError(
+                    new ResourceDeploymentRevisionConflict("resource-1")),
+                HttpStatusCode.Conflict,
+                "resource-deployments.revision-conflict"),
+            (
+                new ResourceGroupHasUnfinishedDeployments("group-1"),
+                HttpStatusCode.Conflict,
+                "resource-deployments.resource-group-referenced"),
+            (
+                new IsolationScopeHasUnfinishedDeployments("group-1", "scope-1"),
+                HttpStatusCode.Conflict,
+                "resource-deployments.isolation-scope-referenced"),
+            (
+                new ComputeProfileReferencedByResourceDeployment("compute-1"),
+                HttpStatusCode.Conflict,
+                "resource-deployments.compute-profile-referenced"),
+            (
+                new ResourceDeploymentFinalizationConflict("resource-1"),
+                HttpStatusCode.Conflict,
+                "resource-deployments.finalization-conflict")
+        ];
+
+        foreach (var testCase in cases)
+        {
+            var problem = mapper.Map(testCase.Error);
+
+            Assert.Equal((int)testCase.Status, problem.StatusCode);
+            Assert.Equal(testCase.Code, problem.Code);
+            Assert.Equal(
+                PoleProblemTypeId.FromCode(testCase.Code),
+                problem.Type);
         }
     }
 

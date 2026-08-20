@@ -63,8 +63,8 @@ public sealed class UpdateWebServiceImageTagHandler(
     TouchWebServiceDeploymentToken touchDeploymentToken,
     RunMongoTransaction<UpdateWebServiceImageTagResponse> runMongoTransaction,
     ITenantContextAccessor tenantContextAccessor,
-    IResourceDeploymentSetQueryService deploymentQuery,
-    IResourceDeploymentSetMutationWriter deploymentWriter,
+    LoadResourceDeploymentSet loadResourceDeploymentSet,
+    RequestResourceDeploymentSetApplyLegacy requestResourceDeploymentSetApply,
     TimeProvider timeProvider)
     : IMediatorHandler<UpdateWebServiceImageTagRequest, UpdateWebServiceImageTagResponse>
 {
@@ -86,7 +86,7 @@ public sealed class UpdateWebServiceImageTagHandler(
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
             return Failures.Conflict("A deleting web service cannot be updated.");
 
-        var deployments = await deploymentQuery.GetAllAsync(
+        var deployments = await loadResourceDeploymentSet(
             webService.TenantId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
@@ -106,7 +106,7 @@ public sealed class UpdateWebServiceImageTagHandler(
             var updatedWebService = webService.UpdateDesiredState(
                 nextSpec,
                 webService.Tags);
-            var applied = await deploymentWriter.RequestSetApplyAsync(
+            var applied = await requestResourceDeploymentSetApply(
                 new ResourceDeploymentSetApplyRequest(
                     webService.TenantId,
                     WebServiceResourceDeployment.ResourceType,

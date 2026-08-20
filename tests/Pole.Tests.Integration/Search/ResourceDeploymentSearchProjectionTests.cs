@@ -115,7 +115,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         };
         var consumer = new ResourceDeploymentSearchProjectionConsumer(
             SearchService,
-            new StubResourceDeploymentQueryService(deployments));
+            new StubResourceDeploymentQueryService(deployments).LoadAsync);
 
         await consumer.Handle(
             tenantId,
@@ -162,7 +162,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         var stub = new StubResourceDeploymentQueryService([current]);
         var consumer = new ResourceDeploymentSearchProjectionConsumer(
             SearchService,
-            stub);
+            stub.LoadAsync);
         var currentEventTime = DateTime.UtcNow;
 
         await consumer.Handle(
@@ -433,7 +433,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         PlacementSummaryDto placement) =>
         new(
             SearchService,
-            new StubResourceDeploymentQueryService([placement]));
+            new StubResourceDeploymentQueryService([placement]).LoadAsync);
 
     private async Task InsertSourceAsync(
         string tenantId,
@@ -497,38 +497,14 @@ public sealed class ResourceDeploymentSearchProjectionTests(
 
     private sealed class StubResourceDeploymentQueryService(
         IReadOnlyList<PlacementSummaryDto> current)
-        : IResourceDeploymentSetQueryService
     {
         public IReadOnlyList<PlacementSummaryDto> Current { get; set; } = current;
 
-        public Task<IReadOnlyList<PlacementSummaryDto>> GetAllAsync(
+        public Task<IReadOnlyList<PlacementSummaryDto>> LoadAsync(
             string tenantId,
             ResourceTypeId resourceType,
             string resourceId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(Current);
-
-        public Task<PlacementSummaryDto?> GetExactAsync(
-            string tenantId,
-            ResourceTypeId resourceType,
-            string resourceId,
-            string deploymentId,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(Current.SingleOrDefault(deployment =>
-                string.Equals(
-                    deployment.DeploymentId,
-                    deploymentId,
-                    StringComparison.Ordinal)));
-
-        public Task<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>> GetAllManyAsync(
-            string tenantId,
-            ResourceTypeId resourceType,
-            IReadOnlyCollection<string> resourceIds,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>>(
-                resourceIds.ToDictionary(
-                    resourceId => resourceId,
-                    _ => Current,
-                    StringComparer.Ordinal));
     }
 }

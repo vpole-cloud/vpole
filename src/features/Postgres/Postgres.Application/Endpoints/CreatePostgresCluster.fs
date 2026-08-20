@@ -49,9 +49,9 @@ type CreatePostgresClusterHandler(
     credentialService : IPostgresCredentialService,
     settings : PostgresSettings,
     quotaAdmissionExecutor : IQuotaAdmissionExecutor,
-    resolveResourceDeploymentTarget : ResolveResourceDeploymentTarget,
+    resolveResourceDeploymentTarget : ResolveResourceDeploymentTargetLegacy,
     resolveComputeProfile : ResolveComputeProfile,
-    createResourceDeployment : CreateResourceDeployment) =
+    createResourceDeployment : CreateResourceDeploymentLegacy) =
 
     interface IMediatorHandler<CreatePostgresClusterRequest, PostgresClusterDto> with
         member _.HandleAsync(request, cancellationToken) =

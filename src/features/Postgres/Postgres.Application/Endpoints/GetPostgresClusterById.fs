@@ -27,7 +27,7 @@ type GetPostgresClusterByIdRequest =
     
 type GetPostgresClusterHandler(
     dbContext : IPostgresDbContext,
-    deploymentQuery : IResourceDeploymentQueryService) =
+    loadDeployment : LoadResourceDeployment) =
     interface IMediatorHandler<GetPostgresClusterByIdRequest, PostgresClusterDto> with
         member this.HandleAsync(request, cancellationToken) =
             task {
@@ -47,7 +47,7 @@ type GetPostgresClusterHandler(
                            |> ResultF.ofFailure
                 | Some cluster ->
                     let! placement =
-                        deploymentQuery.FindOptionAsync(
+                        loadDeployment.FindOptionAsync(
                             cluster.TenantId,
                             PostgresResourceDeployment.ResourceType,
                             cluster.Id,

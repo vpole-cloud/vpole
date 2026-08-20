@@ -50,8 +50,8 @@ public sealed record RollbackWebServiceResponse(
 public sealed class RollbackWebServiceHandler(
     LoadWebServiceById loadWebServiceById,
     LoadSucceededWebServiceRelease loadSucceededWebServiceRelease,
-    IResourceDeploymentSetQueryService deploymentQuery,
-    IResourceDeploymentSetMutationWriter deploymentWriter,
+    LoadResourceDeploymentSet loadResourceDeploymentSet,
+    RequestResourceDeploymentSetApplyLegacy requestResourceDeploymentSetApply,
     PersistUpdatedWebService persistUpdatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
@@ -76,7 +76,7 @@ public sealed class RollbackWebServiceHandler(
         if (sourceRelease is null)
             return Failures.NotFound("Succeeded release revision was not found for web service.", request.Body.TargetRevision);
 
-        var deployments = await deploymentQuery.GetAllAsync(
+        var deployments = await loadResourceDeploymentSet(
             webService.TenantId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
@@ -95,7 +95,7 @@ public sealed class RollbackWebServiceHandler(
             async (session, ct) =>
             {
                 var updated = webService.UpdateDesiredState(sourceRelease.Spec, webService.Tags);
-                var applied = await deploymentWriter.RequestSetApplyAsync(
+                var applied = await requestResourceDeploymentSetApply(
                     new ResourceDeploymentSetApplyRequest(
                         updated.TenantId,
                         WebServiceResourceDeployment.ResourceType,

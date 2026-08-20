@@ -36,8 +36,8 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             Services.GetRequiredService<PersistCurrentWebServiceRelease>(),
             Services.GetRequiredService<
                 Pole.Database.RunMongoTransaction<SourceBuildDeploymentResult>>(),
-            new FixedSetQueryService(deployments),
-            mutationWriter,
+            new FixedSetQueryService(deployments).LoadAsync,
+            mutationWriter.RequestSetApplyAsync,
             TimeProvider.System);
         var request = new SourceBuildDeploymentRequest(
             TestData.TenantId,
@@ -140,7 +140,6 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             DeploymentRevision: 1);
 
     private sealed class SuccessfulSetMutationWriter(IReadOnlyList<PlacementSummaryDto> deployments)
-        : IResourceDeploymentSetMutationWriter
     {
         public int ApplyCallCount { get; private set; }
         public ResourceDeploymentSetApplyRequest? LastCommand { get; private set; }
@@ -160,39 +159,14 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
                     Status = "Pending"
                 }).ToArray());
         }
-
-        public Task<Result<PlacementSummaryDto>> RequestExactApplyAsync(
-            ResourceDeploymentExactMutationRequest request,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<Result<PlacementSummaryDto>> RequestExactDeletionAsync(
-            ResourceDeploymentExactMutationRequest request,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<Result<IReadOnlyList<PlacementSummaryDto>>> RequestSetDeletionAsync(
-            ResourceDeploymentSetDeletionRequest request,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<Result<IReadOnlyList<PlacementSummaryDto>>> AdvanceResourceRevisionAsync(
-            ResourceDeploymentResourceRevisionRequest request,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class FixedSetQueryService(IReadOnlyList<PlacementSummaryDto> deployments)
-        : IResourceDeploymentSetQueryService
     {
-        public Task<IReadOnlyList<PlacementSummaryDto>> GetAllAsync(
+        public Task<IReadOnlyList<PlacementSummaryDto>> LoadAsync(
             string tenantId,
             ResourceTypeId resourceType,
             string resourceId,
             CancellationToken cancellationToken = default) => Task.FromResult(deployments);
-        public Task<PlacementSummaryDto?> GetExactAsync(
-            string tenantId, ResourceTypeId resourceType, string resourceId,
-            string deploymentId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(deployments.SingleOrDefault(item => item.DeploymentId == deploymentId));
-        public Task<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>> GetAllManyAsync(
-            string tenantId, ResourceTypeId resourceType, IReadOnlyCollection<string> resourceIds,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

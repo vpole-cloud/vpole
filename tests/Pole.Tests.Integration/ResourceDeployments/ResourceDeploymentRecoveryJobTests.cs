@@ -1,7 +1,9 @@
 using System.Diagnostics.Metrics;
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Jobs;
+using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;
@@ -92,9 +94,20 @@ public sealed class ResourceDeploymentRecoveryJobTests(
         listener.Start();
 
         using var metrics = new ResourceDeploymentMetrics();
+        var persistence = new ResourceDeploymentRecoveryPersistence(
+            fixture.DbContext.ResourceDeployments,
+            (operation, cancellationToken) => fixture.DbContext
+                .RunInTransactionAsync<long>(
+                    operation,
+                    cancellationToken: cancellationToken),
+            (session, writes, cancellationToken) => fixture.DbContext.StoreEventAsync(
+                writes,
+                session,
+                cancellationToken),
+            new ResourcePlacementLookup(fixture.DbContext));
         var job = new ResourceDeploymentRecoveryJob(
-            fixture.DbContext,
-            new ResourcePlacementLookup(fixture.DbContext),
+            persistence.LoadCandidatesAsync,
+            persistence.RecoverAsync,
             metrics,
             new ResourceDeploymentSettings { RecoveryBatchSize = 10 },
             new FixedTimeProvider(now));

@@ -12,7 +12,7 @@ open Pole.Workloads
 
 type ResourceDeploymentSearchProjectionConsumer(
     searchService : ISearchService,
-    deploymentQueryService : IResourceDeploymentSetQueryService) =
+    loadResourceDeploymentSet : LoadResourceDeploymentSet) =
 
     let trySourceType (resourceType : string) =
         match resourceType with
@@ -48,7 +48,7 @@ type ResourceDeploymentSearchProjectionConsumer(
             | None -> ()
             | Some sourceType ->
                 let! current =
-                    deploymentQueryService.GetAllAsync(
+                    loadResourceDeploymentSet.Invoke(
                         tenantId,
                         ResourceTypeId.Create(resourceType),
                         resourceId,
@@ -99,10 +99,10 @@ type ResourceDeploymentSearchProjectionConsumer(
 
 type UpdateResourceDeploymentInSearchOnAppliedConsumer(
     searchService : ISearchService,
-    deploymentQueryService : IResourceDeploymentSetQueryService) =
+    loadResourceDeploymentSet : LoadResourceDeploymentSet) =
     inherit ResourceDeploymentSearchProjectionConsumer(
         searchService,
-        deploymentQueryService)
+        loadResourceDeploymentSet)
 
     interface IConsumer<ResourceDeploymentAppliedEvent> with
         member this.Consume(context : ConsumeContext<ResourceDeploymentAppliedEvent>) =
@@ -118,10 +118,10 @@ type UpdateResourceDeploymentInSearchOnAppliedConsumer(
 
 type UpdateResourceDeploymentInSearchOnFailedConsumer(
     searchService : ISearchService,
-    deploymentQueryService : IResourceDeploymentSetQueryService) =
+    loadResourceDeploymentSet : LoadResourceDeploymentSet) =
     inherit ResourceDeploymentSearchProjectionConsumer(
         searchService,
-        deploymentQueryService)
+        loadResourceDeploymentSet)
 
     interface IConsumer<ResourceDeploymentFailedEvent> with
         member this.Consume(context : ConsumeContext<ResourceDeploymentFailedEvent>) =
@@ -137,10 +137,10 @@ type UpdateResourceDeploymentInSearchOnFailedConsumer(
 
 type UpdateResourceDeploymentInSearchOnDeletedConsumer(
     searchService : ISearchService,
-    deploymentQueryService : IResourceDeploymentSetQueryService) =
+    loadResourceDeploymentSet : LoadResourceDeploymentSet) =
     inherit ResourceDeploymentSearchProjectionConsumer(
         searchService,
-        deploymentQueryService)
+        loadResourceDeploymentSet)
 
     interface IConsumer<ResourceDeploymentDeletedEvent> with
         member this.Consume(context : ConsumeContext<ResourceDeploymentDeletedEvent>) =

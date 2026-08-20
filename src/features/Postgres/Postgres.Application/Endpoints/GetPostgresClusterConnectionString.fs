@@ -32,7 +32,7 @@ type GetPostgresClusterConnectionStringRequest =
 type GetPostgresClusterConnectionStringHandler(
     dbContext : IPostgresDbContext,
     credentialService : IPostgresCredentialService,
-    deploymentQuery : IResourceDeploymentQueryService) =
+    loadDeployment : LoadResourceDeployment) =
     interface IMediatorHandler<GetPostgresClusterConnectionStringRequest, GetPostgresClusterConnectionStringResponse> with
         member _.HandleAsync(request, cancellationToken) =
             task {
@@ -57,7 +57,7 @@ type GetPostgresClusterConnectionStringHandler(
                         |> ResultF.ofFailure
                 | Some cluster ->
                     let! placement =
-                        deploymentQuery.FindOptionAsync(
+                        loadDeployment.FindOptionAsync(
                             cluster.TenantId,
                             PostgresResourceDeployment.ResourceType,
                             cluster.Id,

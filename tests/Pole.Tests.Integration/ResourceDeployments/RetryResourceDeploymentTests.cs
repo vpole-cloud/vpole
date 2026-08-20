@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -104,6 +105,21 @@ public sealed class RetryResourceDeploymentTests(
                 DeploymentId,
                 deployment.DesiredGeneration),
             message.PendingKey);
+    }
+
+    [Fact]
+    public async Task RetryCapability_RequiresCallerOwnedTransaction()
+    {
+        var retry = Services.GetRequiredService<RetryResourceDeployment>();
+        using var session = await DbContext.Client.StartSessionAsync();
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            retry(TenantId, DeploymentId, session));
+
+        Assert.Contains(
+            "logical resource transaction",
+            exception.Message,
+            StringComparison.Ordinal);
     }
 
     private Task<ResourceDeployment> LoadDeploymentAsync() =>

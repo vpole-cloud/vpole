@@ -50,7 +50,7 @@ public sealed class CreateWebServiceHandler(
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     GetOrCreateGeneratedDomainZones getOrCreateGeneratedDomainZones,
     CreateGeneratedHostnameBindings createGeneratedHostnameBindings,
-    CreateResourceDeploymentSet createResourceDeploymentSet,
+    CreateResourceDeploymentSetLegacy createResourceDeploymentSet,
     PersistCreatedWebService persistCreatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     TimeProvider timeProvider)

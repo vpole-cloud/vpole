@@ -33,7 +33,8 @@ internal sealed class MongoCompleteWebServiceDeployment(
     RunMongoTransaction runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites,
     DeleteHostnameBindingsForDeployment deleteHostnameBindingsForDeployment,
-    IResourceDeploymentExactFinalizationService exactFinalization)
+    GetExactResourceDeploymentFinalizationReadiness getExactResourceDeploymentFinalizationReadiness,
+    PurgeExactDeletedResourceDeploymentLegacy purgeExactDeletedResourceDeployment)
 {
     public Task<Result> InvokeAsync(
         string tenantId,
@@ -85,7 +86,7 @@ internal sealed class MongoCompleteWebServiceDeployment(
             if (completion.Operation == WebServiceReleaseDeploymentOperation.Delete &&
                 completion.Succeeded)
             {
-                var readiness = await exactFinalization.GetExactReadinessAsync(
+                var readiness = await getExactResourceDeploymentFinalizationReadiness(
                     tenantId, WebServiceResourceDeployment.ResourceType, webServiceId,
                     completion.ResourceDeploymentId, session, ct);
                 if (readiness == ResourceDeploymentFinalizationReadiness.Ready)
@@ -95,7 +96,7 @@ internal sealed class MongoCompleteWebServiceDeployment(
                         completion.ResourceDeploymentId, session, ct);
                     if (bindings is not ISuccess)
                         return (Failure)bindings;
-                    var purge = await exactFinalization.PurgeExactDeletedAsync(
+                    var purge = await purgeExactDeletedResourceDeployment(
                         tenantId, WebServiceResourceDeployment.ResourceType, webServiceId,
                         completion.ResourceDeploymentId, session, ct);
                     if (purge is not ISuccess)

@@ -1,11 +1,8 @@
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using k8s.Autorest;
-using MongoDB.Bson;
-using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Contracts;
@@ -14,14 +11,12 @@ using Pole.ResultType;
 namespace Pole.Features.ResourceDeployments.Application.Reconciliation;
 
 public sealed class ResourceDeploymentReconciler(
-    IResourceDeploymentDbContext dbContext,
+    ClaimResourceDeployment claimResourceDeployment,
+    PersistResourceDeploymentSuccess persistResourceDeploymentSuccess,
+    PersistResourceDeploymentFailure persistResourceDeploymentFailure,
     IResourcePlacementLookup placementLookup,
-    ResourceDeploymentAdapterCatalog adapterCatalog,
-    IServiceProvider serviceProvider,
-    ResourceDeploymentSettings settings,
-    ResourceDeploymentRetryDelayPolicy retryDelayPolicy,
+    ResolveResourceDeploymentAdapter resolveResourceDeploymentAdapter,
     ResourceDeploymentMetrics metrics,
-    TimeProvider timeProvider,
     ILogger<ResourceDeploymentReconciler> logger)
 {
     public async Task HandleAsync(
@@ -32,7 +27,7 @@ public sealed class ResourceDeploymentReconciler(
         ResourceDeploymentOperation operation,
         CancellationToken cancellationToken = default)
     {
-        var claimed = await TryClaimAsync(
+        var claimed = await claimResourceDeployment(
             tenantId,
             deploymentId,
             runtimeCellId,
@@ -80,8 +75,9 @@ public sealed class ResourceDeploymentReconciler(
             return;
         }
 
-        var descriptor = adapterCatalog.GetRequired(claimed.ResourceType);
-        if (descriptor.PlacementCapability != claimed.PlacementCapability)
+        var (adapter, placementCapability) = resolveResourceDeploymentAdapter(
+            claimed.ResourceType);
+        if (placementCapability != claimed.PlacementCapability)
         {
             await PersistFailureAsync(
                 claimed,
@@ -94,8 +90,6 @@ public sealed class ResourceDeploymentReconciler(
             return;
         }
 
-        var adapter = (IResourceDeploymentAdapter)serviceProvider
-            .GetRequiredService(descriptor.AdapterType);
         var context = new ResourceDeploymentReconciliationContext(
             claimed.ToReconciliationSnapshot());
         var adapterStartedTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -212,75 +206,23 @@ public sealed class ResourceDeploymentReconciler(
             cancellationToken);
     }
 
-    private async Task<ResourceDeployment?> TryClaimAsync(
-        string tenantId,
-        string deploymentId,
-        string runtimeCellId,
-        long generation,
-        ResourceDeploymentOperation operation,
-        CancellationToken cancellationToken)
-    {
-        var current = await dbContext.ResourceDeployments
-            .Find(deployment =>
-                deployment.Id == deploymentId &&
-                deployment.TenantId == tenantId &&
-                deployment.RuntimeCellId == runtimeCellId &&
-                deployment.DesiredGeneration == generation &&
-                deployment.DesiredOperation == operation)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (current is null ||
-            current.State is not PendingResourceDeploymentState pending ||
-            pending.Generation != generation ||
-            pending.Operation != operation)
-        {
-            return null;
-        }
-
-        var startedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
-        var claimed = current.Start(
-            generation,
-            operation,
-            ObjectId.GenerateNewId().ToString(),
-            startedAtUtc,
-            startedAtUtc.AddSeconds(settings.ClaimLeaseSeconds));
-        var replacement = await dbContext.ResourceDeployments.ReplaceOneAsync(
-            Builders<ResourceDeployment>.Filter.And(
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.Id,
-                    current.Id),
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.TenantId,
-                    current.TenantId),
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.Revision,
-                    current.Revision),
-                Builders<ResourceDeployment>.Filter
-                    .OfType<ResourceDeploymentState, PendingResourceDeploymentState>(
-                        deployment => deployment.State)),
-            claimed,
-            cancellationToken: cancellationToken);
-        return replacement.ModifiedCount == 1
-            ? claimed
-            : null;
-    }
-
-    private Task PersistSuccessAsync(
+    private async Task PersistSuccessAsync(
         ResourceDeployment claimed,
         long generation,
         ResourceDeploymentOperation operation,
         IEnumerable<ResourceDeploymentEndpoint> endpoints,
-        CancellationToken cancellationToken) =>
-        PersistCompletionAsync(
+        CancellationToken cancellationToken)
+    {
+        var result = await persistResourceDeploymentSuccess(
             claimed,
-            current => current.Complete(
-                generation,
-                operation,
-                ((ReconcilingResourceDeploymentState)claimed.State).ClaimId,
-                endpoints,
-                timeProvider.GetUtcNow().UtcDateTime),
+            generation,
+            operation,
+            endpoints.ToArray(),
             cancellationToken);
+        LogPersistenceFailure(result, claimed.Id);
+    }
 
-    private Task PersistFailureAsync(
+    private async Task PersistFailureAsync(
         ResourceDeployment claimed,
         long generation,
         ResourceDeploymentOperation operation,
@@ -289,110 +231,26 @@ public sealed class ResourceDeploymentReconciler(
         bool retryable,
         CancellationToken cancellationToken)
     {
-        var currentAttempt = claimed.State is ReconcilingResourceDeploymentState claim
-            ? claim.AttemptCount
-            : throw new InvalidOperationException("The resource deployment has no active claim.");
-        var failedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
-        return PersistCompletionAsync(
+        var result = await persistResourceDeploymentFailure(
             claimed,
-            current => current.Fail(
-                generation,
-                operation,
-                ((ReconcilingResourceDeploymentState)claimed.State).ClaimId,
-                failureCode,
-                failureMessage,
-                retryable,
-                failedAtUtc,
-                failedAtUtc.Add(
-                    retryDelayPolicy.Calculate(currentAttempt))),
+            generation,
+            operation,
+            failureCode,
+            failureMessage,
+            retryable,
             cancellationToken);
+        LogPersistenceFailure(result, claimed.Id);
     }
 
-    private async Task PersistCompletionAsync(
-        ResourceDeployment claimed,
-        Func<ResourceDeployment, ResourceDeployment> transition,
-        CancellationToken cancellationToken)
+    private void LogPersistenceFailure(
+        Result result,
+        string deploymentId)
     {
-        var persistence = await dbContext.RunInTransactionAsync(
-            async (session, ct) =>
-            {
-                var current = await dbContext.ResourceDeployments
-                    .Find(session, deployment =>
-                        deployment.Id == claimed.Id &&
-                        deployment.TenantId == claimed.TenantId)
-                    .FirstOrDefaultAsync(ct);
-                if (current is null ||
-                    current.State is not ReconcilingResourceDeploymentState activeClaim ||
-                    claimed.State is not ReconcilingResourceDeploymentState expectedClaim ||
-                    !string.Equals(
-                        activeClaim.ClaimId,
-                        expectedClaim.ClaimId,
-                        StringComparison.Ordinal))
-                {
-                    return Result.Success();
-                }
-
-                var completed = transition(current);
-                var replacement = await dbContext.ResourceDeployments.ReplaceOneAsync(
-                    session,
-                    Builders<ResourceDeployment>.Filter.And(
-                        Builders<ResourceDeployment>.Filter.Eq(
-                            deployment => deployment.Id,
-                            current.Id),
-                        Builders<ResourceDeployment>.Filter.Eq(
-                            deployment => deployment.TenantId,
-                            current.TenantId),
-                        Builders<ResourceDeployment>.Filter.Eq(
-                            deployment => deployment.Revision,
-                            current.Revision),
-                        Builders<ResourceDeployment>.Filter
-                            .OfType<ResourceDeploymentState, ReconcilingResourceDeploymentState>(
-                                deployment => deployment.State),
-                        Builders<ResourceDeployment>.Filter.Eq(
-                            deployment =>
-                                ((ReconcilingResourceDeploymentState)deployment.State).ClaimId,
-                            activeClaim.ClaimId)),
-                    completed,
-                    cancellationToken: ct);
-                if (replacement.ModifiedCount != 1)
-                    return Result.Success();
-
-                switch (completed.State)
-                {
-                    case PendingResourceDeploymentState:
-                        await dbContext.StoreEventAsync(
-                            completed.ToCurrentRequestWrite(),
-                            session,
-                            ct);
-                        break;
-                    case AppliedResourceDeploymentState applied:
-                        await dbContext.StoreEventAsync(
-                            completed.ToAppliedEvent(applied.Generation),
-                            session,
-                            ct);
-                        break;
-                    case FailedResourceDeploymentState failed:
-                        await dbContext.StoreEventAsync(
-                            completed.ToFailedEvent(failed),
-                            session,
-                            ct);
-                        break;
-                    case DeletedResourceDeploymentState deleted:
-                        await dbContext.StoreEventAsync(
-                            completed.ToDeletedEvent(deleted.Generation),
-                            session,
-                            ct);
-                        break;
-                }
-
-                return Result.Success();
-            },
-            cancellationToken: cancellationToken);
-        if (persistence is not ISuccess)
+        if (result is not ISuccess)
         {
             logger.LogWarning(
                 "Resource deployment {ResourceDeploymentId} completion was not persisted",
-                claimed.Id);
+                deploymentId);
         }
     }
 }

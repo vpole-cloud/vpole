@@ -36,9 +36,9 @@ type DeletePostgresClusterRequest =
 type DeletePostgresClusterHandler(
     dbContext : IPostgresDbContext,
     quotaAdmissionExecutor : IQuotaAdmissionExecutor,
-    deploymentWriter : IResourceDeploymentMutationWriter,
-    deploymentQuery : IResourceDeploymentQueryService,
-    deploymentComputeLookup : IResourceDeploymentComputeLookup,
+    requestDeploymentDeletion : RequestResourceDeploymentDeletionLegacy,
+    loadDeployment : LoadResourceDeployment,
+    loadDeploymentCompute : LoadCurrentResourceDeploymentComputeLegacy,
     timeProvider : System.TimeProvider) =
     interface IMediatorHandler<DeletePostgresClusterRequest, DeletePostgresClusterResponse> with
         member _.HandleAsync(request, cancellationToken) =
@@ -60,7 +60,7 @@ type DeletePostgresClusterHandler(
                         |> ResultF.ofFailure
                 | Some cluster when (cluster.Lifecycle :? DeletingPostgresClusterLifecycle) ->
                     let! placement =
-                        deploymentQuery.FindOptionAsync(
+                        loadDeployment.FindOptionAsync(
                             cluster.TenantId,
                             PostgresResourceDeployment.ResourceType,
                             cluster.Id,
@@ -79,7 +79,7 @@ type DeletePostgresClusterHandler(
                             |> ResultF.ofValue
                 | Some cluster ->
                     let! currentComputeResult =
-                        deploymentComputeLookup.GetCurrentAsync(
+                        loadDeploymentCompute.Invoke(
                             cluster.TenantId,
                             PostgresResourceDeployment.ResourceType,
                             cluster.Id,
@@ -122,7 +122,7 @@ type DeletePostgresClusterHandler(
                                                 |> ResultF.ofFailure
                                         else
                                             let! deploymentResult =
-                                                deploymentWriter.RequestDeletionAsync(
+                                                requestDeploymentDeletion.Invoke(
                                                     ResourceDeploymentMutationRequest(
                                                         cluster.TenantId,
                                                         PostgresResourceDeployment.ResourceType,
@@ -145,7 +145,8 @@ type DeletePostgresClusterHandler(
 
 type FinalizePostgresClusterDeletionConsumer(
     dbContext : IPostgresDbContext,
-    deploymentFinalization : IResourceDeploymentFinalizationService) =
+    getDeploymentReadiness : GetResourceDeploymentFinalizationReadiness,
+    purgeDeployments : PurgeDeletedResourceDeploymentsLegacy) =
     interface IConsumer<ResourceDeploymentDeletedEvent> with
         member _.Consume(context) =
             let message = context.Message
@@ -172,7 +173,7 @@ type FinalizePostgresClusterDeletionConsumer(
                                 return Result.Success() :> Result
                             else
                                 let! readiness =
-                                    deploymentFinalization.GetReadinessAsync(
+                                    getDeploymentReadiness.Invoke(
                                         message.EventCore.TenantId,
                                         PostgresResourceDeployment.ResourceType,
                                         message.ResourceId,
@@ -206,7 +207,7 @@ type FinalizePostgresClusterDeletionConsumer(
                                                             message.ResourceId),
                                                     cancellationToken = ct)
                                         let! purgeResult =
-                                            deploymentFinalization.PurgeDeletedAsync(
+                                            purgeDeployments.Invoke(
                                                 message.EventCore.TenantId,
                                                 PostgresResourceDeployment.ResourceType,
                                                 message.ResourceId,

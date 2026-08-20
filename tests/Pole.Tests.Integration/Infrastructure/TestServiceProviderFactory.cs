@@ -1,4 +1,5 @@
 using System.Reflection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Pole.Encryption;
@@ -64,6 +65,8 @@ public static class TestServiceProviderFactory
         services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
         services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
         services.AddMongoDbContextInterfaces();
+        services.AddResourceDeploymentsFeature(
+            new ConfigurationBuilder().Build());
         services.AddTenantContractCapabilities();
         services.AddDomainPersistence();
         services.AddComputeProfiles();

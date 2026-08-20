@@ -51,8 +51,8 @@ type UpdatePostgresClusterHandler(
     storageProfileResolver : IStorageProfileResolver,
     quotaAdmissionExecutor : IQuotaAdmissionExecutor,
     resolveComputeProfile : ResolveComputeProfile,
-    deploymentComputeLookup : IResourceDeploymentComputeLookup,
-    deploymentWriter : IResourceDeploymentMutationWriter) =
+    loadDeploymentCompute : LoadCurrentResourceDeploymentComputeLegacy,
+    requestDeploymentApply : RequestResourceDeploymentApplyLegacy) =
     interface IMediatorHandler<UpdatePostgresClusterRequest, UpdatePostgresClusterResponse> with
         member _.HandleAsync(request, cancellationToken) =
             task {
@@ -92,7 +92,7 @@ type UpdatePostgresClusterHandler(
                         defaultArg request.Body.Storage cluster.Spec.Storage
 
                     let! currentComputeResult =
-                        deploymentComputeLookup.GetCurrentAsync(
+                        loadDeploymentCompute.Invoke(
                             cluster.TenantId,
                             PostgresResourceDeployment.ResourceType,
                             cluster.Id,
@@ -207,7 +207,7 @@ type UpdatePostgresClusterHandler(
                                                         |> ResultF.ofFailure
                                                 else
                                                     let! deploymentResult =
-                                                        deploymentWriter.RequestApplyAsync(
+                                                        requestDeploymentApply.Invoke(
                                                             ResourceDeploymentMutationRequest(
                                                                 cluster.TenantId,
                                                                 PostgresResourceDeployment.ResourceType,
