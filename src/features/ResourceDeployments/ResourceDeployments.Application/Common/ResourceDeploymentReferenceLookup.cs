@@ -16,14 +16,15 @@ internal sealed class ResourceDeploymentReferenceLookup(
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        var hasUnfinished = await HasUnfinishedAsync(
-            Builders<ResourceDeployment>.Filter.And(
-                ResourceDeploymentFilters.VisibleToTenant(tenantId),
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.ResourceGroupId,
-                    resourceGroupId)),
-            session,
-            cancellationToken);
+        EnsureTransaction(session);
+        var hasUnfinished = await resourceDeployments
+            .Find(
+                session,
+                ResourceDeploymentFilters.UnfinishedForResourceGroup(
+                    tenantId,
+                    resourceGroupId))
+            .Limit(1)
+            .AnyAsync(cancellationToken);
         return hasUnfinished
             ? new Err<ResourceGroupHasUnfinishedDeployments>(
                 new ResourceGroupHasUnfinishedDeployments(resourceGroupId))
@@ -38,17 +39,16 @@ internal sealed class ResourceDeploymentReferenceLookup(
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        var hasUnfinished = await HasUnfinishedAsync(
-            Builders<ResourceDeployment>.Filter.And(
-                ResourceDeploymentFilters.VisibleToTenant(tenantId),
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.ResourceGroupId,
-                    resourceGroupId),
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.IsolationScopeId,
-                    isolationScopeId)),
-            session,
-            cancellationToken);
+        EnsureTransaction(session);
+        var hasUnfinished = await resourceDeployments
+            .Find(
+                session,
+                ResourceDeploymentFilters.UnfinishedForIsolationScope(
+                    tenantId,
+                    resourceGroupId,
+                    isolationScopeId))
+            .Limit(1)
+            .AnyAsync(cancellationToken);
         return hasUnfinished
             ? new Err<IsolationScopeHasUnfinishedDeployments>(
                 new IsolationScopeHasUnfinishedDeployments(
@@ -57,10 +57,7 @@ internal sealed class ResourceDeploymentReferenceLookup(
             : new Ok<Unit>(Unit.Value);
     }
 
-    private async Task<bool> HasUnfinishedAsync(
-        FilterDefinition<ResourceDeployment> ownershipFilter,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken)
+    private static void EnsureTransaction(IClientSessionHandle session)
     {
         ArgumentNullException.ThrowIfNull(session);
         if (!session.IsInTransaction)
@@ -68,18 +65,5 @@ internal sealed class ResourceDeploymentReferenceLookup(
             throw new InvalidOperationException(
                 "Resource deployment reference checks must run inside the logical resource transaction.");
         }
-
-        var unfinishedExists = await resourceDeployments
-            .Find(
-                session,
-                Builders<ResourceDeployment>.Filter.And(
-                    ownershipFilter,
-                    Builders<ResourceDeployment>.Filter.Not(
-                        Builders<ResourceDeployment>.Filter
-                            .OfType<ResourceDeploymentState, DeletedResourceDeploymentState>(
-                                deployment => deployment.State))))
-            .Limit(1)
-            .AnyAsync(cancellationToken);
-        return unfinishedExists;
     }
 }

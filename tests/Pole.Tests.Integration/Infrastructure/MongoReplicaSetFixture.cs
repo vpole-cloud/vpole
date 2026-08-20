@@ -11,7 +11,7 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 public sealed class MongoReplicaSetFixture : IAsyncLifetime
 {
-    private const string DefaultMongoImage = "mongo:8.0";
+    private const string DefaultMongoImage = "mongo:7.0";
 
     private readonly int _mongoPort;
     private readonly IContainer _container;

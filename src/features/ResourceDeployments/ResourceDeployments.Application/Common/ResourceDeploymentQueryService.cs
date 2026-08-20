@@ -15,7 +15,10 @@ internal sealed class ResourceDeploymentQueryService(
         CancellationToken cancellationToken = default)
     {
         var deployment = await resourceDeployments
-            .Find(BuildFilter(tenantId, resourceType, [resourceId]))
+            .Find(ResourceDeploymentFilters.ForResource(
+                tenantId,
+                resourceType,
+                resourceId))
             .FirstOrDefaultAsync(cancellationToken);
         return deployment?.ToPlacementSummaryDto();
     }
@@ -31,7 +34,10 @@ internal sealed class ResourceDeploymentQueryService(
             return new Dictionary<string, PlacementSummaryDto>();
 
         var deployments = await resourceDeployments
-            .Find(BuildFilter(tenantId, resourceType, resourceIds))
+            .Find(ResourceDeploymentFilters.ForResources(
+                tenantId,
+                resourceType,
+                resourceIds))
             .ToListAsync(cancellationToken);
         return deployments
             .GroupBy(deployment => deployment.ResourceId, StringComparer.Ordinal)
@@ -91,7 +97,10 @@ internal sealed class ResourceDeploymentQueryService(
             return new Dictionary<string, IReadOnlyList<PlacementSummaryDto>>();
 
         var deployments = await resourceDeployments
-            .Find(BuildFilter(tenantId, resourceType, resourceIds))
+            .Find(ResourceDeploymentFilters.ForResources(
+                tenantId,
+                resourceType,
+                resourceIds))
             .SortBy(deployment => deployment.ResourceId)
             .ThenBy(deployment => deployment.Id)
             .ToListAsync(cancellationToken);
@@ -105,12 +114,4 @@ internal sealed class ResourceDeploymentQueryService(
                 StringComparer.Ordinal);
     }
 
-    private static FilterDefinition<ResourceDeployment> BuildFilter(
-        string tenantId,
-        ResourceTypeId resourceType,
-        IReadOnlyCollection<string> resourceIds) =>
-        ResourceDeploymentFilters.ForResources(
-            tenantId,
-            resourceType,
-            resourceIds);
 }

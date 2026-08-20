@@ -94,7 +94,9 @@ public sealed class ResourceDeploymentRecoveryJobTests(
         listener.Start();
 
         using var metrics = new ResourceDeploymentMetrics();
-        var persistence = new ResourceDeploymentRecoveryPersistence(
+        var loadCandidates = new LoadResourceDeploymentRecoveryCandidatesOperation(
+            fixture.DbContext.ResourceDeployments);
+        var recover = new RecoverResourceDeploymentOperation(
             fixture.DbContext.ResourceDeployments,
             (operation, cancellationToken) => fixture.DbContext
                 .RunInTransactionAsync<long>(
@@ -106,8 +108,8 @@ public sealed class ResourceDeploymentRecoveryJobTests(
                 cancellationToken),
             new ResourcePlacementLookup(fixture.DbContext));
         var job = new ResourceDeploymentRecoveryJob(
-            persistence.LoadCandidatesAsync,
-            persistence.RecoverAsync,
+            loadCandidates.InvokeAsync,
+            recover.InvokeAsync,
             metrics,
             new ResourceDeploymentSettings { RecoveryBatchSize = 10 },
             new FixedTimeProvider(now));

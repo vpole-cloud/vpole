@@ -25,18 +25,8 @@ internal sealed class ResourceDeploymentWakePersistence(
         DateTime readyAtUtc,
         CancellationToken cancellationToken = default)
     {
-        var waitingFilter = Builders<ResourceDeployment>.Filter.And(
-            Builders<ResourceDeployment>.Filter.Eq(
-                deployment => deployment.TenantId,
-                tenantId),
-            Builders<ResourceDeployment>.Filter.Eq(
-                deployment => deployment.RuntimeCellId,
-                runtimeCellId),
-            Builders<ResourceDeployment>.Filter
-                .OfType<ResourceDeploymentState, WaitingForRuntimeCellResourceDeploymentState>(
-                    deployment => deployment.State));
         var waiting = await resourceDeployments
-            .Find(waitingFilter)
+            .Find(ResourceDeploymentFilters.WaitingForRuntimeCell(tenantId, runtimeCellId))
             .SortBy(deployment => deployment.Id)
             .Limit(batchSize)
             .ToListAsync(cancellationToken);
@@ -51,19 +41,7 @@ internal sealed class ResourceDeploymentWakePersistence(
                 var current = deployment.MarkRuntimeCellReady(readyAtUtc);
                 var replacement = await resourceDeployments.ReplaceOneAsync(
                     session,
-                    Builders<ResourceDeployment>.Filter.And(
-                        Builders<ResourceDeployment>.Filter.Eq(
-                            item => item.Id,
-                            deployment.Id),
-                        Builders<ResourceDeployment>.Filter.Eq(
-                            item => item.TenantId,
-                            deployment.TenantId),
-                        Builders<ResourceDeployment>.Filter.Eq(
-                            item => item.Revision,
-                            deployment.Revision),
-                        Builders<ResourceDeployment>.Filter
-                            .OfType<ResourceDeploymentState, WaitingForRuntimeCellResourceDeploymentState>(
-                                item => item.State)),
+                    ResourceDeploymentFilters.WaitingForRuntimeCellAtRevision(deployment),
                     current,
                     cancellationToken: ct);
                 if (replacement.ModifiedCount == 1)

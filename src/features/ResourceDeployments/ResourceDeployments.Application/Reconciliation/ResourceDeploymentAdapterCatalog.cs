@@ -3,18 +3,11 @@ using Pole.Features.ResourceDeployments.Contracts;
 
 namespace Pole.Features.ResourceDeployments.Application.Reconciliation;
 
-public delegate (IResourceDeploymentAdapter Adapter,
-    ResourcePlacementCapability PlacementCapability)
-    ResolveResourceDeploymentAdapter(string resourceType);
-
-public sealed class ResourceDeploymentAdapterCatalog(
+internal sealed class ResourceDeploymentAdapterCatalog(
     IEnumerable<ResourceDeploymentAdapterDescriptor> descriptors)
 {
     private readonly FrozenDictionary<string, ResourceDeploymentAdapterDescriptor> _descriptors =
         Create(descriptors);
-
-    public IReadOnlyCollection<ResourceDeploymentAdapterDescriptor> Descriptors =>
-        _descriptors.Values;
 
     public ResourceDeploymentAdapterDescriptor GetRequired(string resourceType)
     {

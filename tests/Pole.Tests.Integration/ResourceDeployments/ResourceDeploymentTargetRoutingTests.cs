@@ -89,11 +89,11 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             MaximumRetryDelaySeconds = 10
         };
         using var metrics = new ResourceDeploymentMetrics();
-        var persistence = CreateReconciliationPersistence(settings);
+        var persistence = CreateReconciliationCapabilities(settings);
         var reconciler = new ResourceDeploymentReconciler(
-            persistence.ClaimAsync,
-            persistence.PersistSuccessAsync,
-            persistence.PersistFailureAsync,
+            persistence.Claim,
+            persistence.PersistSuccess,
+            persistence.PersistFailure,
             new ResourcePlacementLookup(fixture.DbContext),
             _ => (adapter, ResourcePlacementCapability.SingleTarget),
             metrics,
@@ -169,11 +169,11 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             MaximumRetryDelaySeconds = 10
         };
         using var metrics = new ResourceDeploymentMetrics();
-        var persistence = CreateReconciliationPersistence(settings);
+        var persistence = CreateReconciliationCapabilities(settings);
         var reconciler = new ResourceDeploymentReconciler(
-            persistence.ClaimAsync,
-            persistence.PersistSuccessAsync,
-            persistence.PersistFailureAsync,
+            persistence.Claim,
+            persistence.PersistSuccess,
+            persistence.PersistFailure,
             new ResourcePlacementLookup(fixture.DbContext),
             _ => (adapter, ResourcePlacementCapability.SingleTarget),
             metrics,
@@ -199,9 +199,10 @@ public sealed class ResourceDeploymentTargetRoutingTests(
                 "resource-deployment-failed"));
     }
 
-    private ResourceDeploymentReconciliationPersistence
-        CreateReconciliationPersistence(ResourceDeploymentSettings settings) =>
-        new(
+    private ReconciliationCapabilities CreateReconciliationCapabilities(
+        ResourceDeploymentSettings settings)
+    {
+        var completion = new ResourceDeploymentCompletionPersistence(
             fixture.DbContext.ResourceDeployments,
             (operation, cancellationToken) => fixture.DbContext
                 .RunInTransactionAsync(
@@ -210,10 +211,29 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             (session, writes, cancellationToken) => fixture.DbContext.StoreEventAsync(
                 writes,
                 session,
-                cancellationToken),
+                cancellationToken));
+        var claim = new ClaimResourceDeploymentOperation(
+            fixture.DbContext.ResourceDeployments,
             settings,
+            TimeProvider.System);
+        var success = new PersistResourceDeploymentSuccessOperation(
+            completion,
+            TimeProvider.System);
+        var failure = new PersistResourceDeploymentFailureOperation(
+            completion,
             new ResourceDeploymentRetryDelayPolicy(settings),
             TimeProvider.System);
+
+        return new ReconciliationCapabilities(
+            claim.InvokeAsync,
+            success.InvokeAsync,
+            failure.InvokeAsync);
+    }
+
+    private sealed record ReconciliationCapabilities(
+        ClaimResourceDeployment Claim,
+        PersistResourceDeploymentSuccess PersistSuccess,
+        PersistResourceDeploymentFailure PersistFailure);
 
     private static Kubernetes CreateKubernetes(string host) =>
         new(new KubernetesClientConfiguration

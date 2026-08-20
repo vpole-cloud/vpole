@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
+using Pole.Features.ResourceDeployments.Application.Jobs;
+using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Tests.Integration.Infrastructure;
@@ -50,6 +52,13 @@ public sealed class ResourceDeploymentCreationContractTests(
         _ = Services.GetRequiredService<EnsureComputeProfileUnreferenced>();
         _ = Services.GetRequiredService<PurgeDeletedResourceDeployments>();
         _ = Services.GetRequiredService<ResolveResourceDeploymentAdapter>();
+        _ = Services.GetRequiredService<ClaimResourceDeployment>();
+        _ = Services.GetRequiredService<PersistResourceDeploymentSuccess>();
+        _ = Services.GetRequiredService<PersistResourceDeploymentFailure>();
+        _ = Services.GetRequiredService<LoadResourceDeploymentRecoveryCandidates>();
+        _ = Services.GetRequiredService<RecoverResourceDeployment>();
+        _ = Services.GetRequiredService<ResourceDeploymentReconciler>();
+        _ = Services.GetRequiredService<ResourceDeploymentRecoveryJob>();
     }
 
     [Fact]

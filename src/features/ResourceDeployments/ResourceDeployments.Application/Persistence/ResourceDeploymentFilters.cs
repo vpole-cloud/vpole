@@ -69,6 +69,46 @@ internal static class ResourceDeploymentFilters
                 deploymentId));
     }
 
+    public static FilterDefinition<ResourceDeployment> ForTenantDeployment(
+        string tenantId,
+        string deploymentId) =>
+        Builders<ResourceDeployment>.Filter.And(
+            VisibleToTenant(tenantId),
+            ByDeploymentId(deploymentId));
+
+    public static FilterDefinition<ResourceDeployment> ForExactDeploymentAtRevision(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId,
+        string deploymentId,
+        long revision) =>
+        Builders<ResourceDeployment>.Filter.And(
+            ForExactDeployment(tenantId, resourceType, resourceId, deploymentId),
+            Builders<ResourceDeployment>.Filter.Eq(
+                deployment => deployment.Revision,
+                revision));
+
+    public static FilterDefinition<ResourceDeployment> ForResourceDeploymentIds(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId,
+        IReadOnlyCollection<string> deploymentIds)
+    {
+        ArgumentNullException.ThrowIfNull(deploymentIds);
+        if (deploymentIds.Any(string.IsNullOrWhiteSpace))
+        {
+            throw new ArgumentException(
+                "Resource deployment IDs cannot contain null or whitespace values.",
+                nameof(deploymentIds));
+        }
+
+        return Builders<ResourceDeployment>.Filter.And(
+            ForResource(tenantId, resourceType, resourceId),
+            Builders<ResourceDeployment>.Filter.In(
+                deployment => deployment.Id,
+                deploymentIds));
+    }
+
     public static FilterDefinition<ResourceDeployment> AtRevision(
         ResourceDeployment deployment)
     {
@@ -91,9 +131,201 @@ internal static class ResourceDeploymentFilters
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(computeProfileId);
         return Builders<ResourceDeployment>.Filter.Eq(
-            deployment => deployment.ResolvedPlacement.Compute.ComputeProfileId,
-            computeProfileId);
+                deployment => deployment.ResolvedPlacement.Compute.ComputeProfileId,
+                computeProfileId);
     }
+
+    public static FilterDefinition<ResourceDeployment> UnfinishedForResourceGroup(
+        string tenantId,
+        string resourceGroupId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(resourceGroupId);
+        return Builders<ResourceDeployment>.Filter.And(
+            VisibleToTenant(tenantId),
+            Builders<ResourceDeployment>.Filter.Eq(
+                deployment => deployment.ResourceGroupId,
+                resourceGroupId),
+            IsUnfinished());
+    }
+
+    public static FilterDefinition<ResourceDeployment> UnfinishedForIsolationScope(
+        string tenantId,
+        string resourceGroupId,
+        string isolationScopeId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(resourceGroupId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(isolationScopeId);
+        return Builders<ResourceDeployment>.Filter.And(
+            VisibleToTenant(tenantId),
+            Builders<ResourceDeployment>.Filter.Eq(
+                deployment => deployment.ResourceGroupId,
+                resourceGroupId),
+            Builders<ResourceDeployment>.Filter.Eq(
+                deployment => deployment.IsolationScopeId,
+                isolationScopeId),
+            IsUnfinished());
+    }
+
+    public static FilterDefinition<ResourceDeployment> ForPendingReconciliation(
+        string tenantId,
+        string deploymentId,
+        string runtimeCellId,
+        long generation,
+        ResourceDeploymentOperation operation)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(runtimeCellId);
+        return Builders<ResourceDeployment>.Filter.And(
+            ForTenantDeployment(tenantId, deploymentId),
+            Builders<ResourceDeployment>.Filter.Eq(
+                deployment => deployment.RuntimeCellId,
+                runtimeCellId),
+            Builders<ResourceDeployment>.Filter.Eq(
+                deployment => deployment.DesiredGeneration,
+                generation),
+            Builders<ResourceDeployment>.Filter.Eq(
+                deployment => deployment.DesiredOperation,
+                operation),
+            IsPending());
+    }
+
+    public static FilterDefinition<ResourceDeployment> ForPendingAtRevision(
+        ResourceDeployment deployment) =>
+        Builders<ResourceDeployment>.Filter.And(
+            AtRevision(deployment),
+            IsPending());
+
+    public static FilterDefinition<ResourceDeployment> ForActiveClaimAtRevision(
+        ResourceDeployment deployment,
+        string claimId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(claimId);
+        return Builders<ResourceDeployment>.Filter.And(
+            AtRevision(deployment),
+            IsReconciling(),
+            Builders<ResourceDeployment>.Filter.Eq(
+                item => ((ReconcilingResourceDeploymentState)item.State).ClaimId,
+                claimId));
+    }
+
+    public static FilterDefinition<ResourceDeployment> ForRecoveryCandidates(
+        DateTime now,
+        DateTime stalePendingBefore) =>
+        Builders<ResourceDeployment>.Filter.Or(
+            Builders<ResourceDeployment>.Filter.And(
+                IsPending(),
+                Builders<ResourceDeployment>.Filter.Lte(
+                    deployment => deployment.UpdatedAtUtc,
+                    stalePendingBefore)),
+            Builders<ResourceDeployment>.Filter.And(
+                IsReconciling(),
+                Builders<ResourceDeployment>.Filter.Lte(
+                    deployment =>
+                        ((ReconcilingResourceDeploymentState)deployment.State).LeaseExpiresAtUtc,
+                    now)),
+            Builders<ResourceDeployment>.Filter.And(
+                IsRetryableFailure(),
+                Builders<ResourceDeployment>.Filter.Lte(
+                    deployment =>
+                        ((FailedResourceDeploymentState)deployment.State).RetryNotBeforeUtc,
+                    now)),
+            Builders<ResourceDeployment>.Filter.And(
+                IsWaitingForRuntimeCell(),
+                Builders<ResourceDeployment>.Filter.Lte(
+                    deployment => deployment.UpdatedAtUtc,
+                    stalePendingBefore)));
+
+    public static FilterDefinition<ResourceDeployment> ForRecoveryAtRevision(
+        ResourceDeployment deployment) =>
+        Builders<ResourceDeployment>.Filter.And(
+            AtRevision(deployment),
+            ForExpectedRecoveryState(deployment.State));
+
+    public static FilterDefinition<ResourceDeployment> ForRetryAtRevision(
+        ResourceDeployment deployment) =>
+        Builders<ResourceDeployment>.Filter.And(
+            AtRevision(deployment),
+            IsFailed());
+
+    public static FilterDefinition<ResourceDeployment> WaitingForRuntimeCell(
+        string tenantId,
+        string runtimeCellId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(runtimeCellId);
+        return Builders<ResourceDeployment>.Filter.And(
+            VisibleToTenant(tenantId),
+            Builders<ResourceDeployment>.Filter.Eq(
+                deployment => deployment.RuntimeCellId,
+                runtimeCellId),
+            IsWaitingForRuntimeCell());
+    }
+
+    public static FilterDefinition<ResourceDeployment> WaitingForRuntimeCellAtRevision(
+        ResourceDeployment deployment) =>
+        Builders<ResourceDeployment>.Filter.And(
+            AtRevision(deployment),
+            IsWaitingForRuntimeCell());
+
+    public static FilterDefinition<ResourceDeployment> ByDeploymentId(
+        string deploymentId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(deploymentId);
+        return Builders<ResourceDeployment>.Filter.Eq(
+            deployment => deployment.Id,
+            deploymentId);
+    }
+
+    private static FilterDefinition<ResourceDeployment> IsUnfinished() =>
+        Builders<ResourceDeployment>.Filter.Not(IsDeleted());
+
+    private static FilterDefinition<ResourceDeployment> IsPending() =>
+        Builders<ResourceDeployment>.Filter
+            .OfType<ResourceDeploymentState, PendingResourceDeploymentState>(
+                deployment => deployment.State);
+
+    private static FilterDefinition<ResourceDeployment> IsReconciling() =>
+        Builders<ResourceDeployment>.Filter
+            .OfType<ResourceDeploymentState, ReconcilingResourceDeploymentState>(
+                deployment => deployment.State);
+
+    private static FilterDefinition<ResourceDeployment> IsFailed() =>
+        Builders<ResourceDeployment>.Filter
+            .OfType<ResourceDeploymentState, FailedResourceDeploymentState>(
+                deployment => deployment.State);
+
+    private static FilterDefinition<ResourceDeployment> IsRetryableFailure() =>
+        Builders<ResourceDeployment>.Filter.And(
+            IsFailed(),
+            Builders<ResourceDeployment>.Filter.Eq(
+                deployment => ((FailedResourceDeploymentState)deployment.State).Retryable,
+                true));
+
+    private static FilterDefinition<ResourceDeployment> IsWaitingForRuntimeCell() =>
+        Builders<ResourceDeployment>.Filter
+            .OfType<ResourceDeploymentState, WaitingForRuntimeCellResourceDeploymentState>(
+                deployment => deployment.State);
+
+    private static FilterDefinition<ResourceDeployment> IsDeleted() =>
+        Builders<ResourceDeployment>.Filter
+            .OfType<ResourceDeploymentState, DeletedResourceDeploymentState>(
+                deployment => deployment.State);
+
+    private static FilterDefinition<ResourceDeployment> ForExpectedRecoveryState(
+        ResourceDeploymentState state) =>
+        state switch
+        {
+            WaitingForRuntimeCellResourceDeploymentState => IsWaitingForRuntimeCell(),
+            PendingResourceDeploymentState => IsPending(),
+            ReconcilingResourceDeploymentState reconciling =>
+                Builders<ResourceDeployment>.Filter.And(
+                    IsReconciling(),
+                    Builders<ResourceDeployment>.Filter.Eq(
+                        deployment =>
+                            ((ReconcilingResourceDeploymentState)deployment.State).ClaimId,
+                        reconciling.ClaimId)),
+            FailedResourceDeploymentState => IsFailed(),
+            _ => throw new InvalidOperationException(
+                $"State '{state.GetType().Name}' cannot be recovered.")
+        };
 
     private static void EnsureResourceType(ResourceTypeId resourceType)
     {

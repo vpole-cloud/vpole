@@ -606,6 +606,36 @@ Architecture rules should initially target migrated namespaces or projects. Expa
 them feature by feature so partially migrated code does not block the entire
 solution without providing an actionable path forward.
 
+### Local capability file shape
+
+Within one project, keep one named delegate and its direct implementation per
+file. A delegate may live in a provider's Contracts project while its
+implementation lives in Application; that cross-project boundary is an
+intentional exception because the provider contract must remain independently
+referencable. Do not split those two projects merely to satisfy a file rule.
+
+Inside one Application project, do not accumulate unrelated delegate
+implementations in a broad `*Writer`, `*Adapters`, or `*Persistence` class.
+Give each leaf capability its own internal implementation file with one public
+operation, normally `InvokeAsync`. Cohesive runtime strategies and mediator
+endpoint files remain explicit exceptions: an adapter interface can contain its
+strategy protocol, and one endpoint file keeps its route, request, validator,
+and handler together.
+
+### Mongo filter rule
+
+Runtime Mongo filters belong only to an internal, aggregate-owned
+`<Aggregate>Filters` file. Each filter method must have a semantic name that
+states the identity, tenant fence, revision fence, lifecycle state, or recovery
+condition it enforces. Persistence capabilities call those named methods; they
+do not construct inline `Builders<T>.Filter` expressions or pass arbitrary
+`FilterDefinition<T>` values between helpers.
+
+Schema migrations and tests are exceptions because their BSON predicates are
+not runtime aggregate access paths. The rule applies first to migrated feature
+namespaces and should be enforced with architecture/source checks as those
+features are converted.
+
 ## Testing Strategy
 
 Each feature slice adds or updates tests at the narrowest useful level:
