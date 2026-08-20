@@ -57,23 +57,11 @@ public static class ResourceDeploymentFeature
 
         services.TryAddSingleton<ResourceDeploymentMetrics>();
         services.TryAddSingleton<ResourceDeploymentAdapterCatalog>();
+        services.TryAddScoped<ResourceDeploymentAdapterResolver>();
         services.TryAddScoped<ResolveResourceDeploymentAdapter>(serviceProvider =>
-        {
-            var catalog = serviceProvider
-                .GetRequiredService<ResourceDeploymentAdapterCatalog>();
-            return resourceType =>
-            {
-                var descriptor = catalog.GetRequired(resourceType);
-                var adapter = serviceProvider.GetRequiredService(descriptor.AdapterType);
-                if (adapter is not IResourceDeploymentAdapter typedAdapter)
-                {
-                    throw new InvalidOperationException(
-                        $"Registered resource deployment adapter '{descriptor.AdapterType.FullName}' does not implement {nameof(IResourceDeploymentAdapter)}.");
-                }
-
-                return (typedAdapter, descriptor.PlacementCapability);
-            };
-        });
+            serviceProvider
+                .GetRequiredService<ResourceDeploymentAdapterResolver>()
+                .Resolve);
         services.TryAddSingleton<ResourceDeploymentRetryDelayPolicy>();
         services.TryAddScoped<ResourceDeploymentReconciler>();
         services.TryAddScoped<ResourceDeploymentRecoveryJob>();
@@ -117,24 +105,28 @@ public static class ResourceDeploymentFeature
     private static void AddResourceDeploymentReconciliationCapabilities(
         this IServiceCollection services)
     {
-        services.TryAddScoped<ResourceDeploymentReconciliationPersistence>();
+        services.TryAddScoped<ClaimResourceDeploymentOperation>();
         services.TryAddScoped<ClaimResourceDeployment>(provider =>
-            provider.GetRequiredService<ResourceDeploymentReconciliationPersistence>()
-                .ClaimAsync);
+            provider.GetRequiredService<ClaimResourceDeploymentOperation>()
+                .InvokeAsync);
+        services.TryAddScoped<ResourceDeploymentCompletionPersistence>();
+        services.TryAddScoped<PersistResourceDeploymentSuccessOperation>();
         services.TryAddScoped<PersistResourceDeploymentSuccess>(provider =>
-            provider.GetRequiredService<ResourceDeploymentReconciliationPersistence>()
-                .PersistSuccessAsync);
+            provider.GetRequiredService<PersistResourceDeploymentSuccessOperation>()
+                .InvokeAsync);
+        services.TryAddScoped<PersistResourceDeploymentFailureOperation>();
         services.TryAddScoped<PersistResourceDeploymentFailure>(provider =>
-            provider.GetRequiredService<ResourceDeploymentReconciliationPersistence>()
-                .PersistFailureAsync);
+            provider.GetRequiredService<PersistResourceDeploymentFailureOperation>()
+                .InvokeAsync);
 
-        services.TryAddScoped<ResourceDeploymentRecoveryPersistence>();
+        services.TryAddScoped<LoadResourceDeploymentRecoveryCandidatesOperation>();
         services.TryAddScoped<LoadResourceDeploymentRecoveryCandidates>(provider =>
-            provider.GetRequiredService<ResourceDeploymentRecoveryPersistence>()
-                .LoadCandidatesAsync);
+            provider.GetRequiredService<LoadResourceDeploymentRecoveryCandidatesOperation>()
+                .InvokeAsync);
+        services.TryAddScoped<RecoverResourceDeploymentOperation>();
         services.TryAddScoped<RecoverResourceDeployment>(provider =>
-            provider.GetRequiredService<ResourceDeploymentRecoveryPersistence>()
-                .RecoverAsync);
+            provider.GetRequiredService<RecoverResourceDeploymentOperation>()
+                .InvokeAsync);
 
         services.TryAddScoped<ResourceDeploymentWakePersistence>();
         services.TryAddScoped<WakeResourceDeploymentsForRuntimeCell>(provider =>

@@ -27,13 +27,10 @@ internal sealed class ResourceDeploymentRetryPersistence(
                 "Resource deployment retry must run inside the logical resource transaction.");
         }
 
-        var filter = Builders<ResourceDeployment>.Filter.And(
-            Builders<ResourceDeployment>.Filter.Eq(
-                deployment => deployment.Id,
-                deploymentId),
-            Builders<ResourceDeployment>.Filter.ForTenant(tenantId));
         var current = await resourceDeployments
-            .Find(session, filter)
+            .Find(
+                session,
+                ResourceDeploymentFilters.ForTenantDeployment(tenantId, deploymentId))
             .FirstOrDefaultAsync(cancellationToken);
         if (current is null)
         {
@@ -54,14 +51,7 @@ internal sealed class ResourceDeploymentRetryPersistence(
         var retried = current.Retry(timeProvider.GetUtcNow().UtcDateTime);
         var replacement = await resourceDeployments.ReplaceOneAsync(
             session,
-            Builders<ResourceDeployment>.Filter.And(
-                filter,
-                Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.Revision,
-                    current.Revision),
-                Builders<ResourceDeployment>.Filter
-                    .OfType<ResourceDeploymentState, FailedResourceDeploymentState>(
-                        deployment => deployment.State)),
+            ResourceDeploymentFilters.ForRetryAtRevision(current),
             retried,
             cancellationToken: cancellationToken);
         if (replacement.ModifiedCount != 1)

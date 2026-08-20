@@ -14,6 +14,9 @@ namespace Pole.Tests.Integration.ResourceDeployments;
 
 public sealed class ResourceDeploymentBoundaryArchitectureTests
 {
+    private const string ApplicationProjectPath =
+        "src/features/ResourceDeployments/ResourceDeployments.Application";
+
     public static TheoryData<Type> OrchestratorTypes =>
     [
         typeof(RetryResourceDeploymentHandler),
@@ -54,8 +57,12 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
             typeof(ResourceDeploymentComputeProfileReferenceGuard),
             typeof(ResourceDeploymentFinalizationService),
             typeof(ResourceDeploymentRetryPersistence),
-            typeof(ResourceDeploymentReconciliationPersistence),
-            typeof(ResourceDeploymentRecoveryPersistence),
+            typeof(ClaimResourceDeploymentOperation),
+            typeof(ResourceDeploymentCompletionPersistence),
+            typeof(PersistResourceDeploymentSuccessOperation),
+            typeof(PersistResourceDeploymentFailureOperation),
+            typeof(LoadResourceDeploymentRecoveryCandidatesOperation),
+            typeof(RecoverResourceDeploymentOperation),
             typeof(ResourceDeploymentWakePersistence),
             typeof(ResourceDeploymentFilters),
             typeof(ResourceDeploymentPlacementResolver)
@@ -77,5 +84,76 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
             .ToArray();
 
         Assert.Equal([typeof(IResourceDeploymentAdapter)], interfaces);
+    }
+
+    [Fact]
+    public void LocalCapabilities_KeepOneDelegateAndOperationPerFile()
+    {
+        var sourceFiles = Directory
+            .EnumerateFiles(ApplicationSourceDirectory, "*.cs", SearchOption.AllDirectories)
+            .Where(file => !file.Contains(
+                $"{Path.DirectorySeparatorChar}Endpoints{Path.DirectorySeparatorChar}",
+                StringComparison.Ordinal))
+            .Where(file => File.ReadAllText(file).Contains("public delegate", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.NotEmpty(sourceFiles);
+        Assert.All(sourceFiles, file =>
+        {
+            var source = File.ReadAllText(file);
+            Assert.Equal(1, source.Split("public delegate", StringSplitOptions.None).Length - 1);
+            Assert.Equal(
+                1,
+                source.Split("internal sealed class", StringSplitOptions.None).Length - 1);
+        });
+    }
+
+    [Fact]
+    public void RuntimeMongoFilters_AreOnlyBuiltInTheAggregateFilterCatalog()
+    {
+        var violations = Directory
+            .EnumerateFiles(ApplicationSourceDirectory, "*.cs", SearchOption.AllDirectories)
+            .Where(file => !file.EndsWith(
+                $"{Path.DirectorySeparatorChar}ResourceDeploymentFilters.cs",
+                StringComparison.Ordinal))
+            .Where(file => !file.Contains(
+                $"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}",
+                StringComparison.Ordinal))
+            .Where(file =>
+            {
+                var source = File.ReadAllText(file);
+                return source.Contains(
+                           "Builders<ResourceDeployment>.Filter",
+                           StringComparison.Ordinal) ||
+                       source.Contains(
+                           "FilterDefinition<ResourceDeployment>",
+                           StringComparison.Ordinal) ||
+                       source.Contains(".Find(deployment =>", StringComparison.Ordinal) ||
+                       source.Contains(".Find(session, deployment =>", StringComparison.Ordinal);
+            })
+            .ToArray();
+
+        Assert.Empty(violations);
+    }
+
+    private static string ApplicationSourceDirectory => Path.Combine(
+        RepositoryRoot,
+        ApplicationProjectPath);
+
+    private static string RepositoryRoot
+    {
+        get
+        {
+            for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
+                 directory is not null;
+                 directory = directory.Parent)
+            {
+                var gitDirectory = Path.Combine(directory.FullName, ".git");
+                if (Directory.Exists(gitDirectory) || File.Exists(gitDirectory))
+                    return directory.FullName;
+            }
+
+            throw new DirectoryNotFoundException("Could not locate the repository root.");
+        }
     }
 }

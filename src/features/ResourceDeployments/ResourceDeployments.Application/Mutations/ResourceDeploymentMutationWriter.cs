@@ -350,11 +350,7 @@ internal sealed class ResourceDeploymentMutationWriter(
         var retried = current.Retry(timeProvider.GetUtcNow().UtcDateTime);
         var replacement = await resourceDeployments.ReplaceOneAsync(
             session,
-            Builders<ResourceDeployment>.Filter.And(
-                ResourceDeploymentFilters.AtRevision(current),
-                Builders<ResourceDeployment>.Filter
-                    .OfType<ResourceDeploymentState, FailedResourceDeploymentState>(
-                        deployment => deployment.State)),
+            ResourceDeploymentFilters.ForRetryAtRevision(current),
             retried,
             cancellationToken: cancellationToken);
         if (replacement.ModifiedCount != 1)
@@ -469,16 +465,14 @@ internal sealed class ResourceDeploymentMutationWriter(
                 nameof(command));
         }
 
-        var filter = Builders<ResourceDeployment>.Filter.And(
-            ResourceDeploymentFilters.ForResource(
-                command.TenantId,
-                command.ResourceType,
-                command.ResourceId),
-            Builders<ResourceDeployment>.Filter.In(
-                deployment => deployment.Id,
-                deploymentIds));
         var current = await resourceDeployments
-            .Find(session, filter)
+            .Find(
+                session,
+                ResourceDeploymentFilters.ForResourceDeploymentIds(
+                    command.TenantId,
+                    command.ResourceType,
+                    command.ResourceId,
+                    deploymentIds))
             .ToListAsync(cancellationToken);
         if (current.Count != command.Deployments.Count)
         {
@@ -671,14 +665,11 @@ internal sealed class ResourceDeploymentMutationWriter(
         var current = await resourceDeployments
             .Find(
                 session,
-                Builders<ResourceDeployment>.Filter.And(
-                    ResourceDeploymentFilters.ForResource(
-                        command.TenantId,
-                        command.ResourceType,
-                        command.ResourceId),
-                    Builders<ResourceDeployment>.Filter.In(
-                        deployment => deployment.Id,
-                        deploymentIds)))
+                ResourceDeploymentFilters.ForResourceDeploymentIds(
+                    command.TenantId,
+                    command.ResourceType,
+                    command.ResourceId,
+                    deploymentIds))
             .ToListAsync(cancellationToken);
         if (current.Count != command.Deployments.Count)
         {

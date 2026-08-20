@@ -51,16 +51,21 @@ The integration suite uses:
 
 - **xUnit**
 - **Testcontainers**
-- **MongoDB 8.0** in a disposable container
+- **MongoDB 7.0** in a disposable container
 - **ASP.NET Core TestHost** for API slice tests
 - **Kubernetes official C# client** for cluster-backed tests
 
 MongoDB is started as a **single-node replica set** because the application uses Mongo transactions, and transactions require replica set support.
 
-The integration fixture uses `mongo:8.0` by default. A developer can override only the local
-Testcontainers image with `POLE_TEST_MONGO_IMAGE`. This is useful when the host kernel is
-temporarily incompatible with the default image; CI and normal development should keep the
-default so Pole continues to exercise MongoDB 8 behavior.
+The integration fixture uses `mongo:7.0` by default. A developer can override only the local
+Testcontainers image with `POLE_TEST_MONGO_IMAGE`. This makes MongoDB 7 the standard
+integration gate while retaining an explicit MongoDB compatibility check:
+
+```bash
+POLE_TEST_MONGO_IMAGE=mongo:8.0 dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj -maxcpucount:1 -nodeReuse:false
+```
+
+Run that override before claiming MongoDB 8 support, or add it as a separate CI matrix job.
 
 ## Test layers
 
@@ -82,15 +87,9 @@ Before running the integration suite:
 - make sure **Docker is running**
 - make sure the .NET SDK for the repo is installed
 
-On Linux kernels 6.19 through 7.0.13, MongoDB currently cannot run safely because of an upstream
-TCMalloc incompatibility. The image may refuse to start or an older image may terminate during a
-long suite. Prefer running Mongo-backed tests on kernel 6.18 or 7.0.14+. The following local
-fallback can help with short diagnostic runs, but it is not a substitute for the normal MongoDB 8
-verification boundary:
-
-```bash
-POLE_TEST_MONGO_IMAGE=mongo:7.0 dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj -maxcpucount:1 -nodeReuse:false
-```
+On Linux kernels 6.19 through 7.0.13, MongoDB can be affected by an upstream TCMalloc
+incompatibility. Prefer running Mongo-backed tests on kernel 6.18 or 7.0.14+. Use the image
+override above when checking a specific MongoDB version.
 
 If Docker is not running, Testcontainers will fail before tests start.
 

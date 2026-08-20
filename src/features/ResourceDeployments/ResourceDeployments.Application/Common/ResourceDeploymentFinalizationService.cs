@@ -123,11 +123,12 @@ internal sealed class ResourceDeploymentFinalizationService(
 
         var deletion = await resourceDeployments.DeleteManyAsync(
             session,
-            Builders<ResourceDeployment>.Filter.And(
-                filter,
-                Builders<ResourceDeployment>.Filter.Eq(
-                    item => item.Revision,
-                    deployment.Revision)),
+            ResourceDeploymentFilters.ForExactDeploymentAtRevision(
+                tenantId,
+                resourceType,
+                resourceId,
+                resourceDeploymentId,
+                deployment.Revision),
             cancellationToken: cancellationToken);
         return deletion.DeletedCount == 1
             ? new Ok<Unit>(Unit.Value)
