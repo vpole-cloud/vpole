@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Migrations;
 using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.ComputeProfiles.Contracts;
@@ -57,21 +58,21 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
             target.Id,
             ComputeProfileTestData.OtherTenantId,
             WebServiceType));
-        Assert.IsType<SemanticValidationFailure>(wrongTenant.AssertFailure());
+        Assert.IsType<ComputeProfileUnavailable>(wrongTenant.AssertError().Value);
 
         var wrongResourceType = await resolve(new ComputeProfileResolutionRequest(
             profile.Id,
             target.Id,
             ComputeProfileTestData.TenantId,
             ResourceTypeId.Create("pole/redis")));
-        Assert.IsType<SemanticValidationFailure>(wrongResourceType.AssertFailure());
+        Assert.IsType<ComputeProfileUnavailable>(wrongResourceType.AssertError().Value);
 
         var missingMapping = await resolve(new ComputeProfileResolutionRequest(
             profile.Id,
             otherTarget.Id,
             ComputeProfileTestData.TenantId,
             WebServiceType));
-        Assert.IsType<SemanticValidationFailure>(missingMapping.AssertFailure());
+        Assert.IsType<ComputeProfileUnavailable>(missingMapping.AssertError().Value);
     }
 
     [Fact]
@@ -123,8 +124,7 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
         var create = host.GetRequiredService<PersistCreatedComputeProfile>();
         var update = host.GetRequiredService<PersistUpdatedComputeProfile>();
         var resolve = host.GetRequiredService<ResolveComputeProfile>();
-        var fence = host.GetRequiredService<IComputeProfileResolutionFence>();
-        var runTransaction = host.GetRequiredService<RunMongoTransaction>();
+        var fence = host.GetRequiredService<FenceResolvedComputeProfiles>();
         var original = (await create(ComputeProfileTestData.CreateProfile(
                 target.Id,
                 tenantAccess: SelectedTenantsComputeProfileAccess.Create(
@@ -136,16 +136,14 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
             ComputeProfileTestData.TenantId,
             WebServiceType))).AssertSuccess();
 
-        var fenced = await runTransaction(
-            (session, ct) => fence.FenceAsync(
-                new ComputeProfileResolutionFenceRequest(
+        var fenced = await FenceInTransactionAsync(
+            fence,
+            [new ComputeProfileResolutionFenceRequest(
                     resolved.ComputeProfileId,
                     resolved.ComputeProfileRevision,
                     resolved.DeploymentTargetId,
                     ComputeProfileTestData.TenantId,
-                    WebServiceType),
-                session,
-                ct));
+                    WebServiceType)]);
         fenced.AssertSuccess();
 
         var afterFence = await LoadAsync(original.Id);
@@ -153,7 +151,7 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
 
         var staleReplacement = Reconfigure(original, "Stale update");
         var staleUpdate = await update(original, staleReplacement);
-        Assert.IsType<ConflictFailure>(staleUpdate.AssertFailure());
+        Assert.IsType<ComputeProfileRevisionConflict>(staleUpdate.AssertError().Value);
 
         var updated = (await update(
             afterFence,
@@ -161,17 +159,15 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
         Assert.Equal(2, updated.Revision);
         Assert.Equal(1, updated.ResolutionFence);
 
-        var staleFence = await runTransaction(
-            (session, ct) => fence.FenceAsync(
-                new ComputeProfileResolutionFenceRequest(
+        var staleFence = await FenceInTransactionAsync(
+            fence,
+            [new ComputeProfileResolutionFenceRequest(
                     resolved.ComputeProfileId,
                     resolved.ComputeProfileRevision,
                     resolved.DeploymentTargetId,
                     ComputeProfileTestData.TenantId,
-                    WebServiceType),
-                session,
-                ct));
-        Assert.IsType<ConflictFailure>((Failure)staleFence);
+                    WebServiceType)]);
+        Assert.IsType<ComputeProfileResolutionFenceRejected>(staleFence.AssertError());
     }
 
     [Fact]
@@ -185,8 +181,7 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
         var create = host.GetRequiredService<PersistCreatedComputeProfile>();
         var update = host.GetRequiredService<PersistUpdatedComputeProfile>();
         var resolveMany = host.GetRequiredService<ResolveComputeProfiles>();
-        var fence = host.GetRequiredService<IComputeProfileResolutionFence>();
-        var runTransaction = host.GetRequiredService<RunMongoTransaction>();
+        var fence = host.GetRequiredService<FenceResolvedComputeProfiles>();
         var first = (await create(ComputeProfileTestData.CreateProfile(firstTarget.Id))).AssertSuccess();
         var second = (await create(ComputeProfileTestData.CreateProfile(
             secondTarget.Id,
@@ -207,8 +202,7 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
                 ComputeProfileTestData.TenantId,
                 WebServiceType))
             .ToArray();
-        (await runTransaction(
-            (session, ct) => fence.FenceManyAsync(fenceRequests, session, ct))).AssertSuccess();
+        (await FenceInTransactionAsync(fence, fenceRequests)).AssertSuccess();
         var firstAfterFence = await LoadAsync(first.Id);
         var secondAfterFence = await LoadAsync(second.Id);
         Assert.Equal(1, firstAfterFence.ResolutionFence);
@@ -217,13 +211,9 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
             firstAfterFence,
             Reconfigure(firstAfterFence, "Changed before batch fence"))).AssertSuccess();
 
-        var fenced = await runTransaction(
-            (session, ct) => fence.FenceManyAsync(
-                fenceRequests,
-                session,
-                ct));
+        var fenced = await FenceInTransactionAsync(fence, fenceRequests);
 
-        Assert.IsType<ConflictFailure>((Failure)fenced);
+        Assert.IsType<ComputeProfileResolutionFenceRejected>(fenced.AssertError());
         Assert.Equal(1, (await LoadAsync(first.Id)).ResolutionFence);
         Assert.Equal(1, (await LoadAsync(second.Id)).ResolutionFence);
     }
@@ -274,8 +264,35 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
     private async Task<ComputeProfile> LoadAsync(string id) =>
         await fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
-            .Find(profile => profile.Id == id)
+            .Find(ComputeProfileById(id))
             .SingleAsync();
+
+    private static FilterDefinition<ComputeProfile> ComputeProfileById(string computeProfileId) =>
+        Builders<ComputeProfile>.Filter.Eq(profile => profile.Id, computeProfileId);
+
+    private async Task<Result<Unit, ComputeProfileResolutionFenceRejected>>
+        FenceInTransactionAsync(
+            FenceResolvedComputeProfiles fence,
+            IReadOnlyList<ComputeProfileResolutionFenceRequest> requests)
+    {
+        using var session = await fixture.DbContext.Client.StartSessionAsync();
+        session.StartTransaction();
+        try
+        {
+            var result = await fence(requests, session);
+            if (result is Ok<Unit>)
+                await session.CommitTransactionAsync();
+            else
+                await session.AbortTransactionAsync();
+            return result;
+        }
+        catch
+        {
+            if (session.IsInTransaction)
+                await session.AbortTransactionAsync();
+            throw;
+        }
+    }
 
     private static ComputeProfile Reconfigure(
         ComputeProfile current,

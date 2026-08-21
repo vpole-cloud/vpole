@@ -12,6 +12,72 @@ public sealed class DeploymentTargetReferenceAdmission(
     : IDeploymentTargetReferenceAdmission,
       IDeploymentTargetWorkloadConfigurationFence
 {
+    public async Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
+        ApplyChangesOutcomeAsync(
+            DeploymentTargetReferenceOwner owner,
+            IReadOnlyCollection<string> addedDeploymentTargetIds,
+            IReadOnlyCollection<string> removedDeploymentTargetIds,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
+    {
+        EnsureOutcomeArguments(
+            owner,
+            addedDeploymentTargetIds,
+            removedDeploymentTargetIds);
+        var result = await ApplyChangesAsync(
+            owner,
+            addedDeploymentTargetIds,
+            removedDeploymentTargetIds,
+            session,
+            cancellationToken);
+        return result is ISuccess
+            ? new Ok<Unit>(Unit.Value)
+            : new Err<DeploymentTargetReferenceChangeRejected>(
+                new DeploymentTargetReferenceChangeRejected(
+                    owner,
+                    addedDeploymentTargetIds
+                        .Concat(removedDeploymentTargetIds)
+                        .Distinct(StringComparer.Ordinal)
+                        .Order(StringComparer.Ordinal)
+                        .ToArray()));
+    }
+
+    private static void EnsureOutcomeArguments(
+        DeploymentTargetReferenceOwner owner,
+        IReadOnlyCollection<string> addedDeploymentTargetIds,
+        IReadOnlyCollection<string> removedDeploymentTargetIds)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentNullException.ThrowIfNull(addedDeploymentTargetIds);
+        ArgumentNullException.ThrowIfNull(removedDeploymentTargetIds);
+        if (string.IsNullOrWhiteSpace(owner.Type) ||
+            owner.Type.Trim().Length > DeploymentTargetReferenceFactory.MaximumOwnerTypeLength ||
+            string.IsNullOrWhiteSpace(owner.Id) ||
+            owner.Id.Trim().Length > DeploymentTargetReferenceFactory.MaximumOwnerIdLength)
+        {
+            throw new ArgumentException(
+                "A valid deployment-target reference owner is required.",
+                nameof(owner));
+        }
+
+        if (addedDeploymentTargetIds.Any(id => !ObjectId.TryParse(id, out _)) ||
+            removedDeploymentTargetIds.Any(id => !ObjectId.TryParse(id, out _)))
+        {
+            throw new ArgumentException(
+                "Deployment target IDs must be MongoDB ObjectIds.",
+                nameof(addedDeploymentTargetIds));
+        }
+
+        if (addedDeploymentTargetIds
+            .Intersect(removedDeploymentTargetIds, StringComparer.Ordinal)
+            .Any())
+        {
+            throw new ArgumentException(
+                "A deployment target cannot be added and removed in the same change.",
+                nameof(addedDeploymentTargetIds));
+        }
+    }
+
     public Task<Result> RegisterAsync(
         string deploymentTargetId,
         DeploymentTargetReferenceOwner owner,

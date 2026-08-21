@@ -1,33 +1,28 @@
 using System.Net;
 using Pole.ASP.Helpers;
+using Pole.Features.ComputeProfiles.Contracts;
 
-namespace Pole.Features.ComputeProfiles.Contracts.HttpMapping;
+namespace Pole.Features.ComputeProfiles.Application.Common;
 
 public static class ComputeProfileContractHttpMappings
 {
     public static IReadOnlyList<HttpProblemMapping> All { get; } =
         Array.AsReadOnly<HttpProblemMapping>(
         [
-            HttpProblemMapping.For<ComputeProfileResolutionError>(MapResolutionError)
+            HttpProblemMapping.For<ComputeProfileResolutionError>(MapResolutionError),
+            HttpProblemMapping.For<ComputeProfileNotFound>(MapNotFound),
+            HttpProblemMapping.For<ComputeProfileResolutionFenceRejected>(
+                MapResolutionFenceRejected)
         ]);
 
     private static HttpProblem MapResolutionError(
         ComputeProfileResolutionError error) => error switch
         {
-            InvalidComputeProfileResolutionRequest invalid => Problem(
-                HttpStatusCode.BadRequest,
-                "compute-profiles.resolution.invalid",
-                "Compute profile resolution request is invalid",
-                ("errors", invalid.Errors)),
             DefaultComputeProfileNotConfigured => Problem(
                 HttpStatusCode.Conflict,
                 "compute-profiles.default-not-configured",
                 "Default compute profile is not configured"),
-            ComputeProfileNotFound notFound => Problem(
-                HttpStatusCode.NotFound,
-                "compute-profiles.not-found",
-                "Compute profile not found",
-                ("computeProfileId", notFound.ComputeProfileId)),
+            ComputeProfileNotFound notFound => MapNotFound(notFound),
             ComputeProfileUnavailable unavailable => Problem(
                 HttpStatusCode.UnprocessableEntity,
                 "compute-profiles.unavailable",
@@ -35,6 +30,19 @@ public static class ComputeProfileContractHttpMappings
                 ("computeProfileId", unavailable.ComputeProfileId),
                 ("reason", ReasonCode(unavailable.Reason)))
         };
+
+    private static HttpProblem MapNotFound(ComputeProfileNotFound notFound) => Problem(
+        HttpStatusCode.NotFound,
+        "compute-profiles.not-found",
+        "Compute profile not found",
+        ("computeProfileId", notFound.ComputeProfileId));
+
+    private static HttpProblem MapResolutionFenceRejected(
+        ComputeProfileResolutionFenceRejected rejected) => Problem(
+        HttpStatusCode.Conflict,
+        "compute-profiles.resolution-fence.rejected",
+        "Compute profile mapping changed or is no longer available",
+        ("computeProfileIds", rejected.ComputeProfileIds));
 
     private static string ReasonCode(
         ComputeProfileUnavailableReason reason) => reason switch

@@ -57,7 +57,9 @@ public sealed record ComputeProfileResolutionRequest(
     string TenantId,
     ResourceTypeId ResourceType);
 
-public delegate Task<Result<ResolvedComputeProfile>> ResolveComputeProfile(
+public delegate Task<Result<
+    ResolvedComputeProfile,
+    ComputeProfileResolutionError>> ResolveComputeProfile(
     ComputeProfileResolutionRequest request,
     CancellationToken cancellationToken = default);
 
@@ -73,9 +75,6 @@ public sealed record ComputeProfileBatchResolutionRequest(
     string TenantId,
     ResourceTypeId ResourceType,
     IReadOnlyList<ComputeProfileTargetResolutionRequest> Targets);
-
-public sealed record InvalidComputeProfileResolutionRequest(
-    IReadOnlyDictionary<string, string[]> Errors);
 
 public sealed record DefaultComputeProfileNotConfigured;
 
@@ -94,18 +93,22 @@ public sealed record ComputeProfileUnavailable(
     ComputeProfileUnavailableReason Reason);
 
 public union ComputeProfileResolutionError(
-    InvalidComputeProfileResolutionRequest,
     DefaultComputeProfileNotConfigured,
     ComputeProfileNotFound,
     ComputeProfileUnavailable);
 
-public delegate Task<Result<IReadOnlyList<ResolvedComputeProfile>>> ResolveComputeProfiles(
+public delegate Task<Result<
+    IReadOnlyList<ResolvedComputeProfile>,
+    ComputeProfileResolutionError>> ResolveComputeProfiles(
     ComputeProfileBatchResolutionRequest request,
     CancellationToken cancellationToken = default);
 
-public delegate Task<Result<
-    IReadOnlyList<ResolvedComputeProfile>,
-    ComputeProfileResolutionError>> ResolveComputeProfilesOutcome(
+public delegate Task<Result<ResolvedComputeProfile>> ResolveComputeProfileLegacy(
+    ComputeProfileResolutionRequest request,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<Result<IReadOnlyList<ResolvedComputeProfile>>>
+    ResolveComputeProfilesLegacy(
     ComputeProfileBatchResolutionRequest request,
     CancellationToken cancellationToken = default);
 
@@ -116,31 +119,14 @@ public sealed record ComputeProfileResolutionFenceRequest(
     string TenantId,
     ResourceTypeId ResourceType);
 
-public interface IComputeProfileResolutionFence
-{
-    Task<Result> FenceAsync(
-        ComputeProfileResolutionFenceRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+public sealed record ComputeProfileResolutionFenceRejected(
+    IReadOnlyList<string> ComputeProfileIds);
 
-    /// <summary>
-    /// Fences all resolved profiles in the caller's MongoDB transaction.
-    /// Implementations should batch the persistence work. The default preserves
-    /// compatibility for feature-local fakes that only need the single fence.
-    /// </summary>
-    async Task<Result> FenceManyAsync(
+/// <summary>
+/// Fences all resolved profiles inside the caller's MongoDB transaction.
+/// </summary>
+public delegate Task<Result<Unit, ComputeProfileResolutionFenceRejected>>
+    FenceResolvedComputeProfiles(
         IReadOnlyList<ComputeProfileResolutionFenceRequest> requests,
         IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(requests);
-        foreach (var request in requests)
-        {
-            var result = await FenceAsync(request, session, cancellationToken);
-            if (result is not ISuccess)
-                return result;
-        }
-
-        return Result.Success();
-    }
-}
+        CancellationToken cancellationToken = default);

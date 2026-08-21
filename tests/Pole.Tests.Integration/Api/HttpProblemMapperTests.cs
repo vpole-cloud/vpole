@@ -1,9 +1,11 @@
 using System.Net;
 using Pole.ASP.Helpers;
+using Pole.Features.ComputeProfiles.Application.Common;
+using Pole.Features.ComputeProfiles.Application.Endpoints;
+using Pole.Features.ComputeProfiles.Application.Persistence;
+using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
-using Pole.Features.ComputeProfiles.Contracts;
-using Pole.Features.ComputeProfiles.Contracts.HttpMapping;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.Endpoints;
 using Pole.Features.Domains.Application.Persistence;
@@ -43,6 +45,49 @@ public sealed class HttpProblemMapperTests
         Assert.Equal((int)HttpStatusCode.NotFound, problem.StatusCode);
         Assert.Equal("compute-profiles.not-found", problem.Code);
         Assert.Equal("compute-1", problem.Extensions["computeProfileId"]);
+    }
+
+    [Fact]
+    public void DeleteComputeProfileOutcomeUsesTheComputeProfileApplicationMapping()
+    {
+        var mapper = new HttpProblemMapper(
+        [
+            .. ComputeProfileHttpMappings.All,
+            .. ResourceDeploymentContractHttpMappings.All
+        ]);
+        DeleteComputeProfileError error =
+            new(new ComputeProfileReferencedByResourceDeployment("compute-1"));
+        DeleteComputeProfileOutcome outcome = new(error);
+
+        var problem = mapper.Map(outcome);
+
+        Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
+        Assert.Equal("resource-deployments.compute-profile-referenced", problem.Code);
+        Assert.Equal("compute-1", problem.Extensions["computeProfileId"]);
+    }
+
+    [Fact]
+    public void CreateComputeProfileOutcomeUnwrapsTargetReferenceProviderError()
+    {
+        var mapper = new HttpProblemMapper(
+        [
+            .. ComputeProfileHttpMappings.All,
+            .. DeploymentTargetContractHttpMappings.All
+        ]);
+        CreateComputeProfileError error = new(
+            new PersistCreatedComputeProfileError(
+                new DeploymentTargetReferenceChangeRejected(
+                    new DeploymentTargetReferenceOwner("compute-profile", "profile-1"),
+                    ["target-1"])));
+
+        var problem = mapper.Map(error);
+
+        Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
+        Assert.Equal("deployment-targets.reference-change-rejected", problem.Code);
+        Assert.Equal(
+            ["target-1"],
+            Assert.IsAssignableFrom<IReadOnlyList<string>>(
+                problem.Extensions["deploymentTargetIds"]));
     }
 
     [Fact]

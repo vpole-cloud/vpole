@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Pole.ResultType;
 
 namespace Pole.Database;
 
@@ -41,3 +42,13 @@ public delegate Task<TOutcome> RunMongoOutcomeTransaction<TOutcome>(
         Task<MongoTransactionDecision<TOutcome>>> operation,
     CancellationToken cancellationToken = default)
     where TOutcome : notnull;
+
+public static class MongoTransactionResultExtensions
+{
+    public static MongoTransactionDecision<Result<T, TError>> AbortError<T, TError>(
+        this MongoTransactionContext<Result<T, TError>> transaction,
+        TError error)
+        where T : notnull
+        where TError : notnull =>
+        transaction.Abort(new Err<TError>(error));
+}

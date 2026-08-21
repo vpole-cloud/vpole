@@ -11,7 +11,7 @@ public sealed class TenantIdentityLookup(ITenantDbContext dbContext) : ITenantId
         CancellationToken cancellationToken = default)
     {
         var tenant = await dbContext.Tenants
-            .Find(item => item.Id == tenantId)
+            .Find(TenantFilters.ById(tenantId))
             .FirstOrDefaultAsync(cancellationToken);
         return tenant is null
             ? Failures.NotFound("Tenant not found.", tenantId)

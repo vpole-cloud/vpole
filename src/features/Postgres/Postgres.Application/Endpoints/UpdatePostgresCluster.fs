@@ -50,7 +50,7 @@ type UpdatePostgresClusterHandler(
     dbContext : IPostgresDbContext,
     storageProfileResolver : IStorageProfileResolver,
     quotaAdmissionExecutor : IQuotaAdmissionExecutor,
-    resolveComputeProfile : ResolveComputeProfile,
+    resolveComputeProfile : ResolveComputeProfileLegacy,
     loadDeploymentCompute : LoadCurrentResourceDeploymentComputeLegacy,
     requestDeploymentApply : RequestResourceDeploymentApplyLegacy) =
     interface IMediatorHandler<UpdatePostgresClusterRequest, UpdatePostgresClusterResponse> with

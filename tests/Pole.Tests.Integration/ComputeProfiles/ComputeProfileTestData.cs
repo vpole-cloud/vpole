@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using Pole.Database;
+using Pole.Features.ComputeProfiles.Application.Endpoints;
 using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
@@ -92,34 +93,37 @@ internal sealed class ComputeProfilePersistenceTestHost : IDisposable
     private readonly ServiceProvider _provider;
     private readonly IServiceScope _scope;
 
-    public ComputeProfilePersistenceTestHost(MongoReplicaSetFixture fixture)
+    public ComputeProfilePersistenceTestHost(
+        MongoReplicaSetFixture fixture,
+        ApplyDeploymentTargetReferenceChanges? applyTargetReferenceChanges = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
         services.AddSingleton(fixture.DbContext.ResourceDeployments);
         services.AddSingleton<ResourceDeploymentComputeProfileReferenceGuard>();
-        services.AddSingleton<EnsureComputeProfileUnreferencedLegacy>(provider =>
-            async (computeProfileId, session, cancellationToken) =>
-            {
-                var result = await provider
-                    .GetRequiredService<ResourceDeploymentComputeProfileReferenceGuard>()
-                    .EnsureUnreferencedAsync(
-                        computeProfileId,
-                        session,
-                        cancellationToken);
-                return result.TryGetValue(out _, out _)
-                    ? Result.Success()
-                    : Failures.Conflict(
-                        "The compute profile is still referenced by a resource deployment.");
-            });
+        services.AddSingleton<EnsureComputeProfileUnreferenced>(provider =>
+            provider
+                .GetRequiredService<ResourceDeploymentComputeProfileReferenceGuard>()
+                .EnsureUnreferencedAsync);
         services.AddSingleton<MongoRunTransaction>();
-        services.AddSingleton<RunMongoTransaction>(provider =>
-            provider.GetRequiredService<MongoRunTransaction>().InvokeAsync);
-        services.AddSingleton<IDeploymentTargetReferenceAdmission>(
-            new DeploymentTargetReferenceAdmission(
+        services.AddSingleton<RunMongoOutcomeTransaction<DeleteComputeProfileOutcome>>(
+            provider => provider
+                .GetRequiredService<MongoRunTransaction>()
+                .InvokeOutcomeAsync<DeleteComputeProfileOutcome>);
+        if (applyTargetReferenceChanges is null)
+        {
+            services.AddSingleton(new DeploymentTargetReferenceAdmission(
                 fixture.DbContext,
                 TimeProvider.System));
+            services.AddSingleton<ApplyDeploymentTargetReferenceChanges>(provider => provider
+                .GetRequiredService<DeploymentTargetReferenceAdmission>()
+                .ApplyChangesOutcomeAsync);
+        }
+        else
+        {
+            services.AddSingleton(applyTargetReferenceChanges);
+        }
         services.AddComputeProfilePersistence();
         _provider = services.BuildServiceProvider(validateScopes: true);
         _scope = _provider.CreateScope();

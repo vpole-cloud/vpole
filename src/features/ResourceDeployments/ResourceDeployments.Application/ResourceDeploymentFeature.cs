@@ -94,9 +94,6 @@ public static class ResourceDeploymentFeature
         services.TryAddScoped<EnsureNoUnfinishedIsolationScopeDeploymentsLegacy>(provider =>
             provider.GetRequiredService<ResourceDeploymentLegacyAdapters>()
                 .EnsureNoUnfinishedForIsolationScopeAsync);
-        services.TryAddScoped<EnsureComputeProfileUnreferencedLegacy>(provider =>
-            provider.GetRequiredService<ResourceDeploymentLegacyAdapters>()
-                .EnsureComputeProfileUnreferencedAsync);
         services.TryAddScoped<LoadCurrentResourceDeploymentComputeLegacy>(provider =>
             provider.GetRequiredService<ResourceDeploymentLegacyAdapters>()
                 .LoadCurrentComputeAsync);

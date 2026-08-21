@@ -130,7 +130,7 @@ _ = app.Services.GetRequiredService<IEnvelopeEncryptionService>();
 _ = app.Services.GetRequiredService<OutboxEventAssemblyCatalog>();
 await app.Services.GetRequiredService<MigrationRunner>().RunMigrations();
 await app.Services.GetRequiredService<IDeploymentTargetBootstrapper>().BootstrapAsync();
-await app.Services.GetRequiredService<IComputeProfileBootstrapper>().BootstrapAsync();
+await app.Services.GetRequiredService<BootstrapComputeProfiles>()();
 
 var functionGatewayOptions = app.Services.GetRequiredService<FunctionGatewayOptions>();
 app.MapWhen(

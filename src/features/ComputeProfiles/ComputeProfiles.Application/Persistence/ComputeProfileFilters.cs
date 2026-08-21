@@ -7,6 +7,9 @@ namespace Pole.Features.ComputeProfiles.Application.Persistence;
 
 internal static class ComputeProfileFilters
 {
+    public static FilterDefinition<ComputeProfile> All() =>
+        Builders<ComputeProfile>.Filter.Empty;
+
     public static FilterDefinition<ComputeProfile> ById(string computeProfileId) =>
         Builders<ComputeProfile>.Filter.Eq(profile => profile.Id, computeProfileId);
 
@@ -33,6 +36,18 @@ internal static class ComputeProfileFilters
 
     public static FilterDefinition<ComputeProfile> Default() =>
         Builders<ComputeProfile>.Filter.Eq(profile => profile.IsDefault, true);
+
+    public static FilterDefinition<ComputeProfile> OtherDefaultsExcept(
+        string computeProfileId) =>
+        Builders<ComputeProfile>.Filter.And(
+            Default(),
+            Builders<ComputeProfile>.Filter.Ne(profile => profile.Id, computeProfileId));
+
+    public static FilterDefinition<ComputeProfile> ByRequestedIdsOrDefault(
+        IReadOnlyCollection<string> computeProfileIds) =>
+        Builders<ComputeProfile>.Filter.Or(
+            ByIds(computeProfileIds),
+            Default());
 
     public static FilterDefinition<ComputeProfile> AvailableForTarget(
         string deploymentTargetId) =>

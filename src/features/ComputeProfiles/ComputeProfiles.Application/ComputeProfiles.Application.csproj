@@ -13,6 +13,7 @@
       <ProjectReference Include="..\ComputeProfiles.Domain\ComputeProfiles.Domain.csproj" />
       <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
       <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
+      <ProjectReference Include="..\..\Tenants\Tenants.Contracts\Tenants.Contracts.csproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
       <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />

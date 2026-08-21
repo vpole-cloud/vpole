@@ -2,8 +2,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.ComputeProfiles.Application.Endpoints;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
+using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence;
 
@@ -35,18 +37,35 @@ public static class ComputeProfilePersistenceRegistration
             implementation => implementation.InvokeAsync);
         services.AddCapability<MongoResolveComputeProfiles, ResolveComputeProfiles>(
             implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoResolveComputeProfiles, ResolveComputeProfilesOutcome>(
-            implementation => implementation.InvokeOutcomeAsync);
         services.AddCapability<MongoResolveComputeProfile, ResolveComputeProfile>(
             implementation => implementation.InvokeAsync);
-        services.AddScoped<MongoFenceResolvedComputeProfile>();
-        services.AddScoped<IComputeProfileResolutionFence>(serviceProvider =>
-            serviceProvider.GetRequiredService<MongoFenceResolvedComputeProfile>());
+        services.AddCapability<ResolveComputeProfileLegacyAdapter,
+            ResolveComputeProfileLegacy>(implementation => implementation.InvokeAsync);
+        services.AddCapability<ResolveComputeProfilesLegacyAdapter,
+            ResolveComputeProfilesLegacy>(implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoFenceResolvedComputeProfile,
+            FenceResolvedComputeProfiles>(implementation => implementation.InvokeAsync);
 
-        services.TryAddSingleton<RunMongoTransaction<ComputeProfile>>(serviceProvider =>
+        services.TryAddSingleton<RunMongoOutcomeTransaction<Result<
+            ComputeProfile,
+            PersistCreatedComputeProfileError>>>(serviceProvider =>
             serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
-                .InvokeAsync<ComputeProfile>);
+                .InvokeOutcomeAsync<Result<
+                    ComputeProfile,
+                    PersistCreatedComputeProfileError>>);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<Result<
+            ComputeProfile,
+            PersistUpdatedComputeProfileError>>>(serviceProvider =>
+            serviceProvider
+                .GetRequiredService<MongoRunTransaction>()
+                .InvokeOutcomeAsync<Result<
+                    ComputeProfile,
+                    PersistUpdatedComputeProfileError>>);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<DeleteComputeProfileOutcome>>(
+            serviceProvider => serviceProvider
+                .GetRequiredService<MongoRunTransaction>()
+                .InvokeOutcomeAsync<DeleteComputeProfileOutcome>);
         return services;
     }
 

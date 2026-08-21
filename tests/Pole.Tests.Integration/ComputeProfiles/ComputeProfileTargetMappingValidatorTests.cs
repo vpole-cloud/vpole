@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using k8s;
 using MongoDB.Bson;
+using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Validation;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
@@ -23,11 +24,11 @@ public sealed class ComputeProfileTargetMappingValidatorTests
             gpuCapacity: 2));
         var validator = new KubernetesComputeProfileTargetMappingValidator(
             new FixedProvider(kubernetes),
-            new AvailableTargetLookup());
+            AdmitTarget);
 
         var result = await validator.InvokeAsync(CreateProfile(runtimeClassName: "kata"));
 
-        Assert.IsAssignableFrom<ISuccess>(result);
+        _ = result.AssertSuccess();
     }
 
     [Fact]
@@ -39,12 +40,12 @@ public sealed class ComputeProfileTargetMappingValidatorTests
             gpuCapacity: 0));
         var validator = new KubernetesComputeProfileTargetMappingValidator(
             new FixedProvider(kubernetes),
-            new AvailableTargetLookup());
+            AdmitTarget);
 
         var result = await validator.InvokeAsync(CreateProfile(runtimeClassName: "kata"));
 
-        var failure = Assert.IsType<SemanticValidationFailure>(result);
-        Assert.Contains("TargetMappings[0].Scheduling", failure.ValidationErrors.Keys);
+        var error = result.AssertError();
+        Assert.Contains("TargetMappings[0].Scheduling", error.Errors.Keys);
     }
 
     [Fact]
@@ -56,13 +57,44 @@ public sealed class ComputeProfileTargetMappingValidatorTests
             gpuCapacity: 2));
         var validator = new KubernetesComputeProfileTargetMappingValidator(
             new FixedProvider(kubernetes),
-            new AvailableTargetLookup());
+            AdmitTarget);
 
         var result = await validator.InvokeAsync(CreateProfile(runtimeClassName: "kata"));
 
-        var failure = Assert.IsType<SemanticValidationFailure>(result);
-        Assert.Contains("TargetMappings[0].RuntimeClassName", failure.ValidationErrors.Keys);
-        Assert.DoesNotContain("provider-secret", failure.Message, StringComparison.Ordinal);
+        var error = result.AssertError();
+        Assert.Contains("TargetMappings[0].RuntimeClassName", error.Errors.Keys);
+        Assert.DoesNotContain(
+            "provider-secret",
+            error.Errors.Values.SelectMany(messages => messages),
+            StringComparer.Ordinal);
+    }
+
+    [Fact]
+    public async Task Rejected_deployment_target_is_a_local_mapping_error_without_calling_kubernetes()
+    {
+        var validator = new KubernetesComputeProfileTargetMappingValidator(
+            new ThrowIfUsedProvider(),
+            RejectTarget);
+
+        var result = await validator.InvokeAsync(CreateProfile(runtimeClassName: null));
+
+        var error = result.AssertError();
+        Assert.Contains("TargetMappings[0].DeploymentTargetId", error.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task Kubernetes_connection_unavailability_remains_an_infrastructure_failure()
+    {
+        var validator = new KubernetesComputeProfileTargetMappingValidator(
+            new ConnectionUnavailableProvider(),
+            AdmitTarget);
+
+        var failure = await Assert.ThrowsAsync<DeploymentTargetUnavailableException>(() =>
+            validator.InvokeAsync(CreateProfile(runtimeClassName: null)));
+
+        Assert.Equal(
+            DeploymentTargetUnavailableReason.ConnectionUnavailable,
+            failure.Reason);
     }
 
     private static ComputeProfile CreateProfile(string? runtimeClassName)
@@ -117,43 +149,69 @@ public sealed class ComputeProfileTargetMappingValidatorTests
             throw new InvalidOperationException("The default client must not be used.");
     }
 
-    private sealed class AvailableTargetLookup : IDeploymentTargetLookup
+    private sealed class ThrowIfUsedProvider : IKubernetesClientProvider
     {
-        public Task<Result<DeploymentTargetLookupDto>> GetAsync(
+        public Task<IKubernetes> GetAsync(
             string deploymentTargetId,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<DeploymentTargetLookupDto>>(CreateTarget(deploymentTargetId));
+            throw new Xunit.Sdk.XunitException(
+                "Kubernetes must not be resolved after deployment-target admission fails.");
 
-        public Task<Result<DeploymentTargetLookupDto>> GetDefaultAsync(
+        public Task<IKubernetes> GetDefaultAsync(
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<DeploymentTargetLookupDto>>(CreateTarget(DeploymentTargetId));
-
-        public Task<Result<DeploymentTargetLookupDto>> ResolveForNewWorkloadAsync(
-            string? deploymentTargetId,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<DeploymentTargetLookupDto>>(
-                CreateTarget(deploymentTargetId ?? DeploymentTargetId));
-
-        public Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>>
-            ListEligibleForNewWorkloadAsync(
-                CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<IReadOnlyList<DeploymentTargetLookupDto>>>(
-                new[] { CreateTarget(DeploymentTargetId) });
-
-        private static DeploymentTargetLookupDto CreateTarget(string id) =>
-            new(
-                id,
-                "Test",
-                "test-cluster",
-                "test",
-                1,
-                new DeploymentTargetWorkloadConfigurationLookupDto(1, null),
-                1,
-                Enabled: true,
-                AcceptsWorkloads: true,
-                DeletionRequested: false,
-                HealthStatus: "Healthy");
+            throw new Xunit.Sdk.XunitException(
+                "The default Kubernetes client must not be resolved.");
     }
+
+    private sealed class ConnectionUnavailableProvider : IKubernetesClientProvider
+    {
+        public Task<IKubernetes> GetAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromException<IKubernetes>(new DeploymentTargetUnavailableException(
+                deploymentTargetId,
+                DeploymentTargetUnavailableReason.ConnectionUnavailable));
+
+        public Task<IKubernetes> GetDefaultAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromException<IKubernetes>(new DeploymentTargetUnavailableException(
+                null,
+                DeploymentTargetUnavailableReason.ConnectionUnavailable));
+    }
+
+    private static Task<Result<
+        DeploymentTargetLookupDto,
+        DeploymentTargetWorkloadAdmissionError>> AdmitTarget(
+        string deploymentTargetId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<Result<
+            DeploymentTargetLookupDto,
+            DeploymentTargetWorkloadAdmissionError>>(
+            new Ok<DeploymentTargetLookupDto>(
+                new DeploymentTargetLookupDto(
+                    deploymentTargetId,
+                    "Test",
+                    "test-cluster",
+                    "test",
+                    1,
+                    new DeploymentTargetWorkloadConfigurationLookupDto(1, null),
+                    1,
+                    Enabled: true,
+                    AcceptsWorkloads: true,
+                    DeletionRequested: false,
+                    HealthStatus: "Healthy")));
+
+    private static Task<Result<
+        DeploymentTargetLookupDto,
+        DeploymentTargetWorkloadAdmissionError>> RejectTarget(
+        string deploymentTargetId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<Result<
+            DeploymentTargetLookupDto,
+            DeploymentTargetWorkloadAdmissionError>>(
+            new Err<DeploymentTargetWorkloadAdmissionError>(
+                new DeploymentTargetWorkloadAdmissionError(
+                    new DeploymentTargetNewWorkloadsDisabled(deploymentTargetId))));
 
     private sealed class SchedulingApiHandler(
         bool runtimeClassExists,

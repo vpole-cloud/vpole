@@ -25,7 +25,9 @@ public sealed class ComputeProfileBootstrapperTests
             {
                 persistCount++;
                 durableDefault = profile;
-                return Task.FromResult<Result<ComputeProfile>>(profile);
+                return Task.FromResult<Result<
+                    ComputeProfile,
+                    PersistCreatedComputeProfileError>>(new Ok<ComputeProfile>(profile));
             });
         services.AddScoped<IDeploymentTargetLookup, DefaultTargetLookup>();
         await using var serviceProvider = services.BuildServiceProvider();

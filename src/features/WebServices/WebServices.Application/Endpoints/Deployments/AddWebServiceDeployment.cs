@@ -94,7 +94,7 @@ public sealed class AddWebServiceDeploymentHandler(
     LoadWebServiceById loadWebServiceById,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
     AdmitDeploymentTargetPublicIngressForNewWorkload admitPublicIngress,
-    ResolveComputeProfilesOutcome resolveComputeProfiles,
+    ResolveComputeProfiles resolveComputeProfiles,
     GetOrCreateGeneratedDomainZoneOutcome getOrCreateGeneratedDomainZone,
     CreateGeneratedHostnameBindingOutcome createGeneratedHostnameBinding,
     CreateResourceDeploymentSet createDeployments,

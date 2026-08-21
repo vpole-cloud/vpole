@@ -7,10 +7,11 @@ namespace Pole.Features.ComputeProfiles.Application.Persistence;
 
 internal static class ComputeProfileTargetReferences
 {
-    public const string OwnerType = "compute-profile";
+public const string OwnerType = "compute-profile";
 
-    public static Task<Result> ApplyChangesAsync(
-        IDeploymentTargetReferenceAdmission referenceAdmission,
+    public static Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
+        ApplyChangesAsync(
+        ApplyDeploymentTargetReferenceChanges applyChanges,
         ComputeProfile profile,
         IEnumerable<string> addedDeploymentTargetIds,
         IEnumerable<string> removedDeploymentTargetIds,
@@ -19,7 +20,7 @@ internal static class ComputeProfileTargetReferences
     {
         ArgumentNullException.ThrowIfNull(addedDeploymentTargetIds);
         ArgumentNullException.ThrowIfNull(removedDeploymentTargetIds);
-        return referenceAdmission.ApplyChangesAsync(
+        return applyChanges(
             new DeploymentTargetReferenceOwner(OwnerType, profile.Id),
             addedDeploymentTargetIds.Distinct(StringComparer.Ordinal).ToArray(),
             removedDeploymentTargetIds.Distinct(StringComparer.Ordinal).ToArray(),

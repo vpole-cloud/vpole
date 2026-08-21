@@ -1,8 +1,11 @@
 using MongoDB.Driver;
+using Pole.Features.ComputeProfiles.Application.Common;
+using Pole.Features.ComputeProfiles.Application.Endpoints;
 using Pole.Features.ComputeProfiles.Application.Migrations;
 using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Application.Migrations;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.ResourceDeployments.Application.Migrations;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -43,7 +46,7 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
 
         var persisted = await fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
-            .Find(Builders<ComputeProfile>.Filter.Empty)
+            .Find(AllComputeProfiles())
             .ToListAsync();
         var oldDefault = Assert.Single(persisted, profile => profile.Id == first.Id);
         var currentDefault = Assert.Single(persisted, profile => profile.Id == second.Id);
@@ -53,7 +56,7 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
         Assert.Equal(1, currentDefault.Revision);
 
         var references = await fixture.DbContext.DeploymentTargetReferences
-            .Find(reference => reference.OwnerType == "compute-profile")
+            .Find(ComputeProfileReferences())
             .ToListAsync();
         Assert.Equal(2, references.Count);
         Assert.Contains(references, reference =>
@@ -81,22 +84,49 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
         var updated = (await update(current, replacement)).AssertSuccess();
 
         var references = await fixture.DbContext.DeploymentTargetReferences
-            .Find(reference =>
-                reference.OwnerType == "compute-profile" &&
-                reference.OwnerId == current.Id)
+            .Find(ComputeProfileReferences(current.Id))
             .ToListAsync();
         var reference = Assert.Single(references);
         Assert.Equal(secondTarget.Id, reference.DeploymentTargetId);
 
         var staleReplacement = Reconfigure(current, secondTarget.Id, "Stale");
         var stale = await update(current, staleReplacement);
-        Assert.IsType<ConflictFailure>(stale.AssertFailure());
+        Assert.IsType<ComputeProfileRevisionConflict>(stale.AssertError().Value);
         var persisted = await fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
-            .Find(profile => profile.Id == current.Id)
+            .Find(ComputeProfileById(current.Id))
             .SingleAsync();
         Assert.Equal(updated.Revision, persisted.Revision);
         Assert.Equal("Moved", persisted.Description);
+    }
+
+    [Fact]
+    public async Task Create_aborts_without_persisting_the_profile_when_target_reference_change_is_rejected()
+    {
+        await PrepareDatabaseAsync();
+        var target = ComputeProfileTestData.CreateTarget();
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        ApplyDeploymentTargetReferenceChanges rejectReferences =
+            (owner, added, removed, session, cancellationToken) =>
+                Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
+                    new Err<DeploymentTargetReferenceChangeRejected>(
+                        new DeploymentTargetReferenceChangeRejected(
+                            owner,
+                            added.Concat(removed).ToArray())));
+        using var host = new ComputeProfilePersistenceTestHost(
+            fixture,
+            rejectReferences);
+        var profile = ComputeProfileTestData.CreateProfile(target.Id);
+
+        var result = await host.GetRequiredService<PersistCreatedComputeProfile>()(profile);
+
+        var error = result.AssertError();
+        Assert.IsType<DeploymentTargetReferenceChangeRejected>(error.Value);
+        Assert.Equal(0, await fixture.Database
+            .GetCollection<ComputeProfile>("ComputeProfiles")
+            .CountDocumentsAsync(ComputeProfileById(profile.Id)));
+        Assert.Equal(0, await fixture.DbContext.DeploymentTargetReferences
+            .CountDocumentsAsync(ComputeProfileReferences(profile.Id)));
     }
 
     [Fact]
@@ -129,23 +159,20 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
             defaultProfile.IsEnabled,
             isDefault: false,
             defaultProfile.UpdatedAtUtc.AddMinutes(1));
-        Assert.IsType<ConflictFailure>((await update(defaultProfile, demotion)).AssertFailure());
+        Assert.IsType<DefaultComputeProfileCannotBeDemoted>(
+            (await update(defaultProfile, demotion)).AssertError().Value);
 
         var defaultDelete = await delete(defaultProfile.Id, defaultProfile.Revision);
-        Assert.IsType<ConflictFailure>((Failure)defaultDelete);
-        (await delete(other.Id, other.Revision)).AssertSuccess();
+        AssertDeleteError<DefaultComputeProfileCannotBeDeleted>(defaultDelete);
+        AssertDeleteSuccess(await delete(other.Id, other.Revision));
 
         Assert.Equal(0, await fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
-            .CountDocumentsAsync(profile => profile.Id == other.Id));
+            .CountDocumentsAsync(ComputeProfileById(other.Id)));
         Assert.Equal(0, await fixture.DbContext.DeploymentTargetReferences
-            .CountDocumentsAsync(reference =>
-                reference.OwnerType == "compute-profile" &&
-                reference.OwnerId == other.Id));
+            .CountDocumentsAsync(ComputeProfileReferences(other.Id)));
         Assert.Equal(1, await fixture.DbContext.DeploymentTargetReferences
-            .CountDocumentsAsync(reference =>
-                reference.OwnerType == "compute-profile" &&
-                reference.OwnerId == defaultProfile.Id));
+            .CountDocumentsAsync(ComputeProfileReferences(defaultProfile.Id)));
     }
 
     [Fact]
@@ -173,10 +200,34 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
             profile.Id,
             profile.Revision);
 
-        Assert.IsType<ConflictFailure>((Failure)result);
+        AssertDeleteError<ComputeProfileReferencedByResourceDeployment>(result);
         Assert.Equal(1, await fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
-            .CountDocumentsAsync(item => item.Id == profile.Id));
+            .CountDocumentsAsync(ComputeProfileById(profile.Id)));
+        Assert.Equal(1, await fixture.DbContext.DeploymentTargetReferences
+            .CountDocumentsAsync(ComputeProfileReferences(profile.Id)));
+    }
+
+    [Fact]
+    public async Task Delete_rejects_stale_revision_and_keeps_target_reference()
+    {
+        await PrepareDatabaseAsync();
+        var target = ComputeProfileTestData.CreateTarget();
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        using var host = new ComputeProfilePersistenceTestHost(fixture);
+        var profile = (await host.GetRequiredService<PersistCreatedComputeProfile>()(
+            ComputeProfileTestData.CreateProfile(target.Id))).AssertSuccess();
+
+        var result = await host.GetRequiredService<DeleteComputeProfile>()(
+            profile.Id,
+            profile.Revision + 1);
+
+        AssertDeleteError<ComputeProfileRevisionConflict>(result);
+        Assert.Equal(1, await fixture.Database
+            .GetCollection<ComputeProfile>("ComputeProfiles")
+            .CountDocumentsAsync(ComputeProfileById(profile.Id)));
+        Assert.Equal(1, await fixture.DbContext.DeploymentTargetReferences
+            .CountDocumentsAsync(ComputeProfileReferences(profile.Id)));
     }
 
     private async Task PrepareDatabaseAsync()
@@ -203,4 +254,50 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
             current.IsEnabled,
             current.IsDefault,
             current.UpdatedAtUtc.AddMinutes(1));
+
+    private static FilterDefinition<ComputeProfile> AllComputeProfiles() =>
+        Builders<ComputeProfile>.Filter.Empty;
+
+    private static FilterDefinition<ComputeProfile> ComputeProfileById(string computeProfileId) =>
+        Builders<ComputeProfile>.Filter.Eq(profile => profile.Id, computeProfileId);
+
+    private static FilterDefinition<DeploymentTargetReference> ComputeProfileReferences(
+        string? computeProfileId = null)
+    {
+        var filter = Builders<DeploymentTargetReference>.Filter.Eq(
+            reference => reference.OwnerType,
+            "compute-profile");
+        return computeProfileId is null
+            ? filter
+            : Builders<DeploymentTargetReference>.Filter.And(
+                filter,
+                Builders<DeploymentTargetReference>.Filter.Eq(
+                    reference => reference.OwnerId,
+                    computeProfileId));
+    }
+
+    private static TError AssertDeleteError<TError>(DeleteComputeProfileOutcome outcome)
+        where TError : notnull
+    {
+        var error = outcome switch
+        {
+            ComputeProfileDeleted => throw new Xunit.Sdk.XunitException(
+                "Expected a delete error, but the compute profile was deleted."),
+            DeleteComputeProfileError deleteError => deleteError.Value
+        };
+        var leafError = error is DeleteComputeProfileStateError stateError
+            ? stateError.Value
+            : error;
+        return Assert.IsType<TError>(leafError);
+    }
+
+    private static ComputeProfileDeleted AssertDeleteSuccess(
+        DeleteComputeProfileOutcome outcome) =>
+        outcome switch
+        {
+            ComputeProfileDeleted deleted => deleted,
+            DeleteComputeProfileError error => throw new Xunit.Sdk.XunitException(
+                $"Expected a deleted compute profile, but received " +
+                $"'{error.Value.GetType().Name}'.")
+        };
 }

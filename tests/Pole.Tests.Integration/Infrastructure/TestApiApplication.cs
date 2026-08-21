@@ -196,17 +196,23 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.RemoveAll<IDeploymentTargetProbe>();
         builder.Services.AddSingleton<IDeploymentTargetProbe, TestDeploymentTargetProbe>();
         builder.Services.RemoveAll<IDeploymentTargetLookup>();
+        builder.Services.RemoveAll<AdmitDeploymentTargetForWorkload>();
         builder.Services.RemoveAll<AdmitDeploymentTargetPublicIngressForNewWorkload>();
         builder.Services.RemoveAll<AdmitDeploymentTargetPublicIngressForDomainReservation>();
+        builder.Services.RemoveAll<ApplyDeploymentTargetReferenceChanges>();
         builder.Services.RemoveAll<IDeploymentTargetReferenceAdmission>();
         builder.Services.RemoveAll<IDeploymentTargetWorkloadConfigurationFence>();
         var deploymentTargetLookup = new TestDeploymentTargetLookup();
         builder.Services.AddSingleton<IDeploymentTargetLookup>(deploymentTargetLookup);
+        builder.Services.AddSingleton<AdmitDeploymentTargetForWorkload>(
+            deploymentTargetLookup.AdmitForWorkloadAsync);
         builder.Services.AddSingleton<AdmitDeploymentTargetPublicIngressForNewWorkload>(
             deploymentTargetLookup.AdmitForNewWorkloadAsync);
         builder.Services.AddSingleton<
             AdmitDeploymentTargetPublicIngressForDomainReservation>(
             deploymentTargetLookup.AdmitForDomainReservationAsync);
+        builder.Services.AddSingleton<ApplyDeploymentTargetReferenceChanges>(
+            deploymentTargetLookup.ApplyChangesOutcomeAsync);
         builder.Services.AddSingleton<IDeploymentTargetReferenceAdmission>(
             deploymentTargetLookup);
         builder.Services.AddSingleton<IDeploymentTargetWorkloadConfigurationFence>(

@@ -2,6 +2,7 @@ using System.Globalization;
 using k8s;
 using k8s.Autorest;
 using k8s.Models;
+using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -9,17 +10,18 @@ using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Validation;
 
-public delegate Task<Result> ValidateComputeProfileTargetMappings(
+public delegate Task<Result<Unit, ComputeProfileTargetMappingsInvalid>>
+    ValidateComputeProfileTargetMappings(
     ComputeProfile profile,
     CancellationToken cancellationToken = default);
 
 public sealed class KubernetesComputeProfileTargetMappingValidator(
     IKubernetesClientProvider kubernetesClientProvider,
-    IDeploymentTargetLookup deploymentTargetLookup)
+    AdmitDeploymentTargetForWorkload admitDeploymentTarget)
 {
     private const string ArchitectureLabel = "kubernetes.io/arch";
 
-    public async Task<Result> InvokeAsync(
+    public async Task<Result<Unit, ComputeProfileTargetMappingsInvalid>> InvokeAsync(
         ComputeProfile profile,
         CancellationToken cancellationToken = default)
     {
@@ -33,30 +35,29 @@ public sealed class KubernetesComputeProfileTargetMappingValidator(
                 profile.ExtendedResources,
                 index,
                 cancellationToken);
-            if (validation is not ISuccess)
-                return (Failure)validation;
+            if (validation is Err<ComputeProfileTargetMappingsInvalid> error)
+                return error;
         }
 
-        return Result.Success();
+        return new Ok<Unit>(Unit.Value);
     }
 
-    private async Task<Result> ValidateMappingAsync(
+    private async Task<Result<Unit, ComputeProfileTargetMappingsInvalid>> ValidateMappingAsync(
         ComputeProfileTargetMapping mapping,
         ComputeArchitecture architecture,
         IReadOnlyCollection<ComputeProfileExtendedResource> extendedResources,
         int mappingIndex,
         CancellationToken cancellationToken)
     {
-        var targetResult = await deploymentTargetLookup.ResolveForNewWorkloadAsync(
+        var targetResult = await admitDeploymentTarget(
             mapping.DeploymentTargetId,
             cancellationToken);
-        if (!targetResult.TryGetValue(out _, out _))
+        if (targetResult is Err<DeploymentTargetWorkloadAdmissionError>)
         {
-            return Failures.SemanticValidation(new Dictionary<string, string[]>
-            {
-                [Field(mappingIndex, nameof(mapping.DeploymentTargetId))] =
-                    ["Deployment target is unavailable for new workloads."]
-            });
+            return Invalid(
+                mappingIndex,
+                nameof(mapping.DeploymentTargetId),
+                "Deployment target is unavailable for new workloads.");
         }
 
         IKubernetes kubernetes;
@@ -67,70 +68,56 @@ public sealed class KubernetesComputeProfileTargetMappingValidator(
                 cancellationToken);
         }
         catch (DeploymentTargetUnavailableException exception)
+            when (exception.Reason is DeploymentTargetUnavailableReason.NotFound or
+                DeploymentTargetUnavailableReason.Disabled)
         {
-            return Failures.SemanticValidation(new Dictionary<string, string[]>
-            {
-                [Field(mappingIndex, nameof(mapping.DeploymentTargetId))] =
-                [exception.Reason switch
+            return Invalid(
+                mappingIndex,
+                nameof(mapping.DeploymentTargetId),
+                exception.Reason switch
                 {
                     DeploymentTargetUnavailableReason.NotFound =>
                         "Deployment target does not exist.",
                     DeploymentTargetUnavailableReason.Disabled =>
                         "Deployment target is disabled.",
                     _ => "Deployment target is unavailable."
-                }]
-            });
-        }
-
-        try
-        {
-            var (runtimeClassFound, selector) = await LoadRuntimeClassSelectorAsync(
-                kubernetes,
-                mapping.RuntimeClassName,
-                cancellationToken);
-            if (!runtimeClassFound)
-            {
-                return Failures.SemanticValidation(new Dictionary<string, string[]>
-                {
-                    [Field(mappingIndex, nameof(mapping.RuntimeClassName))] =
-                        ["Runtime class does not exist on the deployment target."]
                 });
-            }
+        }
 
-            var mergedSelector = MergeNodeSelectors(mapping, selector);
-            if (mergedSelector is null)
-            {
-                return HardConstraintsFailure(
-                    mappingIndex,
-                    "Runtime class and compute profile contain conflicting node selectors.");
-            }
+        var (runtimeClassFound, selector) = await LoadRuntimeClassSelectorAsync(
+            kubernetes,
+            mapping.RuntimeClassName,
+            cancellationToken);
+        if (!runtimeClassFound)
+        {
+            return Invalid(
+                mappingIndex,
+                nameof(mapping.RuntimeClassName),
+                "Runtime class does not exist on the deployment target.");
+        }
 
-            AddArchitectureSelector(mergedSelector, architecture);
-            var nodes = await kubernetes.CoreV1.ListNodeAsync(
-                cancellationToken: cancellationToken);
-            var hasMatchingNode = nodes.Items.Any(node =>
-                NodeMatches(
-                    node,
-                    mergedSelector,
-                    mapping.RequiredNodeAffinity,
-                    extendedResources));
-            return hasMatchingNode
-                ? Result.Success()
-                : HardConstraintsFailure(
-                    mappingIndex,
-                    "No node satisfies the compute profile's hard constraints and extended resources.");
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        var mergedSelector = MergeNodeSelectors(mapping, selector);
+        if (mergedSelector is null)
         {
-            throw;
+            return HardConstraintsFailure(
+                mappingIndex,
+                "Runtime class and compute profile contain conflicting node selectors.");
         }
-        catch (Exception exception)
-        {
-            return Failures.ExternalService(
-                "Unable to validate compute profile scheduling on the deployment target.",
-                "Kubernetes",
-                exception.GetType().Name);
-        }
+
+        AddArchitectureSelector(mergedSelector, architecture);
+        var nodes = await kubernetes.CoreV1.ListNodeAsync(
+            cancellationToken: cancellationToken);
+        var hasMatchingNode = nodes.Items.Any(node =>
+            NodeMatches(
+                node,
+                mergedSelector,
+                mapping.RequiredNodeAffinity,
+                extendedResources));
+        return hasMatchingNode
+            ? new Ok<Unit>(Unit.Value)
+            : HardConstraintsFailure(
+                mappingIndex,
+                "No node satisfies the compute profile's hard constraints and extended resources.");
     }
 
     private static async Task<(bool Found, IReadOnlyDictionary<string, string> Selector)>
@@ -336,13 +323,21 @@ public sealed class KubernetesComputeProfileTargetMappingValidator(
         }
     }
 
-    private static SemanticValidationFailure HardConstraintsFailure(
+    private static Result<Unit, ComputeProfileTargetMappingsInvalid> HardConstraintsFailure(
         int mappingIndex,
         string message) =>
-        Failures.SemanticValidation(new Dictionary<string, string[]>
-        {
-            [Field(mappingIndex, "Scheduling")] = [message]
-        });
+        Invalid(mappingIndex, "Scheduling", message);
+
+    private static Result<Unit, ComputeProfileTargetMappingsInvalid> Invalid(
+        int mappingIndex,
+        string field,
+        string message) =>
+        new Err<ComputeProfileTargetMappingsInvalid>(
+            new ComputeProfileTargetMappingsInvalid(
+                new Dictionary<string, string[]>
+                {
+                    [Field(mappingIndex, field)] = [message]
+                }));
 
     private static string Field(int index, string name) =>
         $"TargetMappings[{index}].{name}";

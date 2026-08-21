@@ -9,6 +9,10 @@ public static class TenantContractsRegistration
     public static IServiceCollection AddTenantContractCapabilities(this IServiceCollection services)
     {
         services.TryAddScoped<ITenantIdentityLookup, TenantIdentityLookup>();
+        services.TryAddScoped<MongoEnsureTenantsExist>();
+        services.TryAddScoped<EnsureTenantsExist>(provider => provider
+            .GetRequiredService<MongoEnsureTenantsExist>()
+            .InvokeAsync);
         return services;
     }
 }

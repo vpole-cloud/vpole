@@ -551,7 +551,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
                 session,
                 cancellationToken),
             placementLookup ?? new ResourcePlacementLookup(fixture.DbContext),
-            fence,
+            fence.InvokeAsync,
             new FixedTimeProvider(new DateTimeOffset(
                 MutationAtUtc,
                 TimeSpan.Zero)));
@@ -654,29 +654,23 @@ public sealed class ResourceDeploymentMutationWriterTests(
     }
 
     private sealed class RecordingComputeProfileFence
-        : IComputeProfileResolutionFence
     {
         public int CallCount { get; private set; }
         public int FenceManyCallCount { get; private set; }
         public int LastBatchCount { get; private set; }
 
-        public Task<Result> FenceAsync(
-            ComputeProfileResolutionFenceRequest request,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default)
-        {
-            CallCount++;
-            return Task.FromResult<Result>(Result.Success());
-        }
-
-        public Task<Result> FenceManyAsync(
+        public Task<Result<Unit, ComputeProfileResolutionFenceRejected>> InvokeAsync(
             IReadOnlyList<ComputeProfileResolutionFenceRequest> requests,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
-            FenceManyCallCount++;
+            if (requests.Count > 1)
+                FenceManyCallCount++;
+            else
+                CallCount++;
             LastBatchCount = requests.Count;
-            return Task.FromResult<Result>(Result.Success());
+            return Task.FromResult<Result<Unit, ComputeProfileResolutionFenceRejected>>(
+                new Ok<Unit>(Unit.Value));
         }
     }
 

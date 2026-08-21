@@ -46,7 +46,7 @@ public static class CreateWebService
 public sealed class CreateWebServiceHandler(
     IResourceGroupOwnershipLookup resourceGroupLookup,
     IDeploymentTargetLookup deploymentTargetLookup,
-    ResolveComputeProfiles resolveComputeProfiles,
+    ResolveComputeProfilesLegacy resolveComputeProfiles,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     GetOrCreateGeneratedDomainZones getOrCreateGeneratedDomainZones,
     CreateGeneratedHostnameBindings createGeneratedHostnameBindings,
