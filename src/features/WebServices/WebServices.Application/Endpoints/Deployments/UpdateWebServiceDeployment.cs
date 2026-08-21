@@ -52,7 +52,7 @@ public sealed record UpdateWebServiceDeploymentBody(
 public sealed class UpdateWebServiceDeploymentHandler(
     LoadWebServiceById loadWebService,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
-    ResolveComputeProfiles resolveComputeProfiles,
+    ResolveComputeProfilesLegacy resolveComputeProfiles,
     RequestExactResourceDeploymentApplyLegacy requestExactResourceDeploymentApply,
     AdvanceResourceDeploymentRevisionLegacy advanceResourceDeploymentRevision,
     PersistUpdatedWebService persistWebService,

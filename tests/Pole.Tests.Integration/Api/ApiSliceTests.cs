@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Pole.Features.ComputeProfiles.Application.Common;
+using Pole.Features.ComputeProfiles.Application.Endpoints;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
@@ -182,6 +183,106 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         Assert.True(profile.IsDefault);
         Assert.Equal("Default", profile.DisplayName);
     }
+
+    [Fact]
+    public async Task GetComputeProfile_ReturnsTypedNotFound_ForPlatformAdmin()
+    {
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+        const string computeProfileId = "507f1f77bcf86cd799439095";
+
+        var response = await Client.GetAsync(
+            $"/api/v1/platform/compute-profiles/{computeProfileId}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("compute-profiles.not-found", problem.RootElement
+            .GetProperty("code").GetString());
+        Assert.Equal(computeProfileId, problem.RootElement
+            .GetProperty("computeProfileId").GetString());
+    }
+
+    [Fact]
+    public async Task CreateComputeProfile_MapsMissingSelectedTenantThroughTheTypedContract()
+    {
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+        const string missingTenantId = "507f1f77bcf86cd799439094";
+
+        var response = await Client.PostAsJsonAsync(
+            "/api/v1/platform/compute-profiles",
+            CreateComputeProfileBody(
+                new ComputeProfileTenantAccessRequestBody(
+                    "selected-tenants",
+                    [missingTenantId])));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(
+            "compute-profiles.tenant-access.tenants-not-found",
+            problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal(
+            missingTenantId,
+            problem.RootElement.GetProperty("tenantIds")[0].GetString());
+    }
+
+    [Fact]
+    public async Task CreateComputeProfile_MapsRejectedTargetAsBodyValidation()
+    {
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+        RejectNewDeploymentTargetWorkloads();
+
+        var response = await Client.PostAsJsonAsync(
+            "/api/v1/platform/compute-profiles",
+            CreateComputeProfileBody(
+                new ComputeProfileTenantAccessRequestBody("all-tenants", [])));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(
+            "compute-profiles.target-mappings.invalid",
+            problem.RootElement.GetProperty("code").GetString());
+        Assert.True(problem.RootElement.GetProperty("errors")
+            .TryGetProperty("TargetMappings[0].DeploymentTargetId", out _));
+    }
+
+    [Fact]
+    public async Task DeleteComputeProfile_ReturnsTypedDefaultConflict_ForPlatformAdmin()
+    {
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+
+        var response = await Client.DeleteAsync(
+            $"/api/v1/platform/compute-profiles/{TestData.DefaultComputeProfileId}?revision=1");
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(
+            "compute-profiles.default-delete-forbidden",
+            problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal(
+            TestData.DefaultComputeProfileId,
+            problem.RootElement.GetProperty("computeProfileId").GetString());
+    }
+
+    private static CreateComputeProfileRequestBody CreateComputeProfileBody(
+        ComputeProfileTenantAccessRequestBody tenantAccess) =>
+        new(
+            "General purpose",
+            "API test profile",
+            new ComputeResourceRequirementsRequestBody(
+                new ComputeResourceValuesRequestBody(250, 256),
+                new ComputeResourceValuesRequestBody(1000, 1024)),
+            "Any",
+            [],
+            ["pole/web-service"],
+            tenantAccess,
+            [new ComputeProfileTargetMappingRequestBody(
+                TestData.DefaultDeploymentTargetId,
+                [],
+                [],
+                [],
+                [],
+                null)],
+            IsEnabled: true,
+            IsDefault: false);
 
     [Fact]
     public async Task GetAvailableComputeProfiles_RequiresTenantHeader()

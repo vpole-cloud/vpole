@@ -184,11 +184,6 @@ public delegate Task<Result> EnsureNoUnfinishedIsolationScopeDeploymentsLegacy(
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
-public delegate Task<Result> EnsureComputeProfileUnreferencedLegacy(
-    string computeProfileId,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
-
 public delegate Task<Result<CurrentResourceDeploymentComputeDto>>
     LoadCurrentResourceDeploymentComputeLegacy(
         string tenantId,

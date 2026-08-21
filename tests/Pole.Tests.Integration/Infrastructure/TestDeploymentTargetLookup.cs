@@ -89,6 +89,51 @@ internal sealed class TestDeploymentTargetLookup :
                         Failures.Conflict("A deployment target must be selected."))
                 : GetAsync(deploymentTargetId, cancellationToken);
 
+    public Task<Result<
+        DeploymentTargetLookupDto,
+        DeploymentTargetWorkloadAdmissionError>> AdmitForWorkloadAsync(
+        string deploymentTargetId,
+        CancellationToken cancellationToken = default)
+    {
+        Result<DeploymentTargetLookupDto, DeploymentTargetWorkloadAdmissionError> result;
+        if (string.IsNullOrWhiteSpace(deploymentTargetId))
+        {
+            result = new Err<DeploymentTargetWorkloadAdmissionError>(
+                new DeploymentTargetWorkloadAdmissionError(
+                    new InvalidDeploymentTargetId(deploymentTargetId ?? string.Empty)));
+        }
+        else if (!_targets.TryGetValue(deploymentTargetId, out var target))
+        {
+            result = new Err<DeploymentTargetWorkloadAdmissionError>(
+                new DeploymentTargetWorkloadAdmissionError(
+                    new DeploymentTargetNotFound(deploymentTargetId)));
+        }
+        else if (!target.Enabled)
+        {
+            result = new Err<DeploymentTargetWorkloadAdmissionError>(
+                new DeploymentTargetWorkloadAdmissionError(
+                    new DeploymentTargetDisabled(target.Id)));
+        }
+        else if (target.DeletionRequested)
+        {
+            result = new Err<DeploymentTargetWorkloadAdmissionError>(
+                new DeploymentTargetWorkloadAdmissionError(
+                    new DeploymentTargetDeletionRequested(target.Id)));
+        }
+        else if (RejectNewWorkloads || !target.AcceptsWorkloads)
+        {
+            result = new Err<DeploymentTargetWorkloadAdmissionError>(
+                new DeploymentTargetWorkloadAdmissionError(
+                    new DeploymentTargetNewWorkloadsDisabled(target.Id)));
+        }
+        else
+        {
+            result = new Ok<DeploymentTargetLookupDto>(target);
+        }
+
+        return Task.FromResult(result);
+    }
+
     public Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>>
         ListEligibleForNewWorkloadAsync(
             CancellationToken cancellationToken = default) =>
@@ -191,6 +236,32 @@ internal sealed class TestDeploymentTargetLookup :
         IClientSessionHandle session,
         CancellationToken cancellationToken = default) =>
         Task.FromResult<Result>(Result.Success());
+
+    public async Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
+        ApplyChangesOutcomeAsync(
+            DeploymentTargetReferenceOwner owner,
+            IReadOnlyCollection<string> addedDeploymentTargetIds,
+            IReadOnlyCollection<string> removedDeploymentTargetIds,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
+    {
+        var result = await ApplyChangesAsync(
+            owner,
+            addedDeploymentTargetIds,
+            removedDeploymentTargetIds,
+            session,
+            cancellationToken);
+        return result is ISuccess
+            ? new Ok<Unit>(Unit.Value)
+            : new Err<DeploymentTargetReferenceChangeRejected>(
+                new DeploymentTargetReferenceChangeRejected(
+                    owner,
+                    addedDeploymentTargetIds
+                        .Concat(removedDeploymentTargetIds)
+                        .Distinct(StringComparer.Ordinal)
+                        .Order(StringComparer.Ordinal)
+                        .ToArray()));
+    }
 
     public Task<Result> FenceAsync(
         string deploymentTargetId,

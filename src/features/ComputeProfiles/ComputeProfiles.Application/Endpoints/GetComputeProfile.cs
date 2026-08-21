@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Persistence;
+using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
@@ -14,13 +15,17 @@ namespace Pole.Features.ComputeProfiles.Application.Endpoints;
 
 public sealed record GetComputeProfileRequest(
     [FromRoute(Name = "computeProfileId")] string ComputeProfileId)
-    : IMediatorRequest<ComputeProfileDto>;
+    : IMediatorRequest<GetComputeProfileOutcome>;
+
+public union GetComputeProfileOutcome(
+    ComputeProfileDto,
+    ComputeProfileNotFound);
 
 public sealed class GetComputeProfileHandler(
     LoadComputeProfileById loadComputeProfileById)
-    : IMediatorHandler<GetComputeProfileRequest, ComputeProfileDto>
+    : IMediatorOutcomeHandler<GetComputeProfileRequest, GetComputeProfileOutcome>
 {
-    public async Task<Result<ComputeProfileDto>> HandleAsync(
+    public async Task<GetComputeProfileOutcome> HandleAsync(
         GetComputeProfileRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -28,7 +33,7 @@ public sealed class GetComputeProfileHandler(
             request.ComputeProfileId,
             cancellationToken);
         return profile is null
-            ? Failures.NotFound("Compute profile not found.", request.ComputeProfileId)
+            ? new ComputeProfileNotFound(request.ComputeProfileId)
             : profile.ToDto();
     }
 }
@@ -48,14 +53,20 @@ public static class GetComputeProfileEndpoint
     {
         app.MapGet("/{computeProfileId}", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] GetComputeProfileRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    ComputeProfileDto profile => Results.Ok(profile),
+                    ComputeProfileNotFound notFound => httpProblems.Map(notFound).ToHttpResult()
+                });
             })
             .WithName("GetComputeProfile")
-            .Produces<ComputeProfileDto>();
+            .Produces<ComputeProfileDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
         return app;
     }
 }

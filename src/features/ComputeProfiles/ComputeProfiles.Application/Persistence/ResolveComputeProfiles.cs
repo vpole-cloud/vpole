@@ -10,33 +10,14 @@ namespace Pole.Features.ComputeProfiles.Application.Persistence;
 internal sealed class MongoResolveComputeProfiles(
     IMongoCollection<ComputeProfile> computeProfiles)
 {
-    public async Task<Result<IReadOnlyList<ResolvedComputeProfile>>> InvokeAsync(
-        ComputeProfileBatchResolutionRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await InvokeOutcomeAsync(request, cancellationToken);
-        return result switch
-        {
-            Ok<IReadOnlyList<ResolvedComputeProfile>> success =>
-                new Success<IReadOnlyList<ResolvedComputeProfile>>(success.Value),
-            Err<ComputeProfileResolutionError> error =>
-                ToLegacyFailure(error.Value)
-        };
-    }
-
     public async Task<Result<
         IReadOnlyList<ResolvedComputeProfile>,
-        ComputeProfileResolutionError>> InvokeOutcomeAsync(
+        ComputeProfileResolutionError>> InvokeAsync(
         ComputeProfileBatchResolutionRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var validation = Validate(request);
-        if (validation is not null)
-        {
-            return new Err<ComputeProfileResolutionError>(
-                new ComputeProfileResolutionError(validation));
-        }
+        EnsureValid(request);
 
         var requestedProfileIds = request.Targets
             .Where(target => !string.IsNullOrWhiteSpace(target.ComputeProfileId))
@@ -45,9 +26,7 @@ internal sealed class MongoResolveComputeProfiles(
             .ToArray();
         var filter = requestedProfileIds.Length == 0
             ? ComputeProfileFilters.Default()
-            : Builders<ComputeProfile>.Filter.Or(
-                ComputeProfileFilters.ByIds(requestedProfileIds),
-                ComputeProfileFilters.Default());
+            : ComputeProfileFilters.ByRequestedIdsOrDefault(requestedProfileIds);
         var candidates = await computeProfiles
             .Find(filter)
             .ToListAsync(cancellationToken);
@@ -163,29 +142,34 @@ internal sealed class MongoResolveComputeProfiles(
                 .ToImmutableList(),
             mapping.RuntimeClassName);
 
-    private static InvalidComputeProfileResolutionRequest? Validate(
+    private static void EnsureValid(
         ComputeProfileBatchResolutionRequest request)
     {
-        var errors = new Dictionary<string, string[]>();
         if (!ObjectId.TryParse(request.TenantId, out _))
-            errors["TenantId"] = ["Tenant ID must be a MongoDB ObjectId."];
+            throw new ArgumentException(
+                "Tenant ID must be a MongoDB ObjectId.",
+                nameof(request));
         if (string.IsNullOrWhiteSpace(request.ResourceType.Value))
-            errors["ResourceType"] = ["Resource type is required."];
+            throw new ArgumentException("Resource type is required.", nameof(request));
         if (request.Targets.Count == 0)
-            errors["Targets"] = ["At least one deployment target is required."];
+            throw new ArgumentException(
+                "At least one deployment target is required.",
+                nameof(request));
 
         foreach (var target in request.Targets)
         {
             if (!ObjectId.TryParse(target.DeploymentTargetId?.Trim(), out _))
             {
-                errors["Targets"] =
-                    ["Every deployment target ID must be a MongoDB ObjectId."];
+                throw new ArgumentException(
+                    "Every deployment target ID must be a MongoDB ObjectId.",
+                    nameof(request));
             }
             if (!string.IsNullOrWhiteSpace(target.ComputeProfileId) &&
                 !ObjectId.TryParse(target.ComputeProfileId.Trim(), out _))
             {
-                errors["Targets"] =
-                    ["Every compute profile ID must be a MongoDB ObjectId."];
+                throw new ArgumentException(
+                    "Every compute profile ID must be a MongoDB ObjectId.",
+                    nameof(request));
             }
         }
 
@@ -194,46 +178,11 @@ internal sealed class MongoResolveComputeProfiles(
             .Distinct(StringComparer.Ordinal)
             .Count() != request.Targets.Count)
         {
-            errors["Targets"] =
-                ["Each deployment target may be resolved only once per batch."];
+            throw new ArgumentException(
+                "Each deployment target may be resolved only once per batch.",
+                nameof(request));
         }
-
-        return errors.Count == 0
-            ? null
-            : new InvalidComputeProfileResolutionRequest(errors);
     }
-
-    private static Failure ToLegacyFailure(
-        ComputeProfileResolutionError error) => error switch
-        {
-            InvalidComputeProfileResolutionRequest invalid =>
-                Failures.ValidationFailure(
-                    invalid.Errors.ToDictionary(item => item.Key, item => item.Value)),
-            DefaultComputeProfileNotConfigured =>
-                Failures.Conflict("The default compute profile is not configured."),
-            ComputeProfileNotFound notFound => Failures.NotFound(
-                "Compute profile not found.",
-                notFound.ComputeProfileId),
-            ComputeProfileUnavailable unavailable => Failures.SemanticValidation(
-                new Dictionary<string, string[]>
-                {
-                    ["ComputeProfileId"] = [UnavailableMessage(unavailable.Reason)]
-                })
-        };
-
-    private static string UnavailableMessage(
-        ComputeProfileUnavailableReason reason) => reason switch
-        {
-            ComputeProfileUnavailableReason.Disabled =>
-                "Compute profile is disabled.",
-            ComputeProfileUnavailableReason.ResourceTypeNotAllowed =>
-                "Compute profile is not available for this resource type.",
-            ComputeProfileUnavailableReason.TenantNotAllowed =>
-                "Compute profile is not available to the active tenant.",
-            ComputeProfileUnavailableReason.DeploymentTargetNotConfigured =>
-                "Compute profile is not configured for the selected deployment target.",
-            _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, null)
-        };
 
     private static ComputeNodeAffinityTermValue ToValue(
         ComputeProfileNodeAffinityTerm term) =>

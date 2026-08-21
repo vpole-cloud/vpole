@@ -11,7 +11,6 @@ namespace Pole.Features.ResourceDeployments.Application.Common;
 /// </summary>
 internal sealed class ResourceDeploymentLegacyAdapters(
     ResourceDeploymentReferenceLookup references,
-    ResourceDeploymentComputeProfileReferenceGuard computeReferences,
     ResourceDeploymentComputeLookup computeLookup,
     ResourceDeploymentFinalizationService finalization)
 {
@@ -49,21 +48,6 @@ internal sealed class ResourceDeploymentLegacyAdapters(
             ? Result.Success()
             : Failures.Conflict(
                 "The isolation scope contains unfinished resource deployments.");
-    }
-
-    public async Task<Result> EnsureComputeProfileUnreferencedAsync(
-        string computeProfileId,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await computeReferences.EnsureUnreferencedAsync(
-            computeProfileId,
-            session,
-            cancellationToken);
-        return result.TryGetValue(out _, out _)
-            ? Result.Success()
-            : Failures.Conflict(
-                "The compute profile is still referenced by a resource deployment.");
     }
 
     public async Task<Result<CurrentResourceDeploymentComputeDto>>

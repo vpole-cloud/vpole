@@ -10,16 +10,13 @@ using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Bootstrap;
 
-public interface IComputeProfileBootstrapper
-{
-    Task BootstrapAsync(CancellationToken cancellationToken = default);
-}
+public delegate Task BootstrapComputeProfiles(
+    CancellationToken cancellationToken = default);
 
 public sealed class ComputeProfileBootstrapper(
     IServiceScopeFactory serviceScopeFactory,
     TimeProvider timeProvider,
     ILogger<ComputeProfileBootstrapper> logger)
-    : IComputeProfileBootstrapper
 {
     public async Task BootstrapAsync(CancellationToken cancellationToken = default)
     {
@@ -68,7 +65,7 @@ public sealed class ComputeProfileBootstrapper(
         try
         {
             var persisted = await persistCreated(profile, cancellationToken);
-            if (persisted is ISuccess)
+            if (persisted is Ok<ComputeProfile>)
             {
                 logger.LogInformation(
                     "Bootstrapped default compute profile {ComputeProfileId} for deployment target {DeploymentTargetId}.",

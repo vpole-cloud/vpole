@@ -10,7 +10,9 @@ namespace Pole.Features.ComputeProfiles.Application.Persistence;
 internal sealed class MongoResolveComputeProfile(
     MongoResolveComputeProfiles batchResolver)
 {
-    public async Task<Result<ResolvedComputeProfile>> InvokeAsync(
+    public async Task<Result<
+        ResolvedComputeProfile,
+        ComputeProfileResolutionError>> InvokeAsync(
         ComputeProfileResolutionRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -23,9 +25,11 @@ internal sealed class MongoResolveComputeProfile(
                     request.DeploymentTargetId,
                     request.ComputeProfileId)]),
             cancellationToken);
-        if (!result.TryGetValue(out var profiles, out var failure))
-            return failure;
-
-        return profiles.Single();
+        return result switch
+        {
+            Ok<IReadOnlyList<ResolvedComputeProfile>> profiles =>
+                new Ok<ResolvedComputeProfile>(profiles.Value.Single()),
+            Err<ComputeProfileResolutionError> error => error
+        };
     }
 }

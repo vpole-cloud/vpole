@@ -7,7 +7,6 @@ using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Mediator;
-using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Endpoints;
 
@@ -18,9 +17,9 @@ public sealed record GetComputeProfilesRequest(
 
 public sealed class GetComputeProfilesHandler(
     LoadComputeProfilePage loadComputeProfilePage)
-    : IMediatorHandler<GetComputeProfilesRequest, ComputeProfilePageDto>
+    : IMediatorOutcomeHandler<GetComputeProfilesRequest, ComputeProfilePageDto>
 {
-    public async Task<Result<ComputeProfilePageDto>> HandleAsync(
+    public async Task<ComputeProfilePageDto> HandleAsync(
         GetComputeProfilesRequest request,
         CancellationToken cancellationToken = default)
     {

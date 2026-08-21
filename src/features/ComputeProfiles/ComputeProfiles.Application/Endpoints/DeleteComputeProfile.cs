@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 
 namespace Pole.Features.ComputeProfiles.Application.Endpoints;
@@ -14,24 +13,23 @@ namespace Pole.Features.ComputeProfiles.Application.Endpoints;
 public sealed record DeleteComputeProfileRequest(
     [FromRoute(Name = "computeProfileId")] string ComputeProfileId,
     [FromQuery] long Revision)
-    : IMediatorRequest<string>;
+    : IMediatorRequest<DeleteComputeProfileOutcome>;
+
+public union DeleteComputeProfileOutcome(
+    ComputeProfileDeleted,
+    DeleteComputeProfileError);
 
 public sealed class DeleteComputeProfileHandler(
     DeleteComputeProfile deleteComputeProfile)
-    : IMediatorHandler<DeleteComputeProfileRequest, string>
+    : IMediatorOutcomeHandler<DeleteComputeProfileRequest, DeleteComputeProfileOutcome>
 {
-    public async Task<Result<string>> HandleAsync(
+    public Task<DeleteComputeProfileOutcome> HandleAsync(
         DeleteComputeProfileRequest request,
         CancellationToken cancellationToken = default)
-    {
-        var result = await deleteComputeProfile(
+        => deleteComputeProfile(
             request.ComputeProfileId,
             request.Revision,
             cancellationToken);
-        return result is ISuccess
-            ? request.ComputeProfileId
-            : (Failure)result;
-    }
 }
 
 public sealed class DeleteComputeProfileRequestValidator
@@ -52,14 +50,22 @@ public static class DeleteComputeProfileEndpoint
     {
         app.MapDelete("/{computeProfileId}", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] DeleteComputeProfileRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(_ => Results.NoContent());
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    ComputeProfileDeleted => Results.NoContent(),
+                    DeleteComputeProfileError error =>
+                        httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("DeleteComputeProfile")
-            .Produces(StatusCodes.Status204NoContent);
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
         return app;
     }
 }

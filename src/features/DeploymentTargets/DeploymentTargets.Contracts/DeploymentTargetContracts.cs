@@ -127,6 +127,19 @@ public sealed record DeploymentTargetDeletionRequested(string DeploymentTargetId
 
 public sealed record DeploymentTargetNewWorkloadsDisabled(string DeploymentTargetId);
 
+public union DeploymentTargetWorkloadAdmissionError(
+    InvalidDeploymentTargetId,
+    DeploymentTargetNotFound,
+    DeploymentTargetDisabled,
+    DeploymentTargetDeletionRequested,
+    DeploymentTargetNewWorkloadsDisabled);
+
+public delegate Task<Result<
+    DeploymentTargetLookupDto,
+    DeploymentTargetWorkloadAdmissionError>> AdmitDeploymentTargetForWorkload(
+    string deploymentTargetId,
+    CancellationToken cancellationToken = default);
+
 public sealed record NoDeploymentTargetAcceptsPublicWorkloads;
 
 public sealed record DeploymentTargetSelectionRequired(
@@ -227,6 +240,18 @@ public interface IDeploymentTargetLookup
 }
 
 public sealed record DeploymentTargetReferenceOwner(string Type, string Id);
+
+public sealed record DeploymentTargetReferenceChangeRejected(
+    DeploymentTargetReferenceOwner Owner,
+    IReadOnlyList<string> DeploymentTargetIds);
+
+public delegate Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
+    ApplyDeploymentTargetReferenceChanges(
+        DeploymentTargetReferenceOwner owner,
+        IReadOnlyCollection<string> addedDeploymentTargetIds,
+        IReadOnlyCollection<string> removedDeploymentTargetIds,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);
 
 /// <summary>
 /// Stable owner discriminators used by target-owned reference fencing. They are deliberately

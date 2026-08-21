@@ -9,6 +9,55 @@ namespace Pole.Features.DeploymentTargets.Application.Common;
 public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
     : IDeploymentTargetLookup
 {
+    public async Task<Result<
+        DeploymentTargetLookupDto,
+        DeploymentTargetWorkloadAdmissionError>> AdmitForWorkloadAsync(
+        string deploymentTargetId,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedDeploymentTargetId = deploymentTargetId?.Trim() ?? string.Empty;
+        if (ValidateId(normalizedDeploymentTargetId) is not null)
+        {
+            return new Err<DeploymentTargetWorkloadAdmissionError>(
+                new DeploymentTargetWorkloadAdmissionError(
+                    new InvalidDeploymentTargetId(normalizedDeploymentTargetId)));
+        }
+
+        var target = await dbContext.DeploymentTargets
+            .Find(DeploymentTargetFilters.ById(normalizedDeploymentTargetId))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (target is null)
+        {
+            return new Err<DeploymentTargetWorkloadAdmissionError>(
+                new DeploymentTargetWorkloadAdmissionError(
+                    new DeploymentTargetNotFound(normalizedDeploymentTargetId)));
+        }
+
+        var lookup = target.ToLookupDto();
+        if (!lookup.Enabled)
+        {
+            return new Err<DeploymentTargetWorkloadAdmissionError>(
+                new DeploymentTargetWorkloadAdmissionError(
+                    new DeploymentTargetDisabled(lookup.Id)));
+        }
+
+        if (lookup.DeletionRequested)
+        {
+            return new Err<DeploymentTargetWorkloadAdmissionError>(
+                new DeploymentTargetWorkloadAdmissionError(
+                    new DeploymentTargetDeletionRequested(lookup.Id)));
+        }
+
+        if (!lookup.AcceptsWorkloads)
+        {
+            return new Err<DeploymentTargetWorkloadAdmissionError>(
+                new DeploymentTargetWorkloadAdmissionError(
+                    new DeploymentTargetNewWorkloadsDisabled(lookup.Id)));
+        }
+
+        return new Ok<DeploymentTargetLookupDto>(lookup);
+    }
+
     public async Task<Result<DeploymentTargetLookupDto>> GetAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default)

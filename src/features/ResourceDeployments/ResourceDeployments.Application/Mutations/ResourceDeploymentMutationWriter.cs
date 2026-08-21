@@ -14,7 +14,7 @@ internal sealed class ResourceDeploymentMutationWriter(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     StoreOutboxWrites storeOutboxWrites,
     IResourcePlacementLookup placementLookup,
-    IComputeProfileResolutionFence computeProfileFence,
+    FenceResolvedComputeProfiles fenceResolvedComputeProfiles,
     TimeProvider timeProvider)
 {
     public async Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
@@ -68,16 +68,16 @@ internal sealed class ResourceDeploymentMutationWriter(
                     command.ResourceId));
             }
 
-            var computeFence = await computeProfileFence.FenceAsync(
-                new ComputeProfileResolutionFenceRequest(
+            var computeFence = await fenceResolvedComputeProfiles(
+                [new ComputeProfileResolutionFenceRequest(
                     command.ReplacementCompute.ComputeProfileId,
                     command.ReplacementCompute.ComputeProfileRevision,
                     command.ReplacementCompute.DeploymentTargetId,
                     command.TenantId,
-                    command.ResourceType),
+                    command.ResourceType)],
                 session,
                 cancellationToken);
-            if (computeFence is not ISuccess)
+            if (computeFence is Err<ComputeProfileResolutionFenceRejected>)
             {
                 return Error(new ResourceDeploymentComputeConfigurationChanged(
                     [command.ReplacementCompute.ComputeProfileId]));
@@ -215,16 +215,16 @@ internal sealed class ResourceDeploymentMutationWriter(
                     command.ResourceDeploymentId));
             }
 
-            var computeFence = await computeProfileFence.FenceAsync(
-                new ComputeProfileResolutionFenceRequest(
+            var computeFence = await fenceResolvedComputeProfiles(
+                [new ComputeProfileResolutionFenceRequest(
                     command.ReplacementCompute.ComputeProfileId,
                     command.ReplacementCompute.ComputeProfileRevision,
                     command.ReplacementCompute.DeploymentTargetId,
                     command.TenantId,
-                    command.ResourceType),
+                    command.ResourceType)],
                 session,
                 cancellationToken);
-            if (computeFence is not ISuccess)
+            if (computeFence is Err<ComputeProfileResolutionFenceRejected>)
             {
                 return Error(new ResourceDeploymentComputeConfigurationChanged(
                     [command.ReplacementCompute.ComputeProfileId]));
@@ -567,11 +567,11 @@ internal sealed class ResourceDeploymentMutationWriter(
             .ToArray();
         if (computeFenceRequests.Length > 0)
         {
-            var computeFence = await computeProfileFence.FenceManyAsync(
+            var computeFence = await fenceResolvedComputeProfiles(
                 computeFenceRequests,
                 session,
                 cancellationToken);
-            if (computeFence is not ISuccess)
+            if (computeFence is Err<ComputeProfileResolutionFenceRejected>)
             {
                 return Error(new ResourceDeploymentComputeConfigurationChanged(
                     computeFenceRequests

@@ -38,16 +38,24 @@ public sealed record CreateComputeProfileRequestBody(
 
 public sealed record CreateComputeProfileRequest(
     [FromBody] CreateComputeProfileRequestBody Body)
-    : IMediatorRequest<ComputeProfileDto>;
+    : IMediatorRequest<CreateComputeProfileOutcome>;
+
+public union CreateComputeProfileError(
+    ComputeProfileMutationValidationError,
+    PersistCreatedComputeProfileError);
+
+public union CreateComputeProfileOutcome(
+    ComputeProfileDto,
+    CreateComputeProfileError);
 
 public sealed class CreateComputeProfileHandler(
     ValidateComputeProfileTenantAccess validateTenantAccess,
     ValidateComputeProfileTargetMappings validateTargetMappings,
     PersistCreatedComputeProfile persistCreatedComputeProfile,
     TimeProvider timeProvider)
-    : IMediatorHandler<CreateComputeProfileRequest, ComputeProfileDto>
+    : IMediatorOutcomeHandler<CreateComputeProfileRequest, CreateComputeProfileOutcome>
 {
-    public async Task<Result<ComputeProfileDto>> HandleAsync(
+    public async Task<CreateComputeProfileOutcome> HandleAsync(
         CreateComputeProfileRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -58,16 +66,22 @@ public sealed class CreateComputeProfileHandler(
         var tenantValidation = await validateTenantAccess(
             profile.TenantAccess,
             cancellationToken);
-        if (tenantValidation is not ISuccess)
-            return (Failure)tenantValidation;
+        if (tenantValidation is Err<SelectedComputeProfileTenantsNotFound> tenantError)
+        {
+            return new CreateComputeProfileError(
+                new ComputeProfileMutationValidationError(tenantError.Value));
+        }
         var targetValidation = await validateTargetMappings(profile, cancellationToken);
-        if (targetValidation is not ISuccess)
-            return (Failure)targetValidation;
+        if (targetValidation is Err<ComputeProfileTargetMappingsInvalid> targetError)
+        {
+            return new CreateComputeProfileError(
+                new ComputeProfileMutationValidationError(targetError.Value));
+        }
 
         var persisted = await persistCreatedComputeProfile(profile, cancellationToken);
-        return persisted.TryGetValue(out var created, out var failure)
-            ? created.ToDto()
-            : failure;
+        return persisted.Match(
+            CreateComputeProfileOutcome (created) => created.ToDto(),
+            CreateComputeProfileOutcome (error) => new CreateComputeProfileError(error));
     }
 }
 
@@ -90,16 +104,23 @@ public static class CreateComputeProfileEndpoint
     {
         app.MapPost("/", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] CreateComputeProfileRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(profile => Results.Created(
-                    $"/api/v1/platform/compute-profiles/{profile.Id}",
-                    profile));
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    ComputeProfileDto profile => Results.Created(
+                        $"/api/v1/platform/compute-profiles/{profile.Id}",
+                        profile),
+                    CreateComputeProfileError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("CreateComputeProfile")
-            .Produces<ComputeProfileDto>(StatusCodes.Status201Created);
+            .Produces<ComputeProfileDto>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
         return app;
     }
 }

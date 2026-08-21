@@ -8,7 +8,6 @@ using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 
 namespace Pole.Features.ComputeProfiles.Application.Endpoints;
@@ -22,11 +21,11 @@ public sealed record GetAvailableComputeProfilesRequest(
 
 public sealed class GetAvailableComputeProfilesHandler(
     LoadAvailableComputeProfiles loadAvailableComputeProfiles)
-    : IMediatorHandler<
+    : IMediatorOutcomeHandler<
         GetAvailableComputeProfilesRequest,
         IReadOnlyCollection<AvailableComputeProfileDto>>
 {
-    public async Task<Result<IReadOnlyCollection<AvailableComputeProfileDto>>> HandleAsync(
+    public async Task<IReadOnlyCollection<AvailableComputeProfileDto>> HandleAsync(
         GetAvailableComputeProfilesRequest request,
         CancellationToken cancellationToken = default)
     {

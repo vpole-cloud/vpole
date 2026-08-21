@@ -144,6 +144,24 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
     }
 
     [Fact]
+    public async Task TypedReferenceChanges_RejectMalformedInputBeforeTheTransactionBoundary()
+    {
+        var admission = CreateAdmission();
+        using var session = await fixture.DbContext.Client.StartSessionAsync();
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
+            admission.ApplyChangesOutcomeAsync(
+                CreateOwner(),
+                ["not-a-mongo-object-id"],
+                [],
+                session));
+
+        Assert.Contains("ObjectId", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(0, await fixture.DbContext.DeploymentTargetReferences.CountDocumentsAsync(
+            Builders<DeploymentTargetReference>.Filter.Empty));
+    }
+
+    [Fact]
     public async Task RegisteredReferenceThenRemoval_AllowsDeleteRetry()
     {
         var target = CreateTarget();

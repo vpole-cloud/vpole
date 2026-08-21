@@ -1,22 +1,31 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence;
 
-public delegate Task<Result<ComputeProfile>> PersistUpdatedComputeProfile(
+public union PersistUpdatedComputeProfileError(
+    ComputeProfileRevisionConflict,
+    DefaultComputeProfileCannotBeDemoted,
+    DeploymentTargetReferenceChangeRejected);
+
+public delegate Task<Result<ComputeProfile, PersistUpdatedComputeProfileError>>
+    PersistUpdatedComputeProfile(
     ComputeProfile current,
     ComputeProfile replacement,
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoPersistUpdatedComputeProfile(
     IMongoCollection<ComputeProfile> computeProfiles,
-    IDeploymentTargetReferenceAdmission referenceAdmission,
-    RunMongoTransaction<ComputeProfile> runMongoTransaction)
+    ApplyDeploymentTargetReferenceChanges applyTargetReferenceChanges,
+    RunMongoOutcomeTransaction<Result<
+        ComputeProfile,
+        PersistUpdatedComputeProfileError>> runMongoTransaction)
 {
-    public Task<Result<ComputeProfile>> InvokeAsync(
+    public Task<Result<ComputeProfile, PersistUpdatedComputeProfileError>> InvokeAsync(
         ComputeProfile current,
         ComputeProfile replacement,
         CancellationToken cancellationToken = default)
@@ -24,8 +33,10 @@ internal sealed class MongoPersistUpdatedComputeProfile(
         ComputeProfilePersistenceGuards.EnsureSameIdentity(current, replacement);
         if (current.IsDefault && !replacement.IsDefault)
         {
-            return Task.FromResult<Result<ComputeProfile>>(Failures.Conflict(
-                "Promote another compute profile before demoting the current default."));
+            return Task.FromResult<Result<ComputeProfile, PersistUpdatedComputeProfileError>>(
+                new Err<PersistUpdatedComputeProfileError>(
+                    new PersistUpdatedComputeProfileError(
+                        new DefaultComputeProfileCannotBeDemoted(current.Id))));
         }
 
         var currentTargetIds = current.TargetMappings
@@ -35,40 +46,42 @@ internal sealed class MongoPersistUpdatedComputeProfile(
             .Select(mapping => mapping.DeploymentTargetId)
             .ToHashSet(StringComparer.Ordinal);
 
-        return runMongoTransaction(async (session, ct) =>
+        return runMongoTransaction(async (transaction, ct) =>
         {
             var references = await ComputeProfileTargetReferences.ApplyChangesAsync(
-                referenceAdmission,
+                applyTargetReferenceChanges,
                 replacement,
                 replacementTargetIds.Except(currentTargetIds, StringComparer.Ordinal),
                 currentTargetIds.Except(replacementTargetIds, StringComparer.Ordinal),
-                session,
+                transaction.Session,
                 ct);
-            if (references is not ISuccess)
-                return (Failure)references;
+            if (references is Err<DeploymentTargetReferenceChangeRejected> error)
+            {
+                return transaction.AbortError(new(error.Value));
+            }
 
             if (replacement.IsDefault)
             {
                 await ComputeProfileDefaultPersistence.DemoteOtherDefaultsAsync(
                     computeProfiles,
-                    session,
+                    transaction.Session,
                     replacement.Id,
                     replacement.UpdatedAtUtc,
                     ct);
             }
 
             var replaced = await computeProfiles.ReplaceOneAsync(
-                session,
+                transaction.Session,
                 ComputeProfileFilters.AtSnapshot(current),
                 replacement,
                 cancellationToken: ct);
             if (replaced.ModifiedCount != 1)
             {
-                return Failures.Conflict(
-                    "The compute profile changed while the update was being accepted.");
+                return transaction.AbortError(
+                    new(new ComputeProfileRevisionConflict(current.Id)));
             }
 
-            return replacement;
+            return transaction.Commit(new Ok<ComputeProfile>(replacement));
         }, cancellationToken);
     }
 }

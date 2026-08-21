@@ -12,13 +12,9 @@ internal static class ComputeProfileDefaultPersistence
         DateTime updatedAtUtc,
         CancellationToken cancellationToken)
     {
-        var filter = ComputeProfileFilters.Default();
-        if (exceptProfileId is not null)
-        {
-            filter &= Builders<ComputeProfile>.Filter.Ne(
-                profile => profile.Id,
-                exceptProfileId);
-        }
+        var filter = exceptProfileId is null
+            ? ComputeProfileFilters.Default()
+            : ComputeProfileFilters.OtherDefaultsExcept(exceptProfileId);
 
         return computeProfiles.UpdateManyAsync(
             session,

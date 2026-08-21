@@ -1,3 +1,5 @@
+using Pole.ASP.Helpers;
+using Pole.Features.ComputeProfiles.Application.Common;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.Features.ComputeProfiles.Application.Bootstrap;
@@ -11,6 +13,8 @@ public static class ComputeProfileApplicationRegistration
     public static IServiceCollection AddComputeProfiles(
         this IServiceCollection services)
     {
+        services.AddHttpProblemMappings(ComputeProfileContractHttpMappings.All);
+        services.AddHttpProblemMappings(ComputeProfileHttpMappings.All);
         services.AddComputeProfilePersistence();
 
         services.AddScoped<KubernetesComputeProfileTargetMappingValidator>();
@@ -24,7 +28,11 @@ public static class ComputeProfileApplicationRegistration
                 .GetRequiredService<MongoComputeProfileTenantAccessValidator>()
                 .InvokeAsync);
 
-        services.TryAddSingleton<IComputeProfileBootstrapper, ComputeProfileBootstrapper>();
+        services.TryAddSingleton<ComputeProfileBootstrapper>();
+        services.TryAddSingleton<BootstrapComputeProfiles>(serviceProvider =>
+            serviceProvider
+                .GetRequiredService<ComputeProfileBootstrapper>()
+                .BootstrapAsync);
         return services;
     }
 }

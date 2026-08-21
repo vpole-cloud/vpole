@@ -16,7 +16,7 @@ internal sealed class ResourceDeploymentWriter(
     StoreOutboxWrites storeOutboxWrites,
     IResourcePlacementService placementService,
     IDeploymentTargetWorkloadConfigurationFence targetConfigurationFence,
-    IComputeProfileResolutionFence computeProfileFence,
+    FenceResolvedComputeProfiles fenceResolvedComputeProfiles,
     IStorageProfileResolutionFence storageConfigurationFence,
     TimeProvider timeProvider)
 {
@@ -120,11 +120,11 @@ internal sealed class ResourceDeploymentWriter(
                 item.ResourceType))
             .Distinct()
             .ToArray();
-        var computeFence = await computeProfileFence.FenceManyAsync(
+        var computeFence = await fenceResolvedComputeProfiles(
             computeFenceRequests,
             session,
             cancellationToken);
-        if (computeFence is not ISuccess)
+        if (computeFence is Err<ComputeProfileResolutionFenceRejected>)
         {
             return new Err<CreateResourceDeploymentError>(
                 new CreateResourceDeploymentError(

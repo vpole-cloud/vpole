@@ -8,27 +8,15 @@ namespace Pole.Features.ComputeProfiles.Application.Persistence;
 
 internal sealed class MongoFenceResolvedComputeProfile(
     IMongoCollection<ComputeProfile> computeProfiles)
-    : IComputeProfileResolutionFence
 {
-    public Task<Result> FenceAsync(
-        ComputeProfileResolutionFenceRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default) =>
-        FenceManyAsync(
-            [request],
-            session,
-            cancellationToken);
-
-    public async Task<Result> FenceManyAsync(
+    public async Task<Result<Unit, ComputeProfileResolutionFenceRejected>> InvokeAsync(
         IReadOnlyList<ComputeProfileResolutionFenceRequest> requests,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(requests);
         EnsureTransaction(session);
-        var validation = Validate(requests);
-        if (validation is not null)
-            return validation;
+        EnsureValid(requests);
 
         var profiles = await computeProfiles
             .Find(
@@ -51,8 +39,7 @@ internal sealed class MongoFenceResolvedComputeProfile(
                 profile.Revision != request.ComputeProfileRevision ||
                 profile.ResolutionFence == long.MaxValue)
             {
-                return Failures.Conflict(
-                    "The compute profile mapping changed or is no longer available.");
+                return Rejected(requests);
             }
         }
 
@@ -78,20 +65,18 @@ internal sealed class MongoFenceResolvedComputeProfile(
             new BulkWriteOptions { IsOrdered = true },
             cancellationToken);
         return fenced.ModifiedCount == writes.Length
-            ? Result.Success()
-            : Failures.Conflict(
-                "The compute profile mapping changed or is no longer available.");
+            ? new Ok<Unit>(Unit.Value)
+            : Rejected(requests);
     }
 
-    private static ValidationFailure? Validate(
+    private static void EnsureValid(
         IReadOnlyList<ComputeProfileResolutionFenceRequest> requests)
     {
         if (requests.Count == 0)
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Requests"] = ["At least one resolved compute profile is required."]
-            });
+            throw new ArgumentException(
+                "At least one resolved compute profile is required.",
+                nameof(requests));
         }
 
         var first = requests[0];
@@ -102,11 +87,9 @@ internal sealed class MongoFenceResolvedComputeProfile(
                     first.ResourceType.Value,
                     StringComparison.Ordinal)))
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Requests"] =
-                    ["All compute-profile fences in a batch must have one tenant and resource type."]
-            });
+            throw new ArgumentException(
+                "All compute-profile fences in a batch must have one tenant and resource type.",
+                nameof(requests));
         }
 
         if (requests.Any(request =>
@@ -116,26 +99,30 @@ internal sealed class MongoFenceResolvedComputeProfile(
                 request.ComputeProfileRevision < 1 ||
                 string.IsNullOrWhiteSpace(request.ResourceType.Value)))
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["ComputeProfileId"] =
-                    ["A valid resolved compute profile is required."]
-            });
+            throw new ArgumentException(
+                "A valid resolved compute profile is required.",
+                nameof(requests));
         }
 
         if (requests
             .GroupBy(request => request.ComputeProfileId, StringComparer.Ordinal)
             .Any(group => group.Select(request => request.ComputeProfileRevision).Distinct().Skip(1).Any()))
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Requests"] =
-                    ["A compute profile must have one revision within a fence batch."]
-            });
+            throw new ArgumentException(
+                "A compute profile must have one revision within a fence batch.",
+                nameof(requests));
         }
-
-        return null;
     }
+
+    private static Result<Unit, ComputeProfileResolutionFenceRejected> Rejected(
+        IReadOnlyList<ComputeProfileResolutionFenceRequest> requests) =>
+        new Err<ComputeProfileResolutionFenceRejected>(
+            new ComputeProfileResolutionFenceRejected(
+                requests
+                    .Select(request => request.ComputeProfileId)
+                    .Distinct(StringComparer.Ordinal)
+                    .Order(StringComparer.Ordinal)
+                    .ToArray()));
 
     private static void EnsureTransaction(IClientSessionHandle session)
     {

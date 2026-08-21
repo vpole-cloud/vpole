@@ -57,7 +57,7 @@ public sealed class UpdateRedisServiceHandler(
     LoadRedisById loadRedisById,
     PersistUpdatedRedis persistUpdatedRedis,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    ResolveComputeProfile resolveComputeProfile,
+    ResolveComputeProfileLegacy resolveComputeProfile,
     LoadCurrentResourceDeploymentComputeLegacy loadDeploymentCompute,
     RequestResourceDeploymentApplyLegacy requestDeploymentApply)
     : IMediatorHandler<UpdateRedisServiceRequest, UpdateRedisServiceResponse>

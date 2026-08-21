@@ -42,8 +42,14 @@ public sealed class DeploymentTargetProductionDiTests
                 typeof(AdmitDeploymentTargetPublicIngressForNewWorkload) &&
             descriptor.Lifetime == ServiceLifetime.Scoped);
         Assert.Contains(services, descriptor =>
+            descriptor.ServiceType == typeof(AdmitDeploymentTargetForWorkload) &&
+            descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(services, descriptor =>
             descriptor.ServiceType ==
                 typeof(AdmitDeploymentTargetPublicIngressForDomainReservation) &&
+            descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(services, descriptor =>
+            descriptor.ServiceType == typeof(ApplyDeploymentTargetReferenceChanges) &&
             descriptor.Lifetime == ServiceLifetime.Scoped);
         Assert.Contains(services, descriptor =>
             descriptor.ServiceType == typeof(DeploymentTargetLookup) &&
@@ -56,7 +62,11 @@ public sealed class DeploymentTargetProductionDiTests
         Assert.NotNull(scope.ServiceProvider
             .GetRequiredService<AdmitDeploymentTargetPublicIngressForNewWorkload>());
         Assert.NotNull(scope.ServiceProvider
+            .GetRequiredService<AdmitDeploymentTargetForWorkload>());
+        Assert.NotNull(scope.ServiceProvider
             .GetRequiredService<AdmitDeploymentTargetPublicIngressForDomainReservation>());
+        Assert.NotNull(scope.ServiceProvider
+            .GetRequiredService<ApplyDeploymentTargetReferenceChanges>());
 
         var consumerAssemblies = new[]
         {

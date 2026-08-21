@@ -54,6 +54,10 @@ public static class DeploymentTargetsFeatureRegistration
             DeploymentTargetBootstrapper>();
 
         services.TryAddScoped<DeploymentTargetLookup>();
+        services.TryAddScoped<AdmitDeploymentTargetForWorkload>(
+            provider => provider
+                .GetRequiredService<DeploymentTargetLookup>()
+                .AdmitForWorkloadAsync);
         services.TryAddScoped<AdmitDeploymentTargetPublicIngressForNewWorkload>(
             provider => provider
                 .GetRequiredService<DeploymentTargetLookup>()
@@ -66,6 +70,10 @@ public static class DeploymentTargetsFeatureRegistration
         services.TryAddScoped<IDeploymentTargetLookup>(provider =>
             provider.GetRequiredService<DeploymentTargetLookup>());
         services.TryAddScoped<DeploymentTargetReferenceAdmission>();
+        services.TryAddScoped<ApplyDeploymentTargetReferenceChanges>(
+            provider => provider
+                .GetRequiredService<DeploymentTargetReferenceAdmission>()
+                .ApplyChangesOutcomeAsync);
         services.TryAddScoped<IDeploymentTargetReferenceAdmission>(provider =>
             provider.GetRequiredService<DeploymentTargetReferenceAdmission>());
         services.TryAddScoped<IDeploymentTargetWorkloadConfigurationFence>(provider =>

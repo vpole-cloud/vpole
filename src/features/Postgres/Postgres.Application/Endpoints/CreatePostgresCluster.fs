@@ -50,7 +50,7 @@ type CreatePostgresClusterHandler(
     settings : PostgresSettings,
     quotaAdmissionExecutor : IQuotaAdmissionExecutor,
     resolveResourceDeploymentTarget : ResolveResourceDeploymentTargetLegacy,
-    resolveComputeProfile : ResolveComputeProfile,
+    resolveComputeProfile : ResolveComputeProfileLegacy,
     createResourceDeployment : CreateResourceDeploymentLegacy) =
 
     interface IMediatorHandler<CreatePostgresClusterRequest, PostgresClusterDto> with

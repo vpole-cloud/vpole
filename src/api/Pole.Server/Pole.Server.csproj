@@ -35,7 +35,6 @@
       <ProjectReference Include="..\..\features\GitProviders\GitProviders.Application\GitProviders.Application.csproj" />
       <ProjectReference Include="..\..\features\ContainerRegistries\ContainerRegistries.Application\ContainerRegistries.Application.csproj" />
       <ProjectReference Include="..\..\features\ComputeProfiles\ComputeProfiles.Application\ComputeProfiles.Application.csproj" />
-      <ProjectReference Include="..\..\features\ComputeProfiles\ComputeProfiles.Contracts.HttpMapping\ComputeProfiles.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\features\DeploymentTargets\DeploymentTargets.Application\DeploymentTargets.Application.csproj" />
       <ProjectReference Include="..\..\features\DeploymentTargets\DeploymentTargets.Contracts.HttpMapping\DeploymentTargets.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\features\SourceBuilds\SourceBuilds.Application\SourceBuilds.Application.csproj" />

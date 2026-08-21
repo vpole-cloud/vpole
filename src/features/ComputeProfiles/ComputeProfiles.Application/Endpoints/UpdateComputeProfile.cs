@@ -7,6 +7,7 @@ using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.ComputeProfiles.Application.Validation;
+using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
@@ -40,7 +41,17 @@ public sealed record UpdateComputeProfileRequestBody(
 public sealed record UpdateComputeProfileRequest(
     [FromRoute(Name = "computeProfileId")] string ComputeProfileId,
     [FromBody] UpdateComputeProfileRequestBody Body)
-    : IMediatorRequest<ComputeProfileDto>;
+    : IMediatorRequest<UpdateComputeProfileOutcome>;
+
+public union UpdateComputeProfileError(
+    ComputeProfileNotFound,
+    ComputeProfileRevisionConflict,
+    ComputeProfileMutationValidationError,
+    PersistUpdatedComputeProfileError);
+
+public union UpdateComputeProfileOutcome(
+    ComputeProfileDto,
+    UpdateComputeProfileError);
 
 public sealed class UpdateComputeProfileHandler(
     LoadComputeProfileById loadComputeProfileById,
@@ -48,9 +59,9 @@ public sealed class UpdateComputeProfileHandler(
     ValidateComputeProfileTargetMappings validateTargetMappings,
     PersistUpdatedComputeProfile persistUpdatedComputeProfile,
     TimeProvider timeProvider)
-    : IMediatorHandler<UpdateComputeProfileRequest, ComputeProfileDto>
+    : IMediatorOutcomeHandler<UpdateComputeProfileRequest, UpdateComputeProfileOutcome>
 {
-    public async Task<Result<ComputeProfileDto>> HandleAsync(
+    public async Task<UpdateComputeProfileOutcome> HandleAsync(
         UpdateComputeProfileRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -59,14 +70,13 @@ public sealed class UpdateComputeProfileHandler(
             cancellationToken);
         if (current is null)
         {
-            return Failures.NotFound(
-                "Compute profile not found.",
-                request.ComputeProfileId);
+            return new UpdateComputeProfileError(
+                new ComputeProfileNotFound(request.ComputeProfileId));
         }
         if (current.Revision != request.Body.Revision)
         {
-            return Failures.Conflict(
-                "The compute profile changed. Reload it and retry.");
+            return new UpdateComputeProfileError(
+                new ComputeProfileRevisionConflict(request.ComputeProfileId));
         }
 
         var updatedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
@@ -79,21 +89,27 @@ public sealed class UpdateComputeProfileHandler(
         var tenantValidation = await validateTenantAccess(
             replacement.TenantAccess,
             cancellationToken);
-        if (tenantValidation is not ISuccess)
-            return (Failure)tenantValidation;
+        if (tenantValidation is Err<SelectedComputeProfileTenantsNotFound> tenantError)
+        {
+            return new UpdateComputeProfileError(
+                new ComputeProfileMutationValidationError(tenantError.Value));
+        }
         var targetValidation = await validateTargetMappings(
             replacement,
             cancellationToken);
-        if (targetValidation is not ISuccess)
-            return (Failure)targetValidation;
+        if (targetValidation is Err<ComputeProfileTargetMappingsInvalid> targetError)
+        {
+            return new UpdateComputeProfileError(
+                new ComputeProfileMutationValidationError(targetError.Value));
+        }
 
         var persisted = await persistUpdatedComputeProfile(
             current,
             replacement,
             cancellationToken);
-        return persisted.TryGetValue(out var updated, out var failure)
-            ? updated.ToDto()
-            : failure;
+        return persisted.Match(
+            UpdateComputeProfileOutcome (updated) => updated.ToDto(),
+            UpdateComputeProfileOutcome (error) => new UpdateComputeProfileError(error));
     }
 }
 
@@ -124,14 +140,22 @@ public static class UpdateComputeProfileEndpoint
     {
         app.MapPut("/{computeProfileId}", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] UpdateComputeProfileRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    ComputeProfileDto profile => Results.Ok(profile),
+                    UpdateComputeProfileError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("UpdateComputeProfile")
-            .Produces<ComputeProfileDto>();
+            .Produces<ComputeProfileDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
         return app;
     }
 }

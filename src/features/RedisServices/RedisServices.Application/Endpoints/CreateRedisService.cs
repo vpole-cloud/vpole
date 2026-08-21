@@ -45,7 +45,7 @@ public sealed class CreateRedisServiceHandler(
     IStorageProfileResolver storageProfileResolver,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     ResolveResourceDeploymentTargetLegacy resolveResourceDeploymentTarget,
-    ResolveComputeProfile resolveComputeProfile,
+    ResolveComputeProfileLegacy resolveComputeProfile,
     CreateResourceDeploymentLegacy createResourceDeployment)
     : IMediatorHandler<CreateRedisServiceRequest, CreateRedisServiceResponse>
 {

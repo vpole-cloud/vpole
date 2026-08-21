@@ -29,7 +29,6 @@
         <ProjectReference Include="..\..\src\api\Pole.Server\Pole.Server.csproj" />
         <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Application\ComputeProfiles.Application.csproj" />
         <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj" />
-        <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Contracts.HttpMapping\ComputeProfiles.Contracts.HttpMapping.csproj" />
         <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Domain\ComputeProfiles.Domain.csproj" />
         <ProjectReference Include="..\..\src\features\Domains\Domains.Application\Domains.Application.csproj" />
         <ProjectReference Include="..\..\src\features\Domains\Domains.Contracts\Domains.Contracts.csproj" />

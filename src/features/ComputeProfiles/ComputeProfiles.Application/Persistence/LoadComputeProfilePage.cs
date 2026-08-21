@@ -26,7 +26,7 @@ internal sealed class MongoLoadComputeProfilePage(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
-        var filter = Builders<ComputeProfile>.Filter.Empty;
+        var filter = ComputeProfileFilters.All();
         var totalCount = await computeProfiles.CountDocumentsAsync(
             filter,
             cancellationToken: cancellationToken);
