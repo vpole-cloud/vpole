@@ -1,6 +1,8 @@
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.WebServices.Domain;
+using System.Text.RegularExpressions;
+using MongoDB.Bson;
 
 namespace Pole.Features.WebServices.Application.Persistence;
 
@@ -8,6 +10,31 @@ internal static class WebServiceFilters
 {
     public static FilterDefinition<WebService> VisibleToTenant(string tenantId) =>
         Builders<WebService>.Filter.ForTenant(tenantId);
+
+    public static FilterDefinition<WebService> ForList(WebServiceListQuery query)
+    {
+        var filter = VisibleToTenant(query.TenantId);
+        if (!string.IsNullOrWhiteSpace(query.ResourceGroupId))
+            filter &= Builders<WebService>.Filter.Eq(
+                item => item.ResourceGroupId,
+                query.ResourceGroupId);
+
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var name = Builders<WebService>.Filter.Regex(
+                item => item.Name,
+                new BsonRegularExpression(
+                    $".*{Regex.Escape(query.Search)}.*",
+                    "i"));
+            filter &= ObjectId.TryParse(query.Search, out _)
+                ? Builders<WebService>.Filter.Or(
+                    name,
+                    Builders<WebService>.Filter.Eq(item => item.Id, query.Search))
+                : name;
+        }
+
+        return filter;
+    }
 
     public static FilterDefinition<WebService> ById(string tenantId, string webServiceId) =>
         Builders<WebService>.Filter.And(
@@ -78,6 +105,15 @@ internal static class WebServiceReleaseFilters
             Builders<WebServiceRelease>.Filter.Eq(
                 item => item.Outcome,
                 WebServiceReleaseOutcome.Pending));
+
+    public static FilterDefinition<WebServiceRelease> CompletionCas(
+        string releaseId,
+        WebServiceReleaseOutcome expectedOutcome) =>
+        Builders<WebServiceRelease>.Filter.And(
+            Builders<WebServiceRelease>.Filter.Eq(item => item.Id, releaseId),
+            Builders<WebServiceRelease>.Filter.Eq(
+                item => item.Outcome,
+                expectedOutcome));
 
     public static FilterDefinition<WebServiceRelease> DeploymentSnapshot(
         string tenantId, string webServiceId, string resourceDeploymentId,

@@ -22,38 +22,8 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task Executor_ClaimsOnceBuildsExactCommitAndWaitsForDeploymentCompletion()
     {
-        var now = DateTime.UtcNow;
-        var recipe = new SourceBuildRecipe(
-            "candidate",
-            SourceBuildRecipeKind.DotNet,
-            ".",
-            "App.csproj",
-            ImmutableList.Create("dotnet publish"),
-            "dotnet App.dll",
-            "FROM scratch",
-            false);
-        var sourceRepositoryId = ObjectId.GenerateNewId().ToString();
-        var configuration = SourceBuildConfigurationFactory.Create(
-            TestData.TenantId,
-            sourceRepositoryId,
-            ObjectId.GenerateNewId().ToString(),
-            recipe with { Dockerfile = "FROM changed-after-enqueue" },
-            TestData.UserId,
-            new SourceBuildConfigurationFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
-        var jobRecipe = recipe with { Dockerfile = "FROM snapshot" };
-        var job = SourceBuildJobFactory.CreateManual(
-            TestData.TenantId,
-            configuration.Id,
-            sourceRepositoryId,
-            configuration.WebServiceId,
-            "main",
-            "exact-commit",
-            jobRecipe,
-            TestData.UserId,
-            TestData.UserEmail,
-            new SourceBuildJobFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
-        await Fixture.DbContext.SourceBuildConfigurations.InsertOneAsync(configuration);
-        await Fixture.DbContext.SourceBuildJobs.InsertOneAsync(job);
+        var queued = await QueueJobAsync();
+        var job = queued.Job;
 
         var workspace = new FakeWorkspaceService();
         var buildKit = new FakeBuildKitClient();
@@ -63,7 +33,7 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
             workspace,
             new FakeRegistryBuildService(),
             buildKit,
-            deployment,
+            deployment.DeployAsync,
             TimeProvider.System,
             NullLogger<SourceBuildJobExecutor>.Instance);
 
@@ -75,7 +45,7 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         Assert.Equal("release-1", deploying.ReleaseId);
         Assert.Equal("exact-commit", workspace.DownloadedCommit);
         Assert.Equal(TestData.TenantId, workspace.TenantId);
-        Assert.Equal(sourceRepositoryId, workspace.SourceRepositoryId);
+        Assert.Equal(queued.SourceRepositoryId, workspace.SourceRepositoryId);
         Assert.Equal("FROM snapshot", buildKit.Request!.Dockerfile);
         Assert.Equal(1, buildKit.Calls);
         Assert.Equal(Digest, deployment.Request!.Image.Digest);
@@ -124,6 +94,77 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         var succeededJob = await Fixture.DbContext.SourceBuildJobs.Find(item => item.Id == job.Id).SingleAsync();
         Assert.IsType<SucceededSourceBuild>(succeededJob.State);
     }
+
+    [Fact]
+    public async Task Executor_MapsTypedDeploymentRejectionToStableBuildFailure()
+    {
+        var queued = await QueueJobAsync();
+        var deployment = new FakeDeploymentService(
+            new Err<SourceBuildWebServiceDeploymentError>(
+                new SourceBuildWebServiceDeploymentError(
+                    new SourceBuildWebServiceDeploymentRejected(
+                        queued.Job.WebServiceId,
+                        new SourceBuildResourceDeploymentRejection(
+                            new SourceBuildResourceDeploymentPlacementUnavailable(
+                                "deployment-1"))))));
+        var executor = new SourceBuildJobExecutor(
+            Fixture.DbContext,
+            new FakeWorkspaceService(),
+            new FakeRegistryBuildService(),
+            new FakeBuildKitClient(),
+            deployment.DeployAsync,
+            TimeProvider.System,
+            NullLogger<SourceBuildJobExecutor>.Instance);
+
+        await executor.ExecuteAsync(queued.Job.Id);
+
+        var failedJob = await Fixture.DbContext.SourceBuildJobs
+            .Find(item => item.Id == queued.Job.Id)
+            .SingleAsync();
+        var failed = Assert.IsType<FailedSourceBuild>(failedJob.State);
+        Assert.Equal("ResourceDeploymentPlacementUnavailable", failed.Code);
+        Assert.Contains("SourceBuildResourceDeploymentPlacementUnavailable", failed.Message);
+    }
+
+    private async Task<QueuedJob> QueueJobAsync()
+    {
+        var now = DateTime.UtcNow;
+        var recipe = new SourceBuildRecipe(
+            "candidate",
+            SourceBuildRecipeKind.DotNet,
+            ".",
+            "App.csproj",
+            ImmutableList.Create("dotnet publish"),
+            "dotnet App.dll",
+            "FROM scratch",
+            false);
+        var sourceRepositoryId = ObjectId.GenerateNewId().ToString();
+        var configuration = SourceBuildConfigurationFactory.Create(
+            TestData.TenantId,
+            sourceRepositoryId,
+            ObjectId.GenerateNewId().ToString(),
+            recipe with { Dockerfile = "FROM changed-after-enqueue" },
+            TestData.UserId,
+            new SourceBuildConfigurationFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
+        var job = SourceBuildJobFactory.CreateManual(
+            TestData.TenantId,
+            configuration.Id,
+            sourceRepositoryId,
+            configuration.WebServiceId,
+            "main",
+            "exact-commit",
+            recipe with { Dockerfile = "FROM snapshot" },
+            TestData.UserId,
+            TestData.UserEmail,
+            new SourceBuildJobFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
+        await Fixture.DbContext.SourceBuildConfigurations.InsertOneAsync(configuration);
+        await Fixture.DbContext.SourceBuildJobs.InsertOneAsync(job);
+        return new QueuedJob(job, sourceRepositoryId);
+    }
+
+    private sealed record QueuedJob(
+        SourceBuildJob Job,
+        string SourceRepositoryId);
 
     private sealed class FakeWorkspaceService : ISourceBuildWorkspaceService
     {
@@ -190,17 +231,20 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         }
     }
 
-    private sealed class FakeDeploymentService : IWebServiceSourceBuildDeploymentService
+    private sealed class FakeDeploymentService(
+        Result<SourceBuildDeploymentResult, SourceBuildWebServiceDeploymentError>? result = null)
     {
         public SourceBuildDeploymentRequest? Request { get; private set; }
 
-        public Task<Result<SourceBuildDeploymentResult>> DeployAsync(
+        public Task<Result<
+            SourceBuildDeploymentResult,
+            SourceBuildWebServiceDeploymentError>> DeployAsync(
             SourceBuildDeploymentRequest request,
             CancellationToken cancellationToken = default)
         {
             Request = request;
-            return Task.FromResult<Result<SourceBuildDeploymentResult>>(
-                new SourceBuildDeploymentResult("release-1", 2));
+            return Task.FromResult(result ?? new Ok<SourceBuildDeploymentResult>(
+                new SourceBuildDeploymentResult("release-1", 2)));
         }
     }
 }

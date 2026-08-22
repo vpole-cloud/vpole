@@ -15,7 +15,7 @@ public sealed class SourceBuildJobExecutor(
     ISourceBuildWorkspaceService workspaceService,
     IContainerRegistryBuildService registryBuildService,
     IBuildKitClient buildKit,
-    IWebServiceSourceBuildDeploymentService deploymentService,
+    DeploySourceBuildWebService deploymentService,
     TimeProvider timeProvider,
     ILogger<SourceBuildJobExecutor> logger) : ISourceBuildJobExecutor
 {
@@ -129,7 +129,7 @@ public sealed class SourceBuildJobExecutor(
                 }
 
                 var trigger = job.Trigger as ManualSourceBuildTrigger;
-                var deploymentResult = await deploymentService.DeployAsync(
+                var deploymentResult = await deploymentService(
                     new SourceBuildDeploymentRequest(
                         job.TenantId,
                         job.WebServiceId,
@@ -201,6 +201,49 @@ public sealed class SourceBuildJobExecutor(
         SourceBuildPhase phase,
         Failure failure) =>
         FailAsync(job, phase, failure.GetType().Name, failure.Message);
+
+    private Task FailAsync(
+        SourceBuildJob job,
+        SourceBuildPhase phase,
+        SourceBuildWebServiceDeploymentError error) => error switch
+        {
+            SourceBuildWebServiceNotFound notFound => FailAsync(
+                job,
+                phase,
+                "WebServiceNotFound",
+                $"Web service '{notFound.WebServiceId}' was not found."),
+            SourceBuildWebServiceDeleting deleting => FailAsync(
+                job,
+                phase,
+                "WebServiceDeleting",
+                $"Web service '{deleting.WebServiceId}' is being deleted."),
+            SourceBuildWebServiceHasNoActiveDeployments empty => FailAsync(
+                job,
+                phase,
+                "WebServiceNoActiveDeployments",
+                $"Web service '{empty.WebServiceId}' has no active resource deployments."),
+            SourceBuildWebServiceDeploymentRejected rejected => FailAsync(
+                job,
+                phase,
+                rejected.Reason switch
+                {
+                    SourceBuildResourceDeploymentNotFound => "ResourceDeploymentNotFound",
+                    SourceBuildResourceDeploymentChanged => "ResourceDeploymentChanged",
+                    SourceBuildResourceDeploymentCardinalityConflict => "ResourceDeploymentCardinalityConflict",
+                    SourceBuildResourceDeploymentPendingDeletion => "ResourceDeploymentPendingDeletion",
+                    SourceBuildResourceDeploymentPlacementUnavailable => "ResourceDeploymentPlacementUnavailable",
+                    SourceBuildResourceDeploymentReplacementTargetMismatch => "ResourceDeploymentReplacementTargetMismatch",
+                    SourceBuildResourceDeploymentIngressConfigurationChanged => "ResourceDeploymentIngressConfigurationChanged",
+                    SourceBuildResourceDeploymentRetryUnavailable => "ResourceDeploymentRetryUnavailable",
+                    SourceBuildResourceDeploymentComputeConfigurationChanged => "ResourceDeploymentComputeConfigurationChanged"
+                },
+                $"Web service deployment was rejected ({rejected.Reason.Value.GetType().Name})."),
+            SourceBuildWebServiceUpdateConflict conflict => FailAsync(
+                job,
+                phase,
+                "WebServiceUpdateConflict",
+                $"Web service '{conflict.WebServiceId}' changed while the source build was being deployed.")
+        };
 
     private async Task FailAsync(
         SourceBuildJob job,

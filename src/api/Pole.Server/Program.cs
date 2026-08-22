@@ -34,8 +34,8 @@ using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Middleware;
 using Pole.Features.Users.Application.Common;
+using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Persistence;
 using Pole.Observability;
 using Pole.Server.Extensions;
 using Pole.ServiceDefaults;
@@ -93,7 +93,7 @@ builder.Services.AddKubernetes(configuration)
     .AddDomainHttpMappings()
     .AddComputeProfiles()
     .AddRedisPersistence()
-    .AddWebServicePersistence()
+    .AddWebServicesFeature()
     .AddQuotaFramework(
         typeof(RedisQuotaProfile).Assembly,
         typeof(FunctionAppQuotaProfile).Assembly,

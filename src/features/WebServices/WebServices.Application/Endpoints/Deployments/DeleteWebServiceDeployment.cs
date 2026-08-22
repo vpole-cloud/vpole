@@ -29,10 +29,17 @@ public static class DeleteWebServiceDeployment
                     "/{Id}/deployments/{DeploymentId}",
                     async (
                         IMediator mediator,
+                        IHttpProblemMapper httpProblems,
                         [AsParameters] DeleteWebServiceDeploymentRequest request,
                         CancellationToken cancellationToken) =>
                         (await mediator.Send(request, cancellationToken))
-                        .ToHttpResult(value => Results.Accepted(value: value)))
+                        .ToHttpResult(outcome => outcome switch
+                        {
+                            PlacementSummaryDto value =>
+                                Results.Accepted(value: value),
+                            DeleteWebServiceDeploymentError error =>
+                                httpProblems.Map(error).ToHttpResult()
+                        }))
                 .WithName("DeleteWebServiceDeployment")
                 .Produces<PlacementSummaryDto>(StatusCodes.Status202Accepted);
             return app;
@@ -44,20 +51,22 @@ public sealed record DeleteWebServiceDeploymentRequest(
     [FromRoute] string Id,
     [FromRoute] string DeploymentId,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<PlacementSummaryDto>, ITenantWriteOperation;
+    : IMediatorRequest<DeleteWebServiceDeploymentOutcome>, ITenantWriteOperation;
 
 public sealed class DeleteWebServiceDeploymentHandler(
     LoadWebServiceById loadWebService,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
-    RequestExactResourceDeploymentDeletionLegacy requestExactResourceDeploymentDeletion,
-    AdvanceResourceDeploymentRevisionLegacy advanceResourceDeploymentRevision,
-    PersistUpdatedWebService persistWebService,
+    RequestExactResourceDeploymentDeletion requestExactResourceDeploymentDeletion,
+    AdvanceResourceDeploymentRevision advanceResourceDeploymentRevision,
+    PersistUpdatedWebServiceOutcome persistWebService,
     PersistCurrentWebServiceRelease persistRelease,
     IQuotaAdmissionExecutor quotaAdmission,
     TimeProvider timeProvider)
-    : IMediatorHandler<DeleteWebServiceDeploymentRequest, PlacementSummaryDto>
+    : IMediatorOutcomeHandler<
+        DeleteWebServiceDeploymentRequest,
+        DeleteWebServiceDeploymentOutcome>
 {
-    public async Task<Result<PlacementSummaryDto>> HandleAsync(
+    public async Task<DeleteWebServiceDeploymentOutcome> HandleAsync(
         DeleteWebServiceDeploymentRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -66,7 +75,8 @@ public sealed class DeleteWebServiceDeploymentHandler(
             request.Id,
             cancellationToken);
         if (webService is null)
-            return Failures.NotFound("Web service not found.", request.Id);
+            return Error(new DeleteWebServiceDeploymentStateError(
+                new WebServiceNotFound(request.Id)));
 
         var deployments = await loadResourceDeploymentSet(
             request.TenantId,
@@ -77,17 +87,20 @@ public sealed class DeleteWebServiceDeploymentHandler(
             deployment.DeploymentId == request.DeploymentId);
         if (current is null)
         {
-            return Failures.NotFound(
-                "Resource deployment not found.",
-                request.DeploymentId);
+            return Error(new DeleteWebServiceDeploymentStateError(
+                new WebServiceResourceDeploymentNotFound(
+                    request.Id,
+                    request.DeploymentId)));
         }
         if (string.Equals(
                 current.DesiredOperation,
                 "Delete",
                 StringComparison.Ordinal))
         {
-            return Failures.Conflict(
-                "The web-service deployment is already being removed.");
+            return Error(new DeleteWebServiceDeploymentStateError(
+                new WebServiceDeploymentAlreadyDeleting(
+                    request.Id,
+                    request.DeploymentId)));
         }
 
         var desiredDeployments = deployments.Where(deployment =>
@@ -97,8 +110,8 @@ public sealed class DeleteWebServiceDeploymentHandler(
                 StringComparison.Ordinal)).ToArray();
         if (desiredDeployments.Length <= 1)
         {
-            return Failures.Conflict(
-                "The last web-service deployment cannot be removed.");
+            return Error(new DeleteWebServiceDeploymentStateError(
+                new WebServiceLastDeploymentCannotBeRemoved(request.Id)));
         }
 
         var remaining = desiredDeployments.Where(deployment =>
@@ -109,11 +122,14 @@ public sealed class DeleteWebServiceDeploymentHandler(
         var nextQuota = WebServiceDeploymentWorkflow.ToQuotaInput(
             remaining,
             webService.Spec);
-        return await quotaAdmission.ExecuteAsync<WebServiceQuotaInput, PlacementSummaryDto>(
+        return await quotaAdmission.ExecuteOutcomeAsync<
+            WebServiceQuotaInput,
+            DeleteWebServiceDeploymentOutcome>(
             webService.TenantId,
             WebServiceQuotaResourceKey.Create(webService.Id),
             new UpdateQuotaMutation<WebServiceQuotaInput>(currentQuota, nextQuota),
-            async (session, token) =>
+            quotaError => Error(quotaError),
+            async (transaction, token) =>
             {
                 var updated = webService.AdvancePlacementDesiredState();
                 var deleted = await requestExactResourceDeploymentDeletion(
@@ -125,10 +141,11 @@ public sealed class DeleteWebServiceDeploymentHandler(
                         current.DeploymentRevision,
                         current.Compute.Profile,
                         ResourceRevision: updated.ActiveRevision),
-                    session,
+                    transaction.Session,
                     token);
                 if (!deleted.TryGetValue(out var result, out var failure))
-                    return failure;
+                    return transaction.Abort(Error(
+                        new DeleteWebServiceDeploymentError(failure)));
 
                 var stamped = await advanceResourceDeploymentRevision(
                     new ResourceDeploymentResourceRevisionRequest(
@@ -136,10 +153,11 @@ public sealed class DeleteWebServiceDeploymentHandler(
                         WebServiceResourceDeployment.ResourceType,
                         webService.Id,
                         updated.ActiveRevision),
-                    session,
+                    transaction.Session,
                     token);
-                if (!stamped.TryGetValue(out var snapshots, out failure))
-                    return failure;
+                if (!stamped.TryGetValue(out var snapshots, out var revisionFailure))
+                    return transaction.Abort(Error(
+                        new DeleteWebServiceDeploymentError(revisionFailure)));
 
                 var retainedSnapshots = snapshots.Where(item =>
                     item.DeploymentId != current.DeploymentId).ToArray();
@@ -151,13 +169,14 @@ public sealed class DeleteWebServiceDeploymentHandler(
                     .OrderBy(item => item.ResourceDeploymentId, StringComparer.Ordinal)
                     .ToImmutableList();
                 var saved = await persistWebService(
-                    session,
+                    transaction.Session,
                     webService,
                     updated,
                     updated.ToUpdatedEvent(eventDeployments),
                     token);
-                if (saved is not ISuccess)
-                    return (Failure)saved;
+                if (!saved.TryGetValue(out _, out var persistenceError))
+                    return transaction.Abort(Error(
+                        new DeleteWebServiceDeploymentError(persistenceError)));
 
                 var releaseDeployments = WebServiceDeploymentWorkflow
                     .ToReleaseDeployments(retainedSnapshots)
@@ -178,11 +197,15 @@ public sealed class DeleteWebServiceDeploymentHandler(
                     new WebServiceReleaseFactory.CreateOptions(
                         ObjectId.GenerateNewId().ToString(),
                         timeProvider.GetUtcNow().UtcDateTime));
-                await persistRelease(session, release, token);
-                return result;
+                await persistRelease(transaction.Session, release, token);
+                return transaction.Commit(new DeleteWebServiceDeploymentOutcome(result));
             },
             cancellationToken);
     }
+
+    private static DeleteWebServiceDeploymentOutcome Error(
+        DeleteWebServiceDeploymentError error) =>
+        new(error);
 }
 
 public sealed class DeleteWebServiceDeploymentValidator : AbstractValidator<DeleteWebServiceDeploymentRequest>

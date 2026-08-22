@@ -54,9 +54,9 @@ using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Migrations;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Jobs;
+using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Migrations;
-using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Middleware;
 using Pole.Features.Tenants.Application.Common;
@@ -172,7 +172,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddHttpProblemMappings(QuotaContractHttpMappings.All);
         builder.Services.AddComputeProfiles();
         builder.Services.AddRedisPersistence();
-        builder.Services.AddWebServicePersistence();
+        builder.Services.AddWebServicesFeature();
         builder.Services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         builder.Services.AddSingleton(new PostgresSettings
         {
@@ -198,6 +198,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.RemoveAll<IDeploymentTargetLookup>();
         builder.Services.RemoveAll<AdmitDeploymentTargetForWorkload>();
         builder.Services.RemoveAll<AdmitDeploymentTargetPublicIngressForNewWorkload>();
+        builder.Services.RemoveAll<ListEligiblePublicIngressDeploymentTargetsForNewWorkload>();
         builder.Services.RemoveAll<AdmitDeploymentTargetPublicIngressForDomainReservation>();
         builder.Services.RemoveAll<ApplyDeploymentTargetReferenceChanges>();
         builder.Services.RemoveAll<IDeploymentTargetReferenceAdmission>();
@@ -208,6 +209,8 @@ public sealed class TestApiApplication : IAsyncDisposable
             deploymentTargetLookup.AdmitForWorkloadAsync);
         builder.Services.AddSingleton<AdmitDeploymentTargetPublicIngressForNewWorkload>(
             deploymentTargetLookup.AdmitForNewWorkloadAsync);
+        builder.Services.AddSingleton<ListEligiblePublicIngressDeploymentTargetsForNewWorkload>(
+            deploymentTargetLookup.ListEligiblePublicIngressForNewWorkloadAsync);
         builder.Services.AddSingleton<
             AdmitDeploymentTargetPublicIngressForDomainReservation>(
             deploymentTargetLookup.AdmitForDomainReservationAsync);

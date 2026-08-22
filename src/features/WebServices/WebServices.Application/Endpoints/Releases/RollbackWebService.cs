@@ -22,8 +22,19 @@ public static class RollbackWebService
     {
         public IEndpointRouteBuilder MapRollbackWebServiceEndpoint()
         {
-            app.MapPost("/{Id}/rollback", async (IMediator mediator, [AsParameters] RollbackWebServiceRequest request, CancellationToken cancellationToken) =>
-                (await mediator.Send(request, cancellationToken)).ToHttpResult(value => Results.Accepted(value: value)))
+            app.MapPost("/{Id}/rollback", async (
+                    IMediator mediator,
+                    IHttpProblemMapper httpProblems,
+                    [AsParameters] RollbackWebServiceRequest request,
+                    CancellationToken cancellationToken) =>
+                (await mediator.Send(request, cancellationToken)).ToHttpResult(
+                    outcome => outcome switch
+                    {
+                        RollbackWebServiceResponse value =>
+                            Results.Accepted(value: value),
+                        RollbackWebServiceError error =>
+                            httpProblems.Map(error).ToHttpResult()
+                    }))
                 .WithName("RollbackWebService")
                 .Produces<RollbackWebServiceResponse>(StatusCodes.Status202Accepted);
             return app;
@@ -37,7 +48,7 @@ public sealed record RollbackWebServiceRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default,
     [FromClaim(Claims.Email)] ClaimValue<string?> ActorEmail = default)
-    : IMediatorRequest<RollbackWebServiceResponse>, ITenantWriteOperation;
+    : IMediatorRequest<RollbackWebServiceOutcome>, ITenantWriteOperation;
 
 public sealed record RollbackWebServiceRequestBody(long TargetRevision);
 
@@ -51,22 +62,24 @@ public sealed class RollbackWebServiceHandler(
     LoadWebServiceById loadWebServiceById,
     LoadSucceededWebServiceRelease loadSucceededWebServiceRelease,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
-    RequestResourceDeploymentSetApplyLegacy requestResourceDeploymentSetApply,
-    PersistUpdatedWebService persistUpdatedWebService,
+    RequestResourceDeploymentSetApply requestResourceDeploymentSetApply,
+    PersistUpdatedWebServiceOutcome persistUpdatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     TimeProvider timeProvider)
-    : IMediatorHandler<RollbackWebServiceRequest, RollbackWebServiceResponse>
+    : IMediatorOutcomeHandler<RollbackWebServiceRequest, RollbackWebServiceOutcome>
 {
-    public async Task<Result<RollbackWebServiceResponse>> HandleAsync(
+    public async Task<RollbackWebServiceOutcome> HandleAsync(
         RollbackWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
         var webService = await loadWebServiceById(request.TenantId, request.Id, cancellationToken);
         if (webService is null)
-            return Failures.NotFound("Web service not found.", request.Id);
+            return Error(new RollbackWebServiceStateError(
+                new WebServiceNotFound(request.Id)));
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
-            return Failures.Conflict("A deleting web service cannot be rolled back.");
+            return Error(new RollbackWebServiceStateError(
+                new WebServiceUpdateUnavailable(webService.Id)));
 
         var sourceRelease = await loadSucceededWebServiceRelease(
             request.TenantId,
@@ -74,7 +87,10 @@ public sealed class RollbackWebServiceHandler(
             request.Body.TargetRevision,
             cancellationToken);
         if (sourceRelease is null)
-            return Failures.NotFound("Succeeded release revision was not found for web service.", request.Body.TargetRevision);
+            return Error(new RollbackWebServiceStateError(
+                new WebServiceReleaseNotFound(
+                    webService.Id,
+                    request.Body.TargetRevision)));
 
         var deployments = await loadResourceDeploymentSet(
             webService.TenantId,
@@ -82,17 +98,19 @@ public sealed class RollbackWebServiceHandler(
             webService.Id,
             cancellationToken);
         if (deployments.Count == 0)
-            return Failures.Conflict("The web service has no active resource deployments.");
+            return Error(new RollbackWebServiceStateError(
+                new WebServiceHasNoActiveDeployments(webService.Id)));
 
         var currentQuota = WebServiceDeploymentWorkflow.ToQuotaInput(deployments, webService.Spec);
         var targetQuota = WebServiceDeploymentWorkflow.ToQuotaInput(deployments, sourceRelease.Spec);
-        return await quotaAdmissionExecutor.ExecuteAsync<
+        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             WebServiceQuotaInput,
-            RollbackWebServiceResponse>(
+            RollbackWebServiceOutcome>(
             webService.TenantId,
             WebServiceQuotaResourceKey.Create(webService.Id),
             new UpdateQuotaMutation<WebServiceQuotaInput>(currentQuota, targetQuota),
-            async (session, ct) =>
+            quotaError => Error(quotaError),
+            async (transaction, ct) =>
             {
                 var updated = webService.UpdateDesiredState(sourceRelease.Spec, webService.Tags);
                 var applied = await requestResourceDeploymentSetApply(
@@ -103,19 +121,21 @@ public sealed class RollbackWebServiceHandler(
                         updated.ActiveRevision,
                         deployments.Select(deployment =>
                             WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
-                    session,
+                    transaction.Session,
                     ct);
                 if (!applied.TryGetValue(out var updatedDeployments, out var applyFailure))
-                    return applyFailure;
+                    return transaction.Abort(Error(
+                        new RollbackWebServiceError(applyFailure)));
 
                 var persisted = await persistUpdatedWebService(
-                    session,
+                    transaction.Session,
                     webService,
                     updated,
                     updated.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments)),
                     ct);
-                if (persisted is not ISuccess)
-                    return (Failure)persisted;
+                if (!persisted.TryGetValue(out _, out var persistenceError))
+                    return transaction.Abort(Error(
+                        new RollbackWebServiceError(persistenceError)));
 
                 var release = WebServiceReleaseFactory.CreatePending(
                     updated.TenantId,
@@ -131,16 +151,21 @@ public sealed class RollbackWebServiceHandler(
                     new WebServiceReleaseFactory.CreateOptions(
                         ObjectId.GenerateNewId().ToString(),
                         timeProvider.GetUtcNow().UtcDateTime));
-                await persistCurrentWebServiceRelease(session, release, ct);
+                await persistCurrentWebServiceRelease(transaction.Session, release, ct);
 
-                return new RollbackWebServiceResponse(
-                    updated.Id,
-                    updated.ActiveRevision,
-                    release.Id,
-                    updatedDeployments);
+                return transaction.Commit(new RollbackWebServiceOutcome(
+                    new RollbackWebServiceResponse(
+                        updated.Id,
+                        updated.ActiveRevision,
+                        release.Id,
+                        updatedDeployments)));
             },
             cancellationToken);
     }
+
+    private static RollbackWebServiceOutcome Error(
+        RollbackWebServiceError error) =>
+        new(error);
 }
 
 public sealed class RollbackWebServiceValidator : AbstractValidator<RollbackWebServiceRequest>

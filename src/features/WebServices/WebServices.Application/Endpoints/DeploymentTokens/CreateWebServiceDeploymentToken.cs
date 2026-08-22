@@ -20,16 +20,22 @@ public sealed record CreateWebServiceDeploymentTokenRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default,
     [FromClaim(Claims.Email)] ClaimValue<string?> ActorEmail = default
-) : IMediatorRequest<CreateWebServiceDeploymentTokenResponse>, ITenantWriteOperation;
+) : IMediatorRequest<CreateWebServiceDeploymentTokenOutcome>, ITenantWriteOperation;
+
+public union CreateWebServiceDeploymentTokenOutcome(
+    CreateWebServiceDeploymentTokenResponse,
+    WebServiceNotFound);
 
 public sealed record CreateWebServiceDeploymentTokenRequestBody(string Name);
 
 public sealed class CreateWebServiceDeploymentTokenHandler(
     WebServiceExists webServiceExists,
     PersistIssuedWebServiceDeploymentToken persistIssuedToken)
-    : IMediatorHandler<CreateWebServiceDeploymentTokenRequest, CreateWebServiceDeploymentTokenResponse>
+    : IMediatorOutcomeHandler<
+        CreateWebServiceDeploymentTokenRequest,
+        CreateWebServiceDeploymentTokenOutcome>
 {
-    public async Task<Result<CreateWebServiceDeploymentTokenResponse>> HandleAsync(
+    public async Task<CreateWebServiceDeploymentTokenOutcome> HandleAsync(
         CreateWebServiceDeploymentTokenRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -38,7 +44,7 @@ public sealed class CreateWebServiceDeploymentTokenHandler(
             request.Id,
             cancellationToken);
         if (!exists)
-            return Failures.NotFound("Web service not found.", request.Id);
+            return new WebServiceNotFound(request.Id);
 
         var issuedToken = WebServiceDeploymentTokenFactory.Issue(
             request.TenantId,
@@ -52,9 +58,10 @@ public sealed class CreateWebServiceDeploymentTokenHandler(
             issuedToken.Token,
             cancellationToken);
 
-        return new CreateWebServiceDeploymentTokenResponse(
+        return new CreateWebServiceDeploymentTokenOutcome(
+            new CreateWebServiceDeploymentTokenResponse(
             issuedToken.Token.ToDto(),
-            issuedToken.RawToken);
+            issuedToken.RawToken));
     }
 }
 
@@ -74,13 +81,20 @@ public static class CreateWebServiceDeploymentTokenEndpoint
 {
     public static IEndpointRouteBuilder MapCreateWebServiceDeploymentTokenEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/{Id}/deployment-tokens", async (IMediator mediator,
+        app.MapPost("/{Id}/deployment-tokens", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] CreateWebServiceDeploymentTokenRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(response => Results.Created(
-                    $"/api/v1/web-services/{request.Id}/deployment-tokens/{response.Token.Id}", response));
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    CreateWebServiceDeploymentTokenResponse response => Results.Created(
+                        $"/api/v1/web-services/{request.Id}/deployment-tokens/{response.Token.Id}",
+                        response),
+                    WebServiceNotFound error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("CreateWebServiceDeploymentToken")
             .Produces<CreateWebServiceDeploymentTokenResponse>(StatusCodes.Status201Created);

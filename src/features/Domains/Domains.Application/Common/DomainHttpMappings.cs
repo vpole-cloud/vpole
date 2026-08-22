@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
 using Pole.Features.Domains.Application.Persistence;
+using Pole.Features.Domains.Contracts;
 
 namespace Pole.Features.Domains.Application.Common;
 
@@ -14,7 +15,9 @@ public static class DomainHttpMappings
             HttpProblemMapping.For<CreateManagedDomainZoneError>(
                 MapCreateManagedDomainZoneError),
             HttpProblemMapping.For<DeleteManagedDomainZoneError>(
-                MapDeleteManagedDomainZoneError)
+                MapDeleteManagedDomainZoneError),
+            HttpProblemMapping.For<CustomHostnameBindingError>(
+                MapCustomHostnameBindingError)
         ]);
 
     public static IServiceCollection AddDomainHttpMappings(
@@ -105,6 +108,76 @@ public static class DomainHttpMappings
             {
                 ["domainZoneId"] = notFound.ZoneId
             });
+
+    private static HttpProblem MapCustomHostnameBindingError(
+        CustomHostnameBindingError error) => error switch
+    {
+        CustomHostnameBindingZoneNotFound notFound => Problem(
+            HttpStatusCode.NotFound,
+            "Domain zone not found",
+            "domains.hostname.zone-not-found",
+            new Dictionary<string, object>
+            {
+                ["domainZoneId"] = notFound.TenantDomainZoneId
+            }),
+        CustomHostnameBindingTargetMismatch mismatch => Problem(
+            HttpStatusCode.Conflict,
+            "Domain zone belongs to another deployment target",
+            "domains.hostname.zone-target-mismatch",
+            new Dictionary<string, object>
+            {
+                ["domainZoneId"] = mismatch.TenantDomainZoneId,
+                ["deploymentTargetId"] = mismatch.DeploymentTargetId
+            }),
+        CustomHostnameBindingConflict conflict => Problem(
+            HttpStatusCode.Conflict,
+            "Hostname is already bound",
+            "domains.hostname.already-bound",
+            new Dictionary<string, object>
+            {
+                ["hostname"] = conflict.Hostname
+            }),
+        CustomHostnameBindingNotFound notFound => Problem(
+            HttpStatusCode.NotFound,
+            "Hostname binding not found",
+            "domains.hostname.not-found",
+            new Dictionary<string, object>
+            {
+                ["bindingId"] = notFound.BindingId
+            }),
+        GeneratedHostnameBindingDeletionRejected rejected => Problem(
+            HttpStatusCode.Conflict,
+            "Generated hostname binding cannot be deleted",
+            "domains.hostname.delete.generated",
+            new Dictionary<string, object>
+            {
+                ["bindingId"] = rejected.BindingId
+            }),
+        CustomHostnameBindingZoneUnavailable unavailable => Problem(
+            HttpStatusCode.Conflict,
+            "Hostname binding domain zone is unavailable",
+            "domains.hostname.zone-unavailable",
+            new Dictionary<string, object>
+            {
+                ["domainZoneId"] = unavailable.TenantDomainZoneId
+            }),
+        CustomHostnameBindingZoneChanged changed => Problem(
+            HttpStatusCode.Conflict,
+            "Domain zone changed during hostname update",
+            "domains.hostname.zone-changed",
+            new Dictionary<string, object>
+            {
+                ["domainZoneIds"] = changed.TenantDomainZoneIds
+            }),
+        CustomHostnameBindingDeletionConflict conflict => Problem(
+            HttpStatusCode.Conflict,
+            "Hostname binding changed during deletion",
+            "domains.hostname.delete.conflict",
+            new Dictionary<string, object>
+            {
+                ["bindingId"] = conflict.BindingId
+            })
+    };
 
     private static HttpProblem Problem(
         HttpStatusCode statusCode,

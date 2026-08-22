@@ -19,10 +19,17 @@ public static class GetWebServiceById
     
     public static IEndpointRouteBuilder MapGetWebServiceByIdEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet(Route, async (IMediator mediator, [AsParameters] GetWebServiceByIdRequest request) =>
+        app.MapGet(Route, async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
+                [AsParameters] GetWebServiceByIdRequest request) =>
             {
                 var result = await mediator.Send(request);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    WebServiceDto value => Results.Ok(value),
+                    WebServiceNotFound error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("GetWebServiceById")
             .WithDescription("Gets a web service by its ID.")
@@ -32,12 +39,16 @@ public static class GetWebServiceById
     }
 }
 
+public union GetWebServiceByIdOutcome(
+    WebServiceDto,
+    WebServiceNotFound);
+
 public sealed class GetWebServiceByIdHandler(
     LoadWebServiceById loadWebServiceById,
     LoadResourceDeploymentSet loadResourceDeploymentSet)
-    : IMediatorHandler<GetWebServiceByIdRequest, WebServiceDto>
+    : IMediatorOutcomeHandler<GetWebServiceByIdRequest, GetWebServiceByIdOutcome>
 {
-    public async Task<Result<WebServiceDto>> HandleAsync(
+    public async Task<GetWebServiceByIdOutcome> HandleAsync(
         GetWebServiceByIdRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -47,7 +58,7 @@ public sealed class GetWebServiceByIdHandler(
             cancellationToken);
 
         if (webService is null)
-            return Failures.NotFound("Web service not found.", request.Id);
+            return new WebServiceNotFound(request.Id);
 
         var deployments = await loadResourceDeploymentSet(
             webService.TenantId,
@@ -61,4 +72,4 @@ public sealed class GetWebServiceByIdHandler(
 public record GetWebServiceByIdRequest(
     [FromRoute] string Id,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
-) : IMediatorRequest<WebServiceDto>, ITenantReadOperation;
+) : IMediatorRequest<GetWebServiceByIdOutcome>, ITenantReadOperation;

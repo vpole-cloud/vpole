@@ -21,9 +21,63 @@ public sealed record SourceBuildDeploymentRequest(
 
 public sealed record SourceBuildDeploymentResult(string ReleaseId, long Revision);
 
-public interface IWebServiceSourceBuildDeploymentService
-{
-    Task<Result<SourceBuildDeploymentResult>> DeployAsync(
+public sealed record SourceBuildWebServiceNotFound(string WebServiceId);
+
+public sealed record SourceBuildWebServiceDeleting(string WebServiceId);
+
+public sealed record SourceBuildWebServiceHasNoActiveDeployments(string WebServiceId);
+
+public sealed record SourceBuildResourceDeploymentNotFound(
+    string? ResourceDeploymentId);
+
+public sealed record SourceBuildResourceDeploymentChanged(
+    string? ResourceDeploymentId);
+
+public sealed record SourceBuildResourceDeploymentCardinalityConflict;
+
+public sealed record SourceBuildResourceDeploymentPendingDeletion(
+    string? ResourceDeploymentId);
+
+public sealed record SourceBuildResourceDeploymentPlacementUnavailable(
+    string? ResourceDeploymentId);
+
+public sealed record SourceBuildResourceDeploymentReplacementTargetMismatch(
+    string? ResourceDeploymentId);
+
+public sealed record SourceBuildResourceDeploymentIngressConfigurationChanged(
+    string ResourceDeploymentId);
+
+public sealed record SourceBuildResourceDeploymentRetryUnavailable(
+    string ResourceDeploymentId);
+
+public sealed record SourceBuildResourceDeploymentComputeConfigurationChanged;
+
+public union SourceBuildResourceDeploymentRejection(
+    SourceBuildResourceDeploymentNotFound,
+    SourceBuildResourceDeploymentChanged,
+    SourceBuildResourceDeploymentCardinalityConflict,
+    SourceBuildResourceDeploymentPendingDeletion,
+    SourceBuildResourceDeploymentPlacementUnavailable,
+    SourceBuildResourceDeploymentReplacementTargetMismatch,
+    SourceBuildResourceDeploymentIngressConfigurationChanged,
+    SourceBuildResourceDeploymentRetryUnavailable,
+    SourceBuildResourceDeploymentComputeConfigurationChanged);
+
+public sealed record SourceBuildWebServiceDeploymentRejected(
+    string WebServiceId,
+    SourceBuildResourceDeploymentRejection Reason);
+
+public sealed record SourceBuildWebServiceUpdateConflict(string WebServiceId);
+
+public union SourceBuildWebServiceDeploymentError(
+    SourceBuildWebServiceNotFound,
+    SourceBuildWebServiceDeleting,
+    SourceBuildWebServiceHasNoActiveDeployments,
+    SourceBuildWebServiceDeploymentRejected,
+    SourceBuildWebServiceUpdateConflict);
+
+public delegate Task<
+    Result<SourceBuildDeploymentResult, SourceBuildWebServiceDeploymentError>>
+    DeploySourceBuildWebService(
         SourceBuildDeploymentRequest request,
         CancellationToken cancellationToken = default);
-}

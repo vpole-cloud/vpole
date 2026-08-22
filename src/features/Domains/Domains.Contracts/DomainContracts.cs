@@ -76,8 +76,34 @@ public sealed record DeleteCustomHostnameBindingRequest(
     string ResourceDeploymentId,
     string BindingId);
 
-public sealed record InvalidGeneratedDomainZoneRequest(
-    IReadOnlyDictionary<string, string[]> Errors);
+public sealed record CustomHostnameBindingZoneNotFound(string TenantDomainZoneId);
+
+public sealed record CustomHostnameBindingTargetMismatch(
+    string TenantDomainZoneId,
+    string DeploymentTargetId);
+
+public sealed record CustomHostnameBindingConflict(string Hostname);
+
+public sealed record CustomHostnameBindingNotFound(string BindingId);
+
+public sealed record GeneratedHostnameBindingDeletionRejected(string BindingId);
+
+public sealed record CustomHostnameBindingZoneUnavailable(string TenantDomainZoneId);
+
+public sealed record CustomHostnameBindingZoneChanged(
+    IReadOnlyList<string> TenantDomainZoneIds);
+
+public sealed record CustomHostnameBindingDeletionConflict(string BindingId);
+
+public union CustomHostnameBindingError(
+    CustomHostnameBindingZoneNotFound,
+    CustomHostnameBindingTargetMismatch,
+    CustomHostnameBindingConflict,
+    CustomHostnameBindingNotFound,
+    GeneratedHostnameBindingDeletionRejected,
+    CustomHostnameBindingZoneUnavailable,
+    CustomHostnameBindingZoneChanged,
+    CustomHostnameBindingDeletionConflict);
 
 public sealed record GeneratedDomainZoneTenantUnavailable(string TenantId);
 
@@ -90,14 +116,10 @@ public sealed record GeneratedDomainZoneConflict(
     IReadOnlyList<string> DeploymentTargetIds);
 
 public union GeneratedDomainZoneError(
-    InvalidGeneratedDomainZoneRequest,
     GeneratedDomainZoneTenantUnavailable,
     GeneratedDomainZoneTargetChanged,
     GeneratedDomainZoneMismatch,
     GeneratedDomainZoneConflict);
-
-public sealed record InvalidGeneratedHostnameBindingRequest(
-    IReadOnlyDictionary<string, string[]> Errors);
 
 public sealed record GeneratedHostnameBindingZoneNotFound(string TenantDomainZoneId);
 
@@ -112,16 +134,10 @@ public sealed record GeneratedHostnameBindingConflict(
     IReadOnlyList<string> Hostnames);
 
 public union GeneratedHostnameBindingError(
-    InvalidGeneratedHostnameBindingRequest,
     GeneratedHostnameBindingZoneNotFound,
     GeneratedHostnameBindingTargetMismatch,
     GeneratedHostnameBindingZoneChanged,
     GeneratedHostnameBindingConflict);
-
-public delegate Task<Result<TenantDomainZoneSnapshot>> GetOrCreateGeneratedDomainZone(
-    GetOrCreateGeneratedZoneRequest request,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
 
 public delegate Task<Result<TenantDomainZoneSnapshot, GeneratedDomainZoneError>>
     GetOrCreateGeneratedDomainZoneOutcome(
@@ -129,8 +145,9 @@ public delegate Task<Result<TenantDomainZoneSnapshot, GeneratedDomainZoneError>>
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<IReadOnlyList<TenantDomainZoneSnapshot>>>
-    GetOrCreateGeneratedDomainZones(
+public delegate Task<Result<
+    IReadOnlyList<TenantDomainZoneSnapshot>,
+    GeneratedDomainZoneError>> GetOrCreateGeneratedDomainZonesOutcome(
         IReadOnlyList<GetOrCreateGeneratedZoneRequest> requests,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
@@ -152,32 +169,30 @@ public delegate Task<IReadOnlyList<HostnameBindingSnapshot>>
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<HostnameBindingSnapshot>> CreateGeneratedHostnameBinding(
-    CreateGeneratedHostnameBindingRequest request,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
-
 public delegate Task<Result<HostnameBindingSnapshot, GeneratedHostnameBindingError>>
     CreateGeneratedHostnameBindingOutcome(
         CreateGeneratedHostnameBindingRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<IReadOnlyList<HostnameBindingSnapshot>>>
-    CreateGeneratedHostnameBindings(
+public delegate Task<Result<
+    IReadOnlyList<HostnameBindingSnapshot>,
+    GeneratedHostnameBindingError>> CreateGeneratedHostnameBindingsOutcome(
         IReadOnlyList<CreateGeneratedHostnameBindingRequest> requests,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<HostnameBindingSnapshot>> CreateCustomHostnameBinding(
-    CreateCustomHostnameBindingRequest request,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
+public delegate Task<Result<HostnameBindingSnapshot, CustomHostnameBindingError>>
+    CreateCustomHostnameBindingOutcome(
+        CreateCustomHostnameBindingRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);
 
-public delegate Task<Result> DeleteCustomHostnameBinding(
-    DeleteCustomHostnameBindingRequest request,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
+public delegate Task<Result<Unit, CustomHostnameBindingError>>
+    DeleteCustomHostnameBindingOutcome(
+        DeleteCustomHostnameBindingRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);
 
 public delegate Task<Result> DeleteHostnameBindingsForDeployment(
     string tenantId,

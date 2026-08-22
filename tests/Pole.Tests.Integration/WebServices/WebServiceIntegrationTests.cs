@@ -8,6 +8,7 @@ using Pole.Features.Events.Abstractions;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
@@ -151,7 +152,9 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         var deployment = created.Deployments.Single();
         var result = await Mediator.Send(new DeleteWebServiceDeploymentRequest(
             created.WebServiceId, deployment.DeploymentId, TestData.TenantId));
-        Assert.IsType<Pole.ResultType.ConflictFailure>(result.AssertFailure());
+        var error = result.AssertFailure();
+        var state = Assert.IsType<DeleteWebServiceDeploymentStateError>(error.Value);
+        Assert.IsType<WebServiceLastDeploymentCannotBeRemoved>(state.Value);
     }
 
     [Fact]
@@ -282,7 +285,9 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
                 created.Deployments[1].DeploymentId,
                 TestData.TenantId));
 
-        Assert.IsType<ConflictFailure>(secondRemoval.AssertFailure());
+        var error = secondRemoval.AssertFailure();
+        var state = Assert.IsType<DeleteWebServiceDeploymentStateError>(error.Value);
+        Assert.IsType<WebServiceLastDeploymentCannotBeRemoved>(state.Value);
         var retained = await DbContext.ResourceDeployments
             .Find(deployment =>
                 deployment.Id == created.Deployments[1].DeploymentId)
@@ -470,13 +475,15 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             created.WebServiceId,
             new RollbackWebServiceRequestBody(7),
             TestData.TenantId));
-        Assert.IsType<NotFoundFailure>(rollback.AssertFailure());
+        var rollbackError = rollback.AssertFailure();
+        var rollbackState = Assert.IsType<RollbackWebServiceStateError>(rollbackError.Value);
+        Assert.IsType<WebServiceReleaseNotFound>(rollbackState.Value);
         var history = await Mediator.Send(new GetWebServiceReleasesRequest
         {
             Id = created.WebServiceId,
             TenantId = otherTenantId
         });
-        Assert.IsType<NotFoundFailure>(history.AssertFailure());
+        Assert.IsType<WebServiceNotFound>(history.AssertFailure());
     }
 
     [Fact]
@@ -484,8 +491,10 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var missingId = ObjectId.GenerateNewId().ToString();
         var result = await Mediator.Send(TestData.CreateWebServiceRequest(missingId));
-        var failure = Assert.IsType<NotFoundFailure>(result.AssertFailure());
-        Assert.Equal(missingId, failure.Id);
+        var error = result.AssertFailure();
+        var ownership = Assert.IsType<ResourceGroupOwnershipError>(error.Value);
+        var notFound = Assert.IsType<ResourceGroupOwnershipNotFound>(ownership.Value);
+        Assert.Equal(missingId, notFound.ResourceGroupId);
     }
 
     [Fact]

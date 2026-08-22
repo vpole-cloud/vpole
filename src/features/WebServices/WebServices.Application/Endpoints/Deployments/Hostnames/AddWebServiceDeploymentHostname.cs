@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
@@ -29,10 +28,16 @@ public static class AddWebServiceDeploymentHostname
                     "/{Id}/deployments/{DeploymentId}/hostnames",
                     async (
                         IMediator mediator,
+                        IHttpProblemMapper httpProblems,
                         [AsParameters] AddWebServiceDeploymentHostnameRequest request,
                         CancellationToken cancellationToken) =>
                         (await mediator.Send(request, cancellationToken))
-                        .ToHttpResult(value => Results.Accepted(value: value)))
+                        .ToHttpResult(outcome => outcome switch
+                        {
+                            PlacementSummaryDto value => Results.Accepted(value: value),
+                            WebServiceDeploymentHostnameError error =>
+                                httpProblems.Map(error).ToHttpResult()
+                        }))
                 .WithName("AddWebServiceDeploymentHostname")
                 .Produces<PlacementSummaryDto>(StatusCodes.Status202Accepted);
             return app;
@@ -45,7 +50,7 @@ public sealed record AddWebServiceDeploymentHostnameRequest(
     [FromRoute] string DeploymentId,
     [FromBody] AddWebServiceDeploymentHostnameBody Body,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<PlacementSummaryDto>, ITenantWriteOperation;
+    : IMediatorRequest<WebServiceDeploymentHostnameOutcome>, ITenantWriteOperation;
 
 public sealed record AddWebServiceDeploymentHostnameBody(
     string TenantDomainZoneId,
@@ -54,18 +59,20 @@ public sealed record AddWebServiceDeploymentHostnameBody(
 public sealed class AddWebServiceDeploymentHostnameHandler(
     LoadWebServiceById loadWebService,
     LoadExactResourceDeployment loadExactResourceDeployment,
-    CreateCustomHostnameBinding createCustomHostnameBinding,
+    CreateCustomHostnameBindingOutcome createCustomHostnameBinding,
     LoadHostnameBindingsForDeploymentInTransaction
         loadHostnameBindingsForDeploymentInTransaction,
-    RequestExactResourceDeploymentApplyLegacy requestExactResourceDeploymentApply,
-    AdvanceResourceDeploymentRevisionLegacy advanceResourceDeploymentRevision,
-    PersistUpdatedWebService persistWebService,
+    RequestExactResourceDeploymentApply requestExactResourceDeploymentApply,
+    AdvanceResourceDeploymentRevision advanceResourceDeploymentRevision,
+    PersistUpdatedWebServiceOutcome persistWebService,
     PersistCurrentWebServiceRelease persistRelease,
-    RunMongoTransaction<PlacementSummaryDto> runTransaction,
+    RunMongoOutcomeTransaction<WebServiceDeploymentHostnameOutcome> runTransaction,
     TimeProvider timeProvider)
-    : IMediatorHandler<AddWebServiceDeploymentHostnameRequest, PlacementSummaryDto>
+    : IMediatorOutcomeHandler<
+        AddWebServiceDeploymentHostnameRequest,
+        WebServiceDeploymentHostnameOutcome>
 {
-    public async Task<Result<PlacementSummaryDto>> HandleAsync(
+    public async Task<WebServiceDeploymentHostnameOutcome> HandleAsync(
         AddWebServiceDeploymentHostnameRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -74,7 +81,10 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
             request.Id,
             cancellationToken);
         if (webService is null)
-            return Failures.NotFound("Web service not found.", request.Id);
+        {
+            return Error(new WebServiceDeploymentMutationStateError(
+                new WebServiceNotFound(request.Id)));
+        }
 
         var deployment = await loadExactResourceDeployment(
             request.TenantId,
@@ -84,43 +94,58 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
             cancellationToken);
         if (deployment is null)
         {
-            return Failures.NotFound(
-                "Resource deployment not found.",
-                request.DeploymentId);
+            return Error(new WebServiceDeploymentMutationStateError(
+                new WebServiceResourceDeploymentNotFound(
+                    request.Id,
+                    request.DeploymentId)));
         }
 
         return await runTransaction(
-            async (session, ct) =>
-            {
-                var created = await createCustomHostnameBinding(
-                    new CreateCustomHostnameBindingRequest(
-                        request.TenantId,
-                        request.Body.TenantDomainZoneId,
-                        deployment.DeploymentTargetId,
-                        WebServiceResourceDeployment.ResourceType,
-                        request.Id,
-                        request.DeploymentId,
-                        request.Body.RelativeName),
-                    session,
-                    ct);
-                if (!created.TryGetValue(out _, out var failure))
-                    return failure;
-
-                return await ApplyBindingSnapshotAsync(
-                    request,
-                    webService,
-                    deployment,
-                    session,
-                    ct);
-            },
+            (transaction, ct) => CreateAndApplySnapshotAsync(
+                request,
+                webService,
+                deployment,
+                transaction,
+                ct),
             cancellationToken);
     }
 
-    private async Task<Result<PlacementSummaryDto>> ApplyBindingSnapshotAsync(
+    private async Task<MongoTransactionDecision<WebServiceDeploymentHostnameOutcome>>
+        CreateAndApplySnapshotAsync(
+            AddWebServiceDeploymentHostnameRequest request,
+            WebService webService,
+            PlacementSummaryDto deployment,
+            MongoTransactionContext<WebServiceDeploymentHostnameOutcome> transaction,
+            CancellationToken cancellationToken)
+    {
+        var created = await createCustomHostnameBinding(
+            new CreateCustomHostnameBindingRequest(
+                request.TenantId,
+                request.Body.TenantDomainZoneId,
+                deployment.DeploymentTargetId,
+                WebServiceResourceDeployment.ResourceType,
+                request.Id,
+                request.DeploymentId,
+                request.Body.RelativeName),
+            transaction.Session,
+            cancellationToken);
+        if (!created.TryGetValue(out _, out var createdError))
+            return Abort(transaction, new WebServiceDeploymentHostnameError(createdError));
+
+        return await ApplyBindingSnapshotAsync(
+            request,
+            webService,
+            deployment,
+            transaction,
+            cancellationToken);
+    }
+
+    private async Task<MongoTransactionDecision<WebServiceDeploymentHostnameOutcome>>
+        ApplyBindingSnapshotAsync(
         AddWebServiceDeploymentHostnameRequest request,
         WebService webService,
         PlacementSummaryDto current,
-        IClientSessionHandle session,
+        MongoTransactionContext<WebServiceDeploymentHostnameOutcome> transaction,
         CancellationToken cancellationToken)
     {
         var snapshots = await loadHostnameBindingsForDeploymentInTransaction(
@@ -128,7 +153,7 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
             WebServiceResourceDeployment.ResourceType,
             request.Id,
             request.DeploymentId,
-            session,
+            transaction.Session,
             cancellationToken);
         var updated = webService.AdvancePlacementDesiredState();
         var applied = await requestExactResourceDeploymentApply(
@@ -140,10 +165,10 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
                 replacementIngress: WebServiceDeploymentWorkflow.WithHostnames(
                     current,
                     snapshots.Select(binding => binding.Hostname))),
-            session,
+            transaction.Session,
             cancellationToken);
         if (!applied.TryGetValue(out var changed, out var failure))
-            return failure;
+            return Abort(transaction, new WebServiceDeploymentHostnameError(failure));
 
         var advanced = await advanceResourceDeploymentRevision(
             new ResourceDeploymentResourceRevisionRequest(
@@ -151,20 +176,20 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
                 WebServiceResourceDeployment.ResourceType,
                 request.Id,
                 updated.ActiveRevision),
-            session,
+            transaction.Session,
             cancellationToken);
-        if (!advanced.TryGetValue(out var deployments, out failure))
-            return failure;
+        if (!advanced.TryGetValue(out var deployments, out var revisionError))
+            return Abort(transaction, new WebServiceDeploymentHostnameError(revisionError));
 
         var persisted = await persistWebService(
-            session,
+            transaction.Session,
             webService,
             updated,
             updated.ToUpdatedEvent(
                 WebServiceDeploymentWorkflow.ToEventDeployments(deployments)),
             cancellationToken);
-        if (persisted is not ISuccess)
-            return (Failure)persisted;
+        if (!persisted.TryGetValue(out _, out var persistenceError))
+            return Abort(transaction, new WebServiceDeploymentHostnameError(persistenceError));
 
         var release = WebServiceReleaseFactory.CreatePending(
             updated.TenantId,
@@ -180,9 +205,17 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
             new WebServiceReleaseFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 timeProvider.GetUtcNow().UtcDateTime));
-        await persistRelease(session, release, cancellationToken);
-        return changed;
+        await persistRelease(transaction.Session, release, cancellationToken);
+        return transaction.Commit(new WebServiceDeploymentHostnameOutcome(changed));
     }
+
+    private static WebServiceDeploymentHostnameOutcome Error(
+        WebServiceDeploymentHostnameError error) => new(error);
+
+    private static MongoTransactionDecision<WebServiceDeploymentHostnameOutcome> Abort(
+        MongoTransactionContext<WebServiceDeploymentHostnameOutcome> transaction,
+        WebServiceDeploymentHostnameError error) =>
+        transaction.Abort(Error(error));
 }
 
 public sealed class AddWebServiceDeploymentHostnameValidator

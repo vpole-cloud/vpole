@@ -34,7 +34,7 @@ internal sealed class MongoCompleteWebServiceDeployment(
     StoreOutboxWrites storeOutboxWrites,
     DeleteHostnameBindingsForDeployment deleteHostnameBindingsForDeployment,
     GetExactResourceDeploymentFinalizationReadiness getExactResourceDeploymentFinalizationReadiness,
-    PurgeExactDeletedResourceDeploymentLegacy purgeExactDeletedResourceDeployment)
+    PurgeExactDeletedResourceDeployment purgeExactDeletedResourceDeployment)
 {
     public Task<Result> InvokeAsync(
         string tenantId,
@@ -75,9 +75,7 @@ internal sealed class MongoCompleteWebServiceDeployment(
                 return Result.Success();
             var updated = await releases.ReplaceOneAsync(
                 session,
-                Builders<WebServiceRelease>.Filter.And(
-                    Builders<WebServiceRelease>.Filter.Eq(item => item.Id, release.Id),
-                    Builders<WebServiceRelease>.Filter.Eq(item => item.Outcome, release.Outcome)),
+                WebServiceReleaseFilters.CompletionCas(release.Id, release.Outcome),
                 replacement,
                 cancellationToken: ct);
             if (updated.ModifiedCount != 1)
@@ -99,8 +97,10 @@ internal sealed class MongoCompleteWebServiceDeployment(
                     var purge = await purgeExactDeletedResourceDeployment(
                         tenantId, WebServiceResourceDeployment.ResourceType, webServiceId,
                         completion.ResourceDeploymentId, session, ct);
-                    if (purge is not ISuccess)
-                        return (Failure)purge;
+                    if (purge is Err<ResourceDeploymentFinalizationConflict> conflict)
+                        return Failures.Conflict(
+                            "A resource deployment changed while web service deployment completion was being finalized.",
+                            conflict.Value.ResourceDeploymentId ?? conflict.Value.ResourceId);
                 }
             }
 

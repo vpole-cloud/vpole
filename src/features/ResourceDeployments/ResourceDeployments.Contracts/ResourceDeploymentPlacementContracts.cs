@@ -102,12 +102,3 @@ public delegate Task<Result<PlacementSummaryDto>> CreateResourceDeploymentLegacy
     CreateResourceDeploymentRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
-
-/// <summary>
-/// Temporary shared-result adapter for consumers not yet migrated in wave 1.
-/// </summary>
-public delegate Task<Result<IReadOnlyList<PlacementSummaryDto>>>
-    CreateResourceDeploymentSetLegacy(
-    CreateResourceDeploymentSetRequest request,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);

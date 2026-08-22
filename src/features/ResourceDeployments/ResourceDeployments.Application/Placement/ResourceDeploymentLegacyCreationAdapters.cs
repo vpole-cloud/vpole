@@ -17,12 +17,6 @@ internal sealed class ResourceDeploymentLegacyCreationAdapters(
         CancellationToken cancellationToken = default) =>
         ToLegacy(await writer.InvokeAsync(request, session, cancellationToken));
 
-    public async Task<Result<IReadOnlyList<PlacementSummaryDto>>> CreateSetAsync(
-        CreateResourceDeploymentSetRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default) =>
-        ToLegacy(await writer.InvokeSetAsync(request, session, cancellationToken));
-
     private static Result<T> ToLegacy<T>(
         Result<T, CreateResourceDeploymentError> result)
         where T : notnull => result switch

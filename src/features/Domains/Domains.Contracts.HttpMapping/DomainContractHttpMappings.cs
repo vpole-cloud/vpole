@@ -15,11 +15,6 @@ public static class DomainContractHttpMappings
     private static HttpProblem MapGeneratedZoneError(
         GeneratedDomainZoneError error) => error switch
         {
-            InvalidGeneratedDomainZoneRequest invalid => Problem(
-                HttpStatusCode.BadRequest,
-                "domains.generated-zone.invalid",
-                "Generated domain zone request is invalid",
-                ("errors", invalid.Errors)),
             GeneratedDomainZoneTenantUnavailable unavailable => Problem(
                 HttpStatusCode.NotFound,
                 "domains.generated-zone.tenant-unavailable",
@@ -45,11 +40,6 @@ public static class DomainContractHttpMappings
     private static HttpProblem MapGeneratedBindingError(
         GeneratedHostnameBindingError error) => error switch
         {
-            InvalidGeneratedHostnameBindingRequest invalid => Problem(
-                HttpStatusCode.BadRequest,
-                "domains.generated-binding.invalid",
-                "Generated hostname binding request is invalid",
-                ("errors", invalid.Errors)),
             GeneratedHostnameBindingZoneNotFound notFound => Problem(
                 HttpStatusCode.NotFound,
                 "domains.generated-binding.zone-not-found",

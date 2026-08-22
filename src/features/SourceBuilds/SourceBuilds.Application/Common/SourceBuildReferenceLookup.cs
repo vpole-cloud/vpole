@@ -8,6 +8,23 @@ namespace Pole.Features.SourceBuilds.Application.Common;
 public sealed class SourceBuildReferenceLookup(ISourceBuildDbContext dbContext)
     : ISourceBuildReferenceLookup
 {
+    public async Task<Result<Unit, SourceBuildWebServiceConfigurationExists>>
+        EnsureNoWebServiceConfigurationAsync(
+            string tenantId,
+            string webServiceId,
+            CancellationToken cancellationToken = default)
+    {
+        var hasConfiguration = await dbContext.SourceBuildConfigurations
+            .Find(item =>
+                item.TenantId == tenantId &&
+                item.WebServiceId == webServiceId)
+            .AnyAsync(cancellationToken);
+        return hasConfiguration
+            ? new Err<SourceBuildWebServiceConfigurationExists>(
+                new SourceBuildWebServiceConfigurationExists(webServiceId))
+            : new Ok<Unit>(Unit.Value);
+    }
+
     public async Task<Result> EnsureSourceRepositoryCanBeDeletedAsync(
         string tenantId,
         string sourceRepositoryId,
@@ -23,18 +40,4 @@ public sealed class SourceBuildReferenceLookup(ISourceBuildDbContext dbContext)
             : Result.Success();
     }
 
-    public async Task<Result> EnsureWebServiceCanBeDeletedAsync(
-        string tenantId,
-        string webServiceId,
-        CancellationToken cancellationToken = default)
-    {
-        var hasConfiguration = await dbContext.SourceBuildConfigurations
-            .Find(item =>
-                item.TenantId == tenantId &&
-                item.WebServiceId == webServiceId)
-            .AnyAsync(cancellationToken);
-        return hasConfiguration
-            ? Failures.Conflict("Delete the source build configuration before deleting this web service.")
-            : Result.Success();
-    }
 }

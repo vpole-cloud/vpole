@@ -62,6 +62,10 @@ public static class DeploymentTargetsFeatureRegistration
             provider => provider
                 .GetRequiredService<DeploymentTargetLookup>()
                 .AdmitForNewWorkloadAsync);
+        services.TryAddScoped<ListEligiblePublicIngressDeploymentTargetsForNewWorkload>(
+            provider => provider
+                .GetRequiredService<DeploymentTargetLookup>()
+                .ListEligiblePublicIngressForNewWorkloadAsync);
         services.TryAddScoped<
             AdmitDeploymentTargetPublicIngressForDomainReservation>(
             provider => provider

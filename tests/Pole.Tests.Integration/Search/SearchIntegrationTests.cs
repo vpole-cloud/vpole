@@ -44,7 +44,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         await IndexResourceGroupCreatedAsync(resourceGroup.Id);
 
         var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id));
-        Assert.True(createResult.TryGetValue(out var created, out _));
+        var created = createResult.AssertSuccess();
 
         await IndexWebServiceCreatedAsync(created.WebServiceId);
 
@@ -72,7 +72,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         await IndexResourceGroupCreatedAsync(resourceGroup.Id);
 
         var webCreate = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, "alpha-web"));
-        Assert.True(webCreate.TryGetValue(out var webResponse, out _));
+        var webResponse = webCreate.AssertSuccess();
         await IndexWebServiceCreatedAsync(webResponse.WebServiceId);
 
         var redisCreate = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id, "alpha-redis"));
@@ -136,12 +136,12 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("alpha-shared"));
 
         var webCreate = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, "service-123"));
-        Assert.True(webCreate.TryGetValue(out var created, out _));
+        var created = webCreate.AssertSuccess();
         await IndexWebServiceCreatedAsync(created.WebServiceId);
 
         var secondResourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("beta-shared"));
         var otherCreate = await Mediator.Send(TestData.CreateWebServiceRequest(secondResourceGroup.Id, created.WebServiceId[..8]));
-        Assert.True(otherCreate.TryGetValue(out var otherCreated, out _));
+        var otherCreated = otherCreate.AssertSuccess();
         await IndexWebServiceCreatedAsync(otherCreated.WebServiceId);
 
         var result = await Mediator.Send(new GetSearchRequest
@@ -206,7 +206,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("apps"));
         var createResult = await Mediator.Send(TestData.CreateWebServiceRequest(resourceGroup.Id, "portal"));
-        Assert.True(createResult.TryGetValue(out var created, out _));
+        var created = createResult.AssertSuccess();
 
         await IndexWebServiceCreatedAsync(created.WebServiceId);
 

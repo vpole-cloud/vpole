@@ -23,36 +23,30 @@ public static class DomainPersistenceRegistration
         services.AddScoped<DeleteManagedDomainZone>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
                 .DeleteManagedReservationAsync);
-        services.AddScoped<GetOrCreateGeneratedDomainZone>(provider =>
-            provider.GetRequiredService<MongoDomainPersistence>()
-                .GetOrCreateGeneratedAsync);
         services.AddScoped<GetOrCreateGeneratedDomainZoneOutcome>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
                 .GetOrCreateGeneratedOutcomeAsync);
-        services.AddScoped<GetOrCreateGeneratedDomainZones>(provider =>
+        services.AddScoped<GetOrCreateGeneratedDomainZonesOutcome>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
-                .GetOrCreateGeneratedSetAsync);
+                .GetOrCreateGeneratedSetOutcomeAsync);
         services.AddScoped<LoadHostnameBindingsForDeployment>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
                 .ListForDeploymentAsync);
         services.AddScoped<LoadHostnameBindingsForDeploymentInTransaction>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
                 .ListForDeploymentInTransactionAsync);
-        services.AddScoped<CreateGeneratedHostnameBinding>(provider =>
-            provider.GetRequiredService<MongoDomainPersistence>()
-                .CreateGeneratedAsync);
         services.AddScoped<CreateGeneratedHostnameBindingOutcome>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
                 .CreateGeneratedOutcomeAsync);
-        services.AddScoped<CreateGeneratedHostnameBindings>(provider =>
+        services.AddScoped<CreateGeneratedHostnameBindingsOutcome>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
-                .CreateGeneratedSetAsync);
-        services.AddScoped<CreateCustomHostnameBinding>(provider =>
+                .CreateGeneratedSetOutcomeAsync);
+        services.AddScoped<CreateCustomHostnameBindingOutcome>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
-                .CreateCustomAsync);
-        services.AddScoped<DeleteCustomHostnameBinding>(provider =>
+                .CreateCustomOutcomeAsync);
+        services.AddScoped<DeleteCustomHostnameBindingOutcome>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
-                .DeleteCustomAsync);
+                .DeleteCustomOutcomeAsync);
         services.AddScoped<DeleteHostnameBindingsForDeployment>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
                 .DeleteAllForDeploymentAsync);

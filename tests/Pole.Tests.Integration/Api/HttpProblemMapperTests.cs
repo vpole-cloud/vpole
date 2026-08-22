@@ -18,6 +18,8 @@ using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
+using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.Tenants;
@@ -45,6 +47,25 @@ public sealed class HttpProblemMapperTests
         Assert.Equal((int)HttpStatusCode.NotFound, problem.StatusCode);
         Assert.Equal("compute-profiles.not-found", problem.Code);
         Assert.Equal("compute-1", problem.Extensions["computeProfileId"]);
+    }
+
+    [Fact]
+    public void WebServiceOutcomeUnwrapsProviderOwnedResourceGroupError()
+    {
+        var mapper = new HttpProblemMapper(
+        [
+            .. WebServiceHttpMappings.All,
+            .. ResourceGroupHttpMappings.All
+        ]);
+        CreateWebServiceError error = new(
+            new ResourceGroupOwnershipError(
+                new ResourceGroupOwnershipDeleting("resource-group-1")));
+
+        var problem = mapper.Map(error);
+
+        Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
+        Assert.Equal("resource-groups.deleting", problem.Code);
+        Assert.Equal("resource-group-1", problem.Extensions["resourceGroupId"]);
     }
 
     [Fact]

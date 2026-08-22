@@ -16,7 +16,7 @@ public delegate Task<Result> FinalizeWebServiceDeletion(
 internal sealed class MongoFinalizeWebServiceDeletion(
     IMongoCollection<WebService> webServices,
     GetResourceDeploymentFinalizationReadiness getResourceDeploymentFinalizationReadiness,
-    PurgeDeletedResourceDeploymentsLegacy purgeDeletedResourceDeployments,
+    PurgeDeletedResourceDeployments purgeDeletedResourceDeployments,
     DeleteHostnameBindingsForResource deleteHostnameBindingsForResource,
     RunMongoTransaction runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites)
@@ -64,8 +64,10 @@ internal sealed class MongoFinalizeWebServiceDeletion(
                 webServiceId,
                 session,
                 ct);
-            if (purge is not ISuccess)
-                return (Failure)purge;
+            if (purge is Err<ResourceDeploymentFinalizationConflict> conflict)
+                return Failures.Conflict(
+                    "A resource deployment changed while web service deletion was being finalized.",
+                    conflict.Value.ResourceDeploymentId ?? conflict.Value.ResourceId);
             await storeOutboxWrites(
                 session,
                 [OutboxWrite.Create(webService.ToDeleteEvent())],

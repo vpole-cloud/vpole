@@ -47,22 +47,28 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
         };
         var transaction = new MongoRunTransaction(fixture.Client);
 
-        var created = (await transaction.InvokeAsync<IReadOnlyList<TenantDomainZoneSnapshot>>(
-            (session, cancellationToken) => capabilities.GetOrCreateGeneratedSetAsync(
+        var created = (await transaction.InvokeOutcomeAsync<Result<
+            IReadOnlyList<TenantDomainZoneSnapshot>, GeneratedDomainZoneError>>(
+            (transactionContext, cancellationToken) => CompleteAsync(
+                transactionContext,
+                capabilities.GetOrCreateGeneratedSetOutcomeAsync(
                 zoneRequests,
-                session,
-                cancellationToken))).AssertSuccess();
+                transactionContext.Session,
+                cancellationToken)))).AssertSuccess();
 
         Assert.Equal([secondTargetId, firstTargetId], created.Select(zone => zone.DeploymentTargetId));
         Assert.Equal(1, coordinator.FenceBatchCalls);
         Assert.Equal([secondTargetId, firstTargetId], coordinator.Fences.Select(item => item.DeploymentTargetId));
         Assert.Equal([secondTargetId, firstTargetId], coordinator.Registrations.Select(item => item.TargetId));
 
-        var reused = (await transaction.InvokeAsync<IReadOnlyList<TenantDomainZoneSnapshot>>(
-            (session, cancellationToken) => capabilities.GetOrCreateGeneratedSetAsync(
+        var reused = (await transaction.InvokeOutcomeAsync<Result<
+            IReadOnlyList<TenantDomainZoneSnapshot>, GeneratedDomainZoneError>>(
+            (transactionContext, cancellationToken) => CompleteAsync(
+                transactionContext,
+                capabilities.GetOrCreateGeneratedSetOutcomeAsync(
                 zoneRequests,
-                session,
-                cancellationToken))).AssertSuccess();
+                transactionContext.Session,
+                cancellationToken)))).AssertSuccess();
 
         Assert.Equal(created.Select(zone => zone.Id), reused.Select(zone => zone.Id));
         Assert.Equal(1, coordinator.FenceBatchCalls);
@@ -74,14 +80,17 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
             ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString()
         };
-        var bindings = (await transaction.InvokeAsync<IReadOnlyList<HostnameBindingSnapshot>>(
-            (session, cancellationToken) => capabilities.CreateGeneratedSetAsync(
+        var bindings = (await transaction.InvokeOutcomeAsync<Result<
+            IReadOnlyList<HostnameBindingSnapshot>, GeneratedHostnameBindingError>>(
+            (transactionContext, cancellationToken) => CompleteAsync(
+                transactionContext,
+                capabilities.CreateGeneratedSetOutcomeAsync(
                 [
                     CreateBindingRequest(created[1], deploymentIds[1], resourceId),
                     CreateBindingRequest(created[0], deploymentIds[0], resourceId)
                 ],
-                session,
-                cancellationToken))).AssertSuccess();
+                transactionContext.Session,
+                cancellationToken)))).AssertSuccess();
 
         Assert.Equal([deploymentIds[1], deploymentIds[0]], bindings.Select(binding => binding.ResourceDeploymentId));
         Assert.Equal(
@@ -118,13 +127,16 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
             ExpectedWorkloadConfigurationRevision: 1);
         var transaction = new MongoRunTransaction(fixture.Client);
 
-        var result = await transaction.InvokeAsync<IReadOnlyList<TenantDomainZoneSnapshot>>(
-            (session, cancellationToken) => capabilities.GetOrCreateGeneratedSetAsync(
-                [request, request],
-                session,
-                cancellationToken));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            transaction.InvokeOutcomeAsync<Result<
+                IReadOnlyList<TenantDomainZoneSnapshot>, GeneratedDomainZoneError>>(
+                (transactionContext, cancellationToken) => CompleteAsync(
+                    transactionContext,
+                    capabilities.GetOrCreateGeneratedSetOutcomeAsync(
+                    [request, request],
+                    transactionContext.Session,
+                    cancellationToken))));
 
-        Assert.IsType<ValidationFailure>(result.AssertFailure());
         Assert.Equal(0, coordinator.FenceBatchCalls);
         Assert.Empty(coordinator.Registrations);
         Assert.Equal(0, await fixture.Database
@@ -141,11 +153,14 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
         var otherTargetId = ObjectId.GenerateNewId().ToString();
         var capabilities = CreateCapabilities(tenantId, new RecordingTargetCoordinator());
         var transaction = new MongoRunTransaction(fixture.Client);
-        var zones = (await transaction.InvokeAsync<IReadOnlyList<TenantDomainZoneSnapshot>>(
-            (session, cancellationToken) => capabilities.GetOrCreateGeneratedSetAsync(
+        var zones = (await transaction.InvokeOutcomeAsync<Result<
+            IReadOnlyList<TenantDomainZoneSnapshot>, GeneratedDomainZoneError>>(
+            (transactionContext, cancellationToken) => CompleteAsync(
+                transactionContext,
+                capabilities.GetOrCreateGeneratedSetOutcomeAsync(
                 [new GetOrCreateGeneratedZoneRequest(tenantId, targetId, "example.com", 1)],
-                session,
-                cancellationToken))).AssertSuccess();
+                transactionContext.Session,
+                cancellationToken)))).AssertSuccess();
         var resourceId = ObjectId.GenerateNewId().ToString();
         var valid = CreateBindingRequest(
             zones[0],
@@ -157,13 +172,17 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
             DeploymentTargetId = otherTargetId
         };
 
-        var result = await transaction.InvokeAsync<IReadOnlyList<HostnameBindingSnapshot>>(
-            (session, cancellationToken) => capabilities.CreateGeneratedSetAsync(
+        var result = await transaction.InvokeOutcomeAsync<Result<
+            IReadOnlyList<HostnameBindingSnapshot>, GeneratedHostnameBindingError>>(
+            (transactionContext, cancellationToken) => CompleteAsync(
+                transactionContext,
+                capabilities.CreateGeneratedSetOutcomeAsync(
                 [valid, invalid],
-                session,
-                cancellationToken));
+                transactionContext.Session,
+                cancellationToken)));
 
-        Assert.IsType<ConflictFailure>(result.AssertFailure());
+        var error = result.AssertFailure();
+        Assert.IsType<GeneratedHostnameBindingTargetMismatch>(error.Value);
         Assert.Equal(0, await fixture.Database
             .GetCollection<HostnameBinding>("HostnameBindings")
             .CountDocumentsAsync(Builders<HostnameBinding>.Filter.Empty));
@@ -178,18 +197,24 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
         var coordinator = new RecordingTargetCoordinator();
         var capabilities = CreateCapabilities(tenantId, coordinator);
         var transaction = new MongoRunTransaction(fixture.Client);
-        var zone = Assert.Single((await transaction.InvokeAsync<IReadOnlyList<TenantDomainZoneSnapshot>>(
-            (session, cancellationToken) => capabilities.GetOrCreateGeneratedSetAsync(
+        var zone = Assert.Single((await transaction.InvokeOutcomeAsync<Result<
+            IReadOnlyList<TenantDomainZoneSnapshot>, GeneratedDomainZoneError>>(
+            (transactionContext, cancellationToken) => CompleteAsync(
+                transactionContext,
+                capabilities.GetOrCreateGeneratedSetOutcomeAsync(
                 [new GetOrCreateGeneratedZoneRequest(tenantId, targetId, "example.com", 1)],
-                session,
-                cancellationToken))).AssertSuccess());
+                transactionContext.Session,
+                cancellationToken)))).AssertSuccess());
         var resourceId = ObjectId.GenerateNewId().ToString();
         var deploymentId = ObjectId.GenerateNewId().ToString();
-        (await transaction.InvokeAsync<IReadOnlyList<HostnameBindingSnapshot>>(
-            (session, cancellationToken) => capabilities.CreateGeneratedSetAsync(
+        (await transaction.InvokeOutcomeAsync<Result<
+            IReadOnlyList<HostnameBindingSnapshot>, GeneratedHostnameBindingError>>(
+            (transactionContext, cancellationToken) => CompleteAsync(
+                transactionContext,
+                capabilities.CreateGeneratedSetOutcomeAsync(
                 [CreateBindingRequest(zone, deploymentId, resourceId)],
-                session,
-                cancellationToken))).AssertSuccess();
+                transactionContext.Session,
+                cancellationToken)))).AssertSuccess();
 
         (await transaction.InvokeAsync(
             (session, cancellationToken) => capabilities.DeleteAllForDeploymentAsync(
@@ -220,25 +245,34 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
         var coordinator = new RecordingTargetCoordinator();
         var capabilities = CreateCapabilities(tenantId, coordinator);
         var transaction = new MongoRunTransaction(fixture.Client);
-        var zone = Assert.Single((await transaction.InvokeAsync<IReadOnlyList<TenantDomainZoneSnapshot>>(
-            (session, cancellationToken) => capabilities.GetOrCreateGeneratedSetAsync(
+        var zone = Assert.Single((await transaction.InvokeOutcomeAsync<Result<
+            IReadOnlyList<TenantDomainZoneSnapshot>, GeneratedDomainZoneError>>(
+            (transactionContext, cancellationToken) => CompleteAsync(
+                transactionContext,
+                capabilities.GetOrCreateGeneratedSetOutcomeAsync(
                 [new GetOrCreateGeneratedZoneRequest(tenantId, targetId, "example.com", 1)],
-                session,
-                cancellationToken))).AssertSuccess());
+                transactionContext.Session,
+                cancellationToken)))).AssertSuccess());
         var firstResourceId = ObjectId.GenerateNewId().ToString();
         var secondResourceId = ObjectId.GenerateNewId().ToString();
         var firstDeploymentId = ObjectId.GenerateNewId().ToString();
         var secondDeploymentId = ObjectId.GenerateNewId().ToString();
-        (await transaction.InvokeAsync<IReadOnlyList<HostnameBindingSnapshot>>(
-            (session, cancellationToken) => capabilities.CreateGeneratedSetAsync(
+        (await transaction.InvokeOutcomeAsync<Result<
+            IReadOnlyList<HostnameBindingSnapshot>, GeneratedHostnameBindingError>>(
+            (transactionContext, cancellationToken) => CompleteAsync(
+                transactionContext,
+                capabilities.CreateGeneratedSetOutcomeAsync(
                 [CreateBindingRequest(zone, firstDeploymentId, firstResourceId)],
-                session,
-                cancellationToken))).AssertSuccess();
-        (await transaction.InvokeAsync<IReadOnlyList<HostnameBindingSnapshot>>(
-            (session, cancellationToken) => capabilities.CreateGeneratedSetAsync(
+                transactionContext.Session,
+                cancellationToken)))).AssertSuccess();
+        (await transaction.InvokeOutcomeAsync<Result<
+            IReadOnlyList<HostnameBindingSnapshot>, GeneratedHostnameBindingError>>(
+            (transactionContext, cancellationToken) => CompleteAsync(
+                transactionContext,
+                capabilities.CreateGeneratedSetOutcomeAsync(
                 [CreateBindingRequest(zone, secondDeploymentId, secondResourceId)],
-                session,
-                cancellationToken))).AssertSuccess();
+                transactionContext.Session,
+                cancellationToken)))).AssertSuccess();
 
         (await transaction.InvokeAsync(
             (session, cancellationToken) => capabilities.DeleteAllForDeploymentAsync(
@@ -272,6 +306,19 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
             coordinator,
             new FixedTenantIdentityLookup(tenantId),
             TimeProvider.System);
+
+    private static async Task<MongoTransactionDecision<Result<T, TError>>>
+        CompleteAsync<T, TError>(
+            MongoTransactionContext<Result<T, TError>> transaction,
+            Task<Result<T, TError>> operation)
+        where T : notnull
+        where TError : notnull
+    {
+        var outcome = await operation;
+        return outcome.TryGetValue(out _, out _)
+            ? transaction.Commit(outcome)
+            : transaction.Abort(outcome);
+    }
 
     private static CreateGeneratedHostnameBindingRequest CreateBindingRequest(
         TenantDomainZoneSnapshot zone,

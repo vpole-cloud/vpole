@@ -26,10 +26,17 @@ public static class RetryWebServiceDeployment
         {
             app.MapPost("/{Id}/deployments/{DeploymentId}/retry", async (
                     IMediator mediator,
+                    IHttpProblemMapper httpProblems,
                     [AsParameters] RetryWebServiceDeploymentRequest request,
                     CancellationToken cancellationToken) =>
                 (await mediator.Send(request, cancellationToken))
-                    .ToHttpResult(value => Results.Accepted(value: value)))
+                    .ToHttpResult(outcome => outcome switch
+                    {
+                        PlacementSummaryDto value =>
+                            Results.Accepted(value: value),
+                        RetryWebServiceDeploymentError error =>
+                            httpProblems.Map(error).ToHttpResult()
+                    }))
                 .WithName("RetryWebServiceDeployment")
                 .Produces<PlacementSummaryDto>(StatusCodes.Status202Accepted);
             return app;
@@ -42,7 +49,7 @@ public sealed record RetryWebServiceDeploymentRequest(
     [FromRoute] string DeploymentId,
     [FromBody] RetryWebServiceDeploymentBody Body,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<PlacementSummaryDto>, ITenantWriteOperation;
+    : IMediatorRequest<RetryWebServiceDeploymentOutcome>, ITenantWriteOperation;
 
 public sealed record RetryWebServiceDeploymentBody(
     long ExpectedDeploymentRevision,
@@ -51,15 +58,17 @@ public sealed record RetryWebServiceDeploymentBody(
 public sealed class RetryWebServiceDeploymentHandler(
     LoadWebServiceById loadWebService,
     LoadExactResourceDeployment loadExactResourceDeployment,
-    RetryExactResourceDeploymentLegacy retryExactResourceDeployment,
-    AdvanceResourceDeploymentRevisionLegacy advanceResourceDeploymentRevision,
-    PersistUpdatedWebService persistWebService,
+    RetryExactResourceDeployment retryExactResourceDeployment,
+    AdvanceResourceDeploymentRevision advanceResourceDeploymentRevision,
+    PersistUpdatedWebServiceOutcome persistWebService,
     PersistCurrentWebServiceRelease persistRelease,
     TimeProvider timeProvider,
-    RunMongoTransaction<PlacementSummaryDto> runTransaction)
-    : IMediatorHandler<RetryWebServiceDeploymentRequest, PlacementSummaryDto>
+    RunMongoOutcomeTransaction<RetryWebServiceDeploymentOutcome> runTransaction)
+    : IMediatorOutcomeHandler<
+        RetryWebServiceDeploymentRequest,
+        RetryWebServiceDeploymentOutcome>
 {
-    public async Task<Result<PlacementSummaryDto>> HandleAsync(
+    public async Task<RetryWebServiceDeploymentOutcome> HandleAsync(
         RetryWebServiceDeploymentRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -68,7 +77,8 @@ public sealed class RetryWebServiceDeploymentHandler(
             request.Id,
             cancellationToken);
         if (webService is null)
-            return Failures.NotFound("Web service not found.", request.Id);
+            return Error(new WebServiceDeploymentMutationStateError(
+                new WebServiceNotFound(request.Id)));
 
         var deployment = await loadExactResourceDeployment(
             request.TenantId,
@@ -78,27 +88,28 @@ public sealed class RetryWebServiceDeploymentHandler(
             cancellationToken);
         if (deployment is null)
         {
-            return Failures.NotFound(
-                "Resource deployment not found.",
-                request.DeploymentId);
+            return Error(new WebServiceDeploymentMutationStateError(
+                new WebServiceResourceDeploymentNotFound(
+                    request.Id,
+                    request.DeploymentId)));
         }
 
         var operation = ParseOperation(request.Body.ExpectedOperation);
         return await runTransaction(
-            (session, ct) => RetryAsync(
+            (transaction, ct) => RetryAsync(
                 request,
                 webService,
                 operation,
-                session,
+                transaction,
                 ct),
             cancellationToken);
     }
 
-    private async Task<Result<PlacementSummaryDto>> RetryAsync(
+    private async Task<MongoTransactionDecision<RetryWebServiceDeploymentOutcome>> RetryAsync(
         RetryWebServiceDeploymentRequest request,
         WebService webService,
         ResourceDeploymentRequestedOperation operation,
-        MongoDB.Driver.IClientSessionHandle session,
+        MongoTransactionContext<RetryWebServiceDeploymentOutcome> transaction,
         CancellationToken cancellationToken)
     {
         var updated = webService.AdvancePlacementDesiredState();
@@ -110,10 +121,11 @@ public sealed class RetryWebServiceDeploymentHandler(
                 request.DeploymentId,
                 request.Body.ExpectedDeploymentRevision,
                 operation),
-            session,
+            transaction.Session,
             cancellationToken);
         if (!retried.TryGetValue(out _, out var failure))
-            return failure;
+            return transaction.Abort(Error(
+                new RetryWebServiceDeploymentError(failure)));
 
         var stamped = await advanceResourceDeploymentRevision(
             new ResourceDeploymentResourceRevisionRequest(
@@ -121,10 +133,11 @@ public sealed class RetryWebServiceDeploymentHandler(
                 WebServiceResourceDeployment.ResourceType,
                 request.Id,
                 updated.ActiveRevision),
-            session,
+            transaction.Session,
             cancellationToken);
-        if (!stamped.TryGetValue(out var deployments, out failure))
-            return failure;
+        if (!stamped.TryGetValue(out var deployments, out var revisionFailure))
+            return transaction.Abort(Error(
+                new RetryWebServiceDeploymentError(revisionFailure)));
 
         var retriedDeployment = deployments.Single(item =>
             item.DeploymentId == request.DeploymentId);
@@ -141,13 +154,14 @@ public sealed class RetryWebServiceDeploymentHandler(
             .OrderBy(item => item.ResourceDeploymentId, StringComparer.Ordinal)
             .ToImmutableList();
         var persisted = await persistWebService(
-            session,
+            transaction.Session,
             webService,
             updated,
             updated.ToUpdatedEvent(eventDeployments),
             cancellationToken);
-        if (persisted is not ISuccess)
-            return (Failure)persisted;
+        if (!persisted.TryGetValue(out _, out var persistenceError))
+            return transaction.Abort(Error(
+                new RetryWebServiceDeploymentError(persistenceError)));
 
         var retainedReleaseEntries = WebServiceDeploymentWorkflow
             .ToReleaseDeployments(retainedDeployments);
@@ -171,8 +185,8 @@ public sealed class RetryWebServiceDeploymentHandler(
             new WebServiceReleaseFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 timeProvider.GetUtcNow().UtcDateTime));
-        await persistRelease(session, release, cancellationToken);
-        return retriedDeployment;
+        await persistRelease(transaction.Session, release, cancellationToken);
+        return transaction.Commit(new RetryWebServiceDeploymentOutcome(retriedDeployment));
     }
 
     private static ResourceDeploymentRequestedOperation ParseOperation(
@@ -180,6 +194,10 @@ public sealed class RetryWebServiceDeploymentHandler(
         string.Equals(operation, "Delete", StringComparison.OrdinalIgnoreCase)
             ? ResourceDeploymentRequestedOperation.Delete
             : ResourceDeploymentRequestedOperation.Apply;
+
+    private static RetryWebServiceDeploymentOutcome Error(
+        RetryWebServiceDeploymentError error) =>
+        new(error);
 }
 
 public sealed class RetryWebServiceDeploymentValidator : AbstractValidator<RetryWebServiceDeploymentRequest>

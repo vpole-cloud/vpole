@@ -71,9 +71,6 @@ using Pole.Features.Tenants;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Application.Identity;
-using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Contracts;
-using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Mediator;
 using Pole.Observability;
 using Pole.Server.Database;
@@ -231,7 +228,6 @@ public static class DependencyInjection
             services.TryAddSingleton<
                 IPostgresClusterDeploymentManager,
                 PostgresClusterDeploymentManager>();
-            services.TryAddScoped<WebServiceResourceDeploymentAdapter>();
             services.TryAddScoped<RedisResourceDeploymentAdapter>();
             services.TryAddSingleton<IFunctionRevisionKubernetesManager, FunctionRevisionKubernetesManager>();
             services.TryAddSingleton<IFunctionEndpointSliceSource, KubernetesFunctionEndpointSliceSource>();
@@ -299,18 +295,18 @@ public static class DependencyInjection
             services.TryAddSingleton<ISourceBuildDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IFunctionAppDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.AddHttpContextAccessor();
+            services.AddResourceGroupHttpMappings();
             services.TryAddScoped<ResourceGroupLookup>();
             services.TryAddScoped<IResourceGroupLookup>(provider =>
                 provider.GetRequiredService<ResourceGroupLookup>());
-            services.TryAddScoped<IResourceGroupOwnershipLookup>(provider =>
-                provider.GetRequiredService<ResourceGroupLookup>());
+            services.TryAddScoped<GetResourceGroupOwnership>(provider =>
+                provider.GetRequiredService<ResourceGroupLookup>()
+                    .GetOwnershipOutcomeAsync);
             services.TryAddScoped<IResourcePlacementService, ResourcePlacementService>();
             services.TryAddScoped<IResourcePlacementLookup, ResourcePlacementLookup>();
             services.TryAddScoped<
                 IStorageProfileResolutionFence,
                 StorageProfileResolutionFence>();
-            services.AddSingleton(
-                WebServiceResourceDeploymentAdapterRegistration.Descriptor);
             services.AddSingleton(
                 RedisResourceDeploymentAdapterRegistration.Descriptor);
             services.AddSingleton(
@@ -322,7 +318,6 @@ public static class DependencyInjection
             services.TryAddScoped<IFunctionRevisionLifecycleService, FunctionRevisionLifecycleService>();
             services.TryAddSingleton<IFunctionRuntimeRouteResolver, FunctionRuntimeRouteResolver>();
             services.TryAddScoped<IStorageProfileResolver, StorageProfileResolver>();
-            services.TryAddScoped<IWebServiceSourceBuildDeploymentService, WebServiceSourceBuildDeploymentService>();
             services.TryAddScoped<IStorageDiscoveryService, KubernetesStorageDiscoveryService>();
             services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
             return services;
@@ -370,7 +365,12 @@ public static class DependencyInjection
         public IServiceCollection AddSourceBuildsFeature()
         {
             services.TryAddSingleton(TimeProvider.System);
-            services.TryAddScoped<ISourceBuildReferenceLookup, SourceBuildReferenceLookup>();
+            services.TryAddScoped<SourceBuildReferenceLookup>();
+            services.TryAddScoped<ISourceBuildReferenceLookup>(provider =>
+                provider.GetRequiredService<SourceBuildReferenceLookup>());
+            services.TryAddScoped<EnsureNoWebServiceSourceBuildConfiguration>(provider =>
+                provider.GetRequiredService<SourceBuildReferenceLookup>()
+                    .EnsureNoWebServiceConfigurationAsync);
             services.TryAddSingleton<ISourceBuildJobDispatcher, HangfireSourceBuildJobDispatcher>();
             services.TryAddSingleton<IRepositoryArchiveExtractor, RepositoryArchiveExtractor>();
             services.TryAddSingleton<IProcessRunner, ProcessRunner>();

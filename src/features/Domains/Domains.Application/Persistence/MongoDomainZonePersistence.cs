@@ -38,24 +38,6 @@ internal sealed partial class MongoDomainPersistence
         return zones.Select(DomainContractMappings.ToSnapshot).ToArray();
     }
 
-    public async Task<Result<TenantDomainZoneSnapshot>> GetOrCreateGeneratedAsync(
-        GetOrCreateGeneratedZoneRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await GetOrCreateGeneratedOutcomeAsync(
-            request,
-            session,
-            cancellationToken);
-        return result switch
-        {
-            Ok<TenantDomainZoneSnapshot> success =>
-                new Success<TenantDomainZoneSnapshot>(success.Value),
-            Err<GeneratedDomainZoneError> error =>
-                ToLegacyFailure(error.Value)
-        };
-    }
-
     public async Task<Result<TenantDomainZoneSnapshot, GeneratedDomainZoneError>>
         GetOrCreateGeneratedOutcomeAsync(
             GetOrCreateGeneratedZoneRequest request,
@@ -69,25 +51,7 @@ internal sealed partial class MongoDomainPersistence
         return result.Map(zones => zones[0]);
     }
 
-    public async Task<Result<IReadOnlyList<TenantDomainZoneSnapshot>>> GetOrCreateGeneratedSetAsync(
-        IReadOnlyList<GetOrCreateGeneratedZoneRequest> requests,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await GetOrCreateGeneratedSetOutcomeAsync(
-            requests,
-            session,
-            cancellationToken);
-        return result switch
-        {
-            Ok<IReadOnlyList<TenantDomainZoneSnapshot>> success =>
-                new Success<IReadOnlyList<TenantDomainZoneSnapshot>>(success.Value),
-            Err<GeneratedDomainZoneError> error =>
-                ToLegacyFailure(error.Value)
-        };
-    }
-
-    private async Task<Result<
+    public async Task<Result<
         IReadOnlyList<TenantDomainZoneSnapshot>,
         GeneratedDomainZoneError>> GetOrCreateGeneratedSetOutcomeAsync(
         IReadOnlyList<GetOrCreateGeneratedZoneRequest> requests,
@@ -95,12 +59,7 @@ internal sealed partial class MongoDomainPersistence
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
-        var validation = ValidateGeneratedZoneSet(requests);
-        if (validation is not null)
-        {
-            return new Err<GeneratedDomainZoneError>(
-                new GeneratedDomainZoneError(validation));
-        }
+        EnsureGeneratedZoneSet(requests);
 
         var tenantId = requests[0].TenantId;
         var identity = await tenantIdentityLookup.GetAsync(tenantId, cancellationToken);
@@ -114,16 +73,7 @@ internal sealed partial class MongoDomainPersistence
         var candidates = new List<TenantDomainZone>(requests.Count);
         foreach (var request in requests)
         {
-            if (!TryCreateGeneratedZone(
-                    request,
-                    tenant.DisplayName,
-                    out var candidate,
-                    out var error))
-            {
-                return new Err<GeneratedDomainZoneError>(
-                    new GeneratedDomainZoneError(error!));
-            }
-            candidates.Add(candidate!);
+            candidates.Add(CreateGeneratedZone(request, tenant.DisplayName));
         }
 
         var targetIds = requests.Select(request => request.DeploymentTargetId).ToArray();

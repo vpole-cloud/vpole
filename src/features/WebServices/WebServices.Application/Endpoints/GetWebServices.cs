@@ -38,9 +38,9 @@ public static class GetWebServices
 public sealed class GetWebServicesHandler(
     LoadWebServicePage loadWebServicePage,
     LoadResourceDeploymentSets loadResourceDeploymentSets)
-    : IMediatorHandler<GetWebServicesRequest, PaginatedResponse<WebServiceDto>>
+    : IMediatorOutcomeHandler<GetWebServicesRequest, PaginatedResponse<WebServiceDto>>
 {
-    public async Task<Result<PaginatedResponse<WebServiceDto>>> HandleAsync(
+    public async Task<PaginatedResponse<WebServiceDto>> HandleAsync(
         GetWebServicesRequest request,
         CancellationToken cancellationToken = default)
     {
