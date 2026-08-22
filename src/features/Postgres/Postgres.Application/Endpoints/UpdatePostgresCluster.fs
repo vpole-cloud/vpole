@@ -21,7 +21,6 @@ open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.Shared.Models
 open Pole.Features.StorageProfiles.Contracts
 open Pole.Mediator
-open Pole.ResultType
 open Pole.Validation
 
 type UpdatePostgresClusterRequestBody =
@@ -73,10 +72,222 @@ type UpdatePostgresClusterRequest =
     interface ITenantWriteOperation with
         member this.TenantId = this.TenantId
 
-[<Struct>]
-type private PostgresComputeAdoption =
-    | Preserve
-    | Replace of ResolvedComputeProfile
+type private UpdatePostgresClusterPlan =
+    { Cluster : PostgresCluster
+      CurrentCompute : CurrentResourceDeploymentComputeDto
+      UpdatedCluster : PostgresCluster
+      ReplacementDeploymentCompute : ResourceDeploymentComputeConfiguration option
+      CurrentQuotaInput : PostgresQuotaInput
+      NextQuotaInput : PostgresQuotaInput }
+
+type private UpdatePostgresClusterPreparation =
+    | Completed of UpdatePostgresClusterOutcome
+    | ReadyToUpdate of UpdatePostgresClusterPlan
+
+[<RequireQualifiedAccess>]
+module private UpdatePostgresClusterWorkflow =
+    let private resolveReplacementCompute
+        (resolveComputeProfile : ResolveComputeProfile)
+        (cluster : PostgresCluster)
+        (currentCompute : CurrentResourceDeploymentComputeDto)
+        (computeProfileId : string option)
+        cancellationToken
+        : Threading.Tasks.Task<Result<ResolvedComputeProfile option, UpdatePostgresClusterError>> =
+        task {
+            match computeProfileId with
+            | Some computeProfileId when not (String.IsNullOrWhiteSpace computeProfileId) ->
+                let! computeResult =
+                    resolveComputeProfile.Invoke(
+                        ComputeProfileResolutionRequest(
+                            computeProfileId,
+                            currentCompute.DeploymentTargetId,
+                            cluster.TenantId,
+                            PostgresResourceDeployment.ResourceType),
+                        cancellationToken)
+
+                match TypedResultInterop.toResult computeResult with
+                | Error error -> return Error(UpdateCompute error)
+                | Ok compute
+                    when cluster.Spec.DeploymentMode = PostgresDeploymentMode.Operator &&
+                         not (String.IsNullOrWhiteSpace compute.RuntimeClassName) ->
+                    return
+                        Error(
+                            UpdateState(
+                                PostgresClusterComputeRuntimeClassUnsupported cluster.Id))
+                | Ok compute -> return Ok(Some compute)
+            | _ -> return Ok None
+        }
+
+    let prepare
+        (loadCluster : LoadPostgresClusterById)
+        (resolveStorageProfile : ResolveStorageProfile)
+        (resolveComputeProfile : ResolveComputeProfile)
+        (loadDeploymentCompute : LoadCurrentResourceDeploymentCompute)
+        (request : UpdatePostgresClusterRequest)
+        cancellationToken =
+        task {
+            let! cluster =
+                loadCluster.Invoke(
+                    request.TenantId,
+                    request.ClusterId,
+                    cancellationToken)
+
+            match cluster with
+            | None ->
+                return
+                    Completed(
+                        UpdatePostgresClusterRejected(
+                            UpdateState(PostgresClusterUpdateNotFound request.ClusterId)))
+            | Some cluster when (cluster.Lifecycle :? DeletingPostgresClusterLifecycle) ->
+                return
+                    Completed(
+                        UpdatePostgresClusterRejected(
+                            UpdateState(PostgresClusterUpdateUnavailable cluster.Id)))
+            | Some cluster
+                when cluster.Spec.DeploymentMode = PostgresDeploymentMode.StatefulSet &&
+                     defaultArg request.Body.Instances cluster.Spec.Instances <> 1 ->
+                return
+                    Completed(
+                        UpdatePostgresClusterRejected(
+                            UpdateState(
+                                PostgresClusterStatefulSetInstancesUnsupported cluster.Id)))
+            | Some cluster ->
+                let updatedInstances =
+                    defaultArg request.Body.Instances cluster.Spec.Instances
+                let updatedStorage =
+                    defaultArg request.Body.Storage cluster.Spec.Storage
+                let! currentComputeResult =
+                    loadDeploymentCompute.Invoke(
+                        cluster.TenantId,
+                        PostgresResourceDeployment.ResourceType,
+                        cluster.Id,
+                        cancellationToken)
+
+                match TypedResultInterop.toResult currentComputeResult with
+                | Error error ->
+                    return
+                        Completed(
+                            UpdatePostgresClusterRejected(UpdateCurrentCompute error))
+                | Ok currentCompute ->
+                    let! replacementComputeResult =
+                        resolveReplacementCompute
+                            resolveComputeProfile
+                            cluster
+                            currentCompute
+                            request.Body.ComputeProfileId
+                            cancellationToken
+
+                    match replacementComputeResult with
+                    | Error error ->
+                        return Completed(UpdatePostgresClusterRejected error)
+                    | Ok replacementCompute ->
+                        let! storageProfileResult =
+                            resolveStorageProfile.Invoke(
+                                StorageProfileResolutionRequest(
+                                    cluster.Spec.StorageProfileId,
+                                    currentCompute.DeploymentTargetId,
+                                    cluster.TenantId,
+                                    ResourceType.Postgres,
+                                    updatedStorage),
+                                cancellationToken)
+
+                        match TypedResultInterop.toResult storageProfileResult with
+                        | Error error ->
+                            return
+                                Completed(
+                                    UpdatePostgresClusterRejected(UpdateStorage error))
+                        | Ok _ ->
+                            let updatedCluster =
+                                cluster.UpdateDesiredState(updatedInstances, updatedStorage)
+                            let currentQuotaInput =
+                                PostgresQuotaInput.create
+                                    currentCompute.Compute.Requests.CpuMillis
+                                    currentCompute.Compute.Requests.MemoryMi
+                                    (int64 cluster.Spec.Instances)
+                            let (
+                                nextRequestsCpuMillis,
+                                nextRequestsMemoryMi,
+                                replacementDeploymentCompute) =
+                                match replacementCompute with
+                                | Some compute ->
+                                    compute.Requests.CpuMillis,
+                                    compute.Requests.MemoryMi,
+                                    Some(PostgresResourceDeploymentMappings.compute compute)
+                                | None ->
+                                    currentCompute.Compute.Requests.CpuMillis,
+                                    currentCompute.Compute.Requests.MemoryMi,
+                                    None
+                            let nextQuotaInput =
+                                PostgresQuotaInput.create
+                                    nextRequestsCpuMillis
+                                    nextRequestsMemoryMi
+                                    (int64 updatedCluster.Spec.Instances)
+
+                            return
+                                ReadyToUpdate(
+                                    { Cluster = cluster
+                                      CurrentCompute = currentCompute
+                                      UpdatedCluster = updatedCluster
+                                      ReplacementDeploymentCompute = replacementDeploymentCompute
+                                      CurrentQuotaInput = currentQuotaInput
+                                      NextQuotaInput = nextQuotaInput })
+        }
+
+    let execute
+        (quotaAdmissionExecutor : IQuotaAdmissionExecutor)
+        (persistUpdatedCluster : PersistUpdatedPostgresCluster)
+        (requestDeploymentApply : RequestResourceDeploymentApply)
+        (plan : UpdatePostgresClusterPlan)
+        cancellationToken =
+        quotaAdmissionExecutor.ExecuteOutcomeAsync<
+            PostgresQuotaInput,
+            UpdatePostgresClusterOutcome>(
+            plan.Cluster.TenantId,
+            PostgresQuotaResourceKey.create plan.Cluster.Id,
+            UpdateQuotaMutation<PostgresQuotaInput>(
+                plan.CurrentQuotaInput,
+                plan.NextQuotaInput),
+            (fun error ->
+                UpdatePostgresClusterRejected(UpdateQuota error)),
+            (fun transaction ct ->
+                task {
+                    let! persisted =
+                        persistUpdatedCluster.Invoke(
+                            transaction.Session,
+                            plan.Cluster,
+                            plan.UpdatedCluster,
+                            ct)
+
+                    match persisted with
+                    | PostgresError error ->
+                        return
+                            transaction.Abort(
+                                UpdatePostgresClusterRejected(UpdateConflict error))
+                    | PostgresSuccess () ->
+                        let! deploymentResult =
+                            requestDeploymentApply.Invoke(
+                                ResourceDeploymentMutationRequest(
+                                    plan.Cluster.TenantId,
+                                    PostgresResourceDeployment.ResourceType,
+                                    plan.Cluster.Id,
+                                    plan.CurrentCompute.Compute.Profile,
+                                    plan.ReplacementDeploymentCompute |> Option.toObj),
+                                transaction.Session,
+                                ct)
+
+                        match TypedResultInterop.toResult deploymentResult with
+                        | Error error ->
+                            return
+                                transaction.Abort(
+                                    UpdatePostgresClusterRejected(UpdateDeployment error))
+                        | Ok deployment ->
+                            return
+                                transaction.Commit(
+                                    PostgresClusterUpdated(
+                                        { Id = plan.Cluster.Id
+                                          Placement = deployment }))
+                }),
+            cancellationToken)
 
 type UpdatePostgresClusterHandler(
     loadCluster : LoadPostgresClusterById,
@@ -89,187 +300,25 @@ type UpdatePostgresClusterHandler(
     interface IMediatorOutcomeHandler<UpdatePostgresClusterRequest, UpdatePostgresClusterOutcome> with
         member _.HandleAsync(request, cancellationToken) =
             task {
-                let! cluster =
-                    loadCluster.Invoke(
-                        request.TenantId,
-                        request.ClusterId,
-                        cancellationToken)
+                let! preparation =
+                    UpdatePostgresClusterWorkflow.prepare
+                        loadCluster
+                        resolveStorageProfile
+                        resolveComputeProfile
+                        loadDeploymentCompute
+                        request
+                        cancellationToken
 
-                match cluster with
-                | None ->
-                    return
-                        UpdatePostgresClusterRejected(
-                            UpdateState(PostgresClusterUpdateNotFound request.ClusterId))
-                | Some cluster when (cluster.Lifecycle :? DeletingPostgresClusterLifecycle) ->
-                    return
-                        UpdatePostgresClusterRejected(
-                            UpdateState(PostgresClusterUpdateUnavailable cluster.Id))
-                | Some cluster
-                    when cluster.Spec.DeploymentMode = PostgresDeploymentMode.StatefulSet &&
-                         defaultArg request.Body.Instances cluster.Spec.Instances <> 1 ->
-                    return
-                        UpdatePostgresClusterRejected(
-                            UpdateState(
-                                PostgresClusterStatefulSetInstancesUnsupported cluster.Id))
-                | Some cluster ->
-                    let updatedInstances =
-                        defaultArg request.Body.Instances cluster.Spec.Instances
-                    let updatedStorage =
-                        defaultArg request.Body.Storage cluster.Spec.Storage
-
-                    let! currentComputeResult =
-                        loadDeploymentCompute.Invoke(
-                            cluster.TenantId,
-                            PostgresResourceDeployment.ResourceType,
-                            cluster.Id,
-                            cancellationToken)
-
-                    let mutable currentCompute = Unchecked.defaultof<CurrentResourceDeploymentComputeDto>
-                    let mutable currentComputeError =
-                        Unchecked.defaultof<LoadCurrentResourceDeploymentComputeError>
-                    if not (TypedResultExtensions.TryGetValue(
-                        currentComputeResult,
-                        &currentCompute,
-                        &currentComputeError)) then
-                        return UpdatePostgresClusterRejected(UpdateCurrentCompute currentComputeError)
-                    else
-                        let! replacementComputeResult =
-                            task {
-                                match request.Body.ComputeProfileId with
-                                | Some computeProfileId when not (String.IsNullOrWhiteSpace computeProfileId) ->
-                                    let! computeResult =
-                                        resolveComputeProfile.Invoke(
-                                            ComputeProfileResolutionRequest(
-                                                computeProfileId,
-                                                currentCompute.DeploymentTargetId,
-                                                cluster.TenantId,
-                                                PostgresResourceDeployment.ResourceType),
-                                            cancellationToken)
-                                    let mutable compute = Unchecked.defaultof<ResolvedComputeProfile>
-                                    let mutable computeError =
-                                        Unchecked.defaultof<ComputeProfileResolutionError>
-                                    if not (TypedResultExtensions.TryGetValue(
-                                        computeResult,
-                                        &compute,
-                                        &computeError)) then
-                                        return PostgresError(UpdateCompute computeError)
-                                    elif cluster.Spec.DeploymentMode = PostgresDeploymentMode.Operator &&
-                                         not (String.IsNullOrWhiteSpace compute.RuntimeClassName) then
-                                        return
-                                            PostgresError(
-                                                UpdateState(
-                                                    PostgresClusterComputeRuntimeClassUnsupported cluster.Id))
-                                    else
-                                        return PostgresSuccess(Replace compute)
-                                | _ -> return PostgresSuccess Preserve
-                            }
-
-                        match replacementComputeResult with
-                        | PostgresError error -> return UpdatePostgresClusterRejected error
-                        | PostgresSuccess replacementCompute ->
-                            let! storageProfileResult =
-                                resolveStorageProfile.Invoke(
-                                    StorageProfileResolutionRequest(
-                                        cluster.Spec.StorageProfileId,
-                                        currentCompute.DeploymentTargetId,
-                                        cluster.TenantId,
-                                        ResourceType.Postgres,
-                                        updatedStorage),
-                                    cancellationToken)
-                            let mutable ignoredStorage = Unchecked.defaultof<ResolvedStorageProfile>
-                            let mutable storageError =
-                                Unchecked.defaultof<StorageProfileResolutionError>
-                            if not (TypedResultExtensions.TryGetValue(
-                                storageProfileResult,
-                                &ignoredStorage,
-                                &storageError)) then
-                                return UpdatePostgresClusterRejected(UpdateStorage storageError)
-                            else
-                                let updatedCluster =
-                                    cluster.UpdateDesiredState(updatedInstances, updatedStorage)
-                                let currentQuotaInput =
-                                    PostgresQuotaInput.create
-                                        currentCompute.Compute.Requests.CpuMillis
-                                        currentCompute.Compute.Requests.MemoryMi
-                                        (int64 cluster.Spec.Instances)
-                                let nextRequestsCpuMillis, nextRequestsMemoryMi =
-                                    match replacementCompute with
-                                    | Replace compute -> compute.Requests.CpuMillis, compute.Requests.MemoryMi
-                                    | Preserve ->
-                                        currentCompute.Compute.Requests.CpuMillis,
-                                        currentCompute.Compute.Requests.MemoryMi
-                                let replacementDeploymentCompute =
-                                    match replacementCompute with
-                                    | Replace compute ->
-                                        PostgresResourceDeploymentMappings.compute compute
-                                    | Preserve -> null
-                                let nextQuotaInput =
-                                    PostgresQuotaInput.create
-                                        nextRequestsCpuMillis
-                                        nextRequestsMemoryMi
-                                        (int64 updatedCluster.Spec.Instances)
-
-                                return!
-                                    quotaAdmissionExecutor.ExecuteOutcomeAsync<
-                                        PostgresQuotaInput,
-                                        UpdatePostgresClusterOutcome>(
-                                        cluster.TenantId,
-                                        PostgresQuotaResourceKey.create cluster.Id,
-                                        UpdateQuotaMutation<PostgresQuotaInput>(
-                                            currentQuotaInput,
-                                            nextQuotaInput),
-                                        Func<QuotaExecutionError, UpdatePostgresClusterOutcome>(
-                                            fun error ->
-                                                UpdatePostgresClusterRejected(UpdateQuota error)),
-                                        Func<
-                                            MongoTransactionContext<UpdatePostgresClusterOutcome>,
-                                            Threading.CancellationToken,
-                                            Threading.Tasks.Task<MongoTransactionDecision<UpdatePostgresClusterOutcome>>>(
-                                            fun transaction ct ->
-                                                task {
-                                                    let! persisted =
-                                                        persistUpdatedCluster.Invoke(
-                                                            transaction.Session,
-                                                            cluster,
-                                                            updatedCluster,
-                                                            ct)
-                                                    match persisted with
-                                                    | PostgresError error ->
-                                                        return
-                                                            transaction.Abort(
-                                                                UpdatePostgresClusterRejected(
-                                                                    UpdateConflict error))
-                                                    | PostgresSuccess () ->
-                                                        let! deploymentResult =
-                                                            requestDeploymentApply.Invoke(
-                                                                ResourceDeploymentMutationRequest(
-                                                                    cluster.TenantId,
-                                                                    PostgresResourceDeployment.ResourceType,
-                                                                    cluster.Id,
-                                                                    currentCompute.Compute.Profile,
-                                                                    replacementDeploymentCompute),
-                                                                transaction.Session,
-                                                                ct)
-                                                        let mutable deployment =
-                                                            Unchecked.defaultof<PlacementSummaryDto>
-                                                        let mutable deploymentError =
-                                                            Unchecked.defaultof<ResourceDeploymentMutationError>
-                                                        if not (TypedResultExtensions.TryGetValue(
-                                                            deploymentResult,
-                                                            &deployment,
-                                                            &deploymentError)) then
-                                                            return
-                                                                transaction.Abort(
-                                                                    UpdatePostgresClusterRejected(
-                                                                        UpdateDeployment deploymentError))
-                                                        else
-                                                            return
-                                                                transaction.Commit(
-                                                                    PostgresClusterUpdated(
-                                                                        { Id = cluster.Id
-                                                                          Placement = deployment }))
-                                                }),
-                                        cancellationToken)
+                match preparation with
+                | Completed outcome -> return outcome
+                | ReadyToUpdate plan ->
+                    return!
+                        UpdatePostgresClusterWorkflow.execute
+                            quotaAdmissionExecutor
+                            persistUpdatedCluster
+                            requestDeploymentApply
+                            plan
+                            cancellationToken
             }
 
 type UpdatePostgresClusterRequestValidator() as this =
