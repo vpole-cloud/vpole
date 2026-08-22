@@ -7,7 +7,6 @@ using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Domain;
-using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Domain;
 using Pole.Features.ResourceDeployments.Application.Common;
@@ -35,7 +34,6 @@ public class MongoDbContext(
     ) : 
     IResourceGroupDbContext,
     ISearchDbContext,
-    IPostgresDbContext,
     IQuotaDbContext,
     IStorageProfileDbContext,
     ITenantDbContext,

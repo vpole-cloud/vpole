@@ -19,6 +19,7 @@ using Pole.Features.RedisServices.Events;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Events;
 using Pole.Tests.Integration.Infrastructure;
+using Pole.Tests.Integration.Postgres;
 using Xunit;
 using ResourceGroupCreateEvent = Pole.Features.ResourceGroups.Events.ResourceGroupCreatedEvent;
 using ResourceGroupUpdateEvent = Pole.Features.ResourceGroups.Events.ResourceGroupUpdatedEvent;
@@ -80,8 +81,8 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         await IndexRedisCreatedAsync(redisResponse.RedisId);
 
         var postgresCreate = await Mediator.Send(TestData.CreatePostgresClusterRequest(resourceGroup.Id, "alpha-postgres"));
-        Assert.True(postgresCreate.TryGetValue(out var postgresResponse, out _));
-        await IndexPostgresCreatedAsync(postgresResponse!.Id);
+        var postgresResponse = PostgresOutcomeAssertions.AssertCreated(postgresCreate);
+        await IndexPostgresCreatedAsync(postgresResponse.Id);
 
         var result = await Mediator.Send(new GetSearchRequest
         {

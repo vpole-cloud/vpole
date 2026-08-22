@@ -2,6 +2,7 @@ using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Observability;
 using Pole.Tests.Integration.Infrastructure;
+using Pole.Tests.Integration.Postgres;
 using Xunit;
 
 namespace Pole.Tests.Integration.Observability;
@@ -19,8 +20,7 @@ public sealed class OutboxObservabilityTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(TestData.CreateResourceGroupRequest());
 
-        Assert.True(result.TryGetValue(out _, out var error));
-        Assert.Null(error);
+        _ = result.AssertSuccess();
 
         var outboxMessage = await DbContext.OutboxMessages
             .Find(message => message.EventType == "resource-group-created")
@@ -43,8 +43,7 @@ public sealed class OutboxObservabilityTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(TestData.CreatePostgresClusterRequest(resourceGroup.Id));
 
-        Assert.True(result.TryGetValue(out _, out var error));
-        Assert.Null(error);
+        _ = result.AssertCreated();
 
         var outboxMessage = await DbContext.OutboxMessages
             .Find(message => message.EventType == "postgres-cluster-created")

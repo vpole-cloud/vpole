@@ -12,63 +12,67 @@ open Pole.Database
 open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
+open Pole.Features.Postgres.Application.Persistence.Reads
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Mediator
-open Pole.ResultType
+open Pole.Validation
+
+type GetPostgresClusterByIdError =
+    | PostgresClusterNotFound of clusterId : string
+    | PostgresClusterDeploymentUnavailable of clusterId : string
+
+type GetPostgresClusterByIdOutcome =
+    | PostgresClusterFound of PostgresClusterDto
+    | GetPostgresClusterByIdRejected of GetPostgresClusterByIdError
 
 type GetPostgresClusterByIdRequest =
     { [<FromRoute>]
       ClusterId : string
       [<FromHeader(Name = TenantHeaders.TenantId)>]
       TenantId : string }
-    interface IMediatorRequest<PostgresClusterDto>
+    interface IMediatorRequest<GetPostgresClusterByIdOutcome>
     interface ITenantReadOperation with
         member this.TenantId = this.TenantId
     
 type GetPostgresClusterHandler(
-    dbContext : IPostgresDbContext,
+    loadCluster : LoadPostgresClusterById,
     loadDeployment : LoadResourceDeployment) =
-    interface IMediatorHandler<GetPostgresClusterByIdRequest, PostgresClusterDto> with
+    interface IMediatorOutcomeHandler<GetPostgresClusterByIdRequest, GetPostgresClusterByIdOutcome> with
         member this.HandleAsync(request, cancellationToken) =
             task {
-                let filter =
-                    Builders<PostgresCluster>.Filter.And(
-                        Builders<PostgresCluster>.Filter.ForTenant(request.TenantId),
-                        Builders<PostgresCluster>.Filter.Eq(_.Id, request.ClusterId))
-
                 let! postgresCluster =
-                    dbContext.Postgres
-                        .Find(filter)
-                        .FirstOrNoneAsync(cancellationToken)
+                    loadCluster.Invoke(
+                        request.TenantId,
+                        request.ClusterId,
+                        cancellationToken)
 
                 match postgresCluster with
                 | None ->
-                    return Failures.NotFound("Postgres cluster not found.", request.ClusterId)
-                           |> ResultF.ofFailure
+                    return
+                        GetPostgresClusterByIdRejected(
+                            PostgresClusterNotFound request.ClusterId)
                 | Some cluster ->
                     let! placement =
-                        loadDeployment.FindOptionAsync(
+                        loadDeployment.Invoke(
                             cluster.TenantId,
                             PostgresResourceDeployment.ResourceType,
                             cluster.Id,
                             cancellationToken)
 
-                    match placement with
-                    | None ->
+                    if isNull placement then
                         return
-                            Failures.Conflict(
-                                "The PostgreSQL resource deployment is unavailable.")
-                            |> ResultF.ofFailure
-                    | Some placement ->
+                            GetPostgresClusterByIdRejected(
+                                PostgresClusterDeploymentUnavailable cluster.Id)
+                    else
                         return
                             PostgresClusterDto.create cluster placement
-                            |> ResultF.ofValue
+                            |> PostgresClusterFound
             }
             
 type GetPostgresClusterByIdRequestValidator() as this =
     inherit AbstractValidator<GetPostgresClusterByIdRequest>()
     do
-        this.RuleFor(_.ClusterId).NotEmpty().WithMessage("Cluster ID must not be empty.") |> ignore
+        this.RuleFor(_.ClusterId).MongoObjectId("PostgreSQL cluster ID") |> ignore
 
 [<AbstractClass; Sealed>]
 type GetPostgresClusterById =
@@ -79,8 +83,17 @@ type GetPostgresClusterById =
             |> ignore
         endpoints
 
-    static member Handle([<AsParameters>] request: GetPostgresClusterByIdRequest, [<FromServices>] mediator: IMediator) =
+    static member Handle(
+        [<AsParameters>] request: GetPostgresClusterByIdRequest,
+        [<FromServices>] mediator: IMediator,
+        [<FromServices>] httpProblems: IHttpProblemMapper,
+        cancellationToken: System.Threading.CancellationToken) =
         task {
-            let! result = mediator.Send request
-            return result.ToHttpResult(fun value -> Results.Ok(value))
+            let! result = mediator.Send(request, cancellationToken)
+            return
+                result.ToHttpResult(fun outcome ->
+                    match outcome with
+                    | PostgresClusterFound value -> Results.Ok(value)
+                    | GetPostgresClusterByIdRejected error ->
+                        httpProblems.Map(error).ToHttpResult())
         }

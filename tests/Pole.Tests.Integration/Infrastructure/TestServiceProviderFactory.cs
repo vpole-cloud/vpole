@@ -11,6 +11,7 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Postgres.Application.Common;
+using Pole.Features.Postgres.Application;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.Postgres.Application.Endpoints;
@@ -76,6 +77,7 @@ public static class TestServiceProviderFactory
         services.AddComputeProfiles();
         services.AddStorageProfileResolution();
         services.AddRedisServicesFeature();
+        services.AddPostgresFeature();
         services.AddWebServicesFeature();
         services.AddScoped<IFunctionRevisionLifecycleService, FunctionRevisionLifecycleService>();
         services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
@@ -116,7 +118,6 @@ public static class TestServiceProviderFactory
                 .GetOwnershipOutcomeAsync);
         services.AddSingleton<IEnvelopeEncryptionService>(
             TestPostgresEnvelopeEncryption.Create());
-        services.AddScoped<IPostgresCredentialService, PostgresCredentialService>();
         services.AddMigrations(Assemblies);
         services.AddSearchFeature();
         services.AddScoped<SourceBuildReferenceLookup>();

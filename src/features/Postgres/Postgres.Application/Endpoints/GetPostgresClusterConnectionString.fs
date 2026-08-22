@@ -6,77 +6,89 @@ open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.Mvc
 open Microsoft.AspNetCore.Routing
-open MongoDB.Driver
 open Pole.ASP.Helpers
-open Pole.Database
 open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Kubernetes
+open Pole.Features.Postgres.Application.Persistence
+open Pole.Features.Postgres.Application.Persistence.Credentials
+open Pole.Features.Postgres.Application.Persistence.Reads
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Mediator
-open Pole.ResultType
+open Pole.Validation
 
 type GetPostgresClusterConnectionStringResponse =
     { ConnectionString : string }
+
+type GetPostgresClusterConnectionStringStateError =
+    | PostgresClusterConnectionStringNotFound of clusterId : string
+    | PostgresClusterConnectionStringDeleting of clusterId : string
+    | PostgresClusterDeploymentNotReady of clusterId : string
+    | PostgresClusterConnectionEndpointUnavailable of clusterId : string
+
+type GetPostgresClusterConnectionStringError =
+    | ConnectionStringState of GetPostgresClusterConnectionStringStateError
+    | ConnectionStringCredentials of PostgresCredentialError
+    interface IUnion with
+        member this.Value =
+            match this with
+            | ConnectionStringState error -> box error
+            | ConnectionStringCredentials error -> box error
+
+type GetPostgresClusterConnectionStringOutcome =
+    | PostgresClusterConnectionString of GetPostgresClusterConnectionStringResponse
+    | GetPostgresClusterConnectionStringRejected of GetPostgresClusterConnectionStringError
 
 type GetPostgresClusterConnectionStringRequest =
     { [<FromRoute>]
       ClusterId : string
       [<FromHeader(Name = TenantHeaders.TenantId)>]
       TenantId : string }
-    interface IMediatorRequest<GetPostgresClusterConnectionStringResponse>
+    interface IMediatorRequest<GetPostgresClusterConnectionStringOutcome>
     interface ITenantWriteOperation with
         member this.TenantId = this.TenantId
 
 type GetPostgresClusterConnectionStringHandler(
-    dbContext : IPostgresDbContext,
-    credentialService : IPostgresCredentialService,
+    loadCluster : LoadPostgresClusterById,
+    resolveCredentials : ResolvePostgresClusterCredentials,
     loadDeployment : LoadResourceDeployment) =
-    interface IMediatorHandler<GetPostgresClusterConnectionStringRequest, GetPostgresClusterConnectionStringResponse> with
+    interface IMediatorOutcomeHandler<GetPostgresClusterConnectionStringRequest, GetPostgresClusterConnectionStringOutcome> with
         member _.HandleAsync(request, cancellationToken) =
             task {
-                let filter =
-                    Builders<PostgresCluster>.Filter.And(
-                        Builders<PostgresCluster>.Filter.ForTenant(request.TenantId),
-                        Builders<PostgresCluster>.Filter.Eq((fun cluster -> cluster.Id), request.ClusterId))
                 let! cluster =
-                    dbContext.Postgres
-                        .Find(filter)
-                        .FirstOrNoneAsync(cancellationToken)
+                    loadCluster.Invoke(
+                        request.TenantId,
+                        request.ClusterId,
+                        cancellationToken)
 
                 match cluster with
                 | None ->
                     return
-                        Failures.NotFound("PostgreSQL cluster not found.", request.ClusterId)
-                        |> ResultF.ofFailure
+                        GetPostgresClusterConnectionStringRejected(
+                            ConnectionStringState(
+                                PostgresClusterConnectionStringNotFound request.ClusterId))
                 | Some cluster when (cluster.Lifecycle :? DeletingPostgresClusterLifecycle) ->
                     return
-                        Failures.Conflict(
-                            "A connection string is unavailable while the PostgreSQL cluster is being deleted.")
-                        |> ResultF.ofFailure
+                        GetPostgresClusterConnectionStringRejected(
+                            ConnectionStringState(
+                                PostgresClusterConnectionStringDeleting cluster.Id))
                 | Some cluster ->
                     let! placement =
-                        loadDeployment.FindOptionAsync(
+                        loadDeployment.Invoke(
                             cluster.TenantId,
                             PostgresResourceDeployment.ResourceType,
                             cluster.Id,
                             cancellationToken)
 
-                    match placement with
-                    | None ->
+                    if isNull placement ||
+                       placement.Status <> "Applied" ||
+                       placement.ObservedGeneration <> placement.DesiredGeneration then
                         return
-                            Failures.Conflict(
-                                "The PostgreSQL deployment has not applied its current desired generation.")
-                            |> ResultF.ofFailure
-                    | Some placement when
-                        placement.Status <> "Applied" ||
-                        placement.ObservedGeneration <> placement.DesiredGeneration ->
-                        return
-                            Failures.Conflict(
-                                "The PostgreSQL deployment has not applied its current desired generation.")
-                            |> ResultF.ofFailure
-                    | Some placement ->
+                            GetPostgresClusterConnectionStringRejected(
+                                ConnectionStringState(
+                                    PostgresClusterDeploymentNotReady cluster.Id))
+                    else
                         let endpoint =
                             placement.Endpoints
                             |> Seq.tryFind (fun item -> item.Kind = "PostgreSql")
@@ -84,32 +96,34 @@ type GetPostgresClusterConnectionStringHandler(
                         match endpoint with
                         | None ->
                             return
-                                Failures.Conflict(
-                                    "The applied PostgreSQL deployment has no connection endpoint.")
-                                |> ResultF.ofFailure
+                                GetPostgresClusterConnectionStringRejected(
+                                    ConnectionStringState(
+                                        PostgresClusterConnectionEndpointUnavailable cluster.Id))
                         | Some endpoint ->
                             let! credentialResult =
-                                credentialService.ResolveAsync(
+                                resolveCredentials.Invoke(
                                     cluster.TenantId,
                                     cluster.Id,
                                     cancellationToken)
 
-                            match credentialResult.TryGetValue() with
-                            | struct (false, _, failure) ->
-                                return failure |> ResultF.ofFailure
-                            | struct (true, credentials, _) ->
+                            match credentialResult with
+                            | PostgresError error ->
+                                return
+                                    GetPostgresClusterConnectionStringRejected(
+                                        ConnectionStringCredentials error)
+                            | PostgresSuccess credentials ->
                                 let connectionString =
                                     $"Host={endpoint.Host};Port={endpoint.Port};Database={PostgresClusterKubernetesBuilder.buildDatabaseName cluster.Id};Username={credentials.Username};Password={credentials.Password};SSL Mode=Disable"
 
                                 return
                                     { ConnectionString = connectionString }
-                                    |> ResultF.ofValue
+                                    |> PostgresClusterConnectionString
             }
 
 type GetPostgresClusterConnectionStringRequestValidator() as this =
     inherit AbstractValidator<GetPostgresClusterConnectionStringRequest>()
     do
-        this.RuleFor(_.ClusterId).NotEmpty() |> ignore
+        this.RuleFor(_.ClusterId).MongoObjectId("PostgreSQL cluster ID") |> ignore
 
 [<AbstractClass; Sealed>]
 type GetPostgresClusterConnectionString =
@@ -126,8 +140,14 @@ type GetPostgresClusterConnectionString =
     static member Handle(
         [<AsParameters>] request : GetPostgresClusterConnectionStringRequest,
         [<FromServices>] mediator : IMediator,
+        [<FromServices>] httpProblems : IHttpProblemMapper,
         cancellationToken : System.Threading.CancellationToken) =
         task {
             let! result = mediator.Send(request, cancellationToken)
-            return result.ToHttpResult(fun value -> Results.Ok(value))
+            return
+                result.ToHttpResult(fun outcome ->
+                    match outcome with
+                    | PostgresClusterConnectionString value -> Results.Ok(value)
+                    | GetPostgresClusterConnectionStringRejected error ->
+                        httpProblems.Map(error).ToHttpResult())
         }

@@ -1,5 +1,6 @@
 namespace Pole.Features.Postgres.Application.Endpoints
 
+open System
 open System.Runtime.CompilerServices
 open System.Threading.Tasks
 open FluentValidation
@@ -8,75 +9,98 @@ open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.Mvc
 open Microsoft.AspNetCore.Routing
-open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
 open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
+open Pole.Features.Postgres.Application.Persistence
+open Pole.Features.Postgres.Application.Persistence.Lifecycle
+open Pole.Features.Postgres.Application.Persistence.Reads
 open Pole.Features.Quotas.Contracts
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.ResourceDeployments.Events
 open Pole.Mediator
 open Pole.ResultType
+open Pole.Validation
 
 type DeletePostgresClusterResponse =
     { Id : string
       Placement : PlacementSummaryDto }
+
+type DeletePostgresClusterStateError =
+    | PostgresClusterDeletionNotFound of clusterId : string
+    | PostgresClusterDeletionResourceDeploymentMissing of clusterId : string
+
+type DeletePostgresClusterError =
+    | DeletePostgresClusterState of DeletePostgresClusterStateError
+    | DeletePostgresClusterCompute of LoadCurrentResourceDeploymentComputeError
+    | DeletePostgresClusterPersistence of PostgresClusterDeletionConflict
+    | DeletePostgresClusterDeployment of ResourceDeploymentMutationError
+    | DeletePostgresClusterQuota of QuotaExecutionError
+    interface IUnion with
+        member this.Value =
+            match this with
+            | DeletePostgresClusterState error -> box error
+            | DeletePostgresClusterCompute error -> box error
+            | DeletePostgresClusterPersistence error -> box error
+            | DeletePostgresClusterDeployment error -> box error
+            | DeletePostgresClusterQuota error -> box error
+
+type DeletePostgresClusterOutcome =
+    | PostgresClusterDeletionAccepted of DeletePostgresClusterResponse
+    | DeletePostgresClusterRejected of DeletePostgresClusterError
 
 type DeletePostgresClusterRequest =
     { [<FromRoute>]
       ClusterId : string
       [<FromHeader(Name = TenantHeaders.TenantId)>]
       TenantId : string }
-    interface IMediatorRequest<DeletePostgresClusterResponse>
+    interface IMediatorRequest<DeletePostgresClusterOutcome>
     interface ITenantWriteOperation with
         member this.TenantId = this.TenantId
 
 type DeletePostgresClusterHandler(
-    dbContext : IPostgresDbContext,
+    loadCluster : LoadPostgresClusterById,
+    beginDeletion : BeginPostgresClusterDeletion,
     quotaAdmissionExecutor : IQuotaAdmissionExecutor,
-    requestDeploymentDeletion : RequestResourceDeploymentDeletionLegacy,
+    requestDeploymentDeletion : RequestResourceDeploymentDeletion,
     loadDeployment : LoadResourceDeployment,
-    loadDeploymentCompute : LoadCurrentResourceDeploymentComputeLegacy,
-    timeProvider : System.TimeProvider) =
-    interface IMediatorHandler<DeletePostgresClusterRequest, DeletePostgresClusterResponse> with
+    loadDeploymentCompute : LoadCurrentResourceDeploymentCompute,
+    timeProvider : TimeProvider) =
+    interface IMediatorOutcomeHandler<DeletePostgresClusterRequest, DeletePostgresClusterOutcome> with
         member _.HandleAsync(request, cancellationToken) =
             task {
-                let filter =
-                    Builders<PostgresCluster>.Filter.And(
-                        Builders<PostgresCluster>.Filter.ForTenant(request.TenantId),
-                        Builders<PostgresCluster>.Filter.Eq((fun cluster -> cluster.Id), request.ClusterId))
-
                 let! cluster =
-                    dbContext.Postgres
-                        .Find(filter)
-                        .FirstOrNoneAsync(cancellationToken)
+                    loadCluster.Invoke(
+                        request.TenantId,
+                        request.ClusterId,
+                        cancellationToken)
 
                 match cluster with
                 | None ->
                     return
-                        Failures.NotFound("PostgreSQL cluster not found.", request.ClusterId)
-                        |> ResultF.ofFailure
+                        DeletePostgresClusterRejected(
+                            DeletePostgresClusterState(
+                                PostgresClusterDeletionNotFound request.ClusterId))
                 | Some cluster when (cluster.Lifecycle :? DeletingPostgresClusterLifecycle) ->
                     let! placement =
-                        loadDeployment.FindOptionAsync(
+                        loadDeployment.Invoke(
                             cluster.TenantId,
                             PostgresResourceDeployment.ResourceType,
                             cluster.Id,
                             cancellationToken)
 
-                    match placement with
-                    | None ->
+                    if isNull placement then
                         return
-                            Failures.Conflict(
-                                "The deleting PostgreSQL cluster has no resource deployment.")
-                            |> ResultF.ofFailure
-                    | Some placement ->
+                            DeletePostgresClusterRejected(
+                                DeletePostgresClusterState(
+                                    PostgresClusterDeletionResourceDeploymentMissing cluster.Id))
+                    else
                         return
-                            { Id = cluster.Id
-                              Placement = placement }
-                            |> ResultF.ofValue
+                            PostgresClusterDeletionAccepted(
+                                { Id = cluster.Id
+                                  Placement = placement })
                 | Some cluster ->
                     let! currentComputeResult =
                         loadDeploymentCompute.Invoke(
@@ -85,155 +109,118 @@ type DeletePostgresClusterHandler(
                             cluster.Id,
                             cancellationToken)
 
-                    match currentComputeResult.TryGetValue() with
-                    | struct (false, _, failure) ->
-                        return failure |> ResultF.ofFailure
-                    | struct (true, currentCompute, _) ->
+                    let mutable currentCompute = Unchecked.defaultof<CurrentResourceDeploymentComputeDto>
+                    let mutable currentComputeError =
+                        Unchecked.defaultof<LoadCurrentResourceDeploymentComputeError>
+                    if not (TypedResultExtensions.TryGetValue(
+                        currentComputeResult,
+                        &currentCompute,
+                        &currentComputeError)) then
+                        return
+                            DeletePostgresClusterRejected(
+                                DeletePostgresClusterCompute currentComputeError)
+                    else
                         let quotaInput =
                             PostgresQuotaInput.create
                                 currentCompute.Compute.Requests.CpuMillis
                                 currentCompute.Compute.Requests.MemoryMi
                                 (int64 cluster.Spec.Instances)
+
                         return!
-                            quotaAdmissionExecutor.ExecuteAsync<PostgresQuotaInput, DeletePostgresClusterResponse>(
+                            quotaAdmissionExecutor.ExecuteOutcomeAsync<
+                                PostgresQuotaInput,
+                                DeletePostgresClusterOutcome>(
                                 cluster.TenantId,
                                 PostgresQuotaResourceKey.create cluster.Id,
                                 DeleteQuotaMutation<PostgresQuotaInput>(quotaInput),
-                                (fun session ct ->
-                                    task {
-                                        let deleting =
-                                            cluster.BeginDeletion(
-                                                timeProvider.GetUtcNow().UtcDateTime)
-                                        let! replacement =
-                                            dbContext.Postgres.ReplaceOneAsync(
-                                                session,
-                                                Builders<PostgresCluster>.Filter.And(
-                                                    filter,
-                                                    Builders<PostgresCluster>.Filter.Eq(
-                                                        (fun item -> item.Revision),
-                                                        cluster.Revision)),
-                                                deleting,
-                                                cancellationToken = ct)
+                                Func<QuotaExecutionError, DeletePostgresClusterOutcome>(fun quotaError ->
+                                    DeletePostgresClusterRejected(
+                                        DeletePostgresClusterQuota quotaError)),
+                                Func<
+                                    MongoTransactionContext<DeletePostgresClusterOutcome>,
+                                    Threading.CancellationToken,
+                                    Task<MongoTransactionDecision<DeletePostgresClusterOutcome>>>(
+                                    fun transaction transactionCancellationToken ->
+                                        task {
+                                            let deleting =
+                                                cluster.BeginDeletion(
+                                                    timeProvider.GetUtcNow().UtcDateTime)
 
-                                        if replacement.ModifiedCount <> 1L then
-                                            return
-                                                Failures.Conflict(
-                                                    "The PostgreSQL cluster changed while deletion was being accepted.")
-                                                |> ResultF.ofFailure
-                                        else
-                                            let! deploymentResult =
-                                                requestDeploymentDeletion.Invoke(
-                                                    ResourceDeploymentMutationRequest(
-                                                        cluster.TenantId,
-                                                        PostgresResourceDeployment.ResourceType,
-                                                        cluster.Id,
-                                                        currentCompute.Compute.Profile),
-                                                    session,
-                                                    ct)
+                                            let! persisted =
+                                                beginDeletion.Invoke(
+                                                    transaction.Session,
+                                                    cluster,
+                                                    deleting,
+                                                    transactionCancellationToken)
 
-                                            match deploymentResult.TryGetValue() with
-                                            | struct (false, _, failure) ->
-                                                return failure |> ResultF.ofFailure
-                                            | struct (true, deployment, _) ->
+                                            match persisted with
+                                            | PostgresError conflict ->
                                                 return
-                                                    { Id = cluster.Id
-                                                      Placement = deployment }
-                                                    |> ResultF.ofValue
-                                    }),
+                                                    transaction.Abort(
+                                                        DeletePostgresClusterRejected(
+                                                            DeletePostgresClusterPersistence conflict))
+                                            | PostgresSuccess () ->
+                                                let! deploymentResult =
+                                                    requestDeploymentDeletion.Invoke(
+                                                        ResourceDeploymentMutationRequest(
+                                                            cluster.TenantId,
+                                                            PostgresResourceDeployment.ResourceType,
+                                                            cluster.Id,
+                                                            currentCompute.Compute.Profile),
+                                                        transaction.Session,
+                                                        transactionCancellationToken)
+
+                                                let mutable deployment =
+                                                    Unchecked.defaultof<PlacementSummaryDto>
+                                                let mutable deploymentError =
+                                                    Unchecked.defaultof<ResourceDeploymentMutationError>
+                                                if not (TypedResultExtensions.TryGetValue(
+                                                    deploymentResult,
+                                                    &deployment,
+                                                    &deploymentError)) then
+                                                    return
+                                                        transaction.Abort(
+                                                            DeletePostgresClusterRejected(
+                                                                DeletePostgresClusterDeployment deploymentError))
+                                                else
+                                                    return
+                                                        transaction.Commit(
+                                                            PostgresClusterDeletionAccepted(
+                                                                { Id = cluster.Id
+                                                                  Placement = deployment }))
+                                        }),
                                 cancellationToken)
             }
 
 type FinalizePostgresClusterDeletionConsumer(
-    dbContext : IPostgresDbContext,
-    getDeploymentReadiness : GetResourceDeploymentFinalizationReadiness,
-    purgeDeployments : PurgeDeletedResourceDeploymentsLegacy) =
+    finalizeDeletion : FinalizePostgresClusterDeletion) =
     interface IConsumer<ResourceDeploymentDeletedEvent> with
         member _.Consume(context) =
             let message = context.Message
             if message.ResourceType <> PostgresResourceDeployment.ResourceType.Value then
                 Task.CompletedTask
             else
-                dbContext.RunInTransactionAsync(
-                    (fun session ct ->
-                        task {
-                            let clusterFilter =
-                                Builders<PostgresCluster>.Filter.And(
-                                    Builders<PostgresCluster>.Filter.ForTenant(
-                                        message.EventCore.TenantId),
-                                    Builders<PostgresCluster>.Filter.Eq(
-                                        (fun cluster -> cluster.Id),
-                                        message.ResourceId))
-                            let! cluster =
-                                dbContext.Postgres
-                                    .Find(session, clusterFilter)
-                                    .FirstOrDefaultAsync(ct)
+                task {
+                    let! result =
+                        finalizeDeletion.Invoke(
+                            message.EventCore.TenantId,
+                            message.ResourceId,
+                            context.CancellationToken)
 
-                            if isNull (box cluster) ||
-                               not (cluster.Lifecycle :? DeletingPostgresClusterLifecycle) then
-                                return Result.Success() :> Result
-                            else
-                                let! readiness =
-                                    getDeploymentReadiness.Invoke(
-                                        message.EventCore.TenantId,
-                                        PostgresResourceDeployment.ResourceType,
-                                        message.ResourceId,
-                                        session,
-                                        ct)
-
-                                if readiness <> ResourceDeploymentFinalizationReadiness.Ready then
-                                    return Result.Success() :> Result
-                                else
-                                    let! deletedCluster =
-                                        dbContext.Postgres.DeleteOneAsync(
-                                            session,
-                                            Builders<PostgresCluster>.Filter.And(
-                                                clusterFilter,
-                                                Builders<PostgresCluster>.Filter.Eq(
-                                                    (fun item -> item.Revision),
-                                                    cluster.Revision)),
-                                            cancellationToken = ct)
-
-                                    if deletedCluster.DeletedCount <> 1L then
-                                        return Result.Success() :> Result
-                                    else
-                                        let! _ =
-                                            (PostgresCredentials.collection dbContext)
-                                                .DeleteOneAsync(
-                                                    session,
-                                                    (fun credential ->
-                                                        credential.TenantId =
-                                                            message.EventCore.TenantId &&
-                                                        credential.PostgresClusterId =
-                                                            message.ResourceId),
-                                                    cancellationToken = ct)
-                                        let! purgeResult =
-                                            purgeDeployments.Invoke(
-                                                message.EventCore.TenantId,
-                                                PostgresResourceDeployment.ResourceType,
-                                                message.ResourceId,
-                                                session,
-                                                ct)
-
-                                        match purgeResult with
-                                        | :? Failure as failure ->
-                                            return failure :> Result
-                                        | _ ->
-                                            do!
-                                                dbContext.StoreEventAsync(
-                                                    PostgresClusterEvents.deleted cluster,
-                                                    session,
-                                                    ct)
-                                            return Result.Success() :> Result
-                        }),
-                    cancellationToken = context.CancellationToken)
+                    match result with
+                    | PostgresSuccess () -> ()
+                    | PostgresError(PostgresClusterDeletionFinalizationConflict clusterId) ->
+                        raise (InvalidOperationException(
+                            $"PostgreSQL deletion finalization conflicted for '{clusterId}'."))
+                    | PostgresError(PostgresClusterDeletionDeploymentPurgeConflict conflict) ->
+                        raise (InvalidOperationException(
+                            $"PostgreSQL deployment purge conflicted while finalizing '{conflict.ResourceId}'."))
+                }
 
 type DeletePostgresClusterRequestValidator() as this =
     inherit AbstractValidator<DeletePostgresClusterRequest>()
     do
-        this.RuleFor(_.ClusterId)
-            .NotEmpty()
-            .WithMessage("Cluster ID must not be empty.")
-        |> ignore
+        this.RuleFor(_.ClusterId).MongoObjectId("PostgreSQL cluster ID") |> ignore
 
 [<AbstractClass; Sealed>]
 type DeletePostgresCluster =
@@ -251,8 +238,14 @@ type DeletePostgresCluster =
     static member Handle(
         [<AsParameters>] request : DeletePostgresClusterRequest,
         [<FromServices>] mediator : IMediator,
+        [<FromServices>] httpProblems : IHttpProblemMapper,
         cancellationToken : System.Threading.CancellationToken) =
         task {
             let! result = mediator.Send(request, cancellationToken)
-            return result.ToHttpResult(fun value -> Results.Accepted(value = value))
+            return
+                result.ToHttpResult(fun outcome ->
+                    match outcome with
+                    | PostgresClusterDeletionAccepted value -> Results.Accepted(value = value)
+                    | DeletePostgresClusterRejected error ->
+                        httpProblems.Map(error).ToHttpResult())
         }

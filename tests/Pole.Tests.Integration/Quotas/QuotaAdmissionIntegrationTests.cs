@@ -4,12 +4,14 @@ using MongoDB.Bson;
 using Pole.Database;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.Postgres.Application.Common;
+using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Domain;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
+using Pole.Tests.Integration.Postgres;
 using Xunit;
 
 namespace Pole.Tests.Integration.Quotas;
@@ -60,11 +62,14 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
 
         var first = await Mediator.Send(TestData.CreatePostgresClusterRequest(resourceGroup.Id, "postgres-a"));
-        Assert.True(first.TryGetValue(out _, out _));
+        _ = first.AssertCreated();
 
         var second = await Mediator.Send(TestData.CreatePostgresClusterRequest(resourceGroup.Id, "postgres-b"));
-        Assert.False(second.TryGetValue(out _, out var failure));
-        Assert.IsType<ConflictFailure>(failure);
+        var outcome = second.AssertSuccess();
+        var error = Assert.IsType<CreatePostgresClusterOutcome.CreatePostgresClusterRejected>(outcome)
+            .Item;
+        var quota = Assert.IsType<CreatePostgresClusterError.CreateQuota>(error).Item;
+        Assert.IsType<QuotaExecutionError>(quota);
 
         var usage = await GetUsageAsync(TestData.TenantId);
         Assert.Equal(250, QuotaValues.GetValue(usage.Values, CpuQuota.QuotaKey));

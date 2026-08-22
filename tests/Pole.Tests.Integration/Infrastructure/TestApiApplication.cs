@@ -32,6 +32,7 @@ using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Postgres.Application.Common;
+using Pole.Features.Postgres.Application;
 using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Outbox.Application.Migrations;
@@ -174,6 +175,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddComputeProfiles();
         builder.Services.AddStorageProfileResolution();
         builder.Services.AddRedisServicesFeature();
+        builder.Services.AddPostgresFeature();
         builder.Services.AddWebServicesFeature();
         builder.Services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         builder.Services.AddSingleton(new PostgresSettings
@@ -193,7 +195,6 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSearchFeature();
         builder.Services.AddGitProvidersFeature();
         builder.Services.AddEnvelopeEncryption(builder.Configuration);
-        builder.Services.AddScoped<IPostgresCredentialService, PostgresCredentialService>();
         builder.Services.AddDeploymentTargetsFeature(builder.Configuration);
         builder.Services.RemoveAll<IDeploymentTargetProbe>();
         builder.Services.AddSingleton<IDeploymentTargetProbe, TestDeploymentTargetProbe>();
