@@ -31,10 +31,6 @@ internal static class ResourceDeploymentPlacementRegistration
             serviceProvider
                 .GetRequiredService<ResourceDeploymentWriter>()
                 .InvokeSetAsync);
-        services.TryAddScoped<CreateResourceDeploymentSetLegacy>(serviceProvider =>
-            serviceProvider
-                .GetRequiredService<ResourceDeploymentLegacyCreationAdapters>()
-                .CreateSetAsync);
         services.TryAddScoped<ResourceDeploymentMutationWriter>();
         services.TryAddScoped<RequestResourceDeploymentApply>(
             serviceProvider => serviceProvider
@@ -60,10 +56,6 @@ internal static class ResourceDeploymentPlacementRegistration
             serviceProvider => serviceProvider
                 .GetRequiredService<ResourceDeploymentMutationWriter>()
                 .RequestSetDeletionAsync);
-        services.TryAddScoped<AdvanceResourceDeploymentRevisionLegacy>(
-            serviceProvider => serviceProvider
-                .GetRequiredService<ResourceDeploymentLegacyMutationAdapters>()
-                .AdvanceResourceRevisionAsync);
         services.TryAddScoped<AdvanceResourceDeploymentRevision>(
             serviceProvider => serviceProvider
                 .GetRequiredService<ResourceDeploymentMutationWriter>()
@@ -81,26 +73,6 @@ internal static class ResourceDeploymentPlacementRegistration
             serviceProvider => serviceProvider
                 .GetRequiredService<ResourceDeploymentLegacyMutationAdapters>()
                 .RequestDeletionAsync);
-        services.TryAddScoped<RequestExactResourceDeploymentApplyLegacy>(
-            serviceProvider => serviceProvider
-                .GetRequiredService<ResourceDeploymentLegacyMutationAdapters>()
-                .RequestExactApplyAsync);
-        services.TryAddScoped<RequestExactResourceDeploymentDeletionLegacy>(
-            serviceProvider => serviceProvider
-                .GetRequiredService<ResourceDeploymentLegacyMutationAdapters>()
-                .RequestExactDeletionAsync);
-        services.TryAddScoped<RequestResourceDeploymentSetApplyLegacy>(
-            serviceProvider => serviceProvider
-                .GetRequiredService<ResourceDeploymentLegacyMutationAdapters>()
-                .RequestSetApplyAsync);
-        services.TryAddScoped<RequestResourceDeploymentSetDeletionLegacy>(
-            serviceProvider => serviceProvider
-                .GetRequiredService<ResourceDeploymentLegacyMutationAdapters>()
-                .RequestSetDeletionAsync);
-        services.TryAddScoped<RetryExactResourceDeploymentLegacy>(
-            serviceProvider => serviceProvider
-                .GetRequiredService<ResourceDeploymentLegacyMutationAdapters>()
-                .RequestRetryAsync);
 
         services.TryAddScoped<ResourceDeploymentQueryService>();
         services.TryAddScoped<LoadResourceDeployment>(serviceProvider =>
@@ -125,8 +97,6 @@ internal static class ResourceDeploymentPlacementRegistration
             serviceProvider.GetRequiredService<ResourceDeploymentFinalizationService>().PurgeExactDeletedAsync);
         services.TryAddScoped<PurgeDeletedResourceDeploymentsLegacy>(serviceProvider =>
             serviceProvider.GetRequiredService<ResourceDeploymentLegacyAdapters>().PurgeDeletedAsync);
-        services.TryAddScoped<PurgeExactDeletedResourceDeploymentLegacy>(serviceProvider =>
-            serviceProvider.GetRequiredService<ResourceDeploymentLegacyAdapters>().PurgeExactDeletedAsync);
 
         return services;
     }

@@ -9,15 +9,17 @@ namespace Pole.Features.WebServices.Application.Common;
 
 public sealed class WebServiceSourceBuildDeploymentService(
     LoadWebServiceById loadWebServiceById,
-    PersistUpdatedWebService persistUpdatedWebService,
+    PersistUpdatedWebServiceOutcome persistUpdatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
-    RunMongoTransaction<SourceBuildDeploymentResult> runMongoTransaction,
+    RunMongoOutcomeTransaction<
+        Result<SourceBuildDeploymentResult, SourceBuildWebServiceDeploymentError>>
+        runMongoTransaction,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
-    RequestResourceDeploymentSetApplyLegacy requestResourceDeploymentSetApply,
+    RequestResourceDeploymentSetApply requestResourceDeploymentSetApply,
     TimeProvider timeProvider)
-    : IWebServiceSourceBuildDeploymentService
 {
-    public async Task<Result<SourceBuildDeploymentResult>> DeployAsync(
+    public async Task<Result<SourceBuildDeploymentResult, SourceBuildWebServiceDeploymentError>>
+        DeployAsync(
         SourceBuildDeploymentRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -26,9 +28,15 @@ public sealed class WebServiceSourceBuildDeploymentService(
             request.WebServiceId,
             cancellationToken);
         if (webService is null)
-            return Failures.NotFound("Web service not found.", request.WebServiceId);
+        {
+            return new Err<SourceBuildWebServiceDeploymentError>(
+                new SourceBuildWebServiceNotFound(request.WebServiceId));
+        }
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
-            return Failures.Conflict("A deleting web service cannot accept a source build.");
+        {
+            return new Err<SourceBuildWebServiceDeploymentError>(
+                new SourceBuildWebServiceDeleting(request.WebServiceId));
+        }
 
         var deployments = await loadResourceDeploymentSet(
             webService.TenantId,
@@ -36,10 +44,14 @@ public sealed class WebServiceSourceBuildDeploymentService(
             webService.Id,
             cancellationToken);
         if (deployments.Count == 0)
-            return Failures.Conflict("The web service has no active resource deployments.");
-
-        return await runMongoTransaction(async (session, ct) =>
         {
+            return new Err<SourceBuildWebServiceDeploymentError>(
+                new SourceBuildWebServiceHasNoActiveDeployments(request.WebServiceId));
+        }
+
+        return await runMongoTransaction(async (transaction, ct) =>
+        {
+            var session = transaction.Session;
             var previousImageReference = webService.Spec.Image.FullImageName;
             var nextImage = new ImageInfo(
                 request.Image.RegistryHost,
@@ -61,7 +73,11 @@ public sealed class WebServiceSourceBuildDeploymentService(
                 session,
                 ct);
             if (!deploymentResult.TryGetValue(out var updatedDeployments, out var deploymentFailure))
-                return deploymentFailure;
+            {
+                return transaction.Abort(
+                    new Err<SourceBuildWebServiceDeploymentError>(
+                        ToDeploymentError(request.WebServiceId, deploymentFailure)));
+            }
 
             var updatedEvent = updatedWebService.ToUpdatedEvent(
                 WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments));
@@ -71,8 +87,13 @@ public sealed class WebServiceSourceBuildDeploymentService(
                 updatedWebService,
                 updatedEvent,
                 ct);
-            if (update is not ISuccess)
-                return (Failure)update;
+            if (update is Err<WebServiceUpdateConflict> updateConflict)
+            {
+                return transaction.Abort(
+                    new Err<SourceBuildWebServiceDeploymentError>(
+                        new SourceBuildWebServiceUpdateConflict(
+                            updateConflict.Value.WebServiceId)));
+            }
 
             var release = WebServiceReleaseFactory.CreatePending(
                 request.TenantId,
@@ -99,9 +120,59 @@ public sealed class WebServiceSourceBuildDeploymentService(
                 session,
                 release,
                 ct);
-            return new SourceBuildDeploymentResult(
-                release.Id,
-                updatedWebService.ActiveRevision);
+            return transaction.Commit(
+                new Ok<SourceBuildDeploymentResult>(new SourceBuildDeploymentResult(
+                    release.Id,
+                    updatedWebService.ActiveRevision)));
         }, cancellationToken);
     }
+
+    private static SourceBuildWebServiceDeploymentRejected ToDeploymentError(
+        string webServiceId,
+        ResourceDeploymentMutationError error) => error switch
+        {
+            ResourceDeploymentMutationNotFound notFound => new(
+                webServiceId,
+                new SourceBuildResourceDeploymentRejection(
+                    new SourceBuildResourceDeploymentNotFound(
+                        notFound.ResourceDeploymentId))),
+            ResourceDeploymentChanged changed => new(
+                webServiceId,
+                new SourceBuildResourceDeploymentRejection(
+                    new SourceBuildResourceDeploymentChanged(
+                        changed.ResourceDeploymentId))),
+            ResourceDeploymentCardinalityConflict => new(
+                webServiceId,
+                new SourceBuildResourceDeploymentRejection(
+                    new SourceBuildResourceDeploymentCardinalityConflict())),
+            ResourceDeploymentPendingDeletion pending => new(
+                webServiceId,
+                new SourceBuildResourceDeploymentRejection(
+                    new SourceBuildResourceDeploymentPendingDeletion(
+                        pending.ResourceDeploymentId))),
+            ResourceDeploymentPlacementUnavailable unavailable => new(
+                webServiceId,
+                new SourceBuildResourceDeploymentRejection(
+                    new SourceBuildResourceDeploymentPlacementUnavailable(
+                        unavailable.ResourceDeploymentId))),
+            ResourceDeploymentReplacementTargetMismatch mismatch => new(
+                webServiceId,
+                new SourceBuildResourceDeploymentRejection(
+                    new SourceBuildResourceDeploymentReplacementTargetMismatch(
+                        mismatch.ResourceDeploymentId))),
+            ResourceDeploymentIngressConfigurationChanged ingressChanged => new(
+                webServiceId,
+                new SourceBuildResourceDeploymentRejection(
+                    new SourceBuildResourceDeploymentIngressConfigurationChanged(
+                        ingressChanged.ResourceDeploymentId))),
+            ResourceDeploymentRetryUnavailable retryUnavailable => new(
+                webServiceId,
+                new SourceBuildResourceDeploymentRejection(
+                    new SourceBuildResourceDeploymentRetryUnavailable(
+                        retryUnavailable.ResourceDeploymentId))),
+            ResourceDeploymentComputeConfigurationChanged => new(
+                webServiceId,
+                new SourceBuildResourceDeploymentRejection(
+                    new SourceBuildResourceDeploymentComputeConfigurationChanged()))
+        };
 }

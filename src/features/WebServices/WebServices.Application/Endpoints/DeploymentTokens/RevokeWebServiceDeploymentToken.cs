@@ -17,15 +17,22 @@ public sealed record RevokeWebServiceDeploymentTokenRequest(
     [FromRoute] string TokenId,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default
-) : IMediatorRequest<RevokeWebServiceDeploymentTokenResponse>, ITenantWriteOperation;
+) : IMediatorRequest<RevokeWebServiceDeploymentTokenOutcome>, ITenantWriteOperation;
+
+public union RevokeWebServiceDeploymentTokenOutcome(
+    RevokeWebServiceDeploymentTokenResponse,
+    WebServiceDeploymentTokenNotFound);
 
 public sealed record RevokeWebServiceDeploymentTokenResponse(string Id);
 
 public sealed class RevokeWebServiceDeploymentTokenHandler(
-    RevokeWebServiceDeploymentToken revokeToken)
-    : IMediatorHandler<RevokeWebServiceDeploymentTokenRequest, RevokeWebServiceDeploymentTokenResponse>
+    Pole.Features.WebServices.Application.Persistence.
+        RevokeWebServiceDeploymentTokenOutcome revokeToken)
+    : IMediatorOutcomeHandler<
+        RevokeWebServiceDeploymentTokenRequest,
+        RevokeWebServiceDeploymentTokenOutcome>
 {
-    public async Task<Result<RevokeWebServiceDeploymentTokenResponse>> HandleAsync(
+    public async Task<RevokeWebServiceDeploymentTokenOutcome> HandleAsync(
         RevokeWebServiceDeploymentTokenRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -36,9 +43,10 @@ public sealed class RevokeWebServiceDeploymentTokenHandler(
             request.ActorUserId.Value,
             DateTime.UtcNow,
             cancellationToken);
-        return result is Failure failure
-            ? failure
-            : new RevokeWebServiceDeploymentTokenResponse(request.TokenId);
+        return result.TryGetValue(out _, out var error)
+            ? new RevokeWebServiceDeploymentTokenOutcome(
+                new RevokeWebServiceDeploymentTokenResponse(request.TokenId))
+            : new RevokeWebServiceDeploymentTokenOutcome(error);
     }
 }
 
@@ -56,12 +64,19 @@ public static class RevokeWebServiceDeploymentTokenEndpoint
 {
     public static IEndpointRouteBuilder MapRevokeWebServiceDeploymentTokenEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{Id}/deployment-tokens/{TokenId}", async (IMediator mediator,
+        app.MapDelete("/{Id}/deployment-tokens/{TokenId}", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] RevokeWebServiceDeploymentTokenRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(_ => Results.NoContent());
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    RevokeWebServiceDeploymentTokenResponse => Results.NoContent(),
+                    WebServiceDeploymentTokenNotFound error =>
+                        httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("RevokeWebServiceDeploymentToken")
             .Produces(StatusCodes.Status204NoContent);

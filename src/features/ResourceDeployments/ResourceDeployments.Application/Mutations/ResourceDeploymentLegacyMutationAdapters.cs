@@ -24,18 +24,8 @@ internal sealed class ResourceDeploymentLegacyMutationAdapters(
         CancellationToken cancellationToken = default) =>
         ToLegacy(await writer.RequestDeletionAsync(request, session, cancellationToken));
 
-    public async Task<Result<PlacementSummaryDto>> RequestExactApplyAsync(
-        ResourceDeploymentExactMutationRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default) =>
-        ToLegacy(await writer.RequestExactApplyAsync(request, session, cancellationToken));
-
-    public async Task<Result<PlacementSummaryDto>> RequestExactDeletionAsync(
-        ResourceDeploymentExactMutationRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default) =>
-        ToLegacy(await writer.RequestExactDeletionAsync(request, session, cancellationToken));
-
+    // Retained for ResourceDeployments' direct compatibility tests. These are
+    // no longer registered as cross-feature capabilities.
     public async Task<Result<PlacementSummaryDto>> RequestRetryAsync(
         ResourceDeploymentExactRetryRequest request,
         IClientSessionHandle session,
@@ -53,33 +43,6 @@ internal sealed class ResourceDeploymentLegacyMutationAdapters(
         IClientSessionHandle session,
         CancellationToken cancellationToken = default) =>
         ToLegacy(await writer.RequestSetDeletionAsync(request, session, cancellationToken));
-
-    public async Task<Result<IReadOnlyList<PlacementSummaryDto>>>
-        AdvanceResourceRevisionAsync(
-            ResourceDeploymentResourceRevisionRequest request,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default)
-    {
-        var result = await writer.AdvanceResourceRevisionOutcomeAsync(
-            request,
-            session,
-            cancellationToken);
-        return result switch
-        {
-            Ok<IReadOnlyList<PlacementSummaryDto>> success =>
-                new Success<IReadOnlyList<PlacementSummaryDto>>(success.Value),
-            Err<AdvanceResourceDeploymentRevisionError> error => error.Value switch
-            {
-                ResourceDeploymentsNotFound notFound => Failures.NotFound(
-                    "Resource deployments were not found.",
-                    notFound.ResourceId),
-                ResourceDeploymentsHaveNoActivePlacement => Failures.Conflict(
-                    "The logical resource has no active resource deployments to advance."),
-                ResourceDeploymentRevisionConflict => Failures.Conflict(
-                    "A resource deployment changed while the logical resource revision was being advanced.")
-            }
-        };
-    }
 
     private static Result<T> ToLegacy<T>(
         Result<T, ResourceDeploymentMutationError> result)

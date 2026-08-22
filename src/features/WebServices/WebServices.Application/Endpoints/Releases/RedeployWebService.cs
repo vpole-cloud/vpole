@@ -22,8 +22,19 @@ public static class RedeployWebService
     {
         public IEndpointRouteBuilder MapRedeployWebServiceEndpoint()
         {
-            app.MapPost("/{Id}/redeploy", async (IMediator mediator, [AsParameters] RedeployWebServiceRequest request, CancellationToken cancellationToken) =>
-                (await mediator.Send(request, cancellationToken)).ToHttpResult(value => Results.Accepted(value: value)))
+            app.MapPost("/{Id}/redeploy", async (
+                    IMediator mediator,
+                    IHttpProblemMapper httpProblems,
+                    [AsParameters] RedeployWebServiceRequest request,
+                    CancellationToken cancellationToken) =>
+                (await mediator.Send(request, cancellationToken)).ToHttpResult(
+                    outcome => outcome switch
+                    {
+                        RedeployWebServiceResponse value =>
+                            Results.Accepted(value: value),
+                        RedeployWebServiceError error =>
+                            httpProblems.Map(error).ToHttpResult()
+                    }))
                 .WithName("RedeployWebService")
                 .Produces<RedeployWebServiceResponse>(StatusCodes.Status202Accepted);
             return app;
@@ -36,7 +47,7 @@ public sealed record RedeployWebServiceRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default,
     [FromClaim(Claims.Email)] ClaimValue<string?> ActorEmail = default)
-    : IMediatorRequest<RedeployWebServiceResponse>, ITenantWriteOperation;
+    : IMediatorRequest<RedeployWebServiceOutcome>, ITenantWriteOperation;
 
 public sealed record RedeployWebServiceResponse(
     string Id,
@@ -47,22 +58,24 @@ public sealed record RedeployWebServiceResponse(
 public sealed class RedeployWebServiceHandler(
     LoadWebServiceById loadWebServiceById,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
-    RequestResourceDeploymentSetApplyLegacy requestResourceDeploymentSetApply,
-    PersistUpdatedWebService persistUpdatedWebService,
+    RequestResourceDeploymentSetApply requestResourceDeploymentSetApply,
+    PersistUpdatedWebServiceOutcome persistUpdatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
-    RunMongoTransaction<RedeployWebServiceResponse> runMongoTransaction,
+    RunMongoOutcomeTransaction<RedeployWebServiceOutcome> runMongoTransaction,
     TimeProvider timeProvider)
-    : IMediatorHandler<RedeployWebServiceRequest, RedeployWebServiceResponse>
+    : IMediatorOutcomeHandler<RedeployWebServiceRequest, RedeployWebServiceOutcome>
 {
-    public async Task<Result<RedeployWebServiceResponse>> HandleAsync(
+    public async Task<RedeployWebServiceOutcome> HandleAsync(
         RedeployWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
         var webService = await loadWebServiceById(request.TenantId, request.Id, cancellationToken);
         if (webService is null)
-            return Failures.NotFound("Web service not found.", request.Id);
+            return Error(new WebServiceLifecycleMutationStateError(
+                new WebServiceNotFound(request.Id)));
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
-            return Failures.Conflict("A deleting web service cannot be redeployed.");
+            return Error(new WebServiceLifecycleMutationStateError(
+                new WebServiceUpdateUnavailable(webService.Id)));
 
         var deployments = await loadResourceDeploymentSet(
             webService.TenantId,
@@ -70,9 +83,10 @@ public sealed class RedeployWebServiceHandler(
             webService.Id,
             cancellationToken);
         if (deployments.Count == 0)
-            return Failures.Conflict("The web service has no active resource deployments.");
+            return Error(new WebServiceLifecycleMutationStateError(
+                new WebServiceHasNoActiveDeployments(webService.Id)));
 
-        return await runMongoTransaction(async (session, ct) =>
+        return await runMongoTransaction(async (transaction, ct) =>
         {
             var updated = webService.Redeploy();
             var deploymentsResult = await requestResourceDeploymentSetApply(
@@ -81,21 +95,23 @@ public sealed class RedeployWebServiceHandler(
                     WebServiceResourceDeployment.ResourceType,
                     webService.Id,
                     updated.ActiveRevision,
-                    deployments.Select(deployment =>
+                        deployments.Select(deployment =>
                         WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
-                session,
+                transaction.Session,
                 ct);
             if (!deploymentsResult.TryGetValue(out var updatedDeployments, out var deploymentsFailure))
-                return deploymentsFailure;
+                return transaction.Abort(Error(
+                    new RedeployWebServiceError(deploymentsFailure)));
 
             var persisted = await persistUpdatedWebService(
-                session,
+                transaction.Session,
                 webService,
                 updated,
                 updated.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments)),
                 ct);
-            if (persisted is not ISuccess)
-                return (Failure)persisted;
+            if (!persisted.TryGetValue(out _, out var persistenceError))
+                return transaction.Abort(Error(
+                    new RedeployWebServiceError(persistenceError)));
 
             var release = WebServiceReleaseFactory.CreatePending(
                 updated.TenantId,
@@ -111,15 +127,20 @@ public sealed class RedeployWebServiceHandler(
                 new WebServiceReleaseFactory.CreateOptions(
                     ObjectId.GenerateNewId().ToString(),
                     timeProvider.GetUtcNow().UtcDateTime));
-            await persistCurrentWebServiceRelease(session, release, ct);
+            await persistCurrentWebServiceRelease(transaction.Session, release, ct);
 
-            return new RedeployWebServiceResponse(
-                updated.Id,
-                updated.ActiveRevision,
-                release.Id,
-                updatedDeployments);
+            return transaction.Commit(new RedeployWebServiceOutcome(
+                new RedeployWebServiceResponse(
+                    updated.Id,
+                    updated.ActiveRevision,
+                    release.Id,
+                    updatedDeployments)));
         }, cancellationToken);
     }
+
+    private static RedeployWebServiceOutcome Error(
+        RedeployWebServiceError error) =>
+        new(error);
 }
 
 public sealed class RedeployWebServiceValidator : AbstractValidator<RedeployWebServiceRequest>

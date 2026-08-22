@@ -41,8 +41,6 @@ public static class ComputeProfilePersistenceRegistration
             implementation => implementation.InvokeAsync);
         services.AddCapability<ResolveComputeProfileLegacyAdapter,
             ResolveComputeProfileLegacy>(implementation => implementation.InvokeAsync);
-        services.AddCapability<ResolveComputeProfilesLegacyAdapter,
-            ResolveComputeProfilesLegacy>(implementation => implementation.InvokeAsync);
         services.AddCapability<MongoFenceResolvedComputeProfile,
             FenceResolvedComputeProfiles>(implementation => implementation.InvokeAsync);
 

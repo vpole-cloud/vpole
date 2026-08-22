@@ -25,10 +25,16 @@ public static class GetWebServiceDeploymentHostnames
                     "/{Id}/deployments/{DeploymentId}/hostnames",
                     async (
                         IMediator mediator,
+                        IHttpProblemMapper httpProblems,
                         [AsParameters] GetWebServiceDeploymentHostnamesRequest request,
                         CancellationToken cancellationToken) =>
                         (await mediator.Send(request, cancellationToken))
-                        .ToHttpResult(Results.Ok))
+                        .ToHttpResult(outcome => outcome switch
+                        {
+                            IReadOnlyList<HostnameBindingSnapshot> value => Results.Ok(value),
+                            GetWebServiceDeploymentHostnamesError error =>
+                                httpProblems.Map(error).ToHttpResult()
+                        }))
                 .WithName("GetWebServiceDeploymentHostnames")
                 .Produces<IReadOnlyList<HostnameBindingSnapshot>>();
             return app;
@@ -36,21 +42,29 @@ public static class GetWebServiceDeploymentHostnames
     }
 }
 
+public union GetWebServiceDeploymentHostnamesError(
+    WebServiceNotFound,
+    WebServiceResourceDeploymentNotFound);
+
+public union GetWebServiceDeploymentHostnamesOutcome(
+    IReadOnlyList<HostnameBindingSnapshot>,
+    GetWebServiceDeploymentHostnamesError);
+
 public sealed record GetWebServiceDeploymentHostnamesRequest(
     [FromRoute] string Id,
     [FromRoute] string DeploymentId,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<IReadOnlyList<HostnameBindingSnapshot>>, ITenantReadOperation;
+    : IMediatorRequest<GetWebServiceDeploymentHostnamesOutcome>, ITenantReadOperation;
 
 public sealed class GetWebServiceDeploymentHostnamesHandler(
     LoadWebServiceById loadWebService,
     LoadExactResourceDeployment loadExactResourceDeployment,
     LoadHostnameBindingsForDeployment loadHostnameBindingsForDeployment)
-    : IMediatorHandler<
+    : IMediatorOutcomeHandler<
         GetWebServiceDeploymentHostnamesRequest,
-        IReadOnlyList<HostnameBindingSnapshot>>
+        GetWebServiceDeploymentHostnamesOutcome>
 {
-    public async Task<Result<IReadOnlyList<HostnameBindingSnapshot>>> HandleAsync(
+    public async Task<GetWebServiceDeploymentHostnamesOutcome> HandleAsync(
         GetWebServiceDeploymentHostnamesRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -59,7 +73,8 @@ public sealed class GetWebServiceDeploymentHostnamesHandler(
                 request.Id,
                 cancellationToken) is null)
         {
-            return Failures.NotFound("Web service not found.", request.Id);
+            return new GetWebServiceDeploymentHostnamesError(
+                new WebServiceNotFound(request.Id));
         }
 
         var deployment = await loadExactResourceDeployment(
@@ -70,9 +85,8 @@ public sealed class GetWebServiceDeploymentHostnamesHandler(
             cancellationToken);
         if (deployment is null)
         {
-            return Failures.NotFound(
-                "Resource deployment not found.",
-                request.DeploymentId);
+            return new GetWebServiceDeploymentHostnamesError(
+                new WebServiceResourceDeploymentNotFound(request.Id, request.DeploymentId));
         }
 
         var snapshots = await loadHostnameBindingsForDeployment(
@@ -81,7 +95,7 @@ public sealed class GetWebServiceDeploymentHostnamesHandler(
             request.Id,
             request.DeploymentId,
             cancellationToken);
-        return Result.Success<IReadOnlyList<HostnameBindingSnapshot>>(snapshots);
+        return new GetWebServiceDeploymentHostnamesOutcome(snapshots);
     }
 }
 

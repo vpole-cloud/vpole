@@ -44,24 +44,6 @@ internal sealed partial class MongoDomainPersistence
         return bindings.Select(DomainContractMappings.ToSnapshot).ToArray();
     }
 
-    public async Task<Result<HostnameBindingSnapshot>> CreateGeneratedAsync(
-        CreateGeneratedHostnameBindingRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await CreateGeneratedOutcomeAsync(
-            request,
-            session,
-            cancellationToken);
-        return result switch
-        {
-            Ok<HostnameBindingSnapshot> success =>
-                new Success<HostnameBindingSnapshot>(success.Value),
-            Err<GeneratedHostnameBindingError> error =>
-                ToLegacyFailure(error.Value)
-        };
-    }
-
     public async Task<Result<HostnameBindingSnapshot, GeneratedHostnameBindingError>>
         CreateGeneratedOutcomeAsync(
             CreateGeneratedHostnameBindingRequest request,
@@ -75,25 +57,7 @@ internal sealed partial class MongoDomainPersistence
         return result.Map(bindings => bindings[0]);
     }
 
-    public async Task<Result<IReadOnlyList<HostnameBindingSnapshot>>> CreateGeneratedSetAsync(
-        IReadOnlyList<CreateGeneratedHostnameBindingRequest> requests,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await CreateGeneratedSetOutcomeAsync(
-            requests,
-            session,
-            cancellationToken);
-        return result switch
-        {
-            Ok<IReadOnlyList<HostnameBindingSnapshot>> success =>
-                new Success<IReadOnlyList<HostnameBindingSnapshot>>(success.Value),
-            Err<GeneratedHostnameBindingError> error =>
-                ToLegacyFailure(error.Value)
-        };
-    }
-
-    private async Task<Result<
+    public async Task<Result<
         IReadOnlyList<HostnameBindingSnapshot>,
         GeneratedHostnameBindingError>> CreateGeneratedSetOutcomeAsync(
         IReadOnlyList<CreateGeneratedHostnameBindingRequest> requests,
@@ -101,12 +65,7 @@ internal sealed partial class MongoDomainPersistence
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
-        var validation = ValidateGeneratedBindingSet(requests);
-        if (validation is not null)
-        {
-            return new Err<GeneratedHostnameBindingError>(
-                new GeneratedHostnameBindingError(validation));
-        }
+        EnsureGeneratedBindingSet(requests);
 
         var tenantId = requests[0].TenantId;
         var zoneIds = requests
@@ -145,32 +104,25 @@ internal sealed partial class MongoDomainPersistence
                             request.DeploymentTargetId)));
             }
 
-            try
-            {
-                bindings.Add(HostnameBindingFactory.CreateGenerated(
-                    request.TenantId,
-                    zone.Id,
-                    request.DeploymentTargetId,
-                    request.ResourceType,
-                    request.ResourceId,
-                    request.ResourceDeploymentId,
-                    request.RelativeName,
-                    DnsName.Create(zone.Domain),
-                    BindingCreateOptions()));
-            }
-            catch (ArgumentException exception)
-            {
-                return InvalidGeneratedBinding("Hostname", exception.Message);
-            }
+            bindings.Add(HostnameBindingFactory.CreateGenerated(
+                request.TenantId,
+                zone.Id,
+                request.DeploymentTargetId,
+                request.ResourceType,
+                request.ResourceId,
+                request.ResourceDeploymentId,
+                request.RelativeName,
+                DnsName.Create(zone.Domain),
+                BindingCreateOptions()));
         }
 
         if (bindings
             .GroupBy(binding => binding.Hostname, StringComparer.Ordinal)
             .Any(group => group.Skip(1).Any()))
         {
-            return InvalidGeneratedBinding(
-                "Requests",
-                "Generated hostnames must be unique within a binding set.");
+            throw new ArgumentException(
+                "Generated hostnames must be unique within a binding set.",
+                nameof(requests));
         }
 
         var deploymentIds = requests
@@ -226,24 +178,19 @@ internal sealed partial class MongoDomainPersistence
             bindings.Select(DomainContractMappings.ToSnapshot).ToArray());
     }
 
-    private static Err<GeneratedHostnameBindingError> InvalidGeneratedBinding(
-        string field,
-        string message) =>
-        new(new GeneratedHostnameBindingError(
-            new InvalidGeneratedHostnameBindingRequest(
-                new Dictionary<string, string[]> { [field] = [message] })));
-
     private static Err<GeneratedHostnameBindingError> GeneratedBindingConflict(
         IReadOnlyList<HostnameBinding> bindings) =>
         new(new GeneratedHostnameBindingError(
             new GeneratedHostnameBindingConflict(
                 bindings.Select(binding => binding.Hostname).ToArray())));
 
-    public async Task<Result<HostnameBindingSnapshot>> CreateCustomAsync(
-        CreateCustomHostnameBindingRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
+    public async Task<Result<HostnameBindingSnapshot, CustomHostnameBindingError>>
+        CreateCustomOutcomeAsync(
+            CreateCustomHostnameBindingRequest request,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
     {
+        EnsureCustomCreateRequest(request);
         EnsureTransaction(session);
         var zone = await _zones.Find(
                 session,
@@ -252,64 +199,79 @@ internal sealed partial class MongoDomainPersistence
                     request.TenantDomainZoneId))
             .FirstOrDefaultAsync(cancellationToken);
         if (zone is null)
-            return Failures.NotFound("Domain zone not found.", request.TenantDomainZoneId);
+        {
+            return new Err<CustomHostnameBindingError>(
+                new CustomHostnameBindingError(
+                    new CustomHostnameBindingZoneNotFound(request.TenantDomainZoneId)));
+        }
         if (!string.Equals(
                 zone.DeploymentTargetId,
                 request.DeploymentTargetId,
                 StringComparison.Ordinal))
         {
-            return Failures.Conflict("The domain zone belongs to another deployment target.");
+            return new Err<CustomHostnameBindingError>(
+                new CustomHostnameBindingError(
+                    new CustomHostnameBindingTargetMismatch(
+                        zone.Id,
+                        request.DeploymentTargetId)));
         }
 
-        HostnameBinding binding;
-        try
-        {
-            binding = HostnameBindingFactory.CreateCustom(
-                request.TenantId,
-                zone.Id,
-                request.DeploymentTargetId,
-                request.ResourceType,
-                request.ResourceId,
-                request.ResourceDeploymentId,
-                request.RelativeName,
-                DnsName.Create(zone.Domain),
-                BindingCreateOptions());
-        }
-        catch (ArgumentException exception)
-        {
-            return Invalid("Hostname", exception.Message);
-        }
+        var binding = HostnameBindingFactory.CreateCustom(
+            request.TenantId,
+            zone.Id,
+            request.DeploymentTargetId,
+            request.ResourceType,
+            request.ResourceId,
+            request.ResourceDeploymentId,
+            request.RelativeName,
+            DnsName.Create(zone.Domain),
+            BindingCreateOptions());
 
         var advancedZone = await AdvanceZoneRevisionsAsync(
             [zone],
             session,
             cancellationToken);
         if (advancedZone is not ISuccess)
-            return (Failure)advancedZone;
+        {
+            return new Err<CustomHostnameBindingError>(
+                new CustomHostnameBindingError(
+                    new CustomHostnameBindingZoneChanged([zone.Id])));
+        }
 
         try
         {
             await _bindings.InsertOneAsync(session, binding, cancellationToken: cancellationToken);
-            return binding.ToSnapshot();
+            return new Ok<HostnameBindingSnapshot>(binding.ToSnapshot());
         }
         catch (MongoWriteException exception) when (exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
         {
-            return Failures.Conflict("The hostname is already bound to a deployment.");
+            return new Err<CustomHostnameBindingError>(
+                new CustomHostnameBindingError(
+                    new CustomHostnameBindingConflict(binding.Hostname)));
         }
     }
 
-    public async Task<Result> DeleteCustomAsync(
+    public async Task<Result<Unit, CustomHostnameBindingError>> DeleteCustomOutcomeAsync(
         DeleteCustomHostnameBindingRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
+        EnsureCustomDeleteRequest(request);
         EnsureTransaction(session);
         var filter = DomainFilters.BindingById(request);
         var binding = await _bindings.Find(session, filter).FirstOrDefaultAsync(cancellationToken);
         if (binding is null)
-            return Failures.NotFound("Hostname binding not found.", request.BindingId);
+        {
+            return new Err<CustomHostnameBindingError>(
+                new CustomHostnameBindingError(
+                    new CustomHostnameBindingNotFound(request.BindingId)));
+        }
         if (binding.Kind == HostnameBindingKind.Generated)
-            return Failures.Conflict("Generated hostname bindings cannot be deleted independently.");
+        {
+            return new Err<CustomHostnameBindingError>(
+                new CustomHostnameBindingError(
+                    new GeneratedHostnameBindingDeletionRejected(binding.Id)));
+        }
 
         var zone = await _zones.Find(
                 session,
@@ -318,21 +280,40 @@ internal sealed partial class MongoDomainPersistence
                     binding.TenantDomainZoneId))
             .FirstOrDefaultAsync(cancellationToken);
         if (zone is null)
-            return Failures.Conflict("The hostname binding's domain zone is unavailable.");
+        {
+            return new Err<CustomHostnameBindingError>(
+                new CustomHostnameBindingError(
+                    new CustomHostnameBindingZoneUnavailable(
+                        binding.TenantDomainZoneId)));
+        }
         var advancedZone = await AdvanceZoneRevisionsAsync(
             [zone],
             session,
             cancellationToken);
         if (advancedZone is not ISuccess)
-            return (Failure)advancedZone;
+        {
+            return new Err<CustomHostnameBindingError>(
+                new CustomHostnameBindingError(
+                    new CustomHostnameBindingZoneChanged([zone.Id])));
+        }
 
         var deleted = await _bindings.DeleteOneAsync(session, filter, cancellationToken: cancellationToken);
         if (deleted.DeletedCount != 1)
-            return Failures.Conflict("The hostname binding changed while deletion was being accepted.");
-        return await ReleaseGeneratedZonesWithoutBindingsAsync(
+        {
+            return new Err<CustomHostnameBindingError>(
+                new CustomHostnameBindingError(
+                    new CustomHostnameBindingDeletionConflict(binding.Id)));
+        }
+
+        var released = await ReleaseGeneratedZonesWithoutBindingsAsync(
             [zone with { Revision = checked(zone.Revision + 1) }],
             session,
             cancellationToken);
+        return released is ISuccess
+            ? new Ok<Unit>(Unit.Value)
+            : new Err<CustomHostnameBindingError>(
+                new CustomHostnameBindingError(
+                    new CustomHostnameBindingZoneChanged([zone.Id])));
     }
 
     public async Task<Result> DeleteAllForDeploymentAsync(

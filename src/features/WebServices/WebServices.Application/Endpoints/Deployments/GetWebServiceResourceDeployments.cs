@@ -18,8 +18,17 @@ public static class GetWebServiceResourceDeployments
     {
         public IEndpointRouteBuilder MapGetWebServiceResourceDeploymentsEndpoint()
         {
-            app.MapGet("/{Id}/deployments", async (IMediator mediator, [AsParameters] GetWebServiceResourceDeploymentsRequest request, CancellationToken cancellationToken) =>
-                (await mediator.Send(request, cancellationToken)).ToHttpResult(Results.Ok))
+            app.MapGet("/{Id}/deployments", async (
+                    IMediator mediator,
+                    IHttpProblemMapper httpProblems,
+                    [AsParameters] GetWebServiceResourceDeploymentsRequest request,
+                    CancellationToken cancellationToken) =>
+                (await mediator.Send(request, cancellationToken)).ToHttpResult(
+                    outcome => outcome switch
+                    {
+                        IReadOnlyList<PlacementSummaryDto> value => Results.Ok(value),
+                        WebServiceNotFound error => httpProblems.Map(error).ToHttpResult()
+                    }))
                 .WithName("GetWebServiceResourceDeployments")
                 .Produces<IReadOnlyList<PlacementSummaryDto>>();
             return app;
@@ -27,25 +36,31 @@ public static class GetWebServiceResourceDeployments
     }
 }
 
+public union GetWebServiceResourceDeploymentsOutcome(
+    IReadOnlyList<PlacementSummaryDto>,
+    WebServiceNotFound);
+
 public sealed record GetWebServiceResourceDeploymentsRequest(
     [FromRoute] string Id,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<IReadOnlyList<PlacementSummaryDto>>, ITenantReadOperation;
+    : IMediatorRequest<GetWebServiceResourceDeploymentsOutcome>, ITenantReadOperation;
 
 public sealed class GetWebServiceResourceDeploymentsHandler(
     LoadWebServiceById loadWebServiceById,
     LoadResourceDeploymentSet loadResourceDeploymentSet)
-    : IMediatorHandler<GetWebServiceResourceDeploymentsRequest, IReadOnlyList<PlacementSummaryDto>>
+    : IMediatorOutcomeHandler<
+        GetWebServiceResourceDeploymentsRequest,
+        GetWebServiceResourceDeploymentsOutcome>
 {
-    public async Task<Result<IReadOnlyList<PlacementSummaryDto>>> HandleAsync(
+    public async Task<GetWebServiceResourceDeploymentsOutcome> HandleAsync(
         GetWebServiceResourceDeploymentsRequest request,
         CancellationToken cancellationToken = default)
     {
         var webService = await loadWebServiceById(request.TenantId, request.Id, cancellationToken);
         if (webService is null)
-            return Failures.NotFound("Web service not found.", request.Id);
+            return new WebServiceNotFound(request.Id);
 
-        return Result.Success<IReadOnlyList<PlacementSummaryDto>>(await loadResourceDeploymentSet(
+        return new GetWebServiceResourceDeploymentsOutcome(await loadResourceDeploymentSet(
             request.TenantId,
             WebServiceResourceDeployment.ResourceType,
             request.Id,

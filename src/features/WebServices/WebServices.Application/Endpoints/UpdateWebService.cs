@@ -22,10 +22,20 @@ public static class UpdateWebService
     {
         public IEndpointRouteBuilder MapUpdateWebServiceEndpoint()
         {
-            app.MapPut("/{Id}", async (IMediator mediator, [AsParameters] UpdateWebServiceRequest request, CancellationToken cancellationToken) =>
+            app.MapPut("/{Id}", async (
+                    IMediator mediator,
+                    IHttpProblemMapper httpProblems,
+                    [AsParameters] UpdateWebServiceRequest request,
+                    CancellationToken cancellationToken) =>
                 {
                     var result = await mediator.Send(request, cancellationToken);
-                    return result.ToHttpResult(value => Results.Accepted(value: value));
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        UpdateWebServiceResponse value =>
+                            Results.Accepted(value: value),
+                        UpdateWebServiceError error =>
+                            httpProblems.Map(error).ToHttpResult()
+                    });
                 })
                 .WithName("UpdateWebService")
                 .Produces<UpdateWebServiceResponse>(StatusCodes.Status202Accepted);
@@ -41,7 +51,7 @@ public sealed record UpdateWebServiceRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default,
     [FromClaim(Claims.Email)] ClaimValue<string?> ActorEmail = default)
-    : IMediatorRequest<UpdateWebServiceResponse>, ITenantWriteOperation;
+    : IMediatorRequest<UpdateWebServiceOutcome>, ITenantWriteOperation;
 
 public sealed record UpdateWebServiceRequestBody(
     WebServiceSpecDto Spec,
@@ -55,23 +65,25 @@ public sealed record UpdateWebServiceResponse(
 public sealed class UpdateWebServiceHandler(
     LoadWebServiceById loadWebServiceById,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
-    RequestResourceDeploymentSetApplyLegacy requestResourceDeploymentSetApply,
-    AdvanceResourceDeploymentRevisionLegacy advanceResourceDeploymentRevision,
-    PersistUpdatedWebService persistUpdatedWebService,
+    RequestResourceDeploymentSetApply requestResourceDeploymentSetApply,
+    AdvanceResourceDeploymentRevision advanceResourceDeploymentRevision,
+    PersistUpdatedWebServiceOutcome persistUpdatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     TimeProvider timeProvider)
-    : IMediatorHandler<UpdateWebServiceRequest, UpdateWebServiceResponse>
+    : IMediatorOutcomeHandler<UpdateWebServiceRequest, UpdateWebServiceOutcome>
 {
-    public async Task<Result<UpdateWebServiceResponse>> HandleAsync(
+    public async Task<UpdateWebServiceOutcome> HandleAsync(
         UpdateWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
         var webService = await loadWebServiceById(request.TenantId, request.Id, cancellationToken);
         if (webService is null)
-            return Failures.NotFound("Web service not found.", request.Id);
+            return Error(new WebServiceLifecycleMutationStateError(
+                new WebServiceNotFound(request.Id)));
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
-            return Failures.Conflict("A deleting web service cannot be updated.");
+            return Error(new WebServiceLifecycleMutationStateError(
+                new WebServiceUpdateUnavailable(webService.Id)));
 
         var deployments = await loadResourceDeploymentSet(
             webService.TenantId,
@@ -79,31 +91,35 @@ public sealed class UpdateWebServiceHandler(
             webService.Id,
             cancellationToken);
         if (deployments.Count == 0)
-            return Failures.Conflict("The web service has no active resource deployments.");
+            return Error(new WebServiceLifecycleMutationStateError(
+                new WebServiceHasNoActiveDeployments(webService.Id)));
 
         var nextSpec = request.Body.Spec.ToDomain();
         var nextWebService = webService.UpdateDesiredState(nextSpec, request.Body.Tags);
         if (Equals(nextWebService, webService))
         {
-            return new UpdateWebServiceResponse(
+            return new UpdateWebServiceOutcome(new UpdateWebServiceResponse(
                 webService.Id,
                 webService.ActiveRevision,
-                deployments);
+                deployments));
         }
 
         var currentQuota = WebServiceDeploymentWorkflow.ToQuotaInput(deployments, webService.Spec);
         var nextQuota = WebServiceDeploymentWorkflow.ToQuotaInput(deployments, nextSpec);
-        return await quotaAdmissionExecutor.ExecuteAsync<
+        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             WebServiceQuotaInput,
-            UpdateWebServiceResponse>(
+            UpdateWebServiceOutcome>(
             webService.TenantId,
             WebServiceQuotaResourceKey.Create(webService.Id),
             new UpdateQuotaMutation<WebServiceQuotaInput>(currentQuota, nextQuota),
-            async (session, ct) =>
+            quotaError => Error(quotaError),
+            async (transaction, ct) =>
             {
                 var physicalChanges = !Equals(webService.Spec, nextSpec);
-                Result<IReadOnlyList<PlacementSummaryDto>> deploymentsResult = physicalChanges
-                    ? await requestResourceDeploymentSetApply(
+                IReadOnlyList<PlacementSummaryDto> updatedDeployments;
+                if (physicalChanges)
+                {
+                    var deploymentsResult = await requestResourceDeploymentSetApply(
                         new ResourceDeploymentSetApplyRequest(
                             webService.TenantId,
                             WebServiceResourceDeployment.ResourceType,
@@ -111,28 +127,49 @@ public sealed class UpdateWebServiceHandler(
                             nextWebService.ActiveRevision,
                             deployments.Select(deployment =>
                                 WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
-                        session,
-                        ct)
-                    : await advanceResourceDeploymentRevision(
+                        transaction.Session,
+                        ct);
+                    if (!deploymentsResult.TryGetValue(
+                            out var physicalDeployments,
+                            out var deploymentError))
+                    {
+                        return transaction.Abort(
+                            Error(new UpdateWebServiceError(deploymentError)));
+                    }
+                    updatedDeployments = physicalDeployments;
+                }
+                else
+                {
+                    var deploymentsResult = await advanceResourceDeploymentRevision(
                         new ResourceDeploymentResourceRevisionRequest(
                             webService.TenantId,
                             WebServiceResourceDeployment.ResourceType,
                             webService.Id,
                             nextWebService.ActiveRevision),
-                        session,
+                        transaction.Session,
                         ct);
-                if (!deploymentsResult.TryGetValue(out var updatedDeployments, out var deploymentFailure))
-                    return deploymentFailure;
+                    if (!deploymentsResult.TryGetValue(
+                            out var revisionDeployments,
+                            out var revisionError))
+                    {
+                        return transaction.Abort(
+                            Error(new UpdateWebServiceError(revisionError)));
+                    }
+                    updatedDeployments = revisionDeployments;
+                }
 
                 var persisted = await persistUpdatedWebService(
-                    session,
+                    transaction.Session,
                     webService,
                     nextWebService,
                     nextWebService.ToUpdatedEvent(
                         WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments)),
                     ct);
-                if (persisted is not ISuccess)
-                    return (Failure)persisted;
+                if (!persisted.TryGetValue(out _, out var persistenceError))
+                {
+                    return transaction.Abort(
+                        Error(new UpdateWebServiceError(persistenceError)));
+                }
 
                 var release = WebServiceReleaseFactory.CreatePending(
                     nextWebService.TenantId,
@@ -148,15 +185,21 @@ public sealed class UpdateWebServiceHandler(
                     new WebServiceReleaseFactory.CreateOptions(
                         MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
                         timeProvider.GetUtcNow().UtcDateTime));
-                await persistCurrentWebServiceRelease(session, release, ct);
+                await persistCurrentWebServiceRelease(transaction.Session, release, ct);
 
-                return new UpdateWebServiceResponse(
-                    nextWebService.Id,
-                    nextWebService.ActiveRevision,
-                    updatedDeployments);
+                return transaction.Commit(new UpdateWebServiceOutcome(
+                    new UpdateWebServiceResponse(
+                        nextWebService.Id,
+                        nextWebService.ActiveRevision,
+                        updatedDeployments)));
             },
             cancellationToken);
     }
+
+    private static UpdateWebServiceOutcome Error(
+        UpdateWebServiceError error) =>
+        new(error);
+
 }
 
 public sealed class UpdateWebServiceValidator : AbstractValidator<UpdateWebServiceRequest>

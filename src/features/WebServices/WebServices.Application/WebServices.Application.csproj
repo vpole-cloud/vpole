@@ -4,6 +4,7 @@
         <TargetFramework>net11.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <WarningsAsErrors>$(WarningsAsErrors);CS8509</WarningsAsErrors>
         <AssemblyName>Pole.Features.WebServices.Application</AssemblyName>
         <RootNamespace>Pole.Features.WebServices.Application</RootNamespace>
     </PropertyGroup>

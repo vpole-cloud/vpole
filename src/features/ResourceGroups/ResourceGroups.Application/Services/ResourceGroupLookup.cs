@@ -7,8 +7,44 @@ using Pole.ResultType;
 namespace Pole.Features.ResourceGroups.Application.Services;
 
 public sealed class ResourceGroupLookup(IResourceGroupDbContext dbContext)
-    : IResourceGroupLookup, IResourceGroupOwnershipLookup
+    : IResourceGroupLookup
 {
+    public async Task<Result<ResourceGroupOwnership, ResourceGroupOwnershipError>>
+        GetOwnershipOutcomeAsync(
+            string tenantId,
+            string resourceGroupId,
+            CancellationToken cancellationToken = default)
+    {
+        var resourceGroup = await dbContext.ResourceGroups
+            .Find(rg => rg.Id == resourceGroupId && rg.TenantId == tenantId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (resourceGroup is null)
+        {
+            return new Err<ResourceGroupOwnershipError>(
+                new ResourceGroupOwnershipError(
+                    new ResourceGroupOwnershipNotFound(resourceGroupId)));
+        }
+
+        Result<ResourceGroupOwnership, ResourceGroupOwnershipError> lifecycle =
+            resourceGroup.Lifecycle switch
+        {
+            DeletingResourceGroupLifecycleState => new Err<ResourceGroupOwnershipError>(
+                new ResourceGroupOwnershipError(
+                    new ResourceGroupOwnershipDeleting(resourceGroupId))),
+            ActiveResourceGroupLifecycleState => new Ok<ResourceGroupOwnership>(
+                new ResourceGroupOwnership(
+                    resourceGroup.Id,
+                    resourceGroup.TenantId,
+                    resourceGroup.DefaultIsolationScopeId,
+                    ResourceGroupOwnershipLifecycle.Active)),
+            _ => throw new InvalidOperationException(
+                $"Unsupported resource group lifecycle '{resourceGroup.Lifecycle.GetType().Name}'.")
+        };
+
+        return lifecycle;
+    }
+
     public async Task<Result<ResourceGroupOwnership>> GetOwnershipAsync(
         string tenantId,
         string resourceGroupId,

@@ -17,10 +17,18 @@ public static class GetWebServiceReleases
 {
     public static IEndpointRouteBuilder MapGetWebServiceReleasesEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{Id}/releases", async (IMediator mediator, [AsParameters] GetWebServiceReleasesRequest request, CancellationToken cancellationToken) =>
+        app.MapGet("/{Id}/releases", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
+                [AsParameters] GetWebServiceReleasesRequest request,
+                CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    WebServiceReleaseHistoryDto value => Results.Ok(value),
+                    WebServiceNotFound error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("GetWebServiceReleases")
             .Produces<WebServiceReleaseHistoryDto>();
@@ -29,7 +37,11 @@ public static class GetWebServiceReleases
     }
 }
 
-public sealed record GetWebServiceReleasesRequest : IMediatorRequest<WebServiceReleaseHistoryDto>, ITenantReadOperation
+public union GetWebServiceReleasesOutcome(
+    WebServiceReleaseHistoryDto,
+    WebServiceNotFound);
+
+public sealed record GetWebServiceReleasesRequest : IMediatorRequest<GetWebServiceReleasesOutcome>, ITenantReadOperation
 {
     [FromRoute] public string Id { get; init; } = string.Empty;
     [FromHeader(Name = TenantHeaders.TenantId)] public string TenantId { get; init; } = string.Empty;
@@ -42,9 +54,9 @@ public sealed record GetWebServiceReleasesRequest : IMediatorRequest<WebServiceR
 
 public sealed class GetWebServiceReleasesHandler(
     LoadWebServiceReleaseHistory loadWebServiceReleaseHistory)
-    : IMediatorHandler<GetWebServiceReleasesRequest, WebServiceReleaseHistoryDto>
+    : IMediatorOutcomeHandler<GetWebServiceReleasesRequest, GetWebServiceReleasesOutcome>
 {
-    public async Task<Result<WebServiceReleaseHistoryDto>> HandleAsync(
+    public async Task<GetWebServiceReleasesOutcome> HandleAsync(
         GetWebServiceReleasesRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -56,15 +68,15 @@ public sealed class GetWebServiceReleasesHandler(
                 request.EffectivePageSize),
             cancellationToken);
         if (history is null)
-            return Failures.NotFound("Web service not found.", request.Id);
+            return new WebServiceNotFound(request.Id);
 
-        return new WebServiceReleaseHistoryDto(
+        return new GetWebServiceReleasesOutcome(new WebServiceReleaseHistoryDto(
             history.WebService.ActiveRevision,
             new PaginatedResponse<WebServiceReleaseDto>(
                 history.Releases.Select(release => release.ToDto()),
                 history.TotalCount,
                 request.EffectivePageNumber,
-                request.EffectivePageSize));
+                request.EffectivePageSize)));
     }
 }
 

@@ -4,18 +4,21 @@ using Pole.ResultType;
 
 namespace Pole.Features.WebServices.Application.Persistence;
 
-public delegate Task<Result> RevokeWebServiceDeploymentToken(
-    string tenantId,
-    string webServiceId,
-    string tokenId,
-    string? revokedByUserId,
-    DateTime revokedAtUtc,
-    CancellationToken cancellationToken = default);
+public sealed record WebServiceDeploymentTokenNotFound(string TokenId);
+
+public delegate Task<Result<Unit, WebServiceDeploymentTokenNotFound>>
+    RevokeWebServiceDeploymentTokenOutcome(
+        string tenantId,
+        string webServiceId,
+        string tokenId,
+        string? revokedByUserId,
+        DateTime revokedAtUtc,
+        CancellationToken cancellationToken = default);
 
 internal sealed class MongoRevokeWebServiceDeploymentToken(
     IMongoCollection<WebServiceDeploymentToken> tokens)
 {
-    public async Task<Result> InvokeAsync(
+    public async Task<Result<Unit, WebServiceDeploymentTokenNotFound>> InvokeOutcomeAsync(
         string tenantId,
         string webServiceId,
         string tokenId,
@@ -30,7 +33,8 @@ internal sealed class MongoRevokeWebServiceDeploymentToken(
                 .Set(item => item.RevokedByUserId, revokedByUserId),
             cancellationToken: cancellationToken);
         return result.MatchedCount == 0
-            ? Failures.NotFound("Deployment token not found.", tokenId)
-            : Result.Success();
+            ? new Err<WebServiceDeploymentTokenNotFound>(
+                new WebServiceDeploymentTokenNotFound(tokenId))
+            : new Ok<Unit>(Unit.Value);
     }
 }

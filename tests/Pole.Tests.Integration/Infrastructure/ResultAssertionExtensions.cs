@@ -1,4 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Mediator;
 using Pole.ResultType;
 using Xunit.Sdk;
@@ -7,6 +10,149 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 public static class ResultAssertionExtensions
 {
+    public static CreateWebServiceResponse AssertSuccess(
+        this MediatorResult<CreateWebServiceOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<CreateWebServiceOutcome>(result).AssertSuccess();
+
+    public static CreateWebServiceError AssertFailure(
+        this MediatorResult<CreateWebServiceOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<CreateWebServiceOutcome>(result).AssertFailure();
+
+    public static UpdateWebServiceResponse AssertSuccess(
+        this MediatorResult<UpdateWebServiceOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<UpdateWebServiceOutcome>(result).AssertSuccess();
+
+    public static RollbackWebServiceResponse AssertSuccess(
+        this MediatorResult<RollbackWebServiceOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<RollbackWebServiceOutcome>(result).AssertSuccess();
+
+    public static RollbackWebServiceError AssertFailure(
+        this MediatorResult<RollbackWebServiceOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<RollbackWebServiceOutcome>(result).AssertFailure();
+
+    public static PlacementSummaryDto AssertSuccess(
+        this MediatorResult<DeleteWebServiceDeploymentOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<DeleteWebServiceDeploymentOutcome>(result).AssertSuccess();
+
+    public static DeleteWebServiceDeploymentError AssertFailure(
+        this MediatorResult<DeleteWebServiceDeploymentOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<DeleteWebServiceDeploymentOutcome>(result).AssertFailure();
+
+    public static PlacementSummaryDto AssertSuccess(
+        this MediatorResult<RetryWebServiceDeploymentOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<RetryWebServiceDeploymentOutcome>(result).AssertSuccess();
+
+    public static PlacementSummaryDto AssertSuccess(
+        this MediatorResult<UpdateWebServiceDeploymentOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<UpdateWebServiceDeploymentOutcome>(result).AssertSuccess();
+
+    public static WebServiceReleaseHistoryDto AssertSuccess(
+        this MediatorResult<GetWebServiceReleasesOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<GetWebServiceReleasesOutcome>(result).AssertSuccess();
+
+    public static WebServiceNotFound AssertFailure(
+        this MediatorResult<GetWebServiceReleasesOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<GetWebServiceReleasesOutcome>(result).AssertFailure();
+
+    public static DeleteWebServiceResponse AssertSuccess(
+        this MediatorResult<DeleteWebServiceOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<DeleteWebServiceOutcome>(result).AssertSuccess();
+
+    public static CreateWebServiceResponse AssertSuccess(this CreateWebServiceOutcome outcome) =>
+        outcome switch
+        {
+            CreateWebServiceResponse success => success,
+            CreateWebServiceError error => UnexpectedError<CreateWebServiceResponse>(error)
+        };
+
+    public static CreateWebServiceError AssertFailure(this CreateWebServiceOutcome outcome) =>
+        outcome switch
+        {
+            CreateWebServiceResponse success => UnexpectedSuccess<CreateWebServiceError>(success),
+            CreateWebServiceError error => error
+        };
+
+    public static UpdateWebServiceResponse AssertSuccess(this UpdateWebServiceOutcome outcome) =>
+        outcome switch
+        {
+            UpdateWebServiceResponse success => success,
+            UpdateWebServiceError error => UnexpectedError<UpdateWebServiceResponse>(error)
+        };
+
+    public static RollbackWebServiceResponse AssertSuccess(this RollbackWebServiceOutcome outcome) =>
+        outcome switch
+        {
+            RollbackWebServiceResponse success => success,
+            RollbackWebServiceError error => UnexpectedError<RollbackWebServiceResponse>(error)
+        };
+
+    public static RollbackWebServiceError AssertFailure(this RollbackWebServiceOutcome outcome) =>
+        outcome switch
+        {
+            RollbackWebServiceResponse success => UnexpectedSuccess<RollbackWebServiceError>(success),
+            RollbackWebServiceError error => error
+        };
+
+    public static PlacementSummaryDto AssertSuccess(
+        this DeleteWebServiceDeploymentOutcome outcome) => outcome switch
+        {
+            PlacementSummaryDto success => success,
+            DeleteWebServiceDeploymentError error => UnexpectedError<PlacementSummaryDto>(error)
+        };
+
+    public static DeleteWebServiceDeploymentError AssertFailure(
+        this DeleteWebServiceDeploymentOutcome outcome) => outcome switch
+        {
+            PlacementSummaryDto success =>
+                UnexpectedSuccess<DeleteWebServiceDeploymentError>(success),
+            DeleteWebServiceDeploymentError error => error
+        };
+
+    public static PlacementSummaryDto AssertSuccess(
+        this RetryWebServiceDeploymentOutcome outcome) => outcome switch
+        {
+            PlacementSummaryDto success => success,
+            RetryWebServiceDeploymentError error => UnexpectedError<PlacementSummaryDto>(error)
+        };
+
+    public static PlacementSummaryDto AssertSuccess(
+        this UpdateWebServiceDeploymentOutcome outcome) => outcome switch
+        {
+            PlacementSummaryDto success => success,
+            UpdateWebServiceDeploymentError error => UnexpectedError<PlacementSummaryDto>(error)
+        };
+
+    public static WebServiceReleaseHistoryDto AssertSuccess(
+        this GetWebServiceReleasesOutcome outcome) => outcome switch
+        {
+            WebServiceReleaseHistoryDto success => success,
+            WebServiceNotFound error => UnexpectedError<WebServiceReleaseHistoryDto>(error)
+        };
+
+    public static WebServiceNotFound AssertFailure(
+        this GetWebServiceReleasesOutcome outcome) => outcome switch
+        {
+            WebServiceReleaseHistoryDto success => UnexpectedSuccess<WebServiceNotFound>(success),
+            WebServiceNotFound error => error
+        };
+
+    public static DeleteWebServiceResponse AssertSuccess(this DeleteWebServiceOutcome outcome) =>
+        outcome switch
+        {
+            DeleteWebServiceResponse success => success,
+            DeleteWebServiceError error => UnexpectedError<DeleteWebServiceResponse>(error)
+        };
+
+    private static TSuccess UnexpectedError<TSuccess>(object error)
+        where TSuccess : notnull =>
+        throw new XunitException(
+            $"Expected a successful result, but received {error.GetType().Name}: {error}");
+
+    private static TError UnexpectedSuccess<TError>(object success)
+        where TError : notnull =>
+        throw new XunitException(
+            $"Expected a failed result, but received {success.GetType().Name}.");
+
     public static bool TryGetValue<T>(
         this MediatorResult<T> result,
         [MaybeNullWhen(false)] out T value,
@@ -84,6 +230,20 @@ public static class ResultAssertionExtensions
                 $"'{result.GetType().Name}'.")
         };
 
+    public static T AssertSuccess<T, TError>(this Result<T, TError> result)
+        where T : notnull
+        where TError : notnull =>
+        result switch
+        {
+            Ok<T> success => success.Value,
+            Err<TError> error => throw new XunitException(
+                $"Expected a successful result, but received " +
+                $"{error.Value.GetType().Name}: {error.Value}"),
+            _ => throw new XunitException(
+                $"Expected a successful result, but received unsupported result type " +
+                $"'{result.GetType().Name}'.")
+        };
+
     public static Failure AssertFailure(this Result result) =>
         result switch
         {
@@ -101,6 +261,19 @@ public static class ResultAssertionExtensions
         {
             Failure<T> failure => failure.Error,
             Success<T> success => throw new XunitException(
+                $"Expected a failed result, but received {success.GetType().Name}."),
+            _ => throw new XunitException(
+                $"Expected a failed result, but received unsupported result type " +
+                $"'{result.GetType().Name}'.")
+        };
+
+    public static TError AssertFailure<T, TError>(this Result<T, TError> result)
+        where T : notnull
+        where TError : notnull =>
+        result switch
+        {
+            Err<TError> error => error.Value,
+            Ok<T> success => throw new XunitException(
                 $"Expected a failed result, but received {success.GetType().Name}."),
             _ => throw new XunitException(
                 $"Expected a failed result, but received unsupported result type " +

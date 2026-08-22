@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
+using Pole.Database;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -30,11 +31,17 @@ public static class CreateWebService
     {
         public IEndpointRouteBuilder MapCreateWebServiceEndpoint()
         {
-            app.MapPost("/", async (IMediator mediator, [AsParameters] CreateWebServiceRequest request, CancellationToken cancellationToken) =>
-                {
-                    var response = await mediator.Send(request, cancellationToken);
-                    return response.ToHttpResult(value => Results.Accepted(value: value));
-                })
+            app.MapPost("/", async (
+                    IMediator mediator,
+                    IHttpProblemMapper httpProblems,
+                    [AsParameters] CreateWebServiceRequest request,
+                    CancellationToken cancellationToken) =>
+                    (await mediator.Send(request, cancellationToken))
+                    .ToHttpResult(outcome => outcome switch
+                    {
+                        CreateWebServiceResponse value => Results.Accepted(value: value),
+                        CreateWebServiceError error => httpProblems.Map(error).ToHttpResult()
+                    }))
                 .WithName("CreateWebService")
                 .Produces<CreateWebServiceResponse>(StatusCodes.Status202Accepted);
 
@@ -43,31 +50,49 @@ public static class CreateWebService
     }
 }
 
+public sealed record CreateWebServiceTargetUnavailable(string DeploymentTargetId);
+
+public union CreateWebServicePlacementError(
+    NoDeploymentTargetAcceptsPublicWorkloads,
+    DeploymentTargetSelectionRequired,
+    CreateWebServiceTargetUnavailable);
+
+public union CreateWebServiceError(
+    ResourceGroupOwnershipError,
+    CreateWebServicePlacementError,
+    ComputeProfileResolutionError,
+    GeneratedDomainZoneError,
+    GeneratedHostnameBindingError,
+    CreateResourceDeploymentError,
+    QuotaExecutionError);
+
+public union CreateWebServiceOutcome(
+    CreateWebServiceResponse,
+    CreateWebServiceError);
+
 public sealed class CreateWebServiceHandler(
-    IResourceGroupOwnershipLookup resourceGroupLookup,
-    IDeploymentTargetLookup deploymentTargetLookup,
-    ResolveComputeProfilesLegacy resolveComputeProfiles,
+    GetResourceGroupOwnership getResourceGroupOwnership,
+    ListEligiblePublicIngressDeploymentTargetsForNewWorkload listEligibleTargets,
+    ResolveComputeProfiles resolveComputeProfiles,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    GetOrCreateGeneratedDomainZones getOrCreateGeneratedDomainZones,
-    CreateGeneratedHostnameBindings createGeneratedHostnameBindings,
-    CreateResourceDeploymentSetLegacy createResourceDeploymentSet,
+    GetOrCreateGeneratedDomainZonesOutcome getOrCreateGeneratedDomainZones,
+    CreateGeneratedHostnameBindingsOutcome createGeneratedHostnameBindings,
+    CreateResourceDeploymentSet createResourceDeploymentSet,
     PersistCreatedWebService persistCreatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     TimeProvider timeProvider)
-    : IMediatorHandler<CreateWebServiceRequest, CreateWebServiceResponse>
+    : IMediatorOutcomeHandler<CreateWebServiceRequest, CreateWebServiceOutcome>
 {
-    public async Task<Result<CreateWebServiceResponse>> HandleAsync(
+    public async Task<CreateWebServiceOutcome> HandleAsync(
         CreateWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var ownership = await resourceGroupLookup.GetOwnershipAsync(
+        var ownership = await getResourceGroupOwnership(
             request.TenantId,
             request.Body.ResourceGroupId,
             cancellationToken);
-        if (!ownership.TryGetValue(out var resourceGroup, out var ownershipFailure))
-            return ownershipFailure;
-        if (resourceGroup.Lifecycle is not ResourceGroupOwnershipLifecycle.Active)
-            return Failures.Conflict("The resource group is being deleted.");
+        if (!ownership.TryGetValue(out var resourceGroup, out var ownershipError))
+            return Error(new CreateWebServiceError(ownershipError));
 
         var isolationScopeId = request.Body.Placement.IsolationScopeId
             ?? resourceGroup.DefaultIsolationScopeId;
@@ -76,8 +101,8 @@ public sealed class CreateWebServiceHandler(
             isolationScopeId,
             request.Body.Placement.Targets,
             cancellationToken);
-        if (!targetsResult.TryGetValue(out var targets, out var targetsFailure))
-            return targetsFailure;
+        if (!targetsResult.TryGetValue(out var targets, out var targetsError))
+            return Error(new CreateWebServiceError(targetsError));
 
         var computeResult = await resolveComputeProfiles(
             new ComputeProfileBatchResolutionRequest(
@@ -87,8 +112,8 @@ public sealed class CreateWebServiceHandler(
                     target.Target.DeploymentTargetId,
                     target.Request.ComputeProfileId)).ToArray()),
             cancellationToken);
-        if (!computeResult.TryGetValue(out var computes, out var computeFailure))
-            return computeFailure;
+        if (!computeResult.TryGetValue(out var computes, out var computeError))
+            return Error(new CreateWebServiceError(computeError));
 
         var computeByTarget = computes.ToDictionary(
             compute => compute.DeploymentTargetId,
@@ -108,70 +133,28 @@ public sealed class CreateWebServiceHandler(
                 target.Request.FixedReplicas)),
             spec);
 
-        return await quotaAdmissionExecutor.ExecuteAsync<
+        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             WebServiceQuotaInput,
-            CreateWebServiceResponse>(
+            CreateWebServiceOutcome>(
             request.TenantId,
             WebServiceQuotaResourceKey.Create(options.Id),
             new CreateQuotaMutation<WebServiceQuotaInput>(quotaInput),
-            async (session, ct) =>
-            {
-                var webService = WebServiceFactory.Create(
-                    request.Body.Name,
-                    request.TenantId,
-                    request.Body.ResourceGroupId,
-                    isolationScopeId,
-                    spec,
-                    WebServiceExposure.Create(),
-                    options);
-
-                var deploymentRequestsResult = await CreateDeploymentRequestsAsync(
-                    webService,
-                    targets,
-                    computeByTarget,
-                    session,
-                    ct);
-                if (!deploymentRequestsResult.TryGetValue(
-                        out var deploymentRequests,
-                        out var deploymentRequestsFailure))
-                {
-                    return deploymentRequestsFailure;
-                }
-
-                var deploymentsResult = await createResourceDeploymentSet(
-                    new CreateResourceDeploymentSetRequest(deploymentRequests),
-                    session,
-                    ct);
-                if (!deploymentsResult.TryGetValue(out var deployments, out var deploymentsFailure))
-                    return deploymentsFailure;
-
-                var eventCore = EventCore.Create(webService.TenantId);
-                var createdEvent = webService.ToCreateEvent(
-                    WebServiceDeploymentWorkflow.ToEventDeployments(deployments));
-                await persistCreatedWebService(session, webService, createdEvent, ct);
-
-                var release = WebServiceReleaseFactory.CreatePending(
-                    webService.TenantId,
-                    webService.Id,
-                    webService.ActiveRevision,
-                    WebServiceReleaseAction.Create,
-                    request.ActorUserId.Value,
-                    request.ActorEmail.Value,
-                    webService.Spec,
-                    WebServiceDeploymentWorkflow.ToReleaseDeployments(deployments),
-                    eventCore.TraceId,
-                    eventCore.CorrelationId,
-                    new WebServiceReleaseFactory.CreateOptions(
-                        ObjectId.GenerateNewId().ToString(),
-                        timeProvider.GetUtcNow().UtcDateTime));
-                await persistCurrentWebServiceRelease(session, release, ct);
-
-                return new CreateWebServiceResponse(webService.Id, deployments);
-            },
+            quotaError => Error(new CreateWebServiceError(quotaError)),
+            (transaction, ct) => PersistAsync(
+                request,
+                isolationScopeId,
+                spec,
+                options,
+                targets,
+                computeByTarget,
+                transaction,
+                ct),
             cancellationToken);
     }
 
-    private async Task<Result<IReadOnlyList<ResolvedTargetRequest>>> ResolveTargetsAsync(
+    private async Task<Result<
+        IReadOnlyList<ResolvedTargetRequest>,
+        CreateWebServicePlacementError>> ResolveTargetsAsync(
         string tenantId,
         string isolationScopeId,
         IReadOnlyList<WebServiceDeploymentTargetRequest> requestedTargets,
@@ -183,56 +166,51 @@ public sealed class CreateWebServiceHandler(
             isolationScopeId,
             ExplicitDeploymentTargetId: null,
             DeploymentTargetRequiredCapabilities.PublicIngress);
-        var eligibleResult = await deploymentTargetLookup.ListEligibleForNewWorkloadAsync(
+        var eligible = await listEligibleTargets(
             admission,
             cancellationToken);
-        if (!eligibleResult.TryGetValue(out var eligible, out var eligibleFailure))
-            return eligibleFailure;
 
-        var byId = eligible.ToDictionary(target => target.Id, StringComparer.Ordinal);
+        var byId = eligible.ToDictionary(target => target.DeploymentTargetId, StringComparer.Ordinal);
         var resolved = new List<ResolvedTargetRequest>(requestedTargets.Count);
         foreach (var requested in requestedTargets)
         {
-            DeploymentTargetLookupDto target;
+            DeploymentTargetPublicIngressDto target;
             if (string.IsNullOrWhiteSpace(requested.DeploymentTargetId))
             {
                 if (requestedTargets.Count != 1)
-                    return AmbiguousPlacement();
+                    return PlacementError(new DeploymentTargetSelectionRequired(
+                        eligible.Select(item => item.DeploymentTargetId).ToArray()));
                 if (eligible.Count == 0)
-                    return Failures.Conflict("No deployment target accepts public web-service workloads.");
+                    return PlacementError(new NoDeploymentTargetAcceptsPublicWorkloads());
                 if (eligible.Count > 1)
-                    return AmbiguousPlacement();
+                    return PlacementError(new DeploymentTargetSelectionRequired(
+                        eligible.Select(item => item.DeploymentTargetId).ToArray()));
                 target = eligible[0];
             }
             else if (!byId.TryGetValue(requested.DeploymentTargetId.Trim(), out target!))
             {
-                return Failures.Conflict(
-                    "The selected deployment target is unavailable for this web-service placement.");
-            }
-
-            var ingress = target.WorkloadConfiguration.Ingress;
-            if (ingress is null || string.IsNullOrWhiteSpace(ingress.PublicBaseDomain))
-            {
-                return Failures.Conflict(
-                    "The selected deployment target has no public ingress base-domain configuration.");
+                return PlacementError(new CreateWebServiceTargetUnavailable(
+                    requested.DeploymentTargetId.Trim()));
             }
 
             resolved.Add(new ResolvedTargetRequest(
                 requested,
                 new ResolvedResourceDeploymentTarget(
-                    target.Id,
-                    target.WorkloadConfiguration.Revision,
+                    target.DeploymentTargetId,
+                    target.WorkloadConfigurationRevision,
                     ResourceDeploymentIngressConfiguration.Create(
-                        ingress.IngressClassName,
-                        ingress.ClusterIssuerName,
-                        ingress.PublicBaseDomain,
+                        target.IngressClassName,
+                        target.ClusterIssuerName,
+                        target.PublicBaseDomain,
                         []))));
         }
 
-        return resolved;
+        return new Ok<IReadOnlyList<ResolvedTargetRequest>>(resolved);
     }
 
-    private async Task<Result<IReadOnlyList<CreateResourceDeploymentRequest>>> CreateDeploymentRequestsAsync(
+    private async Task<Result<
+        IReadOnlyList<CreateResourceDeploymentRequest>,
+        CreateWebServiceError>> CreateDeploymentRequestsAsync(
         WebService webService,
         IReadOnlyList<ResolvedTargetRequest> targets,
         IReadOnlyDictionary<string, ResolvedComputeProfile> computeByTarget,
@@ -246,8 +224,7 @@ public sealed class CreateWebServiceHandler(
         for (var index = 0; index < deployments.Length; index++)
         {
             var target = deployments[index].Target;
-            var ingress = target.Target.Ingress ?? throw new InvalidOperationException(
-                "The public-ingress target admission result must contain an ingress snapshot.");
+            var ingress = target.Target.Ingress!;
             zoneRequests[index] = new GetOrCreateGeneratedZoneRequest(
                 webService.TenantId,
                 target.Target.DeploymentTargetId,
@@ -259,8 +236,8 @@ public sealed class CreateWebServiceHandler(
             zoneRequests,
             session,
             cancellationToken);
-        if (!zonesResult.TryGetValue(out var zones, out var zonesFailure))
-            return zonesFailure;
+        if (!zonesResult.TryGetValue(out var zones, out var zonesError))
+            return new Err<CreateWebServiceError>(new CreateWebServiceError(zonesError));
 
         var bindingRequests = new CreateGeneratedHostnameBindingRequest[deployments.Length];
         for (var index = 0; index < deployments.Length; index++)
@@ -280,8 +257,8 @@ public sealed class CreateWebServiceHandler(
             bindingRequests,
             session,
             cancellationToken);
-        if (!bindingsResult.TryGetValue(out var bindings, out var bindingsFailure))
-            return bindingsFailure;
+        if (!bindingsResult.TryGetValue(out var bindings, out var bindingsError))
+            return new Err<CreateWebServiceError>(new CreateWebServiceError(bindingsError));
 
         var requests = new List<CreateResourceDeploymentRequest>(deployments.Length);
         for (var index = 0; index < deployments.Length; index++)
@@ -312,15 +289,88 @@ public sealed class CreateWebServiceHandler(
                 webService.ActiveRevision));
         }
 
-        return requests;
+        return new Ok<IReadOnlyList<CreateResourceDeploymentRequest>>(requests);
     }
 
-    private static Result<IReadOnlyList<ResolvedTargetRequest>> AmbiguousPlacement() =>
-        Failures.SemanticValidation(new Dictionary<string, string[]>
-        {
-            ["Placement.Targets"] =
-            ["A deployment target must be selected when more than one target accepts public web-service workloads."]
-        });
+    private async Task<MongoTransactionDecision<CreateWebServiceOutcome>> PersistAsync(
+        CreateWebServiceRequest request,
+        string isolationScopeId,
+        WebServiceSpec spec,
+        WebServiceFactory.CreateOptions options,
+        IReadOnlyList<ResolvedTargetRequest> targets,
+        IReadOnlyDictionary<string, ResolvedComputeProfile> computeByTarget,
+        MongoTransactionContext<CreateWebServiceOutcome> transaction,
+        CancellationToken cancellationToken)
+    {
+        var webService = WebServiceFactory.Create(
+            request.Body.Name,
+            request.TenantId,
+            request.Body.ResourceGroupId,
+            isolationScopeId,
+            spec,
+            WebServiceExposure.Create(),
+            options);
+
+        var deploymentRequestsResult = await CreateDeploymentRequestsAsync(
+            webService,
+            targets,
+            computeByTarget,
+            transaction.Session,
+            cancellationToken);
+        if (!deploymentRequestsResult.TryGetValue(out var deploymentRequests, out var requestsError))
+            return Abort(transaction, requestsError);
+
+        var deploymentsResult = await createResourceDeploymentSet(
+            new CreateResourceDeploymentSetRequest(deploymentRequests),
+            transaction.Session,
+            cancellationToken);
+        if (!deploymentsResult.TryGetValue(out var deployments, out var deploymentsError))
+            return Abort(transaction, new CreateWebServiceError(deploymentsError));
+
+        var eventCore = EventCore.Create(webService.TenantId);
+        var createdEvent = webService.ToCreateEvent(
+            WebServiceDeploymentWorkflow.ToEventDeployments(deployments));
+        await persistCreatedWebService(transaction.Session, webService, createdEvent, cancellationToken);
+
+        var release = WebServiceReleaseFactory.CreatePending(
+            webService.TenantId,
+            webService.Id,
+            webService.ActiveRevision,
+            WebServiceReleaseAction.Create,
+            request.ActorUserId.Value,
+            request.ActorEmail.Value,
+            webService.Spec,
+            WebServiceDeploymentWorkflow.ToReleaseDeployments(deployments),
+            eventCore.TraceId,
+            eventCore.CorrelationId,
+            new WebServiceReleaseFactory.CreateOptions(
+                ObjectId.GenerateNewId().ToString(),
+                timeProvider.GetUtcNow().UtcDateTime));
+        await persistCurrentWebServiceRelease(transaction.Session, release, cancellationToken);
+
+        return transaction.Commit(new CreateWebServiceOutcome(
+            new CreateWebServiceResponse(webService.Id, deployments)));
+    }
+
+    private static CreateWebServiceOutcome Error(CreateWebServiceError error) =>
+        new(error);
+
+    private static MongoTransactionDecision<CreateWebServiceOutcome> Abort(
+        MongoTransactionContext<CreateWebServiceOutcome> transaction,
+        CreateWebServiceError error) =>
+        transaction.Abort(Error(error));
+
+    private static Err<CreateWebServicePlacementError> PlacementError(
+        NoDeploymentTargetAcceptsPublicWorkloads error) =>
+        new(new CreateWebServicePlacementError(error));
+
+    private static Err<CreateWebServicePlacementError> PlacementError(
+        DeploymentTargetSelectionRequired error) =>
+        new(new CreateWebServicePlacementError(error));
+
+    private static Err<CreateWebServicePlacementError> PlacementError(
+        CreateWebServiceTargetUnavailable error) =>
+        new(new CreateWebServicePlacementError(error));
 
     private sealed record ResolvedTargetRequest(
         WebServiceDeploymentTargetRequest Request,
@@ -336,7 +386,7 @@ public sealed record CreateWebServiceRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue<string> ActorUserId,
     [FromClaim(Claims.Email)] ClaimValue<string> ActorEmail)
-    : IMediatorRequest<CreateWebServiceResponse>, ITenantCreateOperation;
+    : IMediatorRequest<CreateWebServiceOutcome>, ITenantCreateOperation;
 
 public sealed record CreateWebServiceRequestBody(
     string Name,

@@ -22,10 +22,18 @@ public static class DeleteWebService
     public const string Route = "/{Id}";
     public static IEndpointRouteBuilder MapDeleteWebServiceEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapDelete(Route, async (IMediator mediator, [AsParameters] DeleteWebServiceRequest request, CancellationToken ct) =>
+        app.MapDelete(Route, async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
+                [AsParameters] DeleteWebServiceRequest request,
+                CancellationToken ct) =>
             {
                 var result = await mediator.Send(request, ct);
-                return result.ToHttpResult(x => Results.Accepted(value: x));
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    DeleteWebServiceResponse value => Results.Accepted(value: value),
+                    DeleteWebServiceError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("DeleteWebService")
             .Produces(StatusCodes.Status202Accepted);
@@ -36,30 +44,31 @@ public static class DeleteWebService
 
 public sealed class DeleteWebServiceHandler(
     LoadWebServiceById loadWebServiceById,
-    BeginWebServiceDeletion beginWebServiceDeletion,
-    ISourceBuildReferenceLookup sourceBuildReferences,
+    BeginWebServiceDeletionOutcome beginWebServiceDeletion,
+    EnsureNoWebServiceSourceBuildConfiguration ensureNoSourceBuildConfiguration,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    RequestResourceDeploymentSetDeletionLegacy requestResourceDeploymentSetDeletion,
+    RequestResourceDeploymentSetDeletion requestResourceDeploymentSetDeletion,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
     TimeProvider timeProvider
-    ) : IMediatorHandler<DeleteWebServiceRequest, DeleteWebServiceResponse>
+    ) : IMediatorOutcomeHandler<DeleteWebServiceRequest, DeleteWebServiceOutcome>
 {
-    public async Task<Result<DeleteWebServiceResponse>> HandleAsync(DeleteWebServiceRequest request,
+    public async Task<DeleteWebServiceOutcome> HandleAsync(DeleteWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var configurationGuard = await sourceBuildReferences.EnsureWebServiceCanBeDeletedAsync(
+        var configurationGuard = await ensureNoSourceBuildConfiguration(
             request.TenantId,
             request.Id,
             cancellationToken);
-        if (configurationGuard is Failure failure)
-            return failure;
+        if (!configurationGuard.TryGetValue(out _, out var configurationError))
+            return Error(new DeleteWebServiceError(configurationError));
 
         var webService = await loadWebServiceById(
             request.TenantId,
             request.Id,
             cancellationToken);
         if (webService is null)
-            return Failures.NotFound("Web service not found.", request.Id);
+            return Error(new DeleteWebServiceStateError(
+                new WebServiceNotFound(request.Id)));
         if (webService.Lifecycle is DeletingWebServiceLifecycle)
         {
             var deletingPlacements = await loadResourceDeploymentSet(
@@ -68,9 +77,10 @@ public sealed class DeleteWebServiceHandler(
                 request.Id,
                 cancellationToken);
             return deletingPlacements.Count == 0
-                ? Failures.Conflict(
-                    "The deleting web service has no resource deployments.")
-                : new DeleteWebServiceResponse(request.Id, deletingPlacements);
+                ? Error(new DeleteWebServiceStateError(
+                    new WebServiceHasNoActiveDeployments(request.Id)))
+                : new DeleteWebServiceOutcome(
+                    new DeleteWebServiceResponse(request.Id, deletingPlacements));
         }
 
         var deployments = await loadResourceDeploymentSet(
@@ -79,26 +89,29 @@ public sealed class DeleteWebServiceHandler(
             webService.Id,
             cancellationToken);
         if (deployments.Count == 0)
-            return Failures.Conflict("The web service has no active resource deployments.");
+            return Error(new DeleteWebServiceStateError(
+                new WebServiceHasNoActiveDeployments(webService.Id)));
 
         var quotaInput = WebServiceDeploymentWorkflow.ToQuotaInput(deployments, webService.Spec);
-        return await quotaAdmissionExecutor.ExecuteAsync<
+        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             WebServiceQuotaInput,
-            DeleteWebServiceResponse>(
+            DeleteWebServiceOutcome>(
             webService.TenantId,
             WebServiceQuotaResourceKey.Create(webService.Id),
             new DeleteQuotaMutation<WebServiceQuotaInput>(quotaInput),
-            async (session, transactionCancellationToken) =>
+            quotaError => Error(new DeleteWebServiceError(quotaError)),
+            async (transaction, transactionCancellationToken) =>
             {
                 var deleting = webService.BeginDeletion(
                     timeProvider.GetUtcNow().UtcDateTime);
                 var replace = await beginWebServiceDeletion(
-                    session,
+                    transaction.Session,
                     webService,
                     deleting,
                     transactionCancellationToken);
-                if (replace is not ISuccess)
-                    return (Failure)replace;
+                if (!replace.TryGetValue(out _, out var replaceError))
+                    return transaction.Abort(
+                        Error(new DeleteWebServiceError(replaceError)));
 
                 var deploymentResult = await requestResourceDeploymentSetDeletion(
                     new ResourceDeploymentSetDeletionRequest(
@@ -110,21 +123,26 @@ public sealed class DeleteWebServiceHandler(
                             deployment.DeploymentId,
                             deployment.DeploymentRevision,
                             deployment.Compute.Profile)).ToArray()),
-                    session,
+                    transaction.Session,
                     transactionCancellationToken);
                 if (!deploymentResult.TryGetValue(
                         out var updatedDeployments,
-                        out var deploymentFailure))
+                        out var deploymentError))
                 {
-                    return deploymentFailure;
+                    return transaction.Abort(
+                        Error(new DeleteWebServiceError(deploymentError)));
                 }
 
-                return new DeleteWebServiceResponse(
-                    request.Id,
-                    updatedDeployments);
+                return transaction.Commit(new DeleteWebServiceOutcome(
+                    new DeleteWebServiceResponse(
+                        request.Id,
+                        updatedDeployments)));
             },
             cancellationToken);
     }
+
+    private static DeleteWebServiceOutcome Error(DeleteWebServiceError error) =>
+        new(error);
 }
 
 public sealed class FinalizeWebServiceDeletionConsumer(
@@ -152,7 +170,8 @@ public sealed class FinalizeWebServiceDeletionConsumer(
 public sealed record DeleteWebServiceRequest(
     [FromRoute] string Id,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
-) : IMediatorRequest<DeleteWebServiceResponse>, ITenantWriteOperation;
+) : IMediatorRequest<DeleteWebServiceOutcome>, ITenantWriteOperation;
+
 
 public sealed record DeleteWebServiceResponse(
     string Id,

@@ -58,11 +58,3 @@ public delegate Task<Result> PurgeDeletedResourceDeploymentsLegacy(
     string resourceId,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
-
-public delegate Task<Result> PurgeExactDeletedResourceDeploymentLegacy(
-    string tenantId,
-    ResourceTypeId resourceType,
-    string resourceId,
-    string resourceDeploymentId,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);

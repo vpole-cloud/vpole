@@ -231,6 +231,27 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
         };
     }
 
+    public async Task<IReadOnlyList<DeploymentTargetPublicIngressDto>>
+        ListEligiblePublicIngressForNewWorkloadAsync(
+            DeploymentTargetAdmissionRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        var targets = await dbContext.DeploymentTargets
+            .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
+            .SortBy(target => target.Id)
+            .ToListAsync(cancellationToken);
+
+        return targets
+            .Select(target => target.ToLookupDto())
+            .Where(target => HasRequiredCapabilities(
+                target,
+                DeploymentTargetRequiredCapabilities.PublicIngress) &&
+                !string.IsNullOrWhiteSpace(
+                    target.WorkloadConfiguration.Ingress?.PublicBaseDomain))
+            .Select(ToPublicIngressDto)
+            .ToArray();
+    }
+
     public async Task<Result<
         DeploymentTargetPublicIngressDto,
         DeploymentTargetDomainReservationAdmissionError>> AdmitForDomainReservationAsync(

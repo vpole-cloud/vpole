@@ -1,5 +1,3 @@
-using System.Text.RegularExpressions;
-using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.WebServices.Domain;
 
@@ -27,19 +25,7 @@ internal sealed class MongoLoadWebServicePage(IMongoCollection<WebService> webSe
         WebServiceListQuery query,
         CancellationToken cancellationToken = default)
     {
-        var builder = Builders<WebService>.Filter;
-        var filter = WebServiceFilters.VisibleToTenant(query.TenantId);
-        if (!string.IsNullOrWhiteSpace(query.ResourceGroupId))
-            filter &= builder.Eq(item => item.ResourceGroupId, query.ResourceGroupId);
-        if (!string.IsNullOrWhiteSpace(query.Search))
-        {
-            var name = builder.Regex(
-                item => item.Name,
-                new BsonRegularExpression($".*{Regex.Escape(query.Search)}.*", "i"));
-            filter &= ObjectId.TryParse(query.Search, out _)
-                ? builder.Or(name, builder.Eq(item => item.Id, query.Search))
-                : name;
-        }
+        var filter = WebServiceFilters.ForList(query);
 
         var count = await webServices.CountDocumentsAsync(
             filter,

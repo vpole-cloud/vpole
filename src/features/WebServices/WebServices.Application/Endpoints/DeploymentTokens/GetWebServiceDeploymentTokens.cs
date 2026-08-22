@@ -17,14 +17,20 @@ namespace Pole.Features.WebServices.Application.Endpoints;
 public sealed record GetWebServiceDeploymentTokensRequest(
     [FromRoute] string Id,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
-) : IMediatorRequest<IReadOnlyList<WebServiceDeploymentTokenDto>>, ITenantReadOperation;
+) : IMediatorRequest<GetWebServiceDeploymentTokensOutcome>, ITenantReadOperation;
+
+public union GetWebServiceDeploymentTokensOutcome(
+    IReadOnlyList<WebServiceDeploymentTokenDto>,
+    WebServiceNotFound);
 
 public sealed class GetWebServiceDeploymentTokensHandler(
     WebServiceExists webServiceExists,
     LoadWebServiceDeploymentTokens loadTokens)
-    : IMediatorHandler<GetWebServiceDeploymentTokensRequest, IReadOnlyList<WebServiceDeploymentTokenDto>>
+    : IMediatorOutcomeHandler<
+        GetWebServiceDeploymentTokensRequest,
+        GetWebServiceDeploymentTokensOutcome>
 {
-    public async Task<Result<IReadOnlyList<WebServiceDeploymentTokenDto>>> HandleAsync(
+    public async Task<GetWebServiceDeploymentTokensOutcome> HandleAsync(
         GetWebServiceDeploymentTokensRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -33,14 +39,15 @@ public sealed class GetWebServiceDeploymentTokensHandler(
             request.Id,
             cancellationToken);
         if (!exists)
-            return Failures.NotFound("Web service not found.", request.Id);
+            return new WebServiceNotFound(request.Id);
 
         var tokens = await loadTokens(
             request.TenantId,
             request.Id,
             cancellationToken);
 
-        return tokens.Select(token => token.ToDto()).ToArray();
+        return new GetWebServiceDeploymentTokensOutcome(
+            tokens.Select(token => token.ToDto()).ToArray());
     }
 }
 
@@ -57,12 +64,18 @@ public static class GetWebServiceDeploymentTokensEndpoint
 {
     public static IEndpointRouteBuilder MapGetWebServiceDeploymentTokensEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{Id}/deployment-tokens", async (IMediator mediator,
+        app.MapGet("/{Id}/deployment-tokens", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] GetWebServiceDeploymentTokensRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    IReadOnlyList<WebServiceDeploymentTokenDto> value => Results.Ok(value),
+                    WebServiceNotFound error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("GetWebServiceDeploymentTokens")
             .Produces<IReadOnlyList<WebServiceDeploymentTokenDto>>();

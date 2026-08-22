@@ -21,6 +21,7 @@ using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Services;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
 using Pole.Features.StorageProfiles.Application.Common;
@@ -28,8 +29,8 @@ using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Contracts;
+using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Persistence;
 using Pole.Mediator;
 using Pole.Server.Database;
 using Pole.Server.Extensions;
@@ -71,7 +72,7 @@ public static class TestServiceProviderFactory
         services.AddDomainPersistence();
         services.AddComputeProfiles();
         services.AddRedisPersistence();
-        services.AddWebServicePersistence();
+        services.AddWebServicesFeature();
         services.AddScoped<IFunctionRevisionLifecycleService, FunctionRevisionLifecycleService>();
         services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         services.AddSingleton(new PostgresSettings
@@ -89,6 +90,8 @@ public static class TestServiceProviderFactory
         var deploymentTargetLookup = new TestDeploymentTargetLookup();
         services.AddSingleton(deploymentTargetLookup);
         services.AddSingleton<IDeploymentTargetLookup>(deploymentTargetLookup);
+        services.AddSingleton<ListEligiblePublicIngressDeploymentTargetsForNewWorkload>(
+            deploymentTargetLookup.ListEligiblePublicIngressForNewWorkloadAsync);
         services.AddSingleton<AdmitDeploymentTargetPublicIngressForNewWorkload>(
             deploymentTargetLookup.AdmitForNewWorkloadAsync);
         services.AddSingleton<AdmitDeploymentTargetForWorkload>(
@@ -101,12 +104,21 @@ public static class TestServiceProviderFactory
             deploymentTargetLookup);
         services.AddSingleton<IDeploymentTargetWorkloadConfigurationFence>(
             deploymentTargetLookup);
+        services.AddScoped<ResourceGroupLookup>();
+        services.AddScoped<GetResourceGroupOwnership>(provider =>
+            provider.GetRequiredService<ResourceGroupLookup>()
+                .GetOwnershipOutcomeAsync);
         services.AddSingleton<IEnvelopeEncryptionService>(
             TestPostgresEnvelopeEncryption.Create());
         services.AddScoped<IPostgresCredentialService, PostgresCredentialService>();
         services.AddMigrations(Assemblies);
         services.AddSearchFeature();
-        services.AddScoped<ISourceBuildReferenceLookup, SourceBuildReferenceLookup>();
+        services.AddScoped<SourceBuildReferenceLookup>();
+        services.AddScoped<ISourceBuildReferenceLookup>(provider =>
+            provider.GetRequiredService<SourceBuildReferenceLookup>());
+        services.AddScoped<EnsureNoWebServiceSourceBuildConfiguration>(provider =>
+            provider.GetRequiredService<SourceBuildReferenceLookup>()
+                .EnsureNoWebServiceConfigurationAsync);
         services.AddValidatorsFromAssemblies(Assemblies);
         services.AddPoleMediator(Assemblies);
         services.ReplaceTenantAuthorizationWithFake();

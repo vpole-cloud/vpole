@@ -28,10 +28,16 @@ public static class DeleteWebServiceDeploymentHostname
                     "/{Id}/deployments/{DeploymentId}/hostnames/{BindingId}",
                     async (
                         IMediator mediator,
+                        IHttpProblemMapper httpProblems,
                         [AsParameters] DeleteWebServiceDeploymentHostnameRequest request,
                         CancellationToken cancellationToken) =>
                         (await mediator.Send(request, cancellationToken))
-                        .ToHttpResult(value => Results.Accepted(value: value)))
+                        .ToHttpResult(outcome => outcome switch
+                        {
+                            PlacementSummaryDto value => Results.Accepted(value: value),
+                            WebServiceDeploymentHostnameError error =>
+                                httpProblems.Map(error).ToHttpResult()
+                        }))
                 .WithName("DeleteWebServiceDeploymentHostname")
                 .Produces<PlacementSummaryDto>(StatusCodes.Status202Accepted);
             return app;
@@ -44,23 +50,25 @@ public sealed record DeleteWebServiceDeploymentHostnameRequest(
     [FromRoute] string DeploymentId,
     [FromRoute] string BindingId,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<PlacementSummaryDto>, ITenantWriteOperation;
+    : IMediatorRequest<WebServiceDeploymentHostnameOutcome>, ITenantWriteOperation;
 
 public sealed class DeleteWebServiceDeploymentHostnameHandler(
     LoadWebServiceById loadWebService,
     LoadExactResourceDeployment loadExactResourceDeployment,
-    DeleteCustomHostnameBinding deleteCustomHostnameBinding,
+    DeleteCustomHostnameBindingOutcome deleteCustomHostnameBinding,
     LoadHostnameBindingsForDeploymentInTransaction
         loadHostnameBindingsForDeploymentInTransaction,
-    RequestExactResourceDeploymentApplyLegacy requestExactResourceDeploymentApply,
-    AdvanceResourceDeploymentRevisionLegacy advanceResourceDeploymentRevision,
-    PersistUpdatedWebService persistWebService,
+    RequestExactResourceDeploymentApply requestExactResourceDeploymentApply,
+    AdvanceResourceDeploymentRevision advanceResourceDeploymentRevision,
+    PersistUpdatedWebServiceOutcome persistWebService,
     PersistCurrentWebServiceRelease persistRelease,
-    RunMongoTransaction<PlacementSummaryDto> runTransaction,
+    RunMongoOutcomeTransaction<WebServiceDeploymentHostnameOutcome> runTransaction,
     TimeProvider timeProvider)
-    : IMediatorHandler<DeleteWebServiceDeploymentHostnameRequest, PlacementSummaryDto>
+    : IMediatorOutcomeHandler<
+        DeleteWebServiceDeploymentHostnameRequest,
+        WebServiceDeploymentHostnameOutcome>
 {
-    public async Task<Result<PlacementSummaryDto>> HandleAsync(
+    public async Task<WebServiceDeploymentHostnameOutcome> HandleAsync(
         DeleteWebServiceDeploymentHostnameRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -69,7 +77,10 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
             request.Id,
             cancellationToken);
         if (webService is null)
-            return Failures.NotFound("Web service not found.", request.Id);
+        {
+            return Error(new WebServiceDeploymentMutationStateError(
+                new WebServiceNotFound(request.Id)));
+        }
 
         var deployment = await loadExactResourceDeployment(
             request.TenantId,
@@ -79,9 +90,10 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
             cancellationToken);
         if (deployment is null)
         {
-            return Failures.NotFound(
-                "Resource deployment not found.",
-                request.DeploymentId);
+            return Error(new WebServiceDeploymentMutationStateError(
+                new WebServiceResourceDeploymentNotFound(
+                    request.Id,
+                    request.DeploymentId)));
         }
 
         return await runTransaction(
@@ -94,11 +106,12 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
             cancellationToken);
     }
 
-    private async Task<Result<PlacementSummaryDto>> DeleteAndApplySnapshotAsync(
+    private async Task<MongoTransactionDecision<WebServiceDeploymentHostnameOutcome>>
+        DeleteAndApplySnapshotAsync(
         DeleteWebServiceDeploymentHostnameRequest request,
         WebService webService,
         PlacementSummaryDto deployment,
-        MongoDB.Driver.IClientSessionHandle session,
+        MongoTransactionContext<WebServiceDeploymentHostnameOutcome> transaction,
         CancellationToken cancellationToken)
     {
         var deleted = await deleteCustomHostnameBinding(
@@ -108,17 +121,17 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
                 request.Id,
                 request.DeploymentId,
                 request.BindingId),
-            session,
+            transaction.Session,
             cancellationToken);
-        if (deleted is not ISuccess)
-            return (Failure)deleted;
+        if (!deleted.TryGetValue(out _, out var deletedError))
+            return Abort(transaction, new WebServiceDeploymentHostnameError(deletedError));
 
         var currentBindings = await loadHostnameBindingsForDeploymentInTransaction(
             request.TenantId,
             WebServiceResourceDeployment.ResourceType,
             request.Id,
             request.DeploymentId,
-            session,
+            transaction.Session,
             cancellationToken);
         var updated = webService.AdvancePlacementDesiredState();
         var applied = await requestExactResourceDeploymentApply(
@@ -130,10 +143,10 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
                 replacementIngress: WebServiceDeploymentWorkflow.WithHostnames(
                     deployment,
                     currentBindings.Select(binding => binding.Hostname))),
-            session,
+            transaction.Session,
             cancellationToken);
         if (!applied.TryGetValue(out var changed, out var failure))
-            return failure;
+            return Abort(transaction, new WebServiceDeploymentHostnameError(failure));
 
         var advanced = await advanceResourceDeploymentRevision(
             new ResourceDeploymentResourceRevisionRequest(
@@ -141,20 +154,20 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
                 WebServiceResourceDeployment.ResourceType,
                 request.Id,
                 updated.ActiveRevision),
-            session,
+            transaction.Session,
             cancellationToken);
-        if (!advanced.TryGetValue(out var deployments, out failure))
-            return failure;
+        if (!advanced.TryGetValue(out var deployments, out var revisionError))
+            return Abort(transaction, new WebServiceDeploymentHostnameError(revisionError));
 
         var persisted = await persistWebService(
-            session,
+            transaction.Session,
             webService,
             updated,
             updated.ToUpdatedEvent(
                 WebServiceDeploymentWorkflow.ToEventDeployments(deployments)),
             cancellationToken);
-        if (persisted is not ISuccess)
-            return (Failure)persisted;
+        if (!persisted.TryGetValue(out _, out var persistenceError))
+            return Abort(transaction, new WebServiceDeploymentHostnameError(persistenceError));
 
         var release = WebServiceReleaseFactory.CreatePending(
             updated.TenantId,
@@ -170,9 +183,17 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
             new WebServiceReleaseFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 timeProvider.GetUtcNow().UtcDateTime));
-        await persistRelease(session, release, cancellationToken);
-        return changed;
+        await persistRelease(transaction.Session, release, cancellationToken);
+        return transaction.Commit(new WebServiceDeploymentHostnameOutcome(changed));
     }
+
+    private static WebServiceDeploymentHostnameOutcome Error(
+        WebServiceDeploymentHostnameError error) => new(error);
+
+    private static MongoTransactionDecision<WebServiceDeploymentHostnameOutcome> Abort(
+        MongoTransactionContext<WebServiceDeploymentHostnameOutcome> transaction,
+        WebServiceDeploymentHostnameError error) =>
+        transaction.Abort(Error(error));
 }
 
 public sealed class DeleteWebServiceDeploymentHostnameValidator

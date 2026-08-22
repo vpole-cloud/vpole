@@ -30,29 +30,8 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             CreatePlacement("507f1f77bcf86cd799439052", "507f1f77bcf86cd799439062")
         };
         var mutationWriter = new SuccessfulSetMutationWriter(deployments);
-        var service = new WebServiceSourceBuildDeploymentService(
-            Services.GetRequiredService<LoadWebServiceById>(),
-            Services.GetRequiredService<PersistUpdatedWebService>(),
-            Services.GetRequiredService<PersistCurrentWebServiceRelease>(),
-            Services.GetRequiredService<
-                Pole.Database.RunMongoTransaction<SourceBuildDeploymentResult>>(),
-            new FixedSetQueryService(deployments).LoadAsync,
-            mutationWriter.RequestSetApplyAsync,
-            TimeProvider.System);
-        var request = new SourceBuildDeploymentRequest(
-            TestData.TenantId,
-            webService.Id,
-            "build-1",
-            "source-1",
-            "abc123",
-            TestData.UserId,
-            TestData.UserEmail,
-            new SourceBuildDeploymentImage(
-                "harbor.test",
-                "pole-test/web-services/service-1",
-                "build-1",
-                "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                "pole-registry-project-1"));
+        var service = CreateService(deployments, mutationWriter.RequestSetApplyAsync);
+        var request = CreateRequest(webService.Id);
 
         var result = await service.DeployAsync(request);
 
@@ -115,6 +94,72 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             .AnyAsync());
     }
 
+    [Fact]
+    public async Task SourceBuildDeployment_AbortsOnTypedResourceDeploymentRejection()
+    {
+        var webService = TestData.SeedWebService(ObjectId.GenerateNewId().ToString());
+        await Fixture.Database.WebServices().InsertOneAsync(webService);
+        var deployment = CreatePlacement(
+            "507f1f77bcf86cd799439051",
+            "507f1f77bcf86cd799439061");
+        var service = CreateService(
+            [deployment],
+            new RejectedSetMutationWriter(
+                new ResourceDeploymentPlacementUnavailable(
+                    webService.Id,
+                    deployment.DeploymentId)).RequestSetApplyAsync);
+
+        var result = await service.DeployAsync(CreateRequest(webService.Id));
+
+        var error = result.AssertFailure();
+        var rejected = Assert.IsType<SourceBuildWebServiceDeploymentRejected>(error.Value);
+        var unavailable = Assert.IsType<SourceBuildResourceDeploymentPlacementUnavailable>(
+            rejected.Reason.Value);
+        Assert.Equal(deployment.DeploymentId, unavailable.ResourceDeploymentId);
+
+        var persisted = await Fixture.Database.WebServices()
+            .Find(item => item.Id == webService.Id)
+            .SingleAsync();
+        Assert.Equal(webService.Spec.Image, persisted.Spec.Image);
+        Assert.Equal(webService.ActiveRevision, persisted.ActiveRevision);
+        Assert.False(await Fixture.Database.WebServiceReleases()
+            .Find(item => item.WebServiceId == webService.Id)
+            .AnyAsync());
+        Assert.False(await Fixture.DbContext.OutboxMessages
+            .Find(item => item.EventType == "web-service-updated")
+            .AnyAsync());
+    }
+
+    private WebServiceSourceBuildDeploymentService CreateService(
+        IReadOnlyList<PlacementSummaryDto> deployments,
+        RequestResourceDeploymentSetApply requestSetApply) =>
+        new(
+            Services.GetRequiredService<LoadWebServiceById>(),
+            Services.GetRequiredService<PersistUpdatedWebServiceOutcome>(),
+            Services.GetRequiredService<PersistCurrentWebServiceRelease>(),
+            Services.GetRequiredService<
+                Pole.Database.RunMongoOutcomeTransaction<
+                    Result<SourceBuildDeploymentResult, SourceBuildWebServiceDeploymentError>>>(),
+            new FixedSetQueryService(deployments).LoadAsync,
+            requestSetApply,
+            TimeProvider.System);
+
+    private static SourceBuildDeploymentRequest CreateRequest(string webServiceId) =>
+        new(
+            TestData.TenantId,
+            webServiceId,
+            "build-1",
+            "source-1",
+            "abc123",
+            TestData.UserId,
+            TestData.UserEmail,
+            new SourceBuildDeploymentImage(
+                "harbor.test",
+                "pole-test/web-services/service-1",
+                "build-1",
+                "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "pole-registry-project-1"));
+
     private static PlacementSummaryDto CreatePlacement(string deploymentId, string targetId) =>
         new(
             deploymentId,
@@ -144,21 +189,40 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
         public int ApplyCallCount { get; private set; }
         public ResourceDeploymentSetApplyRequest? LastCommand { get; private set; }
 
-        public Task<Result<IReadOnlyList<PlacementSummaryDto>>> RequestSetApplyAsync(
+        public Task<Result<
+            IReadOnlyList<PlacementSummaryDto>,
+            ResourceDeploymentMutationError>> RequestSetApplyAsync(
             ResourceDeploymentSetApplyRequest command,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
             ApplyCallCount++;
             LastCommand = command;
-            return Task.FromResult<Result<IReadOnlyList<PlacementSummaryDto>>>(
-                deployments.Select(item => item with
-                {
-                    DesiredGeneration = item.DesiredGeneration + 1,
-                    ResourceRevision = command.ResourceRevision,
-                    Status = "Pending"
-                }).ToArray());
+            return Task.FromResult<Result<
+                IReadOnlyList<PlacementSummaryDto>,
+                ResourceDeploymentMutationError>>(
+                new Ok<IReadOnlyList<PlacementSummaryDto>>(
+                    deployments.Select(item => item with
+                    {
+                        DesiredGeneration = item.DesiredGeneration + 1,
+                        ResourceRevision = command.ResourceRevision,
+                        Status = "Pending"
+                    }).ToArray()));
         }
+    }
+
+    private sealed class RejectedSetMutationWriter(ResourceDeploymentMutationError error)
+    {
+        public Task<Result<
+            IReadOnlyList<PlacementSummaryDto>,
+            ResourceDeploymentMutationError>> RequestSetApplyAsync(
+            ResourceDeploymentSetApplyRequest command,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result<
+                IReadOnlyList<PlacementSummaryDto>,
+                ResourceDeploymentMutationError>>(
+                new Err<ResourceDeploymentMutationError>(error));
     }
 
     private sealed class FixedSetQueryService(IReadOnlyList<PlacementSummaryDto> deployments)

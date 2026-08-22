@@ -173,6 +173,24 @@ internal sealed class TestDeploymentTargetLookup :
         return Task.FromResult(result);
     }
 
+    public Task<IReadOnlyList<DeploymentTargetPublicIngressDto>>
+        ListEligiblePublicIngressForNewWorkloadAsync(
+            DeploymentTargetAdmissionRequest request,
+            CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<DeploymentTargetPublicIngressDto>>(
+            RejectNewWorkloads
+                ? []
+                : _targets.Values
+                    .Where(target => target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null)
+                    .OrderBy(target => target.Id, StringComparer.Ordinal)
+                    .Select(target => new DeploymentTargetPublicIngressDto(
+                        target.Id,
+                        target.WorkloadConfiguration.Revision,
+                        target.WorkloadConfiguration.Ingress!.IngressClassName,
+                        target.WorkloadConfiguration.Ingress.ClusterIssuerName,
+                        target.WorkloadConfiguration.Ingress.PublicBaseDomain!))
+                    .ToArray());
+
     public Task<Result<
         DeploymentTargetPublicIngressDto,
         DeploymentTargetDomainReservationAdmissionError>> AdmitForDomainReservationAsync(

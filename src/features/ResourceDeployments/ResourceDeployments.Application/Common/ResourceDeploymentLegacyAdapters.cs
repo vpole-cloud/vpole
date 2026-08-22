@@ -96,24 +96,4 @@ internal sealed class ResourceDeploymentLegacyAdapters(
                 "The resource deployment is not ready for finalization.");
     }
 
-    public async Task<Result> PurgeExactDeletedAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
-        string resourceDeploymentId,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await finalization.PurgeExactDeletedAsync(
-            tenantId,
-            resourceType,
-            resourceId,
-            resourceDeploymentId,
-            session,
-            cancellationToken);
-        return result.TryGetValue(out _, out _)
-            ? Result.Success()
-            : Failures.Conflict(
-                "The resource deployment is not ready for exact finalization.");
-    }
 }

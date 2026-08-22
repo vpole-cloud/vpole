@@ -188,6 +188,16 @@ public delegate Task<DeploymentTargetPublicIngressAdmissionResult>
         CancellationToken cancellationToken = default);
 
 /// <summary>
+/// Lists every target that is currently eligible for a public workload placement.
+/// Consumers own any request-specific selection rule; this provider owns eligibility
+/// and the immutable ingress configuration snapshot.
+/// </summary>
+public delegate Task<IReadOnlyList<DeploymentTargetPublicIngressDto>>
+    ListEligiblePublicIngressDeploymentTargetsForNewWorkload(
+        DeploymentTargetAdmissionRequest request,
+        CancellationToken cancellationToken = default);
+
+/// <summary>
 /// Resolves public ingress for a tenant domain reservation without forcing the domain feature to
 /// translate provider-owned expected errors into shared application failures.
 /// </summary>

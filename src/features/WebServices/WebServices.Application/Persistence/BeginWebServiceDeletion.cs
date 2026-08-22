@@ -4,20 +4,24 @@ using Pole.ResultType;
 
 namespace Pole.Features.WebServices.Application.Persistence;
 
-public delegate Task<Result> BeginWebServiceDeletion(
-    IClientSessionHandle session,
-    WebService current,
-    WebService replacement,
-    CancellationToken cancellationToken = default);
+public sealed record WebServiceDeletionAccepted;
+
+public delegate Task<Result<WebServiceDeletionAccepted, WebServiceUpdateConflict>>
+    BeginWebServiceDeletionOutcome(
+        IClientSessionHandle session,
+        WebService current,
+        WebService replacement,
+        CancellationToken cancellationToken = default);
 
 internal sealed class MongoBeginWebServiceDeletion(
     IMongoCollection<WebService> webServices)
 {
-    public async Task<Result> InvokeAsync(
-        IClientSessionHandle session,
-        WebService current,
-        WebService replacement,
-        CancellationToken cancellationToken = default)
+    public async Task<Result<WebServiceDeletionAccepted, WebServiceUpdateConflict>>
+        InvokeOutcomeAsync(
+            IClientSessionHandle session,
+            WebService current,
+            WebService replacement,
+            CancellationToken cancellationToken = default)
     {
         WebServicePersistenceGuards.EnsureTransaction(session, "Web service deletion start");
         WebServicePersistenceGuards.EnsureSameIdentity(current, replacement);
@@ -27,8 +31,8 @@ internal sealed class MongoBeginWebServiceDeletion(
             replacement,
             cancellationToken: cancellationToken);
         return result.ModifiedCount == 1
-            ? Result.Success()
-            : Failures.Conflict(
-                "The web service changed while deletion was being accepted.");
+            ? new Ok<WebServiceDeletionAccepted>(new WebServiceDeletionAccepted())
+            : new Err<WebServiceUpdateConflict>(
+                new WebServiceUpdateConflict(current.Id));
     }
 }

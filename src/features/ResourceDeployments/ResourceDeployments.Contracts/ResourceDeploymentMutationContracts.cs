@@ -161,12 +161,6 @@ public delegate Task<Result<
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<IReadOnlyList<PlacementSummaryDto>>>
-    AdvanceResourceDeploymentRevisionLegacy(
-        ResourceDeploymentResourceRevisionRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
-
 public delegate Task<Result<
     IReadOnlyList<PlacementSummaryDto>,
     AdvanceResourceDeploymentRevisionError>> AdvanceResourceDeploymentRevision(
@@ -187,33 +181,6 @@ public delegate Task<Result<PlacementSummaryDto>> RequestResourceDeploymentDelet
     ResourceDeploymentMutationRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
-
-public delegate Task<Result<PlacementSummaryDto>> RetryExactResourceDeploymentLegacy(
-    ResourceDeploymentExactRetryRequest request,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
-
-public delegate Task<Result<PlacementSummaryDto>> RequestExactResourceDeploymentApplyLegacy(
-    ResourceDeploymentExactMutationRequest request,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
-
-public delegate Task<Result<PlacementSummaryDto>> RequestExactResourceDeploymentDeletionLegacy(
-    ResourceDeploymentExactMutationRequest request,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
-
-public delegate Task<Result<IReadOnlyList<PlacementSummaryDto>>>
-    RequestResourceDeploymentSetApplyLegacy(
-        ResourceDeploymentSetApplyRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
-
-public delegate Task<Result<IReadOnlyList<PlacementSummaryDto>>>
-    RequestResourceDeploymentSetDeletionLegacy(
-        ResourceDeploymentSetDeletionRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
 
 public sealed record ResourceDeploymentsNotFound(string ResourceId);
 
