@@ -3,13 +3,17 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Endpoints;
+using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.StorageProfiles.Contracts;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -22,15 +26,58 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
     private const string OtherTenantId = "507f1f77bcf86cd799439010";
 
     [Fact]
+    public void FeatureRegistration_ResolvesRedisCapabilities()
+    {
+        _ = Services.GetRequiredService<LoadRedisById>();
+        _ = Services.GetRequiredService<LoadRedisPage>();
+        _ = Services.GetRequiredService<PersistCreatedRedis>();
+        _ = Services.GetRequiredService<PersistUpdatedRedis>();
+        _ = Services.GetRequiredService<BeginRedisDeletion>();
+        _ = Services.GetRequiredService<FinalizeRedisDeletion>();
+        _ = Services.GetRequiredService<RedisResourceDeploymentAdapter>();
+        _ = Services.GetRequiredService<ResolveStorageProfile>();
+        _ = Services.GetRequiredService<AdmitDeploymentTargetForNewWorkload>();
+    }
+
+    [Fact]
+    public async Task LoadById_RejectsMalformedStructuralIdentity()
+    {
+        var loadRedisById = Services.GetRequiredService<LoadRedisById>();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => loadRedisById(
+            "not-a-tenant-id",
+            ObjectId.GenerateNewId().ToString(),
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task PersistUpdate_RejectsADeletingReplacement()
+    {
+        var current = await DbContext.InsertRedisAsync(
+            SeedRedis(TestData.TenantId, "invalid-update-transition"));
+        var replacement = current.BeginDeletion(DateTime.UtcNow);
+        var persistUpdatedRedis = Services.GetRequiredService<PersistUpdatedRedis>();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            DbContext.RunInTransactionAsync(async (session, cancellationToken) =>
+            {
+                await persistUpdatedRedis(
+                    session,
+                    current,
+                    replacement,
+                    cancellationToken);
+                return Result.Success();
+            }));
+    }
+
+    [Fact]
     public async Task Create_Succeeds_WithValidRequest()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
 
         var result = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id));
 
-        result.TryGetValue(out var response, out var error);
-        Assert.Null(error);
-        Assert.NotNull(response);
+        var response = result.AssertSuccess();
 
         var savedRedis = await DbContext.Database.RedisServices().Find(redis => redis.Id == response.RedisId).FirstOrDefaultAsync();
         Assert.NotNull(savedRedis);
@@ -116,7 +163,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var createResult = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id));
-        Assert.True(createResult.TryGetValue(out var created, out _));
+        var created = createResult.AssertSuccess();
 
         var updateRequest = new UpdateRedisServiceRequest(
             Id: created.RedisId,
@@ -128,9 +175,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
 
         var updateResult = await Mediator.Send(updateRequest);
 
-        Assert.True(updateResult.TryGetValue(out var response, out var error));
-        Assert.Null(error);
-        Assert.NotNull(response);
+        _ = updateResult.AssertSuccess();
 
         var updated = await DbContext.Database.RedisServices().Find(redis => redis.Id == created.RedisId).FirstOrDefaultAsync();
         Assert.NotNull(updated);
@@ -261,15 +306,23 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
                 ImmutableHashSet.Create("updated"),
                 profile.Id),
             TestData.TenantId));
-        Assert.IsType<SemanticValidationFailure>(explicitAdoption.AssertFailure());
+        var adoptionError = ResultAssertionExtensions
+            .AssertSuccess<UpdateRedisServiceOutcome>(explicitAdoption)
+            .AssertFailure();
+        _ = adoptionError switch
+        {
+            ComputeProfileResolutionError compute => compute,
+            _ => throw new Xunit.Sdk.XunitException(
+                $"Expected a compute-profile error, but received {adoptionError}.")
+        };
     }
 
     [Fact]
-    public async Task Update_ReturnsValidationFailure_WhenStorageProfileChanges()
+    public async Task Update_ReturnsTypedError_WhenStorageProfileChanges()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var createResult = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id));
-        Assert.True(createResult.TryGetValue(out var created, out _));
+        var created = createResult.AssertSuccess();
         var otherProfileId = ObjectId.GenerateNewId().ToString();
         await DbContext.StorageProfiles.InsertOneAsync(TestData.SeedStorageProfile(
             id: otherProfileId,
@@ -286,9 +339,21 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
 
         var updateResult = await Mediator.Send(updateRequest);
 
-        Assert.False(updateResult.TryGetValue(out _, out var error));
-        var validation = Assert.IsType<ValidationFailure>(error);
-        Assert.Contains("Body.Spec.Storage.StorageProfileId", validation.ValidationErrors.Keys);
+        var error = ResultAssertionExtensions
+            .AssertSuccess<UpdateRedisServiceOutcome>(updateResult)
+            .AssertFailure();
+        var state = error switch
+        {
+            RedisUpdateStateError value => value,
+            _ => throw new Xunit.Sdk.XunitException(
+                $"Expected Redis update state error, but received {error}.")
+        };
+        _ = state switch
+        {
+            RedisStorageProfileChangeNotAllowed rejected => rejected,
+            _ => throw new Xunit.Sdk.XunitException(
+                $"Expected storage-profile change rejection, but received {error}.")
+        };
     }
 
     [Fact]
@@ -306,9 +371,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             PageSize = 1
         });
 
-        result.TryGetValue(out var response, out var error);
-        Assert.Null(error);
-        Assert.NotNull(response);
+        var response = result.AssertSuccess();
         Assert.Single(response.Items);
         Assert.Equal(2L, response.TotalCount);
         Assert.Equal(2, response.PageNumber);
@@ -325,8 +388,10 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             foreignRedis.Id,
             TestData.TenantId));
 
-        Assert.False(result.TryGetValue(out _, out var error));
-        Assert.IsType<NotFoundFailure>(error);
+        var notFound = ResultAssertionExtensions
+            .AssertSuccess<GetRedisServiceByIdOutcome>(result)
+            .AssertFailure();
+        Assert.Equal(foreignRedis.Id, notFound.RedisId);
     }
 
     [Fact]
@@ -344,8 +409,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             PageSize = 10
         });
 
-        Assert.True(result.TryGetValue(out var response, out var error));
-        Assert.Null(error);
+        var response = result.AssertSuccess();
         var item = Assert.Single(response.Items);
         Assert.Equal(ownRedis.Id, item.Id);
         Assert.Equal(1L, response.TotalCount);
@@ -360,8 +424,21 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(request);
 
-        Assert.False(result.TryGetValue(out _, out var error));
-        Assert.IsType<NotFoundFailure>(error);
+        var error = ResultAssertionExtensions
+            .AssertSuccess<UpdateRedisServiceOutcome>(result)
+            .AssertFailure();
+        var state = error switch
+        {
+            RedisUpdateStateError value => value,
+            _ => throw new Xunit.Sdk.XunitException(
+                $"Expected Redis update state error, but received {error}.")
+        };
+        _ = state switch
+        {
+            RedisServiceNotFound notFound => notFound,
+            _ => throw new Xunit.Sdk.XunitException(
+                $"Expected Redis not-found error, but received {error}.")
+        };
         var stored = await DbContext.Database.RedisServices()
             .Find(redis => redis.Id == foreignRedis.Id)
             .SingleAsync();
@@ -386,14 +463,20 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             ImmutableHashSet.Create("intended"));
         var persistUpdatedRedis = Services.GetRequiredService<PersistUpdatedRedis>();
 
-        var result = await DbContext.RunInTransactionAsync(
-            (session, cancellationToken) => persistUpdatedRedis(
-                session,
+        var result = await DbContext.RunOutcomeInTransactionAsync<
+            Result<Unit, RedisUpdateConflict>>(async (transaction, cancellationToken) =>
+        {
+            var outcome = await persistUpdatedRedis(
+                transaction.Session,
                 current,
                 intended,
-                cancellationToken));
+                cancellationToken);
+            return outcome.TryGetValue(out _, out _)
+                ? transaction.Commit(outcome)
+                : transaction.Abort(outcome);
+        });
 
-        Assert.IsType<ConflictFailure>(result);
+        Assert.Equal(current.Id, result.AssertFailure().RedisId);
         var stored = await DbContext.Database.RedisServices()
             .Find(redis => redis.Id == current.Id)
             .SingleAsync();
@@ -416,14 +499,20 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
         var deleting = current.BeginDeletion(DateTime.UtcNow);
         var beginRedisDeletion = Services.GetRequiredService<BeginRedisDeletion>();
 
-        var result = await DbContext.RunInTransactionAsync(
-            (session, cancellationToken) => beginRedisDeletion(
-                session,
+        var result = await DbContext.RunOutcomeInTransactionAsync<
+            Result<Unit, RedisDeletionConflict>>(async (transaction, cancellationToken) =>
+        {
+            var outcome = await beginRedisDeletion(
+                transaction.Session,
                 current,
                 deleting,
-                cancellationToken));
+                cancellationToken);
+            return outcome.TryGetValue(out _, out _)
+                ? transaction.Commit(outcome)
+                : transaction.Abort(outcome);
+        });
 
-        Assert.IsType<ConflictFailure>(result);
+        Assert.Equal(current.Id, result.AssertFailure().RedisId);
         var stored = await DbContext.Database.RedisServices()
             .Find(redis => redis.Id == current.Id)
             .SingleAsync();
@@ -436,12 +525,11 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var createResult = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id));
-        Assert.True(createResult.TryGetValue(out var created, out _));
+        var created = createResult.AssertSuccess();
 
         var deleteResult = await Mediator.Send(new DeleteRedisServiceRequest(created.RedisId, TestData.TenantId));
 
-        Assert.True(deleteResult.TryGetValue(out var response, out var error));
-        Assert.Null(error);
+        var response = deleteResult.AssertSuccess();
         Assert.Equal(created.RedisId, response.Id);
 
         var deleting = await DbContext.Database.RedisServices()
@@ -460,8 +548,21 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var result = await Mediator.Send(new DeleteRedisServiceRequest("507f1f77bcf86cd799439012", TestData.TenantId));
 
-        Assert.False(result.TryGetValue(out _, out var error));
-        Assert.IsType<NotFoundFailure>(error);
+        var error = ResultAssertionExtensions
+            .AssertSuccess<DeleteRedisServiceOutcome>(result)
+            .AssertFailure();
+        var state = error switch
+        {
+            RedisDeletionStateError value => value,
+            _ => throw new Xunit.Sdk.XunitException(
+                $"Expected Redis deletion state error, but received {error}.")
+        };
+        _ = state switch
+        {
+            RedisServiceNotFound notFound => notFound,
+            _ => throw new Xunit.Sdk.XunitException(
+                $"Expected Redis not-found error, but received {error}.")
+        };
     }
 
     [Fact]
@@ -474,8 +575,21 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             foreignRedis.Id,
             TestData.TenantId));
 
-        Assert.False(result.TryGetValue(out _, out var error));
-        Assert.IsType<NotFoundFailure>(error);
+        var error = ResultAssertionExtensions
+            .AssertSuccess<DeleteRedisServiceOutcome>(result)
+            .AssertFailure();
+        var state = error switch
+        {
+            RedisDeletionStateError value => value,
+            _ => throw new Xunit.Sdk.XunitException(
+                $"Expected Redis deletion state error, but received {error}.")
+        };
+        _ = state switch
+        {
+            RedisServiceNotFound notFound => notFound,
+            _ => throw new Xunit.Sdk.XunitException(
+                $"Expected Redis not-found error, but received {error}.")
+        };
         var stored = await DbContext.Database.RedisServices()
             .Find(redis => redis.Id == foreignRedis.Id)
             .SingleAsync();
@@ -491,11 +605,11 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             TestData.SeedResourceGroup());
         var createResult = await Mediator.Send(
             TestData.CreateRedisServiceRequest(resourceGroup.Id, "finalize-redis"));
-        Assert.True(createResult.TryGetValue(out var created, out _));
+        var created = createResult.AssertSuccess();
         var deleteResult = await Mediator.Send(new DeleteRedisServiceRequest(
             created.RedisId,
             TestData.TenantId));
-        Assert.True(deleteResult.TryGetValue(out _, out _));
+        _ = deleteResult.AssertSuccess();
 
         var deployment = await DbContext.ResourceDeployments
             .Find(candidate =>
@@ -527,7 +641,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             created.RedisId,
             CancellationToken.None);
 
-        Assert.IsAssignableFrom<ISuccess>(wrongTenantResult);
+        wrongTenantResult.AssertSuccess();
         Assert.Equal(1L, await DbContext.Database.RedisServices().CountDocumentsAsync(
             redis => redis.Id == created.RedisId));
         Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
@@ -542,8 +656,8 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             created.RedisId,
             CancellationToken.None);
 
-        Assert.IsAssignableFrom<ISuccess>(result);
-        Assert.IsAssignableFrom<ISuccess>(repeatedResult);
+        result.AssertSuccess();
+        repeatedResult.AssertSuccess();
         Assert.Equal(0L, await DbContext.Database.RedisServices().CountDocumentsAsync(
             redis => redis.Id == created.RedisId));
         Assert.Equal(0L, await DbContext.ResourceDeployments.CountDocumentsAsync(

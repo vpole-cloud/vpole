@@ -134,6 +134,59 @@ internal sealed class TestDeploymentTargetLookup :
         return Task.FromResult(result);
     }
 
+    public async Task<Result<
+        DeploymentTargetLookupDto,
+        DeploymentTargetNewWorkloadAdmissionError>> AdmitForWorkloadPlacementAsync(
+        DeploymentTargetAdmissionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (!string.IsNullOrWhiteSpace(request.ExplicitDeploymentTargetId))
+        {
+            var explicitResult = await AdmitForWorkloadAsync(
+                request.ExplicitDeploymentTargetId,
+                cancellationToken);
+            if (!explicitResult.TryGetValue(out var target, out var error))
+            {
+                return new Err<DeploymentTargetNewWorkloadAdmissionError>(
+                    new DeploymentTargetNewWorkloadAdmissionError(error));
+            }
+
+            var hasRequiredCapabilities =
+                !request.RequiredCapabilities.HasFlag(
+                    DeploymentTargetRequiredCapabilities.PublicIngress) ||
+                target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null;
+            return hasRequiredCapabilities
+                ? new Ok<DeploymentTargetLookupDto>(target)
+                : new Err<DeploymentTargetNewWorkloadAdmissionError>(
+                    new DeploymentTargetNewWorkloadAdmissionError(
+                        new DeploymentTargetRequiredCapabilitiesUnavailable(
+                            target.Id,
+                            request.RequiredCapabilities)));
+        }
+
+        var eligible = RejectNewWorkloads
+            ? []
+            : _targets.Values
+                .Where(target =>
+                    !request.RequiredCapabilities.HasFlag(
+                        DeploymentTargetRequiredCapabilities.PublicIngress) ||
+                    target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null)
+                .OrderBy(target => target.Id, StringComparer.Ordinal)
+                .ToArray();
+        return eligible.Length switch
+        {
+            0 => new Err<DeploymentTargetNewWorkloadAdmissionError>(
+                new DeploymentTargetNewWorkloadAdmissionError(
+                    new NoDeploymentTargetAcceptsWorkloads())),
+            > 1 => new Err<DeploymentTargetNewWorkloadAdmissionError>(
+                new DeploymentTargetNewWorkloadAdmissionError(
+                    new DeploymentTargetWorkloadSelectionRequired(
+                        eligible.Select(target => target.Id).ToArray()))),
+            _ => new Ok<DeploymentTargetLookupDto>(eligible[0])
+        };
+    }
+
     public Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>>
         ListEligibleForNewWorkloadAsync(
             CancellationToken cancellationToken = default) =>

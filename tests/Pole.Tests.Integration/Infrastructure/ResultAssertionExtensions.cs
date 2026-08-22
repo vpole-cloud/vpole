@@ -1,5 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Endpoints;
+using Pole.Features.Request;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Mediator;
@@ -10,6 +13,87 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 public static class ResultAssertionExtensions
 {
+    public static CreateRedisServiceResponse AssertSuccess(
+        this MediatorResult<CreateRedisServiceOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<CreateRedisServiceOutcome>(result).AssertSuccess();
+
+    public static UpdateRedisServiceResponse AssertSuccess(
+        this MediatorResult<UpdateRedisServiceOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<UpdateRedisServiceOutcome>(result).AssertSuccess();
+
+    public static DeleteRedisServiceResponse AssertSuccess(
+        this MediatorResult<DeleteRedisServiceOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<DeleteRedisServiceOutcome>(result).AssertSuccess();
+
+    public static RedisDto AssertSuccess(
+        this MediatorResult<GetRedisServiceByIdOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<GetRedisServiceByIdOutcome>(result).AssertSuccess();
+
+    public static PaginatedResponse<RedisDto> AssertSuccess(
+        this MediatorResult<GetRedisServicesOutcome> result) =>
+        ResultAssertionExtensions.AssertSuccess<GetRedisServicesOutcome>(result).AssertSuccess();
+
+    public static CreateRedisServiceResponse AssertSuccess(
+        this CreateRedisServiceOutcome outcome) => outcome switch
+    {
+        CreateRedisServiceResponse success => success,
+        CreateRedisServiceError error => UnexpectedError<CreateRedisServiceResponse>(error)
+    };
+
+    public static CreateRedisServiceError AssertFailure(
+        this CreateRedisServiceOutcome outcome) => outcome switch
+    {
+        CreateRedisServiceResponse success => UnexpectedSuccess<CreateRedisServiceError>(success),
+        CreateRedisServiceError error => error
+    };
+
+    public static UpdateRedisServiceResponse AssertSuccess(
+        this UpdateRedisServiceOutcome outcome) => outcome switch
+    {
+        UpdateRedisServiceResponse success => success,
+        UpdateRedisServiceError error => UnexpectedError<UpdateRedisServiceResponse>(error)
+    };
+
+    public static UpdateRedisServiceError AssertFailure(
+        this UpdateRedisServiceOutcome outcome) => outcome switch
+    {
+        UpdateRedisServiceResponse success => UnexpectedSuccess<UpdateRedisServiceError>(success),
+        UpdateRedisServiceError error => error
+    };
+
+    public static DeleteRedisServiceResponse AssertSuccess(
+        this DeleteRedisServiceOutcome outcome) => outcome switch
+    {
+        DeleteRedisServiceResponse success => success,
+        DeleteRedisServiceError error => UnexpectedError<DeleteRedisServiceResponse>(error)
+    };
+
+    public static DeleteRedisServiceError AssertFailure(
+        this DeleteRedisServiceOutcome outcome) => outcome switch
+    {
+        DeleteRedisServiceResponse success => UnexpectedSuccess<DeleteRedisServiceError>(success),
+        DeleteRedisServiceError error => error
+    };
+
+    public static RedisDto AssertSuccess(this GetRedisServiceByIdOutcome outcome) => outcome switch
+    {
+        RedisDto success => success,
+        RedisServiceNotFound error => UnexpectedError<RedisDto>(error)
+    };
+
+    public static RedisServiceNotFound AssertFailure(
+        this GetRedisServiceByIdOutcome outcome) => outcome switch
+    {
+        RedisDto success => UnexpectedSuccess<RedisServiceNotFound>(success),
+        RedisServiceNotFound error => error
+    };
+
+    public static PaginatedResponse<RedisDto> AssertSuccess(
+        this GetRedisServicesOutcome outcome) => outcome switch
+    {
+        PaginatedResponse<RedisDto> success => success
+    };
+
     public static CreateWebServiceResponse AssertSuccess(
         this MediatorResult<CreateWebServiceOutcome> result) =>
         ResultAssertionExtensions.AssertSuccess<CreateWebServiceOutcome>(result).AssertSuccess();
@@ -165,6 +249,11 @@ public static class ResultAssertionExtensions
             {
                 LegacyResultRejected legacy =>
                     (Succeeded: false, Value: default(T), Failure: legacy.Failure),
+                RequestValidationRejected validation =>
+                    (Succeeded: false, Value: default(T), Failure:
+                        Failures.ValidationFailure(validation.Errors.ToDictionary(
+                            error => error.Key,
+                            error => error.Value.ToArray()))),
                 var reason => throw new XunitException(
                     $"The test compatibility adapter cannot unwrap mediator rejection " +
                     $"'{reason.GetType().FullName}'.")

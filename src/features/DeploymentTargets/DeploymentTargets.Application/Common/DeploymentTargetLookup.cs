@@ -156,6 +156,58 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
         return targets[0];
     }
 
+    public async Task<Result<
+        DeploymentTargetLookupDto,
+        DeploymentTargetNewWorkloadAdmissionError>> AdmitForWorkloadPlacementAsync(
+        DeploymentTargetAdmissionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!string.IsNullOrWhiteSpace(request.ExplicitDeploymentTargetId))
+        {
+            var resolved = await AdmitForWorkloadAsync(
+                request.ExplicitDeploymentTargetId,
+                cancellationToken);
+            if (!resolved.TryGetValue(out var target, out var admissionError))
+            {
+                return new Err<DeploymentTargetNewWorkloadAdmissionError>(
+                    new DeploymentTargetNewWorkloadAdmissionError(admissionError));
+            }
+
+            return HasRequiredCapabilities(target, request.RequiredCapabilities)
+                ? new Ok<DeploymentTargetLookupDto>(target)
+                : new Err<DeploymentTargetNewWorkloadAdmissionError>(
+                    new DeploymentTargetNewWorkloadAdmissionError(
+                        new DeploymentTargetRequiredCapabilitiesUnavailable(
+                            target.Id,
+                            request.RequiredCapabilities)));
+        }
+
+        var targets = await dbContext.DeploymentTargets
+            .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
+            .SortBy(target => target.Id)
+            .ToListAsync(cancellationToken);
+        var eligible = targets
+            .Select(target => target.ToLookupDto())
+            .Where(target => HasRequiredCapabilities(
+                target,
+                request.RequiredCapabilities))
+            .ToArray();
+
+        return eligible.Length switch
+        {
+            0 => new Err<DeploymentTargetNewWorkloadAdmissionError>(
+                new DeploymentTargetNewWorkloadAdmissionError(
+                    new NoDeploymentTargetAcceptsWorkloads())),
+            > 1 => new Err<DeploymentTargetNewWorkloadAdmissionError>(
+                new DeploymentTargetNewWorkloadAdmissionError(
+                    new DeploymentTargetWorkloadSelectionRequired(
+                        eligible.Select(target => target.Id).ToArray()))),
+            _ => new Ok<DeploymentTargetLookupDto>(eligible[0])
+        };
+    }
+
     public async Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>>
         ListEligibleForNewWorkloadAsync(
             DeploymentTargetAdmissionRequest request,

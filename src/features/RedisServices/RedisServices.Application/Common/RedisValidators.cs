@@ -1,4 +1,5 @@
 using FluentValidation;
+using Pole.Validation;
 namespace Pole.Features.RedisServices.Application.Common;
 
 public sealed class RedisSpecDtoValidator : AbstractValidator<RedisSpecDto>
@@ -19,6 +20,7 @@ public sealed class StorageDtoValidator : AbstractValidator<StorageDto>
             .LessThanOrEqualTo(1000);
         RuleFor(x => x.StorageProfileId)
             .NotEmpty()
-            .MaximumLength(100);
+            .MaximumLength(100)
+            .MongoObjectId("Storage profile ID");
     }
 }

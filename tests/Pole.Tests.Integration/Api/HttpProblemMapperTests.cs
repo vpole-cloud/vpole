@@ -20,6 +20,10 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Endpoints;
+using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.Tenants;
@@ -30,6 +34,74 @@ namespace Pole.Tests.Integration.Api;
 
 public sealed class HttpProblemMapperTests
 {
+    [Fact]
+    public void RedisOutcomeUnwrapsProviderOwnedStorageError()
+    {
+        var mapper = new HttpProblemMapper(
+        [
+            .. RedisHttpMappings.All,
+            .. StorageProfileContractHttpMappings.All
+        ]);
+        CreateRedisServiceError error = new(
+            new StorageProfileResolutionError(
+                new StorageProfileNotFound("storage-1")));
+
+        var problem = mapper.Map(error);
+
+        Assert.Equal((int)HttpStatusCode.NotFound, problem.StatusCode);
+        Assert.Equal("storage-profiles.not-found", problem.Code);
+        Assert.Equal("storage-1", problem.Extensions["storageProfileId"]);
+    }
+
+    [Fact]
+    public void RedisOutcomeUsesTheRedisOwnedStateMapping()
+    {
+        var mapper = new HttpProblemMapper(RedisHttpMappings.All);
+        UpdateRedisServiceError error = new(
+            new RedisUpdateStateError(
+                new RedisStorageProfileChangeNotAllowed("redis-1")));
+
+        var problem = mapper.Map(error);
+
+        Assert.Equal((int)HttpStatusCode.UnprocessableEntity, problem.StatusCode);
+        Assert.Equal("redis-services.storage-profile-change-not-allowed", problem.Code);
+        Assert.Equal("redis-1", problem.Extensions["redisId"]);
+    }
+
+    [Fact]
+    public void NewWorkloadAdmissionMappingIncludesSelectionDetails()
+    {
+        var mapper = new HttpProblemMapper(DeploymentTargetContractHttpMappings.All);
+        DeploymentTargetNewWorkloadAdmissionError error = new(
+            new DeploymentTargetWorkloadSelectionRequired(["target-1", "target-2"]));
+
+        var problem = mapper.Map(error);
+
+        Assert.Equal((int)HttpStatusCode.UnprocessableEntity, problem.StatusCode);
+        Assert.Equal("deployment-targets.selection-required", problem.Code);
+        Assert.Equal(
+            ["target-1", "target-2"],
+            Assert.IsAssignableFrom<IReadOnlyList<string>>(
+                problem.Extensions["eligibleDeploymentTargetIds"]));
+    }
+
+    [Fact]
+    public void NewWorkloadAdmissionMappingDistinguishesMissingCapabilities()
+    {
+        var mapper = new HttpProblemMapper(DeploymentTargetContractHttpMappings.All);
+        DeploymentTargetNewWorkloadAdmissionError error = new(
+            new DeploymentTargetRequiredCapabilitiesUnavailable(
+                "target-1",
+                DeploymentTargetRequiredCapabilities.PublicIngress));
+
+        var problem = mapper.Map(error);
+
+        Assert.Equal((int)HttpStatusCode.UnprocessableEntity, problem.StatusCode);
+        Assert.Equal("deployment-targets.required-capabilities-unavailable", problem.Code);
+        Assert.Equal("target-1", problem.Extensions["deploymentTargetId"]);
+        Assert.Equal("PublicIngress", problem.Extensions["requiredCapabilities"]);
+    }
+
     [Fact]
     public void WebServiceOutcomeUnwrapsProviderOwnedComputeError()
     {

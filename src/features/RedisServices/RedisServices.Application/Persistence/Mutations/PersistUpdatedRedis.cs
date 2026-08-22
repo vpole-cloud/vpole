@@ -6,7 +6,9 @@ using Pole.ResultType;
 
 namespace Pole.Features.RedisServices.Application.Persistence;
 
-public delegate Task<Result> PersistUpdatedRedis(
+public sealed record RedisUpdateConflict(string RedisId);
+
+public delegate Task<Result<Unit, RedisUpdateConflict>> PersistUpdatedRedis(
     IClientSessionHandle session,
     Redis current,
     Redis replacement,
@@ -16,30 +18,29 @@ internal sealed class MongoPersistUpdatedRedis(
     IMongoCollection<Redis> redisServices,
     StoreOutboxWrites storeOutboxWrites)
 {
-    public async Task<Result> InvokeAsync(
+    public async Task<Result<Unit, RedisUpdateConflict>> InvokeAsync(
         IClientSessionHandle session,
         Redis current,
         Redis replacement,
         CancellationToken cancellationToken = default)
     {
         RedisPersistenceGuards.EnsureTransaction(session, "Redis update");
-        RedisPersistenceGuards.EnsureSameIdentity(current, replacement);
+        RedisPersistenceGuards.EnsureActiveUpdate(current, replacement);
 
         var replace = await redisServices.ReplaceOneAsync(
             session,
-            RedisFilters.AtRevision(current),
+            RedisFilters.ActiveAtRevision(current),
             replacement,
             cancellationToken: cancellationToken);
         if (replace.ModifiedCount != 1)
         {
-            return Failures.Conflict(
-                "The Redis service changed while the update was being accepted.");
+            return new Err<RedisUpdateConflict>(new RedisUpdateConflict(current.Id));
         }
 
         await storeOutboxWrites(
             session,
             [OutboxWrite.Create(current.ToUpdateEvent(replacement))],
             cancellationToken);
-        return Result.Success();
+        return new Ok<Unit>(Unit.Value);
     }
 }

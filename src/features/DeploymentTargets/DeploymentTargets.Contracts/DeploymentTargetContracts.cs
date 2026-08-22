@@ -140,6 +140,32 @@ public delegate Task<Result<
     string deploymentTargetId,
     CancellationToken cancellationToken = default);
 
+public sealed record NoDeploymentTargetAcceptsWorkloads;
+
+public sealed record DeploymentTargetRequiredCapabilitiesUnavailable(
+    string DeploymentTargetId,
+    DeploymentTargetRequiredCapabilities RequiredCapabilities);
+
+public sealed record DeploymentTargetWorkloadSelectionRequired(
+    IReadOnlyList<string> EligibleDeploymentTargetIds);
+
+/// <summary>
+/// Contextual admission for a new workload placement. The provider owns target
+/// eligibility and unambiguous selection; consumers own only their resource
+/// specific snapshot mapping.
+/// </summary>
+public union DeploymentTargetNewWorkloadAdmissionError(
+    DeploymentTargetWorkloadAdmissionError,
+    NoDeploymentTargetAcceptsWorkloads,
+    DeploymentTargetRequiredCapabilitiesUnavailable,
+    DeploymentTargetWorkloadSelectionRequired);
+
+public delegate Task<Result<
+    DeploymentTargetLookupDto,
+    DeploymentTargetNewWorkloadAdmissionError>> AdmitDeploymentTargetForNewWorkload(
+    DeploymentTargetAdmissionRequest request,
+    CancellationToken cancellationToken = default);
+
 public sealed record NoDeploymentTargetAcceptsPublicWorkloads;
 
 public sealed record DeploymentTargetSelectionRequired(

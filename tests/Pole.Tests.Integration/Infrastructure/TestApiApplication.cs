@@ -39,7 +39,7 @@ using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Contracts.HttpMapping;
 using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Persistence;
+using Pole.Features.RedisServices.Application;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Migrations;
@@ -50,6 +50,7 @@ using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
 using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Migrations;
 using Pole.Features.SourceBuilds.Application.Common;
@@ -171,7 +172,8 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddDomainHttpMappings();
         builder.Services.AddHttpProblemMappings(QuotaContractHttpMappings.All);
         builder.Services.AddComputeProfiles();
-        builder.Services.AddRedisPersistence();
+        builder.Services.AddStorageProfileResolution();
+        builder.Services.AddRedisServicesFeature();
         builder.Services.AddWebServicesFeature();
         builder.Services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         builder.Services.AddSingleton(new PostgresSettings
@@ -197,6 +199,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton<IDeploymentTargetProbe, TestDeploymentTargetProbe>();
         builder.Services.RemoveAll<IDeploymentTargetLookup>();
         builder.Services.RemoveAll<AdmitDeploymentTargetForWorkload>();
+        builder.Services.RemoveAll<AdmitDeploymentTargetForNewWorkload>();
         builder.Services.RemoveAll<AdmitDeploymentTargetPublicIngressForNewWorkload>();
         builder.Services.RemoveAll<ListEligiblePublicIngressDeploymentTargetsForNewWorkload>();
         builder.Services.RemoveAll<AdmitDeploymentTargetPublicIngressForDomainReservation>();
@@ -207,6 +210,8 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton<IDeploymentTargetLookup>(deploymentTargetLookup);
         builder.Services.AddSingleton<AdmitDeploymentTargetForWorkload>(
             deploymentTargetLookup.AdmitForWorkloadAsync);
+        builder.Services.AddSingleton<AdmitDeploymentTargetForNewWorkload>(
+            deploymentTargetLookup.AdmitForWorkloadPlacementAsync);
         builder.Services.AddSingleton<AdmitDeploymentTargetPublicIngressForNewWorkload>(
             deploymentTargetLookup.AdmitForNewWorkloadAsync);
         builder.Services.AddSingleton<ListEligiblePublicIngressDeploymentTargetsForNewWorkload>(
