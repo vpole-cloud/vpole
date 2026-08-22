@@ -129,6 +129,23 @@ public sealed class TypedResultCompositionTests
             error => $"error:{error.Code}"));
     }
 
+    [Fact]
+    public void TryGetValueTuple_ExposesExactlyOneCaseForFSharpInterop()
+    {
+        Result<string, TestError> success = new Ok<string>("success");
+        Result<string, TestError> failure = new Err<TestError>(new TestError("failed"));
+
+        var successValue = TypedResultExtensions.TryGetValue(success);
+        var failureValue = TypedResultExtensions.TryGetValue(failure);
+
+        Assert.True(successValue.Succeeded);
+        Assert.Equal("success", successValue.Value);
+        Assert.Null(successValue.Error);
+        Assert.False(failureValue.Succeeded);
+        Assert.Null(failureValue.Value);
+        Assert.Equal("failed", failureValue.Error?.Code);
+    }
+
     private static bool IsEven(int value) => value % 2 == 0;
 
     private static string MustNotMap(int _) =>

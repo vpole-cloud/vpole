@@ -18,6 +18,20 @@ public sealed record Err<TError>(TError Value)
 
 public static class TypedResultExtensions
 {
+    /// <summary>
+    /// F#-friendly static extraction overload. Call through this extension class because
+    /// preview unions synthesize an instance method with the same name.
+    /// </summary>
+    public static (bool Succeeded, T? Value, TError? Error) TryGetValue<T, TError>(
+        this Result<T, TError> result)
+        where T : notnull
+        where TError : notnull =>
+        result switch
+        {
+            Ok<T> success => (true, success.Value, default),
+            Err<TError> failure => (false, default, failure.Value)
+        };
+
     public static bool TryGetValue<T, TError>(
         this Result<T, TError> result,
         [MaybeNullWhen(false)] out T value,
@@ -25,11 +39,7 @@ public static class TypedResultExtensions
         where T : notnull
         where TError : notnull
     {
-        var extracted = result switch
-        {
-            Ok<T> success => (Succeeded: true, Value: success.Value, Error: default(TError)),
-            Err<TError> failure => (Succeeded: false, Value: default(T), Error: failure.Value)
-        };
+        var extracted = TypedResultExtensions.TryGetValue(result);
 
         value = extracted.Value!;
         error = extracted.Error!;
