@@ -7,18 +7,20 @@ open FluentValidation
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.Routing
-open MongoDB.Driver
 open Pole.ASP.Helpers
-open Pole.Database
 open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
+open Pole.Features.Postgres.Application.Persistence.Reads
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.Request
 open Pole.Mediator
 
+type GetPostgresClustersOutcome =
+    | PostgresClusterPage of PaginatedResponse<PostgresClusterDto>
+
 type GetPostgresClustersRequest() =
-    interface IMediatorRequest<PaginatedResponse<PostgresClusterDto>>
+    interface IMediatorRequest<GetPostgresClustersOutcome>
     interface ITenantReadOperation with
         member this.TenantId = this.TenantId
 
@@ -32,26 +34,20 @@ type GetPostgresClustersRequest() =
     member val PageSize = 10 with get, set
 
 type GetPostgresClustersHandler(
-    dbContext : IPostgresDbContext,
+    loadClusters : LoadPostgresClusterPage,
     loadDeployments : LoadResourceDeployments) =
-    interface IMediatorHandler<GetPostgresClustersRequest, PaginatedResponse<PostgresClusterDto>> with
+    interface IMediatorOutcomeHandler<GetPostgresClustersRequest, GetPostgresClustersOutcome> with
         member _.HandleAsync(request, cancellationToken) =
             task {
-                let filter = Builders<PostgresCluster>.Filter.ForTenant(request.TenantId)
-                let skip = (request.PageNumber - 1) * request.PageSize
-
-                let! totalCount =
-                    dbContext.Postgres.CountDocumentsAsync(filter, cancellationToken = cancellationToken)
-
-                let! clusters =
-                    dbContext.Postgres
-                        .Find(filter)
-                        .Skip(skip)
-                        .Limit(request.PageSize)
-                        .ToListAsync(cancellationToken)
+                let! page =
+                    loadClusters.Invoke(
+                        { TenantId = request.TenantId
+                          PageNumber = request.PageNumber
+                          PageSize = request.PageSize },
+                        cancellationToken)
 
                 let clusterIds =
-                    clusters
+                    page.Items
                     |> Seq.map _.Id
                     |> Seq.toArray
                 let! placements =
@@ -71,16 +67,19 @@ type GetPostgresClustersHandler(
 
                 return
                     PaginatedResponse<PostgresClusterDto>(
-                        Items = (clusters |> Seq.map toDto),
-                        TotalCount = totalCount,
+                        Items = (page.Items |> Seq.map toDto),
+                        TotalCount = page.TotalCount,
                         PageNumber = request.PageNumber,
                         PageSize = request.PageSize
                     )
-                    |> ResultF.ofValue
+                    |> PostgresClusterPage
             }
 
-type GetPostgresClustersRequestValidator() =
+type GetPostgresClustersRequestValidator() as this =
     inherit AbstractValidator<GetPostgresClustersRequest>()
+    do
+        this.RuleFor(_.PageNumber).GreaterThan(0) |> ignore
+        this.RuleFor(_.PageSize).GreaterThan(0) |> ignore
 
 [<AbstractClass; Sealed>]
 type GetPostgresClusters =
@@ -91,8 +90,14 @@ type GetPostgresClusters =
             |> ignore
         endpoints
 
-    static member Handle([<AsParameters>] request: GetPostgresClustersRequest, [<FromServices>] mediator: IMediator) =
+    static member Handle(
+        [<AsParameters>] request: GetPostgresClustersRequest,
+        [<FromServices>] mediator: IMediator,
+        cancellationToken: System.Threading.CancellationToken) =
         task {
-            let! result = mediator.Send request
-            return result.ToHttpResult(fun value -> Results.Ok(value))
+            let! result = mediator.Send(request, cancellationToken)
+            return
+                result.ToHttpResult(fun outcome ->
+                    match outcome with
+                    | PostgresClusterPage value -> Results.Ok(value))
         }

@@ -1,4 +1,5 @@
 using Microsoft.FSharp.Core;
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
@@ -7,6 +8,11 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Application.Endpoints;
+using Pole.Features.Postgres.Application.Kubernetes;
+using Pole.Features.Postgres.Application.Persistence.Credentials;
+using Pole.Features.Postgres.Application.Persistence.Lifecycle;
+using Pole.Features.Postgres.Application.Persistence.Mutations;
+using Pole.Features.Postgres.Application.Persistence.Reads;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.ResultType;
@@ -23,6 +29,23 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             PostgresCredential.CollectionName);
 
     [Fact]
+    public void FeatureRegistration_ResolvesPostgresCapabilities()
+    {
+        _ = Services.GetRequiredService<LoadPostgresClusterById>();
+        _ = Services.GetRequiredService<LoadPostgresClusterPage>();
+        _ = Services.GetRequiredService<PersistCreatedPostgresCluster>();
+        _ = Services.GetRequiredService<PersistUpdatedPostgresCluster>();
+        _ = Services.GetRequiredService<BeginPostgresClusterDeletion>();
+        _ = Services.GetRequiredService<FinalizePostgresClusterDeletion>();
+        _ = Services.GetRequiredService<CreatePostgresCredential>();
+        _ = Services.GetRequiredService<LoadPostgresCredential>();
+        _ = Services.GetRequiredService<RotatePostgresCredential>();
+        _ = Services.GetRequiredService<PersistRotatedPostgresCredential>();
+        _ = Services.GetRequiredService<ResolvePostgresClusterCredentials>();
+        _ = Services.GetRequiredService<PostgresResourceDeploymentAdapter>();
+    }
+
+    [Fact]
     public async Task Create_PersistsLogicalResourceEncryptedCredentialsAndDeploymentAtomically()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(
@@ -31,11 +54,9 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         var result = await Mediator.Send(
             TestData.CreatePostgresClusterRequest(resourceGroup.Id));
 
-        Assert.True(
-            result.TryGetValue(out var response, out var error),
-            error?.Message);
+        var response = result.AssertCreated();
         var savedCluster = await DbContext.Postgres
-            .Find(cluster => cluster.Id == response!.Id)
+            .Find(cluster => cluster.Id == response.Id)
             .SingleAsync();
         Assert.Equal(resourceGroup.Id, savedCluster.GroupId);
         Assert.Equal(17, savedCluster.Spec.Version);
@@ -102,10 +123,8 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(updateRequest);
 
-        Assert.True(
-            result.TryGetValue(out var response, out var error),
-            error?.Message);
-        Assert.Equal(cluster.Id, response!.Id);
+        var response = result.AssertUpdated();
+        Assert.Equal(cluster.Id, response.Id);
         var updated = await DbContext.Postgres
             .Find(item => item.Id == cluster.Id)
             .SingleAsync();
@@ -148,9 +167,11 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
                 FSharpOption<string>.None),
             TestData.TenantId));
 
-        var validation = Assert.IsType<SemanticValidationFailure>(
-            result.AssertFailure());
-        Assert.Contains("Body.Instances", validation.ValidationErrors.Keys);
+        var outcome = result.AssertSuccess();
+        var error = Assert.IsType<UpdatePostgresClusterOutcome.UpdatePostgresClusterRejected>(outcome)
+            .Item;
+        var state = Assert.IsType<UpdatePostgresClusterError.UpdateState>(error).Item;
+        Assert.IsType<UpdatePostgresClusterStateError.PostgresClusterStatefulSetInstancesUnsupported>(state);
         Assert.Equal(
             1,
             (await DbContext.Postgres.Find(item => item.Id == cluster.Id).SingleAsync())
@@ -177,9 +198,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
                     FSharpOption<string>.Some(profile.Id)),
                 TestData.TenantId));
 
-        Assert.True(
-            result.TryGetValue(out _, out var error),
-            error?.Message);
+        _ = result.AssertUpdated();
         var updatedDeployment = await DbContext.ResourceDeployments
             .Find(item => item.Id == deployment.Id)
             .SingleAsync();
@@ -223,9 +242,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
                     FSharpOption<string>.Some(currentProfile.Id)),
                 TestData.TenantId));
 
-        Assert.True(
-            result.TryGetValue(out _, out var error),
-            error?.Message);
+        _ = result.AssertUpdated();
         var updatedDeployment = await DbContext.ResourceDeployments
             .Find(item => item.Id == deployment.Id)
             .SingleAsync();
@@ -259,9 +276,10 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(request);
 
-        var validation = Assert.IsType<SemanticValidationFailure>(
-            result.AssertFailure());
-        Assert.Contains("Body.ComputeProfileId", validation.ValidationErrors.Keys);
+        var outcome = result.AssertSuccess();
+        var error = Assert.IsType<CreatePostgresClusterOutcome.CreatePostgresClusterRejected>(outcome)
+            .Item;
+        _ = Assert.IsType<CreatePostgresClusterError.CreateState>(error).Item;
         Assert.Equal(0, await DbContext.Postgres.CountDocumentsAsync(_ => true));
         Assert.Equal(0, await Credentials.CountDocumentsAsync(_ => true));
         Assert.Equal(0, await DbContext.ResourceDeployments.CountDocumentsAsync(_ => true));
@@ -285,9 +303,11 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
                     FSharpOption<string>.Some(profile.Id)),
                 TestData.TenantId));
 
-        var validation = Assert.IsType<SemanticValidationFailure>(
-            result.AssertFailure());
-        Assert.Contains("Body.ComputeProfileId", validation.ValidationErrors.Keys);
+        var outcome = result.AssertSuccess();
+        var error = Assert.IsType<UpdatePostgresClusterOutcome.UpdatePostgresClusterRejected>(outcome)
+            .Item;
+        var state = Assert.IsType<UpdatePostgresClusterError.UpdateState>(error).Item;
+        Assert.IsType<UpdatePostgresClusterStateError.PostgresClusterComputeRuntimeClassUnsupported>(state);
         var unchangedCluster = await DbContext.Postgres
             .Find(item => item.Id == cluster.Id)
             .SingleAsync();
@@ -315,10 +335,8 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
                 new UpdatePostgresClusterPasswordRequestBody("rotated-secret"),
                 TestData.TenantId));
 
-        Assert.True(
-            result.TryGetValue(out var response, out var error),
-            error?.Message);
-        Assert.Equal(cluster.Id, response!.Id);
+        var response = result.AssertPasswordUpdated();
+        Assert.Equal(cluster.Id, response.Id);
         Assert.Equal(
             deployment.Id,
             response.Placement.DeploymentId);
@@ -366,12 +384,10 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
                 cluster.Id,
                 TestData.TenantId));
 
-        Assert.True(
-            result.TryGetValue(out var response, out var error),
-            error?.Message);
+        var response = result.AssertConnectionString();
         Assert.Equal(
             $"Host={host};Port=5432;Database={cluster.Id};Username=report_user;Password=report-secret;SSL Mode=Disable",
-            response!.ConnectionString);
+            response.ConnectionString);
     }
 
     [Fact]
@@ -393,9 +409,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         var result = await Mediator.Send(
             new DeletePostgresClusterRequest(cluster.Id, TestData.TenantId));
 
-        Assert.True(
-            result.TryGetValue(out _, out var error),
-            error?.Message);
+        _ = result.AssertDeletionAccepted();
         var deleting = await DbContext.Postgres
             .Find(item => item.Id == cluster.Id)
             .SingleAsync();
@@ -410,6 +424,79 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             1,
             await Credentials.CountDocumentsAsync(
                 item => item.PostgresClusterId == cluster.Id));
+    }
+
+    [Fact]
+    public async Task FinalizeDeletion_IsTenantScoped_AtomicAndIdempotent()
+    {
+        var (cluster, _) = await CreateClusterAsync();
+        _ = (await Mediator.Send(
+            new DeletePostgresClusterRequest(cluster.Id, TestData.TenantId)))
+            .AssertDeletionAccepted();
+
+        var deployment = await DbContext.ResourceDeployments
+            .Find(candidate =>
+                candidate.TenantId == TestData.TenantId &&
+                candidate.ResourceType ==
+                    PostgresResourceDeployment.ResourceType.Value &&
+                candidate.ResourceId == cluster.Id)
+            .SingleAsync();
+        var startedAtUtc = deployment.UpdatedAtUtc.AddSeconds(1);
+        var claimId = ObjectId.GenerateNewId().ToString();
+        var deletedDeployment = deployment
+            .Start(
+                deployment.DesiredGeneration,
+                ResourceDeploymentOperation.Delete,
+                claimId,
+                startedAtUtc,
+                startedAtUtc.AddMinutes(1))
+            .Complete(
+                deployment.DesiredGeneration,
+                ResourceDeploymentOperation.Delete,
+                claimId,
+                [],
+                startedAtUtc.AddSeconds(1));
+        await DbContext.ResourceDeployments.ReplaceOneAsync(
+            candidate => candidate.Id == deployment.Id,
+            deletedDeployment);
+
+        var finalize = Services.GetRequiredService<FinalizePostgresClusterDeletion>();
+        var foreignTenantResult = await finalize.Invoke(
+            ObjectId.GenerateNewId().ToString(),
+            cluster.Id,
+            CancellationToken.None);
+
+        Assert.True(foreignTenantResult.IsPostgresSuccess);
+        Assert.Equal(1L, await DbContext.Postgres.CountDocumentsAsync(
+            candidate => candidate.Id == cluster.Id));
+        Assert.Equal(1L, await Credentials.CountDocumentsAsync(
+            candidate => candidate.PostgresClusterId == cluster.Id));
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
+            "postgres-cluster-deleted"));
+
+        var result = await finalize.Invoke(
+            TestData.TenantId,
+            cluster.Id,
+            CancellationToken.None);
+        var repeated = await finalize.Invoke(
+            TestData.TenantId,
+            cluster.Id,
+            CancellationToken.None);
+
+        Assert.True(result.IsPostgresSuccess);
+        Assert.True(repeated.IsPostgresSuccess);
+        Assert.Equal(0L, await DbContext.Postgres.CountDocumentsAsync(
+            candidate => candidate.Id == cluster.Id));
+        Assert.Equal(0L, await Credentials.CountDocumentsAsync(
+            candidate => candidate.PostgresClusterId == cluster.Id));
+        Assert.Equal(0L, await DbContext.ResourceDeployments.CountDocumentsAsync(
+            candidate =>
+                candidate.TenantId == TestData.TenantId &&
+                candidate.ResourceType ==
+                    PostgresResourceDeployment.ResourceType.Value &&
+                candidate.ResourceId == cluster.Id));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+            "postgres-cluster-deleted"));
     }
 
     [Fact]
@@ -456,11 +543,9 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
                 resourceGroup.Id,
                 username: username,
                 password: password));
-        Assert.True(
-            result.TryGetValue(out var response, out var error),
-            error?.Message);
+        var response = result.AssertCreated();
         var cluster = await DbContext.Postgres
-            .Find(item => item.Id == response!.Id)
+            .Find(item => item.Id == response.Id)
             .SingleAsync();
         var deployment = await DbContext.ResourceDeployments
             .Find(item =>

@@ -5,9 +5,11 @@ using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
+using Pole.Features.Postgres.Application.Persistence;
+using Pole.Features.Postgres.Application.Persistence.Credentials;
+using Pole.Features.Postgres.Application.Persistence.Reads;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.ResultType;
 using Xunit;
 
 namespace Pole.Tests.Integration.Postgres;
@@ -24,8 +26,8 @@ public sealed class PostgresResourceDeploymentAdapterTests
         using var kubernetes = CreateKubernetes();
         var provider = new RecordingKubernetesClientProvider(kubernetes);
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
-            reader,
-            credentials,
+            new LoadPostgresClusterById(reader.LoadAsync),
+            new ResolvePostgresClusterCredentials(credentials.ResolveAsync),
             manager,
             provider);
 
@@ -62,8 +64,8 @@ public sealed class PostgresResourceDeploymentAdapterTests
         using var kubernetes = CreateKubernetes();
         var provider = new RecordingKubernetesClientProvider(kubernetes);
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
-            reader,
-            credentials,
+            new LoadPostgresClusterById(reader.LoadAsync),
+            new ResolvePostgresClusterCredentials(credentials.ResolveAsync),
             manager,
             provider);
 
@@ -86,8 +88,9 @@ public sealed class PostgresResourceDeploymentAdapterTests
         using var kubernetes = CreateKubernetes();
         var provider = new RecordingKubernetesClientProvider(kubernetes);
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
-            reader,
-            new RecordingCredentialService(),
+            new LoadPostgresClusterById(reader.LoadAsync),
+            new ResolvePostgresClusterCredentials(
+                new RecordingCredentialService().ResolveAsync),
             manager,
             provider);
 
@@ -110,8 +113,9 @@ public sealed class PostgresResourceDeploymentAdapterTests
         using var kubernetes = CreateKubernetes();
         var provider = new RecordingKubernetesClientProvider(kubernetes);
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
-            reader,
-            new RecordingCredentialService(),
+            new LoadPostgresClusterById(reader.LoadAsync),
+            new ResolvePostgresClusterCredentials(
+                new RecordingCredentialService().ResolveAsync),
             new RecordingDeploymentManager(),
             provider);
 
@@ -189,11 +193,10 @@ public sealed class PostgresResourceDeploymentAdapterTests
         });
 
     private sealed class RecordingReader(PostgresCluster cluster)
-        : IPostgresResourceDeploymentReader
     {
         public List<(string TenantId, string ClusterId)> Requests { get; } = [];
 
-        public Task<FSharpOption<PostgresCluster>> FindAsync(
+        public Task<FSharpOption<PostgresCluster>> LoadAsync(
             string tenantId,
             string clusterId,
             CancellationToken cancellationToken)
@@ -203,32 +206,19 @@ public sealed class PostgresResourceDeploymentAdapterTests
         }
     }
 
-    private sealed class RecordingCredentialService : IPostgresCredentialService
+    private sealed class RecordingCredentialService
     {
         public List<(string TenantId, string ClusterId)> ResolveRequests { get; } = [];
 
-        public Task<Result<PostgresCredential>> CreateAsync(
-            string tenantId,
-            string clusterId,
-            string username,
-            string password,
-            CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
-
-        public Task<Result<PostgresCredential>> RotateAsync(
-            PostgresCredential credential,
-            string password,
-            CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
-
-        public Task<Result<PostgresClusterCredentials>> ResolveAsync(
+        public Task<PostgresOutcome<PostgresClusterCredentials, PostgresCredentialError>> ResolveAsync(
             string tenantId,
             string clusterId,
             CancellationToken cancellationToken)
         {
             ResolveRequests.Add((tenantId, clusterId));
-            Result<PostgresClusterCredentials> result =
-                new PostgresClusterCredentials("postgres", "secret");
+            PostgresOutcome<PostgresClusterCredentials, PostgresCredentialError> result =
+                PostgresOutcome<PostgresClusterCredentials, PostgresCredentialError>
+                    .NewPostgresSuccess(new PostgresClusterCredentials("postgres", "secret"));
             return Task.FromResult(result);
         }
     }

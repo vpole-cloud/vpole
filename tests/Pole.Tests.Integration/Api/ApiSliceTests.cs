@@ -120,6 +120,35 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task CreatePostgresCluster_ReturnsValidationProblem_ForMalformedResourceGroupId()
+    {
+        var valid = TestData.CreatePostgresClusterRequest(
+            "507f1f77bcf86cd799439099",
+            name: "invalid-postgres-reference").Body;
+        var invalid = new
+        {
+            valid.Name,
+            GroupId = "not-an-object-id",
+            valid.Version,
+            valid.Instances,
+            valid.Storage,
+            valid.StorageProfileId,
+            valid.ComputeProfileId,
+            valid.Username,
+            valid.Password,
+            valid.Placement
+        };
+
+        var response = await Client.PostAsJsonAsync("/api/v1/postgres/", invalid);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var problem = JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync());
+        Assert.True(problem.RootElement.GetProperty("errors")
+            .TryGetProperty("Body.GroupId", out _));
+    }
+
+    [Fact]
     public async Task GetStorageProfiles_ReturnsForbidden_WithoutPlatformAdminRole()
     {
         var response = await Client.GetAsync("/api/v1/platform/storage/profiles");

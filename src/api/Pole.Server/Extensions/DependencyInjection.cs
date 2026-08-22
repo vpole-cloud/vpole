@@ -216,16 +216,6 @@ public static class DependencyInjection
                 services.AddHostedService<FunctionUsageAggregatorWorker>();
             }
             services.TryAddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
-            services.TryAddScoped<
-                IPostgresCredentialService,
-                PostgresCredentialService>();
-            services.TryAddScoped<
-                IPostgresResourceDeploymentReader,
-                MongoPostgresResourceDeploymentReader>();
-            services.TryAddScoped<PostgresResourceDeploymentAdapter>();
-            services.TryAddSingleton<
-                IPostgresClusterDeploymentManager,
-                PostgresClusterDeploymentManager>();
             services.TryAddSingleton<IFunctionRevisionKubernetesManager, FunctionRevisionKubernetesManager>();
             services.TryAddSingleton<IFunctionEndpointSliceSource, KubernetesFunctionEndpointSliceSource>();
             services.TryAddSingleton<IFunctionEndpointRegistry, FunctionEndpointRegistry>();
@@ -280,7 +270,6 @@ public static class DependencyInjection
                     .GetRequiredService<MongoRunTransaction>()
                     .InvokeAsync);
             services.TryAddSingleton<ISearchDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddSingleton<IPostgresDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IQuotaDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IResourceGroupDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ITenantDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
@@ -304,8 +293,6 @@ public static class DependencyInjection
             services.TryAddScoped<
                 IStorageProfileResolutionFence,
                 StorageProfileResolutionFence>();
-            services.AddSingleton(
-                PostgresResourceDeploymentAdapterRegistration.Descriptor);
             services.TryAddScoped<IResourceGroupDeletionFinalizer, ResourceGroupDeletionFinalizer>();
             services.TryAddSingleton<IRuntimeCellNamespaceNameGenerator, RuntimeCellNamespaceNameGenerator>();
             services.TryAddScoped<IRuntimeCellNamespaceManager, KubernetesRuntimeCellNamespaceManager>();

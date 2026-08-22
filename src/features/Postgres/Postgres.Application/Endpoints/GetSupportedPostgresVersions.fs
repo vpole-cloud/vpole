@@ -13,17 +13,20 @@ type GetSupportedPostgresVersionsResponse =
     { From : int
       ``To`` : int }
 
+type GetSupportedPostgresVersionsOutcome =
+    | SupportedPostgresVersions of GetSupportedPostgresVersionsResponse
+
 type GetSupportedPostgresVersionsRequest() =
-    interface IMediatorRequest<GetSupportedPostgresVersionsResponse>
+    interface IMediatorRequest<GetSupportedPostgresVersionsOutcome>
 
 type GetSupportedPostgresVersionsHandler(settings : PostgresSettings) =
-    interface IMediatorHandler<GetSupportedPostgresVersionsRequest, GetSupportedPostgresVersionsResponse> with
+    interface IMediatorOutcomeHandler<GetSupportedPostgresVersionsRequest, GetSupportedPostgresVersionsOutcome> with
         member _.HandleAsync(_, _) =
             task {
                 return
                     { From = settings.SupportedVersions.From
                       ``To`` = settings.SupportedVersions.``To`` }
-                    |> ResultF.ofValue
+                    |> SupportedPostgresVersions
             }
 
 [<AbstractClass; Sealed>]
@@ -38,6 +41,8 @@ type GetSupportedPostgresVersions =
     static member Handle([<FromServices>] mediator: IMediator) =
         task {
             let! result = mediator.Send(GetSupportedPostgresVersionsRequest())
-            return result.ToHttpResult(fun value -> Results.Ok(value))
+            return
+                result.ToHttpResult(fun outcome ->
+                    match outcome with
+                    | SupportedPostgresVersions value -> Results.Ok(value))
         }
-

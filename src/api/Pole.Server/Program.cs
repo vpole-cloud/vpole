@@ -18,6 +18,7 @@ using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Postgres.Application.Common;
+using Pole.Features.Postgres.Application;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Contracts.HttpMapping;
@@ -95,6 +96,7 @@ builder.Services.AddKubernetes(configuration)
     .AddComputeProfiles()
     .AddStorageProfileResolution()
     .AddRedisServicesFeature()
+    .AddPostgresFeature()
     .AddWebServicesFeature()
     .AddQuotaFramework(
         typeof(RedisQuotaProfile).Assembly,

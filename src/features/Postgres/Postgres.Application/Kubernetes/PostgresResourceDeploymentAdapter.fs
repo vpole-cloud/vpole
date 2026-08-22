@@ -8,37 +8,15 @@ open Pole.Database
 open Pole.Features.DeploymentTargets.Contracts
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
+open Pole.Features.Postgres.Application.Persistence.Credentials
+open Pole.Features.Postgres.Application.Persistence.Reads
+open Pole.Features.Postgres.Application.Persistence
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Workloads
 
-type IPostgresResourceDeploymentReader =
-    abstract FindAsync :
-        tenantId : string *
-        clusterId : string *
-        cancellationToken : CancellationToken -> Task<PostgresCluster option>
-
-type MongoPostgresResourceDeploymentReader(dbContext : IPostgresDbContext) =
-    interface IPostgresResourceDeploymentReader with
-        member _.FindAsync(tenantId, clusterId, cancellationToken) =
-            task {
-                let! cluster =
-                    dbContext.Postgres
-                        .Find(
-                            Builders<PostgresCluster>.Filter.And(
-                                Builders<PostgresCluster>.Filter.ForTenant(tenantId),
-                                Builders<PostgresCluster>.Filter.Eq((fun item -> item.Id), clusterId)))
-                        .FirstOrDefaultAsync(cancellationToken)
-
-                return
-                    if isNull (box cluster) then
-                        None
-                    else
-                        Some cluster
-            }
-
 type PostgresResourceDeploymentAdapter(
-    reader : IPostgresResourceDeploymentReader,
-    credentialService : IPostgresCredentialService,
+    loadCluster : LoadPostgresClusterById,
+    resolveCredentials : ResolvePostgresClusterCredentials,
     deploymentManager : IPostgresClusterDeploymentManager,
     kubernetesClientProvider : IKubernetesClientProvider) =
 
@@ -66,7 +44,7 @@ type PostgresResourceDeploymentAdapter(
                 | None ->
                     let deployment = context.Deployment
                     let! cluster =
-                        reader.FindAsync(
+                        loadCluster.Invoke(
                             deployment.TenantId,
                             deployment.ResourceId,
                             cancellationToken)
@@ -90,20 +68,20 @@ type PostgresResourceDeploymentAdapter(
                                 :> ResourceDeploymentAdapterResult
                         else
                             let! credentialResult =
-                                credentialService.ResolveAsync(
+                                resolveCredentials.Invoke(
                                     deployment.TenantId,
                                     cluster.Id,
                                     cancellationToken)
 
-                            match credentialResult.TryGetValue() with
-                            | struct (false, _, _) ->
+                            match credentialResult with
+                            | PostgresError _ ->
                                 return
                                     ResourceDeploymentAdapterResult.Failed.Create(
                                         "PostgresCredentialUnavailable",
                                         "The encrypted PostgreSQL credentials are unavailable.",
                                         true)
                                     :> ResourceDeploymentAdapterResult
-                            | struct (true, credentials, _) ->
+                            | PostgresSuccess credentials ->
                                 let storage = deployment.Placement.Storage
                                 let metadata =
                                     { DeploymentId = deployment.Id
@@ -148,7 +126,7 @@ type PostgresResourceDeploymentAdapter(
                 | None ->
                     let deployment = context.Deployment
                     let! cluster =
-                        reader.FindAsync(
+                        loadCluster.Invoke(
                             deployment.TenantId,
                             deployment.ResourceId,
                             cancellationToken)

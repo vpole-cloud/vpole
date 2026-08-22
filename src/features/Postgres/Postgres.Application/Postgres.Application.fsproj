@@ -15,14 +15,28 @@
         <Compile Include="Common\PostgresSettings.fs" />
         <Compile Include="Common\PostgresQuotaProfile.fs" />
         <Compile Include="Common\PostgresClusterDto.fs" />
+        <Compile Include="Common\PostgresClusterCredentials.fs" />
         <Compile Include="Common\MongoExtensions.fs" />
-        <Compile Include="Common\ResultF.fs" />
         <Compile Include="Common\ResourceDeploymentQueryExtensions.fs" />
         <Compile Include="Common\PostgresResourceDeployment.fs" />
-        <Compile Include="Common\IPostgresDbContext.fs" />
-        <Compile Include="Common\PostgresCredentialService.fs" />
         <Compile Include="Common\PostgresCredentialMigration.fs" />
         <Compile Include="Common\PostgresClusterEventExtensions.fs" />
+        <Compile Include="Persistence\PostgresOutcome.fs" />
+        <Compile Include="Persistence\PostgresFilters.fs" />
+        <Compile Include="Persistence\PostgresPersistenceGuards.fs" />
+        <Compile Include="Persistence\Reads\LoadPostgresClusterById.fs" />
+        <Compile Include="Persistence\Reads\LoadPostgresClusterPage.fs" />
+        <Compile Include="Persistence\Credentials\PostgresCredentialErrors.fs" />
+        <Compile Include="Persistence\Credentials\CreatePostgresCredential.fs" />
+        <Compile Include="Persistence\Credentials\LoadPostgresCredential.fs" />
+        <Compile Include="Persistence\Credentials\RotatePostgresCredential.fs" />
+        <Compile Include="Persistence\Credentials\PersistRotatedPostgresCredential.fs" />
+        <Compile Include="Persistence\Credentials\ResolvePostgresClusterCredentials.fs" />
+        <Compile Include="Persistence\Mutations\PersistCreatedPostgresCluster.fs" />
+        <Compile Include="Persistence\Mutations\PersistUpdatedPostgresCluster.fs" />
+        <Compile Include="Persistence\Lifecycle\BeginPostgresClusterDeletion.fs" />
+        <Compile Include="Persistence\Lifecycle\FinalizePostgresClusterDeletion.fs" />
+        <Compile Include="Persistence\PostgresPersistenceRegistration.fs" />
         <Compile Include="Kubernetes\PostgresClusterKubernetesBuilder.fs" />
         <Compile Include="Kubernetes\PostgresStatefulSetKubernetesBuilder.fs" />
         <Compile Include="Kubernetes\PostgresClusterKubernetesResourceManager.fs" />
@@ -36,11 +50,17 @@
         <Compile Include="Endpoints\GetPostgresClusterById.fs" />
         <Compile Include="Endpoints\GetPostgresClusters.fs" />
         <Compile Include="Endpoints\AllPostgresEndpoints.fs" />
+        <Compile Include="Common\PostgresHttpMappings.fs" />
+        <Compile Include="PostgresFeatureRegistration.fs" />
     </ItemGroup>
 
     <ItemGroup>
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
     </ItemGroup>
+
+    <PropertyGroup>
+        <WarningsAsErrors>$(WarningsAsErrors);FS0025</WarningsAsErrors>
+    </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="FluentValidation" />
         <PackageReference Include="KubernetesClient" />
