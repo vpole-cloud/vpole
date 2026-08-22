@@ -4,6 +4,7 @@ using System.Net;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Agent;
 using Pole.Features.Functions.Runtime.Coordination;
@@ -868,12 +869,12 @@ public sealed class FunctionScaler(
         }
 
         var retired = await targetSource.MarkRetiredAsync(target, cancellationToken);
-        if (retired is IFailure failure)
+        if (retired is not FunctionRevisionLifecycleCompleted)
         {
             logger.LogWarning(
                 "[function-scaler-retire-failed] Failed to retire Function revision {RevisionId}: {Message}",
                 target.Revision.Id,
-                failure.Message);
+                retired.FailureMessage());
         }
     }
 

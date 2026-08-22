@@ -123,10 +123,10 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                 []),
             TestData.TenantId))).RequireSuccess();
         var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
-        Assert.IsAssignableFrom<ISuccess>(await lifecycle.MarkReadyAsync(
+        (await lifecycle.MarkReadyAsync(
             TestData.TenantId,
             created.FunctionAppId,
-            created.RevisionId));
+            created.RevisionId)).RequireLifecycleSuccess();
         var manager = new RecordingKubernetesManager(Result.Success());
         var provisioner = new RecordingProvisioner();
         var consumer = new FunctionRevisionCreatedConsumer(
@@ -165,10 +165,10 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                 []),
             TestData.TenantId))).RequireSuccess();
         var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
-        Assert.IsAssignableFrom<ISuccess>(await lifecycle.MarkReadyAsync(
+        (await lifecycle.MarkReadyAsync(
             TestData.TenantId,
             created.FunctionAppId,
-            created.RevisionId));
+            created.RevisionId)).RequireLifecycleSuccess();
         var manager = new RecordingKubernetesManager(Result.Success());
         var consumer = new FunctionRevisionCreatedConsumer(
             new MongoLoadFunctionRevisionProvisioningSubject(

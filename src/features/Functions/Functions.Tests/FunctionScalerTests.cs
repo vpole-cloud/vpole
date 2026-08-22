@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
+using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Agent;
 using Pole.Features.Functions.Runtime.Coordination;
@@ -608,10 +609,13 @@ public sealed class FunctionScalerTests
         public Task<IReadOnlyList<FunctionScaleTarget>> ListAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<FunctionScaleTarget>>([target]);
 
-        public Task<Result> MarkRetiredAsync(FunctionScaleTarget retired, CancellationToken cancellationToken)
+        public Task<FunctionRevisionLifecycleOutcome> MarkRetiredAsync(
+            FunctionScaleTarget retired,
+            CancellationToken cancellationToken)
         {
             Retired.Add(retired);
-            return Task.FromResult<Result>(Result.Success());
+            return Task.FromResult<FunctionRevisionLifecycleOutcome>(
+                new FunctionRevisionLifecycleCompleted());
         }
     }
 

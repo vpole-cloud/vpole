@@ -1,6 +1,7 @@
 using Pole.Features.Functions.Application.Endpoints;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Mutations;
+using Pole.Features.Quotas.Contracts;
 using Pole.Mediator;
 using Xunit;
 using Xunit.Sdk;
@@ -56,6 +57,27 @@ internal static class FunctionAppOutcomeAssertions
             FunctionUsageResponse response => response,
             FunctionAppNotFound error => throw UnexpectedFailure(error)
         };
+
+    public static FunctionRevisionLifecycleCompleted RequireLifecycleSuccess(
+        this FunctionRevisionLifecycleOutcome outcome) =>
+        Assert.IsType<FunctionRevisionLifecycleCompleted>(outcome.LifecycleValue());
+
+    public static object LifecycleValue(this FunctionRevisionLifecycleOutcome outcome) => outcome switch
+    {
+        FunctionRevisionLifecycleCompleted value => value,
+        FunctionAppNotFound value => value,
+        FunctionAppIsNotEnabled value => value,
+        FunctionRevisionNotFound value => value,
+        FunctionRevisionNotProvisioning value => value,
+        FunctionRevisionNotReady value => value,
+        FunctionRevisionNotDraining value => value,
+        FunctionRevisionNotPending value => value,
+        FunctionRevisionConcurrencyConflict value => value,
+        FunctionAppConcurrencyConflict value => value,
+        FunctionRouteBindingUnavailable value => value,
+        FunctionRevisionHasDurableInvocations value => value,
+        QuotaExecutionError value => value
+    };
 
     public static TOutcome HandlerOutcome<TOutcome>(this MediatorResult<TOutcome> result)
         where TOutcome : notnull =>
