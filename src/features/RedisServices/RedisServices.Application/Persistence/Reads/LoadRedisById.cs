@@ -14,8 +14,11 @@ internal sealed class MongoLoadRedisById(
     public async Task<Redis?> InvokeAsync(
         string tenantId,
         string redisId,
-        CancellationToken cancellationToken = default) =>
-        await redisServices
+        CancellationToken cancellationToken = default)
+    {
+        RedisPersistenceGuards.EnsureIdentity(tenantId, redisId);
+        return await redisServices
             .Find(RedisFilters.ById(tenantId, redisId))
             .FirstOrDefaultAsync(cancellationToken);
+    }
 }

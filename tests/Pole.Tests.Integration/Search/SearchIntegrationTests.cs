@@ -76,7 +76,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         await IndexWebServiceCreatedAsync(webResponse.WebServiceId);
 
         var redisCreate = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id, "alpha-redis"));
-        Assert.True(redisCreate.TryGetValue(out var redisResponse, out _));
+        var redisResponse = redisCreate.AssertSuccess();
         await IndexRedisCreatedAsync(redisResponse.RedisId);
 
         var postgresCreate = await Mediator.Send(TestData.CreatePostgresClusterRequest(resourceGroup.Id, "alpha-postgres"));

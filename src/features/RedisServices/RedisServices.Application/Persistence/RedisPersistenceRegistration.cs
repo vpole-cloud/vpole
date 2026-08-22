@@ -10,7 +10,7 @@ public static class RedisPersistenceRegistration
 {
     internal const string RedisCollectionName = "RedisServices";
 
-    public static IServiceCollection AddRedisPersistence(
+    internal static IServiceCollection AddRedisPersistence(
         this IServiceCollection services)
     {
         services.TryAddSingleton(serviceProvider =>

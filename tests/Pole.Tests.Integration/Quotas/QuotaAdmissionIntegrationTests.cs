@@ -24,11 +24,18 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
 
         var first = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id, "redis-a"));
-        Assert.True(first.TryGetValue(out _, out _));
+        _ = first.AssertSuccess();
 
         var second = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id, "redis-b"));
-        Assert.False(second.TryGetValue(out _, out var failure));
-        Assert.IsType<ConflictFailure>(failure);
+        var failure = ResultAssertionExtensions
+            .AssertSuccess<CreateRedisServiceOutcome>(second)
+            .AssertFailure();
+        _ = failure switch
+        {
+            QuotaExecutionError quota => quota,
+            _ => throw new Xunit.Sdk.XunitException(
+                $"Expected a quota error, but received {failure}.")
+        };
 
         Assert.Equal(1L, await DbContext.Database.RedisServices().CountDocumentsAsync(redis => redis.TenantId == TestData.TenantId));
         var usage = await GetUsageAsync(TestData.TenantId);
@@ -79,7 +86,7 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
             ]);
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var create = await Mediator.Send(TestData.CreateRedisServiceRequest(resourceGroup.Id));
-        Assert.True(create.TryGetValue(out var created, out _));
+        var created = create.AssertSuccess();
 
         var replacementComputeId = ObjectId.GenerateNewId().ToString();
         await Fixture.Database
@@ -100,7 +107,7 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
                 [],
                 replacementComputeId),
             TestData.TenantId));
-        Assert.True(update.TryGetValue(out _, out _));
+        _ = update.AssertSuccess();
 
         var updatedUsage = await GetUsageAsync(TestData.TenantId);
         Assert.Equal(2000, QuotaValues.GetValue(updatedUsage.Values, CpuQuota.QuotaKey));
@@ -109,7 +116,7 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.Equal(1, QuotaValues.GetValue(updatedUsage.Values, RedisServiceCountQuota.QuotaKey));
 
         var delete = await Mediator.Send(new DeleteRedisServiceRequest(created.RedisId, TestData.TenantId));
-        Assert.True(delete.TryGetValue(out _, out _));
+        _ = delete.AssertSuccess();
 
         var releasedUsage = await GetUsageAsync(TestData.TenantId);
         Assert.Equal(0, QuotaValues.GetValue(releasedUsage.Values, CpuQuota.QuotaKey));

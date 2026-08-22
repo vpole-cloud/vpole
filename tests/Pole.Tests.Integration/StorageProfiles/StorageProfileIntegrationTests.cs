@@ -335,7 +335,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             });
         var resolver = new StorageProfileResolver(DbContext, discovery);
 
-        var resolved = (await resolver.ResolveAsync(
+        var resolved = (await resolver.InvokeAsync(
             new StorageProfileResolutionRequest(
                 profile.Id,
                 SecondDeploymentTargetId,

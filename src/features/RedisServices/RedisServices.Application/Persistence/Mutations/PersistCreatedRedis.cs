@@ -20,7 +20,7 @@ internal sealed class MongoPersistCreatedRedis(
         CancellationToken cancellationToken = default)
     {
         RedisPersistenceGuards.EnsureTransaction(session, "Redis creation");
-        ArgumentNullException.ThrowIfNull(redis);
+        RedisPersistenceGuards.EnsureCreated(redis);
 
         await redisServices.InsertOneAsync(
             session,

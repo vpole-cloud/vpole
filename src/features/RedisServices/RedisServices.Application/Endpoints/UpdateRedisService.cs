@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
+using Pole.Database;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Core.Multitenancy;
@@ -24,11 +25,17 @@ public static class UpdateRedisService
     {
         public IEndpointRouteBuilder MapUpdateRedisServiceEndpoint()
         {
-            app.MapPut("/{Id}", async (IMediator mediator, [AsParameters] UpdateRedisServiceRequest request, CancellationToken cancellationToken) =>
-                {
-                    var result = await mediator.Send(request, cancellationToken);
-                    return result.ToHttpResult(x => Results.Accepted(value: x));
-                })
+            app.MapPut("/{Id}", async (
+                    IMediator mediator,
+                    IHttpProblemMapper httpProblems,
+                    [AsParameters] UpdateRedisServiceRequest request,
+                    CancellationToken cancellationToken) =>
+                    (await mediator.Send(request, cancellationToken))
+                    .ToHttpResult(outcome => outcome switch
+                    {
+                        UpdateRedisServiceResponse response => Results.Accepted(value: response),
+                        UpdateRedisServiceError error => httpProblems.Map(error).ToHttpResult()
+                    }))
                 .WithName("UpdateRedisService")
                 .Produces<UpdateRedisServiceResponse>(StatusCodes.Status202Accepted);
 
@@ -37,11 +44,34 @@ public static class UpdateRedisService
     }
 }
 
+public sealed record RedisServiceNotFound(string RedisId);
+
+public sealed record RedisUpdateUnavailable(string RedisId);
+
+public sealed record RedisStorageProfileChangeNotAllowed(string RedisId);
+
+public union RedisUpdateStateError(
+    RedisServiceNotFound,
+    RedisUpdateUnavailable,
+    RedisStorageProfileChangeNotAllowed);
+
+public union UpdateRedisServiceError(
+    RedisUpdateStateError,
+    LoadCurrentResourceDeploymentComputeError,
+    ComputeProfileResolutionError,
+    RedisUpdateConflict,
+    ResourceDeploymentMutationError,
+    QuotaExecutionError);
+
+public union UpdateRedisServiceOutcome(
+    UpdateRedisServiceResponse,
+    UpdateRedisServiceError);
+
 public sealed record UpdateRedisServiceRequest(
     [FromRoute] string Id,
     [FromBody] UpdateRedisServiceRequestBody Body,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
-) : IMediatorRequest<UpdateRedisServiceResponse>, ITenantWriteOperation;
+) : IMediatorRequest<UpdateRedisServiceOutcome>, ITenantWriteOperation;
 
 public sealed record UpdateRedisServiceRequestBody(
     RedisSpecDto Spec,
@@ -57,12 +87,12 @@ public sealed class UpdateRedisServiceHandler(
     LoadRedisById loadRedisById,
     PersistUpdatedRedis persistUpdatedRedis,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    ResolveComputeProfileLegacy resolveComputeProfile,
-    LoadCurrentResourceDeploymentComputeLegacy loadDeploymentCompute,
-    RequestResourceDeploymentApplyLegacy requestDeploymentApply)
-    : IMediatorHandler<UpdateRedisServiceRequest, UpdateRedisServiceResponse>
+    ResolveComputeProfile resolveComputeProfile,
+    LoadCurrentResourceDeploymentCompute loadDeploymentCompute,
+    RequestResourceDeploymentApply requestDeploymentApply)
+    : IMediatorOutcomeHandler<UpdateRedisServiceRequest, UpdateRedisServiceOutcome>
 {
-    public async Task<Result<UpdateRedisServiceResponse>> HandleAsync(
+    public async Task<UpdateRedisServiceOutcome> HandleAsync(
         UpdateRedisServiceRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -72,19 +102,22 @@ public sealed class UpdateRedisServiceHandler(
             cancellationToken);
 
         if (redis is null)
-            return Failures.NotFound("Redis service not found.", request.Id);
+            return Error(new UpdateRedisServiceError(
+                new RedisUpdateStateError(new RedisServiceNotFound(request.Id))));
         if (redis.Lifecycle is not ActiveRedisLifecycle)
-            return Failures.Conflict("A deleting Redis service cannot be updated.");
+        {
+            return Error(new UpdateRedisServiceError(
+                new RedisUpdateStateError(new RedisUpdateUnavailable(redis.Id))));
+        }
 
         if (!string.Equals(
                 request.Body.Spec.Storage.StorageProfileId,
                 redis.Spec.Storage.StorageProfileId,
                 StringComparison.Ordinal))
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Body.Spec.Storage.StorageProfileId"] = ["Storage profile cannot be changed for an existing Redis service."]
-            });
+            return Error(new UpdateRedisServiceError(
+                new RedisUpdateStateError(
+                    new RedisStorageProfileChangeNotAllowed(redis.Id))));
         }
 
         var nextSpec = request.Body.Spec.ToDomain();
@@ -95,9 +128,9 @@ public sealed class UpdateRedisServiceHandler(
             cancellationToken);
         if (!currentComputeResult.TryGetValue(
                 out var currentCompute,
-                out var currentComputeFailure))
+                out var currentComputeError))
         {
-            return currentComputeFailure;
+            return Error(new UpdateRedisServiceError(currentComputeError));
         }
 
         ResolvedComputeProfile? replacementCompute = null;
@@ -112,9 +145,9 @@ public sealed class UpdateRedisServiceHandler(
                 cancellationToken);
             if (!computeResult.TryGetValue(
                     out replacementCompute,
-                    out var computeFailure))
+                out var computeError))
             {
-                return computeFailure;
+                return Error(new UpdateRedisServiceError(computeError));
             }
         }
 
@@ -128,24 +161,30 @@ public sealed class UpdateRedisServiceHandler(
             : RedisQuotaInput.Create(
                 replacementCompute.Requests.CpuMillis,
                 replacementCompute.Requests.MemoryMi);
-        return await quotaAdmissionExecutor.ExecuteAsync<RedisQuotaInput, UpdateRedisServiceResponse>(
+        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
+            RedisQuotaInput,
+            UpdateRedisServiceOutcome>(
             redis.TenantId,
             RedisQuotaResourceKey.Create(redis.Id),
             new UpdateQuotaMutation<RedisQuotaInput>(
                 currentQuotaInput,
                 nextQuotaInput),
-            async (session, transactionCancellationToken) =>
+            quotaError => Error(new UpdateRedisServiceError(quotaError)),
+            async (transaction, transactionCancellationToken) =>
             {
                 var updatedRedis = redis.UpdateDesiredState(
                     nextSpec,
                     request.Body.Tags);
                 var persistenceResult = await persistUpdatedRedis(
-                    session,
+                    transaction.Session,
                     redis,
                     updatedRedis,
                     transactionCancellationToken);
-                if (persistenceResult is Failure persistenceFailure)
-                    return persistenceFailure;
+                if (!persistenceResult.TryGetValue(out _, out var persistenceError))
+                {
+                    return transaction.Abort(Error(new UpdateRedisServiceError(
+                        persistenceError)));
+                }
 
                 var deploymentResult = await requestDeploymentApply(
                     new ResourceDeploymentMutationRequest(
@@ -154,21 +193,23 @@ public sealed class UpdateRedisServiceHandler(
                         redis.Id,
                         currentCompute.Compute.Profile,
                         replacementCompute?.ToResourceDeploymentConfiguration()),
-                    session,
+                    transaction.Session,
                     transactionCancellationToken);
                 if (!deploymentResult.TryGetValue(
                         out var deployment,
-                        out var deploymentFailure))
+                        out var deploymentError))
                 {
-                    return deploymentFailure;
+                    return transaction.Abort(Error(new UpdateRedisServiceError(
+                        deploymentError)));
                 }
 
-                return new UpdateRedisServiceResponse(
-                    redis.Id,
-                    deployment);
+                return transaction.Commit(new UpdateRedisServiceOutcome(
+                    new UpdateRedisServiceResponse(redis.Id, deployment)));
             },
             cancellationToken);
     }
+
+    private static UpdateRedisServiceOutcome Error(UpdateRedisServiceError error) => new(error);
 }
 
 public sealed class UpdateRedisServiceValidator : AbstractValidator<UpdateRedisServiceRequest>
@@ -176,7 +217,8 @@ public sealed class UpdateRedisServiceValidator : AbstractValidator<UpdateRedisS
     public UpdateRedisServiceValidator()
     {
         RuleFor(x => x.Id)
-            .NotEmpty().WithMessage("Redis service ID is required.");
+            .NotEmpty()
+            .MongoObjectId("Redis service ID");
 
         RuleFor(x => x.Body.Spec)
             .NotNull().WithMessage("Redis service specification is required.")

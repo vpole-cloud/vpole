@@ -46,6 +46,61 @@ public sealed record StorageProfileResolutionRequest(
     int SizeGb
 );
 
+public sealed record StorageProfileNotFound(string StorageProfileId);
+
+public sealed record StorageProfileDisabled(string StorageProfileId);
+
+public sealed record StorageProfileTenantAccessDenied(
+    string StorageProfileId,
+    string TenantId);
+
+public sealed record StorageProfileResourceTypeNotAllowed(
+    string StorageProfileId,
+    ResourceType ResourceType);
+
+public sealed record StorageProfileSizeNotAllowed(
+    string StorageProfileId,
+    int SizeGb);
+
+public sealed record StorageProfileDeploymentTargetNotConfigured(
+    string StorageProfileId,
+    string DeploymentTargetId);
+
+public sealed record StorageProfileStorageClassUnavailable(
+    string StorageProfileId,
+    string DeploymentTargetId,
+    string StorageClassName);
+
+/// <summary>
+/// The configured deployment target cannot currently be queried for storage
+/// classes. Provider details are deliberately not exposed at this boundary.
+/// </summary>
+public sealed record StorageProfileDiscoveryUnavailable(string DeploymentTargetId);
+
+public union StorageProfileResolutionError(
+    StorageProfileNotFound,
+    StorageProfileDisabled,
+    StorageProfileTenantAccessDenied,
+    StorageProfileResourceTypeNotAllowed,
+    StorageProfileSizeNotAllowed,
+    StorageProfileDeploymentTargetNotConfigured,
+    StorageProfileStorageClassUnavailable,
+    StorageProfileDiscoveryUnavailable);
+
+/// <summary>
+/// Resolves a storage profile into the immutable storage-class snapshot used by
+/// a workload deployment. Structural request violations throw; expected
+/// availability and policy decisions are represented by the closed error union.
+/// </summary>
+public delegate Task<Result<ResolvedStorageProfile, StorageProfileResolutionError>>
+    ResolveStorageProfile(
+        StorageProfileResolutionRequest request,
+        CancellationToken cancellationToken = default);
+
+/// <summary>
+/// Temporary shared-result adapter for consumers that have not yet migrated to
+/// <see cref="ResolveStorageProfile"/>.
+/// </summary>
 public interface IStorageProfileResolver
 {
     Task<Result<ResolvedStorageProfile>> ResolveAsync(

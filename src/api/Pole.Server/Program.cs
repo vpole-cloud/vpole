@@ -23,13 +23,14 @@ using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Contracts.HttpMapping;
 using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
+using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
 using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Middleware;
@@ -92,7 +93,8 @@ builder.Services.AddKubernetes(configuration)
     .AddDomainPersistence()
     .AddDomainHttpMappings()
     .AddComputeProfiles()
-    .AddRedisPersistence()
+    .AddStorageProfileResolution()
+    .AddRedisServicesFeature()
     .AddWebServicesFeature()
     .AddQuotaFramework(
         typeof(RedisQuotaProfile).Assembly,

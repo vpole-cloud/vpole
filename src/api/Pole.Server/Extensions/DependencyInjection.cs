@@ -42,8 +42,6 @@ using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Application.Services;
 using Pole.Features.Quotas.Contracts;
-using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
@@ -228,7 +226,6 @@ public static class DependencyInjection
             services.TryAddSingleton<
                 IPostgresClusterDeploymentManager,
                 PostgresClusterDeploymentManager>();
-            services.TryAddScoped<RedisResourceDeploymentAdapter>();
             services.TryAddSingleton<IFunctionRevisionKubernetesManager, FunctionRevisionKubernetesManager>();
             services.TryAddSingleton<IFunctionEndpointSliceSource, KubernetesFunctionEndpointSliceSource>();
             services.TryAddSingleton<IFunctionEndpointRegistry, FunctionEndpointRegistry>();
@@ -308,8 +305,6 @@ public static class DependencyInjection
                 IStorageProfileResolutionFence,
                 StorageProfileResolutionFence>();
             services.AddSingleton(
-                RedisResourceDeploymentAdapterRegistration.Descriptor);
-            services.AddSingleton(
                 PostgresResourceDeploymentAdapterRegistration.Descriptor);
             services.TryAddScoped<IResourceGroupDeletionFinalizer, ResourceGroupDeletionFinalizer>();
             services.TryAddSingleton<IRuntimeCellNamespaceNameGenerator, RuntimeCellNamespaceNameGenerator>();
@@ -317,7 +312,6 @@ public static class DependencyInjection
             services.TryAddScoped<RuntimeCellRecoveryJob>();
             services.TryAddScoped<IFunctionRevisionLifecycleService, FunctionRevisionLifecycleService>();
             services.TryAddSingleton<IFunctionRuntimeRouteResolver, FunctionRuntimeRouteResolver>();
-            services.TryAddScoped<IStorageProfileResolver, StorageProfileResolver>();
             services.TryAddScoped<IStorageDiscoveryService, KubernetesStorageDiscoveryService>();
             services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
             return services;

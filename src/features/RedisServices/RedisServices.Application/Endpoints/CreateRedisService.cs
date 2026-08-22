@@ -6,8 +6,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
+using Pole.Database;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Persistence;
@@ -27,11 +29,17 @@ public static class CreateRedisService
     {
         public IEndpointRouteBuilder MapCreateRedisServiceEndpoint()
         {
-            app.MapPost("/", async ([FromServices] IMediator mediator, [AsParameters] CreateRedisServiceRequest request) =>
-                {
-                    var response = await mediator.Send(request);
-                    return response.ToHttpResult(v => Results.Accepted(value: v));
-                })
+            app.MapPost("/", async (
+                    [FromServices] IMediator mediator,
+                    [FromServices] IHttpProblemMapper httpProblems,
+                    [AsParameters] CreateRedisServiceRequest request,
+                    CancellationToken cancellationToken) =>
+                    (await mediator.Send(request, cancellationToken))
+                    .ToHttpResult(outcome => outcome switch
+                    {
+                        CreateRedisServiceResponse response => Results.Accepted(value: response),
+                        CreateRedisServiceError error => httpProblems.Map(error).ToHttpResult()
+                    }))
                 .WithName("CreateRedisService")
                 .Produces<CreateRedisServiceResponse>(StatusCodes.Status202Accepted);
 
@@ -40,49 +48,64 @@ public static class CreateRedisService
     }
 }
 
+public union CreateRedisServiceError(
+    DeploymentTargetNewWorkloadAdmissionError,
+    ComputeProfileResolutionError,
+    StorageProfileResolutionError,
+    CreateResourceDeploymentError,
+    QuotaExecutionError);
+
+public union CreateRedisServiceOutcome(
+    CreateRedisServiceResponse,
+    CreateRedisServiceError);
+
 public sealed class CreateRedisServiceHandler(
     PersistCreatedRedis persistCreatedRedis,
-    IStorageProfileResolver storageProfileResolver,
+    ResolveStorageProfile resolveStorageProfile,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    ResolveResourceDeploymentTargetLegacy resolveResourceDeploymentTarget,
-    ResolveComputeProfileLegacy resolveComputeProfile,
-    CreateResourceDeploymentLegacy createResourceDeployment)
-    : IMediatorHandler<CreateRedisServiceRequest, CreateRedisServiceResponse>
+    AdmitDeploymentTargetForNewWorkload admitDeploymentTarget,
+    ResolveComputeProfile resolveComputeProfile,
+    CreateResourceDeployment createResourceDeployment)
+    : IMediatorOutcomeHandler<CreateRedisServiceRequest, CreateRedisServiceOutcome>
 {
-    public async Task<Result<CreateRedisServiceResponse>> HandleAsync(CreateRedisServiceRequest request,
+    public async Task<CreateRedisServiceOutcome> HandleAsync(CreateRedisServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var targetResult = await resolveResourceDeploymentTarget(
-            request.Body.Placement?.DeploymentTargetId,
-            requiresIngress: false,
+        var targetResult = await admitDeploymentTarget(
+            new DeploymentTargetAdmissionRequest(
+                request.TenantId,
+                RedisResourceDeployment.ResourceType,
+                request.Body.Placement?.IsolationScopeId,
+                request.Body.Placement?.DeploymentTargetId,
+                DeploymentTargetRequiredCapabilities.None),
             cancellationToken);
-        if (!targetResult.TryGetValue(out var target, out var targetFailure))
-            return targetFailure;
+        if (!targetResult.TryGetValue(out var target, out var targetError))
+            return Error(new CreateRedisServiceError(targetError));
 
         var computeProfileResult = await resolveComputeProfile(
             new ComputeProfileResolutionRequest(
                 request.Body.ComputeProfileId,
-                target.DeploymentTargetId,
+                target.Id,
                 request.TenantId,
                 RedisResourceDeployment.ResourceType),
             cancellationToken);
         if (!computeProfileResult.TryGetValue(
                 out var computeProfile,
-                out var computeProfileFailure))
+                out var computeProfileError))
         {
-            return computeProfileFailure;
+            return Error(new CreateRedisServiceError(computeProfileError));
         }
 
-        var storageProfileResult = await storageProfileResolver.ResolveAsync(
+        var storageProfileResult = await resolveStorageProfile(
             new StorageProfileResolutionRequest(
                 request.Body.Spec.Storage.StorageProfileId,
-                target.DeploymentTargetId,
+                target.Id,
                 request.TenantId,
                 ResourceType.Redis,
                 request.Body.Spec.Storage.SizeGb),
             cancellationToken);
-        if (!storageProfileResult.TryGetValue(out var storageProfile, out var storageProfileFailure))
-            return storageProfileFailure;
+        if (!storageProfileResult.TryGetValue(out var storageProfile, out var storageProfileError))
+            return Error(new CreateRedisServiceError(storageProfileError));
 
         var createOptions = RedisFactory.DefaultCreateOptions with
         {
@@ -103,14 +126,17 @@ public sealed class CreateRedisServiceHandler(
         var quotaInput = RedisQuotaInput.Create(
             computeProfile.Requests.CpuMillis,
             computeProfile.Requests.MemoryMi);
-        return await quotaAdmissionExecutor.ExecuteAsync<RedisQuotaInput, CreateRedisServiceResponse>(
+        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
+            RedisQuotaInput,
+            CreateRedisServiceOutcome>(
             request.TenantId,
             RedisQuotaResourceKey.Create(newRedis.Id),
             new CreateQuotaMutation<RedisQuotaInput>(quotaInput),
-            async (session, transactionCancellationToken) =>
+            quotaError => Error(new CreateRedisServiceError(quotaError)),
+            async (transaction, transactionCancellationToken) =>
             {
                 await persistCreatedRedis(
-                    session,
+                    transaction.Session,
                     newRedis,
                     transactionCancellationToken);
 
@@ -122,31 +148,45 @@ public sealed class CreateRedisServiceHandler(
                         newRedis.Id,
                         newRedis.ResourceGroupId,
                         request.Body.Placement?.IsolationScopeId,
-                        target,
+                        ToResolvedResourceDeploymentTarget(target),
                         computeProfile.ToResourceDeploymentConfiguration(),
                         resolvedStorage,
                         ResourcePlacementCapability.SingleTarget),
-                    session,
+                    transaction.Session,
                     transactionCancellationToken);
                 if (!deploymentResult.TryGetValue(
                         out var deployment,
-                        out var deploymentFailure))
+                        out var deploymentError))
                 {
-                    return deploymentFailure;
+                    return transaction.Abort(Error(new CreateRedisServiceError(deploymentError)));
                 }
 
-                return new CreateRedisServiceResponse(
-                    newRedis.Id,
-                    deployment);
+                return transaction.Commit(new CreateRedisServiceOutcome(
+                    new CreateRedisServiceResponse(newRedis.Id, deployment)));
             },
             cancellationToken);
     }
+
+    private static CreateRedisServiceOutcome Error(CreateRedisServiceError error) => new(error);
+
+    private static ResolvedResourceDeploymentTarget ToResolvedResourceDeploymentTarget(
+        DeploymentTargetLookupDto target) =>
+        new(
+            target.Id,
+            target.WorkloadConfiguration.Revision,
+            target.WorkloadConfiguration.Ingress is { } ingress
+                ? ResourceDeploymentIngressConfiguration.Create(
+                    ingress.IngressClassName,
+                    ingress.ClusterIssuerName,
+                    ingress.PublicBaseDomain,
+                    [])
+                : null);
 }
 
 public sealed record CreateRedisServiceRequest(
     [FromBody] CreateRedisServiceRequestBody Body,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
-) : IMediatorRequest<CreateRedisServiceResponse>, ITenantCreateOperation;
+) : IMediatorRequest<CreateRedisServiceOutcome>, ITenantCreateOperation;
 
 public sealed record CreateRedisServiceRequestBody(
     string Name,
@@ -180,7 +220,8 @@ public sealed class CreateRedisServiceRequestBodyValidator : AbstractValidator<C
             .Matches("^[a-z0-9-]+$")
             .WithMessage("Name must contain only lowercase letters, numbers, and hyphens.");
         RuleFor(x => x.ResourceGroupId)
-            .NotEmpty();
+            .NotEmpty()
+            .MongoObjectId("Resource group ID");
         RuleFor(x => x.Spec)
             .SetValidator(new RedisSpecDtoValidator());
         RuleFor(body => body.ComputeProfileId)

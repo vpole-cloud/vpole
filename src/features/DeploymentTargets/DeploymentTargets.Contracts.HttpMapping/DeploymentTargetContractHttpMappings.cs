@@ -10,6 +10,8 @@ public static class DeploymentTargetContractHttpMappings
         [
             HttpProblemMapping.For<DeploymentTargetWorkloadAdmissionError>(
                 MapWorkloadAdmissionError),
+            HttpProblemMapping.For<DeploymentTargetNewWorkloadAdmissionError>(
+                MapNewWorkloadAdmissionError),
             HttpProblemMapping.For<DeploymentTargetReferenceChangeRejected>(
                 MapReferenceChangeRejected),
             HttpProblemMapping.For<DeploymentTargetPublicIngressAdmissionError>(
@@ -17,6 +19,28 @@ public static class DeploymentTargetContractHttpMappings
             HttpProblemMapping.For<DeploymentTargetDomainReservationAdmissionError>(
                 MapDomainReservationAdmissionError)
         ]);
+
+    private static HttpProblem MapNewWorkloadAdmissionError(
+        DeploymentTargetNewWorkloadAdmissionError error) => error switch
+    {
+        DeploymentTargetWorkloadAdmissionError workload =>
+            MapWorkloadAdmissionError(workload),
+        NoDeploymentTargetAcceptsWorkloads => Problem(
+            HttpStatusCode.Conflict,
+            "deployment-targets.no-workload-target",
+            "No deployment target accepts new workloads"),
+        DeploymentTargetRequiredCapabilitiesUnavailable unavailable => Problem(
+            HttpStatusCode.UnprocessableEntity,
+            "deployment-targets.required-capabilities-unavailable",
+            "Deployment target does not satisfy the required workload capabilities",
+            ("deploymentTargetId", unavailable.DeploymentTargetId),
+            ("requiredCapabilities", unavailable.RequiredCapabilities.ToString())),
+        DeploymentTargetWorkloadSelectionRequired selection => Problem(
+            HttpStatusCode.UnprocessableEntity,
+            "deployment-targets.selection-required",
+            "A deployment target must be selected",
+            ("eligibleDeploymentTargetIds", selection.EligibleDeploymentTargetIds))
+    };
 
     private static HttpProblem MapWorkloadAdmissionError(
         DeploymentTargetWorkloadAdmissionError error) => error switch
@@ -164,6 +188,14 @@ public static class DeploymentTargetContractHttpMappings
     private static HttpProblem Problem(
         HttpStatusCode statusCode,
         string code,
-        string title) =>
-        new((int)statusCode, PoleProblemTypeId.FromCode(code), title, code);
+        string title,
+        params (string Name, object Value)[] extensions) =>
+        new(
+            (int)statusCode,
+            PoleProblemTypeId.FromCode(code),
+            title,
+            code,
+            extensions: extensions.ToDictionary(
+                extension => extension.Name,
+                extension => extension.Value));
 }

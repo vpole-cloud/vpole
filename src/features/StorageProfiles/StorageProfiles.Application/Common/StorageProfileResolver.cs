@@ -11,23 +11,43 @@ namespace Pole.Features.StorageProfiles.Application.Common;
 public sealed class StorageProfileResolver(
     IStorageProfileDbContext dbContext,
     IStorageDiscoveryService storageDiscovery)
-    : IStorageProfileResolver
 {
-    public async Task<Result<ResolvedStorageProfile>> ResolveAsync(
+    public async Task<Result<ResolvedStorageProfile, StorageProfileResolutionError>> InvokeAsync(
         StorageProfileResolutionRequest request,
         CancellationToken cancellationToken = default)
     {
-        var requestErrors = ValidateRequest(request);
-        if (requestErrors.Count > 0)
-            return Failures.ValidationFailure(requestErrors);
+        EnsureValidRequest(request);
 
         var profile = await dbContext.StorageProfiles
             .Find(item => item.Id == request.StorageProfileId)
             .FirstOrDefaultAsync(cancellationToken);
         if (profile is null)
-            return Failures.NotFound("Storage profile not found.", request.StorageProfileId);
+        {
+            return new Err<StorageProfileResolutionError>(
+                new StorageProfileNotFound(request.StorageProfileId));
+        }
 
-        var errors = ValidateProfile(profile, request);
+        if (!profile.IsEnabled)
+        {
+            return new Err<StorageProfileResolutionError>(
+                new StorageProfileDisabled(profile.Id));
+        }
+        if (!AllowsTenant(profile, request.TenantId))
+        {
+            return new Err<StorageProfileResolutionError>(
+                new StorageProfileTenantAccessDenied(profile.Id, request.TenantId));
+        }
+        if (!AllowsResourceType(profile, request.ResourceType))
+        {
+            return new Err<StorageProfileResolutionError>(
+                new StorageProfileResourceTypeNotAllowed(profile.Id, request.ResourceType));
+        }
+        if (!AllowsSize(profile, request.SizeGb))
+        {
+            return new Err<StorageProfileResolutionError>(
+                new StorageProfileSizeNotAllowed(profile.Id, request.SizeGb));
+        }
+
         var targetMapping = profile.TargetMappings.SingleOrDefault(mapping =>
             string.Equals(
                 mapping.DeploymentTargetId,
@@ -35,43 +55,37 @@ public sealed class StorageProfileResolver(
                 StringComparison.Ordinal));
         if (targetMapping is null)
         {
-            errors["StorageProfileId"] =
-            [
-                "Storage profile is not configured for the selected deployment target."
-            ];
+            return new Err<StorageProfileResolutionError>(
+                new StorageProfileDeploymentTargetNotConfigured(
+                    profile.Id,
+                    request.DeploymentTargetId));
         }
-        if (errors.Count > 0)
-            return Failures.ValidationFailure(errors);
 
         var storageClassesResult = await storageDiscovery.GetStorageClassNamesAsync(
             request.DeploymentTargetId,
             cancellationToken);
-        if (!storageClassesResult.TryGetValue(
-                out var knownStorageClassNames,
-                out var storageClassFailure))
+        if (!storageClassesResult.TryGetValue(out var knownStorageClassNames, out _))
         {
-            return storageClassFailure;
+            return new Err<StorageProfileResolutionError>(
+                new StorageProfileDiscoveryUnavailable(request.DeploymentTargetId));
         }
         if (!knownStorageClassNames.Contains(targetMapping!.StorageClassName))
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["StorageProfileId"] =
-                [
-                    "The configured Kubernetes storage class is not available in the selected " +
-                    "deployment target."
-                ]
-            });
+            return new Err<StorageProfileResolutionError>(
+                new StorageProfileStorageClassUnavailable(
+                    profile.Id,
+                    request.DeploymentTargetId,
+                    targetMapping.StorageClassName));
         }
 
-        return new ResolvedStorageProfile(
+        return new Ok<ResolvedStorageProfile>(new ResolvedStorageProfile(
             profile.Id,
             profile.Revision,
             request.DeploymentTargetId,
             profile.DisplayName,
             targetMapping.StorageClassName,
             profile.MediaType,
-            profile.PerformanceTier);
+            profile.PerformanceTier));
     }
 
     internal static bool AllowsTenant(StorageProfile profile, string tenantId) =>
@@ -87,51 +101,30 @@ public sealed class StorageProfileResolver(
         (profile.SizeLimits?.MinSizeGb is null || sizeGb >= profile.SizeLimits.MinSizeGb) &&
         (profile.SizeLimits?.MaxSizeGb is null || sizeGb <= profile.SizeLimits.MaxSizeGb);
 
-    private static Dictionary<string, string[]> ValidateRequest(
-        StorageProfileResolutionRequest request)
+    private static void EnsureValidRequest(StorageProfileResolutionRequest request)
     {
-        var errors = new Dictionary<string, string[]>();
+        ArgumentNullException.ThrowIfNull(request);
         if (!ObjectId.TryParse(request.StorageProfileId, out _))
-            errors["StorageProfileId"] = ["Storage profile ID must be a MongoDB ObjectId."];
+        {
+            throw new ArgumentException(
+                "Storage profile ID must be a MongoDB ObjectId.",
+                nameof(request));
+        }
         if (!ObjectId.TryParse(request.DeploymentTargetId, out _))
         {
-            errors["DeploymentTargetId"] =
-            [
-                "Deployment target ID must be a MongoDB ObjectId."
-            ];
+            throw new ArgumentException(
+                "Deployment target ID must be a MongoDB ObjectId.",
+                nameof(request));
         }
         if (!ObjectId.TryParse(request.TenantId, out _))
-            errors["TenantId"] = ["Tenant ID must be a MongoDB ObjectId."];
+        {
+            throw new ArgumentException(
+                "Tenant ID must be a MongoDB ObjectId.",
+                nameof(request));
+        }
         if (!Enum.IsDefined(request.ResourceType))
-            errors["ResourceType"] = ["Resource type is invalid."];
+            throw new ArgumentOutOfRangeException(nameof(request), "Resource type is invalid.");
         if (request.SizeGb <= 0)
-            errors["SizeGb"] = ["Requested storage size must be greater than zero."];
-        return errors;
-    }
-
-    private static Dictionary<string, string[]> ValidateProfile(
-        StorageProfile profile,
-        StorageProfileResolutionRequest request)
-    {
-        var errors = new Dictionary<string, string[]>();
-        if (!profile.IsEnabled)
-            errors["StorageProfileId"] = ["Storage profile is disabled."];
-        if (!AllowsTenant(profile, request.TenantId))
-        {
-            errors["StorageProfileId"] =
-            [
-                "Storage profile is not available to the active tenant."
-            ];
-        }
-        if (!AllowsResourceType(profile, request.ResourceType))
-        {
-            errors["StorageProfileId"] =
-            [
-                $"Storage profile is not available for {request.ResourceType} resources."
-            ];
-        }
-        if (!AllowsSize(profile, request.SizeGb))
-            errors["SizeGb"] = ["Requested storage size is outside the profile limits."];
-        return errors;
+            throw new ArgumentOutOfRangeException(nameof(request), "Requested storage size must be greater than zero.");
     }
 }

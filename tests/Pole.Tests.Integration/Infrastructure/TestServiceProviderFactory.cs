@@ -17,7 +17,7 @@ using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Persistence;
+using Pole.Features.RedisServices.Application;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Services;
@@ -25,6 +25,7 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
 using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.SourceBuilds.Application.Common;
@@ -65,13 +66,16 @@ public static class TestServiceProviderFactory
         services.AddSingleton(fixture.Database);
         services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
         services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
+        services.AddSingleton<IKubernetesClientProvider>(
+            new FixedKubernetesClientProvider(null!));
         services.AddMongoDbContextInterfaces();
         services.AddResourceDeploymentsFeature(
             new ConfigurationBuilder().Build());
         services.AddTenantContractCapabilities();
         services.AddDomainPersistence();
         services.AddComputeProfiles();
-        services.AddRedisPersistence();
+        services.AddStorageProfileResolution();
+        services.AddRedisServicesFeature();
         services.AddWebServicesFeature();
         services.AddScoped<IFunctionRevisionLifecycleService, FunctionRevisionLifecycleService>();
         services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
@@ -96,6 +100,8 @@ public static class TestServiceProviderFactory
             deploymentTargetLookup.AdmitForNewWorkloadAsync);
         services.AddSingleton<AdmitDeploymentTargetForWorkload>(
             deploymentTargetLookup.AdmitForWorkloadAsync);
+        services.AddSingleton<AdmitDeploymentTargetForNewWorkload>(
+            deploymentTargetLookup.AdmitForWorkloadPlacementAsync);
         services.AddSingleton<AdmitDeploymentTargetPublicIngressForDomainReservation>(
             deploymentTargetLookup.AdmitForDomainReservationAsync);
         services.AddSingleton<ApplyDeploymentTargetReferenceChanges>(
