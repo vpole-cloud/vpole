@@ -1,15 +1,14 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Domain;
+using Pole.Features.Functions.Application.Persistence.Reads;
 using Pole.Mediator;
-using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.Functions.Application.Endpoints;
 
@@ -19,11 +18,16 @@ public static class GetFunctionAppById
     {
         app.MapGet("/{Id}", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] GetFunctionAppByIdRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    FunctionAppDetailsDto details => Results.Ok(details),
+                    FunctionAppNotFound notFound => httpProblems.Map(notFound).ToHttpResult()
+                });
             })
             .WithName("GetFunctionAppById")
             .Produces<FunctionAppDetailsDto>();
@@ -34,42 +38,39 @@ public static class GetFunctionAppById
 public sealed record GetFunctionAppByIdRequest(
     [FromRoute] string Id,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<FunctionAppDetailsDto>, ITenantReadOperation;
+    : IMediatorRequest<GetFunctionAppByIdOutcome>, ITenantReadOperation;
 
-public sealed class GetFunctionAppByIdHandler(IFunctionAppDbContext dbContext)
-    : IMediatorHandler<GetFunctionAppByIdRequest, FunctionAppDetailsDto>
+public union GetFunctionAppByIdOutcome(
+    FunctionAppDetailsDto,
+    FunctionAppNotFound);
+
+public sealed class GetFunctionAppByIdHandler(
+    LoadFunctionAppById loadFunctionAppById,
+    LoadFunctionAppRevisionReferences loadFunctionAppRevisionReferences)
+    : IMediatorOutcomeHandler<GetFunctionAppByIdRequest, GetFunctionAppByIdOutcome>
 {
-    public async Task<Result<FunctionAppDetailsDto>> HandleAsync(
+    public async Task<GetFunctionAppByIdOutcome> HandleAsync(
         GetFunctionAppByIdRequest request,
         CancellationToken cancellationToken = default)
     {
-        var appFilter = Builders<FunctionApp>.Filter.And(
-            Builders<FunctionApp>.Filter.ForTenant(request.TenantId),
-            Builders<FunctionApp>.Filter.Eq(app => app.Id, request.Id));
-        var functionApp = await dbContext.FunctionApps
-            .Find(appFilter)
-            .FirstOrDefaultAsync(cancellationToken);
+        var functionApp = await loadFunctionAppById(
+            request.TenantId,
+            request.Id,
+            cancellationToken);
         if (functionApp is null)
-            return Failures.NotFound("Function App not found.", request.Id);
+            return new FunctionAppNotFound(request.Id);
 
-        var revisionIds = new[] { functionApp.ActiveRevisionId, functionApp.PendingRevisionId }
-            .Where(id => id is not null)
-            .Cast<string>()
-            .ToArray();
-        var revisions = revisionIds.Length == 0
-            ? []
-            : await dbContext.FunctionRevisions
-                .Find(Builders<FunctionRevision>.Filter.And(
-                    Builders<FunctionRevision>.Filter.Eq(revision => revision.TenantId, functionApp.TenantId),
-                    Builders<FunctionRevision>.Filter.Eq(revision => revision.FunctionAppId, functionApp.Id),
-                    Builders<FunctionRevision>.Filter.In(revision => revision.Id, revisionIds)))
-                .ToListAsync(cancellationToken);
-
-        var active = revisions.FirstOrDefault(revision => revision.Id == functionApp.ActiveRevisionId);
-        var pending = revisions.FirstOrDefault(revision => revision.Id == functionApp.PendingRevisionId);
+        var references = await loadFunctionAppRevisionReferences(functionApp, cancellationToken);
         return new FunctionAppDetailsDto(
             functionApp.ToDto(),
-            active?.ToDto(),
-            pending?.ToDto());
+            references.ActiveRevision?.ToDto(),
+            references.PendingRevision?.ToDto());
     }
+}
+
+public sealed class GetFunctionAppByIdRequestValidator
+    : AbstractValidator<GetFunctionAppByIdRequest>
+{
+    public GetFunctionAppByIdRequestValidator() =>
+        RuleFor(request => request.Id).MongoObjectId("Function App ID");
 }

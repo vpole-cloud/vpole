@@ -24,6 +24,7 @@
         <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
         <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
         <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
+        <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj" />
         <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
         <ProjectReference Include="..\..\Quotas\Quotas.Primitives\Quotas.Primitives.csproj" />
     <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />

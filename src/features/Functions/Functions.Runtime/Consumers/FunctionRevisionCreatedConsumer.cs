@@ -1,7 +1,7 @@
 using MassTransit;
 using Microsoft.Extensions.Logging;
-using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Persistence.Runtime.Provisioning;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Events;
 using Pole.Features.Functions.Runtime.Kubernetes;
@@ -11,7 +11,7 @@ using Pole.ResultType;
 namespace Pole.Features.Functions.Runtime.Consumers;
 
 public sealed class FunctionRevisionCreatedConsumer(
-    IFunctionAppDbContext dbContext,
+    LoadFunctionRevisionProvisioningSubject loadProvisioningSubject,
     IFunctionRevisionKubernetesManager kubernetesManager,
     IFunctionRevisionLifecycleService lifecycleService,
     IEnumerable<IFunctionRevisionProvisioner> provisioners,
@@ -26,16 +26,15 @@ public sealed class FunctionRevisionCreatedConsumer(
         CancellationToken cancellationToken = default)
     {
         var tenantId = message.EventCore.TenantId;
-        var app = await dbContext.FunctionApps.Find(candidate =>
-                candidate.TenantId == tenantId && candidate.Id == message.FunctionAppId)
-            .FirstOrDefaultAsync(cancellationToken);
-        var revision = await dbContext.FunctionRevisions.Find(candidate =>
-                candidate.TenantId == tenantId &&
-                candidate.FunctionAppId == message.FunctionAppId &&
-                candidate.Id == message.RevisionId)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (app is null || revision is null)
+        var subject = await loadProvisioningSubject(
+            tenantId,
+            message.FunctionAppId,
+            message.RevisionId,
+            cancellationToken);
+        if (subject is null)
             throw new InvalidOperationException("Function App or revision no longer exists.");
+        var app = subject.App;
+        var revision = subject.Revision;
         if (revision.Status is not (ProvisioningFunctionRevisionStatus or ReadyFunctionRevisionStatus))
             return;
 

@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
-using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Persistence.Runtime.Metering;
 using Pole.Features.Functions.Domain;
 
 namespace Pole.Features.Functions.Runtime.Metering;
@@ -15,28 +15,14 @@ public interface IFunctionMeterWriter
 }
 
 public sealed class FunctionMeterWriter(
-    IFunctionAppDbContext dbContext,
+    PersistFunctionMeterEvent persistMeterEvent,
     ILogger<FunctionMeterWriter> logger) : IFunctionMeterWriter
 {
     public async Task WriteAsync(
         FunctionMeterEvent meterEvent,
         CancellationToken cancellationToken = default)
     {
-        try
-        {
-            await dbContext.FunctionMeterEvents.InsertOneAsync(
-                meterEvent,
-                cancellationToken: cancellationToken);
-        }
-        catch (MongoWriteException exception) when (
-            exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
-        {
-            // Deterministic ids make replay idempotent.
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
+        await persistMeterEvent(meterEvent, cancellationToken);
     }
 
     public async Task TryWriteAsync(

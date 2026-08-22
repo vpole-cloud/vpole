@@ -9,6 +9,7 @@ using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application;
@@ -70,6 +71,7 @@ public static class TestServiceProviderFactory
         services.AddSingleton<IKubernetesClientProvider>(
             new FixedKubernetesClientProvider(null!));
         services.AddMongoDbContextInterfaces();
+        services.AddFunctionAppsFeature();
         services.AddResourceDeploymentsFeature(
             new ConfigurationBuilder().Build());
         services.AddTenantContractCapabilities();
@@ -79,7 +81,6 @@ public static class TestServiceProviderFactory
         services.AddRedisServicesFeature();
         services.AddPostgresFeature();
         services.AddWebServicesFeature();
-        services.AddScoped<IFunctionRevisionLifecycleService, FunctionRevisionLifecycleService>();
         services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         services.AddSingleton(new PostgresSettings
         {

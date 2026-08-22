@@ -13,6 +13,8 @@ using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application;
+using Pole.Features.Functions.Runtime;
 using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Features.Outbox.Application;
@@ -89,6 +91,8 @@ builder.Services.AddKubernetes(configuration)
     .AddEventBus(configuration, assemblies)
     .AddOutboxEventAssemblies(outboxEventAssemblies)
     .AddDatabase()
+    .AddFunctionAppsFeature()
+    .AddFunctionRuntimeFeature(configuration)
     .AddResourceDeploymentsFeature(configuration)
     .AddTenantContractCapabilities()
     .AddDomainPersistence()

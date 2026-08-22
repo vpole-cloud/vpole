@@ -1,5 +1,5 @@
-using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Persistence.Runtime.Gateway;
 using Pole.Features.Functions.Domain;
 
 namespace Pole.Features.Functions.Runtime.Gateway;
@@ -19,7 +19,8 @@ public interface IFunctionRuntimeRouteResolver
         CancellationToken cancellationToken = default);
 }
 
-public sealed class FunctionRuntimeRouteResolver(IFunctionAppDbContext dbContext)
+public sealed class FunctionRuntimeRouteResolver(
+    LoadFunctionRuntimeRouteTarget loadRouteTarget)
     : IFunctionRuntimeRouteResolver
 {
     public async Task<ResolvedFunctionHttpRoute?> ResolveAsync(
@@ -57,40 +58,13 @@ public sealed class FunctionRuntimeRouteResolver(IFunctionAppDbContext dbContext
         FunctionExposure exposure,
         CancellationToken cancellationToken)
     {
-        var binding = await dbContext.FunctionRouteBindings.Find(candidate =>
-                candidate.NormalizedRoute == normalizedRoute &&
-                candidate.State == FunctionRouteBindingState.Active &&
-                candidate.ActiveRevisionId != null)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (binding is null)
+        var target = await loadRouteTarget(normalizedRoute, cancellationToken);
+        if (target is null)
             return null;
 
-        var route = FunctionHttpRouteMatcher.Match(binding.HttpRoutes, handlerPath, method, exposure);
+        var route = FunctionHttpRouteMatcher.Match(target.Binding.HttpRoutes, handlerPath, method, exposure);
         if (route is null)
             return null;
-
-        var revisionId = binding.ActiveRevisionId!;
-        var app = await dbContext.FunctionApps.Find(candidate =>
-                candidate.TenantId == binding.TenantId &&
-                candidate.Id == binding.FunctionAppId &&
-                candidate.FunctionRoute == binding.NormalizedRoute &&
-                candidate.ActiveRevisionId == revisionId &&
-                candidate.DesiredState == FunctionAppDesiredState.Enabled &&
-                candidate.Status == FunctionAppStatus.Ready)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (app is null)
-            return null;
-
-        var revision = await dbContext.FunctionRevisions.Find(
-                Builders<FunctionRevision>.Filter.And(
-                    Builders<FunctionRevision>.Filter.Eq(candidate => candidate.TenantId, binding.TenantId),
-                    Builders<FunctionRevision>.Filter.Eq(candidate => candidate.FunctionAppId, binding.FunctionAppId),
-                    Builders<FunctionRevision>.Filter.Eq(candidate => candidate.Id, revisionId),
-                    Builders<FunctionRevision>.Filter
-                        .OfType<FunctionRevisionStatus, ActiveFunctionRevisionStatus>(candidate => candidate.Status)))
-            .FirstOrDefaultAsync(cancellationToken);
-        return revision is null
-            ? null
-            : new ResolvedFunctionHttpRoute(app, revision, route);
+        return new ResolvedFunctionHttpRoute(target.App, target.Revision, route);
     }
 }

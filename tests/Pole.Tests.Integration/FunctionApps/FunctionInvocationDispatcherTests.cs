@@ -5,6 +5,7 @@ using System.Text;
 using k8s.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
+using Pole.Features.Functions.Application.Persistence.Runtime.Timers;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Activation;
 using Pole.Features.Functions.Runtime.Agent;
@@ -472,8 +473,17 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
             new FunctionServiceKey("pole-tenant-rg", "function-cleanup-agent"),
             (endpoints ?? [FirstEndpoint]).ToImmutableArray(),
             Now);
+        var time = timeProvider ?? new FixedTimeProvider(Now);
         return new FunctionInvocationDispatcher(
-            DbContext,
+            new MongoLoadExpiredFunctionInvocations(DbContext.FunctionInvocations).InvokeAsync,
+            new MongoClaimNextFunctionInvocation(DbContext.FunctionInvocations, time).InvokeAsync,
+            new MongoLoadFunctionInvocationDispatchSubject(
+                DbContext.FunctionApps,
+                DbContext.FunctionRevisions).InvokeAsync,
+            new MongoPersistFunctionInvocationTransition(
+                Fixture.Client,
+                DbContext.FunctionInvocations,
+                DbContext.FunctionMeterEvents).InvokeAsync,
             new StubEndpointRegistry(snapshot),
             new SnapshotOrderEndpointSelector(),
             activator ?? new UnexpectedActivator(),
@@ -485,7 +495,7 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
                 DispatchLeaseSeconds = 180,
                 ExecutionTimeoutSeconds = 10
             },
-            timeProvider ?? new FixedTimeProvider(Now),
+            time,
             NullLogger<FunctionInvocationDispatcher>.Instance);
     }
 

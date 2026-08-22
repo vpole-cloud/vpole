@@ -5,6 +5,7 @@ using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Endpoints;
+using Pole.Features.Functions.Application.Persistence.Runtime.Provisioning;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Events;
 using Pole.Features.Functions.Runtime.Consumers;
@@ -23,22 +24,23 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
     public async Task Failed_kubernetes_apply_marks_revision_failed_and_redelivery_is_a_noop()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var create = await Mediator.Send(new CreateFunctionAppRequest(
+        var created = (await Mediator.Send(new CreateFunctionAppRequest(
             new CreateFunctionAppRequestBody(
                 "consumer-functions",
                 "consumer-functions",
                 group.Id,
                 RevisionRequest(),
                 []),
-            TestData.TenantId));
-        Assert.True(create.TryGetValue(out var created, out var createFailure), createFailure?.Message);
+            TestData.TenantId))).RequireSuccess();
         var manager = new RecordingKubernetesManager(
             Failures.ExternalService(
                 "Kubernetes rejected the manifest.",
                 "Kubernetes",
                 "invalid manifest"));
         var consumer = new FunctionRevisionCreatedConsumer(
-            DbContext,
+            new MongoLoadFunctionRevisionProvisioningSubject(
+                DbContext.FunctionApps,
+                DbContext.FunctionRevisions).InvokeAsync,
             manager,
             Services.GetRequiredService<IFunctionRevisionLifecycleService>(),
             [],
@@ -72,18 +74,19 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
     public async Task Missing_runtime_authentication_fails_closed_after_manifest_apply()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var create = await Mediator.Send(new CreateFunctionAppRequest(
+        var created = (await Mediator.Send(new CreateFunctionAppRequest(
             new CreateFunctionAppRequestBody(
                 "unconfigured-runtime-functions",
                 "unconfigured-runtime-functions",
                 group.Id,
                 RevisionRequest(),
                 []),
-            TestData.TenantId));
-        Assert.True(create.TryGetValue(out var created, out var createFailure), createFailure?.Message);
+            TestData.TenantId))).RequireSuccess();
         var manager = new RecordingKubernetesManager(Result.Success());
         var consumer = new FunctionRevisionCreatedConsumer(
-            DbContext,
+            new MongoLoadFunctionRevisionProvisioningSubject(
+                DbContext.FunctionApps,
+                DbContext.FunctionRevisions).InvokeAsync,
             manager,
             Services.GetRequiredService<IFunctionRevisionLifecycleService>(),
             [],
@@ -111,15 +114,14 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
     public async Task Ready_revision_redelivery_resumes_provisioner_without_reapplying_manifest()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var create = await Mediator.Send(new CreateFunctionAppRequest(
+        var created = (await Mediator.Send(new CreateFunctionAppRequest(
             new CreateFunctionAppRequestBody(
                 "ready-redelivery-functions",
                 "ready-redelivery-functions",
                 group.Id,
                 RevisionRequest(),
                 []),
-            TestData.TenantId));
-        Assert.True(create.TryGetValue(out var created, out var createFailure), createFailure?.Message);
+            TestData.TenantId))).RequireSuccess();
         var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
         Assert.IsAssignableFrom<ISuccess>(await lifecycle.MarkReadyAsync(
             TestData.TenantId,
@@ -128,7 +130,9 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
         var manager = new RecordingKubernetesManager(Result.Success());
         var provisioner = new RecordingProvisioner();
         var consumer = new FunctionRevisionCreatedConsumer(
-            DbContext,
+            new MongoLoadFunctionRevisionProvisioningSubject(
+                DbContext.FunctionApps,
+                DbContext.FunctionRevisions).InvokeAsync,
             manager,
             lifecycle,
             [provisioner],
@@ -152,15 +156,14 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
     public async Task Ready_revision_without_runtime_authentication_is_stopped_before_failure()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var create = await Mediator.Send(new CreateFunctionAppRequest(
+        var created = (await Mediator.Send(new CreateFunctionAppRequest(
             new CreateFunctionAppRequestBody(
                 "ready-unconfigured-functions",
                 "ready-unconfigured-functions",
                 group.Id,
                 RevisionRequest(),
                 []),
-            TestData.TenantId));
-        Assert.True(create.TryGetValue(out var created, out var createFailure), createFailure?.Message);
+            TestData.TenantId))).RequireSuccess();
         var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
         Assert.IsAssignableFrom<ISuccess>(await lifecycle.MarkReadyAsync(
             TestData.TenantId,
@@ -168,7 +171,9 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             created.RevisionId));
         var manager = new RecordingKubernetesManager(Result.Success());
         var consumer = new FunctionRevisionCreatedConsumer(
-            DbContext,
+            new MongoLoadFunctionRevisionProvisioningSubject(
+                DbContext.FunctionApps,
+                DbContext.FunctionRevisions).InvokeAsync,
             manager,
             lifecycle,
             [],

@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
+using Pole.Features.Functions.Application.Persistence.Runtime.Timers;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Timers;
 using Pole.Tests.Integration.Infrastructure;
@@ -80,12 +81,21 @@ public sealed class FunctionTimerSchedulerTests(MongoReplicaSetFixture fixture)
         Assert.True(advanced.NextOccurrenceUtc > Now);
     }
 
-    private FunctionTimerScheduler CreateScheduler() =>
-        new(
-            DbContext,
+    private FunctionTimerScheduler CreateScheduler()
+    {
+        var time = new FixedTimeProvider(Now);
+        return new FunctionTimerScheduler(
+            new MongoClaimNextFunctionTimer(DbContext.FunctionTimerStates, time).InvokeAsync,
+            new MongoMaterializeFunctionTimerOccurrence(
+                Fixture.Client,
+                DbContext.FunctionTimerStates,
+                DbContext.FunctionInvocations,
+                DbContext.FunctionMeterEvents,
+                time).InvokeAsync,
+            new MongoReleaseFunctionTimerLease(DbContext.FunctionTimerStates, time).InvokeAsync,
             new FunctionTimerOptions { BatchSize = 10 },
-            new FixedTimeProvider(Now),
             NullLogger<FunctionTimerScheduler>.Instance);
+    }
 
     private static FunctionTimerState CreateTimer(DateTimeOffset nextOccurrenceUtc) =>
         FunctionTimerState.Create(

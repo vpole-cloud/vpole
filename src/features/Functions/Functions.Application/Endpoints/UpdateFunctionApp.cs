@@ -10,11 +10,15 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Persistence.Contracts;
+using Pole.Features.Functions.Application.Persistence.Mutations;
+using Pole.Features.Functions.Application.Persistence.Reads;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.Functions.Application.Endpoints;
 
@@ -24,11 +28,16 @@ public static class UpdateFunctionApp
     {
         app.MapPut("/{Id}", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] UpdateFunctionAppRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(response => Results.Accepted(value: response));
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    UpdateFunctionAppResponse response => Results.Accepted(value: response),
+                    UpdateFunctionAppError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("UpdateFunctionApp")
             .Produces<UpdateFunctionAppResponse>(StatusCodes.Status202Accepted);
@@ -40,7 +49,7 @@ public sealed record UpdateFunctionAppRequest(
     [FromRoute] string Id,
     [FromBody] UpdateFunctionAppRequestBody Body,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<UpdateFunctionAppResponse>, ITenantWriteOperation;
+    : IMediatorRequest<UpdateFunctionAppOutcome>, ITenantWriteOperation;
 
 public sealed record UpdateFunctionAppRequestBody(
     FunctionRevisionRequest Spec,
@@ -51,50 +60,72 @@ public sealed record UpdateFunctionAppResponse(
     string RevisionId,
     int RevisionNumber);
 
+public union UpdateFunctionAppError(
+    FunctionAppNotFound,
+    FunctionAppResourceGroupNotFound,
+    FunctionAppResourceGroupDeleting,
+    FunctionAppHasPendingRevision,
+    FunctionAppIsNotEnabled,
+    PersistFunctionAppRevisionError,
+    QuotaExecutionError);
+
+public union UpdateFunctionAppOutcome(
+    UpdateFunctionAppResponse,
+    UpdateFunctionAppError);
+
 public sealed class UpdateFunctionAppHandler(
-    IFunctionAppDbContext dbContext,
-    IResourceGroupLookup resourceGroupLookup,
+    LoadFunctionAppById loadFunctionAppById,
+    LoadFunctionAppRevisionReferences loadFunctionAppRevisionReferences,
+    PersistFunctionAppRevision persistFunctionAppRevision,
+    ResolveFunctionAppResourceGroupPlacement resolveResourceGroupPlacement,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     TimeProvider timeProvider)
-    : IMediatorHandler<UpdateFunctionAppRequest, UpdateFunctionAppResponse>
+    : IMediatorOutcomeHandler<UpdateFunctionAppRequest, UpdateFunctionAppOutcome>
 {
-    public async Task<Result<UpdateFunctionAppResponse>> HandleAsync(
+    public async Task<UpdateFunctionAppOutcome> HandleAsync(
         UpdateFunctionAppRequest request,
         CancellationToken cancellationToken = default)
     {
-        var identityFilter = Builders<FunctionApp>.Filter.And(
-            Builders<FunctionApp>.Filter.ForTenant(request.TenantId),
-            Builders<FunctionApp>.Filter.Eq(app => app.Id, request.Id));
-        var app = await dbContext.FunctionApps.Find(identityFilter).FirstOrDefaultAsync(cancellationToken);
+        var app = await loadFunctionAppById(
+            request.TenantId,
+            request.Id,
+            cancellationToken);
         if (app is null)
-            return Failures.NotFound("Function App not found.", request.Id);
+            return new UpdateFunctionAppError(new FunctionAppNotFound(request.Id));
         if (app.PendingRevisionId is not null)
-            return Failures.Conflict("Function App already has a pending revision.");
+            return new UpdateFunctionAppError(new FunctionAppHasPendingRevision(app.Id));
         if (app.DesiredState != FunctionAppDesiredState.Enabled)
-            return Failures.Conflict("Function App is not enabled.");
+            return new UpdateFunctionAppError(new FunctionAppIsNotEnabled(app.Id));
 
-        var placementResult = await resourceGroupLookup.GetPlacementAsync(
+        var placementResolution = await resolveResourceGroupPlacement(
             app.TenantId,
             app.ResourceGroupId,
             cancellationToken);
-        if (!placementResult.TryGetValue(out var placement, out var placementFailure))
-            return placementFailure;
-
-        FunctionRevision? activeRevision = null;
-        if (app.ActiveRevisionId is not null)
+        ResourceGroupPlacement placement;
+        switch (placementResolution)
         {
-            activeRevision = await dbContext.FunctionRevisions.Find(
-                    revision => revision.TenantId == app.TenantId &&
-                                revision.FunctionAppId == app.Id &&
-                                revision.Id == app.ActiveRevisionId)
-                .FirstOrDefaultAsync(cancellationToken);
-            if (activeRevision is null)
-                return Failures.Conflict("The active Function revision is missing.");
+            case ResourceGroupPlacement value:
+                placement = value;
+                break;
+            case FunctionAppResourceGroupNotFound notFound:
+                return new UpdateFunctionAppError(notFound);
+            case FunctionAppResourceGroupDeleting deleting:
+                return new UpdateFunctionAppError(deleting);
+            default:
+                throw new InvalidOperationException(
+                    "Resource group placement resolution returned an unsupported outcome.");
+        }
+
+        var references = await loadFunctionAppRevisionReferences(app, cancellationToken);
+        if (app.ActiveRevisionId is not null && references.ActiveRevision is null)
+        {
+            throw new InvalidOperationException(
+                "Function App references an active revision that does not exist.");
         }
 
         var requestedSpec = request.Body.Spec.ToDomain().ToRevisionSpec(placement.KubernetesNamespace);
         var handlers = FunctionTriggerReconciler.Reconcile(
-            activeRevision?.Spec.Handlers ?? [],
+            references.ActiveRevision?.Spec.Handlers ?? [],
             requestedSpec.Handlers);
         var candidateSpec = requestedSpec with { Handlers = handlers };
         var candidate = FunctionRevision.CreateProvisioning(
@@ -108,44 +139,49 @@ public sealed class UpdateFunctionAppHandler(
             app.AdmittedQuota,
             FunctionQuotaAllocation.FromRevision(candidateSpec));
 
-        return await quotaAdmissionExecutor.ExecuteAsync<FunctionQuotaAllocation, UpdateFunctionAppResponse>(
+        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
+            FunctionQuotaAllocation,
+            UpdateFunctionAppOutcome>(
             app.TenantId,
             FunctionAppQuotaResourceKey.Create(app.Id),
             new UpdateQuotaMutation<FunctionQuotaAllocation>(app.AdmittedQuota, admittedQuota),
-            async (session, transactionCancellationToken) =>
-            {
-                var casFilter = Builders<FunctionApp>.Filter.And(
-                    identityFilter,
-                    Builders<FunctionApp>.Filter.Eq(current => current.PendingRevisionId, null),
-                    Builders<FunctionApp>.Filter.Eq(current => current.NextRevisionNumber, app.NextRevisionNumber));
-                var update = Builders<FunctionApp>.Update
-                    .Set(current => current.PendingRevisionId, candidate.Id)
-                    .Set(current => current.NextRevisionNumber, checked(app.NextRevisionNumber + 1))
-                    .Set(current => current.Status, app.ActiveRevisionId is null
-                        ? FunctionAppStatus.Provisioning
-                        : FunctionAppStatus.Updating)
-                    .Set(current => current.AdmittedQuota, admittedQuota)
-                    .Set(current => current.Tags, request.Body.Tags)
-                    .Set(current => current.UpdatedAtUtc, timeProvider.GetUtcNow());
-                var updateResult = await dbContext.FunctionApps.UpdateOneAsync(
-                    session,
-                    casFilter,
-                    update,
-                    cancellationToken: transactionCancellationToken);
-                if (updateResult.MatchedCount != 1)
-                    return Failures.Conflict("Function App revision changed concurrently.");
-
-                await dbContext.FunctionRevisions.InsertOneAsync(
-                    session,
-                    candidate,
-                    cancellationToken: transactionCancellationToken);
-                await dbContext.StoreEventAsync(
-                    candidate.ToRevisionCreatedEvent(),
-                    session,
-                    transactionCancellationToken);
-                return new UpdateFunctionAppResponse(app.Id, candidate.Id, candidate.RevisionNumber);
-            },
+            quotaError => new UpdateFunctionAppError(quotaError),
+            (transaction, ct) => PersistAsync(
+                transaction,
+                app,
+                candidate,
+                admittedQuota,
+                request.Body.Tags,
+                persistFunctionAppRevision,
+                timeProvider.GetUtcNow(),
+                ct),
             cancellationToken);
+    }
+
+    private static async Task<MongoTransactionDecision<UpdateFunctionAppOutcome>> PersistAsync(
+        MongoTransactionContext<UpdateFunctionAppOutcome> transaction,
+        FunctionApp current,
+        FunctionRevision candidate,
+        FunctionQuotaAllocation admittedQuota,
+        ImmutableHashSet<string> tags,
+        PersistFunctionAppRevision persistFunctionAppRevision,
+        DateTimeOffset updatedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var persisted = await persistFunctionAppRevision(
+            transaction.Session,
+            current,
+            candidate,
+            admittedQuota,
+            tags,
+            updatedAtUtc,
+            cancellationToken);
+        return persisted.Match(
+            revision => transaction.Commit(new UpdateFunctionAppResponse(
+                current.Id,
+                revision.Id,
+                revision.RevisionNumber)),
+            error => transaction.Abort(new UpdateFunctionAppError(error)));
     }
 }
 
@@ -153,7 +189,7 @@ public sealed class UpdateFunctionAppRequestValidator : AbstractValidator<Update
 {
     public UpdateFunctionAppRequestValidator()
     {
-        RuleFor(request => request.Id).NotEmpty();
+        RuleFor(request => request.Id).MongoObjectId("Function App ID");
         RuleFor(request => request.Body).NotNull().SetValidator(new UpdateFunctionAppRequestBodyValidator());
     }
 }
