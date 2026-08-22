@@ -23,7 +23,6 @@ open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.Shared.Models
 open Pole.Features.StorageProfiles.Contracts
 open Pole.Mediator
-open Pole.ResultType
 open Pole.Validation
 open Pole.Workloads
 
@@ -73,6 +72,207 @@ type CreatePostgresClusterRequest =
         interface ITenantCreateOperation with
             member this.TenantId = this.TenantId
 
+type private CreatePostgresClusterPlan =
+    { Cluster : PostgresCluster
+      Credential : PostgresCredential
+      DeploymentId : string
+      IsolationScopeId : string option
+      Target : ResolvedResourceDeploymentTarget
+      Compute : ResourceDeploymentComputeConfiguration
+      Storage : ResourceDeploymentStorageConfiguration
+      QuotaInput : PostgresQuotaInput }
+
+type private CreatePostgresClusterPreparation =
+    | Completed of CreatePostgresClusterOutcome
+    | ReadyToCreate of CreatePostgresClusterPlan
+
+[<RequireQualifiedAccess>]
+module private CreatePostgresClusterWorkflow =
+    let private placementIds (request : CreatePostgresClusterRequest) =
+        let value selector =
+            request.Body.Placement
+            |> Option.bind (fun placement ->
+                let value = selector placement
+                if String.IsNullOrWhiteSpace value then None else Some value)
+
+        value (fun placement -> placement.IsolationScopeId),
+        value (fun placement -> placement.DeploymentTargetId)
+
+    let private resolvedTarget (target : DeploymentTargetLookupDto) =
+        let ingress =
+            target.WorkloadConfiguration.Ingress
+            |> Option.ofObj
+            |> Option.map (fun value ->
+                ResourceDeploymentIngressConfiguration.Create(
+                    value.IngressClassName,
+                    value.ClusterIssuerName,
+                    value.PublicBaseDomain,
+                    null))
+
+        ResolvedResourceDeploymentTarget(
+            target.Id,
+            target.WorkloadConfiguration.Revision,
+            ingress |> Option.toObj)
+
+    let prepare
+        (admitDeploymentTarget : AdmitDeploymentTargetForNewWorkload)
+        (resolveComputeProfile : ResolveComputeProfile)
+        (resolveStorageProfile : ResolveStorageProfile)
+        (createCredential : CreatePostgresCredential)
+        (settings : PostgresSettings)
+        (request : CreatePostgresClusterRequest)
+        cancellationToken =
+        task {
+            let isolationScopeId, explicitDeploymentTargetId = placementIds request
+            let! targetResult =
+                admitDeploymentTarget.Invoke(
+                    DeploymentTargetAdmissionRequest(
+                        request.TenantId,
+                        PostgresResourceDeployment.ResourceType,
+                        isolationScopeId |> Option.toObj,
+                        explicitDeploymentTargetId |> Option.toObj,
+                        DeploymentTargetRequiredCapabilities.None),
+                    cancellationToken)
+
+            match TypedResultInterop.toResult targetResult with
+            | Error error ->
+                return Completed(CreatePostgresClusterRejected(CreateTarget error))
+            | Ok target ->
+                let! computeProfileResult =
+                    resolveComputeProfile.Invoke(
+                        ComputeProfileResolutionRequest(
+                            request.Body.ComputeProfileId |> Option.toObj,
+                            target.Id,
+                            request.TenantId,
+                            PostgresResourceDeployment.ResourceType),
+                        cancellationToken)
+
+                match TypedResultInterop.toResult computeProfileResult with
+                | Error error ->
+                    return Completed(CreatePostgresClusterRejected(CreateCompute error))
+                | Ok computeProfile
+                    when settings.DefaultDeploymentMode = PostgresDeploymentMode.Operator &&
+                         not (String.IsNullOrWhiteSpace computeProfile.RuntimeClassName) ->
+                    return
+                        Completed(
+                            CreatePostgresClusterRejected(
+                                CreateState(
+                                    PostgresClusterComputeRuntimeClassUnsupported target.Id)))
+                | Ok computeProfile ->
+                    let requestedStorage =
+                        defaultArg request.Body.Storage PostgresCluster.DefaultStorage
+                    let! storageProfileResult =
+                        resolveStorageProfile.Invoke(
+                            StorageProfileResolutionRequest(
+                                request.Body.StorageProfileId,
+                                target.Id,
+                                request.TenantId,
+                                ResourceType.Postgres,
+                                requestedStorage),
+                            cancellationToken)
+
+                    match TypedResultInterop.toResult storageProfileResult with
+                    | Error error ->
+                        return Completed(CreatePostgresClusterRejected(CreateStorage error))
+                    | Ok storageProfile ->
+                        let cluster =
+                            PostgresCluster.Create(
+                                request.TenantId,
+                                request.Body.Name,
+                                request.Body.GroupId,
+                                request.Body.Version,
+                                settings.DefaultDeploymentMode,
+                                request.Body.StorageProfileId,
+                                { Id = Some(ObjectId.GenerateNewId().ToString())
+                                  Instances =
+                                    defaultArg request.Body.Instances PostgresCluster.DefaultInstances
+                                  Storage = requestedStorage })
+                        let! credentialResult =
+                            createCredential.Invoke(
+                                cluster.TenantId,
+                                cluster.Id,
+                                request.Body.Username,
+                                request.Body.Password,
+                                cancellationToken)
+
+                        match credentialResult with
+                        | PostgresError error ->
+                            return
+                                Completed(
+                                    CreatePostgresClusterRejected(CreateCredential error))
+                        | PostgresSuccess credential ->
+                            let quotaInput =
+                                PostgresQuotaInput.create
+                                    computeProfile.Requests.CpuMillis
+                                    computeProfile.Requests.MemoryMi
+                                    (int64 cluster.Spec.Instances)
+
+                            return
+                                ReadyToCreate(
+                                    { Cluster = cluster
+                                      Credential = credential
+                                      DeploymentId = ObjectId.GenerateNewId().ToString()
+                                      IsolationScopeId = isolationScopeId
+                                      Target = resolvedTarget target
+                                      Compute =
+                                        PostgresResourceDeploymentMappings.compute computeProfile
+                                      Storage =
+                                        PostgresResourceDeploymentMappings.storage storageProfile
+                                      QuotaInput = quotaInput })
+        }
+
+    let execute
+        (quotaAdmissionExecutor : IQuotaAdmissionExecutor)
+        (persistCreatedCluster : PersistCreatedPostgresCluster)
+        (createResourceDeployment : CreateResourceDeployment)
+        (plan : CreatePostgresClusterPlan)
+        cancellationToken =
+        quotaAdmissionExecutor.ExecuteOutcomeAsync<
+            PostgresQuotaInput,
+            CreatePostgresClusterOutcome>(
+            plan.Cluster.TenantId,
+            PostgresQuotaResourceKey.create plan.Cluster.Id,
+            CreateQuotaMutation<PostgresQuotaInput>(plan.QuotaInput),
+            (fun error ->
+                CreatePostgresClusterRejected(CreateQuota error)),
+            (fun transaction ct ->
+                task {
+                    do!
+                        persistCreatedCluster.Invoke(
+                            transaction.Session,
+                            plan.Cluster,
+                            plan.Credential,
+                            ct)
+
+                    let! deploymentResult =
+                        createResourceDeployment.Invoke(
+                            CreateResourceDeploymentRequest(
+                                plan.DeploymentId,
+                                plan.Cluster.TenantId,
+                                PostgresResourceDeployment.ResourceType,
+                                plan.Cluster.Id,
+                                plan.Cluster.GroupId,
+                                plan.IsolationScopeId |> Option.toObj,
+                                plan.Target,
+                                plan.Compute,
+                                plan.Storage,
+                                ResourcePlacementCapability.SingleTarget),
+                            transaction.Session,
+                            ct)
+
+                    match TypedResultInterop.toResult deploymentResult with
+                    | Error error ->
+                        return
+                            transaction.Abort(
+                                CreatePostgresClusterRejected(CreateDeployment error))
+                    | Ok deployment ->
+                        return
+                            transaction.Commit(
+                                PostgresClusterDto.create plan.Cluster deployment
+                                |> PostgresClusterCreated)
+                }),
+            cancellationToken)
+
 type CreatePostgresClusterHandler(
     persistCreatedCluster : PersistCreatedPostgresCluster,
     resolveStorageProfile : ResolveStorageProfile,
@@ -86,172 +286,26 @@ type CreatePostgresClusterHandler(
     interface IMediatorOutcomeHandler<CreatePostgresClusterRequest, CreatePostgresClusterOutcome> with
         member _.HandleAsync(request, cancellationToken) =
             task {
-                let isolationScopeId =
-                    request.Body.Placement
-                    |> Option.bind (fun placement ->
-                        if String.IsNullOrWhiteSpace placement.IsolationScopeId then None
-                        else Some placement.IsolationScopeId)
-                let explicitDeploymentTargetId =
-                    request.Body.Placement
-                    |> Option.bind (fun placement ->
-                        if String.IsNullOrWhiteSpace placement.DeploymentTargetId then None
-                        else Some placement.DeploymentTargetId)
+                let! preparation =
+                    CreatePostgresClusterWorkflow.prepare
+                        admitDeploymentTarget
+                        resolveComputeProfile
+                        resolveStorageProfile
+                        createCredential
+                        settings
+                        request
+                        cancellationToken
 
-                let! targetResult =
-                    admitDeploymentTarget.Invoke(
-                        DeploymentTargetAdmissionRequest(
-                            request.TenantId,
-                            PostgresResourceDeployment.ResourceType,
-                            Option.toObj isolationScopeId,
-                            Option.toObj explicitDeploymentTargetId,
-                            DeploymentTargetRequiredCapabilities.None),
-                        cancellationToken)
-                let mutable target = Unchecked.defaultof<DeploymentTargetLookupDto>
-                let mutable targetError =
-                    Unchecked.defaultof<DeploymentTargetNewWorkloadAdmissionError>
-                if not (TypedResultExtensions.TryGetValue(targetResult, &target, &targetError)) then
-                    return CreatePostgresClusterRejected(CreateTarget targetError)
-                else
-                    let! computeProfileResult =
-                        resolveComputeProfile.Invoke(
-                            ComputeProfileResolutionRequest(
-                                Option.toObj request.Body.ComputeProfileId,
-                                target.Id,
-                                request.TenantId,
-                                PostgresResourceDeployment.ResourceType),
-                            cancellationToken)
-                    let mutable computeProfile = Unchecked.defaultof<ResolvedComputeProfile>
-                    let mutable computeProfileError =
-                        Unchecked.defaultof<ComputeProfileResolutionError>
-                    if not (TypedResultExtensions.TryGetValue(
-                        computeProfileResult,
-                        &computeProfile,
-                        &computeProfileError)) then
-                        return CreatePostgresClusterRejected(CreateCompute computeProfileError)
-                    elif settings.DefaultDeploymentMode = PostgresDeploymentMode.Operator &&
-                         not (String.IsNullOrWhiteSpace computeProfile.RuntimeClassName) then
-                        return
-                            CreatePostgresClusterRejected(
-                                CreateState(
-                                    PostgresClusterComputeRuntimeClassUnsupported target.Id))
-                    else
-                        let requestedStorage =
-                            defaultArg request.Body.Storage PostgresCluster.DefaultStorage
-                        let! storageProfileResult =
-                            resolveStorageProfile.Invoke(
-                                StorageProfileResolutionRequest(
-                                    request.Body.StorageProfileId,
-                                    target.Id,
-                                    request.TenantId,
-                                    ResourceType.Postgres,
-                                    requestedStorage),
-                                cancellationToken)
-                        let mutable storageProfile = Unchecked.defaultof<ResolvedStorageProfile>
-                        let mutable storageProfileError =
-                            Unchecked.defaultof<StorageProfileResolutionError>
-                        if not (TypedResultExtensions.TryGetValue(
-                            storageProfileResult,
-                            &storageProfile,
-                            &storageProfileError)) then
-                            return CreatePostgresClusterRejected(CreateStorage storageProfileError)
-                        else
-                            let cluster =
-                                PostgresCluster.Create(
-                                    request.TenantId,
-                                    request.Body.Name,
-                                    request.Body.GroupId,
-                                    request.Body.Version,
-                                    settings.DefaultDeploymentMode,
-                                    request.Body.StorageProfileId,
-                                    { Id = Some(ObjectId.GenerateNewId().ToString())
-                                      Instances =
-                                        defaultArg request.Body.Instances PostgresCluster.DefaultInstances
-                                      Storage = requestedStorage })
-                            let! credentialResult =
-                                createCredential.Invoke(
-                                    cluster.TenantId,
-                                    cluster.Id,
-                                    request.Body.Username,
-                                    request.Body.Password,
-                                    cancellationToken)
-                            match credentialResult with
-                            | PostgresError error ->
-                                return CreatePostgresClusterRejected(CreateCredential error)
-                            | PostgresSuccess credential ->
-                                let deploymentId = ObjectId.GenerateNewId().ToString()
-                                let quotaInput =
-                                    PostgresQuotaInput.create
-                                        computeProfile.Requests.CpuMillis
-                                        computeProfile.Requests.MemoryMi
-                                        (int64 cluster.Spec.Instances)
-                                let targetIngress = target.WorkloadConfiguration.Ingress
-                                let resolvedTarget =
-                                    ResolvedResourceDeploymentTarget(
-                                        target.Id,
-                                        target.WorkloadConfiguration.Revision,
-                                        if isNull targetIngress then null
-                                        else
-                                            ResourceDeploymentIngressConfiguration.Create(
-                                                targetIngress.IngressClassName,
-                                                targetIngress.ClusterIssuerName,
-                                                targetIngress.PublicBaseDomain,
-                                                null))
-                                return!
-                                    quotaAdmissionExecutor.ExecuteOutcomeAsync<
-                                        PostgresQuotaInput,
-                                        CreatePostgresClusterOutcome>(
-                                        cluster.TenantId,
-                                        PostgresQuotaResourceKey.create cluster.Id,
-                                        CreateQuotaMutation<PostgresQuotaInput>(quotaInput),
-                                        Func<QuotaExecutionError, CreatePostgresClusterOutcome>(
-                                            fun error ->
-                                                CreatePostgresClusterRejected(CreateQuota error)),
-                                        Func<
-                                            MongoTransactionContext<CreatePostgresClusterOutcome>,
-                                            Threading.CancellationToken,
-                                            Threading.Tasks.Task<MongoTransactionDecision<CreatePostgresClusterOutcome>>>(
-                                            fun transaction ct ->
-                                                task {
-                                                    do!
-                                                        persistCreatedCluster.Invoke(
-                                                            transaction.Session,
-                                                            cluster,
-                                                            credential,
-                                                            ct)
-                                                    let! deploymentResult =
-                                                        createResourceDeployment.Invoke(
-                                                            CreateResourceDeploymentRequest(
-                                                                deploymentId,
-                                                                cluster.TenantId,
-                                                                PostgresResourceDeployment.ResourceType,
-                                                                cluster.Id,
-                                                                cluster.GroupId,
-                                                                Option.toObj isolationScopeId,
-                                                                resolvedTarget,
-                                                                PostgresResourceDeploymentMappings.compute computeProfile,
-                                                                PostgresResourceDeploymentMappings.storage storageProfile,
-                                                                ResourcePlacementCapability.SingleTarget),
-                                                            transaction.Session,
-                                                            ct)
-                                                    let mutable deployment =
-                                                        Unchecked.defaultof<PlacementSummaryDto>
-                                                    let mutable deploymentError =
-                                                        Unchecked.defaultof<CreateResourceDeploymentError>
-                                                    if not (TypedResultExtensions.TryGetValue(
-                                                        deploymentResult,
-                                                        &deployment,
-                                                        &deploymentError)) then
-                                                        return
-                                                            transaction.Abort(
-                                                                CreatePostgresClusterRejected(
-                                                                    CreateDeployment deploymentError))
-                                                    else
-                                                        return
-                                                            transaction.Commit(
-                                                                PostgresClusterDto.create cluster deployment
-                                                                |> PostgresClusterCreated)
-                                                }),
-                                        cancellationToken)
+                match preparation with
+                | Completed outcome -> return outcome
+                | ReadyToCreate plan ->
+                    return!
+                        CreatePostgresClusterWorkflow.execute
+                            quotaAdmissionExecutor
+                            persistCreatedCluster
+                            createResourceDeployment
+                            plan
+                            cancellationToken
             }
 
 type CreatePostgresClusterValidator(settings : PostgresSettings) as this =
