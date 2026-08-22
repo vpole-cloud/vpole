@@ -17,7 +17,6 @@ open Pole.Features.Postgres.Application.Persistence.Credentials
 open Pole.Features.Postgres.Application.Persistence.Reads
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Mediator
-open Pole.ResultType
 open Pole.Validation
 
 type UpdatePostgresClusterPasswordRequestBody =
@@ -61,6 +60,149 @@ type UpdatePostgresClusterPasswordRequest =
     interface ITenantWriteOperation with
         member this.TenantId = this.TenantId
 
+type private UpdatePostgresClusterPasswordPlan =
+    { Cluster : PostgresCluster
+      Credential : PostgresCredential
+      ReplacementCredential : PostgresCredential
+      CurrentCompute : CurrentResourceDeploymentComputeDto }
+
+type private UpdatePostgresClusterPasswordPreparation =
+    | Completed of UpdatePostgresClusterPasswordOutcome
+    | ReadyToRotate of UpdatePostgresClusterPasswordPlan
+
+[<RequireQualifiedAccess>]
+module private UpdatePostgresClusterPasswordWorkflow =
+    let prepare
+        (loadCluster : LoadPostgresClusterById)
+        (loadCredential : LoadPostgresCredential)
+        (rotateCredential : RotatePostgresCredential)
+        (loadDeploymentCompute : LoadCurrentResourceDeploymentCompute)
+        (request : UpdatePostgresClusterPasswordRequest)
+        cancellationToken =
+        task {
+            let! cluster =
+                loadCluster.Invoke(
+                    request.TenantId,
+                    request.ClusterId,
+                    cancellationToken)
+
+            match cluster with
+            | None ->
+                return
+                    Completed(
+                        UpdatePostgresClusterPasswordRejected(
+                            PasswordState(
+                                PostgresClusterPasswordNotFound request.ClusterId)))
+            | Some cluster when (cluster.Lifecycle :? DeletingPostgresClusterLifecycle) ->
+                return
+                    Completed(
+                        UpdatePostgresClusterPasswordRejected(
+                            PasswordState(
+                                PostgresClusterPasswordRotationUnavailable cluster.Id)))
+            | Some cluster when cluster.Spec.DeploymentMode = PostgresDeploymentMode.StatefulSet ->
+                return
+                    Completed(
+                        UpdatePostgresClusterPasswordRejected(
+                            PasswordState(
+                                PostgresClusterPasswordRotationUnsupported cluster.Id)))
+            | Some cluster ->
+                let! currentComputeResult =
+                    loadDeploymentCompute.Invoke(
+                        cluster.TenantId,
+                        PostgresResourceDeployment.ResourceType,
+                        cluster.Id,
+                        cancellationToken)
+
+                match TypedResultInterop.toResult currentComputeResult with
+                | Error error ->
+                    return
+                        Completed(
+                            UpdatePostgresClusterPasswordRejected(
+                                PasswordCompute error))
+                | Ok currentCompute ->
+                    let! credential =
+                        loadCredential.Invoke(
+                            cluster.TenantId,
+                            cluster.Id,
+                            cancellationToken)
+
+                    match credential with
+                    | None ->
+                        return
+                            Completed(
+                                UpdatePostgresClusterPasswordRejected(
+                                    PasswordState(
+                                        PostgresClusterCredentialNotFound cluster.Id)))
+                    | Some credential ->
+                        let! rotated =
+                            rotateCredential.Invoke(
+                                credential,
+                                request.Body.Password,
+                                cancellationToken)
+
+                        match rotated with
+                        | PostgresError error ->
+                            return
+                                Completed(
+                                    UpdatePostgresClusterPasswordRejected(
+                                        PasswordCredential error))
+                        | PostgresSuccess replacement ->
+                            return
+                                ReadyToRotate(
+                                    { Cluster = cluster
+                                      Credential = credential
+                                      ReplacementCredential = replacement
+                                      CurrentCompute = currentCompute })
+        }
+
+    let execute
+        (runMongoTransaction : RunMongoOutcomeTransaction<UpdatePostgresClusterPasswordOutcome>)
+        (persistRotatedCredential : PersistRotatedPostgresCredential)
+        (requestDeploymentApply : RequestResourceDeploymentApply)
+        (plan : UpdatePostgresClusterPasswordPlan)
+        cancellationToken =
+        runMongoTransaction.Invoke(
+            (fun transaction ct ->
+                task {
+                    let! persisted =
+                        persistRotatedCredential.Invoke(
+                            transaction.Session,
+                            plan.Credential,
+                            plan.ReplacementCredential,
+                            ct)
+
+                    match persisted with
+                    | PostgresError error ->
+                        return
+                            transaction.Abort(
+                                UpdatePostgresClusterPasswordRejected(
+                                    PasswordCredential error))
+                    | PostgresSuccess () ->
+                        let! deploymentResult =
+                            requestDeploymentApply.Invoke(
+                                ResourceDeploymentMutationRequest(
+                                    plan.Cluster.TenantId,
+                                    PostgresResourceDeployment.ResourceType,
+                                    plan.Cluster.Id,
+                                    plan.CurrentCompute.Compute.Profile),
+                                transaction.Session,
+                                ct)
+
+                        match TypedResultInterop.toResult deploymentResult with
+                        | Error error ->
+                            return
+                                transaction.Abort(
+                                    UpdatePostgresClusterPasswordRejected(
+                                        PasswordDeployment error))
+                        | Ok deployment ->
+                            return
+                                transaction.Commit(
+                                    PostgresClusterPasswordUpdated(
+                                        { Id = plan.Cluster.Id
+                                          Placement = deployment }))
+                }),
+            cancellationToken)
+
 type UpdatePostgresClusterPasswordHandler(
     loadCluster : LoadPostgresClusterById,
     loadCredential : LoadPostgresCredential,
@@ -72,124 +214,25 @@ type UpdatePostgresClusterPasswordHandler(
     interface IMediatorOutcomeHandler<UpdatePostgresClusterPasswordRequest, UpdatePostgresClusterPasswordOutcome> with
         member _.HandleAsync(request, cancellationToken) =
             task {
-                let! cluster =
-                    loadCluster.Invoke(
-                        request.TenantId,
-                        request.ClusterId,
-                        cancellationToken)
+                let! preparation =
+                    UpdatePostgresClusterPasswordWorkflow.prepare
+                        loadCluster
+                        loadCredential
+                        rotateCredential
+                        loadDeploymentCompute
+                        request
+                        cancellationToken
 
-                match cluster with
-                | None ->
-                    return
-                        UpdatePostgresClusterPasswordRejected(
-                            PasswordState(
-                                PostgresClusterPasswordNotFound request.ClusterId))
-                | Some cluster when (cluster.Lifecycle :? DeletingPostgresClusterLifecycle) ->
-                    return
-                        UpdatePostgresClusterPasswordRejected(
-                            PasswordState(
-                                PostgresClusterPasswordRotationUnavailable cluster.Id))
-                | Some cluster when cluster.Spec.DeploymentMode = PostgresDeploymentMode.StatefulSet ->
-                    return
-                        UpdatePostgresClusterPasswordRejected(
-                            PasswordState(
-                                PostgresClusterPasswordRotationUnsupported cluster.Id))
-                | Some cluster ->
-                    let! currentComputeResult =
-                        loadDeploymentCompute.Invoke(
-                            cluster.TenantId,
-                            PostgresResourceDeployment.ResourceType,
-                            cluster.Id,
-                            cancellationToken)
-
-                    let mutable currentCompute = Unchecked.defaultof<CurrentResourceDeploymentComputeDto>
-                    let mutable currentComputeError =
-                        Unchecked.defaultof<LoadCurrentResourceDeploymentComputeError>
-                    if not (TypedResultExtensions.TryGetValue(
-                        currentComputeResult,
-                        &currentCompute,
-                        &currentComputeError)) then
-                        return
-                            UpdatePostgresClusterPasswordRejected(
-                                PasswordCompute currentComputeError)
-                    else
-                        let! credential =
-                            loadCredential.Invoke(
-                                cluster.TenantId,
-                                cluster.Id,
-                                cancellationToken)
-
-                        match credential with
-                        | None ->
-                            return
-                                UpdatePostgresClusterPasswordRejected(
-                                    PasswordState(
-                                        PostgresClusterCredentialNotFound cluster.Id))
-                        | Some credential ->
-                            let! rotated =
-                                rotateCredential.Invoke(
-                                    credential,
-                                    request.Body.Password,
-                                    cancellationToken)
-
-                            match rotated with
-                            | PostgresError error ->
-                                return
-                                    UpdatePostgresClusterPasswordRejected(
-                                        PasswordCredential error)
-                            | PostgresSuccess replacement ->
-                                return!
-                                    runMongoTransaction.Invoke(
-                                        Func<
-                                            MongoTransactionContext<UpdatePostgresClusterPasswordOutcome>,
-                                            Threading.CancellationToken,
-                                            Threading.Tasks.Task<MongoTransactionDecision<UpdatePostgresClusterPasswordOutcome>>>(
-                                            fun transaction ct ->
-                                                task {
-                                                    let! persisted =
-                                                        persistRotatedCredential.Invoke(
-                                                            transaction.Session,
-                                                            credential,
-                                                            replacement,
-                                                            ct)
-
-                                                    match persisted with
-                                                    | PostgresError error ->
-                                                        return
-                                                            transaction.Abort(
-                                                                UpdatePostgresClusterPasswordRejected(
-                                                                    PasswordCredential error))
-                                                    | PostgresSuccess () ->
-                                                        let! deploymentResult =
-                                                            requestDeploymentApply.Invoke(
-                                                                ResourceDeploymentMutationRequest(
-                                                                    cluster.TenantId,
-                                                                    PostgresResourceDeployment.ResourceType,
-                                                                    cluster.Id,
-                                                                    currentCompute.Compute.Profile),
-                                                                transaction.Session,
-                                                                ct)
-
-                                                        let mutable deployment =
-                                                            Unchecked.defaultof<PlacementSummaryDto>
-                                                        let mutable deploymentError =
-                                                            Unchecked.defaultof<ResourceDeploymentMutationError>
-                                                        if not (TypedResultExtensions.TryGetValue(
-                                                            deploymentResult,
-                                                            &deployment,
-                                                            &deploymentError)) then
-                                                            return
-                                                                transaction.Abort(
-                                                                    UpdatePostgresClusterPasswordRejected(
-                                                                        PasswordDeployment deploymentError))
-                                                        else
-                                                            return
-                                                                transaction.Commit(
-                                                                    PostgresClusterPasswordUpdated(
-                                                                        { Id = cluster.Id
-                                                                          Placement = deployment }))
-                                                }),
-                                        cancellationToken)
+                match preparation with
+                | Completed outcome -> return outcome
+                | ReadyToRotate plan ->
+                    return!
+                        UpdatePostgresClusterPasswordWorkflow.execute
+                            runMongoTransaction
+                            persistRotatedCredential
+                            requestDeploymentApply
+                            plan
+                            cancellationToken
             }
 
 type UpdatePostgresClusterPasswordRequestValidator() as this =
