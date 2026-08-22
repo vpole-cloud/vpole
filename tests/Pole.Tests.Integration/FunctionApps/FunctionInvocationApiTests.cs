@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Endpoints;
+using Pole.Features.Functions.Application.Persistence.Mutations;
 using Pole.Features.Functions.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
@@ -41,17 +42,29 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
 
         var hiddenHistory = await Mediator.Send(new GetFunctionInvocationsRequest(appId, 50, otherTenant));
         var hiddenRetry = await Mediator.Send(new RetryFunctionInvocationRequest(appId, failed.Id, otherTenant));
-        hiddenHistory.AssertFailure();
-        hiddenRetry.AssertFailure();
+        Assert.IsType<FunctionAppNotFound>(hiddenHistory.HandlerOutcome() switch
+        {
+            FunctionAppNotFound notFound => notFound,
+            _ => throw new InvalidOperationException("Expected a Function App not-found outcome.")
+        });
+        Assert.IsType<FunctionAppNotFound>(hiddenRetry.HandlerOutcome() switch
+        {
+            RetryFunctionInvocationError error => error switch
+            {
+                FunctionAppNotFound notFound => notFound,
+                _ => throw new InvalidOperationException("Expected a Function App not-found outcome.")
+            },
+            _ => throw new InvalidOperationException("Expected a Function App retry failure outcome.")
+        });
 
         var history = await Mediator.Send(new GetFunctionInvocationsRequest(appId, 50, TestData.TenantId));
-        Assert.True(history.TryGetValue(out var items, out var historyFailure), historyFailure?.Message);
+        var items = history.RequireSuccess();
         Assert.Equal(failed.Id, Assert.Single(items).Id);
         var retried = await Mediator.Send(new RetryFunctionInvocationRequest(
             appId,
             failed.Id,
             TestData.TenantId));
-        Assert.True(retried.TryGetValue(out var response, out var retryFailure), retryFailure?.Message);
+        var response = retried.RequireSuccess();
         Assert.Equal(2, response.NextAttemptNumber);
         var stored = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == failed.Id).SingleAsync();
         Assert.Equal(FunctionInvocationState.RetryScheduled, stored.State);
@@ -98,8 +111,15 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
             failed.Id,
             TestData.TenantId));
 
-        Assert.False(result.TryGetValue(out _, out var failure));
-        Assert.IsType<ConflictFailure>(failure);
+        Assert.IsType<FunctionInvocationConcurrencyForbidden>(result.HandlerOutcome() switch
+        {
+            RetryFunctionInvocationError error => error switch
+            {
+                FunctionInvocationConcurrencyForbidden conflict => conflict,
+                _ => throw new InvalidOperationException("Expected a Function invocation concurrency failure.")
+            },
+            _ => throw new InvalidOperationException("Expected a Function App retry failure outcome.")
+        });
         var stored = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == failed.Id).SingleAsync();
         Assert.Equal(FunctionInvocationState.Failed, stored.State);
     }
@@ -146,7 +166,7 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
             hour.AddHours(1),
             TestData.TenantId));
 
-        Assert.True(result.TryGetValue(out var usage, out var failure), failure?.Message);
+        var usage = result.RequireSuccess();
         Assert.Equal(hour.AddMinutes(5), usage.AggregatedThroughUtc);
         var returned = Assert.Single(usage.Buckets);
         Assert.Equal(3, returned.InvocationCount);
@@ -156,15 +176,14 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
     private async Task<(string AppId, string RevisionId, FunctionTimerState Timer)> CreatePromotedAppAsync()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var create = await Mediator.Send(new CreateFunctionAppRequest(
+        var created = (await Mediator.Send(new CreateFunctionAppRequest(
             new CreateFunctionAppRequestBody(
                 "timer-functions",
                 "timers",
                 group.Id,
                 RevisionRequest(),
                 []),
-            TestData.TenantId));
-        Assert.True(create.TryGetValue(out var created, out var failure), failure?.Message);
+            TestData.TenantId))).RequireSuccess();
         var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
         Assert.IsAssignableFrom<ISuccess>(await lifecycle.MarkReadyAsync(
             TestData.TenantId,

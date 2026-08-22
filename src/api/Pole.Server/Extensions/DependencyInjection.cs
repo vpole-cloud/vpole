@@ -23,18 +23,6 @@ using Pole.Features.Domains.Contracts.HttpMapping;
 using Pole.Features.GitProviders.Application.Analysis;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
-using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Runtime.Kubernetes;
-using Pole.Features.Functions.Runtime.Activation;
-using Pole.Features.Functions.Runtime.Agent;
-using Pole.Features.Functions.Runtime.Coordination;
-using Pole.Features.Functions.Runtime.Endpoints;
-using Pole.Features.Functions.Runtime.Gateway;
-using Pole.Features.Functions.Runtime.Security;
-using Pole.Features.Functions.Runtime.Provisioning;
-using Pole.Features.Functions.Runtime.Scaling;
-using Pole.Features.Functions.Runtime.Timers;
-using Pole.Features.Functions.Runtime.Metering;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
@@ -146,81 +134,6 @@ public static class DependencyInjection
         public IServiceCollection AddKubernetes(IConfiguration configuration)
         {
             services.TryAddSingleton(TimeProvider.System);
-            services.AddSingleton<IValidateOptions<FunctionGatewayOptions>, FunctionGatewayOptionsValidator>();
-            services.AddOptions<FunctionGatewayOptions>()
-                .Bind(configuration.GetSection(FunctionGatewayOptions.SectionName))
-                .ValidateOnStart();
-            services.AddSingleton(provider =>
-                provider.GetRequiredService<IOptions<FunctionGatewayOptions>>().Value);
-            services.AddSingleton<IValidateOptions<FunctionCoordinationOptions>, FunctionCoordinationOptionsValidator>();
-            services.AddOptions<FunctionCoordinationOptions>()
-                .Bind(configuration.GetSection(FunctionCoordinationOptions.SectionName))
-                .ValidateOnStart();
-            services.AddSingleton(provider =>
-                provider.GetRequiredService<IOptions<FunctionCoordinationOptions>>().Value);
-            services.AddSingleton<IValidateOptions<FunctionScalerOptions>, FunctionScalerOptionsValidator>();
-            services.AddOptions<FunctionScalerOptions>()
-                .Bind(configuration.GetSection(FunctionScalerOptions.SectionName))
-                .ValidateOnStart();
-            services.AddSingleton(provider =>
-                provider.GetRequiredService<IOptions<FunctionScalerOptions>>().Value);
-            services.AddSingleton<IValidateOptions<FunctionTimerOptions>, FunctionTimerOptionsValidator>();
-            services.AddOptions<FunctionTimerOptions>()
-                .Bind(configuration.GetSection(FunctionTimerOptions.SectionName))
-                .ValidateOnStart();
-            services.AddSingleton(provider =>
-                provider.GetRequiredService<IOptions<FunctionTimerOptions>>().Value);
-            var functionAgentTokenSection = configuration.GetSection(FunctionAgentTokenOptions.SectionName);
-            if (functionAgentTokenSection.Exists())
-            {
-                var tokenOptions = functionAgentTokenSection.Get<FunctionAgentTokenOptions>() ??
-                                   throw new InvalidOperationException("Function Agent token configuration is invalid.");
-                tokenOptions.Validate();
-                services.AddSingleton(tokenOptions);
-                services.AddSingleton<IFunctionAgentSigningKeyProvider, FileFunctionAgentSigningKeyProvider>();
-                services.AddSingleton<FunctionAgentTokenIssuer>();
-                services.AddSingleton<IFunctionAgentTokenIssuer>(provider =>
-                    provider.GetRequiredService<FunctionAgentTokenIssuer>());
-                services.AddSingleton<IFunctionAgentTrustBundleProvider>(provider =>
-                    provider.GetRequiredService<FunctionAgentTokenIssuer>());
-                services.AddHttpClient<IFunctionAgentClient, FunctionAgentClient>(client =>
-                    client.Timeout = Timeout.InfiniteTimeSpan)
-                    .ConfigurePrimaryHttpMessageHandler(static () => new SocketsHttpHandler
-                    {
-                        AllowAutoRedirect = false,
-                        ConnectTimeout = TimeSpan.FromSeconds(5)
-                    });
-                services.AddScoped<IFunctionRevisionProvisioner, FunctionRevisionProvisioner>();
-                services.TryAddSingleton<IFunctionEndpointSelector, FunctionEndpointSelector>();
-                services.TryAddSingleton<FunctionCoordinationClient>();
-                services.TryAddSingleton<IFunctionAdmissionCoordinator>(provider =>
-                    provider.GetRequiredService<FunctionCoordinationClient>());
-                services.TryAddSingleton<IFunctionTrafficCoordinator>(provider =>
-                    provider.GetRequiredService<FunctionCoordinationClient>());
-                services.TryAddSingleton<IFunctionActivationCoordinator>(provider =>
-                    provider.GetRequiredService<FunctionCoordinationClient>());
-                services.TryAddSingleton<IFunctionScalingCoordinator>(provider =>
-                    provider.GetRequiredService<FunctionCoordinationClient>());
-                services.TryAddSingleton<IFunctionPendingAdmissionLimiter, FunctionPendingAdmissionLimiter>();
-                services.TryAddSingleton<IFunctionPublicRateLimiter, FunctionPublicRateLimiter>();
-                services.TryAddSingleton<IFunctionMeterWriter, FunctionMeterWriter>();
-                services.TryAddSingleton<IFunctionHttpGateway, FunctionHttpGateway>();
-                services.TryAddSingleton<IFunctionScaleTargetSource, MongoFunctionScaleTargetSource>();
-                services.TryAddSingleton<IFunctionScaler, FunctionScaler>();
-                services.AddHostedService<FunctionScalerWorker>();
-                services.TryAddSingleton<IFunctionTimerScheduler, FunctionTimerScheduler>();
-                services.AddHostedService<FunctionTimerSchedulerWorker>();
-                services.TryAddSingleton<IFunctionInvocationDispatcher, FunctionInvocationDispatcher>();
-                services.AddHostedService<FunctionInvocationDispatcherWorker>();
-                services.TryAddSingleton<IFunctionUsageAggregator, FunctionUsageAggregator>();
-                services.AddHostedService<FunctionUsageAggregatorWorker>();
-            }
-            services.TryAddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
-            services.TryAddSingleton<IFunctionRevisionKubernetesManager, FunctionRevisionKubernetesManager>();
-            services.TryAddSingleton<IFunctionEndpointSliceSource, KubernetesFunctionEndpointSliceSource>();
-            services.TryAddSingleton<IFunctionEndpointRegistry, FunctionEndpointRegistry>();
-            services.TryAddSingleton<IFunctionRevisionActivator, FunctionRevisionActivator>();
-            services.AddHostedService<FunctionEndpointSliceWatcher>();
             return services;
         }
 
@@ -279,7 +192,6 @@ public static class DependencyInjection
             services.TryAddSingleton<IContainerRegistryDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IDeploymentTargetDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ISourceBuildDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddSingleton<IFunctionAppDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.AddHttpContextAccessor();
             services.AddResourceGroupHttpMappings();
             services.TryAddScoped<ResourceGroupLookup>();
@@ -297,8 +209,6 @@ public static class DependencyInjection
             services.TryAddSingleton<IRuntimeCellNamespaceNameGenerator, RuntimeCellNamespaceNameGenerator>();
             services.TryAddScoped<IRuntimeCellNamespaceManager, KubernetesRuntimeCellNamespaceManager>();
             services.TryAddScoped<RuntimeCellRecoveryJob>();
-            services.TryAddScoped<IFunctionRevisionLifecycleService, FunctionRevisionLifecycleService>();
-            services.TryAddSingleton<IFunctionRuntimeRouteResolver, FunctionRuntimeRouteResolver>();
             services.TryAddScoped<IStorageDiscoveryService, KubernetesStorageDiscoveryService>();
             services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
             return services;

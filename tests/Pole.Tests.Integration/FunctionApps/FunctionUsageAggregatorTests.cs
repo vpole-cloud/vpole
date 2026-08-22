@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
+using Pole.Features.Functions.Application.Persistence.Runtime.Metering;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Metering;
 using Pole.Features.Functions.Runtime.Timers;
@@ -39,18 +40,25 @@ public sealed class FunctionUsageAggregatorTests(MongoReplicaSetFixture fixture)
         await DbContext.FunctionMeterEvents.InsertManyAsync([admitted, started, completed]);
         var options = new FunctionTimerOptions { BatchSize = 10 };
         var time = new FixedTimeProvider(Now.AddSeconds(5));
+        LoadUnaggregatedFunctionMeterEvents loadUnaggregated = new MongoLoadUnaggregatedFunctionMeterEvents(
+            DbContext.FunctionMeterEvents).InvokeAsync;
+        AggregateFunctionMeterEvent aggregateMeter = new MongoAggregateFunctionMeterEvent(
+            Fixture.Client,
+            DbContext.FunctionMeterEvents,
+            DbContext.FunctionUsageBuckets,
+            time).InvokeAsync;
 
         await Task.WhenAll(
             new FunctionUsageAggregator(
-                    DbContext,
+                    loadUnaggregated,
+                    aggregateMeter,
                     options,
-                    time,
                     NullLogger<FunctionUsageAggregator>.Instance)
                 .RunOnceAsync(CancellationToken.None),
             new FunctionUsageAggregator(
-                    DbContext,
+                    loadUnaggregated,
+                    aggregateMeter,
                     options,
-                    time,
                     NullLogger<FunctionUsageAggregator>.Instance)
                 .RunOnceAsync(CancellationToken.None));
 
@@ -65,9 +73,9 @@ public sealed class FunctionUsageAggregatorTests(MongoReplicaSetFixture fixture)
             meter => meter.AggregatedAtUtc != null));
 
         await new FunctionUsageAggregator(
-                DbContext,
+                loadUnaggregated,
+                aggregateMeter,
                 options,
-                time,
                 NullLogger<FunctionUsageAggregator>.Instance)
             .RunOnceAsync(CancellationToken.None);
         var unchanged = await DbContext.FunctionUsageBuckets

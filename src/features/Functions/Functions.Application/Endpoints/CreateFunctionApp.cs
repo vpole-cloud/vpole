@@ -11,12 +11,15 @@ using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Persistence.Contracts;
+using Pole.Features.Functions.Application.Persistence.Mutations;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Functions.Protocol;
 using Pole.Mediator;
 using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.Functions.Application.Endpoints;
 
@@ -26,11 +29,16 @@ public static class CreateFunctionApp
     {
         app.MapPost("/", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] CreateFunctionAppRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(response => Results.Accepted(value: response));
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    CreateFunctionAppResponse response => Results.Accepted(value: response),
+                    CreateFunctionAppError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("CreateFunctionApp")
             .Produces<CreateFunctionAppResponse>(StatusCodes.Status202Accepted);
@@ -41,7 +49,7 @@ public static class CreateFunctionApp
 public sealed record CreateFunctionAppRequest(
     [FromBody] CreateFunctionAppRequestBody Body,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<CreateFunctionAppResponse>, ITenantCreateOperation;
+    : IMediatorRequest<CreateFunctionAppOutcome>, ITenantCreateOperation;
 
 public sealed record CreateFunctionAppRequestBody(
     string Name,
@@ -115,15 +123,25 @@ public sealed record CreateFunctionAppResponse(
     string RevisionId,
     int RevisionNumber);
 
+public union CreateFunctionAppError(
+    FunctionAppResourceGroupNotFound,
+    FunctionAppResourceGroupDeleting,
+    FunctionAppDefaultDeploymentTargetUnavailable,
+    QuotaExecutionError);
+
+public union CreateFunctionAppOutcome(
+    CreateFunctionAppResponse,
+    CreateFunctionAppError);
+
 public sealed class CreateFunctionAppHandler(
-    IFunctionAppDbContext dbContext,
-    IResourceGroupLookup resourceGroupLookup,
+    ResolveFunctionAppResourceGroupPlacement resolveResourceGroupPlacement,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     TimeProvider timeProvider,
-    IDeploymentTargetLookup deploymentTargetLookup)
-    : IMediatorHandler<CreateFunctionAppRequest, CreateFunctionAppResponse>
+    IDeploymentTargetLookup deploymentTargetLookup,
+    PersistCreatedFunctionApp persistCreatedFunctionApp)
+    : IMediatorOutcomeHandler<CreateFunctionAppRequest, CreateFunctionAppOutcome>
 {
-    public async Task<Result<CreateFunctionAppResponse>> HandleAsync(
+    public async Task<CreateFunctionAppOutcome> HandleAsync(
         CreateFunctionAppRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -131,14 +149,35 @@ public sealed class CreateFunctionAppHandler(
             deploymentTargetId: null,
             cancellationToken);
         if (!targetAdmission.TryGetValue(out _, out var targetAdmissionFailure))
-            return targetAdmissionFailure;
+        {
+            return targetAdmissionFailure switch
+            {
+                NotFoundFailure or ConflictFailure or SemanticValidationFailure =>
+                    new CreateFunctionAppError(
+                        new FunctionAppDefaultDeploymentTargetUnavailable()),
+                _ => throw new InvalidOperationException(
+                    "Default deployment target admission returned an unsupported failure.")
+            };
+        }
 
-        var placementResult = await resourceGroupLookup.GetPlacementAsync(
+        var placementResolution = await resolveResourceGroupPlacement(
             request.TenantId,
             request.Body.ResourceGroupId,
             cancellationToken);
-        if (!placementResult.TryGetValue(out var placement, out var placementFailure))
-            return placementFailure;
+        ResourceGroupPlacement placement;
+        switch (placementResolution)
+        {
+            case ResourceGroupPlacement value:
+                placement = value;
+                break;
+            case FunctionAppResourceGroupNotFound notFound:
+                return new CreateFunctionAppError(notFound);
+            case FunctionAppResourceGroupDeleting deleting:
+                return new CreateFunctionAppError(deleting);
+            default:
+                throw new InvalidOperationException(
+                    "Resource group placement resolution returned an unsupported outcome.");
+        }
 
         var created = FunctionAppFactory.Create(
             request.TenantId,
@@ -150,37 +189,35 @@ public sealed class CreateFunctionAppHandler(
             request.Body.Tags,
             timeProvider.GetUtcNow());
 
-        return await quotaAdmissionExecutor.ExecuteAsync<FunctionQuotaAllocation, CreateFunctionAppResponse>(
+        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
+            FunctionQuotaAllocation,
+            CreateFunctionAppOutcome>(
             request.TenantId,
             FunctionAppQuotaResourceKey.Create(created.FunctionApp.Id),
             new CreateQuotaMutation<FunctionQuotaAllocation>(created.FunctionApp.AdmittedQuota),
-            async (session, transactionCancellationToken) =>
-            {
-                await dbContext.FunctionRouteBindings.InsertOneAsync(
-                    session,
-                    created.RouteBinding,
-                    cancellationToken: transactionCancellationToken);
-                await dbContext.FunctionApps.InsertOneAsync(
-                    session,
-                    created.FunctionApp,
-                    cancellationToken: transactionCancellationToken);
-                await dbContext.FunctionRevisions.InsertOneAsync(
-                    session,
-                    created.Revision,
-                    cancellationToken: transactionCancellationToken);
-                await dbContext.StoreEventAsync(
-                    [
-                        created.FunctionApp.ToCreatedEvent(created.Revision),
-                        created.Revision.ToRevisionCreatedEvent()
-                    ],
-                    session,
-                    transactionCancellationToken);
-                return new CreateFunctionAppResponse(
-                    created.FunctionApp.Id,
-                    created.Revision.Id,
-                    created.Revision.RevisionNumber);
-            },
+            quotaError => new CreateFunctionAppError(quotaError),
+            (transaction, ct) => PersistAsync(
+                transaction,
+                created,
+                persistCreatedFunctionApp,
+                ct),
             cancellationToken);
+    }
+
+    private static async Task<MongoTransactionDecision<CreateFunctionAppOutcome>> PersistAsync(
+        MongoTransactionContext<CreateFunctionAppOutcome> transaction,
+        FunctionAppFactory.CreateResult created,
+        PersistCreatedFunctionApp persistCreatedFunctionApp,
+        CancellationToken cancellationToken)
+    {
+        await persistCreatedFunctionApp(
+            transaction.Session,
+            created,
+            cancellationToken);
+        return transaction.Commit(new CreateFunctionAppResponse(
+            created.FunctionApp.Id,
+            created.Revision.Id,
+            created.Revision.RevisionNumber));
     }
 }
 
@@ -206,7 +243,7 @@ public sealed class CreateFunctionAppRequestBodyValidator : AbstractValidator<Cr
             .Matches("^[a-z][a-z0-9-]{2,62}$")
             .Must(route => !ReservedRoutes.Contains(route))
             .WithMessage("Function route is reserved.");
-        RuleFor(body => body.ResourceGroupId).NotEmpty();
+        RuleFor(body => body.ResourceGroupId).NotEmpty().MongoObjectId("Resource group ID");
         RuleFor(body => body.Spec).NotNull().SetValidator(new FunctionRevisionSpecInputValidator());
         RuleFor(body => body.Tags).NotNull();
     }

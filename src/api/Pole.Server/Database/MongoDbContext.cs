@@ -5,7 +5,6 @@ using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
-using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Domain;
@@ -41,8 +40,7 @@ public class MongoDbContext(
     IGitProviderDbContext,
     IContainerRegistryDbContext,
     IDeploymentTargetDbContext,
-    ISourceBuildDbContext,
-    IFunctionAppDbContext
+    ISourceBuildDbContext
 {
     public IMongoDatabase Database { get; } = database;
     public IMongoClient Client { get; } = client;

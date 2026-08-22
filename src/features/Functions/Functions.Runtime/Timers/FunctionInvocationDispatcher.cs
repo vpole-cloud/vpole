@@ -3,8 +3,8 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Persistence.Runtime.Timers;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Activation;
 using Pole.Features.Functions.Runtime.Agent;
@@ -21,7 +21,10 @@ public interface IFunctionInvocationDispatcher
 }
 
 public sealed class FunctionInvocationDispatcher(
-    IFunctionAppDbContext dbContext,
+    LoadExpiredFunctionInvocations loadExpiredInvocations,
+    ClaimNextFunctionInvocation claimNextInvocation,
+    LoadFunctionInvocationDispatchSubject loadDispatchSubject,
+    PersistFunctionInvocationTransition persistTransition,
     IFunctionEndpointRegistry endpointRegistry,
     IFunctionEndpointSelector endpointSelector,
     IFunctionRevisionActivator activator,
@@ -51,13 +54,7 @@ public sealed class FunctionInvocationDispatcher(
     private async Task RecoverExpiredAttemptsAsync(CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
-        var expired = await dbContext.FunctionInvocations.Find(invocation =>
-                (invocation.State == FunctionInvocationState.Dispatching ||
-                 invocation.State == FunctionInvocationState.Running) &&
-                invocation.Lease != null &&
-                invocation.Lease.ExpiresAtUtc <= now)
-            .Limit(options.BatchSize)
-            .ToListAsync(cancellationToken);
+        var expired = await loadExpiredInvocations(now, options.BatchSize, cancellationToken);
         foreach (var invocation in expired)
         {
             var error = FunctionInvocationError.Create(
@@ -83,65 +80,16 @@ public sealed class FunctionInvocationDispatcher(
         }
     }
 
-    private async Task<FunctionInvocation?> ClaimNextAsync(CancellationToken cancellationToken)
-    {
-        for (var retry = 0; retry < 5; retry++)
-        {
-            var now = timeProvider.GetUtcNow();
-            var candidate = await dbContext.FunctionInvocations.Find(invocation =>
-                    (invocation.State == FunctionInvocationState.Pending &&
-                     (invocation.NextAttemptAtUtc == null || invocation.NextAttemptAtUtc <= now)) ||
-                    (invocation.State == FunctionInvocationState.RetryScheduled &&
-                     invocation.NextAttemptAtUtc <= now))
-                .SortBy(invocation => invocation.NextAttemptAtUtc)
-                .ThenBy(invocation => invocation.CreatedAtUtc)
-                .FirstOrDefaultAsync(cancellationToken);
-            if (candidate is null)
-                return null;
-
-            var leaseToken = Guid.NewGuid().ToString("N");
-            var leased = candidate.AcquireDispatchLease(
-                ownerId,
-                leaseToken,
-                now,
-                now.AddSeconds(options.DispatchLeaseSeconds));
-            var replaced = await dbContext.FunctionInvocations.ReplaceOneAsync(
-                invocation => invocation.Id == candidate.Id &&
-                              invocation.State == candidate.State &&
-                              invocation.AttemptNumber == candidate.AttemptNumber &&
-                              invocation.UpdatedAtUtc == candidate.UpdatedAtUtc &&
-                              invocation.Lease == null,
-                leased,
-                cancellationToken: cancellationToken);
-            if (replaced.ModifiedCount == 1)
-                return leased;
-        }
-
-        return null;
-    }
+    private Task<FunctionInvocation?> ClaimNextAsync(CancellationToken cancellationToken) =>
+        claimNextInvocation(ownerId, options.DispatchLeaseSeconds, cancellationToken);
 
     private async Task DispatchAsync(FunctionInvocation invocation, CancellationToken cancellationToken)
     {
         FunctionAdmissionLease? admissionLease = null;
         try
         {
-            var app = await dbContext.FunctionApps.Find(candidate =>
-                    candidate.TenantId == invocation.TenantId &&
-                    candidate.Id == invocation.FunctionAppId &&
-                    candidate.DesiredState == FunctionAppDesiredState.Enabled)
-                .FirstOrDefaultAsync(cancellationToken);
-            var revision = await dbContext.FunctionRevisions.Find(
-                    Builders<FunctionRevision>.Filter.And(
-                        Builders<FunctionRevision>.Filter.Eq(candidate => candidate.TenantId, invocation.TenantId),
-                        Builders<FunctionRevision>.Filter.Eq(candidate => candidate.FunctionAppId, invocation.FunctionAppId),
-                        Builders<FunctionRevision>.Filter.Eq(candidate => candidate.Id, invocation.RevisionId),
-                        Builders<FunctionRevision>.Filter.Or(
-                            Builders<FunctionRevision>.Filter
-                                .OfType<FunctionRevisionStatus, ActiveFunctionRevisionStatus>(candidate => candidate.Status),
-                            Builders<FunctionRevision>.Filter
-                                .OfType<FunctionRevisionStatus, DrainingFunctionRevisionStatus>(candidate => candidate.Status))))
-                .FirstOrDefaultAsync(cancellationToken);
-            if (app is null || revision is null)
+            var dispatchSubject = await loadDispatchSubject(invocation, cancellationToken);
+            if (dispatchSubject is null)
             {
                 await CompleteFailureAsync(
                     invocation,
@@ -152,6 +100,8 @@ public sealed class FunctionInvocationDispatcher(
                     cancellationToken);
                 return;
             }
+            var app = dispatchSubject.App;
+            var revision = dispatchSubject.Revision;
 
             var attemptId = CreateAttemptId(invocation.Id, invocation.AttemptNumber);
             var coordinationKey = new FunctionRevisionCoordinationKey(
@@ -740,29 +690,7 @@ public sealed class FunctionInvocationDispatcher(
         FunctionMeterEvent? meter,
         CancellationToken cancellationToken)
     {
-        using var session = await dbContext.Client.StartSessionAsync(cancellationToken: cancellationToken);
-        return await session.WithTransactionAsync(async (transaction, transactionCancellationToken) =>
-        {
-            var replaced = await dbContext.FunctionInvocations.ReplaceOneAsync(
-                transaction,
-                invocation => invocation.Id == current.Id &&
-                              invocation.State == current.State &&
-                              invocation.AttemptNumber == current.AttemptNumber &&
-                              invocation.Lease != null &&
-                              invocation.Lease.Token == current.Lease!.Token,
-                next,
-                cancellationToken: transactionCancellationToken);
-            if (replaced.ModifiedCount != 1)
-                return false;
-            if (meter is not null)
-            {
-                await dbContext.FunctionMeterEvents.InsertOneAsync(
-                    transaction,
-                    meter,
-                    cancellationToken: transactionCancellationToken);
-            }
-            return true;
-        }, cancellationToken: cancellationToken);
+        return await persistTransition(current, next, meter, cancellationToken);
     }
 
     private static int RetryDelaySeconds(FunctionInvocation invocation)

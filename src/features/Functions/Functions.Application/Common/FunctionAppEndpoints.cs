@@ -19,7 +19,9 @@ public static class FunctionAppEndpoints
             .MapGetFunctionAppByIdEndpoint()
             .MapGetFunctionAppsEndpoint()
             .MapGetFunctionRevisionsEndpoint()
-            .MapFunctionInvocationEndpoints();
+            .MapGetFunctionInvocationsEndpoint()
+            .MapRetryFunctionInvocationEndpoint()
+            .MapGetFunctionUsageEndpoint();
         return app;
     }
 }

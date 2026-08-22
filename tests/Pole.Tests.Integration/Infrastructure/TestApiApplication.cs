@@ -30,6 +30,7 @@ using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application;
@@ -163,6 +164,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
         builder.Services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
         builder.Services.AddMongoDbContextInterfaces();
+        builder.Services.AddFunctionAppsFeature();
         builder.Services.AddResourceDeploymentsFeature(builder.Configuration);
         builder.Services.AddHttpProblemMappings(
             ResourceDeploymentContractHttpMappings.All);

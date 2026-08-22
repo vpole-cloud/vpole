@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Persistence.Runtime.Gateway;
 using Pole.Features.Functions.Application.Endpoints;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Gateway;
@@ -14,6 +15,29 @@ namespace Pole.Tests.Integration.FunctionApps;
 public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
+    [Fact]
+    public async Task Create_maps_resource_group_contract_not_found_to_function_outcome()
+    {
+        var result = await Mediator.Send(new CreateFunctionAppRequest(
+            new CreateFunctionAppRequestBody(
+                "missing-group-functions",
+                "missing-group-functions",
+                "507f1f77bcf86cd799439013",
+                RevisionRequest("*/5 * * * *"),
+                []),
+            TestData.TenantId));
+
+        Assert.IsType<FunctionAppResourceGroupNotFound>(result.HandlerOutcome() switch
+        {
+            CreateFunctionAppError error => error switch
+            {
+                FunctionAppResourceGroupNotFound notFound => notFound,
+                _ => throw new InvalidOperationException("Expected a Resource Group not-found outcome.")
+            },
+            _ => throw new InvalidOperationException("Expected a Function App creation failure outcome.")
+        });
+    }
+
     [Fact]
     public async Task Promotion_requires_and_preserves_a_durable_ready_boundary()
     {
@@ -104,12 +128,10 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
                 new FunctionResourceValues(200, 256),
                 new FunctionResourceValues(500, 512))
         };
-        var update = await Mediator.Send(new UpdateFunctionAppRequest(
+        var response = (await Mediator.Send(new UpdateFunctionAppRequest(
             created.FunctionAppId,
             new UpdateFunctionAppRequestBody(updatedSpec, ["updated"]),
-            TestData.TenantId));
-
-        Assert.True(update.TryGetValue(out var response, out var error), error?.Message);
+            TestData.TenantId))).RequireSuccess();
         Assert.Equal(2, response.RevisionNumber);
         var candidate = await DbContext.FunctionRevisions
             .Find(revision => revision.Id == response.RevisionId)
@@ -172,11 +194,10 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             .Find(timer => timer.FunctionAppId == created.FunctionAppId)
             .SingleAsync();
 
-        var update = await Mediator.Send(new UpdateFunctionAppRequest(
+        var candidate = (await Mediator.Send(new UpdateFunctionAppRequest(
             created.FunctionAppId,
             new UpdateFunctionAppRequestBody(RevisionRequest("*/5 * * * *", "v2"), []),
-            TestData.TenantId));
-        Assert.True(update.TryGetValue(out var candidate, out var failure), failure?.Message);
+            TestData.TenantId))).RequireSuccess();
         Assert.IsAssignableFrom<ISuccess>(await MarkReadyAndPromoteAsync(
             lifecycle,
             TestData.TenantId,
@@ -203,11 +224,10 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             created.FunctionAppId,
             created.RevisionId));
 
-        var update = await Mediator.Send(new UpdateFunctionAppRequest(
+        var candidate = (await Mediator.Send(new UpdateFunctionAppRequest(
             created.FunctionAppId,
             new UpdateFunctionAppRequestBody(RevisionRequest("*/10 * * * *", "v2"), []),
-            TestData.TenantId));
-        Assert.True(update.TryGetValue(out var candidate, out var failure), failure?.Message);
+            TestData.TenantId))).RequireSuccess();
         Assert.IsAssignableFrom<ISuccess>(await MarkReadyAndPromoteAsync(
             lifecycle,
             TestData.TenantId,
@@ -245,11 +265,10 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             .Find(timer => timer.FunctionAppId == created.FunctionAppId)
             .SingleAsync();
 
-        var update = await Mediator.Send(new UpdateFunctionAppRequest(
+        var candidate = (await Mediator.Send(new UpdateFunctionAppRequest(
             created.FunctionAppId,
             new UpdateFunctionAppRequestBody(RevisionRequest("*/10 * * * *", "v2"), []),
-            TestData.TenantId));
-        Assert.True(update.TryGetValue(out var candidate, out var failure), failure?.Message);
+            TestData.TenantId))).RequireSuccess();
         Assert.IsAssignableFrom<ISuccess>(await MarkReadyAndPromoteAsync(
             lifecycle,
             TestData.TenantId,
@@ -291,7 +310,11 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId));
-        var resolver = new FunctionRuntimeRouteResolver(DbContext);
+        var resolver = new FunctionRuntimeRouteResolver(
+            new MongoLoadFunctionRuntimeRouteTarget(
+                DbContext.FunctionApps,
+                DbContext.FunctionRevisions,
+                DbContext.FunctionRouteBindings).InvokeAsync);
 
         var resolved = await resolver.ResolveAsync(
             "ORDERS",
@@ -322,14 +345,13 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             created.FunctionAppId,
             created.RevisionId));
 
-        var update = await Mediator.Send(new UpdateFunctionAppRequest(
+        var candidate = (await Mediator.Send(new UpdateFunctionAppRequest(
             created.FunctionAppId,
             new UpdateFunctionAppRequestBody(RevisionRequest("*/5 * * * *") with
             {
                 Scaling = new FunctionScalingPolicy(0, 9, 4, 8, 60, 30)
             }, []),
-            TestData.TenantId));
-        Assert.True(update.TryGetValue(out var candidate, out var updateFailure), updateFailure?.Message);
+            TestData.TenantId))).RequireSuccess();
 
         Assert.IsAssignableFrom<ISuccess>(await lifecycle.MarkReadyAsync(
             TestData.TenantId,
@@ -371,8 +393,20 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             created.FunctionAppId,
             "507f1f77bcf86cd799439012"));
 
-        get.AssertFailure();
-        delete.AssertFailure();
+        Assert.IsType<FunctionAppNotFound>(get.HandlerOutcome() switch
+        {
+            FunctionAppNotFound notFound => notFound,
+            _ => throw new InvalidOperationException("Expected a Function App not-found outcome.")
+        });
+        Assert.IsType<FunctionAppNotFound>(delete.HandlerOutcome() switch
+        {
+            DeleteFunctionAppError error => error switch
+            {
+                FunctionAppNotFound notFound => notFound,
+                _ => throw new InvalidOperationException("Expected a Function App not-found outcome.")
+            },
+            _ => throw new InvalidOperationException("Expected a Function App deletion failure outcome.")
+        });
         var app = await DbContext.FunctionApps.Find(value => value.Id == created.FunctionAppId).SingleAsync();
         Assert.Equal(FunctionAppDesiredState.Enabled, app.DesiredState);
     }
@@ -390,9 +424,9 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             created.RevisionId));
         var before = await DbContext.FunctionApps.Find(value => value.Id == created.FunctionAppId).SingleAsync();
 
-        var result = await Mediator.Send(new DeleteFunctionAppRequest(created.FunctionAppId, TestData.TenantId));
-
-        Assert.True(result.TryGetValue(out _, out var failure), failure?.Message);
+        (await Mediator.Send(new DeleteFunctionAppRequest(
+            created.FunctionAppId,
+            TestData.TenantId))).RequireSuccess();
         var app = await DbContext.FunctionApps.Find(value => value.Id == created.FunctionAppId).SingleAsync();
         var route = await DbContext.FunctionRouteBindings
             .Find(value => value.FunctionAppId == created.FunctionAppId)
@@ -422,15 +456,14 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
 
     private async Task<CreateFunctionAppResponse> CreateAsync(string resourceGroupId)
     {
-        var result = await Mediator.Send(new CreateFunctionAppRequest(
+        var response = (await Mediator.Send(new CreateFunctionAppRequest(
             new CreateFunctionAppRequestBody(
                 "order-functions",
                 "orders",
                 resourceGroupId,
                 RevisionRequest("*/5 * * * *"),
                 []),
-            TestData.TenantId));
-        Assert.True(result.TryGetValue(out var response, out var failure), failure?.Message);
+            TestData.TenantId))).RequireSuccess();
         return response;
     }
 

@@ -1,15 +1,14 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Domain;
+using Pole.Features.Functions.Application.Persistence.Reads;
 using Pole.Mediator;
-using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.Functions.Application.Endpoints;
 
@@ -19,11 +18,16 @@ public static class GetFunctionRevisions
     {
         app.MapGet("/{Id}/revisions", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] GetFunctionRevisionsRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    IReadOnlyList<FunctionRevisionDto> revisions => Results.Ok(revisions),
+                    FunctionAppNotFound notFound => httpProblems.Map(notFound).ToHttpResult()
+                });
             })
             .WithName("GetFunctionRevisions")
             .Produces<IReadOnlyList<FunctionRevisionDto>>();
@@ -34,28 +38,36 @@ public static class GetFunctionRevisions
 public sealed record GetFunctionRevisionsRequest(
     [FromRoute] string Id,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<IReadOnlyList<FunctionRevisionDto>>, ITenantReadOperation;
+    : IMediatorRequest<GetFunctionRevisionsOutcome>, ITenantReadOperation;
 
-public sealed class GetFunctionRevisionsHandler(IFunctionAppDbContext dbContext)
-    : IMediatorHandler<GetFunctionRevisionsRequest, IReadOnlyList<FunctionRevisionDto>>
+public union GetFunctionRevisionsOutcome(
+    IReadOnlyList<FunctionRevisionDto>,
+    FunctionAppNotFound);
+
+public sealed class GetFunctionRevisionsHandler(
+    LoadFunctionAppById loadFunctionAppById,
+    LoadFunctionAppRevisions loadFunctionAppRevisions)
+    : IMediatorOutcomeHandler<GetFunctionRevisionsRequest, GetFunctionRevisionsOutcome>
 {
-    public async Task<Result<IReadOnlyList<FunctionRevisionDto>>> HandleAsync(
+    public async Task<GetFunctionRevisionsOutcome> HandleAsync(
         GetFunctionRevisionsRequest request,
         CancellationToken cancellationToken = default)
     {
-        var appFilter = Builders<FunctionApp>.Filter.And(
-            Builders<FunctionApp>.Filter.ForTenant(request.TenantId),
-            Builders<FunctionApp>.Filter.Eq(app => app.Id, request.Id));
-        var functionApp = await dbContext.FunctionApps.Find(appFilter).FirstOrDefaultAsync(cancellationToken);
+        var functionApp = await loadFunctionAppById(
+            request.TenantId,
+            request.Id,
+            cancellationToken);
         if (functionApp is null)
-            return Failures.NotFound("Function App not found.", request.Id);
+            return new FunctionAppNotFound(request.Id);
 
-        var revisions = await dbContext.FunctionRevisions
-            .Find(Builders<FunctionRevision>.Filter.And(
-                Builders<FunctionRevision>.Filter.Eq(revision => revision.TenantId, functionApp.TenantId),
-                Builders<FunctionRevision>.Filter.Eq(revision => revision.FunctionAppId, functionApp.Id)))
-            .SortByDescending(revision => revision.RevisionNumber)
-            .ToListAsync(cancellationToken);
+        var revisions = await loadFunctionAppRevisions(functionApp, cancellationToken);
         return revisions.Select(revision => revision.ToDto()).ToArray();
     }
+}
+
+public sealed class GetFunctionRevisionsRequestValidator
+    : AbstractValidator<GetFunctionRevisionsRequest>
+{
+    public GetFunctionRevisionsRequestValidator() =>
+        RuleFor(request => request.Id).MongoObjectId("Function App ID");
 }
