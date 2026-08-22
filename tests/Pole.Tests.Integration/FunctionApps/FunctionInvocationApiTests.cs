@@ -185,14 +185,14 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
                 []),
             TestData.TenantId))).RequireSuccess();
         var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
-        Assert.IsAssignableFrom<ISuccess>(await lifecycle.MarkReadyAsync(
+        (await lifecycle.MarkReadyAsync(
             TestData.TenantId,
             created.FunctionAppId,
-            created.RevisionId));
-        Assert.IsAssignableFrom<ISuccess>(await lifecycle.PromoteAsync(
+            created.RevisionId)).RequireLifecycleSuccess();
+        (await lifecycle.PromoteAsync(
             TestData.TenantId,
             created.FunctionAppId,
-            created.RevisionId));
+            created.RevisionId)).RequireLifecycleSuccess();
         var timer = await DbContext.FunctionTimerStates
             .Find(candidate => candidate.FunctionAppId == created.FunctionAppId)
             .SingleAsync();

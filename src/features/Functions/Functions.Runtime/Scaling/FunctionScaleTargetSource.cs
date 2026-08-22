@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Runtime.Scaling;
 using Pole.Features.Functions.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.Functions.Runtime.Scaling;
 
@@ -15,7 +14,9 @@ public sealed record FunctionScaleTarget(
 public interface IFunctionScaleTargetSource
 {
     Task<IReadOnlyList<FunctionScaleTarget>> ListAsync(CancellationToken cancellationToken);
-    Task<Result> MarkRetiredAsync(FunctionScaleTarget target, CancellationToken cancellationToken);
+    Task<FunctionRevisionLifecycleOutcome> MarkRetiredAsync(
+        FunctionScaleTarget target,
+        CancellationToken cancellationToken);
 }
 
 public sealed class MongoFunctionScaleTargetSource(
@@ -36,7 +37,7 @@ public sealed class MongoFunctionScaleTargetSource(
             subject.DurableDemandByHandler)).ToArray();
     }
 
-    public async Task<Result> MarkRetiredAsync(
+    public async Task<FunctionRevisionLifecycleOutcome> MarkRetiredAsync(
         FunctionScaleTarget target,
         CancellationToken cancellationToken)
     {

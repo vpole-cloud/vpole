@@ -4,32 +4,31 @@ using Pole.Database;
 using Pole.Features.Functions.Application.Persistence.Lifecycle;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.Functions.Application.Common;
 
 public interface IFunctionRevisionLifecycleService
 {
-    Task<Result> MarkReadyAsync(
+    Task<FunctionRevisionLifecycleOutcome> MarkReadyAsync(
         string tenantId,
         string functionAppId,
         string revisionId,
         CancellationToken cancellationToken = default);
 
-    Task<Result> PromoteAsync(
+    Task<FunctionRevisionLifecycleOutcome> PromoteAsync(
         string tenantId,
         string functionAppId,
         string revisionId,
         CancellationToken cancellationToken = default);
 
-    Task<Result> FailAsync(
+    Task<FunctionRevisionLifecycleOutcome> FailAsync(
         string tenantId,
         string functionAppId,
         string revisionId,
         FunctionRevisionFailure failure,
         CancellationToken cancellationToken = default);
 
-    Task<Result> RetireAsync(
+    Task<FunctionRevisionLifecycleOutcome> RetireAsync(
         string tenantId,
         string functionAppId,
         string revisionId,
@@ -43,27 +42,38 @@ public sealed class FunctionRevisionLifecycleService(
     IMongoCollection<FunctionTimerState> functionTimerStates,
     IMongoCollection<FunctionInvocation> functionInvocations,
     StoreOutboxWrites storeOutboxWrites,
-    RunMongoTransaction runMongoTransaction,
+    RunMongoOutcomeTransaction<FunctionRevisionLifecycleOutcome> runMongoTransaction,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     TimeProvider timeProvider) : IFunctionRevisionLifecycleService
 {
-    public async Task<Result> MarkReadyAsync(
+    public async Task<FunctionRevisionLifecycleOutcome> MarkReadyAsync(
         string tenantId,
         string functionAppId,
         string revisionId,
         CancellationToken cancellationToken = default)
     {
         var loaded = await LoadStateAsync(tenantId, functionAppId, revisionId, cancellationToken);
-        if (!loaded.TryGetValue(out var state, out var failure))
-            return failure;
+        PendingRevisionState state;
+        switch (loaded)
+        {
+            case PendingRevisionState value:
+                state = value;
+                break;
+            case FunctionAppNotFound error:
+                return error;
+            case FunctionRevisionNotFound error:
+                return error;
+            default:
+                throw new InvalidOperationException("Unsupported Function revision lifecycle state.");
+        }
         if (state.Revision.Status is ReadyFunctionRevisionStatus)
-            return Result.Success();
+            return Success();
         if (state.Revision.Status is not ProvisioningFunctionRevisionStatus)
-            return Failures.Conflict("Only a provisioning Function revision can become ready.");
+            return new FunctionRevisionNotProvisioning(revisionId);
         if (state.App.PendingRevisionId != revisionId)
-            return Failures.Conflict("Function revision is not pending for this app.");
+            return new FunctionRevisionNotPending(functionAppId, revisionId);
         if (state.App.DesiredState != FunctionAppDesiredState.Enabled)
-            return Failures.Conflict("Function App is not enabled.");
+            return new FunctionAppIsNotEnabled(functionAppId);
 
         var ready = state.Revision.MarkReady(timeProvider.GetUtcNow());
         var update = await functionRevisions.UpdateOneAsync(
@@ -74,7 +84,7 @@ public sealed class FunctionRevisionLifecycleService(
             Builders<FunctionRevision>.Update.Set(revision => revision.Status, ready.Status),
             cancellationToken: cancellationToken);
         if (update.MatchedCount == 1)
-            return Result.Success();
+            return Success();
 
         var current = await functionRevisions.Find(
                 FunctionRevisionLifecycleFilters.RevisionByOwner(
@@ -83,43 +93,57 @@ public sealed class FunctionRevisionLifecycleService(
                     revisionId))
             .FirstOrDefaultAsync(cancellationToken);
         return current?.Status is ReadyFunctionRevisionStatus or ActiveFunctionRevisionStatus
-            ? Result.Success()
-            : Failures.Conflict("Function revision status changed concurrently.");
+            ? Success()
+            : new FunctionRevisionConcurrencyConflict(functionAppId, revisionId);
     }
 
-    public async Task<Result> PromoteAsync(
+    public async Task<FunctionRevisionLifecycleOutcome> PromoteAsync(
         string tenantId,
         string functionAppId,
         string revisionId,
         CancellationToken cancellationToken = default)
     {
         var loaded = await LoadStateAsync(tenantId, functionAppId, revisionId, cancellationToken);
-        if (!loaded.TryGetValue(out var state, out var failure))
-            return failure;
+        PendingRevisionState state;
+        switch (loaded)
+        {
+            case PendingRevisionState value:
+                state = value;
+                break;
+            case FunctionAppNotFound error:
+                return error;
+            case FunctionRevisionNotFound error:
+                return error;
+            default:
+                throw new InvalidOperationException("Unsupported Function revision lifecycle state.");
+        }
         if (state.App.ActiveRevisionId == revisionId &&
             state.App.PendingRevisionId is null &&
             state.Revision.Status is ActiveFunctionRevisionStatus)
-            return Result.Success();
+            return Success();
         if (state.App.PendingRevisionId != revisionId)
-            return Failures.Conflict("Function revision is not pending for this app.");
+            return new FunctionRevisionNotPending(functionAppId, revisionId);
         if (state.App.DesiredState != FunctionAppDesiredState.Enabled)
-            return Failures.Conflict("Function App is not enabled.");
+            return new FunctionAppIsNotEnabled(functionAppId);
         if (state.Revision.Status is not ReadyFunctionRevisionStatus)
-            return Failures.Conflict("Function revision is not ready for promotion.");
+            return new FunctionRevisionNotReady(revisionId);
 
         var targetAllocation = FunctionQuotaAllocation.FromRevision(state.Revision.Spec);
-        var promotion = await quotaAdmissionExecutor.ExecuteAsync<FunctionQuotaAllocation, bool>(
+        var promotion = await quotaAdmissionExecutor.ExecuteOutcomeAsync<
+            FunctionQuotaAllocation,
+            FunctionRevisionLifecycleOutcome>(
             tenantId,
             FunctionAppQuotaResourceKey.Create(functionAppId),
             new UpdateQuotaMutation<FunctionQuotaAllocation>(state.App.AdmittedQuota, targetAllocation),
-            async (session, transactionCancellationToken) =>
+            quotaError => quotaError,
+            async (transaction, transactionCancellationToken) =>
             {
                 var now = timeProvider.GetUtcNow();
                 if (state.App.ActiveRevisionId is not null)
                 {
                     var drainingRevision = state.ActiveRevision!.Drain();
                     var previousUpdate = await functionRevisions.UpdateOneAsync(
-                        session,
+                        transaction.Session,
                         FunctionRevisionLifecycleFilters.RevisionInStatus<ActiveFunctionRevisionStatus>(
                             tenantId,
                             functionAppId,
@@ -128,14 +152,18 @@ public sealed class FunctionRevisionLifecycleService(
                             .Set(revision => revision.Status, drainingRevision.Status),
                         cancellationToken: transactionCancellationToken);
                     if (previousUpdate.MatchedCount != 1)
-                        return Failures.Conflict("The active Function revision state changed concurrently.");
+                    {
+                        return transaction.Abort(new FunctionRevisionConcurrencyConflict(
+                            functionAppId,
+                            state.App.ActiveRevisionId));
+                    }
                 }
 
                 // Retire the old active revision first. The partial unique index permits only
                 // one Active revision per app, including inside a Mongo transaction.
                 var activeRevision = state.Revision.Activate();
                 var revisionUpdate = await functionRevisions.UpdateOneAsync(
-                    session,
+                    transaction.Session,
                     FunctionRevisionLifecycleFilters.RevisionInStatus<ReadyFunctionRevisionStatus>(
                         tenantId,
                         functionAppId,
@@ -144,10 +172,14 @@ public sealed class FunctionRevisionLifecycleService(
                         .Set(revision => revision.Status, activeRevision.Status),
                     cancellationToken: transactionCancellationToken);
                 if (revisionUpdate.MatchedCount != 1)
-                    return Failures.Conflict("Function revision state changed concurrently.");
+                {
+                    return transaction.Abort(new FunctionRevisionConcurrencyConflict(
+                        functionAppId,
+                        revisionId));
+                }
 
                 var appUpdate = await functionApps.UpdateOneAsync(
-                    session,
+                    transaction.Session,
                     FunctionRevisionLifecycleFilters.PendingEnabledApp(
                         tenantId,
                         functionAppId,
@@ -160,10 +192,12 @@ public sealed class FunctionRevisionLifecycleService(
                         .Set(app => app.UpdatedAtUtc, now),
                     cancellationToken: transactionCancellationToken);
                 if (appUpdate.MatchedCount != 1)
-                    return Failures.Conflict("Function App state changed concurrently.");
+                {
+                    return transaction.Abort(new FunctionAppConcurrencyConflict(functionAppId));
+                }
 
                 var routeUpdate = await functionRouteBindings.UpdateOneAsync(
-                    session,
+                    transaction.Session,
                     FunctionRevisionLifecycleFilters.AvailableRoute(state.App),
                     Builders<FunctionRouteBinding>.Update
                         .Set(route => route.HttpRoutes, CreateHttpRoutes(state.Revision))
@@ -173,39 +207,41 @@ public sealed class FunctionRevisionLifecycleService(
                         .Set(route => route.UpdatedAtUtc, now),
                     cancellationToken: transactionCancellationToken);
                 if (routeUpdate.MatchedCount != 1)
-                    return Failures.Conflict("Function route binding is unavailable.");
+                {
+                    return transaction.Abort(new FunctionRouteBindingUnavailable(functionAppId));
+                }
 
                 await ReconcileTimersAsync(
-                    session,
+                    transaction.Session,
                     state.App,
                     state.Revision,
                     now,
                     transactionCancellationToken);
 
                 await storeOutboxWrites(
-                    session,
+                    transaction.Session,
                     [OutboxWrite.Create(
                         state.Revision.ToPromotedEvent(state.App.ActiveRevisionId))],
                     transactionCancellationToken);
-                return true;
+                return transaction.Commit(Success());
             },
             cancellationToken);
-        if (promotion is ISuccess)
+        if (promotion is FunctionRevisionLifecycleCompleted)
             return promotion;
 
         var concurrent = await LoadStateAsync(tenantId, functionAppId, revisionId, cancellationToken);
-        if (concurrent.TryGetValue(out var currentState, out _) &&
+        if (concurrent is PendingRevisionState currentState &&
             currentState.App.ActiveRevisionId == revisionId &&
             currentState.App.PendingRevisionId is null &&
             currentState.Revision.Status is ActiveFunctionRevisionStatus)
         {
-            return Result.Success();
+            return Success();
         }
 
         return promotion;
     }
 
-    public async Task<Result> FailAsync(
+    public async Task<FunctionRevisionLifecycleOutcome> FailAsync(
         string tenantId,
         string functionAppId,
         string revisionId,
@@ -213,30 +249,44 @@ public sealed class FunctionRevisionLifecycleService(
         CancellationToken cancellationToken = default)
     {
         var loaded = await LoadStateAsync(tenantId, functionAppId, revisionId, cancellationToken);
-        if (!loaded.TryGetValue(out var state, out var failure))
-            return failure;
+        PendingRevisionState state;
+        switch (loaded)
+        {
+            case PendingRevisionState value:
+                state = value;
+                break;
+            case FunctionAppNotFound error:
+                return error;
+            case FunctionRevisionNotFound error:
+                return error;
+            default:
+                throw new InvalidOperationException("Unsupported Function revision lifecycle state.");
+        }
         if (state.App.PendingRevisionId is null &&
             state.Revision.Status is FailedFunctionRevisionStatus failed &&
             failed.Failure == revisionFailure)
-            return Result.Success();
+            return Success();
         if (state.App.PendingRevisionId != revisionId)
-            return Failures.Conflict("Function revision is not pending for this app.");
+            return new FunctionRevisionNotPending(functionAppId, revisionId);
         if (state.App.DesiredState != FunctionAppDesiredState.Enabled)
-            return Failures.Conflict("Function App is not enabled.");
+            return new FunctionAppIsNotEnabled(functionAppId);
 
         var targetAllocation = state.ActiveRevision is null
             ? new FunctionQuotaAllocation(1, 0, 0, 0)
             : FunctionQuotaAllocation.FromRevision(state.ActiveRevision.Spec);
-        return await quotaAdmissionExecutor.ExecuteAsync<FunctionQuotaAllocation, bool>(
+        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
+            FunctionQuotaAllocation,
+            FunctionRevisionLifecycleOutcome>(
             tenantId,
             FunctionAppQuotaResourceKey.Create(functionAppId),
             new UpdateQuotaMutation<FunctionQuotaAllocation>(state.App.AdmittedQuota, targetAllocation),
-            async (session, transactionCancellationToken) =>
+            quotaError => quotaError,
+            async (transaction, transactionCancellationToken) =>
             {
                 var now = timeProvider.GetUtcNow();
                 var failedRevision = state.Revision.Fail(revisionFailure);
                 var revisionUpdate = await functionRevisions.UpdateOneAsync(
-                    session,
+                    transaction.Session,
                     FunctionRevisionLifecycleFilters.RevisionInOneOfStatuses(
                         tenantId,
                         functionAppId,
@@ -247,10 +297,14 @@ public sealed class FunctionRevisionLifecycleService(
                         .Set(revision => revision.Status, failedRevision.Status),
                     cancellationToken: transactionCancellationToken);
                 if (revisionUpdate.MatchedCount != 1)
-                    return Failures.Conflict("Function revision state changed concurrently.");
+                {
+                    return transaction.Abort(new FunctionRevisionConcurrencyConflict(
+                        functionAppId,
+                        revisionId));
+                }
 
                 var appUpdate = await functionApps.UpdateOneAsync(
-                    session,
+                    transaction.Session,
                     FunctionRevisionLifecycleFilters.PendingApp(
                         tenantId,
                         functionAppId,
@@ -264,18 +318,20 @@ public sealed class FunctionRevisionLifecycleService(
                         .Set(app => app.UpdatedAtUtc, now),
                     cancellationToken: transactionCancellationToken);
                 if (appUpdate.MatchedCount != 1)
-                    return Failures.Conflict("Function App state changed concurrently.");
+                {
+                    return transaction.Abort(new FunctionAppConcurrencyConflict(functionAppId));
+                }
 
                 await storeOutboxWrites(
-                    session,
+                    transaction.Session,
                     [OutboxWrite.Create(state.Revision.ToFailedEvent(revisionFailure))],
                     transactionCancellationToken);
-                return true;
+                return transaction.Commit(Success());
             },
             cancellationToken);
     }
 
-    public async Task<Result> RetireAsync(
+    public async Task<FunctionRevisionLifecycleOutcome> RetireAsync(
         string tenantId,
         string functionAppId,
         string revisionId,
@@ -284,21 +340,25 @@ public sealed class FunctionRevisionLifecycleService(
         return await runMongoTransaction(async (transaction, transactionCancellationToken) =>
         {
             var revision = await functionRevisions.Find(
-                    transaction,
+                    transaction.Session,
                     FunctionRevisionLifecycleFilters.RevisionByOwner(
                         tenantId,
                         functionAppId,
                         revisionId))
                 .FirstOrDefaultAsync(transactionCancellationToken);
             if (revision is null)
-                return Failures.NotFound("Function revision not found.", revisionId);
+            {
+                return transaction.Abort(new FunctionRevisionNotFound(functionAppId, revisionId));
+            }
             if (revision.Status is RetiredFunctionRevisionStatus)
-                return Result.Success();
+                return transaction.Commit(Success());
             if (revision.Status is not DrainingFunctionRevisionStatus)
-                return Failures.Conflict("Only a draining Function revision can be retired.");
+            {
+                return transaction.Abort(new FunctionRevisionNotDraining(revisionId));
+            }
 
             var durableWork = await functionInvocations.CountDocumentsAsync(
-                transaction,
+                transaction.Session,
                 FunctionRevisionLifecycleFilters.DurableWork(
                     tenantId,
                     functionAppId,
@@ -306,11 +366,15 @@ public sealed class FunctionRevisionLifecycleService(
                 new CountOptions { Limit = 1 },
                 transactionCancellationToken);
             if (durableWork != 0)
-                return Failures.Conflict("The Function revision still has durable invocations to process.");
+            {
+                return transaction.Abort(new FunctionRevisionHasDurableInvocations(
+                    functionAppId,
+                    revisionId));
+            }
 
             var retired = revision.Retire();
             var update = await functionRevisions.UpdateOneAsync(
-                transaction,
+                transaction.Session,
                 FunctionRevisionLifecycleFilters.RevisionInStatus<DrainingFunctionRevisionStatus>(
                     tenantId,
                     functionAppId,
@@ -318,17 +382,21 @@ public sealed class FunctionRevisionLifecycleService(
                 Builders<FunctionRevision>.Update.Set(candidate => candidate.Status, retired.Status),
                 cancellationToken: transactionCancellationToken);
             if (update.MatchedCount != 1)
-                return Failures.Conflict("Function revision state changed concurrently.");
+            {
+                return transaction.Abort(new FunctionRevisionConcurrencyConflict(
+                    functionAppId,
+                    revisionId));
+            }
 
             await storeOutboxWrites(
-                transaction,
+                transaction.Session,
                 [OutboxWrite.Create(revision.ToRetiredEvent())],
                 transactionCancellationToken);
-            return Result.Success();
+            return transaction.Commit(Success());
         }, cancellationToken);
     }
 
-    private async Task<Result<PendingRevisionState>> LoadStateAsync(
+    private async Task<FunctionRevisionLifecycleStateOutcome> LoadStateAsync(
         string tenantId,
         string functionAppId,
         string revisionId,
@@ -338,7 +406,7 @@ public sealed class FunctionRevisionLifecycleService(
                 FunctionRevisionLifecycleFilters.AppByOwner(tenantId, functionAppId))
             .FirstOrDefaultAsync(cancellationToken);
         if (app is null)
-            return Failures.NotFound("Function App not found.", functionAppId);
+            return new FunctionAppNotFound(functionAppId);
 
         var revision = await functionRevisions.Find(
                 FunctionRevisionLifecycleFilters.RevisionByOwner(
@@ -347,7 +415,7 @@ public sealed class FunctionRevisionLifecycleService(
                     revisionId))
             .FirstOrDefaultAsync(cancellationToken);
         if (revision is null)
-            return Failures.NotFound("Function revision not found.", revisionId);
+            return new FunctionRevisionNotFound(functionAppId, revisionId);
 
         FunctionRevision? activeRevision = null;
         if (app.ActiveRevisionId is not null)
@@ -359,11 +427,17 @@ public sealed class FunctionRevisionLifecycleService(
                         app.ActiveRevisionId))
                 .FirstOrDefaultAsync(cancellationToken);
             if (activeRevision is null)
-                return Failures.Conflict("The active Function revision is missing.");
+            {
+                throw new InvalidOperationException(
+                    "Function App references an active revision that does not exist.");
+            }
         }
 
         return new PendingRevisionState(app, revision, activeRevision);
     }
+
+    private static FunctionRevisionLifecycleOutcome Success() =>
+        new FunctionRevisionLifecycleCompleted();
 
     private static ImmutableList<FunctionHttpRouteBinding> CreateHttpRoutes(FunctionRevision revision) =>
         revision.Spec.Handlers
@@ -457,4 +531,9 @@ public sealed class FunctionRevisionLifecycleService(
         FunctionApp App,
         FunctionRevision Revision,
         FunctionRevision? ActiveRevision);
+
+    private union FunctionRevisionLifecycleStateOutcome(
+        PendingRevisionState,
+        FunctionAppNotFound,
+        FunctionRevisionNotFound);
 }

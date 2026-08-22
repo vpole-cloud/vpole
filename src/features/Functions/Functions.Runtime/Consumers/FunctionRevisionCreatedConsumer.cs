@@ -115,8 +115,8 @@ public sealed class FunctionRevisionCreatedConsumer(
             revision.Id,
             new FunctionRevisionFailure(code, message),
             cancellationToken);
-        if (failed is IFailure completionFailure)
-            throw new InvalidOperationException(completionFailure.Message);
+        if (failed is not FunctionRevisionLifecycleCompleted)
+            throw new InvalidOperationException(failed.FailureMessage());
     }
 }
 

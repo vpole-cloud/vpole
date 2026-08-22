@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Pole.Database;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Lifecycle;
 using Pole.Features.Functions.Application.Persistence.Contracts;
@@ -44,6 +45,8 @@ public sealed class FunctionAppPersistenceRegistrationTests(MongoReplicaSetFixtu
         Assert.NotNull(Services.GetRequiredService<LoadFunctionRuntimeRouteTarget>());
         Assert.NotNull(Services.GetRequiredService<LoadFunctionScaleSubjects>());
         Assert.NotNull(Services.GetRequiredService<LoadFunctionRevisionProvisioningSubject>());
+        Assert.NotNull(Services.GetRequiredService<RunMongoOutcomeTransaction<
+            FunctionRevisionLifecycleOutcome>>());
         Assert.IsType<FunctionRevisionLifecycleService>(
             Services.GetRequiredService<IFunctionRevisionLifecycleService>());
     }

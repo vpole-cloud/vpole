@@ -90,8 +90,14 @@ public sealed class FunctionRevisionProvisioner(
                         app.Id,
                         revision.Id,
                         cancellationToken);
-                    if (ready is IFailure readyFailure)
-                        return await FailAndStopAsync(subject, "readiness", readyFailure.Message, cancellationToken);
+                    if (ready is not FunctionRevisionLifecycleCompleted)
+                    {
+                        return await FailAndStopAsync(
+                            subject,
+                            "readiness",
+                            ready.FailureMessage(),
+                            cancellationToken);
+                    }
 
                     return await PromoteAsync(subject, app, revision, cancellationToken);
                 }
@@ -130,12 +136,12 @@ public sealed class FunctionRevisionProvisioner(
             app.Id,
             revision.Id,
             cancellationToken);
-        return promoted is ISuccess
+        return promoted is FunctionRevisionLifecycleCompleted
             ? FunctionRevisionProvisioningOutcome.Success()
             : await FailAndStopAsync(
                 subject,
                 "promotion",
-                ((IFailure)promoted).Message,
+                promoted.FailureMessage(),
                 cancellationToken);
     }
 

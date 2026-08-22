@@ -65,6 +65,35 @@ public sealed class FunctionRevisionProvisionerTests
     }
 
     [Fact]
+    public async Task Typed_promotion_failure_is_reported_to_the_provisioning_workflow()
+    {
+        var provisioning = CreateSubject();
+        var subject = provisioning with
+        {
+            Revision = provisioning.Revision.MarkReady(DateTimeOffset.UtcNow)
+        };
+        var endpoint = new FunctionEndpoint("10.0.0.1", 8080, "pod-1");
+        var manager = new RecordingManager();
+        var lifecycle = new RecordingLifecycle
+        {
+            PromoteOutcome = new FunctionRevisionNotReady(subject.Revision.Id)
+        };
+        var provisioner = new FunctionRevisionProvisioner(
+            new ReadyActivator(endpoint, subject),
+            new MetadataClient(Metadata(subject, "pod-1")),
+            manager,
+            lifecycle,
+            NullLogger<FunctionRevisionProvisioner>.Instance);
+
+        var outcome = await provisioner.ProvisionAsync(subject.App, subject.Revision, CancellationToken.None);
+
+        Assert.False(outcome.Succeeded);
+        Assert.Equal("promotion", outcome.FailureCode);
+        Assert.Equal("Function revision is not ready for promotion.", outcome.FailureMessage);
+        Assert.Equal([0], manager.ScaleRequests);
+    }
+
+    [Fact]
     public async Task Metadata_identity_mismatch_returns_revision_to_zero_without_promotion()
     {
         var subject = CreateSubject();
@@ -233,38 +262,45 @@ public sealed class FunctionRevisionProvisionerTests
     {
         public string? MarkedReadyRevisionId { get; private set; }
         public string? PromotedRevisionId { get; private set; }
+        public FunctionRevisionLifecycleOutcome PromoteOutcome { get; init; } =
+            new FunctionRevisionLifecycleCompleted();
 
-        public Task<Result> MarkReadyAsync(
+        public Task<FunctionRevisionLifecycleOutcome> MarkReadyAsync(
             string tenantId,
             string functionAppId,
             string revisionId,
             CancellationToken cancellationToken = default)
         {
             MarkedReadyRevisionId = revisionId;
-            return Task.FromResult<Result>(Result.Success());
+            return Task.FromResult<FunctionRevisionLifecycleOutcome>(
+                new FunctionRevisionLifecycleCompleted());
         }
 
-        public Task<Result> PromoteAsync(
+        public Task<FunctionRevisionLifecycleOutcome> PromoteAsync(
             string tenantId,
             string functionAppId,
             string revisionId,
             CancellationToken cancellationToken = default)
         {
             PromotedRevisionId = revisionId;
-            return Task.FromResult<Result>(Result.Success());
+            return Task.FromResult(PromoteOutcome);
         }
 
-        public Task<Result> FailAsync(
+        public Task<FunctionRevisionLifecycleOutcome> FailAsync(
             string tenantId,
             string functionAppId,
             string revisionId,
             FunctionRevisionFailure failure,
-            CancellationToken cancellationToken = default) => Task.FromResult<Result>(Result.Success());
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<FunctionRevisionLifecycleOutcome>(
+                new FunctionRevisionLifecycleCompleted());
 
-        public Task<Result> RetireAsync(
+        public Task<FunctionRevisionLifecycleOutcome> RetireAsync(
             string tenantId,
             string functionAppId,
             string revisionId,
-            CancellationToken cancellationToken = default) => Task.FromResult<Result>(Result.Success());
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<FunctionRevisionLifecycleOutcome>(
+                new FunctionRevisionLifecycleCompleted());
     }
 }
