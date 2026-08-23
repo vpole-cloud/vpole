@@ -18,8 +18,6 @@ using Pole.Features.ContainerRegistries.Application.Provisioning;
 using Pole.Features.ContainerRegistries.Application.Security;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.DeploymentTargets.Application.Common;
-using Pole.Features.Domains.Application.Persistence;
-using Pole.Features.Domains.Contracts.HttpMapping;
 using Pole.Features.GitProviders.Application.Analysis;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
@@ -74,8 +72,6 @@ public static class DependencyInjection
                 TenantAuthorizationHttpProblemMappings.All);
             services.AddHttpProblemMappings(
                 TenantMemberAuthorizationHttpProblemMappings.All);
-            services.AddHttpProblemMappings(
-                DomainContractHttpMappings.All);
             services.AddScoped<IMediator, Pole.Mediator.Mediator>();
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));

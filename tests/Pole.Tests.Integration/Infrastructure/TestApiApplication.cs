@@ -16,9 +16,9 @@ using Pole.Features.ComputeProfiles.Application;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
 using Pole.Features.ComputeProfiles.Application.Migrations;
 using Pole.Features.ComputeProfiles.Domain;
+using Pole.Features.Domains.Application;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.Migrations;
-using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.DeploymentTargets.Application;
 using Pole.Features.DeploymentTargets.Application.Common;
@@ -171,8 +171,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddHttpProblemMappings(
             DeploymentTargetContractHttpMappings.All);
         builder.Services.AddTenantContractCapabilities();
-        builder.Services.AddDomainPersistence();
-        builder.Services.AddDomainHttpMappings();
+        builder.Services.AddDomainsFeature();
         builder.Services.AddHttpProblemMappings(QuotaContractHttpMappings.All);
         builder.Services.AddComputeProfilesFeature();
         builder.Services.AddStorageProfileResolution();

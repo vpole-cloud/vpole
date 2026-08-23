@@ -20,7 +20,11 @@ public static class GetDomainZones
                 IMediator mediator,
                 [AsParameters] GetDomainZonesRequest request,
                 CancellationToken cancellationToken) =>
-                (await mediator.Send(request, cancellationToken)).ToHttpResult(Results.Ok))
+                (await mediator.Send(request, cancellationToken)).ToHttpResult(
+                    outcome => outcome switch
+                    {
+                        IReadOnlyList<TenantDomainZoneSnapshot> zones => Results.Ok(zones)
+                    }))
             .WithName("GetDomainZones")
             .Produces<IReadOnlyList<TenantDomainZoneSnapshot>>();
         return app;
@@ -30,7 +34,9 @@ public static class GetDomainZones
 public sealed record GetDomainZonesRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
     [FromQuery] string? DeploymentTargetId)
-    : IMediatorRequest<IReadOnlyList<TenantDomainZoneSnapshot>>, ITenantReadOperation;
+    : IMediatorRequest<GetDomainZonesOutcome>, ITenantReadOperation;
+
+public union GetDomainZonesOutcome(IReadOnlyList<TenantDomainZoneSnapshot>);
 
 public sealed class GetDomainZonesRequestValidator : AbstractValidator<GetDomainZonesRequest>
 {
@@ -45,13 +51,16 @@ public sealed class GetDomainZonesRequestValidator : AbstractValidator<GetDomain
 }
 
 public sealed class GetDomainZonesHandler(LoadTenantDomainZones loadTenantDomainZones)
-    : IMediatorOutcomeHandler<GetDomainZonesRequest, IReadOnlyList<TenantDomainZoneSnapshot>>
+    : IMediatorOutcomeHandler<GetDomainZonesRequest, GetDomainZonesOutcome>
 {
-    public Task<IReadOnlyList<TenantDomainZoneSnapshot>> HandleAsync(
+    public async Task<GetDomainZonesOutcome> HandleAsync(
         GetDomainZonesRequest request,
-        CancellationToken cancellationToken = default) =>
-        loadTenantDomainZones(
+        CancellationToken cancellationToken = default)
+    {
+        var zones = await loadTenantDomainZones(
             request.TenantId,
             request.DeploymentTargetId,
             cancellationToken);
+        return zones;
+    }
 }
