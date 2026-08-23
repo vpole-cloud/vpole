@@ -77,7 +77,7 @@ public sealed class TestApiApplication : IAsyncDisposable
     private static readonly Assembly[] Assemblies =
     [
         typeof(WebServiceEndpoints).Assembly,
-        typeof(ComputeProfileFeature).Assembly,
+        typeof(ComputeProfileApplicationRegistration).Assembly,
         typeof(FunctionAppFeature).Assembly,
         typeof(FunctionRuntimeFeature).Assembly,
         typeof(PostgresClusterEndpoints).Assembly,
@@ -174,7 +174,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddDomainPersistence();
         builder.Services.AddDomainHttpMappings();
         builder.Services.AddHttpProblemMappings(QuotaContractHttpMappings.All);
-        builder.Services.AddComputeProfiles();
+        builder.Services.AddComputeProfilesFeature();
         builder.Services.AddStorageProfileResolution();
         builder.Services.AddRedisServicesFeature();
         builder.Services.AddPostgresFeature();

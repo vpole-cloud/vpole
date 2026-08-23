@@ -55,7 +55,7 @@ Assembly[] assemblies = [
     typeof(DomainZoneEndpoints).Assembly,
     typeof(GitProviderEndpoints).Assembly,
     typeof(ContainerRegistryFeature).Assembly,
-    typeof(ComputeProfileFeature).Assembly,
+    typeof(ComputeProfileApplicationRegistration).Assembly,
     typeof(DeploymentTargetFeature).Assembly,
     typeof(SourceBuildFeature).Assembly,
     typeof(OutboxProcessorJob).Assembly,
@@ -97,7 +97,7 @@ builder.Services.AddKubernetes(configuration)
     .AddTenantContractCapabilities()
     .AddDomainPersistence()
     .AddDomainHttpMappings()
-    .AddComputeProfiles()
+    .AddComputeProfilesFeature()
     .AddStorageProfileResolution()
     .AddRedisServicesFeature()
     .AddPostgresFeature()

@@ -64,6 +64,7 @@
   <Folder Name="/features/ComputeProfiles/">
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Application/ComputeProfiles.Application.csproj" />
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Contracts/ComputeProfiles.Contracts.csproj" />
+    <Project Path="src/features/ComputeProfiles/ComputeProfiles.Contracts.HttpMapping/ComputeProfiles.Contracts.HttpMapping.csproj" />
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Domain/ComputeProfiles.Domain.csproj" />
   </Folder>
   <Folder Name="/features/SourceBuilds/">

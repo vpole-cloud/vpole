@@ -13,13 +13,15 @@ namespace Pole.Features.ComputeProfiles.Application.Endpoints;
 public sealed record GetComputeProfilesRequest(
     [FromQuery] int PageNumber = 1,
     [FromQuery] int PageSize = 50)
-    : IMediatorRequest<ComputeProfilePageDto>;
+    : IMediatorRequest<GetComputeProfilesOutcome>;
+
+public union GetComputeProfilesOutcome(ComputeProfilePageDto);
 
 public sealed class GetComputeProfilesHandler(
     LoadComputeProfilePage loadComputeProfilePage)
-    : IMediatorOutcomeHandler<GetComputeProfilesRequest, ComputeProfilePageDto>
+    : IMediatorOutcomeHandler<GetComputeProfilesRequest, GetComputeProfilesOutcome>
 {
-    public async Task<ComputeProfilePageDto> HandleAsync(
+    public async Task<GetComputeProfilesOutcome> HandleAsync(
         GetComputeProfilesRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -55,7 +57,10 @@ public static class GetComputeProfilesEndpoint
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    ComputeProfilePageDto page => Results.Ok(page)
+                });
             })
             .WithName("GetComputeProfiles")
             .Produces<ComputeProfilePageDto>();

@@ -103,10 +103,6 @@ public delegate Task<Result<
     ComputeProfileBatchResolutionRequest request,
     CancellationToken cancellationToken = default);
 
-public delegate Task<Result<ResolvedComputeProfile>> ResolveComputeProfileLegacy(
-    ComputeProfileResolutionRequest request,
-    CancellationToken cancellationToken = default);
-
 public sealed record ComputeProfileResolutionFenceRequest(
     string ComputeProfileId,
     long ComputeProfileRevision,

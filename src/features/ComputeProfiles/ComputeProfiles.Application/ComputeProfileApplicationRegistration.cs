@@ -5,12 +5,13 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.Features.ComputeProfiles.Application.Bootstrap;
 using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.ComputeProfiles.Application.Validation;
+using Pole.Features.ComputeProfiles.Contracts.HttpMapping;
 
 namespace Pole.Features.ComputeProfiles.Application;
 
 public static class ComputeProfileApplicationRegistration
 {
-    public static IServiceCollection AddComputeProfiles(
+    public static IServiceCollection AddComputeProfilesFeature(
         this IServiceCollection services)
     {
         services.AddHttpProblemMappings(ComputeProfileContractHttpMappings.All);
