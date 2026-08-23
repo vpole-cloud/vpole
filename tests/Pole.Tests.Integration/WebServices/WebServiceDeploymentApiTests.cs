@@ -92,7 +92,9 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task AddDeployment_ReturnsTypedQuotaProblem_AndAbortsTheMutation()
     {
-        await Fixture.DbContext.TenantQuotaPolicies.InsertOneAsync(
+        await Fixture.Database
+            .GetCollection<TenantQuotaPolicy>("TenantQuotaPolicies")
+            .InsertOneAsync(
             QuotaDomainFactory.CreatePolicy(
                 TestData.TenantId,
                 QuotaDelta.From(CpuQuota.QuotaKey, 500),

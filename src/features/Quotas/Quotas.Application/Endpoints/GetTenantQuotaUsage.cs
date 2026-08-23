@@ -2,11 +2,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Quotas.Application.Common;
-using Pole.Features.Quotas.Domain;
+using Pole.Features.Quotas.Application.Persistence;
 using Pole.Mediator;
 
 namespace Pole.Features.Quotas.Application.Endpoints;
@@ -21,7 +20,10 @@ public static class GetTenantQuotaUsage
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    TenantQuotaUsageDto usage => Results.Ok(usage)
+                });
             })
             .WithName("GetTenantQuotaUsage")
             .Produces<TenantQuotaUsageDto>();
@@ -32,34 +34,31 @@ public static class GetTenantQuotaUsage
 
 public sealed record GetTenantQuotaUsageRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<TenantQuotaUsageDto>, ITenantReadOperation;
+    : IMediatorRequest<GetTenantQuotaUsageOutcome>, ITenantReadOperation;
+
+public union GetTenantQuotaUsageOutcome(TenantQuotaUsageDto);
 
 public sealed class GetTenantQuotaUsageHandler(
-    IQuotaDbContext dbContext,
+    LoadTenantQuotaUsage loadTenantQuotaUsage,
+    LoadTenantQuotaPolicy loadTenantQuotaPolicy,
+    LoadActiveQuotaReservations loadActiveQuotaReservations,
     TimeProvider timeProvider,
     QuotaCatalog catalog)
     : IMediatorOutcomeHandler<
         GetTenantQuotaUsageRequest,
-        TenantQuotaUsageDto>
+        GetTenantQuotaUsageOutcome>
 {
-    public async Task<TenantQuotaUsageDto> HandleAsync(
+    public async Task<GetTenantQuotaUsageOutcome> HandleAsync(
         GetTenantQuotaUsageRequest request,
         CancellationToken cancellationToken = default)
     {
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
-        var usage = await dbContext.TenantQuotaUsages
-            .Find(candidate => candidate.TenantId == request.TenantId)
-            .FirstOrDefaultAsync(cancellationToken);
-        var policy = await dbContext.TenantQuotaPolicies
-            .Find(candidate => candidate.TenantId == request.TenantId)
-            .FirstOrDefaultAsync(cancellationToken);
-        var activeReservations = await dbContext.QuotaReservations
-            .Find(Builders<QuotaReservation>.Filter.And(
-                Builders<QuotaReservation>.Filter.Eq(
-                    reservation => reservation.TenantId,
-                    request.TenantId),
-                QuotaReservationFilters.Active(nowUtc)))
-            .ToListAsync(cancellationToken);
+        var usage = await loadTenantQuotaUsage(request.TenantId, cancellationToken);
+        var policy = await loadTenantQuotaPolicy(request.TenantId, cancellationToken);
+        var activeReservations = await loadActiveQuotaReservations(
+            request.TenantId,
+            nowUtc,
+            cancellationToken);
 
         return usage.ToDto(activeReservations, policy, request.TenantId, catalog);
     }

@@ -2,9 +2,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.Quotas.Application.Common;
+using Pole.Features.Quotas.Application.Persistence;
 using Pole.Mediator;
 
 namespace Pole.Features.Quotas.Application.Endpoints;
@@ -19,7 +19,10 @@ public static class GetTenantQuotaPolicy
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    TenantQuotaPolicyDto policy => Results.Ok(policy)
+                });
             })
             .WithName("GetTenantQuotaPolicy")
             .RequireAuthorization(Policy.Admin)
@@ -31,22 +34,22 @@ public static class GetTenantQuotaPolicy
 
 public sealed record GetTenantQuotaPolicyRequest(
     [FromRoute] string TenantId)
-    : IMediatorRequest<TenantQuotaPolicyDto>;
+    : IMediatorRequest<GetTenantQuotaPolicyOutcome>;
+
+public union GetTenantQuotaPolicyOutcome(TenantQuotaPolicyDto);
 
 public sealed class GetTenantQuotaPolicyHandler(
-    IQuotaDbContext dbContext,
+    LoadTenantQuotaPolicy loadTenantQuotaPolicy,
     QuotaCatalog catalog)
     : IMediatorOutcomeHandler<
         GetTenantQuotaPolicyRequest,
-        TenantQuotaPolicyDto>
+        GetTenantQuotaPolicyOutcome>
 {
-    public async Task<TenantQuotaPolicyDto> HandleAsync(
+    public async Task<GetTenantQuotaPolicyOutcome> HandleAsync(
         GetTenantQuotaPolicyRequest request,
         CancellationToken cancellationToken = default)
     {
-        var policy = await dbContext.TenantQuotaPolicies
-            .Find(candidate => candidate.TenantId == request.TenantId)
-            .FirstOrDefaultAsync(cancellationToken);
+        var policy = await loadTenantQuotaPolicy(request.TenantId, cancellationToken);
 
         return policy.ToDto(request.TenantId, catalog);
     }

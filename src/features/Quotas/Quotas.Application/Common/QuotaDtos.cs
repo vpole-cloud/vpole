@@ -2,7 +2,6 @@ using System.Collections.Immutable;
 using Pole.Features.Quotas.Application.Endpoints;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.Quotas.Application.Common;
 
@@ -63,23 +62,37 @@ public static class QuotaDtoExtensions
             usage?.UpdatedAtUtc);
     }
 
-    public static Result<QuotaDelta, InvalidTenantQuotaPolicy> ToQuotaLimits(
+    public static QuotaDelta ToQuotaLimits(
         this UpsertTenantQuotaPolicyRequestBody body,
         QuotaCatalog catalog)
     {
+        var errors = ValidateQuotaLimits(body, catalog);
+        if (errors.Count > 0)
+            throw new ArgumentException("Tenant quota policy is invalid.", nameof(body));
+
+        var definitions = catalog.Definitions.ToDictionary(
+            definition => definition.Key.Value,
+            definition => definition.Key,
+            StringComparer.OrdinalIgnoreCase);
+        return QuotaDelta.Create(body.Limits!
+            .Select(limit => new QuotaValue(definitions[limit.Key], limit.Value)));
+    }
+
+    public static IReadOnlyDictionary<string, string[]> ValidateQuotaLimits(
+        UpsertTenantQuotaPolicyRequestBody? body,
+        QuotaCatalog catalog)
+    {
         var errors = new Dictionary<string, string[]>();
-        if (body.Limits is null)
+        if (body?.Limits is null)
         {
             errors["Body.Limits"] = ["Limits is required. Send an empty collection to make every quota unlimited."];
-            return new Err<InvalidTenantQuotaPolicy>(
-                new InvalidTenantQuotaPolicy(errors));
+            return errors;
         }
 
         var definitions = catalog.Definitions.ToDictionary(
             definition => definition.Key.Value,
             definition => definition.Key,
             StringComparer.OrdinalIgnoreCase);
-        var parsed = new List<QuotaValue>();
         var seen = new HashSet<QuotaKey>();
         foreach (var (limit, index) in body.Limits.Select((limit, index) => (limit, index)))
         {
@@ -96,17 +109,9 @@ public static class QuotaDtoExtensions
 
             if (limit.Value <= 0)
                 errors[$"Body.Limits[{index}].Value"] = ["Quota limit must be greater than zero."];
-
-            parsed.Add(new QuotaValue(key, limit.Value));
         }
 
-        if (errors.Count > 0)
-        {
-            return new Err<InvalidTenantQuotaPolicy>(
-                new InvalidTenantQuotaPolicy(errors));
-        }
-
-        return new Ok<QuotaDelta>(QuotaDelta.Create(parsed));
+        return errors;
     }
 
     private static IReadOnlyCollection<QuotaValueDto> ToValueDtos(

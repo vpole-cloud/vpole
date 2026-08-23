@@ -67,7 +67,7 @@ public sealed class QuotaCatalogTests
     public void ReflectionRegistrationIsLimitedToExplicitFeatureAssemblies()
     {
         var services = new ServiceCollection();
-        services.AddQuotaFramework(typeof(RedisQuotaProfile).Assembly);
+        services.AddQuotasFeature(typeof(RedisQuotaProfile).Assembly);
         using var provider = services.BuildServiceProvider();
 
         var catalog = provider.GetRequiredService<QuotaCatalog>();

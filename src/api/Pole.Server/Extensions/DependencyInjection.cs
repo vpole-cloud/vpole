@@ -183,7 +183,6 @@ public static class DependencyInjection
                     .GetRequiredService<MongoRunTransaction>()
                     .InvokeAsync);
             services.TryAddSingleton<ISearchDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddSingleton<IQuotaDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IResourceGroupDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ITenantDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IUserDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
