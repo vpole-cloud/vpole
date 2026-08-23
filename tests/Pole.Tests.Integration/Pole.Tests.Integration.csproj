@@ -32,7 +32,6 @@
         <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Domain\ComputeProfiles.Domain.csproj" />
         <ProjectReference Include="..\..\src\features\Domains\Domains.Application\Domains.Application.csproj" />
         <ProjectReference Include="..\..\src\features\Domains\Domains.Contracts\Domains.Contracts.csproj" />
-        <ProjectReference Include="..\..\src\features\Domains\Domains.Contracts.HttpMapping\Domains.Contracts.HttpMapping.csproj" />
         <ProjectReference Include="..\..\src\features\Domains\Domains.Domain\Domains.Domain.csproj" />
         <ProjectReference Include="..\..\src\features\Quotas\Quotas.Application\Quotas.Application.csproj" />
         <ProjectReference Include="..\..\src\features\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />

@@ -9,8 +9,8 @@ using Pole.Features.DeploymentTargets.Application;
 using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
+using Pole.Features.Domains.Application;
 using Pole.Features.Domains.Application.Common;
-using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application;
@@ -95,8 +95,7 @@ builder.Services.AddKubernetes(configuration)
     .AddFunctionRuntimeFeature(configuration)
     .AddResourceDeploymentsFeature(configuration)
     .AddTenantContractCapabilities()
-    .AddDomainPersistence()
-    .AddDomainHttpMappings()
+    .AddDomainsFeature()
     .AddComputeProfilesFeature()
     .AddStorageProfileResolution()
     .AddRedisServicesFeature()

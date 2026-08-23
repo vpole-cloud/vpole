@@ -4,8 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Pole.Encryption;
 using Pole.Features.ComputeProfiles.Application;
+using Pole.Features.Domains.Application;
 using Pole.Features.Domains.Application.Common;
-using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Application.Common;
@@ -75,7 +75,7 @@ public static class TestServiceProviderFactory
         services.AddResourceDeploymentsFeature(
             new ConfigurationBuilder().Build());
         services.AddTenantContractCapabilities();
-        services.AddDomainPersistence();
+        services.AddDomainsFeature();
         services.AddComputeProfilesFeature();
         services.AddStorageProfileResolution();
         services.AddRedisServicesFeature();

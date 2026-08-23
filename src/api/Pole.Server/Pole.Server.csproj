@@ -29,7 +29,6 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\features\Domains\Domains.Application\Domains.Application.csproj" />
-      <ProjectReference Include="..\..\features\Domains\Domains.Contracts.HttpMapping\Domains.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\features\Functions\Functions.Application\Functions.Application.csproj" />
       <ProjectReference Include="..\..\features\Functions\Functions.Runtime\Functions.Runtime.csproj" />
       <ProjectReference Include="..\..\features\GitProviders\GitProviders.Application\GitProviders.Application.csproj" />

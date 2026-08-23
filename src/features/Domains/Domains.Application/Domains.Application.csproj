@@ -16,6 +16,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\\Domains.Contracts\\Domains.Contracts.csproj" />
+    <ProjectReference Include="..\\Domains.Contracts.HttpMapping\\Domains.Contracts.HttpMapping.csproj" />
     <ProjectReference Include="..\\Domains.Domain\\Domains.Domain.csproj" />
     <ProjectReference Include="..\\..\\Tenants\\Tenants.Contracts\\Tenants.Contracts.csproj" />
     <ProjectReference Include="..\\..\\DeploymentTargets\\DeploymentTargets.Contracts\\DeploymentTargets.Contracts.csproj" />
