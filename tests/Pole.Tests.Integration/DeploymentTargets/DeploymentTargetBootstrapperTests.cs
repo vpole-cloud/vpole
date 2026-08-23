@@ -6,11 +6,13 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
+using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
@@ -35,7 +37,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         var preparer = new RecordingConnectionPreparer();
         var bootstrapper = CreateBootstrapper(preparer, Environments.Production);
 
-        await bootstrapper.BootstrapAsync();
+        await bootstrapper.InvokeAsync();
 
         Assert.IsType<InClusterConnectionInput>(Assert.Single(preparer.Inputs));
         var (target, settings) = await LoadSingleStateAsync();
@@ -72,7 +74,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
                 Environments.Development,
                 options);
 
-            await bootstrapper.BootstrapAsync();
+            await bootstrapper.InvokeAsync();
 
             var input = Assert.IsType<KubeconfigConnectionInput>(Assert.Single(preparer.Inputs));
             Assert.Equal(kubeconfig, input.Kubeconfig);
@@ -97,8 +99,8 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
             Environments.Production,
             probe: probe);
 
-        await bootstrapper.BootstrapAsync();
-        await bootstrapper.BootstrapAsync();
+        await bootstrapper.InvokeAsync();
+        await bootstrapper.InvokeAsync();
 
         Assert.Single(preparer.Inputs);
         Assert.Equal(1, probe.CallCount);
@@ -116,8 +118,8 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         var secondBootstrapper = CreateBootstrapper(secondPreparer, Environments.Production);
 
         await Task.WhenAll(
-            firstBootstrapper.BootstrapAsync(),
-            secondBootstrapper.BootstrapAsync());
+            firstBootstrapper.InvokeAsync(),
+            secondBootstrapper.InvokeAsync());
 
         Assert.Single(firstPreparer.Inputs);
         Assert.Single(secondPreparer.Inputs);
@@ -137,7 +139,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
             Environments.Production,
             probe: probe);
 
-        await bootstrapper.BootstrapAsync();
+        await bootstrapper.InvokeAsync();
 
         Assert.Empty(preparer.Inputs);
         Assert.Equal(0, probe.CallCount);
@@ -156,7 +158,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         var bootstrapper = CreateBootstrapper(preparer, Environments.Production);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => bootstrapper.BootstrapAsync());
+            () => bootstrapper.InvokeAsync());
 
         Assert.Equal(
             "Deployment-target settings reference a target that does not exist.",
@@ -183,7 +185,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
             var bootstrapper = CreateBootstrapper(preparer, Environments.Development);
 
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => bootstrapper.BootstrapAsync());
+                () => bootstrapper.InvokeAsync());
 
             Assert.Equal(
                 "Development bootstrap requires an absolute KUBECONFIG file path.",
@@ -231,7 +233,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
             Environments.Production,
             options);
 
-        await bootstrapper.BootstrapAsync();
+        await bootstrapper.InvokeAsync();
 
         var (target, _) = await LoadSingleStateAsync();
         var ingress = Assert.IsType<DeploymentTargetIngressConfiguration>(
@@ -270,11 +272,16 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(existing);
         var deleteClock = new BlockingTimeProvider(Now.AddMinutes(1));
         var deleteHandler = new DeleteDeploymentTargetHandler(
-            fixture.DbContext,
-            new DeploymentTargetReader(fixture.DbContext),
-            new DeploymentTargetDeletionGuard(fixture.DbContext),
-            new NoOpClientCache(),
-            deleteClock);
+            new MongoDeleteDeploymentTarget(
+                fixture.DbContext.DeploymentTargets,
+                fixture.DbContext.DeploymentTargetSettings,
+                new MongoEnsureNoDeploymentTargetReferences(
+                        fixture.DbContext.DeploymentTargetReferences)
+                    .InvokeAsync,
+                new MongoRunTransaction(fixture.Client)
+                    .InvokeOutcomeAsync<DeleteDeploymentTargetOutcome>,
+                deleteClock).InvokeAsync,
+            new NoOpClientCache().Invalidate);
 
         var deletion = Task.Run(
             () => deleteHandler.HandleAsync(new DeleteDeploymentTargetRequest(existing.Id)));
@@ -284,7 +291,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         try
         {
             await deleteClock.WaitUntilReadAsync().WaitAsync(TestTimeout);
-            await bootstrapper.BootstrapAsync().WaitAsync(TestTimeout);
+            await bootstrapper.InvokeAsync().WaitAsync(TestTimeout);
         }
         finally
         {
@@ -292,8 +299,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         }
 
         var deletionResult = await deletion.WaitAsync(TestTimeout);
-        Assert.False(deletionResult.TryGetValue(out _, out var deletionFailure));
-        Assert.IsType<ConflictFailure>(deletionFailure);
+        Assert.True(deletionResult is DeleteDeploymentTargetError);
         var (target, settings) = await LoadSingleStateAsync();
         Assert.Equal(existing.Id, target.Id);
         Assert.Null(target.DeletionRequestedAtUtc);
@@ -308,10 +314,16 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         DeploymentTargetOptions? options = null,
         SuccessfulProbe? probe = null) =>
         new(
-            fixture.DbContext,
-            preparer,
-            probe ?? new SuccessfulProbe(),
-            new DeploymentTargetDomainAdmission(fixture.DbContext),
+            fixture.DbContext.DeploymentTargets,
+            fixture.DbContext.DeploymentTargetSettings,
+            new MongoRunTransaction(fixture.Client).InvokeAsync,
+            preparer.InvokeAsync,
+            (probe ?? new SuccessfulProbe()).InvokeAsync,
+            new DeploymentTargetDomainAdmission(
+                fixture.DbContext.DeploymentTargets,
+                fixture.DbContext.DeploymentTargetReferences,
+                fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
+                    DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName)),
             options ?? CreateOptions(new DeploymentTargetBootstrapOptions()),
             new FakeHostEnvironment(environmentName),
             new FixedTimeProvider(Now),
@@ -376,13 +388,15 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
             AuthenticationTag: [6]);
 
     private sealed class RecordingConnectionPreparer(
-        Func<Task>? beforeReturn = null) : IDeploymentTargetConnectionPreparer
+        Func<Task>? beforeReturn = null)
     {
         private readonly ConcurrentQueue<DeploymentTargetConnectionInput> _inputs = [];
 
         public IReadOnlyCollection<DeploymentTargetConnectionInput> Inputs => _inputs.ToArray();
 
-        public async ValueTask<Result<PreparedDeploymentTargetConnection>> PrepareAsync(
+        public async ValueTask<Result<
+            PreparedDeploymentTargetConnection,
+            DeploymentTargetConnectionRejected>> InvokeAsync(
             string deploymentTargetId,
             long connectionVersion,
             DeploymentTargetConnectionInput input,
@@ -403,18 +417,18 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
                     CreateFakeEnvelope()),
                 _ => throw new InvalidOperationException("Unexpected bootstrap connection input.")
             };
-            return Result.Success(
+            return new Ok<PreparedDeploymentTargetConnection>(
                 new PreparedDeploymentTargetConnection(connection, CreateInertKubernetesClient()));
         }
     }
 
-    private sealed class SuccessfulProbe : IDeploymentTargetProbe
+    private sealed class SuccessfulProbe
     {
         private int _callCount;
 
         public int CallCount => Volatile.Read(ref _callCount);
 
-        public Task<DeploymentTargetProbeObservation> ProbeAsync(
+        public Task<DeploymentTargetProbeObservation> InvokeAsync(
             IKubernetes kubernetes,
             long connectionVersion,
             DateTime? lastHealthyAtUtc = null,
@@ -464,7 +478,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         }
     }
 
-    private sealed class NoOpClientCache : IDeploymentTargetClientCache
+    private sealed class NoOpClientCache
     {
         public void Invalidate(string deploymentTargetId)
         {

@@ -53,18 +53,23 @@ public sealed record CreateResourceGroupRequestBody(
 public sealed class CreateResourceGroupHandler(
     IKubernetesNamespaceGenerator namespaceGenerator,
     IResourceGroupDbContext dbContext,
-    IDeploymentTargetLookup deploymentTargetLookup
+    AdmitDefaultDeploymentTargetForNewWorkload admitDefaultDeploymentTarget
     ) : IMediatorHandler<CreateResourceGroupRequest, ResourceGroupDto>
 {
     public async Task<Result<ResourceGroupDto>> HandleAsync(
         CreateResourceGroupRequest request,
         CancellationToken cancellationToken = default)
     {
-        var admission = await deploymentTargetLookup.ResolveForNewWorkloadAsync(
-            deploymentTargetId: null,
-            cancellationToken);
-        if (!admission.TryGetValue(out _, out var admissionFailure))
-            return admissionFailure;
+        var admission = await admitDefaultDeploymentTarget(cancellationToken);
+        if (admission is Err<DefaultDeploymentTargetWorkloadAdmissionError> error)
+        {
+            return DefaultTargetAdmissionFailure(error.Value);
+        }
+        if (admission is not Ok<DeploymentTargetLookupDto>)
+        {
+            throw new InvalidOperationException(
+                "Default deployment-target admission returned an unsupported result case.");
+        }
 
         var createOptions = ResourceGroupFactory.DefaultCreateOptions with
         {
@@ -102,6 +107,33 @@ public sealed class CreateResourceGroupHandler(
             return resourceGroup.ToDto();
         }, cancellationToken: cancellationToken);
     }
+
+    private static Failure DefaultTargetAdmissionFailure(
+        DefaultDeploymentTargetWorkloadAdmissionError error) => error switch
+    {
+        DefaultDeploymentTargetNotConfigured => Failures.Conflict(
+            "An eligible default deployment target is required before a resource group can be created."),
+        DeploymentTargetWorkloadAdmissionError admission => admission switch
+        {
+            InvalidDeploymentTargetId => Failures.ValidationFailure(
+                new Dictionary<string, string[]>
+                {
+                    ["DeploymentTargetId"] = ["Deployment target ID must be a MongoDB ObjectId."]
+                }),
+            DeploymentTargetNotFound notFound => Failures.NotFound(
+                "Deployment target not found.",
+                notFound.DeploymentTargetId),
+            DeploymentTargetDisabled => Failures.Conflict("The default deployment target is disabled."),
+            DeploymentTargetDeletionRequested => Failures.Conflict(
+                "The default deployment target is pending deletion."),
+            DeploymentTargetNewWorkloadsDisabled => Failures.Conflict(
+                "The default deployment target does not accept new workloads."),
+            _ => throw new InvalidOperationException(
+                "Default deployment-target admission returned an unsupported error case.")
+        },
+        _ => throw new InvalidOperationException(
+            "Default deployment-target admission returned an unsupported error case.")
+    };
 }
 
 public sealed class CreateResourceGroupValidator : AbstractValidator<CreateResourceGroupRequest>

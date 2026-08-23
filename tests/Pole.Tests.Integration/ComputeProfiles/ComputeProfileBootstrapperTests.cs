@@ -29,7 +29,11 @@ public sealed class ComputeProfileBootstrapperTests
                     ComputeProfile,
                     PersistCreatedComputeProfileError>>(new Ok<ComputeProfile>(profile));
             });
-        services.AddScoped<IDeploymentTargetLookup, DefaultTargetLookup>();
+        services.AddScoped<AdmitDefaultDeploymentTargetForNewWorkload>(_ =>
+            cancellationToken => Task.FromResult<Result<
+                DeploymentTargetLookupDto,
+                DefaultDeploymentTargetWorkloadAdmissionError>>(
+                new Ok<DeploymentTargetLookupDto>(CreateTarget(DeploymentTargetId))));
         await using var serviceProvider = services.BuildServiceProvider();
         var bootstrapper = new ComputeProfileBootstrapper(
             serviceProvider.GetRequiredService<IServiceScopeFactory>(),
@@ -65,41 +69,17 @@ public sealed class ComputeProfileBootstrapperTests
             new(2026, 8, 8, 12, 0, 0, TimeSpan.Zero);
     }
 
-    private sealed class DefaultTargetLookup : IDeploymentTargetLookup
-    {
-        public Task<Result<DeploymentTargetLookupDto>> GetAsync(
-            string deploymentTargetId,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<DeploymentTargetLookupDto>>(CreateTarget(deploymentTargetId));
-
-        public Task<Result<DeploymentTargetLookupDto>> GetDefaultAsync(
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<DeploymentTargetLookupDto>>(CreateTarget(DeploymentTargetId));
-
-        public Task<Result<DeploymentTargetLookupDto>> ResolveForNewWorkloadAsync(
-            string? deploymentTargetId,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<DeploymentTargetLookupDto>>(
-                CreateTarget(deploymentTargetId ?? DeploymentTargetId));
-
-        public Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>>
-            ListEligibleForNewWorkloadAsync(
-                CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<IReadOnlyList<DeploymentTargetLookupDto>>>(
-                new[] { CreateTarget(DeploymentTargetId) });
-
-        private static DeploymentTargetLookupDto CreateTarget(string id) =>
-            new(
-                id,
-                "Default",
-                "local-cluster",
-                "in-cluster",
-                1,
-                new DeploymentTargetWorkloadConfigurationLookupDto(1, null),
-                1,
-                Enabled: true,
-                AcceptsWorkloads: true,
-                DeletionRequested: false,
-                HealthStatus: "Healthy");
-    }
+    private static DeploymentTargetLookupDto CreateTarget(string id) =>
+        new(
+            id,
+            "Default",
+            "local-cluster",
+            "in-cluster",
+            1,
+            new DeploymentTargetWorkloadConfigurationLookupDto(1, null),
+            1,
+            Enabled: true,
+            AcceptsWorkloads: true,
+            DeletionRequested: false,
+            HealthStatus: "Healthy");
 }

@@ -15,7 +15,7 @@ internal sealed class ResourceDeploymentWriter(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     StoreOutboxWrites storeOutboxWrites,
     IResourcePlacementService placementService,
-    IDeploymentTargetWorkloadConfigurationFence targetConfigurationFence,
+    FenceDeploymentTargetWorkloadConfigurations fenceDeploymentTargetWorkloadConfigurations,
     FenceResolvedComputeProfiles fenceResolvedComputeProfiles,
     IStorageProfileResolutionFence storageConfigurationFence,
     TimeProvider timeProvider)
@@ -97,11 +97,11 @@ internal sealed class ResourceDeploymentWriter(
                 item.Target.WorkloadConfigurationRevision))
             .Distinct()
             .ToArray();
-        var targetFence = await targetConfigurationFence.FenceManyAsync(
+        var targetFence = await fenceDeploymentTargetWorkloadConfigurations(
             targetFenceRequests,
             session,
             cancellationToken);
-        if (targetFence is not ISuccess)
+        if (targetFence is Err<DeploymentTargetWorkloadConfigurationFenceRejected>)
         {
             return new Err<CreateResourceDeploymentError>(
                 new CreateResourceDeploymentError(

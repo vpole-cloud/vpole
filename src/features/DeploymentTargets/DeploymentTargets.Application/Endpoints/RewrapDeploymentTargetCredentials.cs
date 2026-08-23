@@ -5,28 +5,36 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Encryption;
+using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Security;
 using Pole.Mediator;
 using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 
-public static class RewrapDeploymentTargetCredentials
+public static class RewrapDeploymentTargetCredentialsEndpoint
 {
     public static IEndpointRouteBuilder MapRewrapDeploymentTargetCredentialsEndpoint(
         this IEndpointRouteBuilder app)
     {
         app.MapPost("/deployment-target-credentials/rewrap", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] RewrapDeploymentTargetCredentialsRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    DeploymentTargetCredentialRewrapSummary summary => Results.Ok(summary),
+                    DeploymentTargetCredentialRewrapConflict error =>
+                        httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("RewrapDeploymentTargetCredentials")
             .RequireAuthorization(Policy.Admin)
-            .Produces<DeploymentTargetCredentialRewrapSummary>();
+            .Produces<DeploymentTargetCredentialRewrapSummary>()
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return app;
     }
@@ -41,16 +49,23 @@ public sealed record RewrapDeploymentTargetCredentialsRequestBody(
 
 public sealed record RewrapDeploymentTargetCredentialsRequest(
     [FromBody] RewrapDeploymentTargetCredentialsRequestBody Body)
-    : IMediatorRequest<DeploymentTargetCredentialRewrapSummary>;
+    : IMediatorRequest<RewrapDeploymentTargetCredentialsOutcome>;
+
+public union RewrapDeploymentTargetCredentialsOutcome(
+    DeploymentTargetCredentialRewrapSummary,
+    DeploymentTargetCredentialRewrapConflict);
 
 public sealed class RewrapDeploymentTargetCredentialsHandler(
-    IDeploymentTargetCredentialRewrapService rewrapService)
-    : IMediatorHandler<RewrapDeploymentTargetCredentialsRequest, DeploymentTargetCredentialRewrapSummary>
+    RewrapDeploymentTargetCredentials rewrapDeploymentTargetCredentials)
+    : IMediatorOutcomeHandler<
+        RewrapDeploymentTargetCredentialsRequest,
+        RewrapDeploymentTargetCredentialsOutcome>
 {
-    public Task<Result<DeploymentTargetCredentialRewrapSummary>> HandleAsync(
+    public async Task<RewrapDeploymentTargetCredentialsOutcome> HandleAsync(
         RewrapDeploymentTargetCredentialsRequest request,
-        CancellationToken cancellationToken = default) =>
-        rewrapService.RewrapAllAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var rewrapped = await rewrapDeploymentTargetCredentials(
             new EnvelopeEncryptionKeyReference(
                 request.Body.ProviderId,
                 request.Body.KeyId,
@@ -58,6 +73,10 @@ public sealed class RewrapDeploymentTargetCredentialsHandler(
                 request.Body.KeyWrapAlgorithm,
                 request.Body.KeyWrapAlgorithmVersion),
             cancellationToken);
+        return rewrapped.Match(
+            RewrapDeploymentTargetCredentialsOutcome (summary) => summary,
+            RewrapDeploymentTargetCredentialsOutcome (error) => error);
+    }
 }
 
 public sealed class RewrapDeploymentTargetCredentialsRequestValidator

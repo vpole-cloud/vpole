@@ -114,7 +114,8 @@ internal sealed class ComputeProfilePersistenceTestHost : IDisposable
         if (applyTargetReferenceChanges is null)
         {
             services.AddSingleton(new DeploymentTargetReferenceAdmission(
-                fixture.DbContext,
+                fixture.DbContext.DeploymentTargets,
+                fixture.DbContext.DeploymentTargetReferences,
                 TimeProvider.System));
             services.AddSingleton<ApplyDeploymentTargetReferenceChanges>(provider => provider
                 .GetRequiredService<DeploymentTargetReferenceAdmission>()

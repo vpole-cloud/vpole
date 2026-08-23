@@ -14,8 +14,8 @@ namespace Pole.Features.Domains.Application.Persistence;
 
 internal sealed partial class MongoDomainPersistence(
     IMongoDatabase database,
-    IDeploymentTargetReferenceAdmission targetReferenceAdmission,
-    IDeploymentTargetWorkloadConfigurationFence targetWorkloadConfigurationFence,
+    ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges,
+    FenceDeploymentTargetWorkloadConfigurations fenceDeploymentTargetWorkloadConfigurations,
     ITenantIdentityLookup tenantIdentityLookup,
     TimeProvider timeProvider)
 {
@@ -134,15 +134,19 @@ internal sealed partial class MongoDomainPersistence(
 
         foreach (var zone in releasable)
         {
-            var unregistered = await targetReferenceAdmission.UnregisterAsync(
-                zone.DeploymentTargetId,
+            var unregistered = await applyDeploymentTargetReferenceChanges(
                 new DeploymentTargetReferenceOwner(
                     DeploymentTargetReferenceOwnerTypes.DomainZone,
                     zone.Id),
+                [],
+                [zone.DeploymentTargetId],
                 session,
                 cancellationToken);
-            if (unregistered is not ISuccess)
-                return (Failure)unregistered;
+            if (unregistered is Err<DeploymentTargetReferenceChangeRejected>)
+            {
+                return Failures.Conflict(
+                    "The deployment-target reference could not be removed while releasing a generated domain zone.");
+            }
         }
 
         return Result.Success();

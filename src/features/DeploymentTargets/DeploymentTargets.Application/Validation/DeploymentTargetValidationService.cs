@@ -1,19 +1,20 @@
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Domain;
+using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Validation;
 
 public sealed class DeploymentTargetValidationService(
-    IDeploymentTargetKubernetesClientFactory clientFactory,
-    IDeploymentTargetProbe probe,
+    CreateDeploymentTargetKubernetesClient createDeploymentTargetKubernetesClient,
+    ProbeDeploymentTargetConnection probeDeploymentTargetConnection,
     TimeProvider timeProvider)
 {
     public async Task<DeploymentTargetProbeObservation> ProbeStoredConnectionAsync(
         DeploymentTarget target,
         CancellationToken cancellationToken = default)
     {
-        var clientResult = await clientFactory.CreateAsync(
+        var clientResult = await createDeploymentTargetKubernetesClient(
             target.Id,
             target.Connection,
             cancellationToken);
@@ -28,7 +29,7 @@ public sealed class DeploymentTargetValidationService(
         DeploymentTargetProbeObservation observation;
         using (client)
         {
-            observation = await probe.ProbeAsync(
+            observation = await probeDeploymentTargetConnection(
                 client,
                 target.Connection.Version,
                 target.Health.LastHealthyAtUtc,

@@ -8,6 +8,11 @@ public static class DeploymentTargetContractHttpMappings
     public static IReadOnlyList<HttpProblemMapping> All { get; } =
         Array.AsReadOnly<HttpProblemMapping>(
         [
+            HttpProblemMapping.For<DeploymentTargetLookupError>(MapLookupError),
+            HttpProblemMapping.For<DefaultDeploymentTargetLookupError>(
+                MapDefaultLookupError),
+            HttpProblemMapping.For<DefaultDeploymentTargetWorkloadAdmissionError>(
+                MapDefaultWorkloadAdmissionError),
             HttpProblemMapping.For<DeploymentTargetWorkloadAdmissionError>(
                 MapWorkloadAdmissionError),
             HttpProblemMapping.For<DeploymentTargetNewWorkloadAdmissionError>(
@@ -19,6 +24,41 @@ public static class DeploymentTargetContractHttpMappings
             HttpProblemMapping.For<DeploymentTargetDomainReservationAdmissionError>(
                 MapDomainReservationAdmissionError)
         ]);
+
+    private static HttpProblem MapLookupError(DeploymentTargetLookupError error) => error switch
+    {
+        InvalidDeploymentTargetId invalid => ForTarget(
+            HttpStatusCode.BadRequest,
+            "Deployment target ID is invalid",
+            "deployment-targets.id.invalid",
+            invalid.DeploymentTargetId),
+        DeploymentTargetNotFound notFound => ForTarget(
+            HttpStatusCode.NotFound,
+            "Deployment target not found",
+            "deployment-targets.not-found",
+            notFound.DeploymentTargetId)
+    };
+
+    private static HttpProblem MapDefaultLookupError(
+        DefaultDeploymentTargetLookupError error) => error switch
+    {
+        DefaultDeploymentTargetNotConfigured => Problem(
+            HttpStatusCode.Conflict,
+            "deployment-targets.default-not-configured",
+            "The default deployment target is not configured"),
+        DeploymentTargetLookupError lookup => MapLookupError(lookup)
+    };
+
+    private static HttpProblem MapDefaultWorkloadAdmissionError(
+        DefaultDeploymentTargetWorkloadAdmissionError error) => error switch
+    {
+        DefaultDeploymentTargetNotConfigured => Problem(
+            HttpStatusCode.Conflict,
+            "deployment-targets.default-not-configured",
+            "The default deployment target is not configured"),
+        DeploymentTargetWorkloadAdmissionError admission =>
+            MapWorkloadAdmissionError(admission)
+    };
 
     private static HttpProblem MapNewWorkloadAdmissionError(
         DeploymentTargetNewWorkloadAdmissionError error) => error switch

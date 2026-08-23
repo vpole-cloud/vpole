@@ -141,7 +141,7 @@ public sealed class ReconcileRuntimeCellOnReconciliationRequestedConsumer(
 public sealed class DeleteRuntimeCellOnDeletionRequestedConsumer(
     IResourceGroupDbContext dbContext,
     IRuntimeCellNamespaceManager namespaceManager,
-    IDeploymentTargetReferenceAdmission referenceAdmission,
+    ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges,
     IResourceGroupDeletionFinalizer deletionFinalizer,
     TimeProvider timeProvider)
     : IConsumer<RuntimeCellDeletionRequestedEvent>
@@ -195,15 +195,19 @@ public sealed class DeleteRuntimeCellOnDeletionRequestedConsumer(
             if (replacement.ModifiedCount == 0)
                 return Result.Success();
 
-            var unregister = await referenceAdmission.UnregisterAsync(
-                runtimeCell.DeploymentTargetId,
+            var unregister = await applyDeploymentTargetReferenceChanges(
                 new DeploymentTargetReferenceOwner(
                     ResourcePlacementService.ReferenceOwnerType,
                     runtimeCell.Id),
+                [],
+                [runtimeCell.DeploymentTargetId],
                 session,
                 ct);
-            if (unregister is not ISuccess)
-                return (Failure)unregister;
+            if (unregister is Err<DeploymentTargetReferenceChangeRejected>)
+            {
+                return Failures.Conflict(
+                    "The deployment-target reference could not be removed while deleting the runtime cell.");
+            }
 
             await dbContext.StoreEventAsync(deleted.ToDeletedEvent(), session, ct);
             return Result.Success();

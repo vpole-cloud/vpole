@@ -302,8 +302,8 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
         RecordingTargetCoordinator coordinator) =>
         new(
             fixture.Database,
-            coordinator,
-            coordinator,
+            coordinator.ApplyChangesOutcomeAsync,
+            coordinator.FenceManyOutcomeAsync,
             new FixedTenantIdentityLookup(tenantId),
             TimeProvider.System);
 
@@ -352,15 +352,15 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
     }
 
     private sealed class RecordingTargetCoordinator
-        : IDeploymentTargetReferenceAdmission,
-          IDeploymentTargetWorkloadConfigurationFence
     {
         public int FenceBatchCalls { get; private set; }
         public List<DeploymentTargetWorkloadConfigurationFenceRequest> Fences { get; } = [];
         public List<(string TargetId, DeploymentTargetReferenceOwner Owner)> Registrations { get; } = [];
         public List<(string TargetId, DeploymentTargetReferenceOwner Owner)> Unregistrations { get; } = [];
 
-        public Task<Result> FenceManyAsync(
+        public Task<Result<
+            Unit,
+            DeploymentTargetWorkloadConfigurationFenceRejected>> FenceManyOutcomeAsync(
             IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
@@ -368,44 +368,24 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
             Assert.True(session.IsInTransaction);
             FenceBatchCalls++;
             Fences.AddRange(requests);
-            return Task.FromResult<Result>(Result.Success());
+            return Task.FromResult<Result<
+                Unit,
+                DeploymentTargetWorkloadConfigurationFenceRejected>>(
+                new Ok<Unit>(Unit.Value));
         }
 
-        public Task<Result> FenceAsync(
-            string deploymentTargetId,
-            long expectedWorkloadConfigurationRevision,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default) =>
-            throw new Xunit.Sdk.XunitException("The set capability must use the batch target fence.");
-
-        public Task<Result> RegisterAsync(
-            string deploymentTargetId,
-            DeploymentTargetReferenceOwner owner,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default)
-        {
-            Assert.True(session.IsInTransaction);
-            Registrations.Add((deploymentTargetId, owner));
-            return Task.FromResult<Result>(Result.Success());
-        }
-
-        public Task<Result> UnregisterAsync(
-            string deploymentTargetId,
-            DeploymentTargetReferenceOwner owner,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default)
-        {
-            Assert.True(session.IsInTransaction);
-            Unregistrations.Add((deploymentTargetId, owner));
-            return Task.FromResult<Result>(Result.Success());
-        }
-
-        public Task<Result> ApplyChangesAsync(
+        public Task<Result<Unit, DeploymentTargetReferenceChangeRejected>> ApplyChangesOutcomeAsync(
             DeploymentTargetReferenceOwner owner,
             IReadOnlyCollection<string> addedDeploymentTargetIds,
             IReadOnlyCollection<string> removedDeploymentTargetIds,
             IClientSessionHandle session,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result>(Result.Success());
+            CancellationToken cancellationToken = default)
+        {
+            Assert.True(session.IsInTransaction);
+            Registrations.AddRange(addedDeploymentTargetIds.Select(id => (id, owner)));
+            Unregistrations.AddRange(removedDeploymentTargetIds.Select(id => (id, owner)));
+            return Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
+                new Ok<Unit>(Unit.Value));
+        }
     }
 }

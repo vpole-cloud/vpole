@@ -83,9 +83,13 @@ public sealed class DeploymentTargetConnectionSecurityTests
             connectionVersion: 1,
             new KubeconfigConnectionInput(kubeconfig));
 
-        var failure = AssertFailure(result);
-        Assert.IsType<ValidationFailure>(failure);
-        AssertSafeFailure(failure, KubeconfigToken, "pole-basic-password", "pole-should-never-run");
+        var rejection = AssertFailure(result);
+        Assert.IsType<DeploymentTargetConnectionRejected>(rejection);
+        AssertSafeConnectionRejection(
+            rejection,
+            KubeconfigToken,
+            "pole-basic-password",
+            "pole-should-never-run");
     }
 
     [Fact]
@@ -232,7 +236,8 @@ public sealed class DeploymentTargetConnectionSecurityTests
             var result = await encryption.ConnectionService.CreateAsync(targetId, tampered);
 
             var failure = AssertFailure(result);
-            AssertSafeFailure(
+            Assert.IsType<StoredDeploymentTargetConnectionUnavailable>(failure);
+            AssertSafeStoredConnectionFailure(
                 failure,
                 ServiceAccountToken,
                 Convert.ToBase64String(persisted.EncryptedCredential.Ciphertext),
@@ -271,7 +276,8 @@ public sealed class DeploymentTargetConnectionSecurityTests
                 requestedConnection);
 
             var failure = AssertFailure(result);
-            AssertSafeFailure(
+            Assert.IsType<StoredDeploymentTargetConnectionUnavailable>(failure);
+            AssertSafeStoredConnectionFailure(
                 failure,
                 KubeconfigToken,
                 Convert.ToBase64String(persisted.EncryptedKubeconfig.Ciphertext),
@@ -369,49 +375,45 @@ public sealed class DeploymentTargetConnectionSecurityTests
             new DeploymentTargetFactory.CreateOptions(id, createdAtUtc));
     }
 
-    private static T AssertSuccess<T>(Result<T> result) where T : notnull =>
-        Assert.IsType<Success<T>>(result).Value;
+    private static T AssertSuccess<T, TError>(Result<T, TError> result)
+        where T : notnull
+        where TError : notnull =>
+        result switch
+        {
+            Ok<T> success => success.Value,
+            Err<TError> error => throw new Xunit.Sdk.XunitException(
+                $"Expected success, got {error.Value.GetType().Name}."),
+            _ => throw new Xunit.Sdk.XunitException("Result returned an unsupported case.")
+        };
 
-    private static Failure AssertFailure<T>(Result<T> result) where T : notnull =>
-        Assert.IsType<Failure<T>>(result).Error;
+    private static TError AssertFailure<T, TError>(Result<T, TError> result)
+        where T : notnull
+        where TError : notnull =>
+        result switch
+        {
+            Err<TError> error => error.Value,
+            Ok<T> => throw new Xunit.Sdk.XunitException("Expected failure, got success."),
+            _ => throw new Xunit.Sdk.XunitException("Result returned an unsupported case.")
+        };
 
-    private static void AssertSafeFailure(Failure failure, params string[] sensitiveMarkers)
+    private static void AssertSafeConnectionRejection(
+        DeploymentTargetConnectionRejected rejection,
+        params string[] sensitiveMarkers)
     {
-        var rendered = RenderFailure(failure);
+        var rendered = string.Join(
+            Environment.NewLine,
+            rejection.Errors.SelectMany(pair => pair.Value.Append(pair.Key)));
         foreach (var marker in sensitiveMarkers)
             Assert.DoesNotContain(marker, rendered, StringComparison.Ordinal);
     }
 
-    private static string RenderFailure(Failure failure)
+    private static void AssertSafeStoredConnectionFailure(
+        StoredDeploymentTargetConnectionUnavailable failure,
+        params string[] sensitiveMarkers)
     {
-        var values = new List<string> { failure.Message };
-        switch (failure)
-        {
-            case ValidationFailure validation:
-                values.AddRange(validation.ValidationErrors.Keys);
-                values.AddRange(validation.ValidationErrors.Values.SelectMany(messages => messages));
-                break;
-            case InternalFailure internalFailure:
-                values.Add(internalFailure.Details);
-                break;
-            case ExternalServiceFailure externalService:
-                values.Add(externalService.ServiceName);
-                values.Add(externalService.Details);
-                break;
-            case UnauthorizedFailure unauthorized:
-                values.Add(unauthorized.Action);
-                break;
-            case ForbiddenFailure forbidden:
-                values.Add(forbidden.Action);
-                break;
-            case NotFoundFailure notFound when notFound.Id is not null:
-                values.Add(notFound.Id.ToString() ?? string.Empty);
-                break;
-        }
-
-        foreach (var inner in failure.InnerFailures)
-            values.Add(RenderFailure(inner));
-        return string.Join(Environment.NewLine, values);
+        var rendered = failure.ToString();
+        foreach (var marker in sensitiveMarkers)
+            Assert.DoesNotContain(marker, rendered, StringComparison.Ordinal);
     }
 
     private static string CreateCertificateAuthorityData(string commonName)
@@ -441,14 +443,14 @@ public sealed class DeploymentTargetConnectionSecurityTests
         private TestEncryptionScope(
             string directory,
             LocalKeyFileKeyEncryptionProvider provider,
-            DeploymentTargetConnectionService connectionService)
+            DeploymentTargetConnectionOperations connectionService)
         {
             _directory = directory;
             _provider = provider;
             ConnectionService = connectionService;
         }
 
-        public DeploymentTargetConnectionService ConnectionService { get; }
+        public DeploymentTargetConnectionOperations ConnectionService { get; }
 
         public static TestEncryptionScope Create()
         {
@@ -490,7 +492,9 @@ public sealed class DeploymentTargetConnectionSecurityTests
             return new TestEncryptionScope(
                 directory,
                 provider,
-                new DeploymentTargetConnectionService(protector));
+                new DeploymentTargetConnectionOperations(
+                    new DeploymentTargetConnectionPreparer(protector).InvokeAsync,
+                    new DeploymentTargetKubernetesClientFactory(protector).InvokeAsync));
         }
 
         public void Dispose()
@@ -510,6 +514,35 @@ public sealed class DeploymentTargetConnectionSecurityTests
             if (Directory.Exists(fullDirectory))
                 Directory.Delete(fullDirectory, recursive: true);
         }
+    }
+
+    private sealed class DeploymentTargetConnectionOperations(
+        PrepareDeploymentTargetConnection prepareDeploymentTargetConnection,
+        CreateDeploymentTargetKubernetesClient createDeploymentTargetKubernetesClient)
+    {
+        public ValueTask<Result<
+            PreparedDeploymentTargetConnection,
+            DeploymentTargetConnectionRejected>> PrepareAsync(
+            string deploymentTargetId,
+            long connectionVersion,
+            DeploymentTargetConnectionInput input,
+            CancellationToken cancellationToken = default) =>
+            prepareDeploymentTargetConnection(
+                deploymentTargetId,
+                connectionVersion,
+                input,
+                cancellationToken);
+
+        public ValueTask<Result<
+            IKubernetes,
+            StoredDeploymentTargetConnectionUnavailable>> CreateAsync(
+            string deploymentTargetId,
+            DeploymentTargetConnection connection,
+            CancellationToken cancellationToken = default) =>
+            createDeploymentTargetKubernetesClient(
+                deploymentTargetId,
+                connection,
+                cancellationToken);
     }
 
     private sealed class TlsCertificateSet : IDisposable

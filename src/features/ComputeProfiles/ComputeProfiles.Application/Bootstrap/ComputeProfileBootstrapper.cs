@@ -26,15 +26,13 @@ public sealed class ComputeProfileBootstrapper(
         if (await loadDefault(cancellationToken) is not null)
             return;
 
-        var deploymentTargetLookup = scope.ServiceProvider
-            .GetRequiredService<IDeploymentTargetLookup>();
-        var targetResult = await deploymentTargetLookup.ResolveForNewWorkloadAsync(
-            deploymentTargetId: null,
-            cancellationToken);
-        if (!targetResult.TryGetValue(out var target, out var targetFailure))
+        var admitDefaultDeploymentTarget = scope.ServiceProvider
+            .GetRequiredService<AdmitDefaultDeploymentTargetForNewWorkload>();
+        var targetResult = await admitDefaultDeploymentTarget(cancellationToken);
+        if (targetResult is not Ok<DeploymentTargetLookupDto> target)
         {
             throw new InvalidOperationException(
-                $"The default compute profile cannot be bootstrapped: {targetFailure.Message}");
+                "The default compute profile cannot be bootstrapped because no eligible default deployment target is configured.");
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -53,7 +51,7 @@ public sealed class ComputeProfileBootstrapper(
                 ResourceTypeId.Create("pole/postgresql")
             ],
             AllTenantsComputeProfileAccess.Create(),
-            [ComputeProfileTargetMapping.Create(target.Id)],
+            [ComputeProfileTargetMapping.Create(target.Value.Id)],
             isEnabled: true,
             isDefault: true,
             new ComputeProfileFactory.CreateOptions(
@@ -70,7 +68,7 @@ public sealed class ComputeProfileBootstrapper(
                 logger.LogInformation(
                     "Bootstrapped default compute profile {ComputeProfileId} for deployment target {DeploymentTargetId}.",
                     profile.Id,
-                    target.Id);
+                    target.Value.Id);
                 return;
             }
         }

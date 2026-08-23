@@ -6,9 +6,62 @@ using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Common;
 
-public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
-    : IDeploymentTargetLookup
+internal sealed class DeploymentTargetAdmissionQueries(
+    IMongoCollection<DeploymentTarget> deploymentTargets,
+    IMongoCollection<DeploymentTargetSettings> settings)
 {
+    public async Task<Result<
+        DeploymentTargetLookupDto,
+        DeploymentTargetLookupError>> LookupAsync(
+        string deploymentTargetId,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedDeploymentTargetId = deploymentTargetId?.Trim() ?? string.Empty;
+        if (!IsValidId(normalizedDeploymentTargetId))
+        {
+            return new Err<DeploymentTargetLookupError>(
+                new DeploymentTargetLookupError(
+                    new InvalidDeploymentTargetId(normalizedDeploymentTargetId)));
+        }
+
+        var target = await deploymentTargets
+            .Find(DeploymentTargetFilters.ById(normalizedDeploymentTargetId))
+            .FirstOrDefaultAsync(cancellationToken);
+        return target is null
+            ? new Err<DeploymentTargetLookupError>(
+                new DeploymentTargetLookupError(
+                    new DeploymentTargetNotFound(normalizedDeploymentTargetId)))
+            : new Ok<DeploymentTargetLookupDto>(target.ToLookupDto());
+    }
+
+    public async Task<Result<
+        DeploymentTargetLookupDto,
+        DefaultDeploymentTargetLookupError>> LookupDefaultAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var defaultTargetId = await settings
+            .Find(DeploymentTargetSettingsFilters.Singleton())
+            .Project(item => item.DefaultDeploymentTargetId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(defaultTargetId))
+        {
+            return new Err<DefaultDeploymentTargetLookupError>(
+                new DefaultDeploymentTargetLookupError(
+                    new DefaultDeploymentTargetNotConfigured()));
+        }
+
+        var target = await LookupAsync(defaultTargetId, cancellationToken);
+        return target switch
+        {
+            Ok<DeploymentTargetLookupDto> value => new Ok<DeploymentTargetLookupDto>(value.Value),
+            Err<DeploymentTargetLookupError> error =>
+                new Err<DefaultDeploymentTargetLookupError>(
+                    new DefaultDeploymentTargetLookupError(error.Value)),
+            _ => throw new InvalidOperationException(
+                "Deployment-target lookup returned an unsupported result case.")
+        };
+    }
+
     public async Task<Result<
         DeploymentTargetLookupDto,
         DeploymentTargetWorkloadAdmissionError>> AdmitForWorkloadAsync(
@@ -16,14 +69,14 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
         CancellationToken cancellationToken = default)
     {
         var normalizedDeploymentTargetId = deploymentTargetId?.Trim() ?? string.Empty;
-        if (ValidateId(normalizedDeploymentTargetId) is not null)
+        if (!IsValidId(normalizedDeploymentTargetId))
         {
             return new Err<DeploymentTargetWorkloadAdmissionError>(
                 new DeploymentTargetWorkloadAdmissionError(
                     new InvalidDeploymentTargetId(normalizedDeploymentTargetId)));
         }
 
-        var target = await dbContext.DeploymentTargets
+        var target = await deploymentTargets
             .Find(DeploymentTargetFilters.ById(normalizedDeploymentTargetId))
             .FirstOrDefaultAsync(cancellationToken);
         if (target is null)
@@ -58,103 +111,65 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
         return new Ok<DeploymentTargetLookupDto>(lookup);
     }
 
-    public async Task<Result<DeploymentTargetLookupDto>> GetAsync(
-        string deploymentTargetId,
+    public async Task<Result<
+        DeploymentTargetLookupDto,
+        DefaultDeploymentTargetWorkloadAdmissionError>> AdmitDefaultForNewWorkloadAsync(
         CancellationToken cancellationToken = default)
     {
-        var idValidation = ValidateId(deploymentTargetId);
-        if (idValidation is not null)
-            return idValidation;
+        var target = await LookupDefaultAsync(cancellationToken);
+        if (target is Err<DefaultDeploymentTargetLookupError> lookupError)
+        {
+            return lookupError.Value switch
+            {
+                DefaultDeploymentTargetNotConfigured notConfigured =>
+                    new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
+                        new DefaultDeploymentTargetWorkloadAdmissionError(notConfigured)),
+                DeploymentTargetLookupError nested => nested switch
+                {
+                    InvalidDeploymentTargetId invalidId =>
+                        new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
+                            new DefaultDeploymentTargetWorkloadAdmissionError(
+                                new DeploymentTargetWorkloadAdmissionError(invalidId))),
+                    DeploymentTargetNotFound notFound =>
+                        new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
+                            new DefaultDeploymentTargetWorkloadAdmissionError(
+                                new DeploymentTargetWorkloadAdmissionError(notFound))),
+                    _ => throw new InvalidOperationException(
+                        "Default deployment-target lookup returned an unsupported nested error case.")
+                },
+                _ => throw new InvalidOperationException(
+                    "Default deployment-target lookup returned an unsupported error case.")
+            };
+        }
 
-        var target = await dbContext.DeploymentTargets
-            .Find(DeploymentTargetFilters.ById(deploymentTargetId))
-            .FirstOrDefaultAsync(cancellationToken);
+        if (target is not Ok<DeploymentTargetLookupDto> targetSuccess)
+        {
+            throw new InvalidOperationException(
+                "Default deployment-target lookup returned an unsupported result case.");
+        }
 
-        return target is null
-            ? Failures.NotFound("Deployment target not found.", deploymentTargetId)
-            : target.ToLookupDto();
+        var admitted = await AdmitForWorkloadAsync(
+            targetSuccess.Value.Id,
+            cancellationToken);
+        return admitted switch
+        {
+            Ok<DeploymentTargetLookupDto> value => new Ok<DeploymentTargetLookupDto>(value.Value),
+            Err<DeploymentTargetWorkloadAdmissionError> error =>
+                new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
+                    new DefaultDeploymentTargetWorkloadAdmissionError(error.Value)),
+            _ => throw new InvalidOperationException(
+                "Deployment-target admission returned an unsupported result case.")
+        };
     }
 
-    public async Task<Result<DeploymentTargetLookupDto>> GetDefaultAsync(
-        CancellationToken cancellationToken = default)
-    {
-        var defaultTargetId = await dbContext.DeploymentTargetSettings
-            .Find(DeploymentTargetSettingsFilters.Singleton())
-            .Project(settings => settings.DefaultDeploymentTargetId)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (string.IsNullOrWhiteSpace(defaultTargetId))
-            return Failures.Conflict("The default deployment target is not configured.");
-
-        return await GetAsync(defaultTargetId, cancellationToken);
-    }
-
-    public async Task<Result<DeploymentTargetLookupDto>> ResolveForNewWorkloadAsync(
-        string? deploymentTargetId,
-        CancellationToken cancellationToken = default)
-    {
-        var lookup = string.IsNullOrWhiteSpace(deploymentTargetId)
-            ? await GetDefaultAsync(cancellationToken)
-            : await GetAsync(deploymentTargetId, cancellationToken);
-        if (!lookup.TryGetValue(out var target, out var failure))
-            return failure;
-
-        if (!target.Enabled)
-            return Failures.Conflict("The deployment target is disabled.");
-        if (target.DeletionRequested)
-            return Failures.Conflict("The deployment target is pending deletion.");
-        if (!target.AcceptsWorkloads)
-            return Failures.Conflict("The deployment target does not accept new workloads.");
-
-        return target;
-    }
-
-    public async Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>>
-        ListEligibleForNewWorkloadAsync(
-            CancellationToken cancellationToken = default)
-    {
-        var targets = await dbContext.DeploymentTargets
+    public async Task<IReadOnlyList<DeploymentTargetLookupDto>> ListEligibleAsync(
+        CancellationToken cancellationToken = default) =>
+        (await deploymentTargets
             .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
             .SortBy(target => target.Id)
-            .ToListAsync(cancellationToken);
-        return targets
-            .Select(target => target.ToLookupDto())
-            .ToArray();
-    }
-
-    public async Task<Result<DeploymentTargetLookupDto>> ResolveForNewWorkloadAsync(
-        DeploymentTargetAdmissionRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        if (!string.IsNullOrWhiteSpace(request.ExplicitDeploymentTargetId))
-        {
-            var resolved = await ResolveForNewWorkloadAsync(
-                request.ExplicitDeploymentTargetId,
-                cancellationToken);
-            if (!resolved.TryGetValue(out var target, out var failure))
-                return failure;
-
-            return HasRequiredCapabilities(target, request.RequiredCapabilities)
-                ? target
-                : RequiredCapabilitiesFailure(request.RequiredCapabilities);
-        }
-
-        var eligible = await ListEligibleForNewWorkloadAsync(request, cancellationToken);
-        if (!eligible.TryGetValue(out var targets, out var eligibilityFailure))
-            return eligibilityFailure;
-        if (targets.Count == 0)
-            return NoEligibleTargetsFailure(request.RequiredCapabilities);
-        if (targets.Count > 1)
-        {
-            return Failures.SemanticValidation(new Dictionary<string, string[]>
-            {
-                ["Placement.DeploymentTargetId"] =
-                ["Deployment target is required when more than one eligible target is available."]
-            });
-        }
-
-        return targets[0];
-    }
+            .ToListAsync(cancellationToken))
+        .Select(target => target.ToLookupDto())
+        .ToArray();
 
     public async Task<Result<
         DeploymentTargetLookupDto,
@@ -184,7 +199,7 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
                             request.RequiredCapabilities)));
         }
 
-        var targets = await dbContext.DeploymentTargets
+        var targets = await deploymentTargets
             .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
             .SortBy(target => target.Id)
             .ToListAsync(cancellationToken);
@@ -208,21 +223,6 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
         };
     }
 
-    public async Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>>
-        ListEligibleForNewWorkloadAsync(
-            DeploymentTargetAdmissionRequest request,
-            CancellationToken cancellationToken = default)
-    {
-        var targets = await dbContext.DeploymentTargets
-            .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
-            .SortBy(target => target.Id)
-            .ToListAsync(cancellationToken);
-        return targets
-            .Select(target => target.ToLookupDto())
-            .Where(target => HasRequiredCapabilities(target, request.RequiredCapabilities))
-            .ToArray();
-    }
-
     public async Task<DeploymentTargetPublicIngressAdmissionResult>
         AdmitForNewWorkloadAsync(
             DeploymentTargetAdmissionRequest request,
@@ -231,10 +231,10 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
         if (!string.IsNullOrWhiteSpace(request.ExplicitDeploymentTargetId))
         {
             var deploymentTargetId = request.ExplicitDeploymentTargetId.Trim();
-            if (ValidateId(deploymentTargetId) is not null)
+            if (!IsValidId(deploymentTargetId))
                 return new InvalidDeploymentTargetId(deploymentTargetId);
 
-            var target = await dbContext.DeploymentTargets
+            var target = await deploymentTargets
                 .Find(DeploymentTargetFilters.ById(deploymentTargetId))
                 .FirstOrDefaultAsync(cancellationToken);
             if (target is null)
@@ -263,7 +263,7 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
                 : new DeploymentTargetPublicIngressUnavailable(lookup.Id);
         }
 
-        var targets = await dbContext.DeploymentTargets
+        var targets = await deploymentTargets
             .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
             .SortBy(target => target.Id)
             .ToListAsync(cancellationToken);
@@ -288,7 +288,7 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
             DeploymentTargetAdmissionRequest request,
             CancellationToken cancellationToken = default)
     {
-        var targets = await dbContext.DeploymentTargets
+        var targets = await deploymentTargets
             .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
             .SortBy(target => target.Id)
             .ToListAsync(cancellationToken);
@@ -312,13 +312,13 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
         CancellationToken cancellationToken = default)
     {
         var normalizedDeploymentTargetId = deploymentTargetId?.Trim() ?? string.Empty;
-        if (ValidateId(normalizedDeploymentTargetId) is not null)
+        if (!IsValidId(normalizedDeploymentTargetId))
         {
             return new Err<DeploymentTargetDomainReservationAdmissionError>(
                 new InvalidDeploymentTargetId(normalizedDeploymentTargetId));
         }
 
-        var target = await dbContext.DeploymentTargets
+        var target = await deploymentTargets
             .Find(DeploymentTargetFilters.ById(normalizedDeploymentTargetId))
             .FirstOrDefaultAsync(cancellationToken);
         if (target is null)
@@ -376,33 +376,7 @@ public sealed class DeploymentTargetLookup(IDeploymentTargetDbContext dbContext)
             ingress.PublicBaseDomain!);
     }
 
-    private static Failure RequiredCapabilitiesFailure(
-        DeploymentTargetRequiredCapabilities requiredCapabilities) =>
-        requiredCapabilities.HasFlag(DeploymentTargetRequiredCapabilities.PublicIngress)
-            ? Failures.SemanticValidation(new Dictionary<string, string[]>
-            {
-                ["Placement.DeploymentTargetId"] =
-                ["The selected deployment target does not provide public ingress with a public base domain."]
-            })
-            : Failures.Conflict("The deployment target does not satisfy the requested capabilities.");
-
-    private static Failure NoEligibleTargetsFailure(
-        DeploymentTargetRequiredCapabilities requiredCapabilities) =>
-        requiredCapabilities.HasFlag(DeploymentTargetRequiredCapabilities.PublicIngress)
-            ? Failures.Conflict("No deployment target accepts public workloads.")
-            : Failures.Conflict("No deployment target accepts new workloads.");
-
-    private static ValidationFailure? ValidateId(string? deploymentTargetId)
-    {
-        if (!string.IsNullOrWhiteSpace(deploymentTargetId) &&
-            ObjectId.TryParse(deploymentTargetId, out _))
-        {
-            return null;
-        }
-
-        return Failures.ValidationFailure(new Dictionary<string, string[]>
-        {
-            ["DeploymentTargetId"] = ["Deployment target ID must be a MongoDB ObjectId."]
-        });
-    }
+    private static bool IsValidId(string? deploymentTargetId) =>
+        !string.IsNullOrWhiteSpace(deploymentTargetId) &&
+        ObjectId.TryParse(deploymentTargetId, out _);
 }

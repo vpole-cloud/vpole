@@ -198,19 +198,31 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddGitProvidersFeature();
         builder.Services.AddEnvelopeEncryption(builder.Configuration);
         builder.Services.AddDeploymentTargetsFeature(builder.Configuration);
-        builder.Services.RemoveAll<IDeploymentTargetProbe>();
-        builder.Services.AddSingleton<IDeploymentTargetProbe, TestDeploymentTargetProbe>();
-        builder.Services.RemoveAll<IDeploymentTargetLookup>();
+        builder.Services.RemoveAll<ProbeDeploymentTargetConnection>();
+        var deploymentTargetProbe = new TestDeploymentTargetProbe();
+        builder.Services.AddSingleton(deploymentTargetProbe);
+        builder.Services.AddSingleton<ProbeDeploymentTargetConnection>(
+            deploymentTargetProbe.InvokeAsync);
+        builder.Services.RemoveAll<LookupDeploymentTarget>();
+        builder.Services.RemoveAll<LookupDefaultDeploymentTarget>();
+        builder.Services.RemoveAll<ListEligibleDeploymentTargetsForNewWorkload>();
+        builder.Services.RemoveAll<AdmitDefaultDeploymentTargetForNewWorkload>();
         builder.Services.RemoveAll<AdmitDeploymentTargetForWorkload>();
         builder.Services.RemoveAll<AdmitDeploymentTargetForNewWorkload>();
         builder.Services.RemoveAll<AdmitDeploymentTargetPublicIngressForNewWorkload>();
         builder.Services.RemoveAll<ListEligiblePublicIngressDeploymentTargetsForNewWorkload>();
         builder.Services.RemoveAll<AdmitDeploymentTargetPublicIngressForDomainReservation>();
         builder.Services.RemoveAll<ApplyDeploymentTargetReferenceChanges>();
-        builder.Services.RemoveAll<IDeploymentTargetReferenceAdmission>();
-        builder.Services.RemoveAll<IDeploymentTargetWorkloadConfigurationFence>();
+        builder.Services.RemoveAll<FenceDeploymentTargetWorkloadConfigurations>();
         var deploymentTargetLookup = new TestDeploymentTargetLookup();
-        builder.Services.AddSingleton<IDeploymentTargetLookup>(deploymentTargetLookup);
+        builder.Services.AddSingleton<LookupDeploymentTarget>(
+            deploymentTargetLookup.LookupAsync);
+        builder.Services.AddSingleton<LookupDefaultDeploymentTarget>(
+            deploymentTargetLookup.LookupDefaultAsync);
+        builder.Services.AddSingleton<ListEligibleDeploymentTargetsForNewWorkload>(
+            deploymentTargetLookup.ListEligibleAsync);
+        builder.Services.AddSingleton<AdmitDefaultDeploymentTargetForNewWorkload>(
+            deploymentTargetLookup.AdmitDefaultForNewWorkloadAsync);
         builder.Services.AddSingleton<AdmitDeploymentTargetForWorkload>(
             deploymentTargetLookup.AdmitForWorkloadAsync);
         builder.Services.AddSingleton<AdmitDeploymentTargetForNewWorkload>(
@@ -224,10 +236,8 @@ public sealed class TestApiApplication : IAsyncDisposable
             deploymentTargetLookup.AdmitForDomainReservationAsync);
         builder.Services.AddSingleton<ApplyDeploymentTargetReferenceChanges>(
             deploymentTargetLookup.ApplyChangesOutcomeAsync);
-        builder.Services.AddSingleton<IDeploymentTargetReferenceAdmission>(
-            deploymentTargetLookup);
-        builder.Services.AddSingleton<IDeploymentTargetWorkloadConfigurationFence>(
-            deploymentTargetLookup);
+        builder.Services.AddSingleton<FenceDeploymentTargetWorkloadConfigurations>(
+            deploymentTargetLookup.FenceManyOutcomeAsync);
         builder.Services.AddSingleton(new HarborOptions());
         builder.Services.AddContainerRegistriesFeature();
         builder.Services.AddSingleton<ISourceBuildJobDispatcher, TestSourceBuildJobDispatcher>();

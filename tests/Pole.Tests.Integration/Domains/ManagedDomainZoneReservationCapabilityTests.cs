@@ -110,8 +110,8 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
     {
         var persistence = new MongoDomainPersistence(
             fixture.Database,
-            coordinator,
-            coordinator,
+            coordinator.ApplyChangesOutcomeAsync,
+            coordinator.FenceManyOutcomeAsync,
             new UnusedTenantIdentityLookup(),
             TimeProvider.System);
         var transaction = new MongoRunTransaction(fixture.Client);
@@ -139,54 +139,41 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
     }
 
     private sealed class TargetCoordinator
-        : IDeploymentTargetReferenceAdmission,
-          IDeploymentTargetWorkloadConfigurationFence
     {
         public bool RejectFence { get; init; }
         public bool RejectReference { get; init; }
         public int RegistrationCalls { get; private set; }
 
-        public Task<Result> RegisterAsync(
-            string deploymentTargetId,
-            DeploymentTargetReferenceOwner owner,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default)
-        {
-            RegistrationCalls++;
-            return Task.FromResult<Result>(RejectReference
-                ? Failures.Conflict("Reference rejected for the test.")
-                : Result.Success());
-        }
-
-        public Task<Result> UnregisterAsync(
-            string deploymentTargetId,
-            DeploymentTargetReferenceOwner owner,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result>(Result.Success());
-
-        public Task<Result> ApplyChangesAsync(
+        public Task<Result<Unit, DeploymentTargetReferenceChangeRejected>> ApplyChangesOutcomeAsync(
             DeploymentTargetReferenceOwner owner,
             IReadOnlyCollection<string> addedDeploymentTargetIds,
             IReadOnlyCollection<string> removedDeploymentTargetIds,
             IClientSessionHandle session,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result>(Result.Success());
+            CancellationToken cancellationToken = default)
+        {
+            RegistrationCalls += addedDeploymentTargetIds.Count;
+            return Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
+                RejectReference
+                    ? new Err<DeploymentTargetReferenceChangeRejected>(
+                        new DeploymentTargetReferenceChangeRejected(
+                            owner,
+                            addedDeploymentTargetIds.Concat(removedDeploymentTargetIds).ToArray()))
+                    : new Ok<Unit>(Unit.Value));
+        }
 
-        public Task<Result> FenceAsync(
-            string deploymentTargetId,
-            long expectedWorkloadConfigurationRevision,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result>(RejectFence
-                ? Failures.Conflict("Fence rejected for the test.")
-                : Result.Success());
-
-        public Task<Result> FenceManyAsync(
+        public Task<Result<
+            Unit,
+            DeploymentTargetWorkloadConfigurationFenceRejected>> FenceManyOutcomeAsync(
             IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result>(Result.Success());
+            Task.FromResult<Result<
+                Unit,
+                DeploymentTargetWorkloadConfigurationFenceRejected>>(
+                RejectFence
+                    ? new Err<DeploymentTargetWorkloadConfigurationFenceRejected>(
+                        new DeploymentTargetWorkloadConfigurationFenceRejected(requests))
+                    : new Ok<Unit>(Unit.Value));
     }
 
     private sealed class UnusedTenantIdentityLookup : ITenantIdentityLookup

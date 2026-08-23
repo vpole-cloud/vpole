@@ -5,19 +5,17 @@ using MongoDB.Driver;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
+using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Connections;
 
-public interface IDeploymentTargetClientCache
-{
-    void Invalidate(string deploymentTargetId);
-}
+public delegate void InvalidateDeploymentTargetKubernetesClient(string deploymentTargetId);
 
 public sealed class KubernetesClientProvider(
-    IDeploymentTargetDbContext dbContext,
-    IDeploymentTargetKubernetesClientFactory clientFactory) :
+    IMongoCollection<DeploymentTarget> deploymentTargets,
+    IMongoCollection<DeploymentTargetSettings> settings,
+    CreateDeploymentTargetKubernetesClient createDeploymentTargetKubernetesClient) :
     IKubernetesClientProvider,
-    IDeploymentTargetClientCache,
     IDisposable
 {
     private readonly ConcurrentDictionary<string, CacheEntry> _clients = new(StringComparer.Ordinal);
@@ -52,7 +50,7 @@ public sealed class KubernetesClientProvider(
             if (TryGetCurrent(target!, out current))
                 return current;
 
-            var created = await clientFactory.CreateAsync(
+            var created = await createDeploymentTargetKubernetesClient(
                 target!.Id,
                 target.Connection,
                 cancellationToken);
@@ -84,8 +82,8 @@ public sealed class KubernetesClientProvider(
     public async Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        var targetId = await dbContext.DeploymentTargetSettings
-            .Find(settings => settings.Id == DeploymentTargetSettings.SingletonId)
+        var targetId = await settings
+            .Find(DeploymentTargetSettingsFilters.Singleton())
             .Project(settings => settings.DefaultDeploymentTargetId)
             .FirstOrDefaultAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(targetId))
@@ -125,8 +123,8 @@ public sealed class KubernetesClientProvider(
     private async Task<DeploymentTarget?> LoadTargetAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken) =>
-        await dbContext.DeploymentTargets
-            .Find(target => target.Id == deploymentTargetId)
+        await deploymentTargets
+            .Find(DeploymentTargetFilters.ById(deploymentTargetId))
             .FirstOrDefaultAsync(cancellationToken);
 
     private bool TryGetCurrent(DeploymentTarget target, out IKubernetes client)

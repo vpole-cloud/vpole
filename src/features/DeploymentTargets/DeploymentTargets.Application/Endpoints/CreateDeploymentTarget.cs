@@ -7,6 +7,7 @@ using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
+using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Mediator;
@@ -23,38 +24,46 @@ public sealed record CreateDeploymentTargetRequestBody(
 
 public sealed record CreateDeploymentTargetRequest(
     [FromBody] CreateDeploymentTargetRequestBody Body)
-    : IMediatorRequest<DeploymentTargetDto>;
+    : IMediatorRequest<CreateDeploymentTargetOutcome>;
+
+public union CreateDeploymentTargetError(
+    DeploymentTargetConnectionRejected,
+    PersistCreatedDeploymentTargetError);
+
+public union CreateDeploymentTargetOutcome(
+    DeploymentTargetDto,
+    CreateDeploymentTargetError);
 
 public sealed class CreateDeploymentTargetHandler(
-    DeploymentTargetPersistence persistence,
-    IDeploymentTargetConnectionPreparer connectionPreparer,
-    IDeploymentTargetProbe probe,
+    PersistCreatedDeploymentTarget persistCreatedDeploymentTarget,
+    PrepareDeploymentTargetConnection prepareDeploymentTargetConnection,
+    ProbeDeploymentTargetConnection probeDeploymentTargetConnection,
     TimeProvider timeProvider)
-    : IMediatorHandler<CreateDeploymentTargetRequest, DeploymentTargetDto>
+    : IMediatorOutcomeHandler<CreateDeploymentTargetRequest, CreateDeploymentTargetOutcome>
 {
-    public async Task<Result<DeploymentTargetDto>> HandleAsync(
+    public async Task<CreateDeploymentTargetOutcome> HandleAsync(
         CreateDeploymentTargetRequest request,
         CancellationToken cancellationToken = default)
     {
         var id = ObjectId.GenerateNewId().ToString();
-        var preparedResult = await connectionPreparer.PrepareAsync(
+        var preparedResult = await prepareDeploymentTargetConnection(
             id,
             connectionVersion: 1,
             request.Body.Connection.ToInput(),
             cancellationToken);
-        if (!preparedResult.TryGetValue(out var prepared, out var prepareFailure))
-            return prepareFailure;
+        if (!preparedResult.TryGetValue(out var prepared, out var prepareError))
+            return Error(prepareError);
 
         using (prepared)
         {
-            var observation = await probe.ProbeAsync(
+            var observation = await probeDeploymentTargetConnection(
                 prepared.Candidate,
                 prepared.Connection.Version,
                 cancellationToken: cancellationToken);
             if (!observation.IsUsable || observation.ClusterIdentity is null)
             {
-                return ConnectionValidationFailure(
-                    observation.Health.FailureMessage ?? "The Kubernetes connection is not usable.");
+                return Error(ConnectionValidationFailure(
+                    observation.Health.FailureMessage ?? "The Kubernetes connection is not usable."));
             }
 
             var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -68,18 +77,26 @@ public sealed class CreateDeploymentTargetHandler(
                 request.Body.Enabled,
                 request.Body.AcceptsWorkloads,
                 new DeploymentTargetFactory.CreateOptions(id, now));
-            var inserted = await persistence.InsertAsync(target, cancellationToken);
-            return inserted.TryGetValue(out var persisted, out var insertionFailure)
-                ? persisted.ToDto()
-                : insertionFailure;
+            var inserted = await persistCreatedDeploymentTarget(target, cancellationToken);
+            return inserted.Match(
+                CreateDeploymentTargetOutcome (persisted) => persisted.ToDto(),
+                CreateDeploymentTargetOutcome (error) => Error(error));
         }
     }
 
-    private static ValidationFailure ConnectionValidationFailure(string safeMessage) =>
-        Failures.ValidationFailure(new Dictionary<string, string[]>
+    private static DeploymentTargetConnectionRejected ConnectionValidationFailure(string safeMessage) =>
+        new(new Dictionary<string, string[]>
         {
             ["Body.Connection"] = [safeMessage]
         });
+
+    private static CreateDeploymentTargetOutcome Error(
+        DeploymentTargetConnectionRejected error) =>
+        new(new CreateDeploymentTargetError(error));
+
+    private static CreateDeploymentTargetOutcome Error(
+        PersistCreatedDeploymentTargetError error) =>
+        new(new CreateDeploymentTargetError(error));
 }
 
 public sealed class CreateDeploymentTargetRequestValidator
@@ -118,15 +135,23 @@ public static class CreateDeploymentTargetEndpoint
     {
         app.MapPost("/", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] CreateDeploymentTargetRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(target =>
-                    Results.Created($"/api/v1/platform/deployment-targets/{target.Id}", target));
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    DeploymentTargetDto target => Results.Created(
+                        $"/api/v1/platform/deployment-targets/{target.Id}",
+                        target),
+                    CreateDeploymentTargetError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("CreateDeploymentTarget")
-            .Produces<DeploymentTargetDto>(StatusCodes.Status201Created);
+            .Produces<DeploymentTargetDto>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
         return app;
     }
 }

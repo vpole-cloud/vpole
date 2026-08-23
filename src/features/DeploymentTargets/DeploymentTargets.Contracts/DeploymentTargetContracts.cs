@@ -235,45 +235,54 @@ public delegate Task<Result<
         string deploymentTargetId,
         CancellationToken cancellationToken = default);
 
-public interface IDeploymentTargetLookup
-{
-    Task<Result<DeploymentTargetLookupDto>> GetAsync(
-        string deploymentTargetId,
+/// <summary>
+/// Read-only target lookup errors. These deliberately do not assert that a target remains
+/// eligible for new work: persisted runtime cells must remain addressable while their target is
+/// disabled or being deleted.
+/// </summary>
+public union DeploymentTargetLookupError(
+    InvalidDeploymentTargetId,
+    DeploymentTargetNotFound);
+
+public delegate Task<Result<
+    DeploymentTargetLookupDto,
+    DeploymentTargetLookupError>> LookupDeploymentTarget(
+    string deploymentTargetId,
+    CancellationToken cancellationToken = default);
+
+public sealed record DefaultDeploymentTargetNotConfigured;
+
+public union DefaultDeploymentTargetLookupError(
+    DefaultDeploymentTargetNotConfigured,
+    DeploymentTargetLookupError);
+
+public delegate Task<Result<
+    DeploymentTargetLookupDto,
+    DefaultDeploymentTargetLookupError>> LookupDefaultDeploymentTarget(
+    CancellationToken cancellationToken = default);
+
+/// <summary>
+/// Lists targets that currently accept new workloads. Consumers that need an unambiguous choice
+/// must make that choice explicit or call one of the admission capabilities instead.
+/// </summary>
+public delegate Task<IReadOnlyList<DeploymentTargetLookupDto>>
+    ListEligibleDeploymentTargetsForNewWorkload(
         CancellationToken cancellationToken = default);
 
-    Task<Result<DeploymentTargetLookupDto>> GetDefaultAsync(
+public union DefaultDeploymentTargetWorkloadAdmissionError(
+    DefaultDeploymentTargetNotConfigured,
+    DeploymentTargetWorkloadAdmissionError);
+
+/// <summary>
+/// Admits the configured default target for a new workload. This is intentionally distinct from
+/// contextual placement selection: a caller that wants an automatic choice among all targets uses
+/// <see cref="AdmitDeploymentTargetForNewWorkload"/> instead.
+/// </summary>
+public delegate Task<Result<
+    DeploymentTargetLookupDto,
+    DefaultDeploymentTargetWorkloadAdmissionError>>
+    AdmitDefaultDeploymentTargetForNewWorkload(
         CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Resolves an explicitly requested target, or the default target when the ID is omitted,
-    /// and rejects targets that are disabled or do not accept new workloads.
-    /// </summary>
-    Task<Result<DeploymentTargetLookupDto>> ResolveForNewWorkloadAsync(
-        string? deploymentTargetId,
-        CancellationToken cancellationToken = default);
-
-    Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>> ListEligibleForNewWorkloadAsync(
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Tenant-aware target admission for new placement. The simpler overloads above retain
-    /// platform-shared behavior for callers that do not require contextual admission.
-    /// </summary>
-    Task<Result<DeploymentTargetLookupDto>> ResolveForNewWorkloadAsync(
-        DeploymentTargetAdmissionRequest request,
-        CancellationToken cancellationToken = default) =>
-        ResolveForNewWorkloadAsync(request.ExplicitDeploymentTargetId, cancellationToken);
-
-    /// <summary>
-    /// Lists targets eligible for this tenant/resource placement request. Implementations must
-    /// apply <see cref="DeploymentTargetRequiredCapabilities"/> before returning the list.
-    /// </summary>
-    Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>> ListEligibleForNewWorkloadAsync(
-        DeploymentTargetAdmissionRequest request,
-        CancellationToken cancellationToken = default) =>
-        ListEligibleForNewWorkloadAsync(cancellationToken);
-
-}
 
 public sealed record DeploymentTargetReferenceOwner(string Type, string Id);
 
@@ -304,42 +313,17 @@ public static class DeploymentTargetReferenceOwnerTypes
 /// owners must register or unregister their reference inside the same Mongo transaction as their
 /// own mutation. Calls with a session that has no active transaction fail fast.
 /// </summary>
-public interface IDeploymentTargetReferenceAdmission
-{
-    Task<Result> RegisterAsync(
-        string deploymentTargetId,
-        DeploymentTargetReferenceOwner owner,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
-
-    Task<Result> UnregisterAsync(
-        string deploymentTargetId,
-        DeploymentTargetReferenceOwner owner,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
-
-    Task<Result> ApplyChangesAsync(
-        DeploymentTargetReferenceOwner owner,
-        IReadOnlyCollection<string> addedDeploymentTargetIds,
-        IReadOnlyCollection<string> removedDeploymentTargetIds,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
-}
-
-public interface IDeploymentTargetWorkloadConfigurationFence
-{
-    Task<Result> FenceManyAsync(
-        IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
-
-    Task<Result> FenceAsync(
-        string deploymentTargetId,
-        long expectedWorkloadConfigurationRevision,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
-}
-
 public sealed record DeploymentTargetWorkloadConfigurationFenceRequest(
     string DeploymentTargetId,
     long ExpectedWorkloadConfigurationRevision);
+
+public sealed record DeploymentTargetWorkloadConfigurationFenceRejected(
+    IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> Requests);
+
+public delegate Task<Result<
+    Unit,
+    DeploymentTargetWorkloadConfigurationFenceRejected>>
+    FenceDeploymentTargetWorkloadConfigurations(
+        IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);

@@ -81,7 +81,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         var consumer = new DeleteRuntimeCellOnDeletionRequestedConsumer(
             DbContext,
             manager,
-            admission,
+            admission.ApplyChangesOutcomeAsync,
             CreateDeletionFinalizer(InitialTime.AddMinutes(2)),
             new FixedTimeProvider(InitialTime.AddMinutes(2)));
         var message = new RuntimeCellDeletionRequestedEvent(
@@ -120,7 +120,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         var consumer = new DeleteRuntimeCellOnDeletionRequestedConsumer(
             DbContext,
             manager,
-            admission,
+            admission.ApplyChangesOutcomeAsync,
             CreateDeletionFinalizer(InitialTime.AddMinutes(2)),
             new FixedTimeProvider(InitialTime.AddMinutes(2)));
         var message = new RuntimeCellDeletionRequestedEvent(
@@ -171,7 +171,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         var consumer = new DeleteRuntimeCellOnDeletionRequestedConsumer(
             DbContext,
             new RecordingNamespaceManager(Result.Success(), Result.Success()),
-            new RecordingReferenceAdmission(),
+            new RecordingReferenceAdmission().ApplyChangesOutcomeAsync,
             CreateDeletionFinalizer(completedAt),
             new FixedTimeProvider(completedAt));
         var message = new RuntimeCellDeletionRequestedEvent(
@@ -344,34 +344,21 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
     }
 
     private sealed class RecordingReferenceAdmission
-        : IDeploymentTargetReferenceAdmission
     {
         public int UnregisterCallCount { get; private set; }
 
-        public Task<Result> RegisterAsync(
-            string deploymentTargetId,
-            DeploymentTargetReferenceOwner owner,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result>(Result.Success());
-
-        public Task<Result> UnregisterAsync(
-            string deploymentTargetId,
-            DeploymentTargetReferenceOwner owner,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default)
+        public Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
+            ApplyChangesOutcomeAsync(
+                DeploymentTargetReferenceOwner owner,
+                IReadOnlyCollection<string> addedDeploymentTargetIds,
+                IReadOnlyCollection<string> removedDeploymentTargetIds,
+                IClientSessionHandle session,
+                CancellationToken cancellationToken = default)
         {
-            UnregisterCallCount++;
-            return Task.FromResult<Result>(Result.Success());
+            UnregisterCallCount += removedDeploymentTargetIds.Count;
+            return Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
+                new Ok<Unit>(Unit.Value));
         }
-
-        public Task<Result> ApplyChangesAsync(
-            DeploymentTargetReferenceOwner owner,
-            IReadOnlyCollection<string> addedDeploymentTargetIds,
-            IReadOnlyCollection<string> removedDeploymentTargetIds,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result>(Result.Success());
     }
 
     private sealed class NoUnfinishedDeploymentReferences

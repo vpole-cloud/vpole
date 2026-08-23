@@ -96,7 +96,14 @@ public static class TestServiceProviderFactory
         services.AddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
         var deploymentTargetLookup = new TestDeploymentTargetLookup();
         services.AddSingleton(deploymentTargetLookup);
-        services.AddSingleton<IDeploymentTargetLookup>(deploymentTargetLookup);
+        services.AddSingleton<LookupDeploymentTarget>(
+            deploymentTargetLookup.LookupAsync);
+        services.AddSingleton<LookupDefaultDeploymentTarget>(
+            deploymentTargetLookup.LookupDefaultAsync);
+        services.AddSingleton<ListEligibleDeploymentTargetsForNewWorkload>(
+            deploymentTargetLookup.ListEligibleAsync);
+        services.AddSingleton<AdmitDefaultDeploymentTargetForNewWorkload>(
+            deploymentTargetLookup.AdmitDefaultForNewWorkloadAsync);
         services.AddSingleton<ListEligiblePublicIngressDeploymentTargetsForNewWorkload>(
             deploymentTargetLookup.ListEligiblePublicIngressForNewWorkloadAsync);
         services.AddSingleton<AdmitDeploymentTargetPublicIngressForNewWorkload>(
@@ -109,10 +116,8 @@ public static class TestServiceProviderFactory
             deploymentTargetLookup.AdmitForDomainReservationAsync);
         services.AddSingleton<ApplyDeploymentTargetReferenceChanges>(
             deploymentTargetLookup.ApplyChangesOutcomeAsync);
-        services.AddSingleton<IDeploymentTargetReferenceAdmission>(
-            deploymentTargetLookup);
-        services.AddSingleton<IDeploymentTargetWorkloadConfigurationFence>(
-            deploymentTargetLookup);
+        services.AddSingleton<FenceDeploymentTargetWorkloadConfigurations>(
+            deploymentTargetLookup.FenceManyOutcomeAsync);
         services.AddScoped<ResourceGroupLookup>();
         services.AddScoped<GetResourceGroupOwnership>(provider =>
             provider.GetRequiredService<ResourceGroupLookup>()

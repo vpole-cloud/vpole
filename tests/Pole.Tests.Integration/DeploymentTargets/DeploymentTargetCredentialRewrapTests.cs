@@ -1,13 +1,16 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using k8s;
 using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
+using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.DeploymentTargets.Application.Security;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
@@ -65,15 +68,16 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
             inClusterTarget
         ]);
 
-        var service = new DeploymentTargetCredentialRewrapService(
-            fixture.DbContext,
+        var service = new MongoRewrapDeploymentTargetCredentials(
+            fixture.DbContext.DeploymentTargets,
             encryption.RotatingService);
         var wrongKey = encryption.RotatingService.ActiveKey with { KeyVersion = 99 };
 
-        var rejected = await service.RewrapAllAsync(wrongKey);
-        Assert.IsType<ConflictFailure>(AssertFailure(rejected));
+        var rejected = await service.InvokeAsync(wrongKey);
+        Assert.IsType<DeploymentTargetCredentialRewrapConflict>(
+            AssertFailure(rejected));
 
-        var first = AssertSuccess(await service.RewrapAllAsync(
+        var first = AssertSuccess(await service.InvokeAsync(
             encryption.RotatingService.ActiveKey));
 
         Assert.Equal(2, first.Examined);
@@ -101,7 +105,7 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
         AssertFailure(await oldConnectionService.CreateAsync(kubeconfigTargetId, storedKubeconfig));
         AssertFailure(await oldConnectionService.CreateAsync(serviceAccountTargetId, storedServiceAccount));
 
-        var second = AssertSuccess(await service.RewrapAllAsync(
+        var second = AssertSuccess(await service.InvokeAsync(
             encryption.RotatingService.ActiveKey));
         Assert.Equal(2, second.Examined);
         Assert.Equal(0, second.Rewrapped);
@@ -123,24 +127,29 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
                 ServiceAccountToken)));
         var original = CreateTarget(targetId, prepared.Connection);
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(original);
-        var rewrapService = new DeploymentTargetCredentialRewrapService(
-            fixture.DbContext,
+        var rewrapService = new MongoRewrapDeploymentTargetCredentials(
+            fixture.DbContext.DeploymentTargets,
             encryption.RotatingService);
         var timeProvider = new CallbackTimeProvider(
             DateTimeOffset.UtcNow.AddMinutes(1),
             () =>
             {
-                var summary = AssertSuccess(rewrapService.RewrapAllAsync(
+                var summary = AssertSuccess(rewrapService.InvokeAsync(
                         encryption.RotatingService.ActiveKey)
                     .GetAwaiter()
                     .GetResult());
                 Assert.Equal(1, summary.Rewrapped);
             });
         var handler = new UpdateDeploymentTargetHandler(
-            fixture.DbContext,
-            new DeploymentTargetReader(fixture.DbContext),
-            new DeploymentTargetDomainAdmission(fixture.DbContext),
-            new NoOpClientCache(),
+            LoadById,
+            LoadDefaultId,
+            new MongoPersistUpdatedDeploymentTarget(
+                fixture.DbContext.DeploymentTargets,
+                CreateDomainAdmission(),
+                new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<Result<
+                    DeploymentTarget,
+                    PersistUpdatedDeploymentTargetError>>).InvokeAsync,
+            new NoOpClientCache().Invalidate,
             timeProvider);
 
         var result = await handler.HandleAsync(
@@ -153,7 +162,11 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
                     original.WorkloadConfiguration.ToRequestBody(),
                     original.Revision)));
 
-        var response = AssertSuccess(result);
+        var response = result switch
+        {
+            DeploymentTargetDto value => value,
+            _ => throw new Xunit.Sdk.XunitException("Expected a successful update outcome.")
+        };
         Assert.Equal("Updated while rewrapping", response.DisplayName);
         var stored = await fixture.DbContext.DeploymentTargets
             .Find(target => target.Id == targetId)
@@ -175,9 +188,43 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
         Assert.True(oldEnvelope.AuthenticationTag.SequenceEqual(newEnvelope.AuthenticationTag));
     }
 
-    private static DeploymentTargetConnectionService CreateConnectionService(
-        IEnvelopeEncryptionService encryptionService) =>
-        new(new DeploymentTargetConnectionProtector(encryptionService));
+    private static DeploymentTargetConnectionOperations CreateConnectionService(
+        IEnvelopeEncryptionService encryptionService)
+    {
+        var protector = new DeploymentTargetConnectionProtector(encryptionService);
+        return new DeploymentTargetConnectionOperations(
+            new DeploymentTargetConnectionPreparer(protector).InvokeAsync,
+            new DeploymentTargetKubernetesClientFactory(protector).InvokeAsync);
+    }
+
+    private sealed class DeploymentTargetConnectionOperations(
+        PrepareDeploymentTargetConnection prepareDeploymentTargetConnection,
+        CreateDeploymentTargetKubernetesClient createDeploymentTargetKubernetesClient)
+    {
+        public ValueTask<Result<
+            PreparedDeploymentTargetConnection,
+            DeploymentTargetConnectionRejected>> PrepareAsync(
+            string deploymentTargetId,
+            long connectionVersion,
+            DeploymentTargetConnectionInput input,
+            CancellationToken cancellationToken = default) =>
+            prepareDeploymentTargetConnection(
+                deploymentTargetId,
+                connectionVersion,
+                input,
+                cancellationToken);
+
+        public ValueTask<Result<
+            IKubernetes,
+            StoredDeploymentTargetConnectionUnavailable>> CreateAsync(
+            string deploymentTargetId,
+            DeploymentTargetConnection connection,
+            CancellationToken cancellationToken = default) =>
+            createDeploymentTargetKubernetesClient(
+                deploymentTargetId,
+                connection,
+                cancellationToken);
+    }
 
     private static DeploymentTarget CreateTarget(
         string id,
@@ -239,10 +286,56 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
     private static T AssertSuccess<T>(Result<T> result) where T : notnull =>
         Assert.IsType<Success<T>>(result).Value;
 
+    private static T AssertSuccess<T, TError>(Result<T, TError> result)
+        where T : notnull
+        where TError : notnull =>
+        result switch
+        {
+            Ok<T> success => success.Value,
+            Err<TError> error => throw new Xunit.Sdk.XunitException(
+                $"Expected success, got {error.Value.GetType().Name}."),
+            _ => throw new Xunit.Sdk.XunitException("Result returned an unsupported case.")
+        };
+
     private static Failure AssertFailure<T>(Result<T> result) where T : notnull =>
         Assert.IsType<Failure<T>>(result).Error;
 
-    private sealed class NoOpClientCache : IDeploymentTargetClientCache
+    private static TError AssertFailure<T, TError>(Result<T, TError> result)
+        where T : notnull
+        where TError : notnull =>
+        result switch
+        {
+            Err<TError> error => error.Value,
+            Ok<T> => throw new Xunit.Sdk.XunitException("Expected failure, got success."),
+            _ => throw new Xunit.Sdk.XunitException("Result returned an unsupported case.")
+        };
+
+    private DeploymentTargetDomainAdmission CreateDomainAdmission() =>
+        new(
+            fixture.DbContext.DeploymentTargets,
+            fixture.DbContext.DeploymentTargetReferences,
+            fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
+                DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName));
+
+    private Task<DeploymentTarget?> LoadById(
+        string id,
+        CancellationToken cancellationToken) =>
+        LoadTargetAsync(id, cancellationToken);
+
+    private async Task<DeploymentTarget?> LoadTargetAsync(
+        string id,
+        CancellationToken cancellationToken) =>
+        await fixture.DbContext.DeploymentTargets
+            .Find(item => item.Id == id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    private async Task<string?> LoadDefaultId(CancellationToken cancellationToken) =>
+        await fixture.DbContext.DeploymentTargetSettings
+            .Find(item => item.Id == DeploymentTargetSettings.SingletonId)
+            .Project(item => item.DefaultDeploymentTargetId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    private sealed class NoOpClientCache
     {
         public void Invalidate(string deploymentTargetId)
         {

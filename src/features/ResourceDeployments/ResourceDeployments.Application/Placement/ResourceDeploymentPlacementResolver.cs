@@ -5,7 +5,8 @@ using Pole.ResultType;
 namespace Pole.Features.ResourceDeployments.Application.Placement;
 
 internal sealed class ResourceDeploymentPlacementResolver(
-    IDeploymentTargetLookup deploymentTargetLookup)
+    AdmitDeploymentTargetForWorkload admitDeploymentTarget,
+    ListEligibleDeploymentTargetsForNewWorkload listEligibleDeploymentTargets)
 {
     public async Task<Result<ResolvedResourceDeploymentTarget>> InvokeAsync(
         string? deploymentTargetId,
@@ -15,20 +16,22 @@ internal sealed class ResourceDeploymentPlacementResolver(
         DeploymentTargetLookupDto target;
         if (!string.IsNullOrWhiteSpace(deploymentTargetId))
         {
-            var explicitTarget = await deploymentTargetLookup
-                .ResolveForNewWorkloadAsync(
-                    deploymentTargetId.Trim(),
-                    cancellationToken);
-            if (!explicitTarget.TryGetValue(out var resolvedTarget, out var failure))
-                return failure;
-            target = resolvedTarget;
+            var explicitTarget = await admitDeploymentTarget(
+                deploymentTargetId.Trim(),
+                cancellationToken);
+            if (explicitTarget is Err<DeploymentTargetWorkloadAdmissionError> error)
+                return AdmissionFailure(error.Value);
+            if (explicitTarget is not Ok<DeploymentTargetLookupDto> resolvedTarget)
+            {
+                throw new InvalidOperationException(
+                    "Deployment-target admission returned an unsupported result case.");
+            }
+
+            target = resolvedTarget.Value;
         }
         else
         {
-            var eligibleResult = await deploymentTargetLookup
-                .ListEligibleForNewWorkloadAsync(cancellationToken);
-            if (!eligibleResult.TryGetValue(out var eligible, out var failure))
-                return failure;
+            var eligible = await listEligibleDeploymentTargets(cancellationToken);
 
             if (eligible.Count == 0)
                 return Failures.Conflict("No deployment target accepts new workloads.");
@@ -70,4 +73,23 @@ internal sealed class ResourceDeploymentPlacementResolver(
                     ingress.PublicBaseDomain,
                     hostnames: null));
     }
+
+    private static Failure AdmissionFailure(DeploymentTargetWorkloadAdmissionError error) => error switch
+    {
+        InvalidDeploymentTargetId => Failures.ValidationFailure(
+            new Dictionary<string, string[]>
+            {
+                ["DeploymentTargetId"] = ["Deployment target ID must be a MongoDB ObjectId."]
+            }),
+        DeploymentTargetNotFound notFound => Failures.NotFound(
+            "Deployment target not found.",
+            notFound.DeploymentTargetId),
+        DeploymentTargetDisabled => Failures.Conflict("The deployment target is disabled."),
+        DeploymentTargetDeletionRequested => Failures.Conflict(
+            "The deployment target is pending deletion."),
+        DeploymentTargetNewWorkloadsDisabled => Failures.Conflict(
+            "The deployment target does not accept new workloads."),
+        _ => throw new InvalidOperationException(
+            "Deployment-target admission returned an unsupported error case.")
+    };
 }
