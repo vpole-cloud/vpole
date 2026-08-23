@@ -150,9 +150,10 @@ public static class RotateDeploymentTargetCredentialsEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     DeploymentTargetDto target => Results.Ok(target),
-                    DeploymentTargetNotFound error => httpProblems.Map(error).ToHttpResult(),
-                    DeploymentTargetRevisionConflict error => httpProblems.Map(error).ToHttpResult(),
-                    DeploymentTargetConnectionRejected error => httpProblems.Map(error).ToHttpResult()
+                    DeploymentTargetNotFound
+                        or DeploymentTargetRevisionConflict
+                        or DeploymentTargetConnectionRejected =>
+                        httpProblems.Map(outcome).ToHttpResult()
                 });
             })
             .WithName("RotateDeploymentTargetCredentials")

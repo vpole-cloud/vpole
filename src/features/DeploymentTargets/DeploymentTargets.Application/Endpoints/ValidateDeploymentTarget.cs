@@ -84,9 +84,9 @@ public static class ValidateDeploymentTargetEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     DeploymentTargetDto target => Results.Ok(target),
-                    DeploymentTargetNotFound notFound => httpProblems.Map(notFound).ToHttpResult(),
-                    DeploymentTargetRevisionConflict conflict =>
-                        httpProblems.Map(conflict).ToHttpResult()
+                    DeploymentTargetNotFound
+                        or DeploymentTargetRevisionConflict =>
+                        httpProblems.Map(outcome).ToHttpResult()
                 });
             })
             .WithName("ValidateDeploymentTarget")

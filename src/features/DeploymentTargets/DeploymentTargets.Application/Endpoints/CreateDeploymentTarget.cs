@@ -141,9 +141,10 @@ public static class CreateDeploymentTargetEndpoint
                     DeploymentTargetDto target => Results.Created(
                         $"/api/v1/platform/deployment-targets/{target.Id}",
                         target),
-                    DeploymentTargetConnectionRejected error => httpProblems.Map(error).ToHttpResult(),
-                    DeploymentTargetPublicBaseDomainConflict error => httpProblems.Map(error).ToHttpResult(),
-                    DeploymentTargetIdentityConflict error => httpProblems.Map(error).ToHttpResult()
+                    DeploymentTargetConnectionRejected
+                        or DeploymentTargetPublicBaseDomainConflict
+                        or DeploymentTargetIdentityConflict =>
+                        httpProblems.Map(outcome).ToHttpResult()
                 });
             })
             .WithName("CreateDeploymentTarget")
