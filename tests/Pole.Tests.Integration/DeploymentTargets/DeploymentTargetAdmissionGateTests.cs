@@ -75,8 +75,10 @@ public sealed class DeploymentTargetAdmissionGateTests(MongoReplicaSetFixture fi
                 Builders<Pole.Features.Postgres.Domain.PostgresCluster>.Filter.Empty),
             await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
                 Builders<Pole.Features.Shared.Models.OutboxMessage>.Filter.Empty),
-            await Fixture.DbContext.QuotaReservations.CountDocumentsAsync(
-                Builders<Pole.Features.Quotas.Domain.QuotaReservation>.Filter.Empty));
+            await Fixture.Database
+                .GetCollection<Pole.Features.Quotas.Domain.QuotaReservation>("QuotaReservations")
+                .CountDocumentsAsync(
+                    Builders<Pole.Features.Quotas.Domain.QuotaReservation>.Filter.Empty));
 
     private static FunctionRevisionRequest CreateFunctionRevision() =>
         new(

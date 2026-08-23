@@ -11,23 +11,12 @@ public static class QuotaContractHttpMappings
             HttpProblemMapping.For<QuotaReservationError>(
                 MapReservationError),
             HttpProblemMapping.For<QuotaReservationCommitError>(
-                MapReservationCommitError),
-            HttpProblemMapping.For<InvalidQuotaUsageAdjustment>(
-                MapInvalidUsageAdjustment)
+                MapReservationCommitError)
         ]);
 
     private static HttpProblem MapReservationError(
         QuotaReservationError error) => error switch
         {
-            InvalidQuotaReservationRequest invalid => new HttpProblem(
-                (int)HttpStatusCode.BadRequest,
-                PoleProblemTypeId.FromCode("quotas.reservation.invalid"),
-                "Quota reservation request is invalid",
-                "quotas.reservation.invalid",
-                extensions: new Dictionary<string, object>
-                {
-                    ["errors"] = invalid.Errors
-                }),
             QuotaExceeded exceeded => new HttpProblem(
                 (int)HttpStatusCode.UnprocessableEntity,
                 PoleProblemTypeId.FromCode("quotas.reservation.exceeded"),
@@ -54,10 +43,6 @@ public static class QuotaContractHttpMappings
     private static HttpProblem MapReservationCommitError(
         QuotaReservationCommitError error) => error switch
         {
-            InvalidQuotaReservationCommit => Problem(
-                HttpStatusCode.InternalServerError,
-                "quotas.reservation.commit-invalid",
-                "Quota reservation could not be committed"),
             QuotaReservationNotFound => Problem(
                 HttpStatusCode.Conflict,
                 "quotas.reservation.commit-not-found",
@@ -71,12 +56,6 @@ public static class QuotaContractHttpMappings
                 "quotas.reservation.commit-expired",
                 "Quota reservation expired")
         };
-
-    private static HttpProblem MapInvalidUsageAdjustment(
-        InvalidQuotaUsageAdjustment _) => Problem(
-        HttpStatusCode.InternalServerError,
-        "quotas.usage.adjustment-invalid",
-        "Quota usage could not be adjusted");
 
     private static HttpProblem Problem(
         HttpStatusCode status,

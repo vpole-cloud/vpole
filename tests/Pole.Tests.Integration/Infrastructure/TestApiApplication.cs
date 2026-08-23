@@ -186,12 +186,11 @@ public sealed class TestApiApplication : IAsyncDisposable
             SupportedVersions = new PostgresSupportedVersionsSettings { From = 16, To = 17 }
         });
         builder.Services.AddSingleton(new QuotaSettings());
-        builder.Services.AddQuotaFramework(
+        builder.Services.AddQuotasFeature(
             typeof(RedisQuotaProfile).Assembly,
             typeof(FunctionAppQuotaProfile).Assembly,
             typeof(WebServiceQuotaProfile).Assembly,
             typeof(PostgresQuotaProfile).Assembly);
-        builder.Services.AddQuotaHttpMappings();
         builder.Services.AddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
         builder.Services.AddMigrations(Assemblies);
         builder.Services.AddSearchFeature();

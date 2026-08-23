@@ -5,6 +5,7 @@ using Pole.Database;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Endpoints;
+using Pole.Features.Quotas.Application.Persistence;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Domain;
 using Pole.Features.RedisServices.Application.Common;
@@ -42,7 +43,7 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.Equal(1L, await DbContext.Database.RedisServices().CountDocumentsAsync(redis => redis.TenantId == TestData.TenantId));
         var usage = await GetUsageAsync(TestData.TenantId);
         Assert.Equal(1, QuotaValues.GetValue(usage.Values, RedisServiceCountQuota.QuotaKey));
-        var reservations = await DbContext.QuotaReservations
+        var reservations = await QuotaReservations
             .Find(reservation => reservation.TenantId == TestData.TenantId)
             .ToListAsync();
         Assert.DoesNotContain(reservations, reservation => reservation.State is ActiveQuotaReservationState);
@@ -137,16 +138,18 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
 
         using var firstScope = Services.CreateScope();
         using var secondScope = Services.CreateScope();
-        var firstAdmission = firstScope.ServiceProvider.GetRequiredService<IQuotaAdmissionService>();
-        var secondAdmission = secondScope.ServiceProvider.GetRequiredService<IQuotaAdmissionService>();
+        var firstReservation = firstScope.ServiceProvider
+            .GetRequiredService<ReserveQuotaReservation>();
+        var secondReservation = secondScope.ServiceProvider
+            .GetRequiredService<ReserveQuotaReservation>();
         var requested = QuotaDelta.From(RedisServiceCountQuota.QuotaKey, 1);
 
         var outcomes = await Task.WhenAll(
-            firstAdmission.ReserveAsync(
+            firstReservation(
                 TestData.TenantId,
                 requested,
                 QuotaResourceKey.Create("test", "race-1")),
-            secondAdmission.ReserveAsync(
+            secondReservation(
                 TestData.TenantId,
                 requested,
                 QuotaResourceKey.Create("test", "race-2")));
@@ -158,13 +161,13 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.Single(successful);
         Assert.Single(outcomes, outcome => !outcome.TryGetValue(out _, out _));
 
-        var activeReservations = await DbContext.QuotaReservations
+        var activeReservations = await QuotaReservations
             .Find(reservation => reservation.TenantId == TestData.TenantId)
             .ToListAsync();
         Assert.Single(activeReservations, reservation => reservation.State is ActiveQuotaReservationState);
 
-        var cancel = await firstAdmission.CancelAsync(successful[0]!.ReservationId);
-        Assert.IsType<Success>(cancel);
+        var cancel = Services.GetRequiredService<CancelQuotaReservation>();
+        await cancel(successful[0]!.ReservationId);
     }
 
     [Fact]
@@ -173,17 +176,17 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         await SeedPolicyAsync(
             TestData.TenantId,
             [new(RedisServiceCountQuota.QuotaKey, 1)]);
-        var admission = Services.GetRequiredService<IQuotaAdmissionService>();
+        var reserve = Services.GetRequiredService<ReserveQuotaReservation>();
         var requested = QuotaDelta.From(
             RedisServiceCountQuota.QuotaKey,
             1);
-        var first = await admission.ReserveAsync(
+        var first = await reserve(
             TestData.TenantId,
             requested,
             QuotaResourceKey.Create("test", "first"));
         Assert.True(first.TryGetValue(out var lease, out _));
 
-        var second = await admission.ReserveAsync(
+        var second = await reserve(
             TestData.TenantId,
             requested,
             QuotaResourceKey.Create("test", "second"));
@@ -195,8 +198,8 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.Equal(1, exceeded.Requested);
         Assert.Equal(1, exceeded.Current);
 
-        var cancel = await admission.CancelAsync(lease.ReservationId);
-        Assert.IsType<Success>(cancel);
+        var cancel = Services.GetRequiredService<CancelQuotaReservation>();
+        await cancel(lease.ReservationId);
     }
 
     [Fact]
@@ -218,33 +221,16 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
     }
 
     [Fact]
-    public async Task ExecutorPreparationFailureCancelsQuotaReservation()
+    public async Task ReservationRejectsStructuralInvalidInput()
     {
-        await SeedPolicyAsync(
-            TestData.TenantId,
-            [
-                new(RedisServiceCountQuota.QuotaKey, 10)
-            ]);
-        var executor = Services.GetRequiredService<IQuotaAdmissionExecutor>();
+        var reserve = Services.GetRequiredService<ReserveQuotaReservation>();
 
-        var result = await executor.ExecuteAsync<
-            RedisQuotaInput,
-            string,
-            bool>(
-            TestData.TenantId,
-            QuotaResourceKey.Create("test", "preparation-failure"),
-            new CreateQuotaMutation<RedisQuotaInput>(
-                new RedisQuotaInput(100, 128, 1)),
-            _ => Task.FromResult<Result<string>>(
-                Failures.Conflict("Preparation failed.")),
-            (_, _, _) => Task.FromResult<Result<bool>>(true));
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => reserve(
+            string.Empty,
+            QuotaDelta.From(RedisServiceCountQuota.QuotaKey, 1),
+            QuotaResourceKey.Create("test", "invalid")));
 
-        Assert.False(result.TryGetValue(out _, out var failure));
-        Assert.IsType<ConflictFailure>(failure);
-        var reservations = await DbContext.QuotaReservations
-            .Find(reservation => reservation.TenantId == TestData.TenantId)
-            .ToListAsync();
-        Assert.DoesNotContain(reservations, reservation => reservation.State is ActiveQuotaReservationState);
+        Assert.Equal("tenantId", exception.ParamName);
     }
 
     [Fact]
@@ -272,7 +258,7 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
             QuotaValues.GetValue(
                 usage.Values,
                 RedisServiceCountQuota.QuotaKey));
-        var reservations = await DbContext.QuotaReservations
+        var reservations = await QuotaReservations
             .Find(reservation => reservation.TenantId == TestData.TenantId)
             .ToListAsync();
         Assert.DoesNotContain(
@@ -283,11 +269,20 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
     private async Task SeedPolicyAsync(string tenantId, IEnumerable<QuotaValue> limits)
     {
         var policy = QuotaDomainFactory.CreatePolicy(tenantId, QuotaDelta.Create(limits), DateTime.UtcNow);
-        await DbContext.TenantQuotaPolicies.InsertOneAsync(policy);
+        await QuotaPolicies.InsertOneAsync(policy);
     }
 
     private async Task<TenantQuotaUsage> GetUsageAsync(string tenantId) =>
-        await DbContext.TenantQuotaUsages.Find(usage => usage.TenantId == tenantId).SingleAsync();
+        await QuotaUsages.Find(usage => usage.TenantId == tenantId).SingleAsync();
+
+    private IMongoCollection<QuotaReservation> QuotaReservations =>
+        Fixture.Database.GetCollection<QuotaReservation>("QuotaReservations");
+
+    private IMongoCollection<TenantQuotaPolicy> QuotaPolicies =>
+        Fixture.Database.GetCollection<TenantQuotaPolicy>("TenantQuotaPolicies");
+
+    private IMongoCollection<TenantQuotaUsage> QuotaUsages =>
+        Fixture.Database.GetCollection<TenantQuotaUsage>("TenantQuotaUsages");
 }
 
 public sealed record TestMutationAccepted;

@@ -102,12 +102,11 @@ builder.Services.AddKubernetes(configuration)
     .AddRedisServicesFeature()
     .AddPostgresFeature()
     .AddWebServicesFeature()
-    .AddQuotaFramework(
+    .AddQuotasFeature(
         typeof(RedisQuotaProfile).Assembly,
         typeof(FunctionAppQuotaProfile).Assembly,
         typeof(WebServiceQuotaProfile).Assembly,
         typeof(PostgresQuotaProfile).Assembly)
-    .AddQuotaHttpMappings()
     .AddMigrations(assemblies)
     .AddEnvelopeEncryption(configuration)
     .AddDeploymentTargetsFeature(configuration)

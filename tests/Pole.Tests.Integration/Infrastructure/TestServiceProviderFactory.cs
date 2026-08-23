@@ -88,7 +88,7 @@ public static class TestServiceProviderFactory
             SupportedVersions = new PostgresSupportedVersionsSettings { From = 16, To = 17 }
         });
         services.AddSingleton(new QuotaSettings());
-        services.AddQuotaFramework(
+        services.AddQuotasFeature(
             typeof(RedisQuotaProfile).Assembly,
             typeof(FunctionAppQuotaProfile).Assembly,
             typeof(WebServiceQuotaProfile).Assembly,

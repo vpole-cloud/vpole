@@ -642,14 +642,6 @@ public sealed class HttpProblemMapperTests
             cases =
             [
                 (
-                    new InvalidQuotaReservationRequest(
-                        new Dictionary<string, string[]>
-                        {
-                            ["TenantId"] = ["Tenant id is required."]
-                        }),
-                    HttpStatusCode.BadRequest,
-                    "quotas.reservation.invalid"),
-                (
                     exceeded,
                     HttpStatusCode.UnprocessableEntity,
                     "quotas.reservation.exceeded"),
@@ -693,23 +685,6 @@ public sealed class HttpProblemMapperTests
         Assert.Equal(
             PoleProblemTypeId.FromCode(problem.Code),
             problem.Type);
-    }
-
-    [Fact]
-    public void InvalidQuotaPolicyHasFeatureLocalProblemMapping()
-    {
-        var mapper = new HttpProblemMapper(QuotaHttpMappings.All);
-        var invalid = new InvalidTenantQuotaPolicy(
-            new Dictionary<string, string[]>
-            {
-                ["Body.Limits[0].Key"] = ["Quota key is invalid."]
-            });
-
-        var problem = mapper.Map(invalid);
-
-        Assert.Equal((int)HttpStatusCode.BadRequest, problem.StatusCode);
-        Assert.Equal("quotas.policy.invalid", problem.Code);
-        Assert.Same(invalid.Errors, problem.Extensions["errors"]);
     }
 
     [Fact]

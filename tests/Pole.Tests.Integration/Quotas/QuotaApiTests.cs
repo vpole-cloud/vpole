@@ -61,7 +61,7 @@ public sealed class QuotaApiTests(MongoReplicaSetFixture fixture)
         using var problem = JsonDocument.Parse(
             await response.Content.ReadAsStringAsync());
         Assert.Equal(
-            "quotas.policy.invalid",
+            "request.validation.failed",
             problem.RootElement.GetProperty("code").GetString());
         Assert.True(
             problem.RootElement

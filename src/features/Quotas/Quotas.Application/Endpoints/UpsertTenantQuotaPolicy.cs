@@ -3,12 +3,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.Quotas.Application.Common;
-using Pole.Features.Quotas.Domain;
+using Pole.Features.Quotas.Application.Persistence;
 using Pole.Mediator;
-using Pole.ResultType;
 
 namespace Pole.Features.Quotas.Application.Endpoints;
 
@@ -18,21 +16,19 @@ public static class UpsertTenantQuotaPolicy
     {
         app.MapPut("/{tenantId}/quota", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] UpsertTenantQuotaPolicyRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(outcome => outcome switch
                 {
-                    TenantQuotaPolicyDto policy => Results.Ok(policy),
-                    InvalidTenantQuotaPolicy invalid =>
-                        httpProblems.Map(invalid).ToHttpResult()
+                    TenantQuotaPolicyDto policy => Results.Ok(policy)
                 });
             })
             .WithName("UpsertTenantQuotaPolicy")
             .RequireAuthorization(Policy.Admin)
-            .Produces<TenantQuotaPolicyDto>();
+            .Produces<TenantQuotaPolicyDto>()
+            .ProducesProblem(StatusCodes.Status400BadRequest);
 
         return app;
     }
@@ -43,15 +39,10 @@ public sealed record UpsertTenantQuotaPolicyRequest(
     [FromBody] UpsertTenantQuotaPolicyRequestBody Body)
     : IMediatorRequest<UpsertTenantQuotaPolicyOutcome>;
 
-public sealed record InvalidTenantQuotaPolicy(
-    IReadOnlyDictionary<string, string[]> Errors);
-
-public union UpsertTenantQuotaPolicyOutcome(
-    TenantQuotaPolicyDto,
-    InvalidTenantQuotaPolicy);
+public union UpsertTenantQuotaPolicyOutcome(TenantQuotaPolicyDto);
 
 public sealed class UpsertTenantQuotaPolicyHandler(
-    IQuotaDbContext dbContext,
+    PersistTenantQuotaPolicy persistTenantQuotaPolicy,
     QuotaCatalog catalog,
     TimeProvider timeProvider)
     : IMediatorOutcomeHandler<
@@ -62,34 +53,30 @@ public sealed class UpsertTenantQuotaPolicyHandler(
         UpsertTenantQuotaPolicyRequest request,
         CancellationToken cancellationToken = default)
     {
-        var limitsResult = request.Body.ToQuotaLimits(catalog);
-        if (!limitsResult.TryGetValue(out var limits, out var error))
-            return error;
-
-        var existing = await dbContext.TenantQuotaPolicies
-            .Find(candidate => candidate.TenantId == request.TenantId)
-            .FirstOrDefaultAsync(cancellationToken);
-        var policy = QuotaDomainFactory.CreatePolicy(
+        var policy = await persistTenantQuotaPolicy(
             request.TenantId,
-            limits,
+            request.Body.ToQuotaLimits(catalog),
             timeProvider.GetUtcNow().UtcDateTime,
-            existing?.CreatedAtUtc);
-
-        await dbContext.TenantQuotaPolicies.ReplaceOneAsync(
-            candidate => candidate.TenantId == request.TenantId,
-            policy,
-            new ReplaceOptions { IsUpsert = true },
             cancellationToken);
-
         return policy.ToDto(policy.TenantId, catalog);
     }
 }
 
-public sealed class UpsertTenantQuotaPolicyValidator : AbstractValidator<UpsertTenantQuotaPolicyRequest>
+public sealed class UpsertTenantQuotaPolicyValidator
+    : AbstractValidator<UpsertTenantQuotaPolicyRequest>
 {
-    public UpsertTenantQuotaPolicyValidator()
+    public UpsertTenantQuotaPolicyValidator(QuotaCatalog catalog)
     {
         RuleFor(request => request.Body)
             .NotNull();
+        RuleFor(request => request.Body)
+            .Custom((body, context) =>
+            {
+                foreach (var (field, messages) in QuotaDtoExtensions.ValidateQuotaLimits(body, catalog))
+                {
+                    foreach (var message in messages)
+                        context.AddFailure(field, message);
+                }
+            });
     }
 }

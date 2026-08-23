@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Pole.Features.Quotas.Application.Common;
+using Pole.Features.Quotas.Application.Persistence;
 using Pole.Features.Quotas.Application.Services;
 using Pole.Features.Quotas.Contracts;
 
@@ -10,7 +11,7 @@ namespace Pole.Features.Quotas.Application;
 
 public static class QuotaServiceCollectionExtensions
 {
-    public static IServiceCollection AddQuotaFramework(
+    public static IServiceCollection AddQuotasFeature(
         this IServiceCollection services,
         params Assembly[] featureAssemblies)
     {
@@ -42,7 +43,7 @@ public static class QuotaServiceCollectionExtensions
         }
 
         services.TryAddSingleton<QuotaCatalog>();
-        services.TryAddScoped<IQuotaAdmissionService, MongoQuotaAdmissionService>();
+        services.AddQuotaPersistence();
         services.TryAddScoped<IQuotaAdmissionExecutor, QuotaAdmissionExecutor>();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IHostedService, QuotaCatalogStartupService>());
