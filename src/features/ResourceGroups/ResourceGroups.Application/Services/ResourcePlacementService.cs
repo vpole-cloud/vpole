@@ -459,7 +459,6 @@ public sealed class ResourcePlacementService(
         {
             DefaultDeploymentTargetNotConfigured => Failures.Conflict(
                 "The default deployment target is not configured."),
-            DeploymentTargetLookupError nested => LookupFailure(nested),
             _ => throw new InvalidOperationException(
                 "Deployment-target lookup returned an unsupported error case.")
         };
@@ -467,11 +466,6 @@ public sealed class ResourcePlacementService(
     private static Failure LookupFailure(DeploymentTargetLookupError error) =>
         error switch
         {
-            InvalidDeploymentTargetId => Failures.ValidationFailure(
-                new Dictionary<string, string[]>
-                {
-                    ["DeploymentTargetId"] = ["Deployment target ID must be a MongoDB ObjectId."]
-                }),
             DeploymentTargetNotFound notFound => Failures.NotFound(
                 "Deployment target not found.", notFound.DeploymentTargetId),
             _ => throw new InvalidOperationException(
@@ -484,7 +478,12 @@ public sealed class ResourcePlacementService(
         {
             DefaultDeploymentTargetNotConfigured => Failures.Conflict(
                 "The default deployment target is not configured."),
-            DeploymentTargetWorkloadAdmissionError nested => AdmissionFailure(nested),
+            DeploymentTargetDisabled => Failures.Conflict(
+                "The deployment target is disabled."),
+            DeploymentTargetDeletionRequested => Failures.Conflict(
+                "The deployment target is pending deletion."),
+            DeploymentTargetNewWorkloadsDisabled => Failures.Conflict(
+                "The deployment target does not accept new workloads."),
             _ => throw new InvalidOperationException(
                 "Default deployment-target admission returned an unsupported error case.")
         };
@@ -492,11 +491,6 @@ public sealed class ResourcePlacementService(
     private static Failure AdmissionFailure(DeploymentTargetWorkloadAdmissionError error) =>
         error switch
         {
-            InvalidDeploymentTargetId => Failures.ValidationFailure(
-                new Dictionary<string, string[]>
-                {
-                    ["DeploymentTargetId"] = ["Deployment target ID must be a MongoDB ObjectId."]
-                }),
             DeploymentTargetNotFound notFound => Failures.NotFound(
                 "Deployment target not found.", notFound.DeploymentTargetId),
             DeploymentTargetDisabled => Failures.Conflict(

@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using k8s;
 using k8s.KubeConfigModels;
+using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.ResultType;
 using KubeCluster = k8s.KubeConfigModels.Cluster;
 using KubeContext = k8s.KubeConfigModels.Context;
@@ -45,7 +46,7 @@ internal static class KubeconfigCanonicalizer
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
     };
 
-    public static Result<CanonicalKubeconfigCredential> Canonicalize(
+    public static Result<CanonicalKubeconfigCredential, DeploymentTargetConnectionRejected> Canonicalize(
         string? kubeconfig,
         string? requestedContextName,
         CancellationToken cancellationToken)
@@ -56,7 +57,7 @@ internal static class KubeconfigCanonicalizer
                 ConnectionPayloadLimits.MaximumKubeconfigBytes,
                 out var payload))
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "kubeconfig",
                 "The kubeconfig payload is required and must not exceed the supported size.");
         }
@@ -74,7 +75,7 @@ internal static class KubeconfigCanonicalizer
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "kubeconfig",
                 "The kubeconfig payload could not be parsed.");
         }
@@ -87,27 +88,27 @@ internal static class KubeconfigCanonicalizer
     public static byte[] Serialize(CanonicalKubeconfigCredential credential) =>
         JsonSerializer.SerializeToUtf8Bytes(credential, SerializerOptions);
 
-    public static Result<CanonicalKubeconfigCredential> DeserializeStored(
+    public static Result<CanonicalKubeconfigCredential, StoredDeploymentTargetConnectionUnavailable> DeserializeStored(
         ReadOnlySpan<byte> payload,
         int maximumBytes = ConnectionPayloadLimits.MaximumKubeconfigBytes)
     {
         if (payload.IsEmpty || payload.Length > maximumBytes)
-            return ConnectionFailures.StoredConnectionUnavailable();
+            return StoredUnavailable();
 
         try
         {
             var credential = JsonSerializer.Deserialize<CanonicalKubeconfigCredential>(payload, SerializerOptions);
             if (credential is null || !IsValidCanonical(credential))
-                return ConnectionFailures.StoredConnectionUnavailable();
-            return credential;
+                return StoredUnavailable();
+            return new Ok<CanonicalKubeconfigCredential>(credential);
         }
         catch (JsonException)
         {
-            return ConnectionFailures.StoredConnectionUnavailable();
+            return StoredUnavailable();
         }
         catch (NotSupportedException)
         {
-            return ConnectionFailures.StoredConnectionUnavailable();
+            return StoredUnavailable();
         }
     }
 
@@ -163,14 +164,14 @@ internal static class KubeconfigCanonicalizer
         };
     }
 
-    public static Result<CanonicalKubeconfigCredential> CreateServiceAccountCredential(
+    public static Result<CanonicalKubeconfigCredential, DeploymentTargetConnectionRejected> CreateServiceAccountCredential(
         string? serverUrl,
         string? certificateAuthorityData,
         string? token)
     {
         if (!ConnectionValueValidation.TryNormalizeServerUrl(serverUrl, out var normalizedServer))
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "serverUrl",
                 "The Kubernetes server URL must be an absolute HTTPS URL without credentials, query, or fragment.");
         }
@@ -180,26 +181,26 @@ internal static class KubeconfigCanonicalizer
                 ConnectionPayloadLimits.MaximumCertificateDataCharacters,
                 out var normalizedCa))
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "certificateAuthorityData",
                 "Embedded base64 certificate-authority data is required.");
         }
 
         if (!ConnectionValueValidation.HasValidTokenShape(token))
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "token",
                 "The service-account token is invalid.");
         }
 
-        return new CanonicalKubeconfigCredential
+        return new Ok<CanonicalKubeconfigCredential>(new CanonicalKubeconfigCredential
         {
             FormatVersion = CurrentFormatVersion,
             ContextName = ServiceAccountContextName,
             ServerUrl = normalizedServer,
             CertificateAuthorityData = normalizedCa,
             Token = token
-        };
+        });
     }
 
     public static bool IsServiceAccountCredential(CanonicalKubeconfigCredential credential) =>
@@ -209,7 +210,7 @@ internal static class KubeconfigCanonicalizer
         credential.ClientCertificateData is null &&
         credential.ClientKeyData is null;
 
-    private static Result<CanonicalKubeconfigCredential> SelectAndCanonicalize(
+    private static Result<CanonicalKubeconfigCredential, DeploymentTargetConnectionRejected> SelectAndCanonicalize(
         K8SConfiguration parsed,
         string? requestedContextName)
     {
@@ -218,21 +219,21 @@ internal static class KubeconfigCanonicalizer
         var users = parsed.Users?.ToList() ?? [];
         if (contexts.Count == 0)
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "kubeconfig",
                 "The kubeconfig does not define a context.");
         }
 
         var contextNameResult = ResolveContextName(parsed.CurrentContext, requestedContextName, contexts);
         if (!contextNameResult.TryGetValue(out var contextName, out var contextNameFailure))
-            return contextNameFailure;
+            return new Err<DeploymentTargetConnectionRejected>(contextNameFailure);
 
         var matchingContexts = contexts
             .Where(context => string.Equals(context.Name, contextName, StringComparison.Ordinal))
             .ToList();
         if (matchingContexts.Count != 1 || matchingContexts[0].ContextDetails is null)
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "contextName",
                 "The selected kubeconfig context is missing or ambiguous.");
         }
@@ -241,7 +242,7 @@ internal static class KubeconfigCanonicalizer
         if (!TryNormalizeName(details.Cluster, out var clusterName) ||
             !TryNormalizeName(details.User, out var userName))
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "kubeconfig",
                 "The selected context must reference one cluster and one user.");
         }
@@ -255,7 +256,7 @@ internal static class KubeconfigCanonicalizer
         if (matchingClusters.Count != 1 || matchingClusters[0].ClusterEndpoint is null ||
             matchingUsers.Count != 1 || matchingUsers[0].UserCredentials is null)
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "kubeconfig",
                 "The selected context references missing or ambiguous connection data.");
         }
@@ -264,21 +265,21 @@ internal static class KubeconfigCanonicalizer
         var userCredentials = matchingUsers[0].UserCredentials;
         if (clusterEndpoint.SkipTlsVerify)
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "kubeconfig",
                 "Kubeconfigs that disable TLS verification are not supported.");
         }
 
         if (!string.IsNullOrWhiteSpace(clusterEndpoint.CertificateAuthority))
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "kubeconfig",
                 "Certificate-authority file references are not supported; embed the data instead.");
         }
 
         if (!ConnectionValueValidation.TryNormalizeServerUrl(clusterEndpoint.Server, out var serverUrl))
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "kubeconfig",
                 "The selected cluster must use an absolute HTTPS server URL.");
         }
@@ -288,7 +289,7 @@ internal static class KubeconfigCanonicalizer
                 ConnectionPayloadLimits.MaximumCertificateDataCharacters,
                 out var certificateAuthorityData))
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "kubeconfig",
                 "The selected cluster must contain embedded base64 certificate-authority data.");
         }
@@ -297,16 +298,16 @@ internal static class KubeconfigCanonicalizer
                 clusterEndpoint.TlsServerName,
                 out var tlsServerName))
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "kubeconfig",
                 "The selected cluster contains an invalid TLS server name.");
         }
 
         var credentialsResult = CanonicalizeCredentials(userCredentials);
         if (!credentialsResult.TryGetValue(out var canonicalCredentials, out var credentialsFailure))
-            return credentialsFailure;
+            return new Err<DeploymentTargetConnectionRejected>(credentialsFailure);
 
-        return new CanonicalKubeconfigCredential
+        return new Ok<CanonicalKubeconfigCredential>(new CanonicalKubeconfigCredential
         {
             FormatVersion = CurrentFormatVersion,
             ContextName = contextName,
@@ -316,10 +317,10 @@ internal static class KubeconfigCanonicalizer
             Token = canonicalCredentials.Token,
             ClientCertificateData = canonicalCredentials.ClientCertificateData,
             ClientKeyData = canonicalCredentials.ClientKeyData
-        };
+        });
     }
 
-    private static Result<string> ResolveContextName(
+    private static Result<string, DeploymentTargetConnectionRejected> ResolveContextName(
         string? currentContext,
         string? requestedContextName,
         IReadOnlyList<KubeContext> contexts)
@@ -339,7 +340,7 @@ internal static class KubeconfigCanonicalizer
         }
         else
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "contextName",
                 "A context name is required when the kubeconfig does not select exactly one context.");
         }
@@ -347,19 +348,19 @@ internal static class KubeconfigCanonicalizer
         if (!TryNormalizeName(selectedName, out var normalized) ||
             normalized.Length > ConnectionPayloadLimits.MaximumContextNameCharacters)
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "contextName",
                 "The selected kubeconfig context name is invalid.");
         }
 
-        return normalized;
+        return new Ok<string>(normalized);
     }
 
-    private static Result<CanonicalKubeconfigCredential> CanonicalizeCredentials(UserCredentials credentials)
+    private static Result<CanonicalKubeconfigCredential, DeploymentTargetConnectionRejected> CanonicalizeCredentials(UserCredentials credentials)
     {
         if (credentials.ExternalExecution is not null || credentials.AuthProvider is not null)
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "kubeconfig",
                 "Exec and auth-provider credentials are not supported.");
         }
@@ -367,7 +368,7 @@ internal static class KubeconfigCanonicalizer
         if (!string.IsNullOrWhiteSpace(credentials.ClientCertificate) ||
             !string.IsNullOrWhiteSpace(credentials.ClientKey))
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "kubeconfig",
                 "Client certificate and key file references are not supported; embed the data instead.");
         }
@@ -375,7 +376,7 @@ internal static class KubeconfigCanonicalizer
         if (!string.IsNullOrWhiteSpace(credentials.UserName) ||
             !string.IsNullOrWhiteSpace(credentials.Password))
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "kubeconfig",
                 "Basic authentication credentials are not supported.");
         }
@@ -384,7 +385,7 @@ internal static class KubeconfigCanonicalizer
             credentials.ImpersonateGroups?.Any() == true ||
             credentials.ImpersonateUserExtra?.Count > 0)
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "kubeconfig",
                 "Impersonation settings are not supported.");
         }
@@ -396,17 +397,18 @@ internal static class KubeconfigCanonicalizer
         {
             if (hasCertificate || hasKey || !ConnectionValueValidation.HasValidTokenShape(credentials.Token))
             {
-                return ConnectionFailures.Validation(
+                return Rejected(
                     "kubeconfig",
                     "The selected user must contain exactly one complete inline credential.");
             }
 
-            return new CanonicalKubeconfigCredential { Token = credentials.Token };
+            return new Ok<CanonicalKubeconfigCredential>(
+                new CanonicalKubeconfigCredential { Token = credentials.Token });
         }
 
         if (!hasCertificate || !hasKey)
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "kubeconfig",
                 "The selected user must contain an inline token or a complete inline client certificate and key.");
         }
@@ -420,17 +422,23 @@ internal static class KubeconfigCanonicalizer
                 ConnectionPayloadLimits.MaximumCertificateDataCharacters,
                 out var clientKeyData))
         {
-            return ConnectionFailures.Validation(
+            return Rejected(
                 "kubeconfig",
                 "The inline client certificate and key must contain valid base64 data.");
         }
 
-        return new CanonicalKubeconfigCredential
+        return new Ok<CanonicalKubeconfigCredential>(new CanonicalKubeconfigCredential
         {
             ClientCertificateData = clientCertificateData,
             ClientKeyData = clientKeyData
-        };
+        });
     }
+
+    private static Err<DeploymentTargetConnectionRejected> Rejected(
+        string field,
+        string message) => new(ConnectionRejections.Validation(field, message));
+
+    private static Err<StoredDeploymentTargetConnectionUnavailable> StoredUnavailable() => new(new());
 
     private static bool IsValidCanonical(CanonicalKubeconfigCredential credential)
     {

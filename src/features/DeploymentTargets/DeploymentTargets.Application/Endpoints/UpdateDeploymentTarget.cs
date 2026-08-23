@@ -27,15 +27,13 @@ public sealed record UpdateDeploymentTargetRequest(
     [FromBody] UpdateDeploymentTargetRequestBody Body)
     : IMediatorRequest<UpdateDeploymentTargetOutcome>;
 
-public union UpdateDeploymentTargetError(
+public union UpdateDeploymentTargetOutcome(
+    DeploymentTargetDto,
     DeploymentTargetNotFound,
     DeploymentTargetRevisionConflict,
     DeploymentTargetDeletionRejected,
-    PersistUpdatedDeploymentTargetError);
-
-public union UpdateDeploymentTargetOutcome(
-    DeploymentTargetDto,
-    UpdateDeploymentTargetError);
+    DeploymentTargetPublicBaseDomainReferenced,
+    DeploymentTargetPublicBaseDomainConflict);
 
 public sealed class UpdateDeploymentTargetHandler(
     LoadDeploymentTargetById loadDeploymentTargetById,
@@ -51,11 +49,11 @@ public sealed class UpdateDeploymentTargetHandler(
     {
         var target = await loadDeploymentTargetById(request.Id, cancellationToken);
         if (target is null)
-            return Error(new DeploymentTargetNotFound(request.Id));
+            return new DeploymentTargetNotFound(request.Id);
         if (target.Revision != request.Body.Revision)
-            return Error(new DeploymentTargetRevisionConflict(target.Id));
+            return new DeploymentTargetRevisionConflict(target.Id);
         if (request.Body.AcceptsWorkloads && target.DeletionRequestedAtUtc is not null)
-            return Error(new DeploymentTargetDeletionRejected(target.Id));
+            return new DeploymentTargetDeletionRejected(target.Id);
 
         var updated = target.Reconfigure(
             request.Body.DisplayName,
@@ -75,7 +73,14 @@ public sealed class UpdateDeploymentTargetHandler(
             updated,
             cancellationToken);
         if (!persistedResult.TryGetValue(out var persisted, out var persistenceError))
-            return Error(persistenceError);
+        {
+            return persistenceError switch
+            {
+                DeploymentTargetRevisionConflict conflict => conflict,
+                DeploymentTargetPublicBaseDomainReferenced referenced => referenced,
+                DeploymentTargetPublicBaseDomainConflict conflict => conflict
+            };
+        }
 
         if (!persisted.Enabled)
             invalidateDeploymentTargetKubernetesClient(target.Id);
@@ -83,17 +88,6 @@ public sealed class UpdateDeploymentTargetHandler(
         return persisted.ToDto(persisted.Id == defaultId);
     }
 
-    private static UpdateDeploymentTargetOutcome Error(DeploymentTargetNotFound error) =>
-        new(new UpdateDeploymentTargetError(error));
-
-    private static UpdateDeploymentTargetOutcome Error(DeploymentTargetRevisionConflict error) =>
-        new(new UpdateDeploymentTargetError(error));
-
-    private static UpdateDeploymentTargetOutcome Error(DeploymentTargetDeletionRejected error) =>
-        new(new UpdateDeploymentTargetError(error));
-
-    private static UpdateDeploymentTargetOutcome Error(PersistUpdatedDeploymentTargetError error) =>
-        new(new UpdateDeploymentTargetError(error));
 }
 
 public sealed class UpdateDeploymentTargetRequestValidator
@@ -142,7 +136,11 @@ public static class UpdateDeploymentTargetEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     DeploymentTargetDto target => Results.Ok(target),
-                    UpdateDeploymentTargetError error => httpProblems.Map(error).ToHttpResult()
+                    DeploymentTargetNotFound error => httpProblems.Map(error).ToHttpResult(),
+                    DeploymentTargetRevisionConflict error => httpProblems.Map(error).ToHttpResult(),
+                    DeploymentTargetDeletionRejected error => httpProblems.Map(error).ToHttpResult(),
+                    DeploymentTargetPublicBaseDomainReferenced error => httpProblems.Map(error).ToHttpResult(),
+                    DeploymentTargetPublicBaseDomainConflict error => httpProblems.Map(error).ToHttpResult()
                 });
             })
             .WithName("UpdateDeploymentTarget")

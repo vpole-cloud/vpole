@@ -12,6 +12,8 @@ using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
+using Pole.Tests.Integration.Infrastructure;
+using static Pole.Tests.Integration.Infrastructure.ResultAssertions;
 using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
@@ -374,27 +376,6 @@ public sealed class DeploymentTargetConnectionSecurityTests
             acceptsWorkloads: true,
             new DeploymentTargetFactory.CreateOptions(id, createdAtUtc));
     }
-
-    private static T AssertSuccess<T, TError>(Result<T, TError> result)
-        where T : notnull
-        where TError : notnull =>
-        result switch
-        {
-            Ok<T> success => success.Value,
-            Err<TError> error => throw new Xunit.Sdk.XunitException(
-                $"Expected success, got {error.Value.GetType().Name}."),
-            _ => throw new Xunit.Sdk.XunitException("Result returned an unsupported case.")
-        };
-
-    private static TError AssertFailure<T, TError>(Result<T, TError> result)
-        where T : notnull
-        where TError : notnull =>
-        result switch
-        {
-            Err<TError> error => error.Value,
-            Ok<T> => throw new Xunit.Sdk.XunitException("Expected failure, got success."),
-            _ => throw new Xunit.Sdk.XunitException("Result returned an unsupported case.")
-        };
 
     private static void AssertSafeConnectionRejection(
         DeploymentTargetConnectionRejected rejection,

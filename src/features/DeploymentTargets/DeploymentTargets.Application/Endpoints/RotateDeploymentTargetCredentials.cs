@@ -26,14 +26,11 @@ public sealed record RotateDeploymentTargetCredentialsRequest(
     [FromBody] RotateDeploymentTargetCredentialsRequestBody Body)
     : IMediatorRequest<RotateDeploymentTargetCredentialsOutcome>;
 
-public union RotateDeploymentTargetCredentialsError(
+public union RotateDeploymentTargetCredentialsOutcome(
+    DeploymentTargetDto,
     DeploymentTargetNotFound,
     DeploymentTargetRevisionConflict,
     DeploymentTargetConnectionRejected);
-
-public union RotateDeploymentTargetCredentialsOutcome(
-    DeploymentTargetDto,
-    RotateDeploymentTargetCredentialsError);
 
 public sealed class RotateDeploymentTargetCredentialsHandler(
     LoadDeploymentTargetById loadDeploymentTargetById,
@@ -53,9 +50,9 @@ public sealed class RotateDeploymentTargetCredentialsHandler(
     {
         var target = await loadDeploymentTargetById(request.Id, cancellationToken);
         if (target is null)
-            return Error(new DeploymentTargetNotFound(request.Id));
+            return new DeploymentTargetNotFound(request.Id);
         if (target.Revision != request.Body.Revision)
-            return Error(new DeploymentTargetRevisionConflict(target.Id));
+            return new DeploymentTargetRevisionConflict(target.Id);
 
         var preparedResult = await prepareDeploymentTargetConnection(
             target.Id,
@@ -63,7 +60,7 @@ public sealed class RotateDeploymentTargetCredentialsHandler(
             request.Body.Connection.ToInput(),
             cancellationToken);
         if (!preparedResult.TryGetValue(out var prepared, out var prepareError))
-            return Error(prepareError);
+            return prepareError;
 
         using (prepared)
         {
@@ -74,13 +71,13 @@ public sealed class RotateDeploymentTargetCredentialsHandler(
                 cancellationToken);
             if (!observation.IsUsable || observation.ClusterIdentity is null)
             {
-                return Error(ConnectionValidationFailure(
-                    observation.Health.FailureMessage ?? "The Kubernetes connection is not usable."));
+                return ConnectionValidationFailure(
+                    observation.Health.FailureMessage ?? "The Kubernetes connection is not usable.");
             }
             if (!string.Equals(target.ClusterIdentity, observation.ClusterIdentity, StringComparison.Ordinal))
             {
-                return Error(ConnectionValidationFailure(
-                    "Replacement credentials resolve to a different Kubernetes cluster."));
+                return ConnectionValidationFailure(
+                    "Replacement credentials resolve to a different Kubernetes cluster.");
             }
 
             var credentialReplaced = target.ReplaceConnectionCredential(
@@ -97,7 +94,7 @@ public sealed class RotateDeploymentTargetCredentialsHandler(
                 updated,
                 cancellationToken);
             if (!persistedResult.TryGetValue(out var persisted, out var persistenceError))
-                return Error(persistenceError);
+                return persistenceError;
 
             invalidateDeploymentTargetKubernetesClient(target.Id);
             var defaultId = await loadDefaultDeploymentTargetId(cancellationToken);
@@ -111,17 +108,6 @@ public sealed class RotateDeploymentTargetCredentialsHandler(
             ["Body.Connection"] = [safeMessage]
         });
 
-    private static RotateDeploymentTargetCredentialsOutcome Error(
-        DeploymentTargetNotFound error) =>
-        new(new RotateDeploymentTargetCredentialsError(error));
-
-    private static RotateDeploymentTargetCredentialsOutcome Error(
-        DeploymentTargetRevisionConflict error) =>
-        new(new RotateDeploymentTargetCredentialsError(error));
-
-    private static RotateDeploymentTargetCredentialsOutcome Error(
-        DeploymentTargetConnectionRejected error) =>
-        new(new RotateDeploymentTargetCredentialsError(error));
 }
 
 public sealed class RotateDeploymentTargetCredentialsRequestValidator
@@ -164,8 +150,9 @@ public static class RotateDeploymentTargetCredentialsEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     DeploymentTargetDto target => Results.Ok(target),
-                    RotateDeploymentTargetCredentialsError error =>
-                        httpProblems.Map(error).ToHttpResult()
+                    DeploymentTargetNotFound error => httpProblems.Map(error).ToHttpResult(),
+                    DeploymentTargetRevisionConflict error => httpProblems.Map(error).ToHttpResult(),
+                    DeploymentTargetConnectionRejected error => httpProblems.Map(error).ToHttpResult()
                 });
             })
             .WithName("RotateDeploymentTargetCredentials")

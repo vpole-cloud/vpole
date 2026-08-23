@@ -76,11 +76,6 @@ internal sealed class ResourceDeploymentPlacementResolver(
 
     private static Failure AdmissionFailure(DeploymentTargetWorkloadAdmissionError error) => error switch
     {
-        InvalidDeploymentTargetId => Failures.ValidationFailure(
-            new Dictionary<string, string[]>
-            {
-                ["DeploymentTargetId"] = ["Deployment target ID must be a MongoDB ObjectId."]
-            }),
         DeploymentTargetNotFound notFound => Failures.NotFound(
             "Deployment target not found.",
             notFound.DeploymentTargetId),

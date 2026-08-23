@@ -369,3 +369,28 @@ public static class ResultAssertionExtensions
                 $"'{result.GetType().Name}'.")
         };
 }
+
+/// <summary>
+/// Static-call facade for test code that reads more clearly with assertion functions than
+/// extension-method syntax. The assertion behavior remains centralized above.
+/// </summary>
+public static class ResultAssertions
+{
+    public static void AssertSuccess(Result result) => result.AssertSuccess();
+
+    public static T AssertSuccess<T>(Result<T> result)
+        where T : notnull => result.AssertSuccess();
+
+    public static T AssertSuccess<T, TError>(Result<T, TError> result)
+        where T : notnull
+        where TError : notnull => result.AssertSuccess();
+
+    public static Failure AssertFailure(Result result) => result.AssertFailure();
+
+    public static Failure AssertFailure<T>(Result<T> result)
+        where T : notnull => result.AssertFailure();
+
+    public static TError AssertFailure<T, TError>(Result<T, TError> result)
+        where T : notnull
+        where TError : notnull => result.AssertFailure();
+}

@@ -15,6 +15,7 @@ using Pole.Features.DeploymentTargets.Application.Security;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
+using static Pole.Tests.Integration.Infrastructure.ResultAssertions;
 using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
@@ -282,33 +283,6 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
             DateTimeOffset.UtcNow.AddDays(1));
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(certificate.ExportCertificatePem()));
     }
-
-    private static T AssertSuccess<T>(Result<T> result) where T : notnull =>
-        Assert.IsType<Success<T>>(result).Value;
-
-    private static T AssertSuccess<T, TError>(Result<T, TError> result)
-        where T : notnull
-        where TError : notnull =>
-        result switch
-        {
-            Ok<T> success => success.Value,
-            Err<TError> error => throw new Xunit.Sdk.XunitException(
-                $"Expected success, got {error.Value.GetType().Name}."),
-            _ => throw new Xunit.Sdk.XunitException("Result returned an unsupported case.")
-        };
-
-    private static Failure AssertFailure<T>(Result<T> result) where T : notnull =>
-        Assert.IsType<Failure<T>>(result).Error;
-
-    private static TError AssertFailure<T, TError>(Result<T, TError> result)
-        where T : notnull
-        where TError : notnull =>
-        result switch
-        {
-            Err<TError> error => error.Value,
-            Ok<T> => throw new Xunit.Sdk.XunitException("Expected failure, got success."),
-            _ => throw new Xunit.Sdk.XunitException("Result returned an unsupported case.")
-        };
 
     private DeploymentTargetDomainAdmission CreateDomainAdmission() =>
         new(

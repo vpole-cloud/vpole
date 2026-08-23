@@ -226,8 +226,11 @@ internal sealed class DeploymentTargetBootstrapper(
                 target.WorkloadConfiguration.Ingress?.PublicBaseDomain,
                 session,
                 ct);
-            if (admission is not ISuccess)
-                return (Failure)admission;
+            if (!admission.TryGetValue(out _, out _))
+            {
+                return Failures.Conflict(
+                    "The public base domain overlaps another deployment target that has not been physically removed.");
+            }
 
             await deploymentTargets.InsertOneAsync(session, target, cancellationToken: ct);
             await settings.InsertOneAsync(

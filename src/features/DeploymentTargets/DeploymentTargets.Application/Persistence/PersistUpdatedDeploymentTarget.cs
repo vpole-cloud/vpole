@@ -65,11 +65,10 @@ internal sealed class MongoPersistUpdatedDeploymentTarget(
                 current.Id,
                 transaction.Session,
                 ct);
-            if (references is not ISuccess)
+            if (!references.TryGetValue(out _, out var referenceError))
             {
                 return transaction.AbortError(
-                    new PersistUpdatedDeploymentTargetError(
-                        new DeploymentTargetPublicBaseDomainReferenced(current.Id)));
+                    new PersistUpdatedDeploymentTargetError(referenceError));
             }
 
             var overlap = await domainAdmission.EnsureNoOverlappingPublicBaseDomainAsync(
@@ -77,11 +76,10 @@ internal sealed class MongoPersistUpdatedDeploymentTarget(
                 replacement.WorkloadConfiguration.Ingress?.PublicBaseDomain,
                 transaction.Session,
                 ct);
-            if (overlap is not ISuccess)
+            if (!overlap.TryGetValue(out _, out var overlapError))
             {
                 return transaction.AbortError(
-                    new PersistUpdatedDeploymentTargetError(
-                        new DeploymentTargetPublicBaseDomainConflict(current.Id)));
+                    new PersistUpdatedDeploymentTargetError(overlapError));
             }
 
             var persisted = await deploymentTargets.FindOneAndUpdateAsync(

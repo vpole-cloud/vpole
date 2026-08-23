@@ -1,11 +1,16 @@
 using k8s;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using MongoDB.Driver;
+using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Application;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Persistence;
+using Pole.Features.DeploymentTargets.Application.Security;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Runtime.Kubernetes;
@@ -15,12 +20,19 @@ using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Server.Extensions;
+using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
 
-public sealed class DeploymentTargetProductionDiTests
+[Collection(IntegrationTestCollection.Name)]
+public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fixture)
+    : IAsyncLifetime
 {
+    public async Task InitializeAsync() => await fixture.ResetDatabaseAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
     [Fact]
     public void KubernetesConsumersDependOnProvider_NotProcessWideClient()
     {
@@ -125,6 +137,64 @@ public sealed class DeploymentTargetProductionDiTests
         Assert.Same(expected, functionFailure);
     }
 
+    [Fact]
+    public void FeatureRegistration_ResolvesTheProductionCapabilityGraph()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["DeploymentTargets:Bootstrap:Enabled"] = "false"
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IMongoClient>(fixture.Client);
+        services.AddSingleton<IMongoDatabase>(fixture.Database);
+        services.AddSingleton<IEnvelopeEncryptionService>(TestPostgresEnvelopeEncryption.Create());
+        services.AddSingleton<IHostEnvironment>(new FakeHostEnvironment());
+        services.AddMongoDbContextInterfaces();
+        services.AddKubernetes(configuration)
+            .AddDeploymentTargetsFeature(configuration);
+
+        // AddKubernetes also contributes unrelated feature registrations. Resolve every
+        // DeploymentTargets capability below instead of validating an intentionally partial host.
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+        using var scope = provider.CreateScope();
+
+        AssertResolved<PrepareDeploymentTargetConnection>(provider);
+        AssertResolved<CreateDeploymentTargetKubernetesClient>(provider);
+        AssertResolved<ProbeDeploymentTargetConnection>(provider);
+        AssertResolved<InvalidateDeploymentTargetKubernetesClient>(provider);
+        AssertResolved<BootstrapDeploymentTargets>(provider);
+
+        AssertResolved<LoadDeploymentTargetById>(scope.ServiceProvider);
+        AssertResolved<LoadDefaultDeploymentTargetId>(scope.ServiceProvider);
+        AssertResolved<LoadDeploymentTargets>(scope.ServiceProvider);
+        AssertResolved<LoadEligibleDeploymentTargets>(scope.ServiceProvider);
+        AssertResolved<PersistCreatedDeploymentTarget>(scope.ServiceProvider);
+        AssertResolved<PersistUpdatedDeploymentTarget>(scope.ServiceProvider);
+        AssertResolved<PersistRotatedDeploymentTargetConnection>(scope.ServiceProvider);
+        AssertResolved<PersistDeploymentTargetValidation>(scope.ServiceProvider);
+        AssertResolved<EnsureNoDeploymentTargetReferences>(scope.ServiceProvider);
+        AssertResolved<DeleteDeploymentTarget>(scope.ServiceProvider);
+        AssertResolved<LookupDeploymentTarget>(scope.ServiceProvider);
+        AssertResolved<LookupDefaultDeploymentTarget>(scope.ServiceProvider);
+        AssertResolved<ListEligibleDeploymentTargetsForNewWorkload>(scope.ServiceProvider);
+        AssertResolved<AdmitDeploymentTargetForWorkload>(scope.ServiceProvider);
+        AssertResolved<AdmitDefaultDeploymentTargetForNewWorkload>(scope.ServiceProvider);
+        AssertResolved<AdmitDeploymentTargetForNewWorkload>(scope.ServiceProvider);
+        AssertResolved<AdmitDeploymentTargetPublicIngressForNewWorkload>(scope.ServiceProvider);
+        AssertResolved<ListEligiblePublicIngressDeploymentTargetsForNewWorkload>(scope.ServiceProvider);
+        AssertResolved<AdmitDeploymentTargetPublicIngressForDomainReservation>(scope.ServiceProvider);
+        AssertResolved<ApplyDeploymentTargetReferenceChanges>(scope.ServiceProvider);
+        AssertResolved<FenceDeploymentTargetWorkloadConfigurations>(scope.ServiceProvider);
+        AssertResolved<RewrapDeploymentTargetCredentials>(scope.ServiceProvider);
+    }
+
+    private static void AssertResolved<T>(IServiceProvider provider)
+        where T : notnull =>
+        Assert.NotNull(provider.GetRequiredService<T>());
+
     private sealed class ThrowingKubernetesClientProvider(Exception exception)
         : IKubernetesClientProvider
     {
@@ -145,5 +215,14 @@ public sealed class DeploymentTargetProductionDiTests
     private const string DeploymentTargetId = "507f1f77bcf86cd799439098";
 
     private sealed class TestProviderInfrastructureException : Exception;
+
+    private sealed class FakeHostEnvironment : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = Environments.Development;
+        public string ApplicationName { get; set; } = "Pole.Tests.Integration";
+        public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
+        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } =
+            new Microsoft.Extensions.FileProviders.NullFileProvider();
+    }
 
 }

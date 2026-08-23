@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using k8s;
+using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Connections;
@@ -13,9 +14,68 @@ internal static class KubernetesClientSecurity
     internal static readonly TimeSpan HttpClientTimeout = TimeSpan.FromSeconds(30);
     internal static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(10);
 
-    public static Result<IKubernetes> CreateFromCanonical(
+    public static Result<IKubernetes, DeploymentTargetConnectionRejected> CreateForCandidate(
         CanonicalKubeconfigCredential credential,
-        bool storedConnection,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return new Ok<IKubernetes>(CreateFromCanonicalCore(credential, cancellationToken));
+        }
+        catch (InvalidKubernetesClientConfigurationException)
+        {
+            return new Err<DeploymentTargetConnectionRejected>(
+                ConnectionRejections.Validation(
+                    "connection",
+                    "The Kubernetes connection configuration is invalid."));
+        }
+    }
+
+    public static Result<IKubernetes, StoredDeploymentTargetConnectionUnavailable> CreateForStored(
+        CanonicalKubeconfigCredential credential,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return new Ok<IKubernetes>(CreateFromCanonicalCore(credential, cancellationToken));
+        }
+        catch (InvalidKubernetesClientConfigurationException)
+        {
+            return new Err<StoredDeploymentTargetConnectionUnavailable>(new());
+        }
+    }
+
+    public static Result<IKubernetes, DeploymentTargetConnectionRejected> CreateInClusterForCandidate(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return new Ok<IKubernetes>(CreateInClusterCore(cancellationToken));
+        }
+        catch (InvalidKubernetesClientConfigurationException)
+        {
+            return new Err<DeploymentTargetConnectionRejected>(
+                ConnectionRejections.Validation(
+                    "connection",
+                    "The Kubernetes connection configuration is invalid."));
+        }
+    }
+
+    public static Result<IKubernetes, StoredDeploymentTargetConnectionUnavailable> CreateInClusterForStored(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return new Ok<IKubernetes>(CreateInClusterCore(cancellationToken));
+        }
+        catch (InvalidKubernetesClientConfigurationException)
+        {
+            return new Err<StoredDeploymentTargetConnectionUnavailable>(new());
+        }
+    }
+
+    private static IKubernetes CreateFromCanonicalCore(
+        CanonicalKubeconfigCredential credential,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -29,17 +89,15 @@ internal static class KubernetesClientSecurity
                 credential.ContextName);
             if (configuration.SkipTlsVerify ||
                 !ConnectionValueValidation.TryNormalizeServerUrl(configuration.Host, out var builtHost) ||
-                !string.Equals(builtHost, credential.ServerUrl, StringComparison.Ordinal))
-            {
-                return ConnectionFailures.ClientConfigurationFailure(storedConnection);
-            }
-
-            if (!TryDetachStrictTrust(
+                !string.Equals(builtHost, credential.ServerUrl, StringComparison.Ordinal) ||
+                !TryDetachStrictTrust(
                     configuration,
                     credential.CertificateAuthorityData,
                     out var expectedHost,
                     out var trustedAuthorities))
-                return ConnectionFailures.ClientConfigurationFailure(storedConnection);
+            {
+                throw new InvalidKubernetesClientConfigurationException();
+            }
 
             ApplyTransportHardening(configuration, expectedHost, trustedAuthorities);
             cancellationToken.ThrowIfCancellationRequested();
@@ -49,28 +107,28 @@ internal static class KubernetesClientSecurity
         {
             throw;
         }
+        catch (InvalidKubernetesClientConfigurationException)
+        {
+            throw;
+        }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            return ConnectionFailures.ClientConfigurationFailure(storedConnection);
+            throw new InvalidKubernetesClientConfigurationException(exception);
         }
     }
 
-    public static Result<IKubernetes> CreateInCluster(
-        bool storedConnection,
-        CancellationToken cancellationToken)
+    private static IKubernetes CreateInClusterCore(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         try
         {
             var configuration = KubernetesClientConfiguration.InClusterConfig();
             if (configuration.SkipTlsVerify ||
-                !ConnectionValueValidation.TryNormalizeServerUrl(configuration.Host, out _))
+                !ConnectionValueValidation.TryNormalizeServerUrl(configuration.Host, out _) ||
+                !TryDetachStrictTrust(configuration, out var expectedHost, out var trustedAuthorities))
             {
-                return ConnectionFailures.ClientConfigurationFailure(storedConnection);
+                throw new InvalidKubernetesClientConfigurationException();
             }
-
-            if (!TryDetachStrictTrust(configuration, out var expectedHost, out var trustedAuthorities))
-                return ConnectionFailures.ClientConfigurationFailure(storedConnection);
 
             ApplyTransportHardening(configuration, expectedHost, trustedAuthorities);
             cancellationToken.ThrowIfCancellationRequested();
@@ -80,11 +138,18 @@ internal static class KubernetesClientSecurity
         {
             throw;
         }
+        catch (InvalidKubernetesClientConfigurationException)
+        {
+            throw;
+        }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            return ConnectionFailures.ClientConfigurationFailure(storedConnection);
+            throw new InvalidKubernetesClientConfigurationException(exception);
         }
     }
+
+    private sealed class InvalidKubernetesClientConfigurationException(Exception? innerException = null)
+        : Exception("The Kubernetes connection configuration is invalid.", innerException);
 
     private static bool TryDetachStrictTrust(
         KubernetesClientConfiguration configuration,

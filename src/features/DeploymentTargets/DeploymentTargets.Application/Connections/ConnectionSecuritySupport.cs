@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
-using Pole.ResultType;
+using Pole.Features.DeploymentTargets.Application.Common;
 
 namespace Pole.Features.DeploymentTargets.Application.Connections;
 
@@ -17,28 +17,13 @@ internal static class ConnectionPayloadLimits
     public const int MaximumDeploymentTargetIdCharacters = 512;
 }
 
-internal static class ConnectionFailures
+internal static class ConnectionRejections
 {
-    public static ValidationFailure Validation(string field, string message) =>
-        Failures.ValidationFailure(new Dictionary<string, string[]>
+    public static DeploymentTargetConnectionRejected Validation(string field, string message) =>
+        new(new Dictionary<string, string[]>
         {
             [field] = [message]
         });
-
-    public static InternalFailure StoredConnectionUnavailable() =>
-        Failures.Internal(
-            "The deployment-target connection could not be loaded.",
-            "Stored connection material is invalid or unavailable.");
-
-    public static InternalFailure ConnectionProtectionUnavailable() =>
-        Failures.Internal(
-            "The deployment-target connection could not be protected.",
-            "The configured connection-protection service is unavailable.");
-
-    public static Failure ClientConfigurationFailure(bool storedConnection) =>
-        storedConnection
-            ? StoredConnectionUnavailable()
-            : Validation("connection", "The Kubernetes connection configuration is invalid.");
 }
 
 internal static class ConnectionValueValidation

@@ -27,11 +27,6 @@ public static class DeploymentTargetContractHttpMappings
 
     private static HttpProblem MapLookupError(DeploymentTargetLookupError error) => error switch
     {
-        InvalidDeploymentTargetId invalid => ForTarget(
-            HttpStatusCode.BadRequest,
-            "Deployment target ID is invalid",
-            "deployment-targets.id.invalid",
-            invalid.DeploymentTargetId),
         DeploymentTargetNotFound notFound => ForTarget(
             HttpStatusCode.NotFound,
             "Deployment target not found",
@@ -45,8 +40,7 @@ public static class DeploymentTargetContractHttpMappings
         DefaultDeploymentTargetNotConfigured => Problem(
             HttpStatusCode.Conflict,
             "deployment-targets.default-not-configured",
-            "The default deployment target is not configured"),
-        DeploymentTargetLookupError lookup => MapLookupError(lookup)
+            "The default deployment target is not configured")
     };
 
     private static HttpProblem MapDefaultWorkloadAdmissionError(
@@ -56,8 +50,21 @@ public static class DeploymentTargetContractHttpMappings
             HttpStatusCode.Conflict,
             "deployment-targets.default-not-configured",
             "The default deployment target is not configured"),
-        DeploymentTargetWorkloadAdmissionError admission =>
-            MapWorkloadAdmissionError(admission)
+        DeploymentTargetDisabled disabled => ForTarget(
+            HttpStatusCode.Conflict,
+            "Deployment target is disabled",
+            "deployment-targets.disabled",
+            disabled.DeploymentTargetId),
+        DeploymentTargetDeletionRequested deleting => ForTarget(
+            HttpStatusCode.Conflict,
+            "Deployment target is pending deletion",
+            "deployment-targets.deletion-requested",
+            deleting.DeploymentTargetId),
+        DeploymentTargetNewWorkloadsDisabled unavailable => ForTarget(
+            HttpStatusCode.Conflict,
+            "Deployment target does not accept new workloads",
+            "deployment-targets.new-workloads-disabled",
+            unavailable.DeploymentTargetId)
     };
 
     private static HttpProblem MapNewWorkloadAdmissionError(
@@ -85,11 +92,6 @@ public static class DeploymentTargetContractHttpMappings
     private static HttpProblem MapWorkloadAdmissionError(
         DeploymentTargetWorkloadAdmissionError error) => error switch
     {
-        InvalidDeploymentTargetId invalid => ForTarget(
-            HttpStatusCode.BadRequest,
-            "Deployment target ID is invalid",
-            "deployment-targets.id.invalid",
-            invalid.DeploymentTargetId),
         DeploymentTargetNotFound notFound => ForTarget(
             HttpStatusCode.NotFound,
             "Deployment target not found",
@@ -129,11 +131,6 @@ public static class DeploymentTargetContractHttpMappings
     private static HttpProblem MapPublicIngressAdmissionError(
         DeploymentTargetPublicIngressAdmissionError error) => error switch
     {
-        InvalidDeploymentTargetId invalid => ForTarget(
-            HttpStatusCode.BadRequest,
-            "Deployment target ID is invalid",
-            "deployment-targets.id.invalid",
-            invalid.DeploymentTargetId),
         DeploymentTargetNotFound notFound => ForTarget(
             HttpStatusCode.NotFound,
             "Deployment target not found",
@@ -178,11 +175,6 @@ public static class DeploymentTargetContractHttpMappings
     private static HttpProblem MapDomainReservationAdmissionError(
         DeploymentTargetDomainReservationAdmissionError error) => error switch
     {
-        InvalidDeploymentTargetId invalid => ForTarget(
-            HttpStatusCode.BadRequest,
-            "Deployment target ID is invalid",
-            "deployment-targets.id.invalid",
-            invalid.DeploymentTargetId),
         DeploymentTargetNotFound notFound => ForTarget(
             HttpStatusCode.NotFound,
             "Deployment target not found",

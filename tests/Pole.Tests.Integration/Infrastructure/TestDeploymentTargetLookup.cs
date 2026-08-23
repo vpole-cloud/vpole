@@ -91,9 +91,19 @@ internal sealed class TestDeploymentTargetLookup
         return admitted switch
         {
             Ok<DeploymentTargetLookupDto> target => new Ok<DeploymentTargetLookupDto>(target.Value),
-            Err<DeploymentTargetWorkloadAdmissionError> error =>
-                new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
-                    new DefaultDeploymentTargetWorkloadAdmissionError(error.Value)),
+            Err<DeploymentTargetWorkloadAdmissionError> error => error.Value switch
+            {
+                DeploymentTargetDisabled disabled =>
+                    new Err<DefaultDeploymentTargetWorkloadAdmissionError>(disabled),
+                DeploymentTargetDeletionRequested deleting =>
+                    new Err<DefaultDeploymentTargetWorkloadAdmissionError>(deleting),
+                DeploymentTargetNewWorkloadsDisabled unavailable =>
+                    new Err<DefaultDeploymentTargetWorkloadAdmissionError>(unavailable),
+                DeploymentTargetNotFound notFound => throw new InvalidOperationException(
+                    $"Configured default deployment target '{notFound.DeploymentTargetId}' does not exist."),
+                _ => throw new InvalidOperationException(
+                    "Test deployment-target admission returned an unsupported error case.")
+            },
             _ => throw new InvalidOperationException(
                 "Test deployment-target admission returned an unsupported result case.")
         };
@@ -113,13 +123,7 @@ internal sealed class TestDeploymentTargetLookup
         CancellationToken cancellationToken = default)
     {
         Result<DeploymentTargetLookupDto, DeploymentTargetWorkloadAdmissionError> result;
-        if (string.IsNullOrWhiteSpace(deploymentTargetId))
-        {
-            result = new Err<DeploymentTargetWorkloadAdmissionError>(
-                new DeploymentTargetWorkloadAdmissionError(
-                    new InvalidDeploymentTargetId(deploymentTargetId ?? string.Empty)));
-        }
-        else if (!_targets.TryGetValue(deploymentTargetId, out var target))
+        if (!_targets.TryGetValue(deploymentTargetId, out var target))
         {
             result = new Err<DeploymentTargetWorkloadAdmissionError>(
                 new DeploymentTargetWorkloadAdmissionError(
