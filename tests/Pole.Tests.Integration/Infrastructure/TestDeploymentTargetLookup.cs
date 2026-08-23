@@ -4,10 +4,7 @@ using Pole.ResultType;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
-internal sealed class TestDeploymentTargetLookup :
-    IDeploymentTargetLookup,
-    IDeploymentTargetReferenceAdmission,
-    IDeploymentTargetWorkloadConfigurationFence
+internal sealed class TestDeploymentTargetLookup
 {
     private int _rejectNewWorkloads;
     private int _rejectReferenceRemoval;
@@ -64,30 +61,50 @@ internal sealed class TestDeploymentTargetLookup :
         };
     }
 
-    public Task<Result<DeploymentTargetLookupDto>> GetAsync(
+    public Task<Result<
+        DeploymentTargetLookupDto,
+        DeploymentTargetLookupError>> LookupAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(_targets.TryGetValue(deploymentTargetId, out var target)
-            ? Result.Success(target)
-            : (Result<DeploymentTargetLookupDto>)Failures.NotFound(
-                "Deployment target not found.", deploymentTargetId));
+            ? (Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>)
+                new Ok<DeploymentTargetLookupDto>(target)
+            : new Err<DeploymentTargetLookupError>(
+                new DeploymentTargetLookupError(
+                    new DeploymentTargetNotFound(deploymentTargetId))));
 
-    public Task<Result<DeploymentTargetLookupDto>> GetDefaultAsync(
+    public Task<Result<
+        DeploymentTargetLookupDto,
+        DefaultDeploymentTargetLookupError>> LookupDefaultAsync(
         CancellationToken cancellationToken = default) =>
-        Task.FromResult<Result<DeploymentTargetLookupDto>>(Target);
+        Task.FromResult<Result<
+            DeploymentTargetLookupDto,
+            DefaultDeploymentTargetLookupError>>(
+            new Ok<DeploymentTargetLookupDto>(_targets[Target.Id]));
 
-    public Task<Result<DeploymentTargetLookupDto>> ResolveForNewWorkloadAsync(
-        string? deploymentTargetId,
+    public async Task<Result<
+        DeploymentTargetLookupDto,
+        DefaultDeploymentTargetWorkloadAdmissionError>> AdmitDefaultForNewWorkloadAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var admitted = await AdmitForWorkloadAsync(Target.Id, cancellationToken);
+        return admitted switch
+        {
+            Ok<DeploymentTargetLookupDto> target => new Ok<DeploymentTargetLookupDto>(target.Value),
+            Err<DeploymentTargetWorkloadAdmissionError> error =>
+                new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
+                    new DefaultDeploymentTargetWorkloadAdmissionError(error.Value)),
+            _ => throw new InvalidOperationException(
+                "Test deployment-target admission returned an unsupported result case.")
+        };
+    }
+
+    public Task<IReadOnlyList<DeploymentTargetLookupDto>> ListEligibleAsync(
         CancellationToken cancellationToken = default) =>
-        RejectNewWorkloads
-            ? Task.FromResult<Result<DeploymentTargetLookupDto>>(
-                Failures.Conflict("The deployment target is not accepting new workloads."))
-            : deploymentTargetId is null
-                ? _targets.Count == 1
-                    ? Task.FromResult<Result<DeploymentTargetLookupDto>>(_targets.Values.Single())
-                    : Task.FromResult<Result<DeploymentTargetLookupDto>>(
-                        Failures.Conflict("A deployment target must be selected."))
-                : GetAsync(deploymentTargetId, cancellationToken);
+        Task.FromResult<IReadOnlyList<DeploymentTargetLookupDto>>(
+            RejectNewWorkloads
+                ? []
+                : _targets.Values.OrderBy(target => target.Id, StringComparer.Ordinal).ToArray());
 
     public Task<Result<
         DeploymentTargetLookupDto,
@@ -187,14 +204,6 @@ internal sealed class TestDeploymentTargetLookup :
         };
     }
 
-    public Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>>
-        ListEligibleForNewWorkloadAsync(
-            CancellationToken cancellationToken = default) =>
-        Task.FromResult<Result<IReadOnlyList<DeploymentTargetLookupDto>>>(
-            RejectNewWorkloads
-                ? Array.Empty<DeploymentTargetLookupDto>()
-                : _targets.Values.OrderBy(target => target.Id, StringComparer.Ordinal).ToArray());
-
     public Task<DeploymentTargetPublicIngressAdmissionResult>
         AdmitForNewWorkloadAsync(
             DeploymentTargetAdmissionRequest request,
@@ -283,32 +292,7 @@ internal sealed class TestDeploymentTargetLookup :
         return Task.FromResult(result);
     }
 
-    public Task<Result> RegisterAsync(
-        string deploymentTargetId,
-        DeploymentTargetReferenceOwner owner,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult<Result>(Result.Success());
-
-    public Task<Result> UnregisterAsync(
-        string deploymentTargetId,
-        DeploymentTargetReferenceOwner owner,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult<Result>(RejectReferenceRemoval
-            ? Failures.Conflict(
-                "The test deployment target rejected reference removal.")
-            : Result.Success());
-
-    public Task<Result> ApplyChangesAsync(
-        DeploymentTargetReferenceOwner owner,
-        IReadOnlyCollection<string> addedDeploymentTargetIds,
-        IReadOnlyCollection<string> removedDeploymentTargetIds,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult<Result>(Result.Success());
-
-    public async Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
+    public Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
         ApplyChangesOutcomeAsync(
             DeploymentTargetReferenceOwner owner,
             IReadOnlyCollection<string> addedDeploymentTargetIds,
@@ -316,55 +300,36 @@ internal sealed class TestDeploymentTargetLookup :
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
     {
-        var result = await ApplyChangesAsync(
-            owner,
-            addedDeploymentTargetIds,
-            removedDeploymentTargetIds,
-            session,
-            cancellationToken);
-        return result is ISuccess
-            ? new Ok<Unit>(Unit.Value)
-            : new Err<DeploymentTargetReferenceChangeRejected>(
+        return Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
+            RejectReferenceRemoval && removedDeploymentTargetIds.Count > 0
+                ? new Err<DeploymentTargetReferenceChangeRejected>(
                 new DeploymentTargetReferenceChangeRejected(
                     owner,
                     addedDeploymentTargetIds
                         .Concat(removedDeploymentTargetIds)
                         .Distinct(StringComparer.Ordinal)
                         .Order(StringComparer.Ordinal)
-                        .ToArray()));
+                        .ToArray()))
+                : new Ok<Unit>(Unit.Value));
     }
 
-    public Task<Result> FenceAsync(
-        string deploymentTargetId,
-        long expectedWorkloadConfigurationRevision,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
-    {
-        var accepted = _targets.TryGetValue(deploymentTargetId, out var target) &&
-                       expectedWorkloadConfigurationRevision ==
-                       target.WorkloadConfiguration.Revision;
-        return Task.FromResult<Result>(accepted
-            ? Result.Success()
-            : Failures.Conflict(
-                "The test deployment target workload configuration changed."));
-    }
-
-    public async Task<Result> FenceManyAsync(
+    public Task<Result<
+        Unit,
+        DeploymentTargetWorkloadConfigurationFenceRejected>> FenceManyOutcomeAsync(
         IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        foreach (var request in requests)
-        {
-            var result = await FenceAsync(
-                request.DeploymentTargetId,
-                request.ExpectedWorkloadConfigurationRevision,
-                session,
-                cancellationToken);
-            if (result is not ISuccess)
-                return result;
-        }
-
-        return Result.Success();
+        var accepted = requests.All(request =>
+            _targets.TryGetValue(request.DeploymentTargetId, out var target) &&
+            request.ExpectedWorkloadConfigurationRevision ==
+            target.WorkloadConfiguration.Revision);
+        return Task.FromResult<Result<
+            Unit,
+            DeploymentTargetWorkloadConfigurationFenceRejected>>(
+            accepted
+                ? new Ok<Unit>(Unit.Value)
+                : new Err<DeploymentTargetWorkloadConfigurationFenceRejected>(
+                    new DeploymentTargetWorkloadConfigurationFenceRejected(requests)));
     }
 }

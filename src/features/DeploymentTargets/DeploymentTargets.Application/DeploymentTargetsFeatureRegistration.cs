@@ -2,9 +2,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using Pole.ASP.Helpers;
 using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
+using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.DeploymentTargets.Application.Security;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -17,9 +19,11 @@ public static class DeploymentTargetsFeatureRegistration
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // The host composes mappings from the sibling Contracts.HttpMapping
-        // project so Application stays independent of HTTP transport adapters.
+        // Application owns mappings for feature-local mutation outcomes;
+        // stable contract mappings remain owned by their contract packages.
         services.TryAddSingleton(TimeProvider.System);
+        services.AddHttpProblemMappings(DeploymentTargetHttpMappings.All);
+        services.AddDeploymentTargetPersistence();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<
                 IValidateOptions<DeploymentTargetOptions>,
@@ -30,15 +34,19 @@ public static class DeploymentTargetsFeatureRegistration
         services.TryAddSingleton(provider =>
             provider.GetRequiredService<IOptions<DeploymentTargetOptions>>().Value);
 
-        services.TryAddSingleton<
-            IDeploymentTargetConnectionProtector,
-            DeploymentTargetConnectionProtector>();
-        services.TryAddSingleton<DeploymentTargetConnectionService>();
-        services.TryAddSingleton<IDeploymentTargetConnectionPreparer>(provider =>
-            provider.GetRequiredService<DeploymentTargetConnectionService>());
-        services.TryAddSingleton<IDeploymentTargetKubernetesClientFactory>(provider =>
-            provider.GetRequiredService<DeploymentTargetConnectionService>());
-        services.TryAddSingleton<IDeploymentTargetProbe, DeploymentTargetProbe>();
+        services.TryAddSingleton<DeploymentTargetConnectionProtector>();
+        services.TryAddSingleton<DeploymentTargetConnectionPreparer>();
+        services.TryAddSingleton<PrepareDeploymentTargetConnection>(provider => provider
+            .GetRequiredService<DeploymentTargetConnectionPreparer>()
+            .InvokeAsync);
+        services.TryAddSingleton<DeploymentTargetKubernetesClientFactory>();
+        services.TryAddSingleton<CreateDeploymentTargetKubernetesClient>(provider => provider
+            .GetRequiredService<DeploymentTargetKubernetesClientFactory>()
+            .InvokeAsync);
+        services.TryAddSingleton<DeploymentTargetProbe>();
+        services.TryAddSingleton<ProbeDeploymentTargetConnection>(provider => provider
+            .GetRequiredService<DeploymentTargetProbe>()
+            .InvokeAsync);
         services.TryAddScoped<DeploymentTargetValidationService>();
 
         // Stateless admission depends only on the singleton Mongo context and
@@ -47,53 +55,64 @@ public static class DeploymentTargetsFeatureRegistration
         services.TryAddSingleton<KubernetesClientProvider>();
         services.TryAddSingleton<IKubernetesClientProvider>(provider =>
             provider.GetRequiredService<KubernetesClientProvider>());
-        services.TryAddSingleton<IDeploymentTargetClientCache>(provider =>
-            provider.GetRequiredService<KubernetesClientProvider>());
-        services.TryAddSingleton<
-            IDeploymentTargetBootstrapper,
-            DeploymentTargetBootstrapper>();
+        services.TryAddSingleton<InvalidateDeploymentTargetKubernetesClient>(provider =>
+            provider.GetRequiredService<KubernetesClientProvider>().Invalidate);
+        services.TryAddSingleton<DeploymentTargetBootstrapper>();
+        services.TryAddSingleton<BootstrapDeploymentTargets>(provider => provider
+            .GetRequiredService<DeploymentTargetBootstrapper>()
+            .InvokeAsync);
 
-        services.TryAddScoped<DeploymentTargetLookup>();
+        services.TryAddScoped<DeploymentTargetAdmissionQueries>();
+        services.TryAddScoped<LookupDeploymentTarget>(
+            provider => provider
+                .GetRequiredService<DeploymentTargetAdmissionQueries>()
+                .LookupAsync);
+        services.TryAddScoped<LookupDefaultDeploymentTarget>(
+            provider => provider
+                .GetRequiredService<DeploymentTargetAdmissionQueries>()
+                .LookupDefaultAsync);
+        services.TryAddScoped<ListEligibleDeploymentTargetsForNewWorkload>(
+            provider => provider
+                .GetRequiredService<DeploymentTargetAdmissionQueries>()
+                .ListEligibleAsync);
         services.TryAddScoped<AdmitDeploymentTargetForWorkload>(
             provider => provider
-                .GetRequiredService<DeploymentTargetLookup>()
+                .GetRequiredService<DeploymentTargetAdmissionQueries>()
                 .AdmitForWorkloadAsync);
+        services.TryAddScoped<AdmitDefaultDeploymentTargetForNewWorkload>(
+            provider => provider
+                .GetRequiredService<DeploymentTargetAdmissionQueries>()
+                .AdmitDefaultForNewWorkloadAsync);
         services.TryAddScoped<AdmitDeploymentTargetForNewWorkload>(
             provider => provider
-                .GetRequiredService<DeploymentTargetLookup>()
+                .GetRequiredService<DeploymentTargetAdmissionQueries>()
                 .AdmitForWorkloadPlacementAsync);
         services.TryAddScoped<AdmitDeploymentTargetPublicIngressForNewWorkload>(
             provider => provider
-                .GetRequiredService<DeploymentTargetLookup>()
+                .GetRequiredService<DeploymentTargetAdmissionQueries>()
                 .AdmitForNewWorkloadAsync);
         services.TryAddScoped<ListEligiblePublicIngressDeploymentTargetsForNewWorkload>(
             provider => provider
-                .GetRequiredService<DeploymentTargetLookup>()
+                .GetRequiredService<DeploymentTargetAdmissionQueries>()
                 .ListEligiblePublicIngressForNewWorkloadAsync);
         services.TryAddScoped<
             AdmitDeploymentTargetPublicIngressForDomainReservation>(
             provider => provider
-                .GetRequiredService<DeploymentTargetLookup>()
+                .GetRequiredService<DeploymentTargetAdmissionQueries>()
                 .AdmitForDomainReservationAsync);
-        services.TryAddScoped<IDeploymentTargetLookup>(provider =>
-            provider.GetRequiredService<DeploymentTargetLookup>());
         services.TryAddScoped<DeploymentTargetReferenceAdmission>();
         services.TryAddScoped<ApplyDeploymentTargetReferenceChanges>(
             provider => provider
                 .GetRequiredService<DeploymentTargetReferenceAdmission>()
                 .ApplyChangesOutcomeAsync);
-        services.TryAddScoped<IDeploymentTargetReferenceAdmission>(provider =>
-            provider.GetRequiredService<DeploymentTargetReferenceAdmission>());
-        services.TryAddScoped<IDeploymentTargetWorkloadConfigurationFence>(provider =>
-            provider.GetRequiredService<DeploymentTargetReferenceAdmission>());
-        services.TryAddScoped<
-            IDeploymentTargetDeletionGuard,
-            DeploymentTargetDeletionGuard>();
-        services.TryAddScoped<DeploymentTargetReader>();
-        services.TryAddScoped<DeploymentTargetPersistence>();
-        services.TryAddScoped<
-            IDeploymentTargetCredentialRewrapService,
-            DeploymentTargetCredentialRewrapService>();
+        services.TryAddScoped<FenceDeploymentTargetWorkloadConfigurations>(
+            provider => provider
+                .GetRequiredService<DeploymentTargetReferenceAdmission>()
+                .FenceManyOutcomeAsync);
+        services.TryAddScoped<MongoRewrapDeploymentTargetCredentials>();
+        services.TryAddScoped<RewrapDeploymentTargetCredentials>(provider => provider
+            .GetRequiredService<MongoRewrapDeploymentTargetCredentials>()
+            .InvokeAsync);
         return services;
     }
 }

@@ -11,8 +11,11 @@ namespace Pole.Features.ResourceGroups.Application.Services;
 
 public sealed class ResourcePlacementService(
     IResourceGroupDbContext dbContext,
-    IDeploymentTargetLookup deploymentTargetLookup,
-    IDeploymentTargetReferenceAdmission referenceAdmission,
+    LookupDeploymentTarget lookupDeploymentTarget,
+    LookupDefaultDeploymentTarget lookupDefaultDeploymentTarget,
+    AdmitDeploymentTargetForWorkload admitDeploymentTarget,
+    AdmitDefaultDeploymentTargetForNewWorkload admitDefaultDeploymentTarget,
+    ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges,
     IRuntimeCellNamespaceNameGenerator namespaceNameGenerator,
     TimeProvider timeProvider)
     : IResourcePlacementService
@@ -53,11 +56,35 @@ public sealed class ResourcePlacementService(
         if (scope.Lifecycle is not ActiveIsolationScopeLifecycleState)
             return Failures.Conflict("The isolation scope is being deleted.");
 
-        var targetResult = string.IsNullOrWhiteSpace(deploymentTargetId)
-            ? await deploymentTargetLookup.GetDefaultAsync(cancellationToken)
-            : await deploymentTargetLookup.GetAsync(deploymentTargetId.Trim(), cancellationToken);
-        if (!targetResult.TryGetValue(out var requestedTarget, out var targetFailure))
-            return targetFailure;
+        DeploymentTargetLookupDto requestedTarget;
+        if (string.IsNullOrWhiteSpace(deploymentTargetId))
+        {
+            var targetResult = await lookupDefaultDeploymentTarget(cancellationToken);
+            if (targetResult is Err<DefaultDeploymentTargetLookupError> error)
+            {
+                return LookupFailure(error.Value);
+            }
+            if (targetResult is not Ok<DeploymentTargetLookupDto> target)
+                throw new InvalidOperationException(
+                    "Default deployment-target lookup returned an unsupported result case.");
+
+            requestedTarget = target.Value;
+        }
+        else
+        {
+            var targetResult = await lookupDeploymentTarget(
+                deploymentTargetId.Trim(),
+                cancellationToken);
+            if (targetResult is Err<DeploymentTargetLookupError> error)
+            {
+                return LookupFailure(error.Value);
+            }
+            if (targetResult is not Ok<DeploymentTargetLookupDto> target)
+                throw new InvalidOperationException(
+                    "Deployment-target lookup returned an unsupported result case.");
+
+            requestedTarget = target.Value;
+        }
 
         var existing = await FindAsync(
             scope.Id,
@@ -77,11 +104,31 @@ public sealed class ResourcePlacementService(
             return existing.ToPlacement();
         }
 
-        var admissionResult = await deploymentTargetLookup.ResolveForNewWorkloadAsync(
-            deploymentTargetId,
-            cancellationToken);
-        if (!admissionResult.TryGetValue(out var admittedTarget, out var admissionFailure))
-            return admissionFailure;
+        DeploymentTargetLookupDto admittedTarget;
+        if (string.IsNullOrWhiteSpace(deploymentTargetId))
+        {
+            var admissionResult = await admitDefaultDeploymentTarget(cancellationToken);
+            if (admissionResult is Err<DefaultDeploymentTargetWorkloadAdmissionError> error)
+                return AdmissionFailure(error.Value);
+            if (admissionResult is not Ok<DeploymentTargetLookupDto> admission)
+                throw new InvalidOperationException(
+                    "Default deployment-target admission returned an unsupported result case.");
+
+            admittedTarget = admission.Value;
+        }
+        else
+        {
+            var admissionResult = await admitDeploymentTarget(
+                deploymentTargetId.Trim(),
+                cancellationToken);
+            if (admissionResult is Err<DeploymentTargetWorkloadAdmissionError> error)
+                return AdmissionFailure(error.Value);
+            if (admissionResult is not Ok<DeploymentTargetLookupDto> admission)
+                throw new InvalidOperationException(
+                    "Deployment-target admission returned an unsupported result case.");
+
+            admittedTarget = admission.Value;
+        }
 
         if (!string.Equals(admittedTarget.Id, requestedTarget.Id, StringComparison.Ordinal))
         {
@@ -150,13 +197,17 @@ public sealed class ResourcePlacementService(
             .SingleAsync(cancellationToken);
         if (upsert.UpsertedId is not null)
         {
-            var referenceResult = await referenceAdmission.RegisterAsync(
-                runtimeCell.DeploymentTargetId,
+            var referenceResult = await applyDeploymentTargetReferenceChanges(
                 new DeploymentTargetReferenceOwner(ReferenceOwnerType, runtimeCell.Id),
+                [runtimeCell.DeploymentTargetId],
+                [],
                 session,
                 cancellationToken);
-            if (referenceResult is not ISuccess)
-                return (Failure)referenceResult;
+            if (referenceResult is Err<DeploymentTargetReferenceChangeRejected>)
+            {
+                return Failures.Conflict(
+                    "The deployment target no longer accepts durable runtime-cell references.");
+            }
 
             await dbContext.StoreEventAsync(
                 OutboxWrite.Create(
@@ -246,12 +297,16 @@ public sealed class ResourcePlacementService(
             .ToArray();
         foreach (var targetId in missingTargetIds)
         {
-            var admission = await deploymentTargetLookup.ResolveForNewWorkloadAsync(
+            var admission = await admitDeploymentTarget(
                 targetId,
                 cancellationToken);
-            if (!admission.TryGetValue(out var admittedTarget, out var admissionFailure))
-                return admissionFailure;
-            if (!string.Equals(admittedTarget.Id, targetId, StringComparison.Ordinal))
+            if (admission is Err<DeploymentTargetWorkloadAdmissionError> error)
+                return AdmissionFailure(error.Value);
+            if (admission is not Ok<DeploymentTargetLookupDto> admittedTarget)
+                throw new InvalidOperationException(
+                    "Deployment-target admission returned an unsupported result case.");
+
+            if (!string.Equals(admittedTarget.Value.Id, targetId, StringComparison.Ordinal))
             {
                 return Failures.Conflict(
                     "Deployment-target admission resolved a different explicit target.");
@@ -317,13 +372,17 @@ public sealed class ResourcePlacementService(
             if (!string.Equals(runtimeCell.Id, candidate.Id, StringComparison.Ordinal))
                 continue;
 
-            var referenceResult = await referenceAdmission.RegisterAsync(
-                runtimeCell.DeploymentTargetId,
+            var referenceResult = await applyDeploymentTargetReferenceChanges(
                 new DeploymentTargetReferenceOwner(ReferenceOwnerType, runtimeCell.Id),
+                [runtimeCell.DeploymentTargetId],
+                [],
                 session,
                 cancellationToken);
-            if (referenceResult is not ISuccess)
-                return (Failure)referenceResult;
+            if (referenceResult is Err<DeploymentTargetReferenceChangeRejected>)
+            {
+                return Failures.Conflict(
+                    "The deployment target no longer accepts durable runtime-cell references.");
+            }
 
             await dbContext.StoreEventAsync(
                 OutboxWrite.Create(
@@ -394,6 +453,61 @@ public sealed class ResourcePlacementService(
                 cell.IsolationScopeId == isolationScopeId &&
                 cell.DeploymentTargetId == deploymentTargetId)
             .FirstOrDefaultAsync(cancellationToken);
+
+    private static Failure LookupFailure(DefaultDeploymentTargetLookupError error) =>
+        error switch
+        {
+            DefaultDeploymentTargetNotConfigured => Failures.Conflict(
+                "The default deployment target is not configured."),
+            DeploymentTargetLookupError nested => LookupFailure(nested),
+            _ => throw new InvalidOperationException(
+                "Deployment-target lookup returned an unsupported error case.")
+        };
+
+    private static Failure LookupFailure(DeploymentTargetLookupError error) =>
+        error switch
+        {
+            InvalidDeploymentTargetId => Failures.ValidationFailure(
+                new Dictionary<string, string[]>
+                {
+                    ["DeploymentTargetId"] = ["Deployment target ID must be a MongoDB ObjectId."]
+                }),
+            DeploymentTargetNotFound notFound => Failures.NotFound(
+                "Deployment target not found.", notFound.DeploymentTargetId),
+            _ => throw new InvalidOperationException(
+                "Deployment-target lookup returned an unsupported error case.")
+        };
+
+    private static Failure AdmissionFailure(
+        DefaultDeploymentTargetWorkloadAdmissionError error) =>
+        error switch
+        {
+            DefaultDeploymentTargetNotConfigured => Failures.Conflict(
+                "The default deployment target is not configured."),
+            DeploymentTargetWorkloadAdmissionError nested => AdmissionFailure(nested),
+            _ => throw new InvalidOperationException(
+                "Default deployment-target admission returned an unsupported error case.")
+        };
+
+    private static Failure AdmissionFailure(DeploymentTargetWorkloadAdmissionError error) =>
+        error switch
+        {
+            InvalidDeploymentTargetId => Failures.ValidationFailure(
+                new Dictionary<string, string[]>
+                {
+                    ["DeploymentTargetId"] = ["Deployment target ID must be a MongoDB ObjectId."]
+                }),
+            DeploymentTargetNotFound notFound => Failures.NotFound(
+                "Deployment target not found.", notFound.DeploymentTargetId),
+            DeploymentTargetDisabled => Failures.Conflict(
+                "The deployment target is disabled."),
+            DeploymentTargetDeletionRequested => Failures.Conflict(
+                "The deployment target is pending deletion."),
+            DeploymentTargetNewWorkloadsDisabled => Failures.Conflict(
+                "The deployment target does not accept new workloads."),
+            _ => throw new InvalidOperationException(
+                "Deployment-target admission returned an unsupported error case.")
+        };
 
     private static void EnsureTransaction(IClientSessionHandle session)
     {

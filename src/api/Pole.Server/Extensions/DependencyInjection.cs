@@ -190,7 +190,6 @@ public static class DependencyInjection
             services.TryAddSingleton<IStorageProfileDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IGitProviderDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IContainerRegistryDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddSingleton<IDeploymentTargetDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ISourceBuildDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.AddHttpContextAccessor();
             services.AddResourceGroupHttpMappings();

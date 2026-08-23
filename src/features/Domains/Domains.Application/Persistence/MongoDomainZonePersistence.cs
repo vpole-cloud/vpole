@@ -108,7 +108,7 @@ internal sealed partial class MongoDomainPersistence
             StringComparer.Ordinal);
         if (missing.Length > 0)
         {
-            var fence = await targetWorkloadConfigurationFence.FenceManyAsync(
+            var fence = await fenceDeploymentTargetWorkloadConfigurations(
                 missing
                     .Select(candidate =>
                     {
@@ -121,7 +121,7 @@ internal sealed partial class MongoDomainPersistence
                     .ToArray(),
                 session,
                 cancellationToken);
-            if (fence is not ISuccess)
+            if (fence is Err<DeploymentTargetWorkloadConfigurationFenceRejected>)
             {
                 return new Err<GeneratedDomainZoneError>(
                     new GeneratedDomainZoneError(
@@ -153,14 +153,15 @@ internal sealed partial class MongoDomainPersistence
 
             foreach (var candidate in missing)
             {
-                var registered = await targetReferenceAdmission.RegisterAsync(
-                    candidate.DeploymentTargetId,
+                var registered = await applyDeploymentTargetReferenceChanges(
                     new DeploymentTargetReferenceOwner(
                         DeploymentTargetReferenceOwnerTypes.DomainZone,
                         candidate.Id),
+                    [candidate.DeploymentTargetId],
+                    [],
                     session,
                     cancellationToken);
-                if (registered is not ISuccess)
+                if (registered is Err<DeploymentTargetReferenceChangeRejected>)
                 {
                     return new Err<GeneratedDomainZoneError>(
                         new GeneratedDomainZoneError(
@@ -215,12 +216,13 @@ internal sealed partial class MongoDomainPersistence
                 new InvalidManagedDomainZone(exception.Message));
         }
 
-        var fence = await targetWorkloadConfigurationFence.FenceAsync(
-            deploymentTargetId,
-            expectedWorkloadConfigurationRevision,
+        var fence = await fenceDeploymentTargetWorkloadConfigurations(
+            [new DeploymentTargetWorkloadConfigurationFenceRequest(
+                deploymentTargetId,
+                expectedWorkloadConfigurationRevision)],
             session,
             cancellationToken);
-        if (fence is not ISuccess)
+        if (fence is Err<DeploymentTargetWorkloadConfigurationFenceRejected>)
         {
             return new Err<CreateManagedDomainZoneError>(
                 new ManagedDomainZoneDeploymentTargetChanged(deploymentTargetId));
@@ -236,12 +238,13 @@ internal sealed partial class MongoDomainPersistence
                 new ManagedDomainZoneAlreadyReserved(zone.Domain));
         }
 
-        var registered = await targetReferenceAdmission.RegisterAsync(
-            zone.DeploymentTargetId,
+        var registered = await applyDeploymentTargetReferenceChanges(
             new DeploymentTargetReferenceOwner(DeploymentTargetReferenceOwnerTypes.DomainZone, zone.Id),
+            [zone.DeploymentTargetId],
+            [],
             session,
             cancellationToken);
-        return registered is ISuccess
+        return registered is Ok<Unit>
             ? new Ok<TenantDomainZoneSnapshot>(
                 zone.ToSnapshot())
             : new Err<CreateManagedDomainZoneError>(
@@ -287,12 +290,13 @@ internal sealed partial class MongoDomainPersistence
                 new DomainZoneDeletionConflict(zoneId));
         }
 
-        var unregistered = await targetReferenceAdmission.UnregisterAsync(
-            zone.DeploymentTargetId,
+        var unregistered = await applyDeploymentTargetReferenceChanges(
             new DeploymentTargetReferenceOwner(DeploymentTargetReferenceOwnerTypes.DomainZone, zone.Id),
+            [],
+            [zone.DeploymentTargetId],
             session,
             cancellationToken);
-        return unregistered is ISuccess
+        return unregistered is Ok<Unit>
             ? new Ok<ManagedDomainZoneDeleted>(
                 new ManagedDomainZoneDeleted(zone.Id))
             : new Err<DeleteManagedDomainZoneError>(

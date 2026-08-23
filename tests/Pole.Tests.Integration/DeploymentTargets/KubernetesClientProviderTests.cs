@@ -26,7 +26,10 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
         await fixture.DbContext.DeploymentTargetSettings.InsertOneAsync(
             DeploymentTargetSettings.Create(secondTarget.Id, DateTime.UtcNow));
         var factory = new RecordingClientFactory();
-        using var provider = new KubernetesClientProvider(fixture.DbContext, factory);
+        using var provider = new KubernetesClientProvider(
+            fixture.DbContext.DeploymentTargets,
+            fixture.DbContext.DeploymentTargetSettings,
+            factory.InvokeAsync);
 
         var firstClient = await provider.GetAsync(firstTarget.Id);
         var secondClient = await provider.GetAsync(secondTarget.Id);
@@ -46,7 +49,10 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
         var target = CreateTarget();
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var factory = new RecordingClientFactory();
-        using var provider = new KubernetesClientProvider(fixture.DbContext, factory);
+        using var provider = new KubernetesClientProvider(
+            fixture.DbContext.DeploymentTargets,
+            fixture.DbContext.DeploymentTargetSettings,
+            factory.InvokeAsync);
 
         var firstClient = await provider.GetAsync(target.Id);
         var secondClient = await provider.GetAsync(target.Id);
@@ -62,7 +68,10 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
         var target = CreateTarget();
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var factory = new RecordingClientFactory();
-        using var provider = new KubernetesClientProvider(fixture.DbContext, factory);
+        using var provider = new KubernetesClientProvider(
+            fixture.DbContext.DeploymentTargets,
+            fixture.DbContext.DeploymentTargetSettings,
+            factory.InvokeAsync);
 
         var initialClient = await provider.GetAsync(target.Id);
 
@@ -96,7 +105,10 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
         var disabledTarget = CreateTarget(enabled: false);
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(disabledTarget);
         var factory = new RecordingClientFactory();
-        using var provider = new KubernetesClientProvider(fixture.DbContext, factory);
+        using var provider = new KubernetesClientProvider(
+            fixture.DbContext.DeploymentTargets,
+            fixture.DbContext.DeploymentTargetSettings,
+            factory.InvokeAsync);
 
         var missing = await Assert.ThrowsAsync<DeploymentTargetUnavailableException>(
             () => provider.GetAsync(ObjectId.GenerateNewId().ToString()));
@@ -117,7 +129,10 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
         var target = CreateTarget(degraded: true);
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var factory = new RecordingClientFactory();
-        using var provider = new KubernetesClientProvider(fixture.DbContext, factory);
+        using var provider = new KubernetesClientProvider(
+            fixture.DbContext.DeploymentTargets,
+            fixture.DbContext.DeploymentTargetSettings,
+            factory.InvokeAsync);
 
         var client = await provider.GetAsync(target.Id);
 
@@ -130,7 +145,10 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
         var target = CreateTarget();
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var factory = new RecordingClientFactory();
-        using var provider = new KubernetesClientProvider(fixture.DbContext, factory);
+        using var provider = new KubernetesClientProvider(
+            fixture.DbContext.DeploymentTargets,
+            fixture.DbContext.DeploymentTargetSettings,
+            factory.InvokeAsync);
 
         await provider.GetAsync(target.Id);
         var updatedTarget = target.ReplaceConnectionCredential(
@@ -179,11 +197,13 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
             new DeploymentTargetFactory.CreateOptions(id, createdAtUtc));
     }
 
-    private sealed class RecordingClientFactory : IDeploymentTargetKubernetesClientFactory
+    private sealed class RecordingClientFactory
     {
         public List<ClientFactoryCall> Calls { get; } = [];
 
-        public ValueTask<Result<IKubernetes>> CreateAsync(
+        public ValueTask<Result<
+            IKubernetes,
+            StoredDeploymentTargetConnectionUnavailable>> InvokeAsync(
             string deploymentTargetId,
             DeploymentTargetConnection connection,
             CancellationToken cancellationToken = default)
@@ -201,7 +221,9 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
                 connection.Version,
                 client,
                 disposalHandler));
-            return ValueTask.FromResult<Result<IKubernetes>>(Result.Success(client));
+            return ValueTask.FromResult<Result<
+                IKubernetes,
+                StoredDeploymentTargetConnectionUnavailable>>(new Ok<IKubernetes>(client));
         }
     }
 

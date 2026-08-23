@@ -3,39 +3,8 @@ using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Connections;
 
-public interface IDeploymentTargetConnectionProtector
-{
-    ValueTask<Result<EncryptedValue>> ProtectKubeconfigAsync(
-        string deploymentTargetId,
-        long connectionVersion,
-        ReadOnlyMemory<byte> canonicalKubeconfig,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<Result<byte[]>> UnprotectKubeconfigAsync(
-        string deploymentTargetId,
-        long connectionVersion,
-        EncryptedValue encryptedKubeconfig,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Protects the canonical service-account payload, including duplicated server and CA
-    /// metadata. The authenticated ciphertext covers every value that controls token delivery.
-    /// </summary>
-    ValueTask<Result<EncryptedValue>> ProtectServiceAccountCredentialAsync(
-        string deploymentTargetId,
-        long connectionVersion,
-        ReadOnlyMemory<byte> canonicalServiceAccountCredential,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<Result<byte[]>> UnprotectServiceAccountCredentialAsync(
-        string deploymentTargetId,
-        long connectionVersion,
-        EncryptedValue encryptedCredential,
-        CancellationToken cancellationToken = default);
-}
-
-public sealed class DeploymentTargetConnectionProtector(
-    IEnvelopeEncryptionService encryption) : IDeploymentTargetConnectionProtector
+internal sealed class DeploymentTargetConnectionProtector(
+    IEnvelopeEncryptionService encryption)
 {
     private const string KubeconfigValueName = "kubeconfig";
     private const string ServiceAccountCredentialValueName = "service-account-credential";

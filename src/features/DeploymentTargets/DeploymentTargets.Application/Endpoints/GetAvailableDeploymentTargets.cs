@@ -5,9 +5,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.DeploymentTargets.Application.Common;
+using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 using Pole.Workloads;
 
@@ -26,35 +27,22 @@ public sealed record GetAvailableDeploymentTargetsRequest(
         ITenantReadOperation;
 
 public sealed class GetAvailableDeploymentTargetsHandler(
-    IDeploymentTargetLookup deploymentTargetLookup)
-    : IMediatorHandler<
+    LoadEligibleDeploymentTargets loadEligibleDeploymentTargets)
+    : IMediatorOutcomeHandler<
         GetAvailableDeploymentTargetsRequest,
         IReadOnlyCollection<AvailableDeploymentTargetDto>>
 {
-    public async Task<Result<IReadOnlyCollection<AvailableDeploymentTargetDto>>> HandleAsync(
+    public async Task<IReadOnlyCollection<AvailableDeploymentTargetDto>> HandleAsync(
         GetAvailableDeploymentTargetsRequest request,
         CancellationToken cancellationToken = default)
     {
-        var targets = await deploymentTargetLookup.ListEligibleForNewWorkloadAsync(
-            new DeploymentTargetAdmissionRequest(
-                request.TenantId,
-                ResourceTypeId.Create(request.ResourceType),
-                request.IsolationScopeId,
-                ExplicitDeploymentTargetId: null,
-                request.RequiresPublicIngress
-                    ? DeploymentTargetRequiredCapabilities.PublicIngress
-                    : DeploymentTargetRequiredCapabilities.None),
+        var targets = await loadEligibleDeploymentTargets(
+            request.RequiresPublicIngress
+                ? DeploymentTargetRequiredCapabilities.PublicIngress
+                : DeploymentTargetRequiredCapabilities.None,
             cancellationToken);
-        if (!targets.TryGetValue(out var eligible, out var failure))
-            return failure;
-
-        return eligible
-            .Select(target => new AvailableDeploymentTargetDto(
-                target.Id,
-                target.DisplayName,
-                target.WorkloadConfiguration.Revision,
-                target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null,
-                target.WorkloadConfiguration.Ingress?.PublicBaseDomain))
+        return targets
+            .Select(target => target.ToAvailableDto())
             .ToArray();
     }
 }

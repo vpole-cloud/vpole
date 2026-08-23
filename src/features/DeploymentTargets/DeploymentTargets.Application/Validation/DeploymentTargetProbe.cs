@@ -16,24 +16,21 @@ public sealed record DeploymentTargetProbeObservation(
         Health.Status == DeploymentTargetHealthStatus.Healthy;
 }
 
-public interface IDeploymentTargetProbe
-{
-    Task<DeploymentTargetProbeObservation> ProbeAsync(
-        IKubernetes kubernetes,
-        long connectionVersion,
-        DateTime? lastHealthyAtUtc = null,
-        CancellationToken cancellationToken = default);
-}
+public delegate Task<DeploymentTargetProbeObservation> ProbeDeploymentTargetConnection(
+    IKubernetes kubernetes,
+    long connectionVersion,
+    DateTime? lastHealthyAtUtc = null,
+    CancellationToken cancellationToken = default);
 
 public sealed class DeploymentTargetProbe(
     TimeProvider timeProvider,
-    Common.DeploymentTargetOptions options) : IDeploymentTargetProbe
+    Common.DeploymentTargetOptions options)
 {
     private const int MaximumClusterIdentityLength = 512;
     private const int MaximumKubernetesVersionLength = 128;
     private static readonly string[] NamespaceVerbs = ["get", "create", "update", "patch", "delete"];
 
-    public async Task<DeploymentTargetProbeObservation> ProbeAsync(
+    public async Task<DeploymentTargetProbeObservation> InvokeAsync(
         IKubernetes kubernetes,
         long connectionVersion,
         DateTime? lastHealthyAtUtc = null,

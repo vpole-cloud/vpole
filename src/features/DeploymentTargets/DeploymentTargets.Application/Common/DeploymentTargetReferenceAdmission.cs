@@ -6,11 +6,10 @@ using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Common;
 
-public sealed class DeploymentTargetReferenceAdmission(
-    IDeploymentTargetDbContext dbContext,
+internal sealed class DeploymentTargetReferenceAdmission(
+    IMongoCollection<DeploymentTarget> deploymentTargets,
+    IMongoCollection<DeploymentTargetReference> deploymentTargetReferences,
     TimeProvider timeProvider)
-    : IDeploymentTargetReferenceAdmission,
-      IDeploymentTargetWorkloadConfigurationFence
 {
     public async Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
         ApplyChangesOutcomeAsync(
@@ -78,31 +77,7 @@ public sealed class DeploymentTargetReferenceAdmission(
         }
     }
 
-    public Task<Result> RegisterAsync(
-        string deploymentTargetId,
-        DeploymentTargetReferenceOwner owner,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default) =>
-        ApplyChangesAsync(
-            owner,
-            [deploymentTargetId],
-            [],
-            session,
-            cancellationToken);
-
-    public Task<Result> UnregisterAsync(
-        string deploymentTargetId,
-        DeploymentTargetReferenceOwner owner,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default) =>
-        ApplyChangesAsync(
-            owner,
-            [],
-            [deploymentTargetId],
-            session,
-            cancellationToken);
-
-    public async Task<Result> ApplyChangesAsync(
+    private async Task<Result> ApplyChangesAsync(
         DeploymentTargetReferenceOwner owner,
         IReadOnlyCollection<string> addedDeploymentTargetIds,
         IReadOnlyCollection<string> removedDeploymentTargetIds,
@@ -167,7 +142,7 @@ public sealed class DeploymentTargetReferenceAdmission(
                 });
             }
 
-            await dbContext.DeploymentTargetReferences.BulkWriteAsync(
+            await deploymentTargetReferences.BulkWriteAsync(
                 session,
                 writes,
                 cancellationToken: cancellationToken);
@@ -177,7 +152,7 @@ public sealed class DeploymentTargetReferenceAdmission(
             .OwnedReferencesForTargets(removedTargetIds, owner);
         var referencedTargetIds = removedTargetIds.Length == 0
             ? []
-            : await dbContext.DeploymentTargetReferences
+            : await deploymentTargetReferences
                 .Find(session, removalFilter)
                 .Project(item => item.DeploymentTargetId)
                 .ToListAsync(cancellationToken);
@@ -192,7 +167,7 @@ public sealed class DeploymentTargetReferenceAdmission(
         if (removedFence is not ISuccess)
             return (Failure)removedFence;
 
-        var deleted = await dbContext.DeploymentTargetReferences.DeleteManyAsync(
+        var deleted = await deploymentTargetReferences.DeleteManyAsync(
             session,
             removalFilter,
             cancellationToken: cancellationToken);
@@ -202,19 +177,22 @@ public sealed class DeploymentTargetReferenceAdmission(
                 "Deployment-target references changed while removal was being accepted.");
     }
 
-    public Task<Result> FenceAsync(
-        string deploymentTargetId,
-        long expectedWorkloadConfigurationRevision,
+    public async Task<Result<
+        Unit,
+        DeploymentTargetWorkloadConfigurationFenceRejected>> FenceManyOutcomeAsync(
+        IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
         IClientSessionHandle session,
-        CancellationToken cancellationToken = default) =>
-        FenceManyAsync(
-            [new DeploymentTargetWorkloadConfigurationFenceRequest(
-                deploymentTargetId,
-                expectedWorkloadConfigurationRevision)],
-            session,
-            cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(requests);
+        var result = await FenceManyAsync(requests, session, cancellationToken);
+        return result is ISuccess
+            ? new Ok<Unit>(Unit.Value)
+            : new Err<DeploymentTargetWorkloadConfigurationFenceRejected>(
+                new DeploymentTargetWorkloadConfigurationFenceRejected(requests));
+    }
 
-    public async Task<Result> FenceManyAsync(
+    private async Task<Result> FenceManyAsync(
         IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -241,7 +219,7 @@ public sealed class DeploymentTargetReferenceAdmission(
             });
         }
 
-        var update = await dbContext.DeploymentTargets.UpdateManyAsync(
+        var update = await deploymentTargets.UpdateManyAsync(
             session,
             DeploymentTargetFilters.FenceableWorkloadConfigurations(
                 distinctRequests),
@@ -283,7 +261,7 @@ public sealed class DeploymentTargetReferenceAdmission(
         if (deploymentTargetIds.Count == 0)
             return Result.Success();
 
-        var update = await dbContext.DeploymentTargets.UpdateManyAsync(
+        var update = await deploymentTargets.UpdateManyAsync(
             session,
             DeploymentTargetFilters.FenceableReferences(
                 deploymentTargetIds,

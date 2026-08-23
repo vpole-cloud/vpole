@@ -1,42 +1,56 @@
 using System.Security.Cryptography;
-using k8s;
-using Pole.Encryption;
+using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Connections;
 
-public interface IDeploymentTargetConnectionPreparer
-{
-    ValueTask<Result<PreparedDeploymentTargetConnection>> PrepareAsync(
+public delegate ValueTask<Result<
+    PreparedDeploymentTargetConnection,
+    DeploymentTargetConnectionRejected>>
+    PrepareDeploymentTargetConnection(
         string deploymentTargetId,
         long connectionVersion,
         DeploymentTargetConnectionInput input,
         CancellationToken cancellationToken = default);
-}
 
-/// <summary>
-/// Recreates a Kubernetes client from a stored deployment-target connection.
-/// The caller owns and must dispose a successful client.
-/// </summary>
-public interface IDeploymentTargetKubernetesClientFactory
+internal sealed class DeploymentTargetConnectionPreparer(
+    DeploymentTargetConnectionProtector protector)
 {
-    ValueTask<Result<IKubernetes>> CreateAsync(
-        string deploymentTargetId,
-        DeploymentTargetConnection connection,
-        CancellationToken cancellationToken = default);
-}
-
-public sealed class DeploymentTargetConnectionService(
-    IDeploymentTargetConnectionProtector protector) :
-    IDeploymentTargetConnectionPreparer,
-    IDeploymentTargetKubernetesClientFactory
-{
-    public async ValueTask<Result<PreparedDeploymentTargetConnection>> PrepareAsync(
+    public async ValueTask<Result<
+        PreparedDeploymentTargetConnection,
+        DeploymentTargetConnectionRejected>> InvokeAsync(
         string deploymentTargetId,
         long connectionVersion,
         DeploymentTargetConnectionInput input,
         CancellationToken cancellationToken = default)
+    {
+        var prepared = await PrepareCoreAsync(
+            deploymentTargetId,
+            connectionVersion,
+            input,
+            cancellationToken);
+        return prepared switch
+        {
+            Success<PreparedDeploymentTargetConnection> success =>
+                new Ok<PreparedDeploymentTargetConnection>(success.Value),
+            Failure<PreparedDeploymentTargetConnection>
+            {
+                Error: FieldValidationFailure validation
+            } => new Err<DeploymentTargetConnectionRejected>(
+                new DeploymentTargetConnectionRejected(validation.ValidationErrors)),
+            Failure<PreparedDeploymentTargetConnection> => throw new InvalidOperationException(
+                "Preparing a deployment-target connection failed outside its expected validation contract."),
+            _ => throw new InvalidOperationException(
+                "Preparing a deployment-target connection returned an unsupported result case.")
+        };
+    }
+
+    private async ValueTask<Result<PreparedDeploymentTargetConnection>> PrepareCoreAsync(
+        string deploymentTargetId,
+        long connectionVersion,
+        DeploymentTargetConnectionInput input,
+        CancellationToken cancellationToken)
     {
         if (!HasValidOwner(deploymentTargetId, connectionVersion))
         {
@@ -68,27 +82,6 @@ public sealed class DeploymentTargetConnectionService(
             _ => ConnectionFailures.Validation(
                 "connection",
                 "The deployment-target connection kind is unsupported.")
-        };
-    }
-
-    public async ValueTask<Result<IKubernetes>> CreateAsync(
-        string deploymentTargetId,
-        DeploymentTargetConnection connection,
-        CancellationToken cancellationToken = default)
-    {
-        if (connection is null || !HasValidOwner(deploymentTargetId, connection.Version))
-            return ConnectionFailures.StoredConnectionUnavailable();
-
-        cancellationToken.ThrowIfCancellationRequested();
-        return connection switch
-        {
-            InClusterDeploymentTargetConnection =>
-                KubernetesClientSecurity.CreateInCluster(storedConnection: true, cancellationToken),
-            KubeconfigDeploymentTargetConnection kubeconfig =>
-                await CreateFromStoredKubeconfigAsync(deploymentTargetId, kubeconfig, cancellationToken),
-            ServiceAccountDeploymentTargetConnection serviceAccount =>
-                await CreateFromStoredServiceAccountAsync(deploymentTargetId, serviceAccount, cancellationToken),
-            _ => ConnectionFailures.StoredConnectionUnavailable()
         };
     }
 
@@ -239,81 +232,6 @@ public sealed class DeploymentTargetConnectionService(
         finally
         {
             CryptographicOperations.ZeroMemory(serialized);
-        }
-    }
-
-    private async ValueTask<Result<IKubernetes>> CreateFromStoredKubeconfigAsync(
-        string deploymentTargetId,
-        KubeconfigDeploymentTargetConnection connection,
-        CancellationToken cancellationToken)
-    {
-        var decryptedResult = await protector.UnprotectKubeconfigAsync(
-            deploymentTargetId,
-            connection.Version,
-            connection.EncryptedKubeconfig,
-            cancellationToken);
-        if (!decryptedResult.TryGetValue(out var decrypted, out var decryptionFailure))
-            return decryptionFailure;
-
-        try
-        {
-            var canonicalResult = KubeconfigCanonicalizer.DeserializeStored(decrypted);
-            if (!canonicalResult.TryGetValue(out var canonical, out var canonicalFailure))
-                return canonicalFailure;
-            if (!string.Equals(canonical.ContextName, connection.ContextName, StringComparison.Ordinal) ||
-                !string.Equals(canonical.ServerUrl, connection.ServerUrl, StringComparison.Ordinal))
-            {
-                return ConnectionFailures.StoredConnectionUnavailable();
-            }
-
-            return KubernetesClientSecurity.CreateFromCanonical(
-                canonical,
-                storedConnection: true,
-                cancellationToken);
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(decrypted);
-        }
-    }
-
-    private async ValueTask<Result<IKubernetes>> CreateFromStoredServiceAccountAsync(
-        string deploymentTargetId,
-        ServiceAccountDeploymentTargetConnection connection,
-        CancellationToken cancellationToken)
-    {
-        var decryptedResult = await protector.UnprotectServiceAccountCredentialAsync(
-            deploymentTargetId,
-            connection.Version,
-            connection.EncryptedCredential,
-            cancellationToken);
-        if (!decryptedResult.TryGetValue(out var decrypted, out var decryptionFailure))
-            return decryptionFailure;
-
-        try
-        {
-            var canonicalResult = KubeconfigCanonicalizer.DeserializeStored(
-                decrypted,
-                ConnectionPayloadLimits.MaximumServiceAccountCredentialBytes);
-            if (!canonicalResult.TryGetValue(out var canonical, out _) ||
-                !KubeconfigCanonicalizer.IsServiceAccountCredential(canonical) ||
-                !string.Equals(canonical.ServerUrl, connection.ServerUrl, StringComparison.Ordinal) ||
-                !string.Equals(
-                    canonical.CertificateAuthorityData,
-                    connection.CertificateAuthorityData,
-                    StringComparison.Ordinal))
-            {
-                return ConnectionFailures.StoredConnectionUnavailable();
-            }
-
-            return KubernetesClientSecurity.CreateFromCanonical(
-                canonical,
-                storedConnection: true,
-                cancellationToken);
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(decrypted);
         }
     }
 

@@ -7,26 +7,33 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.DeploymentTargets.Application.Common;
+using Pole.Features.DeploymentTargets.Application.Persistence;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Mediator;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 
 public sealed record GetDeploymentTargetRequest(
     [FromRoute] string Id)
-    : IMediatorRequest<DeploymentTargetDto>;
+    : IMediatorRequest<GetDeploymentTargetOutcome>;
 
-public sealed class GetDeploymentTargetHandler(DeploymentTargetReader reader)
-    : IMediatorHandler<GetDeploymentTargetRequest, DeploymentTargetDto>
+public union GetDeploymentTargetOutcome(
+    DeploymentTargetDto,
+    DeploymentTargetNotFound);
+
+public sealed class GetDeploymentTargetHandler(
+    LoadDeploymentTargetById loadDeploymentTargetById,
+    LoadDefaultDeploymentTargetId loadDefaultDeploymentTargetId)
+    : IMediatorOutcomeHandler<GetDeploymentTargetRequest, GetDeploymentTargetOutcome>
 {
-    public async Task<Result<DeploymentTargetDto>> HandleAsync(
+    public async Task<GetDeploymentTargetOutcome> HandleAsync(
         GetDeploymentTargetRequest request,
         CancellationToken cancellationToken = default)
     {
-        var targetResult = await reader.GetAsync(request.Id, cancellationToken);
-        if (!targetResult.TryGetValue(out var target, out var failure))
-            return failure;
-        var defaultId = await reader.GetDefaultIdAsync(cancellationToken);
+        var target = await loadDeploymentTargetById(request.Id, cancellationToken);
+        if (target is null)
+            return new DeploymentTargetNotFound(request.Id);
+        var defaultId = await loadDefaultDeploymentTargetId(cancellationToken);
         return target.ToDto(target.Id == defaultId);
     }
 }
@@ -45,14 +52,20 @@ public static class GetDeploymentTargetEndpoint
     {
         app.MapGet("/{Id}", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] GetDeploymentTargetRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    DeploymentTargetDto target => Results.Ok(target),
+                    DeploymentTargetNotFound notFound => httpProblems.Map(notFound).ToHttpResult()
+                });
             })
             .WithName("GetDeploymentTarget")
-            .Produces<DeploymentTargetDto>();
+            .Produces<DeploymentTargetDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
         return app;
     }
 }

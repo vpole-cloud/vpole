@@ -21,7 +21,7 @@ public sealed class DeploymentTargetProbeTests
         using var kubernetes = CreateClient(handler);
         var probe = CreateProbe(ObservedAt);
 
-        var observation = await probe.ProbeAsync(kubernetes, connectionVersion: 7);
+        var observation = await probe.InvokeAsync(kubernetes, connectionVersion: 7);
 
         Assert.True(
             observation.IsUsable,
@@ -53,7 +53,7 @@ public sealed class DeploymentTargetProbeTests
         var probe = CreateProbe(ObservedAt);
         var lastHealthyAt = ObservedAt.AddMinutes(5).UtcDateTime;
 
-        var observation = await probe.ProbeAsync(
+        var observation = await probe.InvokeAsync(
             kubernetes,
             connectionVersion: 3,
             lastHealthyAtUtc: lastHealthyAt);

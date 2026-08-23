@@ -5,12 +5,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
-using Pole.Features.DeploymentTargets.Domain;
+using Pole.Features.DeploymentTargets.Application.Persistence;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -26,27 +25,37 @@ public sealed record UpdateDeploymentTargetRequestBody(
 public sealed record UpdateDeploymentTargetRequest(
     [FromRoute] string Id,
     [FromBody] UpdateDeploymentTargetRequestBody Body)
-    : IMediatorRequest<DeploymentTargetDto>;
+    : IMediatorRequest<UpdateDeploymentTargetOutcome>;
+
+public union UpdateDeploymentTargetError(
+    DeploymentTargetNotFound,
+    DeploymentTargetRevisionConflict,
+    DeploymentTargetDeletionRejected,
+    PersistUpdatedDeploymentTargetError);
+
+public union UpdateDeploymentTargetOutcome(
+    DeploymentTargetDto,
+    UpdateDeploymentTargetError);
 
 public sealed class UpdateDeploymentTargetHandler(
-    IDeploymentTargetDbContext dbContext,
-    DeploymentTargetReader reader,
-    DeploymentTargetDomainAdmission domainAdmission,
-    IDeploymentTargetClientCache clientCache,
+    LoadDeploymentTargetById loadDeploymentTargetById,
+    LoadDefaultDeploymentTargetId loadDefaultDeploymentTargetId,
+    PersistUpdatedDeploymentTarget persistUpdatedDeploymentTarget,
+    InvalidateDeploymentTargetKubernetesClient invalidateDeploymentTargetKubernetesClient,
     TimeProvider timeProvider)
-    : IMediatorHandler<UpdateDeploymentTargetRequest, DeploymentTargetDto>
+    : IMediatorOutcomeHandler<UpdateDeploymentTargetRequest, UpdateDeploymentTargetOutcome>
 {
-    public async Task<Result<DeploymentTargetDto>> HandleAsync(
+    public async Task<UpdateDeploymentTargetOutcome> HandleAsync(
         UpdateDeploymentTargetRequest request,
         CancellationToken cancellationToken = default)
     {
-        var targetResult = await reader.GetAsync(request.Id, cancellationToken);
-        if (!targetResult.TryGetValue(out var target, out var targetFailure))
-            return targetFailure;
+        var target = await loadDeploymentTargetById(request.Id, cancellationToken);
+        if (target is null)
+            return Error(new DeploymentTargetNotFound(request.Id));
         if (target.Revision != request.Body.Revision)
-            return Failures.Conflict("The deployment target changed. Reload it and retry.");
+            return Error(new DeploymentTargetRevisionConflict(target.Id));
         if (request.Body.AcceptsWorkloads && target.DeletionRequestedAtUtc is not null)
-            return Failures.Conflict("A deployment target pending deletion cannot accept workloads.");
+            return Error(new DeploymentTargetDeletionRejected(target.Id));
 
         var updated = target.Reconfigure(
             request.Body.DisplayName,
@@ -57,91 +66,34 @@ public sealed class UpdateDeploymentTargetHandler(
 
         if (updated.Revision == target.Revision)
         {
-            var existingDefaultId = await reader.GetDefaultIdAsync(cancellationToken);
+            var existingDefaultId = await loadDefaultDeploymentTargetId(cancellationToken);
             return target.ToDto(target.Id == existingDefaultId);
         }
 
-        var publicBaseDomainChanged = !string.Equals(
-            target.WorkloadConfiguration.Ingress?.PublicBaseDomain,
-            updated.WorkloadConfiguration.Ingress?.PublicBaseDomain,
-            StringComparison.Ordinal);
-        var persistedResult = publicBaseDomainChanged
-            ? await ReplacePublicBaseDomainAsync(target, updated, cancellationToken)
-            : await ReplaceAsync(target, updated, cancellationToken);
-        if (!persistedResult.TryGetValue(out var persisted, out var persistenceFailure))
-            return persistenceFailure;
+        var persistedResult = await persistUpdatedDeploymentTarget(
+            target,
+            updated,
+            cancellationToken);
+        if (!persistedResult.TryGetValue(out var persisted, out var persistenceError))
+            return Error(persistenceError);
 
         if (!persisted.Enabled)
-            clientCache.Invalidate(target.Id);
-        var defaultId = await reader.GetDefaultIdAsync(cancellationToken);
+            invalidateDeploymentTargetKubernetesClient(target.Id);
+        var defaultId = await loadDefaultDeploymentTargetId(cancellationToken);
         return persisted.ToDto(persisted.Id == defaultId);
     }
 
-    private async Task<Result<DeploymentTarget>> ReplaceAsync(
-        DeploymentTarget target,
-        DeploymentTarget updated,
-        CancellationToken cancellationToken)
-    {
-        var persisted = await dbContext.DeploymentTargets.FindOneAndUpdateAsync(
-            DeploymentTargetFilters.AtRevision(target),
-            ReplacementUpdate(updated),
-            new FindOneAndUpdateOptions<DeploymentTarget>
-            {
-                ReturnDocument = ReturnDocument.After
-            },
-            cancellationToken);
-        return persisted is null
-            ? Failures.Conflict("The deployment target changed. Reload it and retry.")
-            : persisted;
-    }
+    private static UpdateDeploymentTargetOutcome Error(DeploymentTargetNotFound error) =>
+        new(new UpdateDeploymentTargetError(error));
 
-    private Task<Result<DeploymentTarget>> ReplacePublicBaseDomainAsync(
-        DeploymentTarget target,
-        DeploymentTarget updated,
-        CancellationToken cancellationToken) =>
-        dbContext.RunInTransactionAsync<DeploymentTarget>(async (session, ct) =>
-        {
-            var references = await domainAdmission.EnsureNoPublicDomainReferencesAsync(
-                target.Id,
-                session,
-                ct);
-            if (references is not ISuccess)
-                return (Failure)references;
+    private static UpdateDeploymentTargetOutcome Error(DeploymentTargetRevisionConflict error) =>
+        new(new UpdateDeploymentTargetError(error));
 
-            var overlap = await domainAdmission.EnsureNoOverlappingPublicBaseDomainAsync(
-                target.Id,
-                updated.WorkloadConfiguration.Ingress?.PublicBaseDomain,
-                session,
-                ct);
-            if (overlap is not ISuccess)
-                return (Failure)overlap;
+    private static UpdateDeploymentTargetOutcome Error(DeploymentTargetDeletionRejected error) =>
+        new(new UpdateDeploymentTargetError(error));
 
-            var persisted = await dbContext.DeploymentTargets.FindOneAndUpdateAsync(
-                session,
-                DeploymentTargetFilters.AtRevisionAndReferenceFence(target),
-                ReplacementUpdate(updated),
-                new FindOneAndUpdateOptions<DeploymentTarget>
-                {
-                    ReturnDocument = ReturnDocument.After
-                },
-                ct);
-            return persisted is null
-                ? Failures.Conflict("The deployment target changed. Reload it and retry.")
-                : persisted;
-        }, cancellationToken: cancellationToken);
-
-    private static UpdateDefinition<DeploymentTarget> ReplacementUpdate(DeploymentTarget updated) =>
-        Builders<DeploymentTarget>.Update.Combine(
-            Builders<DeploymentTarget>.Update.Set(item => item.DisplayName, updated.DisplayName),
-            Builders<DeploymentTarget>.Update.Set(item => item.Enabled, updated.Enabled),
-            Builders<DeploymentTarget>.Update.Set(
-                item => item.AcceptsWorkloads,
-                updated.AcceptsWorkloads),
-            Builders<DeploymentTarget>.Update.Set(
-                item => item.WorkloadConfiguration,
-                updated.WorkloadConfiguration),
-            Builders<DeploymentTarget>.Update.Set(item => item.Revision, updated.Revision),
-            Builders<DeploymentTarget>.Update.Set(item => item.UpdatedAtUtc, updated.UpdatedAtUtc));
+    private static UpdateDeploymentTargetOutcome Error(PersistUpdatedDeploymentTargetError error) =>
+        new(new UpdateDeploymentTargetError(error));
 }
 
 public sealed class UpdateDeploymentTargetRequestValidator
@@ -182,14 +134,21 @@ public static class UpdateDeploymentTargetEndpoint
     {
         app.MapPut("/{Id}", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] UpdateDeploymentTargetRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    DeploymentTargetDto target => Results.Ok(target),
+                    UpdateDeploymentTargetError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("UpdateDeploymentTarget")
-            .Produces<DeploymentTargetDto>();
+            .Produces<DeploymentTargetDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
         return app;
     }
 }

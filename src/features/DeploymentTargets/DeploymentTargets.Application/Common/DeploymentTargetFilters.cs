@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 
@@ -6,6 +7,14 @@ namespace Pole.Features.DeploymentTargets.Application.Common;
 
 internal static class DeploymentTargetFilters
 {
+    public static FilterDefinition<DeploymentTarget> All() =>
+        Builders<DeploymentTarget>.Filter.Empty;
+
+    public static FilterDefinition<DeploymentTarget> AfterId(string? cursor) =>
+        cursor is null
+            ? All()
+            : Builders<DeploymentTarget>.Filter.Gt(target => target.Id, cursor);
+
     public static FilterDefinition<DeploymentTarget> ById(string targetId) =>
         Builders<DeploymentTarget>.Filter.Eq(target => target.Id, targetId);
 
@@ -36,11 +45,53 @@ internal static class DeploymentTargetFilters
                 item => item.Connection.Version,
                 target.Connection.Version));
 
+    public static FilterDefinition<DeploymentTarget> AtKubeconfigEnvelope(
+        string targetId,
+        long connectionVersion,
+        EncryptedValue envelope) =>
+        Builders<DeploymentTarget>.Filter.And(
+            ById(targetId),
+            Builders<DeploymentTarget>.Filter.Eq(
+                "Connection.Version",
+                connectionVersion),
+            Builders<DeploymentTarget>.Filter.Eq(
+                "Connection.EncryptedKubeconfig",
+                envelope));
+
+    public static FilterDefinition<DeploymentTarget> AtServiceAccountCredentialEnvelope(
+        string targetId,
+        long connectionVersion,
+        EncryptedValue envelope) =>
+        Builders<DeploymentTarget>.Filter.And(
+            ById(targetId),
+            Builders<DeploymentTarget>.Filter.Eq(
+                "Connection.Version",
+                connectionVersion),
+            Builders<DeploymentTarget>.Filter.Eq(
+                "Connection.EncryptedCredential",
+                envelope));
+
     public static FilterDefinition<DeploymentTarget> AtRevisionAndNotPendingDeletion(
         DeploymentTarget target) =>
         Builders<DeploymentTarget>.Filter.And(
             AtRevision(target),
             NotPendingDeletion());
+
+    public static FilterDefinition<DeploymentTarget> AtReferenceFenceBeforeDeletion(
+        DeploymentTarget target) =>
+        Builders<DeploymentTarget>.Filter.And(
+            AtRevisionAndReferenceFence(target),
+            Builders<DeploymentTarget>.Filter.Eq(
+                item => item.DeletionRequestedAtUtc,
+                null));
+
+    public static FilterDefinition<DeploymentTarget> AtDeletionFence(
+        DeploymentTarget target) =>
+        Builders<DeploymentTarget>.Filter.And(
+            AtRevisionAndReferenceFence(target),
+            Builders<DeploymentTarget>.Filter.Eq(
+                item => item.DeletionRequestedAtUtc,
+                target.DeletionRequestedAtUtc));
 
     public static FilterDefinition<DeploymentTarget> AcceptingNewWorkloads() =>
         Builders<DeploymentTarget>.Filter.And(

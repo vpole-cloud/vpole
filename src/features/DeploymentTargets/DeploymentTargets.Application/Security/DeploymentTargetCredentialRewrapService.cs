@@ -12,28 +12,29 @@ public sealed record DeploymentTargetCredentialRewrapSummary(
     long Rewrapped,
     long ConcurrentChanges);
 
-public interface IDeploymentTargetCredentialRewrapService
-{
-    Task<Result<DeploymentTargetCredentialRewrapSummary>> RewrapAllAsync(
-        EnvelopeEncryptionKeyReference expectedActiveKey,
-        CancellationToken cancellationToken = default);
-}
+public delegate Task<Result<
+    DeploymentTargetCredentialRewrapSummary,
+    DeploymentTargetCredentialRewrapConflict>> RewrapDeploymentTargetCredentials(
+    EnvelopeEncryptionKeyReference expectedActiveKey,
+    CancellationToken cancellationToken = default);
 
-public sealed class DeploymentTargetCredentialRewrapService(
-    IDeploymentTargetDbContext dbContext,
-    IEnvelopeEncryptionService envelopeEncryption) : IDeploymentTargetCredentialRewrapService
+internal sealed class MongoRewrapDeploymentTargetCredentials(
+    IMongoCollection<DeploymentTarget> deploymentTargets,
+    IEnvelopeEncryptionService envelopeEncryption)
 {
     private const int BatchSize = 100;
 
-    public async Task<Result<DeploymentTargetCredentialRewrapSummary>> RewrapAllAsync(
+    public async Task<Result<
+        DeploymentTargetCredentialRewrapSummary,
+        DeploymentTargetCredentialRewrapConflict>> InvokeAsync(
         EnvelopeEncryptionKeyReference expectedActiveKey,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(expectedActiveKey);
         if (expectedActiveKey != envelopeEncryption.ActiveKey)
         {
-            return Failures.Conflict(
-                "This Pole replica does not have the requested envelope-encryption key active.");
+            return new Err<DeploymentTargetCredentialRewrapConflict>(
+                new DeploymentTargetCredentialRewrapConflict());
         }
 
         long examined = 0;
@@ -42,10 +43,8 @@ public sealed class DeploymentTargetCredentialRewrapService(
         string? cursor = null;
         while (true)
         {
-            var filter = cursor is null
-                ? Builders<DeploymentTarget>.Filter.Empty
-                : Builders<DeploymentTarget>.Filter.Gt(target => target.Id, cursor);
-            var batch = await dbContext.DeploymentTargets
+            var filter = DeploymentTargetFilters.AfterId(cursor);
+            var batch = await deploymentTargets
                 .Find(filter)
                 .SortBy(target => target.Id)
                 .Limit(BatchSize)
@@ -61,6 +60,7 @@ public sealed class DeploymentTargetCredentialRewrapService(
                 Result<EncryptedValue> rewrapResult;
                 string encryptedField;
                 EncryptedValue currentEnvelope;
+                FilterDefinition<DeploymentTarget> casFilter;
                 switch (target.Connection)
                 {
                     case InClusterDeploymentTargetConnection:
@@ -69,6 +69,10 @@ public sealed class DeploymentTargetCredentialRewrapService(
                         examined++;
                         currentEnvelope = kubeconfig.EncryptedKubeconfig;
                         encryptedField = "Connection.EncryptedKubeconfig";
+                        casFilter = DeploymentTargetFilters.AtKubeconfigEnvelope(
+                            target.Id,
+                            kubeconfig.Version,
+                            currentEnvelope);
                         if (ReferencesKey(currentEnvelope, expectedActiveKey))
                             continue;
                         rewrapResult = await envelopeEncryption.RewrapAsync(
@@ -82,6 +86,10 @@ public sealed class DeploymentTargetCredentialRewrapService(
                         examined++;
                         currentEnvelope = serviceAccount.EncryptedCredential;
                         encryptedField = "Connection.EncryptedCredential";
+                        casFilter = DeploymentTargetFilters.AtServiceAccountCredentialEnvelope(
+                            target.Id,
+                            serviceAccount.Version,
+                            currentEnvelope);
                         if (ReferencesKey(currentEnvelope, expectedActiveKey))
                             continue;
                         rewrapResult = await envelopeEncryption.RewrapAsync(
@@ -92,28 +100,22 @@ public sealed class DeploymentTargetCredentialRewrapService(
                             cancellationToken);
                         break;
                     default:
-                        return Failures.Internal(
-                            "A deployment-target credential could not be rewrapped.",
-                            "The stored connection kind is unsupported.");
+                        throw new InvalidOperationException(
+                            "A deployment-target credential has an unsupported stored connection kind.");
                 }
 
-                if (!rewrapResult.TryGetValue(out var rewrappedEnvelope, out var failure))
-                    return failure;
+                if (!rewrapResult.TryGetValue(out var rewrappedEnvelope, out _))
+                {
+                    throw new InvalidOperationException(
+                        "A deployment-target credential could not be rewrapped by the active encryption provider.");
+                }
                 if (!ReferencesKey(rewrappedEnvelope, expectedActiveKey))
                 {
-                    return Failures.Conflict(
-                        "The active envelope-encryption key changed while deployment-target credentials were being rewrapped.");
+                    return new Err<DeploymentTargetCredentialRewrapConflict>(
+                        new DeploymentTargetCredentialRewrapConflict());
                 }
 
-                var casFilter = Builders<DeploymentTarget>.Filter.And(
-                    Builders<DeploymentTarget>.Filter.Eq(item => item.Id, target.Id),
-                    Builders<DeploymentTarget>.Filter.Eq(
-                        "Connection.Version",
-                        target.Connection.Version),
-                    Builders<DeploymentTarget>.Filter.Eq(
-                        encryptedField,
-                        currentEnvelope));
-                var update = await dbContext.DeploymentTargets.UpdateOneAsync(
+                var update = await deploymentTargets.UpdateOneAsync(
                     casFilter,
                     Builders<DeploymentTarget>.Update.Set(
                         encryptedField,
@@ -129,10 +131,11 @@ public sealed class DeploymentTargetCredentialRewrapService(
                 break;
         }
 
-        return new DeploymentTargetCredentialRewrapSummary(
-            examined,
-            rewrapped,
-            concurrentChanges);
+        return new Ok<DeploymentTargetCredentialRewrapSummary>(
+            new DeploymentTargetCredentialRewrapSummary(
+                examined,
+                rewrapped,
+                concurrentChanges));
     }
 
     private static bool ReferencesKey(

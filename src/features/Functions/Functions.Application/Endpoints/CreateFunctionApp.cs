@@ -137,7 +137,7 @@ public sealed class CreateFunctionAppHandler(
     ResolveFunctionAppResourceGroupPlacement resolveResourceGroupPlacement,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     TimeProvider timeProvider,
-    IDeploymentTargetLookup deploymentTargetLookup,
+    AdmitDefaultDeploymentTargetForNewWorkload admitDefaultDeploymentTarget,
     PersistCreatedFunctionApp persistCreatedFunctionApp)
     : IMediatorOutcomeHandler<CreateFunctionAppRequest, CreateFunctionAppOutcome>
 {
@@ -145,19 +145,11 @@ public sealed class CreateFunctionAppHandler(
         CreateFunctionAppRequest request,
         CancellationToken cancellationToken = default)
     {
-        var targetAdmission = await deploymentTargetLookup.ResolveForNewWorkloadAsync(
-            deploymentTargetId: null,
-            cancellationToken);
-        if (!targetAdmission.TryGetValue(out _, out var targetAdmissionFailure))
+        var targetAdmission = await admitDefaultDeploymentTarget(cancellationToken);
+        if (targetAdmission is not Ok<DeploymentTargetLookupDto>)
         {
-            return targetAdmissionFailure switch
-            {
-                NotFoundFailure or ConflictFailure or SemanticValidationFailure =>
-                    new CreateFunctionAppError(
-                        new FunctionAppDefaultDeploymentTargetUnavailable()),
-                _ => throw new InvalidOperationException(
-                    "Default deployment target admission returned an unsupported failure.")
-            };
+            return new CreateFunctionAppError(
+                new FunctionAppDefaultDeploymentTargetUnavailable());
         }
 
         var placementResolution = await resolveResourceGroupPlacement(

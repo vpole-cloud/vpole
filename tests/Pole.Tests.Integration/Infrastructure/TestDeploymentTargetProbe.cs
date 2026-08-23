@@ -4,9 +4,9 @@ using Pole.Features.DeploymentTargets.Domain;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
-internal sealed class TestDeploymentTargetProbe : IDeploymentTargetProbe
+internal sealed class TestDeploymentTargetProbe
 {
-    public Task<DeploymentTargetProbeObservation> ProbeAsync(
+    public Task<DeploymentTargetProbeObservation> InvokeAsync(
         IKubernetes kubernetes,
         long connectionVersion,
         DateTime? lastHealthyAtUtc = null,

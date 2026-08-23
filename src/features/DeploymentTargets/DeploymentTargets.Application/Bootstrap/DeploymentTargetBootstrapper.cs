@@ -11,22 +11,22 @@ using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Bootstrap;
 
-public interface IDeploymentTargetBootstrapper
-{
-    Task BootstrapAsync(CancellationToken cancellationToken = default);
-}
+public delegate Task BootstrapDeploymentTargets(
+    CancellationToken cancellationToken = default);
 
-public sealed class DeploymentTargetBootstrapper(
-    IDeploymentTargetDbContext dbContext,
-    IDeploymentTargetConnectionPreparer connectionPreparer,
-    IDeploymentTargetProbe probe,
+internal sealed class DeploymentTargetBootstrapper(
+    IMongoCollection<DeploymentTarget> deploymentTargets,
+    IMongoCollection<DeploymentTargetSettings> settings,
+    RunMongoTransaction runMongoTransaction,
+    PrepareDeploymentTargetConnection prepareDeploymentTargetConnection,
+    ProbeDeploymentTargetConnection probeDeploymentTargetConnection,
     DeploymentTargetDomainAdmission domainAdmission,
     DeploymentTargetOptions options,
     IHostEnvironment environment,
     TimeProvider timeProvider,
-    ILogger<DeploymentTargetBootstrapper> logger) : IDeploymentTargetBootstrapper
+    ILogger<DeploymentTargetBootstrapper> logger)
 {
-    public async Task BootstrapAsync(CancellationToken cancellationToken = default)
+    public async Task InvokeAsync(CancellationToken cancellationToken = default)
     {
         var current = await LoadCurrentAsync(cancellationToken);
         if (current.Settings is not null)
@@ -61,20 +61,20 @@ public sealed class DeploymentTargetBootstrapper(
 
         var targetId = ObjectId.GenerateNewId().ToString();
         var input = await CreateBootstrapInputAsync(cancellationToken);
-        var preparedResult = await connectionPreparer.PrepareAsync(
+        var preparedResult = await prepareDeploymentTargetConnection(
             targetId,
             connectionVersion: 1,
             input,
             cancellationToken);
-        if (!preparedResult.TryGetValue(out var prepared, out var prepareFailure))
+        if (!preparedResult.TryGetValue(out var prepared, out _))
         {
             throw new InvalidOperationException(
-                $"The local deployment-target connection could not be prepared: {prepareFailure.Message}");
+                "The local deployment-target connection could not be prepared.");
         }
 
         using (prepared)
         {
-            var observation = await probe.ProbeAsync(
+            var observation = await probeDeploymentTargetConnection(
                 prepared.Candidate,
                 prepared.Connection.Version,
                 cancellationToken: cancellationToken);
@@ -208,9 +208,9 @@ public sealed class DeploymentTargetBootstrapper(
     private Task<Result> PersistFirstTargetAsync(
         DeploymentTarget target,
         CancellationToken cancellationToken) =>
-        dbContext.RunInTransactionAsync(async (session, ct) =>
+        runMongoTransaction(async (session, ct) =>
         {
-            var existing = await dbContext.DeploymentTargets
+            var existing = await deploymentTargets
                 .Find(
                     session,
                     DeploymentTargetFilters.NotPendingDeletion())
@@ -229,26 +229,26 @@ public sealed class DeploymentTargetBootstrapper(
             if (admission is not ISuccess)
                 return (Failure)admission;
 
-            await dbContext.DeploymentTargets.InsertOneAsync(session, target, cancellationToken: ct);
-            await dbContext.DeploymentTargetSettings.InsertOneAsync(
+            await deploymentTargets.InsertOneAsync(session, target, cancellationToken: ct);
+            await settings.InsertOneAsync(
                 session,
                 DeploymentTargetSettings.Create(target.Id, target.CreatedAtUtc),
                 cancellationToken: ct);
             return Result.Success();
-        }, cancellationToken: cancellationToken);
+        }, cancellationToken);
 
     private Task<Result> EnsureDefaultSettingsAsync(
         string targetId,
         CancellationToken cancellationToken) =>
-        dbContext.RunInTransactionAsync(async (session, ct) =>
+        runMongoTransaction(async (session, ct) =>
         {
-            var target = await dbContext.DeploymentTargets
+            var target = await deploymentTargets
                 .Find(session, DeploymentTargetFilters.ById(targetId))
                 .FirstOrDefaultAsync(ct);
             return target is null
                 ? Failures.Conflict("The deployment target changed while its default binding was created.")
                 : await BindDefaultSettingsAsync(session, target, ct);
-        }, cancellationToken: cancellationToken);
+        }, cancellationToken);
 
     private async Task<Result> BindDefaultSettingsAsync(
         IClientSessionHandle session,
@@ -258,7 +258,7 @@ public sealed class DeploymentTargetBootstrapper(
         if (target.DeletionRequestedAtUtc is not null)
             return Failures.Conflict("A deployment target pending deletion cannot become the default target.");
 
-        var existing = await dbContext.DeploymentTargetSettings
+        var existing = await settings
             .Find(session, DeploymentTargetSettingsFilters.Singleton())
             .FirstOrDefaultAsync(cancellationToken);
         if (existing is not null)
@@ -271,7 +271,7 @@ public sealed class DeploymentTargetBootstrapper(
         var updatedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
         if (updatedAtUtc < target.UpdatedAtUtc)
             updatedAtUtc = target.UpdatedAtUtc;
-        var fenced = await dbContext.DeploymentTargets.UpdateOneAsync(
+        var fenced = await deploymentTargets.UpdateOneAsync(
             session,
             DeploymentTargetFilters.AtRevisionAndNotPendingDeletion(target),
             Builders<DeploymentTarget>.Update
@@ -281,7 +281,7 @@ public sealed class DeploymentTargetBootstrapper(
         if (fenced.ModifiedCount != 1)
             return Failures.Conflict("The deployment target changed while its default binding was created.");
 
-        await dbContext.DeploymentTargetSettings.InsertOneAsync(
+        await settings.InsertOneAsync(
             session,
             DeploymentTargetSettings.Create(target.Id, updatedAtUtc),
             cancellationToken: cancellationToken);
@@ -290,18 +290,18 @@ public sealed class DeploymentTargetBootstrapper(
 
     private async Task<BootstrapState> LoadCurrentAsync(CancellationToken cancellationToken)
     {
-        var settings = await dbContext.DeploymentTargetSettings
+        var currentSettings = await settings
             .Find(DeploymentTargetSettingsFilters.Singleton())
             .FirstOrDefaultAsync(cancellationToken);
-        var firstTarget = await dbContext.DeploymentTargets
+        var firstTarget = await deploymentTargets
             .Find(DeploymentTargetFilters.NotPendingDeletion())
             .SortBy(item => item.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
-        var defaultTargetExists = settings is not null &&
-            await dbContext.DeploymentTargets.CountDocumentsAsync(
-                DeploymentTargetFilters.ById(settings.DefaultDeploymentTargetId),
+        var defaultTargetExists = currentSettings is not null &&
+            await deploymentTargets.CountDocumentsAsync(
+                DeploymentTargetFilters.ById(currentSettings.DefaultDeploymentTargetId),
                 cancellationToken: cancellationToken) == 1;
-        return new BootstrapState(settings, firstTarget, defaultTargetExists);
+        return new BootstrapState(currentSettings, firstTarget, defaultTargetExists);
     }
 
     private sealed record BootstrapState(

@@ -12,7 +12,10 @@ namespace Pole.Features.DeploymentTargets.Application.Common;
 /// the same transaction as its zone. Every public deployment has a generated zone, so that
 /// reference is the exact public-base-domain mutation guard without coupling to deployments.
 /// </summary>
-public sealed class DeploymentTargetDomainAdmission(IDeploymentTargetDbContext dbContext)
+internal sealed class DeploymentTargetDomainAdmission(
+    IMongoCollection<DeploymentTarget> deploymentTargets,
+    IMongoCollection<DeploymentTargetReference> references,
+    IMongoCollection<DeploymentTargetPublicBaseDomainAdmissionFence> fences)
 {
     public async Task<Result> EnsureNoOverlappingPublicBaseDomainAsync(
         string targetId,
@@ -24,18 +27,16 @@ public sealed class DeploymentTargetDomainAdmission(IDeploymentTargetDbContext d
             return Result.Success();
 
         var candidate = DnsName.Create(publicBaseDomain);
-        var fences = dbContext.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
-            DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName);
         await fences.UpdateOneAsync(
             session,
-            fence => fence.Id == DeploymentTargetPublicBaseDomainAdmissionFence.SingletonId,
+            DeploymentTargetPublicBaseDomainAdmissionFenceFilters.Singleton(),
             Builders<DeploymentTargetPublicBaseDomainAdmissionFence>.Update
                 .SetOnInsert(fence => fence.Id, DeploymentTargetPublicBaseDomainAdmissionFence.SingletonId)
                 .Inc(fence => fence.Revision, 1),
             new UpdateOptions { IsUpsert = true },
             cancellationToken);
 
-        var targets = await dbContext.DeploymentTargets
+        var targets = await deploymentTargets
             .Find(
                 session,
                 DeploymentTargetFilters.WithConfiguredPublicBaseDomain())
@@ -64,7 +65,7 @@ public sealed class DeploymentTargetDomainAdmission(IDeploymentTargetDbContext d
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        var reference = await dbContext.DeploymentTargetReferences
+        var reference = await references
             .Find(
                 session,
                 DeploymentTargetReferenceFilters.DomainZonesForTarget(targetId))

@@ -1,0 +1,62 @@
+using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.DeploymentTargets.Application.Common;
+using Pole.Features.DeploymentTargets.Domain;
+using Pole.ResultType;
+
+namespace Pole.Features.DeploymentTargets.Application.Persistence;
+
+public union PersistCreatedDeploymentTargetError(
+    DeploymentTargetPublicBaseDomainConflict,
+    DeploymentTargetIdentityConflict);
+
+public delegate Task<Result<DeploymentTarget, PersistCreatedDeploymentTargetError>>
+    PersistCreatedDeploymentTarget(
+        DeploymentTarget deploymentTarget,
+        CancellationToken cancellationToken = default);
+
+internal sealed class MongoPersistCreatedDeploymentTarget(
+    IMongoCollection<DeploymentTarget> deploymentTargets,
+    DeploymentTargetDomainAdmission domainAdmission,
+    RunMongoOutcomeTransaction<Result<
+        DeploymentTarget,
+        PersistCreatedDeploymentTargetError>> runMongoTransaction)
+{
+    public async Task<Result<DeploymentTarget, PersistCreatedDeploymentTargetError>> InvokeAsync(
+        DeploymentTarget deploymentTarget,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(deploymentTarget);
+        try
+        {
+            return await runMongoTransaction(async (transaction, ct) =>
+            {
+                var admitted = await domainAdmission.EnsureNoOverlappingPublicBaseDomainAsync(
+                    deploymentTarget.Id,
+                    deploymentTarget.WorkloadConfiguration.Ingress?.PublicBaseDomain,
+                    transaction.Session,
+                    ct);
+                if (admitted is not ISuccess)
+                {
+                    return transaction.AbortError(
+                        new PersistCreatedDeploymentTargetError(
+                            new DeploymentTargetPublicBaseDomainConflict(deploymentTarget.Id)));
+                }
+
+                await deploymentTargets.InsertOneAsync(
+                    transaction.Session,
+                    deploymentTarget,
+                    cancellationToken: ct);
+                return transaction.Commit(
+                    new Ok<DeploymentTarget>(deploymentTarget));
+            }, cancellationToken);
+        }
+        catch (MongoWriteException exception) when (
+            exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
+        {
+            return new Err<PersistCreatedDeploymentTargetError>(
+                new PersistCreatedDeploymentTargetError(
+                    new DeploymentTargetIdentityConflict()));
+        }
+    }
+}

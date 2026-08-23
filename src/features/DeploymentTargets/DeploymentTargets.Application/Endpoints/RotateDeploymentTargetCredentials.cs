@@ -5,10 +5,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
+using Pole.Features.DeploymentTargets.Application.Persistence;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Mediator;
@@ -23,51 +24,63 @@ public sealed record RotateDeploymentTargetCredentialsRequestBody(
 public sealed record RotateDeploymentTargetCredentialsRequest(
     [FromRoute] string Id,
     [FromBody] RotateDeploymentTargetCredentialsRequestBody Body)
-    : IMediatorRequest<DeploymentTargetDto>;
+    : IMediatorRequest<RotateDeploymentTargetCredentialsOutcome>;
+
+public union RotateDeploymentTargetCredentialsError(
+    DeploymentTargetNotFound,
+    DeploymentTargetRevisionConflict,
+    DeploymentTargetConnectionRejected);
+
+public union RotateDeploymentTargetCredentialsOutcome(
+    DeploymentTargetDto,
+    RotateDeploymentTargetCredentialsError);
 
 public sealed class RotateDeploymentTargetCredentialsHandler(
-    IDeploymentTargetDbContext dbContext,
-    DeploymentTargetReader reader,
-    IDeploymentTargetConnectionPreparer connectionPreparer,
-    IDeploymentTargetProbe probe,
-    IDeploymentTargetClientCache clientCache,
+    LoadDeploymentTargetById loadDeploymentTargetById,
+    LoadDefaultDeploymentTargetId loadDefaultDeploymentTargetId,
+    PersistRotatedDeploymentTargetConnection persistRotatedDeploymentTargetConnection,
+    PrepareDeploymentTargetConnection prepareDeploymentTargetConnection,
+    ProbeDeploymentTargetConnection probeDeploymentTargetConnection,
+    InvalidateDeploymentTargetKubernetesClient invalidateDeploymentTargetKubernetesClient,
     TimeProvider timeProvider)
-    : IMediatorHandler<RotateDeploymentTargetCredentialsRequest, DeploymentTargetDto>
+    : IMediatorOutcomeHandler<
+        RotateDeploymentTargetCredentialsRequest,
+        RotateDeploymentTargetCredentialsOutcome>
 {
-    public async Task<Result<DeploymentTargetDto>> HandleAsync(
+    public async Task<RotateDeploymentTargetCredentialsOutcome> HandleAsync(
         RotateDeploymentTargetCredentialsRequest request,
         CancellationToken cancellationToken = default)
     {
-        var targetResult = await reader.GetAsync(request.Id, cancellationToken);
-        if (!targetResult.TryGetValue(out var target, out var targetFailure))
-            return targetFailure;
+        var target = await loadDeploymentTargetById(request.Id, cancellationToken);
+        if (target is null)
+            return Error(new DeploymentTargetNotFound(request.Id));
         if (target.Revision != request.Body.Revision)
-            return Failures.Conflict("The deployment target changed. Reload it and retry.");
+            return Error(new DeploymentTargetRevisionConflict(target.Id));
 
-        var preparedResult = await connectionPreparer.PrepareAsync(
+        var preparedResult = await prepareDeploymentTargetConnection(
             target.Id,
             target.NextConnectionVersion,
             request.Body.Connection.ToInput(),
             cancellationToken);
-        if (!preparedResult.TryGetValue(out var prepared, out var prepareFailure))
-            return prepareFailure;
+        if (!preparedResult.TryGetValue(out var prepared, out var prepareError))
+            return Error(prepareError);
 
         using (prepared)
         {
-            var observation = await probe.ProbeAsync(
+            var observation = await probeDeploymentTargetConnection(
                 prepared.Candidate,
                 prepared.Connection.Version,
                 target.Health.LastHealthyAtUtc,
                 cancellationToken);
             if (!observation.IsUsable || observation.ClusterIdentity is null)
             {
-                return ConnectionValidationFailure(
-                    observation.Health.FailureMessage ?? "The Kubernetes connection is not usable.");
+                return Error(ConnectionValidationFailure(
+                    observation.Health.FailureMessage ?? "The Kubernetes connection is not usable."));
             }
             if (!string.Equals(target.ClusterIdentity, observation.ClusterIdentity, StringComparison.Ordinal))
             {
-                return ConnectionValidationFailure(
-                    "Replacement credentials resolve to a different Kubernetes cluster.");
+                return Error(ConnectionValidationFailure(
+                    "Replacement credentials resolve to a different Kubernetes cluster."));
             }
 
             var credentialReplaced = target.ReplaceConnectionCredential(
@@ -79,33 +92,36 @@ public sealed class RotateDeploymentTargetCredentialsHandler(
                 prepared.Connection.Version,
                 observation.Health,
                 observation.Capabilities);
-            var persisted = await dbContext.DeploymentTargets.FindOneAndUpdateAsync(
-                DeploymentTargetFilters.AtRevisionAndConnectionVersion(target),
-                Builders<DeploymentTarget>.Update.Combine(
-                    Builders<DeploymentTarget>.Update.Set(item => item.Connection, updated.Connection),
-                    Builders<DeploymentTarget>.Update.Set(item => item.Health, updated.Health),
-                    Builders<DeploymentTarget>.Update.Set(item => item.Capabilities, updated.Capabilities),
-                    Builders<DeploymentTarget>.Update.Set(item => item.Revision, updated.Revision),
-                    Builders<DeploymentTarget>.Update.Set(item => item.UpdatedAtUtc, updated.UpdatedAtUtc)),
-                new FindOneAndUpdateOptions<DeploymentTarget>
-                {
-                    ReturnDocument = ReturnDocument.After
-                },
+            var persistedResult = await persistRotatedDeploymentTargetConnection(
+                target,
+                updated,
                 cancellationToken);
-            if (persisted is null)
-                return Failures.Conflict("The deployment target changed. Reload it and retry.");
+            if (!persistedResult.TryGetValue(out var persisted, out var persistenceError))
+                return Error(persistenceError);
 
-            clientCache.Invalidate(target.Id);
-            var defaultId = await reader.GetDefaultIdAsync(cancellationToken);
+            invalidateDeploymentTargetKubernetesClient(target.Id);
+            var defaultId = await loadDefaultDeploymentTargetId(cancellationToken);
             return persisted.ToDto(persisted.Id == defaultId);
         }
     }
 
-    private static ValidationFailure ConnectionValidationFailure(string safeMessage) =>
-        Failures.ValidationFailure(new Dictionary<string, string[]>
+    private static DeploymentTargetConnectionRejected ConnectionValidationFailure(string safeMessage) =>
+        new(new Dictionary<string, string[]>
         {
             ["Body.Connection"] = [safeMessage]
         });
+
+    private static RotateDeploymentTargetCredentialsOutcome Error(
+        DeploymentTargetNotFound error) =>
+        new(new RotateDeploymentTargetCredentialsError(error));
+
+    private static RotateDeploymentTargetCredentialsOutcome Error(
+        DeploymentTargetRevisionConflict error) =>
+        new(new RotateDeploymentTargetCredentialsError(error));
+
+    private static RotateDeploymentTargetCredentialsOutcome Error(
+        DeploymentTargetConnectionRejected error) =>
+        new(new RotateDeploymentTargetCredentialsError(error));
 }
 
 public sealed class RotateDeploymentTargetCredentialsRequestValidator
@@ -140,14 +156,23 @@ public static class RotateDeploymentTargetCredentialsEndpoint
     {
         app.MapPut("/{Id}/credentials", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] RotateDeploymentTargetCredentialsRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    DeploymentTargetDto target => Results.Ok(target),
+                    RotateDeploymentTargetCredentialsError error =>
+                        httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("RotateDeploymentTargetCredentials")
-            .Produces<DeploymentTargetDto>();
+            .Produces<DeploymentTargetDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
         return app;
     }
 }

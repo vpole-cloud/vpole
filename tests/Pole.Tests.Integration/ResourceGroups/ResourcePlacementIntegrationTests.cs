@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.ResourceGroups.Application.Endpoints;
@@ -227,8 +228,11 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
     private ResourcePlacementService CreateService(PlacementTargetLookup lookup) =>
         new(
             DbContext,
-            lookup,
-            new MongoReferenceAdmission(DbContext),
+            lookup.LookupAsync,
+            lookup.LookupDefaultAsync,
+            lookup.AdmitForWorkloadAsync,
+            lookup.AdmitDefaultForNewWorkloadAsync,
+            new MongoReferenceAdmission(DbContext).ApplyChangesOutcomeAsync,
             new RuntimeCellNamespaceNameGenerator(
                 new KubernetesOptions { NamespaceNamePrefix = "pole-test" }),
             TimeProvider.System);
@@ -247,35 +251,57 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
                 session,
                 cancellationToken));
 
-    private sealed class PlacementTargetLookup : IDeploymentTargetLookup
+    private sealed class PlacementTargetLookup
     {
         public bool RejectNewWorkloads { get; set; }
 
-        public Task<Result<DeploymentTargetLookupDto>> GetAsync(
+        public Task<Result<
+            DeploymentTargetLookupDto,
+            DeploymentTargetLookupError>> LookupAsync(
             string deploymentTargetId,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<DeploymentTargetLookupDto>>(CreateTarget(deploymentTargetId));
+            Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
+                new Ok<DeploymentTargetLookupDto>(CreateTarget(deploymentTargetId)));
 
-        public Task<Result<DeploymentTargetLookupDto>> GetDefaultAsync(
+        public Task<Result<
+            DeploymentTargetLookupDto,
+            DefaultDeploymentTargetLookupError>> LookupDefaultAsync(
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<DeploymentTargetLookupDto>>(CreateTarget(DefaultTargetId));
+            Task.FromResult<Result<
+                DeploymentTargetLookupDto,
+                DefaultDeploymentTargetLookupError>>(
+                new Ok<DeploymentTargetLookupDto>(CreateTarget(DefaultTargetId)));
 
-        public Task<Result<DeploymentTargetLookupDto>> ResolveForNewWorkloadAsync(
-            string? deploymentTargetId,
+        public Task<Result<
+            DeploymentTargetLookupDto,
+            DeploymentTargetWorkloadAdmissionError>> AdmitForWorkloadAsync(
+            string deploymentTargetId,
             CancellationToken cancellationToken = default) =>
-            RejectNewWorkloads
-                ? Task.FromResult<Result<DeploymentTargetLookupDto>>(
-                    Failures.Conflict("The deployment target is not accepting new workloads."))
-                : Task.FromResult<Result<DeploymentTargetLookupDto>>(
-                    CreateTarget(deploymentTargetId ?? DefaultTargetId));
-
-        public Task<Result<IReadOnlyList<DeploymentTargetLookupDto>>>
-            ListEligibleForNewWorkloadAsync(
-                CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<IReadOnlyList<DeploymentTargetLookupDto>>>(
+            Task.FromResult<Result<
+                DeploymentTargetLookupDto,
+                DeploymentTargetWorkloadAdmissionError>>(
                 RejectNewWorkloads
-                    ? Array.Empty<DeploymentTargetLookupDto>()
-                    : [CreateTarget(DefaultTargetId)]);
+                    ? new Err<DeploymentTargetWorkloadAdmissionError>(
+                        new DeploymentTargetWorkloadAdmissionError(
+                            new DeploymentTargetNewWorkloadsDisabled(deploymentTargetId)))
+                    : new Ok<DeploymentTargetLookupDto>(CreateTarget(deploymentTargetId)));
+
+        public async Task<Result<
+            DeploymentTargetLookupDto,
+            DefaultDeploymentTargetWorkloadAdmissionError>> AdmitDefaultForNewWorkloadAsync(
+            CancellationToken cancellationToken = default)
+        {
+            var admission = await AdmitForWorkloadAsync(DefaultTargetId, cancellationToken);
+            return admission switch
+            {
+                Ok<DeploymentTargetLookupDto> target => new Ok<DeploymentTargetLookupDto>(target.Value),
+                Err<DeploymentTargetWorkloadAdmissionError> error =>
+                    new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
+                        new DefaultDeploymentTargetWorkloadAdmissionError(error.Value)),
+                _ => throw new InvalidOperationException(
+                    "Test deployment-target admission returned an unsupported result case.")
+            };
+        }
 
         private static DeploymentTargetLookupDto CreateTarget(string id) =>
             new(
@@ -298,73 +324,38 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
 
     private sealed class MongoReferenceAdmission(
         Pole.Server.Database.MongoDbContext dbContext)
-        : IDeploymentTargetReferenceAdmission
     {
-        public async Task<Result> RegisterAsync(
-            string deploymentTargetId,
-            DeploymentTargetReferenceOwner owner,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default)
-        {
-            var filter = Builders<DeploymentTargetReference>.Filter.And(
-                Builders<DeploymentTargetReference>.Filter.Eq(
-                    reference => reference.DeploymentTargetId,
-                    deploymentTargetId),
-                Builders<DeploymentTargetReference>.Filter.Eq(
-                    reference => reference.OwnerType,
-                    owner.Type),
-                Builders<DeploymentTargetReference>.Filter.Eq(
-                    reference => reference.OwnerId,
-                    owner.Id));
-            await dbContext.DeploymentTargetReferences.UpdateOneAsync(
-                session,
-                filter,
-                Builders<DeploymentTargetReference>.Update
-                    .SetOnInsert(reference => reference.Id, ObjectId.GenerateNewId().ToString())
-                    .SetOnInsert(reference => reference.DeploymentTargetId, deploymentTargetId)
-                    .SetOnInsert(reference => reference.OwnerType, owner.Type)
-                    .SetOnInsert(reference => reference.OwnerId, owner.Id)
-                    .SetOnInsert(reference => reference.CreatedAtUtc, DateTime.UtcNow),
-                new UpdateOptions { IsUpsert = true },
-                cancellationToken);
-            return Result.Success();
-        }
-
-        public async Task<Result> UnregisterAsync(
-            string deploymentTargetId,
-            DeploymentTargetReferenceOwner owner,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default)
-        {
-            var filter = Builders<DeploymentTargetReference>.Filter.And(
-                Builders<DeploymentTargetReference>.Filter.Eq(
-                    reference => reference.DeploymentTargetId,
-                    deploymentTargetId),
-                Builders<DeploymentTargetReference>.Filter.Eq(
-                    reference => reference.OwnerType,
-                    owner.Type),
-                Builders<DeploymentTargetReference>.Filter.Eq(
-                    reference => reference.OwnerId,
-                    owner.Id));
-            await dbContext.DeploymentTargetReferences.DeleteOneAsync(
-                session,
-                filter,
-                cancellationToken: cancellationToken);
-            return Result.Success();
-        }
-
-        public async Task<Result> ApplyChangesAsync(
-            DeploymentTargetReferenceOwner owner,
-            IReadOnlyCollection<string> addedDeploymentTargetIds,
-            IReadOnlyCollection<string> removedDeploymentTargetIds,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default)
+        public async Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
+            ApplyChangesOutcomeAsync(
+                DeploymentTargetReferenceOwner owner,
+                IReadOnlyCollection<string> addedDeploymentTargetIds,
+                IReadOnlyCollection<string> removedDeploymentTargetIds,
+                IClientSessionHandle session,
+                CancellationToken cancellationToken = default)
         {
             foreach (var deploymentTargetId in addedDeploymentTargetIds)
-                await RegisterAsync(deploymentTargetId, owner, session, cancellationToken);
+            {
+                await dbContext.DeploymentTargetReferences.UpdateOneAsync(
+                    session,
+                    DeploymentTargetReferenceFilters.ByOwner(deploymentTargetId, owner),
+                    Builders<DeploymentTargetReference>.Update
+                        .SetOnInsert(reference => reference.Id, ObjectId.GenerateNewId().ToString())
+                        .SetOnInsert(reference => reference.DeploymentTargetId, deploymentTargetId)
+                        .SetOnInsert(reference => reference.OwnerType, owner.Type)
+                        .SetOnInsert(reference => reference.OwnerId, owner.Id)
+                        .SetOnInsert(reference => reference.CreatedAtUtc, DateTime.UtcNow),
+                    new UpdateOptions { IsUpsert = true },
+                    cancellationToken);
+            }
             foreach (var deploymentTargetId in removedDeploymentTargetIds)
-                await UnregisterAsync(deploymentTargetId, owner, session, cancellationToken);
-            return Result.Success();
+            {
+                await dbContext.DeploymentTargetReferences.DeleteOneAsync(
+                    session,
+                    DeploymentTargetReferenceFilters.ByOwner(deploymentTargetId, owner),
+                    cancellationToken: cancellationToken);
+            }
+
+            return new Ok<Unit>(Unit.Value);
         }
     }
 }
