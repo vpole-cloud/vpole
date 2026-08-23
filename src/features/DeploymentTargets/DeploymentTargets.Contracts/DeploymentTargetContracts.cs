@@ -117,8 +117,6 @@ public sealed record DeploymentTargetPublicIngressDto(
     string ClusterIssuerName,
     string PublicBaseDomain);
 
-public sealed record InvalidDeploymentTargetId(string DeploymentTargetId);
-
 public sealed record DeploymentTargetNotFound(string DeploymentTargetId);
 
 public sealed record DeploymentTargetDisabled(string DeploymentTargetId);
@@ -128,7 +126,6 @@ public sealed record DeploymentTargetDeletionRequested(string DeploymentTargetId
 public sealed record DeploymentTargetNewWorkloadsDisabled(string DeploymentTargetId);
 
 public union DeploymentTargetWorkloadAdmissionError(
-    InvalidDeploymentTargetId,
     DeploymentTargetNotFound,
     DeploymentTargetDisabled,
     DeploymentTargetDeletionRequested,
@@ -176,7 +173,6 @@ public sealed record DeploymentTargetPublicIngressUnavailable(
 
 public union DeploymentTargetPublicIngressAdmissionResult(
     DeploymentTargetPublicIngressDto,
-    InvalidDeploymentTargetId,
     DeploymentTargetNotFound,
     DeploymentTargetDisabled,
     DeploymentTargetDeletionRequested,
@@ -186,7 +182,6 @@ public union DeploymentTargetPublicIngressAdmissionResult(
     DeploymentTargetPublicIngressUnavailable);
 
 public union DeploymentTargetPublicIngressAdmissionError(
-    InvalidDeploymentTargetId,
     DeploymentTargetNotFound,
     DeploymentTargetDisabled,
     DeploymentTargetDeletionRequested,
@@ -196,7 +191,6 @@ public union DeploymentTargetPublicIngressAdmissionError(
     DeploymentTargetPublicIngressUnavailable);
 
 public union DeploymentTargetDomainReservationAdmissionError(
-    InvalidDeploymentTargetId,
     DeploymentTargetNotFound,
     DeploymentTargetDisabled,
     DeploymentTargetDeletionRequested,
@@ -241,7 +235,6 @@ public delegate Task<Result<
 /// disabled or being deleted.
 /// </summary>
 public union DeploymentTargetLookupError(
-    InvalidDeploymentTargetId,
     DeploymentTargetNotFound);
 
 public delegate Task<Result<
@@ -253,8 +246,7 @@ public delegate Task<Result<
 public sealed record DefaultDeploymentTargetNotConfigured;
 
 public union DefaultDeploymentTargetLookupError(
-    DefaultDeploymentTargetNotConfigured,
-    DeploymentTargetLookupError);
+    DefaultDeploymentTargetNotConfigured);
 
 public delegate Task<Result<
     DeploymentTargetLookupDto,
@@ -271,7 +263,9 @@ public delegate Task<IReadOnlyList<DeploymentTargetLookupDto>>
 
 public union DefaultDeploymentTargetWorkloadAdmissionError(
     DefaultDeploymentTargetNotConfigured,
-    DeploymentTargetWorkloadAdmissionError);
+    DeploymentTargetDisabled,
+    DeploymentTargetDeletionRequested,
+    DeploymentTargetNewWorkloadsDisabled);
 
 /// <summary>
 /// Admits the configured default target for a new workload. This is intentionally distinct from

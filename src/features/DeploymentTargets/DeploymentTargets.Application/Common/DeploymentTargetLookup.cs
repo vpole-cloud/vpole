@@ -16,13 +16,7 @@ internal sealed class DeploymentTargetAdmissionQueries(
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
-        var normalizedDeploymentTargetId = deploymentTargetId?.Trim() ?? string.Empty;
-        if (!IsValidId(normalizedDeploymentTargetId))
-        {
-            return new Err<DeploymentTargetLookupError>(
-                new DeploymentTargetLookupError(
-                    new InvalidDeploymentTargetId(normalizedDeploymentTargetId)));
-        }
+        var normalizedDeploymentTargetId = NormalizeDeploymentTargetId(deploymentTargetId);
 
         var target = await deploymentTargets
             .Find(DeploymentTargetFilters.ById(normalizedDeploymentTargetId))
@@ -39,24 +33,11 @@ internal sealed class DeploymentTargetAdmissionQueries(
         DefaultDeploymentTargetLookupError>> LookupDefaultAsync(
         CancellationToken cancellationToken = default)
     {
-        var defaultTargetId = await settings
-            .Find(DeploymentTargetSettingsFilters.Singleton())
-            .Project(item => item.DefaultDeploymentTargetId)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(defaultTargetId))
-        {
-            return new Err<DefaultDeploymentTargetLookupError>(
-                new DefaultDeploymentTargetLookupError(
-                    new DefaultDeploymentTargetNotConfigured()));
-        }
-
-        var target = await LookupAsync(defaultTargetId, cancellationToken);
+        var target = await LoadDefaultTargetAsync(cancellationToken);
         return target switch
         {
-            Ok<DeploymentTargetLookupDto> value => new Ok<DeploymentTargetLookupDto>(value.Value),
-            Err<DeploymentTargetLookupError> error =>
-                new Err<DefaultDeploymentTargetLookupError>(
-                    new DefaultDeploymentTargetLookupError(error.Value)),
+            Ok<DeploymentTarget> value => new Ok<DeploymentTargetLookupDto>(value.Value.ToLookupDto()),
+            Err<DefaultDeploymentTargetLookupError> error => error,
             _ => throw new InvalidOperationException(
                 "Deployment-target lookup returned an unsupported result case.")
         };
@@ -68,13 +49,7 @@ internal sealed class DeploymentTargetAdmissionQueries(
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
-        var normalizedDeploymentTargetId = deploymentTargetId?.Trim() ?? string.Empty;
-        if (!IsValidId(normalizedDeploymentTargetId))
-        {
-            return new Err<DeploymentTargetWorkloadAdmissionError>(
-                new DeploymentTargetWorkloadAdmissionError(
-                    new InvalidDeploymentTargetId(normalizedDeploymentTargetId)));
-        }
+        var normalizedDeploymentTargetId = NormalizeDeploymentTargetId(deploymentTargetId);
 
         var target = await deploymentTargets
             .Find(DeploymentTargetFilters.ById(normalizedDeploymentTargetId))
@@ -116,7 +91,7 @@ internal sealed class DeploymentTargetAdmissionQueries(
         DefaultDeploymentTargetWorkloadAdmissionError>> AdmitDefaultForNewWorkloadAsync(
         CancellationToken cancellationToken = default)
     {
-        var target = await LookupDefaultAsync(cancellationToken);
+        var target = await LoadDefaultTargetAsync(cancellationToken);
         if (target is Err<DefaultDeploymentTargetLookupError> lookupError)
         {
             return lookupError.Value switch
@@ -124,42 +99,37 @@ internal sealed class DeploymentTargetAdmissionQueries(
                 DefaultDeploymentTargetNotConfigured notConfigured =>
                     new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
                         new DefaultDeploymentTargetWorkloadAdmissionError(notConfigured)),
-                DeploymentTargetLookupError nested => nested switch
-                {
-                    InvalidDeploymentTargetId invalidId =>
-                        new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
-                            new DefaultDeploymentTargetWorkloadAdmissionError(
-                                new DeploymentTargetWorkloadAdmissionError(invalidId))),
-                    DeploymentTargetNotFound notFound =>
-                        new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
-                            new DefaultDeploymentTargetWorkloadAdmissionError(
-                                new DeploymentTargetWorkloadAdmissionError(notFound))),
-                    _ => throw new InvalidOperationException(
-                        "Default deployment-target lookup returned an unsupported nested error case.")
-                },
                 _ => throw new InvalidOperationException(
                     "Default deployment-target lookup returned an unsupported error case.")
             };
         }
 
-        if (target is not Ok<DeploymentTargetLookupDto> targetSuccess)
+        if (target is not Ok<DeploymentTarget> targetSuccess)
         {
             throw new InvalidOperationException(
                 "Default deployment-target lookup returned an unsupported result case.");
         }
 
-        var admitted = await AdmitForWorkloadAsync(
-            targetSuccess.Value.Id,
-            cancellationToken);
-        return admitted switch
+        var lookup = targetSuccess.Value.ToLookupDto();
+        if (!lookup.Enabled)
         {
-            Ok<DeploymentTargetLookupDto> value => new Ok<DeploymentTargetLookupDto>(value.Value),
-            Err<DeploymentTargetWorkloadAdmissionError> error =>
-                new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
-                    new DefaultDeploymentTargetWorkloadAdmissionError(error.Value)),
-            _ => throw new InvalidOperationException(
-                "Deployment-target admission returned an unsupported result case.")
-        };
+            return new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
+                new DeploymentTargetDisabled(lookup.Id));
+        }
+
+        if (lookup.DeletionRequested)
+        {
+            return new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
+                new DeploymentTargetDeletionRequested(lookup.Id));
+        }
+
+        if (!lookup.AcceptsWorkloads)
+        {
+            return new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
+                new DeploymentTargetNewWorkloadsDisabled(lookup.Id));
+        }
+
+        return new Ok<DeploymentTargetLookupDto>(lookup);
     }
 
     public async Task<IReadOnlyList<DeploymentTargetLookupDto>> ListEligibleAsync(
@@ -230,9 +200,8 @@ internal sealed class DeploymentTargetAdmissionQueries(
     {
         if (!string.IsNullOrWhiteSpace(request.ExplicitDeploymentTargetId))
         {
-            var deploymentTargetId = request.ExplicitDeploymentTargetId.Trim();
-            if (!IsValidId(deploymentTargetId))
-                return new InvalidDeploymentTargetId(deploymentTargetId);
+            var deploymentTargetId = NormalizeDeploymentTargetId(
+                request.ExplicitDeploymentTargetId);
 
             var target = await deploymentTargets
                 .Find(DeploymentTargetFilters.ById(deploymentTargetId))
@@ -311,12 +280,7 @@ internal sealed class DeploymentTargetAdmissionQueries(
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
-        var normalizedDeploymentTargetId = deploymentTargetId?.Trim() ?? string.Empty;
-        if (!IsValidId(normalizedDeploymentTargetId))
-        {
-            return new Err<DeploymentTargetDomainReservationAdmissionError>(
-                new InvalidDeploymentTargetId(normalizedDeploymentTargetId));
-        }
+        var normalizedDeploymentTargetId = NormalizeDeploymentTargetId(deploymentTargetId);
 
         var target = await deploymentTargets
             .Find(DeploymentTargetFilters.ById(normalizedDeploymentTargetId))
@@ -376,7 +340,51 @@ internal sealed class DeploymentTargetAdmissionQueries(
             ingress.PublicBaseDomain!);
     }
 
-    private static bool IsValidId(string? deploymentTargetId) =>
-        !string.IsNullOrWhiteSpace(deploymentTargetId) &&
-        ObjectId.TryParse(deploymentTargetId, out _);
+    private async Task<Result<DeploymentTarget, DefaultDeploymentTargetLookupError>>
+        LoadDefaultTargetAsync(CancellationToken cancellationToken)
+    {
+        var defaultTargetId = await settings
+            .Find(DeploymentTargetSettingsFilters.Singleton())
+            .Project(item => item.DefaultDeploymentTargetId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(defaultTargetId))
+        {
+            return new Err<DefaultDeploymentTargetLookupError>(
+                new DefaultDeploymentTargetNotConfigured());
+        }
+
+        var normalizedDeploymentTargetId = NormalizeDeploymentTargetId(
+            defaultTargetId,
+            "DeploymentTargetSettings.DefaultDeploymentTargetId");
+        var target = await deploymentTargets
+            .Find(DeploymentTargetFilters.ById(normalizedDeploymentTargetId))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return target is null
+            ? throw new InvalidOperationException(
+                $"Configured default deployment target '{normalizedDeploymentTargetId}' does not exist.")
+            : new Ok<DeploymentTarget>(target);
+    }
+
+    private static string NormalizeDeploymentTargetId(
+        string? deploymentTargetId,
+        string parameterName = "deploymentTargetId")
+    {
+        var normalizedDeploymentTargetId = deploymentTargetId?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedDeploymentTargetId))
+        {
+            throw new ArgumentException(
+                "A deployment target ID is required.",
+                parameterName);
+        }
+
+        if (!ObjectId.TryParse(normalizedDeploymentTargetId, out _))
+        {
+            throw new ArgumentException(
+                "The deployment target ID must be a MongoDB ObjectId.",
+                parameterName);
+        }
+
+        return normalizedDeploymentTargetId;
+    }
 }

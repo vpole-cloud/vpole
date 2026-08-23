@@ -26,13 +26,11 @@ public sealed record CreateDeploymentTargetRequest(
     [FromBody] CreateDeploymentTargetRequestBody Body)
     : IMediatorRequest<CreateDeploymentTargetOutcome>;
 
-public union CreateDeploymentTargetError(
-    DeploymentTargetConnectionRejected,
-    PersistCreatedDeploymentTargetError);
-
 public union CreateDeploymentTargetOutcome(
     DeploymentTargetDto,
-    CreateDeploymentTargetError);
+    DeploymentTargetConnectionRejected,
+    DeploymentTargetPublicBaseDomainConflict,
+    DeploymentTargetIdentityConflict);
 
 public sealed class CreateDeploymentTargetHandler(
     PersistCreatedDeploymentTarget persistCreatedDeploymentTarget,
@@ -52,7 +50,7 @@ public sealed class CreateDeploymentTargetHandler(
             request.Body.Connection.ToInput(),
             cancellationToken);
         if (!preparedResult.TryGetValue(out var prepared, out var prepareError))
-            return Error(prepareError);
+            return prepareError;
 
         using (prepared)
         {
@@ -62,8 +60,8 @@ public sealed class CreateDeploymentTargetHandler(
                 cancellationToken: cancellationToken);
             if (!observation.IsUsable || observation.ClusterIdentity is null)
             {
-                return Error(ConnectionValidationFailure(
-                    observation.Health.FailureMessage ?? "The Kubernetes connection is not usable."));
+                return ConnectionValidationFailure(
+                    observation.Health.FailureMessage ?? "The Kubernetes connection is not usable.");
             }
 
             var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -78,9 +76,14 @@ public sealed class CreateDeploymentTargetHandler(
                 request.Body.AcceptsWorkloads,
                 new DeploymentTargetFactory.CreateOptions(id, now));
             var inserted = await persistCreatedDeploymentTarget(target, cancellationToken);
-            return inserted.Match(
-                CreateDeploymentTargetOutcome (persisted) => persisted.ToDto(),
-                CreateDeploymentTargetOutcome (error) => Error(error));
+            if (inserted.TryGetValue(out var persisted, out var persistenceError))
+                return persisted.ToDto();
+
+            return persistenceError switch
+            {
+                DeploymentTargetPublicBaseDomainConflict conflict => conflict,
+                DeploymentTargetIdentityConflict conflict => conflict
+            };
         }
     }
 
@@ -90,13 +93,6 @@ public sealed class CreateDeploymentTargetHandler(
             ["Body.Connection"] = [safeMessage]
         });
 
-    private static CreateDeploymentTargetOutcome Error(
-        DeploymentTargetConnectionRejected error) =>
-        new(new CreateDeploymentTargetError(error));
-
-    private static CreateDeploymentTargetOutcome Error(
-        PersistCreatedDeploymentTargetError error) =>
-        new(new CreateDeploymentTargetError(error));
 }
 
 public sealed class CreateDeploymentTargetRequestValidator
@@ -145,7 +141,9 @@ public static class CreateDeploymentTargetEndpoint
                     DeploymentTargetDto target => Results.Created(
                         $"/api/v1/platform/deployment-targets/{target.Id}",
                         target),
-                    CreateDeploymentTargetError error => httpProblems.Map(error).ToHttpResult()
+                    DeploymentTargetConnectionRejected error => httpProblems.Map(error).ToHttpResult(),
+                    DeploymentTargetPublicBaseDomainConflict error => httpProblems.Map(error).ToHttpResult(),
+                    DeploymentTargetIdentityConflict error => httpProblems.Map(error).ToHttpResult()
                 });
             })
             .WithName("CreateDeploymentTarget")

@@ -9,6 +9,7 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
+using static Pole.Tests.Integration.Infrastructure.ResultAssertions;
 using Pole.Workloads;
 using Xunit;
 
@@ -176,6 +177,42 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
     }
 
     [Fact]
+    public async Task DefaultAdmission_ReturnsTheConfiguredTargetStateError()
+    {
+        var target = CreateTarget("apps.example.test") with { Enabled = false };
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await fixture.DbContext.DeploymentTargetSettings.InsertOneAsync(
+            DeploymentTargetSettings.Create(target.Id, target.CreatedAtUtc));
+
+        var result = await CreateLookup().AdmitDefaultForNewWorkloadAsync();
+
+        var disabled = AssertFailure(result) switch
+        {
+            DeploymentTargetDisabled error => error,
+            _ => throw new Xunit.Sdk.XunitException(
+                "Expected the configured target's disabled admission error.")
+        };
+        Assert.Equal(target.Id, disabled.DeploymentTargetId);
+    }
+
+    [Fact]
+    public async Task LookupCapabilities_FailFastForMalformedStoredOrBypassedIds()
+    {
+        var invalidSettings = new DeploymentTargetSettings(
+            DeploymentTargetSettings.SingletonId,
+            "not-an-object-id",
+            Revision: 1,
+            DateTime.UtcNow);
+        await fixture.DbContext.DeploymentTargetSettings.InsertOneAsync(invalidSettings);
+
+        var lookup = CreateLookup();
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => lookup.LookupAsync("not-an-object-id"));
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => lookup.LookupDefaultAsync());
+    }
+
+    [Fact]
     public async Task PublicBaseDomainChange_IsFencedByActiveDomainZoneReference()
     {
         var target = CreateTarget("apps.example.test");
@@ -230,17 +267,12 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
                             "new.example.test")),
                     current.Revision)));
 
-        var error = result switch
+        _ = result switch
         {
-            UpdateDeploymentTargetError value => value,
-            _ => throw new Xunit.Sdk.XunitException("Expected an update error.")
+            DeploymentTargetPublicBaseDomainReferenced => true,
+            _ => throw new Xunit.Sdk.XunitException(
+                "Expected the public-base-domain reference rejection.")
         };
-        var persistenceError = error switch
-        {
-            PersistUpdatedDeploymentTargetError value => value,
-            _ => throw new Xunit.Sdk.XunitException("Expected a persistence error.")
-        };
-        Assert.True(persistenceError is DeploymentTargetPublicBaseDomainReferenced);
     }
 
     private DeploymentTargetAdmissionQueries CreateLookup() =>
@@ -267,27 +299,6 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
             .Find(item => item.Id == DeploymentTargetSettings.SingletonId)
             .Project(item => item.DefaultDeploymentTargetId)
             .FirstOrDefaultAsync(cancellationToken);
-
-    private static T AssertSuccess<T, TError>(Result<T, TError> result)
-        where T : notnull
-        where TError : notnull =>
-        result switch
-        {
-            Ok<T> success => success.Value,
-            Err<TError> error => throw new Xunit.Sdk.XunitException(
-                $"Expected success, got {error.Value.GetType().Name}."),
-            _ => throw new Xunit.Sdk.XunitException("Result returned an unsupported case.")
-        };
-
-    private static TError AssertFailure<T, TError>(Result<T, TError> result)
-        where T : notnull
-        where TError : notnull =>
-        result switch
-        {
-            Err<TError> error => error.Value,
-            Ok<T> => throw new Xunit.Sdk.XunitException("Expected failure, got success."),
-            _ => throw new Xunit.Sdk.XunitException("Result returned an unsupported case.")
-        };
 
     private static DeploymentTarget CreateTarget(string? publicBaseDomain)
     {

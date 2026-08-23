@@ -23,22 +23,12 @@ internal sealed class DeploymentTargetReferenceAdmission(
             owner,
             addedDeploymentTargetIds,
             removedDeploymentTargetIds);
-        var result = await ApplyChangesAsync(
+        return await ApplyChangesAsync(
             owner,
             addedDeploymentTargetIds,
             removedDeploymentTargetIds,
             session,
             cancellationToken);
-        return result is ISuccess
-            ? new Ok<Unit>(Unit.Value)
-            : new Err<DeploymentTargetReferenceChangeRejected>(
-                new DeploymentTargetReferenceChangeRejected(
-                    owner,
-                    addedDeploymentTargetIds
-                        .Concat(removedDeploymentTargetIds)
-                        .Distinct(StringComparer.Ordinal)
-                        .Order(StringComparer.Ordinal)
-                        .ToArray()));
     }
 
     private static void EnsureOutcomeArguments(
@@ -75,9 +65,21 @@ internal sealed class DeploymentTargetReferenceAdmission(
                 "A deployment target cannot be added and removed in the same change.",
                 nameof(addedDeploymentTargetIds));
         }
+
+        if (addedDeploymentTargetIds.Count != addedDeploymentTargetIds
+                .Distinct(StringComparer.Ordinal)
+                .Count() ||
+            removedDeploymentTargetIds.Count != removedDeploymentTargetIds
+                .Distinct(StringComparer.Ordinal)
+                .Count())
+        {
+            throw new ArgumentException(
+                "A deployment target can occur at most once in a reference change.",
+                nameof(addedDeploymentTargetIds));
+        }
     }
 
-    private async Task<Result> ApplyChangesAsync(
+    private async Task<Result<Unit, DeploymentTargetReferenceChangeRejected>> ApplyChangesAsync(
         DeploymentTargetReferenceOwner owner,
         IReadOnlyCollection<string> addedDeploymentTargetIds,
         IReadOnlyCollection<string> removedDeploymentTargetIds,
@@ -85,39 +87,18 @@ internal sealed class DeploymentTargetReferenceAdmission(
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
-        ArgumentNullException.ThrowIfNull(addedDeploymentTargetIds);
-        ArgumentNullException.ThrowIfNull(removedDeploymentTargetIds);
-        var ownerValidation = ValidateOwner(owner);
-        if (ownerValidation is not null)
-            return ownerValidation;
-
         var addedTargetIds = addedDeploymentTargetIds
-            .Distinct(StringComparer.Ordinal)
             .ToArray();
         var removedTargetIds = removedDeploymentTargetIds
-            .Distinct(StringComparer.Ordinal)
             .ToArray();
-        if (addedTargetIds.Any(id => !ObjectId.TryParse(id, out _)) ||
-            removedTargetIds.Any(id => !ObjectId.TryParse(id, out _)))
-        {
-            return InvalidTargetId();
-        }
-        if (addedTargetIds.Intersect(removedTargetIds, StringComparer.Ordinal).Any())
-        {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["DeploymentTargetIds"] =
-                    ["A deployment target cannot be added and removed in the same change."]
-            });
-        }
 
         var addedFence = await AdvanceFencesAsync(
             addedTargetIds,
             session,
             requireAdmission: true,
             cancellationToken);
-        if (addedFence is not ISuccess)
-            return (Failure)addedFence;
+        if (!addedFence)
+            return Rejected(owner, addedTargetIds, removedTargetIds);
 
         if (addedTargetIds.Length > 0)
         {
@@ -125,9 +106,7 @@ internal sealed class DeploymentTargetReferenceAdmission(
                 addedTargetIds.Length);
             foreach (var deploymentTargetId in addedTargetIds)
             {
-                var referenceResult = CreateReference(deploymentTargetId, owner);
-                if (!referenceResult.TryGetValue(out var reference, out var validationFailure))
-                    return validationFailure;
+                var reference = CreateReference(deploymentTargetId, owner);
 
                 writes.Add(new UpdateOneModel<DeploymentTargetReference>(
                     ReferenceFilter(reference.DeploymentTargetId, owner),
@@ -157,24 +136,23 @@ internal sealed class DeploymentTargetReferenceAdmission(
                 .Project(item => item.DeploymentTargetId)
                 .ToListAsync(cancellationToken);
         if (referencedTargetIds.Count == 0)
-            return Result.Success();
+            return new Ok<Unit>(Unit.Value);
 
         var removedFence = await AdvanceFencesAsync(
             referencedTargetIds,
             session,
             requireAdmission: false,
             cancellationToken);
-        if (removedFence is not ISuccess)
-            return (Failure)removedFence;
+        if (!removedFence)
+            return Rejected(owner, addedTargetIds, removedTargetIds);
 
         var deleted = await deploymentTargetReferences.DeleteManyAsync(
             session,
             removalFilter,
             cancellationToken: cancellationToken);
         return deleted.DeletedCount == referencedTargetIds.Count
-            ? Result.Success()
-            : Failures.Conflict(
-                "Deployment-target references changed while removal was being accepted.");
+            ? new Ok<Unit>(Unit.Value)
+            : Rejected(owner, addedTargetIds, removedTargetIds);
     }
 
     public async Task<Result<
@@ -185,22 +163,9 @@ internal sealed class DeploymentTargetReferenceAdmission(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(requests);
-        var result = await FenceManyAsync(requests, session, cancellationToken);
-        return result is ISuccess
-            ? new Ok<Unit>(Unit.Value)
-            : new Err<DeploymentTargetWorkloadConfigurationFenceRejected>(
-                new DeploymentTargetWorkloadConfigurationFenceRejected(requests));
-    }
-
-    private async Task<Result> FenceManyAsync(
-        IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
-    {
         EnsureTransaction(session);
-        ArgumentNullException.ThrowIfNull(requests);
         if (requests.Count == 0)
-            return Result.Success();
+            return new Ok<Unit>(Unit.Value);
 
         var distinctRequests = requests
             .DistinctBy(request => request.DeploymentTargetId, StringComparer.Ordinal)
@@ -210,13 +175,9 @@ internal sealed class DeploymentTargetReferenceAdmission(
                 !ObjectId.TryParse(request.DeploymentTargetId, out _) ||
                 request.ExpectedWorkloadConfigurationRevision < 1))
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["DeploymentTargets"] =
-                [
-                    "Unique valid deployment targets and workload configuration revisions are required."
-                ]
-            });
+            throw new ArgumentException(
+                "Unique valid deployment targets and workload configuration revisions are required.",
+                nameof(requests));
         }
 
         var update = await deploymentTargets.UpdateManyAsync(
@@ -228,21 +189,15 @@ internal sealed class DeploymentTargetReferenceAdmission(
                 1),
             cancellationToken: cancellationToken);
         return update.ModifiedCount == distinctRequests.Length
-            ? Result.Success()
-            : Failures.Conflict(
-                "The deployment target workload configuration changed or no longer accepts workloads.");
+            ? new Ok<Unit>(Unit.Value)
+            : new Err<DeploymentTargetWorkloadConfigurationFenceRejected>(
+                new DeploymentTargetWorkloadConfigurationFenceRejected(requests));
     }
 
-    private Result<DeploymentTargetReference> CreateReference(
+    private DeploymentTargetReference CreateReference(
         string deploymentTargetId,
         DeploymentTargetReferenceOwner owner)
     {
-        var ownerValidation = ValidateOwner(owner);
-        if (ownerValidation is not null)
-            return ownerValidation;
-        if (!ObjectId.TryParse(deploymentTargetId, out _))
-            return InvalidTargetId();
-
         return DeploymentTargetReferenceFactory.Create(
             deploymentTargetId,
             owner.Type,
@@ -252,14 +207,14 @@ internal sealed class DeploymentTargetReferenceAdmission(
                 timeProvider.GetUtcNow().UtcDateTime));
     }
 
-    private async Task<Result> AdvanceFencesAsync(
+    private async Task<bool> AdvanceFencesAsync(
         IReadOnlyCollection<string> deploymentTargetIds,
         IClientSessionHandle session,
         bool requireAdmission,
         CancellationToken cancellationToken)
     {
         if (deploymentTargetIds.Count == 0)
-            return Result.Success();
+            return true;
 
         var update = await deploymentTargets.UpdateManyAsync(
             session,
@@ -268,12 +223,7 @@ internal sealed class DeploymentTargetReferenceAdmission(
                 requireAdmission),
             Builders<DeploymentTarget>.Update.Inc(target => target.ReferenceFence, 1),
             cancellationToken: cancellationToken);
-        if (update.ModifiedCount == deploymentTargetIds.Count)
-            return Result.Success();
-
-        return requireAdmission
-            ? Failures.Conflict("A deployment target no longer accepts durable references.")
-            : Failures.Conflict("A deployment target is unavailable for reference removal.");
+        return update.ModifiedCount == deploymentTargetIds.Count;
     }
 
     private static FilterDefinition<DeploymentTargetReference> ReferenceFilter(
@@ -281,28 +231,16 @@ internal sealed class DeploymentTargetReferenceAdmission(
         DeploymentTargetReferenceOwner owner) =>
         DeploymentTargetReferenceFilters.ByOwner(deploymentTargetId, owner);
 
-    private static ValidationFailure? ValidateOwner(DeploymentTargetReferenceOwner? owner)
-    {
-        if (owner is null ||
-            string.IsNullOrWhiteSpace(owner.Type) ||
-            owner.Type.Trim().Length > DeploymentTargetReferenceFactory.MaximumOwnerTypeLength ||
-            string.IsNullOrWhiteSpace(owner.Id) ||
-            owner.Id.Trim().Length > DeploymentTargetReferenceFactory.MaximumOwnerIdLength)
-        {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Owner"] = ["A valid deployment-target reference owner is required."]
-            });
-        }
-
-        return null;
-    }
-
-    private static ValidationFailure InvalidTargetId() =>
-        Failures.ValidationFailure(new Dictionary<string, string[]>
-        {
-            ["DeploymentTargetId"] = ["Deployment target ID must be a MongoDB ObjectId."]
-        });
+    private static Err<DeploymentTargetReferenceChangeRejected> Rejected(
+        DeploymentTargetReferenceOwner owner,
+        IReadOnlyCollection<string> addedDeploymentTargetIds,
+        IReadOnlyCollection<string> removedDeploymentTargetIds) =>
+        new(new DeploymentTargetReferenceChangeRejected(
+            owner,
+            addedDeploymentTargetIds
+                .Concat(removedDeploymentTargetIds)
+                .Order(StringComparer.Ordinal)
+                .ToArray()));
 
     private static void EnsureTransaction(IClientSessionHandle session)
     {

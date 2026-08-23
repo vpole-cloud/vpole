@@ -28,42 +28,22 @@ internal sealed class DeploymentTargetKubernetesClientFactory(
         DeploymentTargetConnection connection,
         CancellationToken cancellationToken = default)
     {
-        var client = await CreateCoreAsync(
-            deploymentTargetId,
-            connection,
-            cancellationToken);
-        return client switch
-        {
-            Success<IKubernetes> success => new Ok<IKubernetes>(success.Value),
-            Failure<IKubernetes> => new Err<StoredDeploymentTargetConnectionUnavailable>(
-                new StoredDeploymentTargetConnectionUnavailable()),
-            _ => throw new InvalidOperationException(
-                "Creating a deployment-target Kubernetes client returned an unsupported result case.")
-        };
-    }
+        EnsureValidOwner(deploymentTargetId, connection?.Version ?? 0);
 
-    private async ValueTask<Result<IKubernetes>> CreateCoreAsync(
-        string deploymentTargetId,
-        DeploymentTargetConnection connection,
-        CancellationToken cancellationToken)
-    {
-        if (connection is null || !HasValidOwner(deploymentTargetId, connection.Version))
-            return ConnectionFailures.StoredConnectionUnavailable();
-
-        cancellationToken.ThrowIfCancellationRequested();
         return connection switch
         {
             InClusterDeploymentTargetConnection =>
-                KubernetesClientSecurity.CreateInCluster(storedConnection: true, cancellationToken),
+                KubernetesClientSecurity.CreateInClusterForStored(cancellationToken),
             KubeconfigDeploymentTargetConnection kubeconfig =>
                 await CreateFromStoredKubeconfigAsync(deploymentTargetId, kubeconfig, cancellationToken),
             ServiceAccountDeploymentTargetConnection serviceAccount =>
                 await CreateFromStoredServiceAccountAsync(deploymentTargetId, serviceAccount, cancellationToken),
-            _ => ConnectionFailures.StoredConnectionUnavailable()
+            _ => new Err<StoredDeploymentTargetConnectionUnavailable>(new())
         };
     }
 
-    private async ValueTask<Result<IKubernetes>> CreateFromStoredKubeconfigAsync(
+    private async ValueTask<Result<IKubernetes, StoredDeploymentTargetConnectionUnavailable>>
+        CreateFromStoredKubeconfigAsync(
         string deploymentTargetId,
         KubeconfigDeploymentTargetConnection connection,
         CancellationToken cancellationToken)
@@ -74,22 +54,21 @@ internal sealed class DeploymentTargetKubernetesClientFactory(
             connection.EncryptedKubeconfig,
             cancellationToken);
         if (!decryptedResult.TryGetValue(out var decrypted, out var decryptionFailure))
-            return decryptionFailure;
+            return new Err<StoredDeploymentTargetConnectionUnavailable>(decryptionFailure);
 
         try
         {
             var canonicalResult = KubeconfigCanonicalizer.DeserializeStored(decrypted);
             if (!canonicalResult.TryGetValue(out var canonical, out var canonicalFailure))
-                return canonicalFailure;
+                return new Err<StoredDeploymentTargetConnectionUnavailable>(canonicalFailure);
             if (!string.Equals(canonical.ContextName, connection.ContextName, StringComparison.Ordinal) ||
                 !string.Equals(canonical.ServerUrl, connection.ServerUrl, StringComparison.Ordinal))
             {
-                return ConnectionFailures.StoredConnectionUnavailable();
+                return new Err<StoredDeploymentTargetConnectionUnavailable>(new());
             }
 
-            return KubernetesClientSecurity.CreateFromCanonical(
+            return KubernetesClientSecurity.CreateForStored(
                 canonical,
-                storedConnection: true,
                 cancellationToken);
         }
         finally
@@ -98,7 +77,8 @@ internal sealed class DeploymentTargetKubernetesClientFactory(
         }
     }
 
-    private async ValueTask<Result<IKubernetes>> CreateFromStoredServiceAccountAsync(
+    private async ValueTask<Result<IKubernetes, StoredDeploymentTargetConnectionUnavailable>>
+        CreateFromStoredServiceAccountAsync(
         string deploymentTargetId,
         ServiceAccountDeploymentTargetConnection connection,
         CancellationToken cancellationToken)
@@ -109,7 +89,7 @@ internal sealed class DeploymentTargetKubernetesClientFactory(
             connection.EncryptedCredential,
             cancellationToken);
         if (!decryptedResult.TryGetValue(out var decrypted, out var decryptionFailure))
-            return decryptionFailure;
+            return new Err<StoredDeploymentTargetConnectionUnavailable>(decryptionFailure);
 
         try
         {
@@ -124,12 +104,11 @@ internal sealed class DeploymentTargetKubernetesClientFactory(
                     connection.CertificateAuthorityData,
                     StringComparison.Ordinal))
             {
-                return ConnectionFailures.StoredConnectionUnavailable();
+                return new Err<StoredDeploymentTargetConnectionUnavailable>(new());
             }
 
-            return KubernetesClientSecurity.CreateFromCanonical(
+            return KubernetesClientSecurity.CreateForStored(
                 canonical,
-                storedConnection: true,
                 cancellationToken);
         }
         finally
@@ -138,8 +117,15 @@ internal sealed class DeploymentTargetKubernetesClientFactory(
         }
     }
 
-    private static bool HasValidOwner(string? deploymentTargetId, long connectionVersion) =>
-        !string.IsNullOrWhiteSpace(deploymentTargetId) &&
-        deploymentTargetId.Length <= ConnectionPayloadLimits.MaximumDeploymentTargetIdCharacters &&
-        connectionVersion > 0;
+    private static void EnsureValidOwner(string? deploymentTargetId, long connectionVersion)
+    {
+        if (string.IsNullOrWhiteSpace(deploymentTargetId) ||
+            deploymentTargetId.Length > ConnectionPayloadLimits.MaximumDeploymentTargetIdCharacters ||
+            connectionVersion < 1)
+        {
+            throw new ArgumentException(
+                "The stored deployment-target connection owner is invalid.",
+                nameof(deploymentTargetId));
+        }
+    }
 }

@@ -113,24 +113,11 @@ public sealed class CreateResourceGroupHandler(
     {
         DefaultDeploymentTargetNotConfigured => Failures.Conflict(
             "An eligible default deployment target is required before a resource group can be created."),
-        DeploymentTargetWorkloadAdmissionError admission => admission switch
-        {
-            InvalidDeploymentTargetId => Failures.ValidationFailure(
-                new Dictionary<string, string[]>
-                {
-                    ["DeploymentTargetId"] = ["Deployment target ID must be a MongoDB ObjectId."]
-                }),
-            DeploymentTargetNotFound notFound => Failures.NotFound(
-                "Deployment target not found.",
-                notFound.DeploymentTargetId),
-            DeploymentTargetDisabled => Failures.Conflict("The default deployment target is disabled."),
-            DeploymentTargetDeletionRequested => Failures.Conflict(
-                "The default deployment target is pending deletion."),
-            DeploymentTargetNewWorkloadsDisabled => Failures.Conflict(
-                "The default deployment target does not accept new workloads."),
-            _ => throw new InvalidOperationException(
-                "Default deployment-target admission returned an unsupported error case.")
-        },
+        DeploymentTargetDisabled => Failures.Conflict("The default deployment target is disabled."),
+        DeploymentTargetDeletionRequested => Failures.Conflict(
+            "The default deployment target is pending deletion."),
+        DeploymentTargetNewWorkloadsDisabled => Failures.Conflict(
+            "The default deployment target does not accept new workloads."),
         _ => throw new InvalidOperationException(
             "Default deployment-target admission returned an unsupported error case.")
     };

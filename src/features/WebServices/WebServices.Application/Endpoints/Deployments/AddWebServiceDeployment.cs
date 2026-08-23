@@ -205,8 +205,6 @@ public sealed class AddWebServiceDeploymentHandler(
         {
             DeploymentTargetPublicIngressDto ingress =>
                 new Ok<DeploymentTargetPublicIngressDto>(ingress),
-            InvalidDeploymentTargetId error =>
-                TargetError(new DeploymentTargetPublicIngressAdmissionError(error)),
             DeploymentTargetNotFound error =>
                 TargetError(new DeploymentTargetPublicIngressAdmissionError(error)),
             DeploymentTargetDisabled error =>

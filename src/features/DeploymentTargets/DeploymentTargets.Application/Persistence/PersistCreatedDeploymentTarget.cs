@@ -36,11 +36,11 @@ internal sealed class MongoPersistCreatedDeploymentTarget(
                     deploymentTarget.WorkloadConfiguration.Ingress?.PublicBaseDomain,
                     transaction.Session,
                     ct);
-                if (admitted is not ISuccess)
+                if (!admitted.TryGetValue(out _, out var admissionError))
                 {
                     return transaction.AbortError(
                         new PersistCreatedDeploymentTargetError(
-                            new DeploymentTargetPublicBaseDomainConflict(deploymentTarget.Id)));
+                            admissionError));
                 }
 
                 await deploymentTargets.InsertOneAsync(

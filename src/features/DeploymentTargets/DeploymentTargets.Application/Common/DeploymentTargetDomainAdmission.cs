@@ -17,14 +17,15 @@ internal sealed class DeploymentTargetDomainAdmission(
     IMongoCollection<DeploymentTargetReference> references,
     IMongoCollection<DeploymentTargetPublicBaseDomainAdmissionFence> fences)
 {
-    public async Task<Result> EnsureNoOverlappingPublicBaseDomainAsync(
+    public async Task<Result<Unit, DeploymentTargetPublicBaseDomainConflict>>
+        EnsureNoOverlappingPublicBaseDomainAsync(
         string targetId,
         string? publicBaseDomain,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         if (publicBaseDomain is null)
-            return Result.Success();
+            return new Ok<Unit>(Unit.Value);
 
         var candidate = DnsName.Create(publicBaseDomain);
         await fences.UpdateOneAsync(
@@ -46,21 +47,22 @@ internal sealed class DeploymentTargetDomainAdmission(
             if (string.Equals(existing.Id, targetId, StringComparison.Ordinal))
                 continue;
 
-            if (!DnsName.TryCreate(existing.WorkloadConfiguration.Ingress!.PublicBaseDomain, out var other))
-                continue;
-            var otherDomain = other!;
+            var otherDomain = DnsName.Create(
+                existing.WorkloadConfiguration.Ingress!.PublicBaseDomain ?? throw new InvalidOperationException(
+                    "A deployment target with configured public ingress has no public base domain."));
             if (candidate.IsSameOrDescendantOf(otherDomain) ||
                 otherDomain.IsSameOrDescendantOf(candidate))
             {
-                return Failures.Conflict(
-                    "The public base domain overlaps another deployment target that has not been physically removed.");
+                return new Err<DeploymentTargetPublicBaseDomainConflict>(
+                    new DeploymentTargetPublicBaseDomainConflict(targetId));
             }
         }
 
-        return Result.Success();
+        return new Ok<Unit>(Unit.Value);
     }
 
-    public async Task<Result> EnsureNoPublicDomainReferencesAsync(
+    public async Task<Result<Unit, DeploymentTargetPublicBaseDomainReferenced>>
+        EnsureNoPublicDomainReferencesAsync(
         string targetId,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -72,8 +74,8 @@ internal sealed class DeploymentTargetDomainAdmission(
             .Project(reference => reference.Id)
             .FirstOrDefaultAsync(cancellationToken);
         return reference is null
-            ? Result.Success()
-            : Failures.Conflict(
-                "The deployment target public base domain is still referenced by tenant domain zones.");
+            ? new Ok<Unit>(Unit.Value)
+            : new Err<DeploymentTargetPublicBaseDomainReferenced>(
+                new DeploymentTargetPublicBaseDomainReferenced(targetId));
     }
 }

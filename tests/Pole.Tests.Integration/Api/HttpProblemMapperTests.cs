@@ -118,18 +118,16 @@ public sealed class HttpProblemMapperTests
     }
 
     [Fact]
-    public void DefaultDeploymentTargetLookupUnwrapsTheSharedLookupMapping()
+    public void DefaultDeploymentTargetLookupMapsMissingConfiguration()
     {
         var mapper = new HttpProblemMapper(DeploymentTargetContractHttpMappings.All);
         DefaultDeploymentTargetLookupError error = new(
-            new DeploymentTargetLookupError(
-                new DeploymentTargetNotFound("target-9")));
+            new DefaultDeploymentTargetNotConfigured());
 
         var problem = mapper.Map(error);
 
-        Assert.Equal((int)HttpStatusCode.NotFound, problem.StatusCode);
-        Assert.Equal("deployment-targets.not-found", problem.Code);
-        Assert.Equal("target-9", problem.Extensions["deploymentTargetId"]);
+        Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
+        Assert.Equal("deployment-targets.default-not-configured", problem.Code);
     }
 
     [Fact]

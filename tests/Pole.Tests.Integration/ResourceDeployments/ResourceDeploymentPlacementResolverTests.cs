@@ -8,18 +8,12 @@ namespace Pole.Tests.Integration.ResourceDeployments;
 
 public sealed class ResourceDeploymentPlacementResolverTests
 {
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task ExplicitTargetAdmission_PreservesLegacyFailureSemantics(
-        bool isNotFound)
+    [Fact]
+    public async Task ExplicitTargetAdmission_MapsNotFound()
     {
         const string targetId = "507f1f77bcf86cd799439011";
-        DeploymentTargetWorkloadAdmissionError admissionError = isNotFound
-            ? new DeploymentTargetWorkloadAdmissionError(
-                new DeploymentTargetNotFound(targetId))
-            : new DeploymentTargetWorkloadAdmissionError(
-                new InvalidDeploymentTargetId(targetId));
+        DeploymentTargetWorkloadAdmissionError admissionError = new(
+            new DeploymentTargetNotFound(targetId));
         var resolver = new ResourceDeploymentPlacementResolver(
             (_, _) => Task.FromResult<Result<
                 DeploymentTargetLookupDto,
@@ -31,15 +25,7 @@ public sealed class ResourceDeploymentPlacementResolverTests
         var result = await resolver.InvokeAsync(targetId, requiresIngress: false);
 
         var failure = Assert.IsType<Failure<ResolvedResourceDeploymentTarget>>(result).Error;
-        if (isNotFound)
-        {
-            var notFound = Assert.IsType<NotFoundFailure>(failure);
-            Assert.Equal(targetId, notFound.Id);
-        }
-        else
-        {
-            var validation = Assert.IsType<ValidationFailure>(failure);
-            Assert.Contains("DeploymentTargetId", validation.ValidationErrors.Keys);
-        }
+        var notFound = Assert.IsType<NotFoundFailure>(failure);
+        Assert.Equal(targetId, notFound.Id);
     }
 }
