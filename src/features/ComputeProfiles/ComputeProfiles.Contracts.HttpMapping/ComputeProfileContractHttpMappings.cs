@@ -1,8 +1,7 @@
 using System.Net;
 using Pole.ASP.Helpers;
-using Pole.Features.ComputeProfiles.Contracts;
 
-namespace Pole.Features.ComputeProfiles.Application.Common;
+namespace Pole.Features.ComputeProfiles.Contracts.HttpMapping;
 
 public static class ComputeProfileContractHttpMappings
 {

@@ -13,6 +13,54 @@ namespace Pole.Tests.Integration.ComputeProfiles;
 public sealed class ComputeProfileHandlerOutcomeTests
 {
     [Fact]
+    public async Task Get_page_wraps_the_read_model_in_its_request_outcome()
+    {
+        LoadComputeProfilePage loadPage = (query, cancellationToken) =>
+            Task.FromResult(new ComputeProfilePage([], 0));
+        var handler = new GetComputeProfilesHandler(loadPage);
+
+        var outcome = await handler.HandleAsync(new GetComputeProfilesRequest());
+
+        var page = outcome switch
+        {
+            ComputeProfilePageDto value => value,
+            _ => throw new Xunit.Sdk.XunitException(
+                "Expected the compute-profile page outcome.")
+        };
+        Assert.Empty(page.Items);
+        Assert.Equal(0, page.TotalCount);
+    }
+
+    [Fact]
+    public async Task Get_available_preserves_the_active_tenant_in_its_capability_query()
+    {
+        ComputeProfileAvailabilityQuery? received = null;
+        LoadAvailableComputeProfiles loadAvailable = (query, cancellationToken) =>
+        {
+            received = query;
+            return Task.FromResult<IReadOnlyList<ComputeProfile>>([]);
+        };
+        var handler = new GetAvailableComputeProfilesHandler(loadAvailable);
+
+        var outcome = await handler.HandleAsync(new GetAvailableComputeProfilesRequest(
+            TargetId,
+            "pole/web-service",
+            "507f1f77bcf86cd799439098"));
+
+        var profiles = outcome switch
+        {
+            IReadOnlyCollection<AvailableComputeProfileDto> value => value,
+            _ => throw new Xunit.Sdk.XunitException(
+                "Expected the available compute-profiles outcome.")
+        };
+        Assert.Empty(profiles);
+        Assert.NotNull(received);
+        Assert.Equal("507f1f77bcf86cd799439098", received.TenantId);
+        Assert.Equal(TargetId, received.DeploymentTargetId);
+        Assert.Equal("pole/web-service", received.ResourceType.Value);
+    }
+
+    [Fact]
     public async Task Create_wraps_target_reference_rejection_in_its_request_outcome()
     {
         PersistCreatedComputeProfile persist = (profile, cancellationToken) =>

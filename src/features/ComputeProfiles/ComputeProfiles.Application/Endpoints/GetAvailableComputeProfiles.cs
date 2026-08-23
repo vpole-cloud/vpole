@@ -16,16 +16,19 @@ public sealed record GetAvailableComputeProfilesRequest(
     [FromQuery] string DeploymentTargetId,
     [FromQuery] string ResourceType,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<IReadOnlyCollection<AvailableComputeProfileDto>>,
+    : IMediatorRequest<GetAvailableComputeProfilesOutcome>,
         ITenantReadOperation;
+
+public union GetAvailableComputeProfilesOutcome(
+    IReadOnlyCollection<AvailableComputeProfileDto>);
 
 public sealed class GetAvailableComputeProfilesHandler(
     LoadAvailableComputeProfiles loadAvailableComputeProfiles)
     : IMediatorOutcomeHandler<
         GetAvailableComputeProfilesRequest,
-        IReadOnlyCollection<AvailableComputeProfileDto>>
+        GetAvailableComputeProfilesOutcome>
 {
-    public async Task<IReadOnlyCollection<AvailableComputeProfileDto>> HandleAsync(
+    public async Task<GetAvailableComputeProfilesOutcome> HandleAsync(
         GetAvailableComputeProfilesRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -65,7 +68,10 @@ public static class GetAvailableComputeProfilesEndpoint
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    IReadOnlyCollection<AvailableComputeProfileDto> profiles => Results.Ok(profiles)
+                });
             })
             .WithName("GetAvailableComputeProfiles")
             .Produces<IReadOnlyCollection<AvailableComputeProfileDto>>();

@@ -45,7 +45,7 @@ public static class TestServiceProviderFactory
     private static readonly Assembly[] Assemblies =
     [
         typeof(WebServiceEndpoints).Assembly,
-        typeof(ComputeProfileFeature).Assembly,
+        typeof(ComputeProfileApplicationRegistration).Assembly,
         typeof(FunctionAppFeature).Assembly,
         typeof(FunctionRuntimeFeature).Assembly,
         typeof(PostgresClusterEndpoints).Assembly,
@@ -76,7 +76,7 @@ public static class TestServiceProviderFactory
             new ConfigurationBuilder().Build());
         services.AddTenantContractCapabilities();
         services.AddDomainPersistence();
-        services.AddComputeProfiles();
+        services.AddComputeProfilesFeature();
         services.AddStorageProfileResolution();
         services.AddRedisServicesFeature();
         services.AddPostgresFeature();
