@@ -92,25 +92,23 @@ internal sealed class DeploymentTargetAdmissionQueries(
         CancellationToken cancellationToken = default)
     {
         var target = await LoadDefaultTargetAsync(cancellationToken);
-        if (target is Err<DefaultDeploymentTargetLookupError> lookupError)
+        return target switch
         {
-            return lookupError.Value switch
+            Ok<DeploymentTarget> targetSuccess => AdmitForNewWorkload(targetSuccess.Value.ToLookupDto()),
+            Err<DefaultDeploymentTargetLookupError> lookupError => lookupError.Value switch
             {
                 DefaultDeploymentTargetNotConfigured notConfigured =>
                     new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
-                        new DefaultDeploymentTargetWorkloadAdmissionError(notConfigured)),
-                _ => throw new InvalidOperationException(
-                    "Default deployment-target lookup returned an unsupported error case.")
-            };
-        }
+                        new DefaultDeploymentTargetWorkloadAdmissionError(notConfigured))
+            }
+        };
+    }
 
-        if (target is not Ok<DeploymentTarget> targetSuccess)
-        {
-            throw new InvalidOperationException(
-                "Default deployment-target lookup returned an unsupported result case.");
-        }
-
-        var lookup = targetSuccess.Value.ToLookupDto();
+    private static Result<
+        DeploymentTargetLookupDto,
+        DefaultDeploymentTargetWorkloadAdmissionError> AdmitForNewWorkload(
+        DeploymentTargetLookupDto lookup)
+    {
         if (!lookup.Enabled)
         {
             return new Err<DefaultDeploymentTargetWorkloadAdmissionError>(

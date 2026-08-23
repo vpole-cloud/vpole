@@ -61,6 +61,15 @@ public static class DeploymentTargetPersistenceRegistration
             services,
             implementation => implementation.InvokeAsync);
 
+        services.TryAddSingleton<MongoLoadDeploymentTargetBootstrapState>();
+        services.TryAddSingleton<LoadDeploymentTargetBootstrapState>(serviceProvider => serviceProvider
+            .GetRequiredService<MongoLoadDeploymentTargetBootstrapState>()
+            .InvokeAsync);
+        services.TryAddSingleton<MongoEnsureBootstrapDefaultDeploymentTarget>();
+        services.TryAddSingleton<EnsureBootstrapDefaultDeploymentTarget>(serviceProvider => serviceProvider
+            .GetRequiredService<MongoEnsureBootstrapDefaultDeploymentTarget>()
+            .InvokeAsync);
+
         services.TryAddSingleton<RunMongoOutcomeTransaction<Result<
             DeploymentTarget,
             PersistCreatedDeploymentTargetError>>>(serviceProvider =>
@@ -81,6 +90,10 @@ public static class DeploymentTargetPersistenceRegistration
             serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<DeleteDeploymentTargetOutcome>);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<EnsureBootstrapDefaultDeploymentTargetOutcome>>(
+            serviceProvider => serviceProvider
+                .GetRequiredService<MongoRunTransaction>()
+                .InvokeOutcomeAsync<EnsureBootstrapDefaultDeploymentTargetOutcome>);
         return services;
     }
 

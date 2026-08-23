@@ -312,22 +312,32 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         RecordingConnectionPreparer preparer,
         string environmentName,
         DeploymentTargetOptions? options = null,
-        SuccessfulProbe? probe = null) =>
-        new(
+        SuccessfulProbe? probe = null)
+    {
+        var timeProvider = new FixedTimeProvider(Now);
+        var domainAdmission = new DeploymentTargetDomainAdmission(
             fixture.DbContext.DeploymentTargets,
-            fixture.DbContext.DeploymentTargetSettings,
-            new MongoRunTransaction(fixture.Client).InvokeAsync,
+            fixture.DbContext.DeploymentTargetReferences,
+            fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
+                DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName));
+        return new DeploymentTargetBootstrapper(
+            new MongoLoadDeploymentTargetBootstrapState(
+                fixture.DbContext.DeploymentTargets,
+                fixture.DbContext.DeploymentTargetSettings).InvokeAsync,
+            new MongoEnsureBootstrapDefaultDeploymentTarget(
+                fixture.DbContext.DeploymentTargets,
+                fixture.DbContext.DeploymentTargetSettings,
+                domainAdmission,
+                new MongoRunTransaction(fixture.Client)
+                    .InvokeOutcomeAsync<EnsureBootstrapDefaultDeploymentTargetOutcome>,
+                timeProvider).InvokeAsync,
             preparer.InvokeAsync,
             (probe ?? new SuccessfulProbe()).InvokeAsync,
-            new DeploymentTargetDomainAdmission(
-                fixture.DbContext.DeploymentTargets,
-                fixture.DbContext.DeploymentTargetReferences,
-                fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
-                    DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName)),
             options ?? CreateOptions(new DeploymentTargetBootstrapOptions()),
             new FakeHostEnvironment(environmentName),
-            new FixedTimeProvider(Now),
+            timeProvider,
             NullLogger<DeploymentTargetBootstrapper>.Instance);
+    }
 
     private async Task<(DeploymentTarget Target, DeploymentTargetSettings Settings)> LoadSingleStateAsync()
     {

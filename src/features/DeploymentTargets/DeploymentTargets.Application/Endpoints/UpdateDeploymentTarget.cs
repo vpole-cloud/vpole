@@ -136,11 +136,12 @@ public static class UpdateDeploymentTargetEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     DeploymentTargetDto target => Results.Ok(target),
-                    DeploymentTargetNotFound error => httpProblems.Map(error).ToHttpResult(),
-                    DeploymentTargetRevisionConflict error => httpProblems.Map(error).ToHttpResult(),
-                    DeploymentTargetDeletionRejected error => httpProblems.Map(error).ToHttpResult(),
-                    DeploymentTargetPublicBaseDomainReferenced error => httpProblems.Map(error).ToHttpResult(),
-                    DeploymentTargetPublicBaseDomainConflict error => httpProblems.Map(error).ToHttpResult()
+                    DeploymentTargetNotFound
+                        or DeploymentTargetRevisionConflict
+                        or DeploymentTargetDeletionRejected
+                        or DeploymentTargetPublicBaseDomainReferenced
+                        or DeploymentTargetPublicBaseDomainConflict =>
+                        httpProblems.Map(outcome).ToHttpResult()
                 });
             })
             .WithName("UpdateDeploymentTarget")

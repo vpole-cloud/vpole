@@ -1,10 +1,9 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
-using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
+using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
@@ -15,12 +14,10 @@ public delegate Task BootstrapDeploymentTargets(
     CancellationToken cancellationToken = default);
 
 internal sealed class DeploymentTargetBootstrapper(
-    IMongoCollection<DeploymentTarget> deploymentTargets,
-    IMongoCollection<DeploymentTargetSettings> settings,
-    RunMongoTransaction runMongoTransaction,
+    LoadDeploymentTargetBootstrapState loadBootstrapState,
+    EnsureBootstrapDefaultDeploymentTarget ensureBootstrapDefaultDeploymentTarget,
     PrepareDeploymentTargetConnection prepareDeploymentTargetConnection,
     ProbeDeploymentTargetConnection probeDeploymentTargetConnection,
-    DeploymentTargetDomainAdmission domainAdmission,
     DeploymentTargetOptions options,
     IHostEnvironment environment,
     TimeProvider timeProvider,
@@ -28,7 +25,7 @@ internal sealed class DeploymentTargetBootstrapper(
 {
     public async Task InvokeAsync(CancellationToken cancellationToken = default)
     {
-        var current = await LoadCurrentAsync(cancellationToken);
+        var current = await loadBootstrapState(cancellationToken);
         if (current.Settings is not null)
         {
             if (current.DefaultTargetExists)
@@ -40,11 +37,13 @@ internal sealed class DeploymentTargetBootstrapper(
 
         if (current.FirstTarget is not null)
         {
-            var ensured = await EnsureDefaultSettingsAsync(current.FirstTarget.Id, cancellationToken);
-            if (ensured is ISuccess)
+            var ensured = await ensureBootstrapDefaultDeploymentTarget(
+                new BindExistingDeploymentTargetAsDefault(current.FirstTarget.Id),
+                cancellationToken);
+            if (ensured is BootstrapDefaultDeploymentTargetEnsured)
                 return;
 
-            current = await LoadCurrentAsync(cancellationToken);
+            current = await loadBootstrapState(cancellationToken);
             if (current.Settings is not null && current.DefaultTargetExists)
                 return;
 
@@ -66,12 +65,13 @@ internal sealed class DeploymentTargetBootstrapper(
             connectionVersion: 1,
             input,
             cancellationToken);
-        if (!preparedResult.TryGetValue(out var prepared, out _))
+        if (preparedResult is not Ok<PreparedDeploymentTargetConnection> preparedResultSuccess)
         {
             throw new InvalidOperationException(
                 "The local deployment-target connection could not be prepared.");
         }
 
+        var prepared = preparedResultSuccess.Value;
         using (prepared)
         {
             var observation = await probeDeploymentTargetConnection(
@@ -96,8 +96,10 @@ internal sealed class DeploymentTargetBootstrapper(
                 acceptsWorkloads: true,
                 new DeploymentTargetFactory.CreateOptions(targetId, createdAtUtc));
 
-            var persisted = await PersistFirstTargetAsync(target, cancellationToken);
-            if (persisted is ISuccess)
+            var persisted = await ensureBootstrapDefaultDeploymentTarget(
+                new CreateFirstDeploymentTargetAsDefault(target),
+                cancellationToken);
+            if (persisted is BootstrapDefaultDeploymentTargetEnsured)
             {
                 logger.LogInformation(
                     "Bootstrapped default deployment target {DeploymentTargetId} with connection kind {ConnectionKind}.",
@@ -109,7 +111,7 @@ internal sealed class DeploymentTargetBootstrapper(
 
         // A second replica may have won the first-target transaction. Treat that exact durable
         // outcome as success; any other conflict means startup state is inconsistent.
-        current = await LoadCurrentAsync(cancellationToken);
+        current = await loadBootstrapState(cancellationToken);
         if (current.Settings is not null && current.DefaultTargetExists)
             return;
 
@@ -205,110 +207,4 @@ internal sealed class DeploymentTargetBootstrapper(
         return Path.Combine(userProfile, ".kube", "config");
     }
 
-    private Task<Result> PersistFirstTargetAsync(
-        DeploymentTarget target,
-        CancellationToken cancellationToken) =>
-        runMongoTransaction(async (session, ct) =>
-        {
-            var existing = await deploymentTargets
-                .Find(
-                    session,
-                    DeploymentTargetFilters.NotPendingDeletion())
-                .SortBy(item => item.CreatedAtUtc)
-                .FirstOrDefaultAsync(ct);
-            if (existing is not null)
-            {
-                return await BindDefaultSettingsAsync(session, existing, ct);
-            }
-
-            var admission = await domainAdmission.EnsureNoOverlappingPublicBaseDomainAsync(
-                target.Id,
-                target.WorkloadConfiguration.Ingress?.PublicBaseDomain,
-                session,
-                ct);
-            if (!admission.TryGetValue(out _, out _))
-            {
-                return Failures.Conflict(
-                    "The public base domain overlaps another deployment target that has not been physically removed.");
-            }
-
-            await deploymentTargets.InsertOneAsync(session, target, cancellationToken: ct);
-            await settings.InsertOneAsync(
-                session,
-                DeploymentTargetSettings.Create(target.Id, target.CreatedAtUtc),
-                cancellationToken: ct);
-            return Result.Success();
-        }, cancellationToken);
-
-    private Task<Result> EnsureDefaultSettingsAsync(
-        string targetId,
-        CancellationToken cancellationToken) =>
-        runMongoTransaction(async (session, ct) =>
-        {
-            var target = await deploymentTargets
-                .Find(session, DeploymentTargetFilters.ById(targetId))
-                .FirstOrDefaultAsync(ct);
-            return target is null
-                ? Failures.Conflict("The deployment target changed while its default binding was created.")
-                : await BindDefaultSettingsAsync(session, target, ct);
-        }, cancellationToken);
-
-    private async Task<Result> BindDefaultSettingsAsync(
-        IClientSessionHandle session,
-        DeploymentTarget target,
-        CancellationToken cancellationToken)
-    {
-        if (target.DeletionRequestedAtUtc is not null)
-            return Failures.Conflict("A deployment target pending deletion cannot become the default target.");
-
-        var existing = await settings
-            .Find(session, DeploymentTargetSettingsFilters.Singleton())
-            .FirstOrDefaultAsync(cancellationToken);
-        if (existing is not null)
-        {
-            return existing.DefaultDeploymentTargetId == target.Id
-                ? Result.Success()
-                : Failures.Conflict("A different default deployment target is already configured.");
-        }
-
-        var updatedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
-        if (updatedAtUtc < target.UpdatedAtUtc)
-            updatedAtUtc = target.UpdatedAtUtc;
-        var fenced = await deploymentTargets.UpdateOneAsync(
-            session,
-            DeploymentTargetFilters.AtRevisionAndNotPendingDeletion(target),
-            Builders<DeploymentTarget>.Update
-                .Set(item => item.Revision, checked(target.Revision + 1))
-                .Set(item => item.UpdatedAtUtc, updatedAtUtc),
-            cancellationToken: cancellationToken);
-        if (fenced.ModifiedCount != 1)
-            return Failures.Conflict("The deployment target changed while its default binding was created.");
-
-        await settings.InsertOneAsync(
-            session,
-            DeploymentTargetSettings.Create(target.Id, updatedAtUtc),
-            cancellationToken: cancellationToken);
-        return Result.Success();
-    }
-
-    private async Task<BootstrapState> LoadCurrentAsync(CancellationToken cancellationToken)
-    {
-        var currentSettings = await settings
-            .Find(DeploymentTargetSettingsFilters.Singleton())
-            .FirstOrDefaultAsync(cancellationToken);
-        var firstTarget = await deploymentTargets
-            .Find(DeploymentTargetFilters.NotPendingDeletion())
-            .SortBy(item => item.CreatedAtUtc)
-            .FirstOrDefaultAsync(cancellationToken);
-        var defaultTargetExists = currentSettings is not null &&
-            await deploymentTargets.CountDocumentsAsync(
-                DeploymentTargetFilters.ById(currentSettings.DefaultDeploymentTargetId),
-                cancellationToken: cancellationToken) == 1;
-        return new BootstrapState(currentSettings, firstTarget, defaultTargetExists);
-    }
-
-    private sealed record BootstrapState(
-        DeploymentTargetSettings? Settings,
-        DeploymentTarget? FirstTarget,
-        bool DefaultTargetExists);
 }
