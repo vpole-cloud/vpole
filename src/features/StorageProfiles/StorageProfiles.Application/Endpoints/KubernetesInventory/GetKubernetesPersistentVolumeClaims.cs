@@ -15,17 +15,33 @@ namespace Pole.Features.StorageProfiles.Application.Endpoints;
 
 public sealed record GetKubernetesPersistentVolumeClaimsRequest(
     [FromQuery] string DeploymentTargetId)
-    : IMediatorRequest<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>;
+    : IMediatorRequest<GetKubernetesPersistentVolumeClaimsOutcome>;
 
-public sealed class GetKubernetesPersistentVolumeClaimsHandler(IStorageDiscoveryService storageDiscovery)
-    : IMediatorHandler<GetKubernetesPersistentVolumeClaimsRequest, IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>
+public union GetKubernetesPersistentVolumeClaimsOutcome(
+    IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>,
+    KubernetesStorageDiscoveryUnavailable);
+
+public sealed class GetKubernetesPersistentVolumeClaimsHandler(
+    DiscoverKubernetesPersistentVolumeClaims discoverPersistentVolumeClaims)
+    : IMediatorOutcomeHandler<
+        GetKubernetesPersistentVolumeClaimsRequest,
+        GetKubernetesPersistentVolumeClaimsOutcome>
 {
-    public async Task<Result<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>> HandleAsync(
+    public async Task<GetKubernetesPersistentVolumeClaimsOutcome> HandleAsync(
         GetKubernetesPersistentVolumeClaimsRequest request,
-        CancellationToken cancellationToken = default) =>
-        await storageDiscovery.GetPersistentVolumeClaimsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var discovered = await discoverPersistentVolumeClaims(
             request.DeploymentTargetId.Trim(),
             cancellationToken);
+        return discovered switch
+        {
+            Ok<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>> persistentVolumeClaims =>
+                new GetKubernetesPersistentVolumeClaimsOutcome(persistentVolumeClaims.Value),
+            Err<KubernetesStorageDiscoveryUnavailable> error =>
+                new GetKubernetesPersistentVolumeClaimsOutcome(error.Value)
+        };
+    }
 }
 
 public sealed class GetKubernetesPersistentVolumeClaimsRequestValidator
@@ -42,15 +58,23 @@ public static class GetKubernetesPersistentVolumeClaimsEndpoint
     {
         app.MapGet("/persistent-volume-claims", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] GetKubernetesPersistentVolumeClaimsRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    IReadOnlyCollection<KubernetesPersistentVolumeClaimDto> persistentVolumeClaims =>
+                        Results.Ok(persistentVolumeClaims),
+                    KubernetesStorageDiscoveryUnavailable error =>
+                        httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("GetKubernetesPersistentVolumeClaims")
             .RequireAuthorization(Policy.Admin)
-            .Produces<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>();
+            .Produces<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>()
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         return app;
     }
 }

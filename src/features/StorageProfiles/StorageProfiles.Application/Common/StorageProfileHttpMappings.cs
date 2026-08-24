@@ -1,15 +1,20 @@
 using System.Net;
 using Pole.ASP.Helpers;
+using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Contracts;
 
 namespace Pole.Features.StorageProfiles.Application.Common;
 
-public static class StorageProfileContractHttpMappings
+public static class StorageProfileHttpMappings
 {
     public static IReadOnlyList<HttpProblemMapping> All { get; } =
         Array.AsReadOnly<HttpProblemMapping>(
         [
-            HttpProblemMapping.For<StorageProfileResolutionError>(MapResolutionError)
+            HttpProblemMapping.For<StorageProfileResolutionError>(MapResolutionError),
+            HttpProblemMapping.For<StorageProfileMutationValidationError>(
+                MapMutationValidationError),
+            HttpProblemMapping.For<StorageProfileRevisionConflict>(MapRevisionConflict),
+            HttpProblemMapping.For<KubernetesStorageDiscoveryUnavailable>(MapDiscoveryUnavailable)
         ]);
 
     private static HttpProblem MapResolutionError(
@@ -61,6 +66,32 @@ public static class StorageProfileContractHttpMappings
             "Storage class discovery is unavailable",
             ("deploymentTargetId", unavailable.DeploymentTargetId))
     };
+
+    private static HttpProblem MapMutationValidationError(
+        StorageProfileMutationValidationError error) => error switch
+    {
+        StorageProfileTargetMappingsInvalid invalid => Problem(
+            HttpStatusCode.UnprocessableEntity,
+            "storage-profiles.target-mappings.invalid",
+            "Storage profile target mappings are invalid",
+            ("errors", invalid.Errors)),
+        KubernetesStorageDiscoveryUnavailable unavailable => MapDiscoveryUnavailable(unavailable)
+    };
+
+    private static HttpProblem MapRevisionConflict(StorageProfileRevisionConflict conflict) =>
+        Problem(
+            HttpStatusCode.Conflict,
+            "storage-profiles.revision-conflict",
+            "Storage profile changed",
+            ("storageProfileId", conflict.StorageProfileId));
+
+    private static HttpProblem MapDiscoveryUnavailable(
+        KubernetesStorageDiscoveryUnavailable unavailable) =>
+        Problem(
+            HttpStatusCode.ServiceUnavailable,
+            "storage-profiles.discovery-unavailable",
+            "Storage discovery is unavailable",
+            ("deploymentTargetId", unavailable.DeploymentTargetId));
 
     private static HttpProblem Problem(
         HttpStatusCode status,

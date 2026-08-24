@@ -15,17 +15,33 @@ namespace Pole.Features.StorageProfiles.Application.Endpoints;
 
 public sealed record GetKubernetesStorageClassesRequest(
     [FromQuery] string DeploymentTargetId)
-    : IMediatorRequest<IReadOnlyCollection<KubernetesStorageClassDto>>;
+    : IMediatorRequest<GetKubernetesStorageClassesOutcome>;
 
-public sealed class GetKubernetesStorageClassesHandler(IStorageDiscoveryService storageDiscovery)
-    : IMediatorHandler<GetKubernetesStorageClassesRequest, IReadOnlyCollection<KubernetesStorageClassDto>>
+public union GetKubernetesStorageClassesOutcome(
+    IReadOnlyCollection<KubernetesStorageClassDto>,
+    KubernetesStorageDiscoveryUnavailable);
+
+public sealed class GetKubernetesStorageClassesHandler(
+    DiscoverKubernetesStorageClasses discoverStorageClasses)
+    : IMediatorOutcomeHandler<
+        GetKubernetesStorageClassesRequest,
+        GetKubernetesStorageClassesOutcome>
 {
-    public async Task<Result<IReadOnlyCollection<KubernetesStorageClassDto>>> HandleAsync(
+    public async Task<GetKubernetesStorageClassesOutcome> HandleAsync(
         GetKubernetesStorageClassesRequest request,
-        CancellationToken cancellationToken = default) =>
-        await storageDiscovery.GetStorageClassesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var discovered = await discoverStorageClasses(
             request.DeploymentTargetId.Trim(),
             cancellationToken);
+        return discovered switch
+        {
+            Ok<IReadOnlyCollection<KubernetesStorageClassDto>> storageClasses =>
+                new GetKubernetesStorageClassesOutcome(storageClasses.Value),
+            Err<KubernetesStorageDiscoveryUnavailable> error =>
+                new GetKubernetesStorageClassesOutcome(error.Value)
+        };
+    }
 }
 
 public sealed class GetKubernetesStorageClassesRequestValidator
@@ -42,15 +58,23 @@ public static class GetKubernetesStorageClassesEndpoint
     {
         app.MapGet("/storage-classes", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] GetKubernetesStorageClassesRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    IReadOnlyCollection<KubernetesStorageClassDto> storageClasses =>
+                        Results.Ok(storageClasses),
+                    KubernetesStorageDiscoveryUnavailable error =>
+                        httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("GetKubernetesStorageClasses")
             .RequireAuthorization(Policy.Admin)
-            .Produces<IReadOnlyCollection<KubernetesStorageClassDto>>();
+            .Produces<IReadOnlyCollection<KubernetesStorageClassDto>>()
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         return app;
     }
 }

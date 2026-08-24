@@ -162,7 +162,16 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton(fixture.Client);
         builder.Services.AddSingleton(fixture.Database);
         builder.Services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
-        builder.Services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
+        var storageDiscovery = new TestStorageDiscoveryService("standard", "fast", "bulk");
+        builder.Services.AddSingleton(storageDiscovery);
+        builder.Services.AddSingleton<DiscoverKubernetesStorageClasses>(
+            storageDiscovery.GetStorageClassesAsync);
+        builder.Services.AddSingleton<DiscoverKubernetesStorageClassNames>(
+            storageDiscovery.GetStorageClassNamesAsync);
+        builder.Services.AddSingleton<DiscoverKubernetesPersistentVolumes>(
+            storageDiscovery.GetPersistentVolumesAsync);
+        builder.Services.AddSingleton<DiscoverKubernetesPersistentVolumeClaims>(
+            storageDiscovery.GetPersistentVolumeClaimsAsync);
         builder.Services.AddMongoDbContextInterfaces();
         builder.Services.AddFunctionAppsFeature();
         builder.Services.AddResourceDeploymentsFeature(builder.Configuration);
@@ -174,7 +183,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddDomainsFeature();
         builder.Services.AddHttpProblemMappings(QuotaContractHttpMappings.All);
         builder.Services.AddComputeProfilesFeature();
-        builder.Services.AddStorageProfileResolution();
+        builder.Services.AddStorageProfilesFeature();
         builder.Services.AddRedisServicesFeature();
         builder.Services.AddPostgresFeature();
         builder.Services.AddWebServicesFeature();

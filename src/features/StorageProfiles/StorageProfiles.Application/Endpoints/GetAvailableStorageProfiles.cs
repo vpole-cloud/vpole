@@ -5,13 +5,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
-using Pole.Features.StorageProfiles.Domain;
+using Pole.Features.StorageProfiles.Application.Persistence;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -21,14 +20,20 @@ public sealed record GetAvailableStorageProfilesRequest(
     [FromQuery] string ResourceType,
     [FromQuery] string DeploymentTargetId,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<IReadOnlyCollection<StorageProfileDto>>, ITenantReadOperation;
+    : IMediatorRequest<GetAvailableStorageProfilesOutcome>, ITenantReadOperation;
+
+public union GetAvailableStorageProfilesOutcome(
+    IReadOnlyCollection<StorageProfileDto>,
+    KubernetesStorageDiscoveryUnavailable);
 
 public sealed class GetAvailableStorageProfilesHandler(
-    IStorageProfileDbContext dbContext,
-    IStorageDiscoveryService storageDiscovery)
-    : IMediatorHandler<GetAvailableStorageProfilesRequest, IReadOnlyCollection<StorageProfileDto>>
+    DiscoverKubernetesStorageClassNames discoverStorageClassNames,
+    LoadAvailableStorageProfiles loadAvailableStorageProfiles)
+    : IMediatorOutcomeHandler<
+        GetAvailableStorageProfilesRequest,
+        GetAvailableStorageProfilesOutcome>
 {
-    public async Task<Result<IReadOnlyCollection<StorageProfileDto>>> HandleAsync(
+    public async Task<GetAvailableStorageProfilesOutcome> HandleAsync(
         GetAvailableStorageProfilesRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -36,35 +41,22 @@ public sealed class GetAvailableStorageProfilesHandler(
         var resourceType = Enum.Parse<ResourceType>(
             request.ResourceType,
             ignoreCase: true);
-        var storageClassesResult = await storageDiscovery.GetStorageClassNamesAsync(
+        var storageClassesResult = await discoverStorageClassNames(
             deploymentTargetId,
             cancellationToken);
-        if (!storageClassesResult.TryGetValue(
-                out var knownStorageClassNames,
-                out var failure))
+        if (!storageClassesResult.TryGetValue(out var knownStorageClassNames, out var error))
         {
-            return failure;
+            return error;
         }
 
-        var profiles = await dbContext.StorageProfiles
-            .Find(Builders<StorageProfile>.Filter.And(
-                Builders<StorageProfile>.Filter.Eq(
-                    profile => profile.IsEnabled,
-                    true),
-                Builders<StorageProfile>.Filter.ElemMatch(
-                    profile => profile.TargetMappings,
-                    mapping => mapping.DeploymentTargetId == deploymentTargetId)))
-            .SortByDescending(profile => profile.IsDefault)
-            .ThenBy(profile => profile.DisplayName)
-            .ToListAsync(cancellationToken);
+        var profiles = await loadAvailableStorageProfiles(
+            new StorageProfileAvailabilityQuery(
+                request.TenantId,
+                deploymentTargetId,
+                resourceType),
+            cancellationToken);
 
         return profiles
-            .Where(profile => StorageProfileResolver.AllowsTenant(
-                profile,
-                request.TenantId))
-            .Where(profile => StorageProfileResolver.AllowsResourceType(
-                profile,
-                resourceType))
             .Where(profile => profile.TargetMappings.Any(mapping =>
                 string.Equals(
                     mapping.DeploymentTargetId,
@@ -104,13 +96,20 @@ public static class GetAvailableStorageProfilesEndpoint
         app.MapGet("/", async (
                 [AsParameters] GetAvailableStorageProfilesRequest request,
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    IReadOnlyCollection<StorageProfileDto> profiles => Results.Ok(profiles),
+                    KubernetesStorageDiscoveryUnavailable error =>
+                        httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("GetAvailableStorageProfiles")
-            .Produces<IReadOnlyCollection<StorageProfileDto>>();
+            .Produces<IReadOnlyCollection<StorageProfileDto>>()
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         return app;
     }
 }

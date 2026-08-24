@@ -97,30 +97,19 @@ public delegate Task<Result<ResolvedStorageProfile, StorageProfileResolutionErro
         StorageProfileResolutionRequest request,
         CancellationToken cancellationToken = default);
 
-/// <summary>
-/// Temporary shared-result adapter for consumers that have not yet migrated to
-/// <see cref="ResolveStorageProfile"/>.
-/// </summary>
-public interface IStorageProfileResolver
-{
-    Task<Result<ResolvedStorageProfile>> ResolveAsync(
-        StorageProfileResolutionRequest request,
-        CancellationToken cancellationToken = default);
-}
-
 public sealed record StorageProfileResolutionFenceRequest(
     string StorageProfileId,
     long StorageProfileRevision,
     string DeploymentTargetId,
     string StorageClassName);
 
-public interface IStorageProfileResolutionFence
-{
-    Task<Result> FenceAsync(
+public sealed record StorageProfileResolutionFenceRejected(string StorageProfileId);
+
+public delegate Task<Result<Unit, StorageProfileResolutionFenceRejected>>
+    FenceStorageProfileResolution(
         StorageProfileResolutionFenceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
-}
 
 public static class PoleStorageLabels
 {

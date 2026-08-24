@@ -1,7 +1,6 @@
 using MongoDB.Driver;
-using Pole.Database;
+using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Shared.Models;
-using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.ResultType;
@@ -42,19 +41,13 @@ public sealed class StorageProfileResolutionFenceTests(
                 ProfileId,
                 DateTime.UtcNow));
         await fixture.DbContext.StorageProfiles.InsertOneAsync(profile);
-        var fence = new StorageProfileResolutionFence(fixture.DbContext);
+        var result = await FenceAsync(new StorageProfileResolutionFenceRequest(
+            ProfileId,
+            profile.Revision,
+            TargetId,
+            "fast"));
 
-        var result = await fixture.DbContext.RunInTransactionAsync(
-            (session, cancellationToken) => fence.FenceAsync(
-                new StorageProfileResolutionFenceRequest(
-                    ProfileId,
-                    profile.Revision,
-                    TargetId,
-                    "fast"),
-                session,
-                cancellationToken));
-
-        Assert.IsAssignableFrom<ISuccess>(result);
+        result.AssertSuccess();
         var saved = await fixture.DbContext.StorageProfiles
             .Find(item => item.Id == ProfileId)
             .SingleAsync();
@@ -82,18 +75,47 @@ public sealed class StorageProfileResolutionFenceTests(
                 ProfileId,
                 DateTime.UtcNow));
         await fixture.DbContext.StorageProfiles.InsertOneAsync(profile);
-        var fence = new StorageProfileResolutionFence(fixture.DbContext);
+        var result = await FenceAsync(new StorageProfileResolutionFenceRequest(
+            ProfileId,
+            profile.Revision + 1,
+            TargetId,
+            "fast"));
 
-        var result = await fixture.DbContext.RunInTransactionAsync(
-            (session, cancellationToken) => fence.FenceAsync(
-                new StorageProfileResolutionFenceRequest(
-                    ProfileId,
-                    profile.Revision + 1,
-                    TargetId,
-                    "fast"),
-                session,
-                cancellationToken));
+        Assert.IsType<StorageProfileResolutionFenceRejected>(result.AssertFailure());
+    }
 
-        Assert.IsType<ConflictFailure>(result);
+    [Fact]
+    public async Task Fence_ThrowsForStructuralResolutionInput()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => FenceAsync(
+            new StorageProfileResolutionFenceRequest(
+                ProfileId,
+                1,
+                "not-an-object-id",
+                "fast")));
+    }
+
+    private async Task<Result<Unit, StorageProfileResolutionFenceRejected>> FenceAsync(
+        StorageProfileResolutionFenceRequest request)
+    {
+        using var provider = TestServiceProviderFactory.Create(fixture);
+        using var scope = provider.CreateScope();
+        var fence = scope.ServiceProvider.GetRequiredService<FenceStorageProfileResolution>();
+        using var session = await fixture.Client.StartSessionAsync();
+        session.StartTransaction();
+        try
+        {
+            var result = await fence(request, session);
+            if (result is Ok<Unit>)
+                await session.CommitTransactionAsync();
+            else
+                await session.AbortTransactionAsync();
+            return result;
+        }
+        catch
+        {
+            await session.AbortTransactionAsync();
+            throw;
+        }
     }
 }

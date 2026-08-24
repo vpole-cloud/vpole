@@ -5,11 +5,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.StorageProfiles.Application.Common;
-using Pole.Features.StorageProfiles.Application.Discovery;
+using Pole.Features.StorageProfiles.Application.Persistence;
+using Pole.Features.StorageProfiles.Application.Validation;
+using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -43,35 +43,33 @@ public sealed record UpdateStorageProfileRequestBody(
 public sealed record UpdateStorageProfileRequest(
     [FromRoute] string Id,
     [FromBody] UpdateStorageProfileRequestBody Body)
-    : IMediatorRequest<StorageProfileDto>;
+    : IMediatorRequest<UpdateStorageProfileOutcome>;
+
+public union UpdateStorageProfileError(
+    StorageProfileNotFound,
+    StorageProfileRevisionConflict,
+    StorageProfileMutationValidationError);
+
+public union UpdateStorageProfileOutcome(
+    StorageProfileDto,
+    UpdateStorageProfileError);
 
 public sealed class UpdateStorageProfileHandler(
-    IStorageProfileDbContext dbContext,
-    IStorageDiscoveryService storageDiscovery,
+    LoadStorageProfileById loadStorageProfileById,
+    ValidateStorageProfileTargetMappings validateTargetMappings,
+    PersistUpdatedStorageProfile persistUpdatedStorageProfile,
     TimeProvider timeProvider)
-    : IMediatorHandler<UpdateStorageProfileRequest, StorageProfileDto>
+    : IMediatorOutcomeHandler<UpdateStorageProfileRequest, UpdateStorageProfileOutcome>
 {
-    public async Task<Result<StorageProfileDto>> HandleAsync(
+    public async Task<UpdateStorageProfileOutcome> HandleAsync(
         UpdateStorageProfileRequest request,
         CancellationToken cancellationToken = default)
     {
-        var existing = await dbContext.StorageProfiles
-            .Find(profile => profile.Id == request.Id)
-            .FirstOrDefaultAsync(cancellationToken);
+        var existing = await loadStorageProfileById(request.Id, cancellationToken);
         if (existing is null)
-            return Failures.NotFound("Storage profile not found.", request.Id);
+            return new UpdateStorageProfileError(new StorageProfileNotFound(request.Id));
         if (existing.Revision != request.Body.Revision)
-            return Failures.Conflict("The storage profile changed. Reload it and retry.");
-
-        var mappingValidation =
-            await StorageProfileTargetMappingValidation.ValidateKnownStorageClassesAsync(
-                request.Body.TargetMappings,
-                storageDiscovery,
-                cancellationToken);
-        if (!mappingValidation.TryGetValue(out var mappingErrors, out var mappingFailure))
-            return mappingFailure;
-        if (mappingErrors.Count > 0)
-            return Failures.ValidationFailure(mappingErrors);
+            return new UpdateStorageProfileError(new StorageProfileRevisionConflict(request.Id));
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
         if (now < existing.UpdatedAtUtc)
@@ -80,33 +78,19 @@ public sealed class UpdateStorageProfileHandler(
         if (updated.Revision == existing.Revision)
             return existing.ToDto();
 
-        return await dbContext.RunInTransactionAsync<StorageProfileDto>(async (session, ct) =>
+        var targetValidation = await validateTargetMappings(updated, cancellationToken);
+        if (targetValidation is Err<StorageProfileMutationValidationError> error)
         {
-            if (updated.IsDefault)
-            {
-                await StorageProfileDefaultPersistence.DemoteOtherDefaultsAsync(
-                    dbContext,
-                    session,
-                    updated.Id,
-                    now,
-                    ct);
-            }
+            return new UpdateStorageProfileError(error.Value);
+        }
 
-            var replacement = await dbContext.StorageProfiles.ReplaceOneAsync(
-                session,
-                Builders<StorageProfile>.Filter.And(
-                    Builders<StorageProfile>.Filter.Eq(
-                        profile => profile.Id,
-                        existing.Id),
-                    Builders<StorageProfile>.Filter.Eq(
-                        profile => profile.Revision,
-                        existing.Revision)),
-                updated,
-                cancellationToken: ct);
-            return replacement.ModifiedCount == 1
-                ? updated.ToDto()
-                : Failures.Conflict("The storage profile changed. Reload it and retry.");
-        }, cancellationToken: cancellationToken);
+        var persisted = await persistUpdatedStorageProfile(
+            existing,
+            updated,
+            cancellationToken);
+        return persisted.Match(
+            UpdateStorageProfileOutcome (profile) => profile.ToDto(),
+            UpdateStorageProfileOutcome (error) => new UpdateStorageProfileError(error));
     }
 }
 
@@ -138,15 +122,24 @@ public static class UpdateStorageProfileEndpoint
     {
         app.MapPut("/profiles/{Id}", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] UpdateStorageProfileRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    StorageProfileDto profile => Results.Ok(profile),
+                    UpdateStorageProfileError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("UpdateStorageProfile")
             .RequireAuthorization(Policy.Admin)
-            .Produces<StorageProfileDto>();
+            .Produces<StorageProfileDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         return app;
     }
 }

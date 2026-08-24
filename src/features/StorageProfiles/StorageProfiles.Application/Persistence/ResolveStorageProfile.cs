@@ -6,11 +6,11 @@ using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.StorageProfiles.Application.Common;
+namespace Pole.Features.StorageProfiles.Application.Persistence;
 
-public sealed class StorageProfileResolver(
-    IStorageProfileDbContext dbContext,
-    IStorageDiscoveryService storageDiscovery)
+internal sealed class MongoResolveStorageProfile(
+    IMongoCollection<StorageProfile> storageProfiles,
+    DiscoverKubernetesStorageClassNames discoverStorageClassNames)
 {
     public async Task<Result<ResolvedStorageProfile, StorageProfileResolutionError>> InvokeAsync(
         StorageProfileResolutionRequest request,
@@ -18,26 +18,25 @@ public sealed class StorageProfileResolver(
     {
         EnsureValidRequest(request);
 
-        var profile = await dbContext.StorageProfiles
-            .Find(item => item.Id == request.StorageProfileId)
+        var profile = await storageProfiles
+            .Find(StorageProfileFilters.ById(request.StorageProfileId))
             .FirstOrDefaultAsync(cancellationToken);
         if (profile is null)
         {
             return new Err<StorageProfileResolutionError>(
                 new StorageProfileNotFound(request.StorageProfileId));
         }
-
         if (!profile.IsEnabled)
         {
             return new Err<StorageProfileResolutionError>(
                 new StorageProfileDisabled(profile.Id));
         }
-        if (!AllowsTenant(profile, request.TenantId))
+        if (!MongoLoadAvailableStorageProfiles.AllowsTenant(profile, request.TenantId))
         {
             return new Err<StorageProfileResolutionError>(
                 new StorageProfileTenantAccessDenied(profile.Id, request.TenantId));
         }
-        if (!AllowsResourceType(profile, request.ResourceType))
+        if (!profile.AllowedResourceTypes.Contains(request.ResourceType))
         {
             return new Err<StorageProfileResolutionError>(
                 new StorageProfileResourceTypeNotAllowed(profile.Id, request.ResourceType));
@@ -61,15 +60,15 @@ public sealed class StorageProfileResolver(
                     request.DeploymentTargetId));
         }
 
-        var storageClassesResult = await storageDiscovery.GetStorageClassNamesAsync(
+        var storageClasses = await discoverStorageClassNames(
             request.DeploymentTargetId,
             cancellationToken);
-        if (!storageClassesResult.TryGetValue(out var knownStorageClassNames, out _))
+        if (!storageClasses.TryGetValue(out var names, out _))
         {
             return new Err<StorageProfileResolutionError>(
                 new StorageProfileDiscoveryUnavailable(request.DeploymentTargetId));
         }
-        if (!knownStorageClassNames.Contains(targetMapping!.StorageClassName))
+        if (!names.Contains(targetMapping.StorageClassName))
         {
             return new Err<StorageProfileResolutionError>(
                 new StorageProfileStorageClassUnavailable(
@@ -88,16 +87,7 @@ public sealed class StorageProfileResolver(
             profile.PerformanceTier));
     }
 
-    internal static bool AllowsTenant(StorageProfile profile, string tenantId) =>
-        profile.TenantAccess.Mode == StorageProfileTenantAccessMode.AllTenants ||
-        profile.TenantAccess.TenantIds.Contains(tenantId);
-
-    internal static bool AllowsResourceType(
-        StorageProfile profile,
-        ResourceType resourceType) =>
-        profile.AllowedResourceTypes.Contains(resourceType);
-
-    internal static bool AllowsSize(StorageProfile profile, int sizeGb) =>
+    private static bool AllowsSize(StorageProfile profile, int sizeGb) =>
         (profile.SizeLimits?.MinSizeGb is null || sizeGb >= profile.SizeLimits.MinSizeGb) &&
         (profile.SizeLimits?.MaxSizeGb is null || sizeGb <= profile.SizeLimits.MaxSizeGb);
 
@@ -125,6 +115,10 @@ public sealed class StorageProfileResolver(
         if (!Enum.IsDefined(request.ResourceType))
             throw new ArgumentOutOfRangeException(nameof(request), "Resource type is invalid.");
         if (request.SizeGb <= 0)
-            throw new ArgumentOutOfRangeException(nameof(request), "Requested storage size must be greater than zero.");
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(request),
+                "Requested storage size must be greater than zero.");
+        }
     }
 }

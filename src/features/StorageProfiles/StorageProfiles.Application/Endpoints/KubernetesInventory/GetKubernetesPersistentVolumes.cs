@@ -15,17 +15,33 @@ namespace Pole.Features.StorageProfiles.Application.Endpoints;
 
 public sealed record GetKubernetesPersistentVolumesRequest(
     [FromQuery] string DeploymentTargetId)
-    : IMediatorRequest<IReadOnlyCollection<KubernetesPersistentVolumeDto>>;
+    : IMediatorRequest<GetKubernetesPersistentVolumesOutcome>;
 
-public sealed class GetKubernetesPersistentVolumesHandler(IStorageDiscoveryService storageDiscovery)
-    : IMediatorHandler<GetKubernetesPersistentVolumesRequest, IReadOnlyCollection<KubernetesPersistentVolumeDto>>
+public union GetKubernetesPersistentVolumesOutcome(
+    IReadOnlyCollection<KubernetesPersistentVolumeDto>,
+    KubernetesStorageDiscoveryUnavailable);
+
+public sealed class GetKubernetesPersistentVolumesHandler(
+    DiscoverKubernetesPersistentVolumes discoverPersistentVolumes)
+    : IMediatorOutcomeHandler<
+        GetKubernetesPersistentVolumesRequest,
+        GetKubernetesPersistentVolumesOutcome>
 {
-    public async Task<Result<IReadOnlyCollection<KubernetesPersistentVolumeDto>>> HandleAsync(
+    public async Task<GetKubernetesPersistentVolumesOutcome> HandleAsync(
         GetKubernetesPersistentVolumesRequest request,
-        CancellationToken cancellationToken = default) =>
-        await storageDiscovery.GetPersistentVolumesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var discovered = await discoverPersistentVolumes(
             request.DeploymentTargetId.Trim(),
             cancellationToken);
+        return discovered switch
+        {
+            Ok<IReadOnlyCollection<KubernetesPersistentVolumeDto>> persistentVolumes =>
+                new GetKubernetesPersistentVolumesOutcome(persistentVolumes.Value),
+            Err<KubernetesStorageDiscoveryUnavailable> error =>
+                new GetKubernetesPersistentVolumesOutcome(error.Value)
+        };
+    }
 }
 
 public sealed class GetKubernetesPersistentVolumesRequestValidator
@@ -42,15 +58,23 @@ public static class GetKubernetesPersistentVolumesEndpoint
     {
         app.MapGet("/persistent-volumes", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] GetKubernetesPersistentVolumesRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    IReadOnlyCollection<KubernetesPersistentVolumeDto> persistentVolumes =>
+                        Results.Ok(persistentVolumes),
+                    KubernetesStorageDiscoveryUnavailable error =>
+                        httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("GetKubernetesPersistentVolumes")
             .RequireAuthorization(Policy.Admin)
-            .Produces<IReadOnlyCollection<KubernetesPersistentVolumeDto>>();
+            .Produces<IReadOnlyCollection<KubernetesPersistentVolumeDto>>()
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         return app;
     }
 }
