@@ -41,7 +41,6 @@ using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.Tenants.Application;
 using Pole.Mediator;
 using Pole.Observability;
-using Pole.Server.Database;
 
 namespace Pole.Server.Extensions;
 
@@ -135,21 +134,13 @@ public static class DependencyInjection
         {
             services.AddSingleton<IMongoDatabase>(sp =>
                 sp.GetRequiredService<IMongoClient>().GetDatabase("pole-database"));
-            services.AddMongoDbContextInterfaces();
-            services.AddSingleton<MigrationRunner>();
-            return services;
-        }
-
-        public IServiceCollection AddMongoDbContextInterfaces()
-        {
-            services.TryAddSingleton<MongoDbContext>();
             services.TryAddSingleton(TimeProvider.System);
-            services.TryAddSingleton<IMongoDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<MongoRunTransaction>();
             services.TryAddSingleton<RunMongoTransaction>(serviceProvider =>
                 serviceProvider
                     .GetRequiredService<MongoRunTransaction>()
                     .InvokeAsync);
+            services.AddSingleton<MigrationRunner>();
             return services;
         }
 

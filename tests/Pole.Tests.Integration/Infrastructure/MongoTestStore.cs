@@ -1,35 +1,34 @@
 using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.ContainerRegistries.Domain;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.Features.GitProviders.Domain;
 using Pole.Features.Functions.Domain;
+using Pole.Features.GitProviders.Domain;
+using Pole.Features.Outbox.Application.Model;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.Features.Outbox.Application.Model;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.Users.Domain;
 using PostgresCluster = Pole.Features.Postgres.Domain.PostgresCluster;
 
-namespace Pole.Server.Database;
+namespace Pole.Tests.Integration.Infrastructure;
 
-public class MongoDbContext(
+/// <summary>
+/// Test-only MongoDB collection accessors. Production code uses feature-owned capabilities.
+/// </summary>
+public sealed class MongoTestStore(
     IMongoClient client,
-    IMongoDatabase database
-    ) : IEventDbContext
+    IMongoDatabase database)
 {
     public IMongoDatabase Database { get; } = database;
     public IMongoClient Client { get; } = client;
-    // Transitional host/test convenience accessors. ResourceGroups.Application consumes only
-    // feature-owned capabilities and does not depend on this concrete context.
     public IMongoCollection<ResourceGroup> ResourceGroups { get; } = database.GetCollection<ResourceGroup>("ResourceGroups");
     public IMongoCollection<IsolationScope> IsolationScopes { get; } = database.GetCollection<IsolationScope>("IsolationScopes");
     public IMongoCollection<RuntimeCell> RuntimeCells { get; } = database.GetCollection<RuntimeCell>("RuntimeCells");
     public IMongoCollection<ResourceDeployment> ResourceDeployments { get; } = database.GetCollection<ResourceDeployment>("ResourceDeployments");
-    public IMongoCollection<PostgresCluster>  Postgres { get; } = database.GetCollection<PostgresCluster>("Postgres");
+    public IMongoCollection<PostgresCluster> Postgres { get; } = database.GetCollection<PostgresCluster>("Postgres");
     public IMongoCollection<StorageProfile> StorageProfiles { get; } = database.GetCollection<StorageProfile>("StorageProfiles");
     public IMongoCollection<OutboxMessage> OutboxMessages { get; } = database.GetCollection<OutboxMessage>("OutboxMessages");
     public IMongoCollection<Tenant> Tenants { get; } = database.GetCollection<Tenant>("Tenants");

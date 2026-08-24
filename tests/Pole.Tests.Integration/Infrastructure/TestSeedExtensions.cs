@@ -3,13 +3,12 @@ using Pole.Database;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.WebServices.Domain;
-using Pole.Server.Database;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
 public static class TestSeedExtensions
 {
-    public static async Task<ResourceGroup> InsertResourceGroupAsync(this MongoDbContext dbContext, ResourceGroup resourceGroup)
+    public static async Task<ResourceGroup> InsertResourceGroupAsync(this MongoTestStore dbContext, ResourceGroup resourceGroup)
     {
         var defaultScope = IsolationScopeFactory.CreateDefault(
             resourceGroup.TenantId,
@@ -36,19 +35,19 @@ public static class TestSeedExtensions
         return resourceGroup;
     }
 
-    public static async Task<WebService> InsertWebServiceAsync(this MongoDbContext dbContext, WebService webService)
+    public static async Task<WebService> InsertWebServiceAsync(this MongoTestStore dbContext, WebService webService)
     {
         await dbContext.Database.WebServices().InsertOneAsync(webService);
         return webService;
     }
 
-    public static async Task<Redis> InsertRedisAsync(this MongoDbContext dbContext, Redis redis)
+    public static async Task<Redis> InsertRedisAsync(this MongoTestStore dbContext, Redis redis)
     {
         await dbContext.Database.RedisServices().InsertOneAsync(redis);
         return redis;
     }
 
-    public static async Task<long> CountOutboxMessagesAsync(this MongoDbContext dbContext, string eventType)
+    public static async Task<long> CountOutboxMessagesAsync(this MongoTestStore dbContext, string eventType)
     {
         return await dbContext.OutboxMessages.CountDocumentsAsync(message => message.EventType == eventType);
     }

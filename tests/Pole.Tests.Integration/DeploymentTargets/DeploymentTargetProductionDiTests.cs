@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Application;
 using Pole.Features.DeploymentTargets.Application.Common;
@@ -161,7 +162,12 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
         services.AddSingleton<IMongoDatabase>(fixture.Database);
         services.AddSingleton<IEnvelopeEncryptionService>(TestPostgresEnvelopeEncryption.Create());
         services.AddSingleton<IHostEnvironment>(new FakeHostEnvironment());
-        services.AddMongoDbContextInterfaces();
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<MongoRunTransaction>();
+        services.AddSingleton<RunMongoTransaction>(serviceProvider =>
+            serviceProvider
+                .GetRequiredService<MongoRunTransaction>()
+                .InvokeAsync);
         services.AddKubernetes(configuration)
             .AddDeploymentTargetsFeature(configuration);
 
