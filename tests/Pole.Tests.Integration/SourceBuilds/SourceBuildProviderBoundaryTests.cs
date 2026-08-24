@@ -1,9 +1,8 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.ContainerRegistries.Application.Common;
+using Pole.Features.ContainerRegistries.Application.Persistence;
 using Pole.Features.ContainerRegistries.Application.Provisioning;
-using Pole.Features.ContainerRegistries.Application.Security;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
 using Pole.Features.GitProviders.Application.Common;
@@ -138,29 +137,32 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
         await fixture.DbContext.RegistryProjects.InsertOneAsync(project);
 
         var registryClient = new RecordingContainerRegistryClient();
-        var service = new ContainerRegistryBuildService(
-            fixture.DbContext,
-            new UnusedProvisioningService(),
-            new UnusedCredentialResolver(),
-            registryClient,
-            new HarborOptions { RegistryHost = "harbor.test" });
+        LoadTenantHarborRegistryProject loadProject = async (tenantId, cancellationToken) =>
+            await fixture.DbContext.RegistryProjects
+                .Find(item => item.TenantId == tenantId && item.Provider == ContainerRegistryProvider.Harbor)
+                .FirstOrDefaultAsync(cancellationToken);
+        var service = new TenantRegistryArtifactLookup(loadProject, registryClient);
 
-        var crossTenant = await service.GetArtifactAsync(
+        var crossTenant = await service.InvokeAsync(
             ObjectId.GenerateNewId().ToString(),
             project.Id,
             "web-services/service-1",
             "build-1");
 
-        Assert.IsType<NotFoundFailure>(crossTenant.AssertFailure());
+        var crossTenantResult = TypedResultExtensions.TryGetValue(crossTenant);
+        Assert.False(crossTenantResult.Succeeded);
+        Assert.IsType<TenantContainerRegistryProjectNotFound>(crossTenantResult.Error!.Value);
         Assert.Equal(0, registryClient.ArtifactCalls);
 
-        var artifact = await service.GetArtifactAsync(
+        var artifact = await service.InvokeAsync(
             TestData.TenantId,
             project.Id,
             "web-services/service-1",
             "build-1");
 
-        var found = artifact.AssertSuccess();
+        var foundResult = TypedResultExtensions.TryGetValue(artifact);
+        Assert.True(foundResult.Succeeded);
+        var found = foundResult.Value!;
         Assert.Equal("sha256:digest", found.Digest);
         Assert.Equal(1, registryClient.ArtifactCalls);
         Assert.Equal(project.Name, registryClient.ProjectName);
@@ -198,7 +200,7 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
         public int ArtifactCalls { get; private set; }
         public string? ProjectName { get; private set; }
 
-        public Task<Result<RegistryArtifact>> GetArtifactAsync(
+        public Task<Result<RegistryArtifact, ContainerRegistryArtifactLookupError>> GetArtifactAsync(
             string projectName,
             string repositoryName,
             string reference,
@@ -206,42 +208,24 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
         {
             ArtifactCalls++;
             ProjectName = projectName;
-            return Task.FromResult<Result<RegistryArtifact>>(
-                new RegistryArtifact(repositoryName, reference, "sha256:digest", 100));
+            return Task.FromResult<Result<RegistryArtifact, ContainerRegistryArtifactLookupError>>(
+                new Ok<RegistryArtifact>(new RegistryArtifact(repositoryName, reference, "sha256:digest", 100)));
         }
 
-        public Task<Result<ProvisionedRegistryProject>> ProvisionProjectAsync(
+        public Task<Result<ProvisionedRegistryProject, ContainerRegistryProviderError>> ProvisionProjectAsync(
             RegistryProjectProvisioningRequest request,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<Result<RegistryRobotCleanupResult>> DeleteRobotCredentialsAsync(
+        public Task<Result<RegistryRobotCleanupResult, ContainerRegistryProviderError>> DeleteRobotCredentialsAsync(
             IReadOnlyCollection<RegistryRobotCleanupTarget> targets,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<Result> DeleteProjectAsync(
+        public Task<Result<Unit, ContainerRegistryProviderError>> DeleteProjectAsync(
             string externalProjectId,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
     }
 
-    private sealed class UnusedProvisioningService : IContainerRegistryProvisioningService
-    {
-        public Task<Result<RegistryProject>> EnsureTenantProjectAsync(
-            string tenantId,
-            string initiatedByUserId,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-    }
-
-    private sealed class UnusedCredentialResolver : IRegistryCredentialResolver
-    {
-        public Task<Result<ResolvedRegistryCredential>> ResolveAsync(
-            string tenantId,
-            string registryProjectId,
-            RegistryCredentialPurpose purpose,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-    }
 }

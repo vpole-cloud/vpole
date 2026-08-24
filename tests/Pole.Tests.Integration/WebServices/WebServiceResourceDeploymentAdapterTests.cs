@@ -31,7 +31,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         var subject = new WebServiceResourceDeploymentAdapter(
             reader.LoadSnapshot,
             reader.LoadById,
-            new UnexpectedRegistryAccessProvider(),
+            UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes));
         var context = CreateContext(includeIngress: true);
 
@@ -126,7 +126,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         var subject = new WebServiceResourceDeploymentAdapter(
             reader.LoadSnapshot,
             reader.LoadById,
-            new UnexpectedRegistryAccessProvider(),
+            UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes));
 
         var result = await subject.ApplyAsync(
@@ -151,7 +151,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         var subject = new WebServiceResourceDeploymentAdapter(
             reader.LoadSnapshot,
             reader.LoadById,
-            new UnexpectedRegistryAccessProvider(),
+            UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes));
 
         var result = await subject.DeleteAsync(
@@ -259,15 +259,12 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         }
     }
 
-    private sealed class UnexpectedRegistryAccessProvider
-        : IRuntimeRegistryAccessProvider
-    {
-        public Task<Result<RuntimeRegistryAccess>> ResolveAsync(
+    private static Task<Result<RuntimeRegistryAccess, ResolveRuntimeRegistryAccessError>>
+        UnexpectedRegistryAccess(
             string tenantId,
             CancellationToken cancellationToken = default) =>
-            throw new Xunit.Sdk.XunitException(
-                "An image without a pull secret must not request registry credentials.");
-    }
+        throw new Xunit.Sdk.XunitException(
+            "An image without a pull secret must not request registry credentials.");
 
     private sealed class RecordingKubernetesHandler : DelegatingHandler
     {
