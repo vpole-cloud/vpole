@@ -30,6 +30,8 @@ using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application;
+using Pole.Features.Users.Application;
+using Pole.Features.Users.Application.Common;
 using Pole.Features.SourceBuilds.Application;
 using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.WebServices.Application;
@@ -57,7 +59,8 @@ public static class TestServiceProviderFactory
         typeof(DeploymentTargetFeature).Assembly,
         typeof(SearchEndpoints).Assembly,
         typeof(StorageProfileEndpoints).Assembly,
-        typeof(TenantEndpoints).Assembly
+        typeof(TenantEndpoints).Assembly,
+        typeof(UserEndpoints).Assembly
     ];
 
     public static ServiceProvider Create(MongoReplicaSetFixture fixture)
@@ -92,6 +95,7 @@ public static class TestServiceProviderFactory
             configuration);
         services.AddResourceGroupsFeature(configuration);
         services.AddTenantsFeature();
+        services.AddUsersFeature(configuration);
         services.AddDomainsFeature();
         services.AddComputeProfilesFeature();
         services.AddStorageProfilesFeature();

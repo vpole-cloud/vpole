@@ -12,6 +12,8 @@ using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Endpoints;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
+using Pole.Features.Users.Application.Common;
+using Pole.Features.Users.Application.Endpoints;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -20,6 +22,21 @@ namespace Pole.Tests.Integration.Api;
 public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
+    [Fact]
+    public async Task CreateUser_ReturnsCreatedForPlatformAdmin()
+    {
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+
+        var response = await Client.PostAsJsonAsync(
+            "/api/v1/users/",
+            new CreateUserRequestBody("new-user@example.test", "New", "User"));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var user = await response.Content.ReadFromJsonAsync<UserDto>();
+        Assert.NotNull(user);
+        Assert.Equal("new-user@example.test", user.Email);
+    }
+
     [Fact]
     public async Task CreateResourceGroup_ReturnsCreated()
     {

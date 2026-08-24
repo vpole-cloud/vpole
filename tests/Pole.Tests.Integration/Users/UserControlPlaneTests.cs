@@ -1,0 +1,240 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.Core.Multitenancy;
+using Pole.Features.Tenants.Application;
+using Pole.Features.Tenants.Application.Consumers;
+using Pole.Features.Tenants.Application.Persistence;
+using Pole.Features.Tenants.Domain;
+using Pole.Features.Users.Application;
+using Pole.Features.Users.Application.Common;
+using Pole.Features.Users.Application.Endpoints;
+using Pole.Features.Users.Application.Identity;
+using Pole.Features.Users.Application.Persistence;
+using Pole.Features.Users.Domain;
+using Pole.Features.Users.Events;
+using Pole.ResultType;
+using Pole.Server.Extensions;
+using Pole.Tests.Integration.Infrastructure;
+using Xunit;
+
+namespace Pole.Tests.Integration.Users;
+
+[Collection(IntegrationTestCollection.Name)]
+public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+{
+    private ServiceProvider? _services;
+
+    public async Task InitializeAsync()
+    {
+        await fixture.ResetDatabaseAsync();
+        var services = new ServiceCollection();
+        services.AddSingleton(fixture.Client);
+        services.AddSingleton(fixture.Database);
+        services.AddMongoDbContextInterfaces();
+        services.AddTenantsFeature();
+        services.AddUsersFeature(CreateConfiguration());
+        _services = services.BuildServiceProvider(validateScopes: true);
+    }
+
+    public Task DisposeAsync()
+    {
+        _services?.Dispose();
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public void FeatureRegistration_ResolvesTheUserCapabilityGraph()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(fixture.Client);
+        services.AddSingleton(fixture.Database);
+        services.AddMongoDbContextInterfaces();
+        services.AddUsersFeature(CreateConfiguration());
+
+        Assert.DoesNotContain(services, descriptor =>
+            descriptor.ServiceType.Name.Contains("UserDbContext", StringComparison.Ordinal));
+
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+        using var scope = provider.CreateScope();
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<EnsureUserEmailAvailable>());
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<PersistCreatedUser>());
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<IIdentityProvider>());
+    }
+
+    [Fact]
+    public async Task CreateUser_CreatesPoleUserAndIdempotentDefaultTenant()
+    {
+        var identityProvider = new FakeIdentityProvider("keycloak-user-1");
+        using var scope = Services.CreateScope();
+        var result = await CreateHandler(scope.ServiceProvider, identityProvider).HandleAsync(
+            new CreateUserRequest(
+                new CreateUserRequestBody("New.User@Example.com", "New", "User")));
+
+        var user = result switch
+        {
+            UserDto createdUser => createdUser,
+            CreateUserError error => throw new Xunit.Sdk.XunitException(
+                $"Expected user creation, got {error.GetType().Name}.")
+        };
+        Assert.Equal("new.user@example.com", user.Email);
+
+        var storedUser = await fixture.DbContext.Users
+            .Find(stored => stored.Id == "keycloak-user-1")
+            .FirstAsync();
+        Assert.Equal(1L, await fixture.DbContext.CountOutboxMessagesAsync("user-created"));
+
+        using var consumerScope = Services.CreateScope();
+        var consumer = new CreateDefaultTenantOnUserCreatedConsumer(
+            consumerScope.ServiceProvider.GetRequiredService<EnsureDefaultTenant>());
+        var userCreated = new UserCreatedEvent(
+            storedUser.Id,
+            storedUser.Email,
+            storedUser.FirstName,
+            storedUser.LastName,
+            storedUser.DefaultTenantId,
+            $"{storedUser.Email} personal");
+        await consumer.Handle(userCreated);
+        await consumer.Handle(userCreated);
+
+        var defaultTenant = await fixture.DbContext.Tenants
+            .Find(tenant => tenant.Id == storedUser.DefaultTenantId)
+            .FirstAsync();
+        Assert.Equal(
+            1,
+            await fixture.DbContext.Tenants.CountDocumentsAsync(
+                tenant => tenant.Id == storedUser.DefaultTenantId));
+        var owner = Assert.Single(defaultTenant.Members);
+        Assert.Equal("keycloak-user-1", owner.UserId);
+        Assert.Equal(TenantRole.Owner, owner.Role);
+        Assert.True(owner.IsDefault);
+    }
+
+    [Fact]
+    public async Task CreateUser_IdentityFailureDoesNotCreatePoleRecords()
+    {
+        var identityProvider = new FakeIdentityProvider("keycloak-user-1")
+        {
+            CreateError = new IdentityUserCreationFailed()
+        };
+
+        using var scope = Services.CreateScope();
+        var result = await CreateHandler(scope.ServiceProvider, identityProvider).HandleAsync(
+            new CreateUserRequest(new CreateUserRequestBody("user@example.com", null, null)));
+
+        Assert.True(
+            result is CreateUserError error &&
+            error is IdentityUserCreationFailed);
+        Assert.Equal(0, await fixture.DbContext.Users.CountDocumentsAsync(Builders<PoleUser>.Filter.Empty));
+        Assert.Equal(0, await fixture.DbContext.Tenants.CountDocumentsAsync(Builders<Tenant>.Filter.Empty));
+        Assert.Equal(0L, await fixture.DbContext.CountOutboxMessagesAsync("user-created"));
+    }
+
+    [Fact]
+    public async Task CreateUser_ExistingEmailDoesNotCreateAnIdentityUser()
+    {
+        await fixture.DbContext.Users.InsertOneAsync(
+            new PoleUser(
+                "existing-user",
+                "existing@example.com",
+                null,
+                null,
+                "tenant-1",
+                DateTime.UtcNow));
+        var identityProvider = new FakeIdentityProvider("keycloak-user-1");
+
+        using var scope = Services.CreateScope();
+        var result = await CreateHandler(scope.ServiceProvider, identityProvider).HandleAsync(
+            new CreateUserRequest(
+                new CreateUserRequestBody("Existing@Example.com", null, null)));
+
+        Assert.True(
+            result is CreateUserError error &&
+            error is CreateUserPersistenceError {
+                Value: UserEmailAlreadyExists { Email: "existing@example.com" }
+            });
+        Assert.Equal(0, identityProvider.CreateCalls);
+        Assert.Empty(identityProvider.DeletedUserIds);
+    }
+
+    [Fact]
+    public async Task CreateUser_MongoConflictAfterIdentityCreateAttemptsCleanup()
+    {
+        await fixture.DbContext.Users.InsertOneAsync(
+            new PoleUser(
+                "keycloak-user-1",
+                "existing@example.com",
+                null,
+                null,
+                "tenant-1",
+                DateTime.UtcNow));
+        var identityProvider = new FakeIdentityProvider("keycloak-user-1");
+
+        using var scope = Services.CreateScope();
+        var result = await CreateHandler(scope.ServiceProvider, identityProvider).HandleAsync(
+            new CreateUserRequest(new CreateUserRequestBody("new@example.com", null, null)));
+
+        Assert.True(
+            result is CreateUserError error &&
+            error is CreateUserPersistenceError {
+                Value: UserIdentityAlreadyExists { UserId: "keycloak-user-1" }
+            });
+        Assert.Equal(["keycloak-user-1"], identityProvider.DeletedUserIds);
+        Assert.Equal(1, await fixture.DbContext.Users.CountDocumentsAsync(Builders<PoleUser>.Filter.Empty));
+        Assert.Equal(0L, await fixture.DbContext.CountOutboxMessagesAsync("user-created"));
+    }
+
+    private static CreateUserHandler CreateHandler(
+        IServiceProvider provider,
+        IIdentityProvider identityProvider)
+    {
+        return new CreateUserHandler(
+            provider.GetRequiredService<EnsureUserEmailAvailable>(),
+            provider.GetRequiredService<PersistCreatedUser>(),
+            identityProvider,
+            NullLogger<CreateUserHandler>.Instance,
+            TimeProvider.System);
+    }
+
+    private IServiceProvider Services => _services
+        ?? throw new InvalidOperationException("User test services are not initialized.");
+
+    private static IConfiguration CreateConfiguration() =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["KeycloakAdmin:BaseUrl"] = "https://keycloak.test",
+                ["KeycloakAdmin:Realm"] = "pole",
+                ["KeycloakAdmin:AdminClientId"] = "pole-admin",
+                ["KeycloakAdmin:AdminClientSecret"] = "test-secret"
+            })
+            .Build();
+
+    private sealed class FakeIdentityProvider(string userId) : IIdentityProvider
+    {
+        public IdentityUserCreationFailed? CreateError { get; init; }
+        public int CreateCalls { get; private set; }
+        public List<string> DeletedUserIds { get; } = [];
+
+        public Task<Result<string, IdentityUserCreationFailed>> CreateUserAsync(
+            CreateIdentityUser user,
+            CancellationToken cancellationToken)
+        {
+            CreateCalls++;
+            return Task.FromResult<Result<string, IdentityUserCreationFailed>>(
+                CreateError is null
+                    ? new Ok<string>(userId)
+                    : new Err<IdentityUserCreationFailed>(CreateError));
+        }
+
+        public Task<bool> DeleteUserAsync(
+            string deletedUserId,
+            CancellationToken cancellationToken)
+        {
+            DeletedUserIds.Add(deletedUserId);
+            return Task.FromResult(true);
+        }
+    }
+}

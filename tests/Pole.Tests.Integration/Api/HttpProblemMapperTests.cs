@@ -34,6 +34,10 @@ using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.Tenants;
 using Pole.Features.Tenants.Application.Endpoints;
 using Pole.Features.Tenants.Application.Persistence;
+using Pole.Features.Users.Application;
+using Pole.Features.Users.Application.Endpoints;
+using Pole.Features.Users.Application.Identity;
+using Pole.Features.Users.Application.Persistence;
 using Pole.Mediator;
 using Xunit;
 
@@ -513,6 +517,32 @@ public sealed class HttpProblemMapperTests
         Assert.Equal((int)HttpStatusCode.Conflict, lastOwner.StatusCode);
         Assert.Equal("tenants.member.last-owner", lastOwner.Code);
         Assert.Equal("member-1", lastOwner.Extensions["memberId"]);
+    }
+
+    [Fact]
+    public void CreateUserErrorsHaveStableProblemMappings()
+    {
+        var mapper = new HttpProblemMapper(UserHttpProblemMappings.All);
+        CreateUserError existingEmail = new(
+            new CreateUserPersistenceError(
+                new UserEmailAlreadyExists("ada@example.com")));
+        CreateUserError existingIdentity = new(
+            new CreateUserPersistenceError(
+                new UserIdentityAlreadyExists("keycloak-user-1")));
+        CreateUserError identityFailure = new(
+            new IdentityUserCreationFailed());
+
+        var conflict = mapper.Map(existingEmail);
+        var identityConflict = mapper.Map(existingIdentity);
+        var unavailable = mapper.Map(identityFailure);
+
+        Assert.Equal((int)HttpStatusCode.Conflict, conflict.StatusCode);
+        Assert.Equal("users.email.already-exists", conflict.Code);
+        Assert.Equal("ada@example.com", conflict.Extensions["email"]);
+        Assert.Equal((int)HttpStatusCode.Conflict, identityConflict.StatusCode);
+        Assert.Equal("users.identity.already-exists", identityConflict.Code);
+        Assert.Equal((int)HttpStatusCode.BadGateway, unavailable.StatusCode);
+        Assert.Equal("users.identity-provider.user-creation-failed", unavailable.Code);
     }
 
     [Fact]

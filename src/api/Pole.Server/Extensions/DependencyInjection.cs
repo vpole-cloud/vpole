@@ -41,8 +41,6 @@ using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.Tenants.Application;
-using Pole.Features.Users.Application.Common;
-using Pole.Features.Users.Application.Identity;
 using Pole.Mediator;
 using Pole.Observability;
 using Pole.Server.Database;
@@ -165,14 +163,6 @@ public static class DependencyInjection
                     .GetRequiredService<MongoRunTransaction>()
                     .InvokeAsync);
             services.TryAddSingleton<ISearchDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddSingleton<IUserDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            return services;
-        }
-
-        public IServiceCollection AddUsersFeature(IConfiguration configuration)
-        {
-            services.Configure<KeycloakOptions>(configuration.GetSection(KeycloakOptions.SectionName));
-            services.AddHttpClient<IIdentityProvider, KeycloakIdentityProvider>();
             return services;
         }
 
@@ -192,7 +182,6 @@ public static class DependencyInjection
                 .ValidateDataAnnotations()
                 .ValidateOnStart();
             services.AddSingleton(sp => sp.GetRequiredService<IOptions<QuotaSettings>>().Value);
-            services.AddSettingsSection<KeycloakOptions>(KeycloakOptions.SectionName, configuration);
             return services;
         }
 
