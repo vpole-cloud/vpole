@@ -113,7 +113,7 @@ public sealed class OutboxSettingsTests
     }
 
     [Fact]
-    public void AddSettings_WiresOutboxValidationIntoOptionsPipeline()
+    public void AddOutboxFeature_WiresValidationIntoOptionsPipeline()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -122,7 +122,7 @@ public sealed class OutboxSettingsTests
             })
             .Build();
         var services = new ServiceCollection();
-        services.AddSettings(configuration);
+        services.AddOutboxFeature(configuration);
         using var provider = services.BuildServiceProvider();
 
         Assert.Throws<OptionsValidationException>(() =>

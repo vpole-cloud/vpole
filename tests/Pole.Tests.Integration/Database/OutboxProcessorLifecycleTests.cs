@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MongoDB.Bson;
@@ -6,6 +7,7 @@ using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Outbox.Application.Migrations;
+using Pole.Features.Outbox.Application.Persistence;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
@@ -23,15 +25,21 @@ public sealed class OutboxProcessorLifecycleTests(
     private readonly MutableTimeProvider _timeProvider =
         new(new DateTimeOffset(InitialNowUtc));
     private readonly OutboxMetrics _metrics = new();
+    private ServiceProvider? _services;
 
     public async Task InitializeAsync()
     {
         await fixture.ResetDatabaseAsync();
         await new OutboxMessageMigration().Up(fixture.Database);
+        var services = new ServiceCollection();
+        services.AddSingleton(fixture.Database);
+        services.AddOutboxPersistence();
+        _services = services.BuildServiceProvider();
     }
 
     public Task DisposeAsync()
     {
+        _services?.Dispose();
         _metrics.Dispose();
         return Task.CompletedTask;
     }
@@ -264,8 +272,13 @@ public sealed class OutboxProcessorLifecycleTests(
         OutboxSettings? settings = null)
     {
         settings ??= new OutboxSettings();
+        var services = _services ?? throw new InvalidOperationException(
+            "Outbox persistence services were not initialized.");
         return new OutboxProcessorJob(
-            fixture.DbContext,
+            services.GetRequiredService<LoadDueOutboxMessages>(),
+            services.GetRequiredService<TryPersistOutboxMessageTransition>(),
+            services.GetRequiredService<CleanupTerminalOutboxMessages>(),
+            services.GetRequiredService<LoadOutboxQueueSnapshot>(),
             publisher,
             new OutboxEventAssemblyCatalog(
                 [typeof(RuntimeCellReconciliationRequestedEvent).Assembly]),

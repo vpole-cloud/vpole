@@ -35,7 +35,6 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Application.Jobs;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Contracts;
@@ -147,11 +146,6 @@ public static class DependencyInjection
             services.TryAddSingleton<MongoDbContext>();
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IMongoDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddSingleton<IEventDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddSingleton(serviceProvider =>
-                serviceProvider
-                    .GetRequiredService<IMongoDatabase>()
-                    .GetCollection<OutboxMessage>("OutboxMessages"));
             services.TryAddSingleton<MongoStoreOutboxWrites>();
             services.TryAddSingleton<StoreOutboxWrites>(serviceProvider =>
                 serviceProvider
@@ -168,14 +162,6 @@ public static class DependencyInjection
 
         public IServiceCollection AddSettings(IConfiguration configuration)
         {
-            services.AddSingleton<
-                IValidateOptions<OutboxSettings>,
-                OutboxSettingsValidator>();
-            services.AddOptions<OutboxSettings>()
-                .Bind(configuration.GetSection(OutboxSettings.SectionName))
-                .ValidateOnStart();
-            services.AddSingleton(
-                sp => sp.GetRequiredService<IOptions<OutboxSettings>>().Value);
             services.AddSettingsSection<PostgresSettings>(PostgresSettings.SectionName, configuration);
             services.AddOptions<QuotaSettings>()
                 .Bind(configuration.GetSection(QuotaSettings.SectionName))
@@ -185,12 +171,6 @@ public static class DependencyInjection
             return services;
         }
 
-        public IServiceCollection AddOutboxEventAssemblies(params Assembly[] assemblies)
-        {
-            services.AddSingleton(new OutboxEventAssemblyCatalog(assemblies));
-            return services;
-        }
-        
         private void AddSettingsSection<TSettings>(string sectionName, IConfiguration configuration)
             where TSettings : class
         {
@@ -229,11 +209,6 @@ public static class DependencyInjection
                 options.ServerCheckInterval = TimeSpan.FromMinutes(1);
                 options.HeartbeatInterval = TimeSpan.FromSeconds(30);
             });
-            services.AddScoped<OutboxProcessorJob>();
-            services.AddScoped<IOutboxPublisher, MassTransitOutboxPublisher>();
-            services.AddSingleton<OutboxMetrics>();
-            services.AddSingleton<OutboxRetryDelayPolicy>();
-
             return services;
         }
         
