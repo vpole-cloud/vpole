@@ -171,7 +171,7 @@ public sealed class GitHubAppClientTests
         return new GitHubAppClient(
             new HttpClient(handler),
             options,
-            new StubJwtFactory(),
+            () => "app-jwt",
             new MemoryCache(new MemoryCacheOptions()),
             timeProvider ?? TimeProvider.System);
     }
@@ -181,11 +181,6 @@ public sealed class GitHubAppClientTests
         {
             Content = new StringContent(json, Encoding.UTF8, "application/json")
         };
-
-    private sealed class StubJwtFactory : IGitHubAppJwtFactory
-    {
-        public string Create() => "app-jwt";
-    }
 
     private sealed class MutableTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {

@@ -177,29 +177,10 @@ public static class DependencyInjection
             services.TryAddSingleton<ISearchDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ITenantDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IUserDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddSingleton<IGitProviderDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IContainerRegistryDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ISourceBuildDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.AddHttpContextAccessor();
             services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
-            return services;
-        }
-
-        public IServiceCollection AddGitProvidersFeature()
-        {
-            services.AddGitProviderCapabilities();
-            services.AddMemoryCache();
-            services.AddDataProtection().SetApplicationName("Pole");
-            services.TryAddSingleton(TimeProvider.System);
-            services.TryAddSingleton<IGitHubSetupTokenService, GitHubSetupTokenService>();
-            services.TryAddSingleton<IGitHubAppJwtFactory, GitHubAppJwtFactory>();
-            services.TryAddSingleton<IRepositorySourceAnalyzer, RepositorySourceAnalyzer>();
-            services.TryAddScoped<IGitHubSetupService, GitHubSetupService>();
-            services.TryAddScoped<IGitProviderRepositoryService, GitProviderRepositoryService>();
-            services.AddHttpClient<IGitHubAppClient, GitHubAppClient>(client =>
-            {
-                client.DefaultRequestHeaders.UserAgent.ParseAdd("Pole/1.0");
-            });
             return services;
         }
 
@@ -228,11 +209,12 @@ public static class DependencyInjection
         {
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddScoped<SourceBuildReferenceLookup>();
-            services.TryAddScoped<ISourceBuildReferenceLookup>(provider =>
-                provider.GetRequiredService<SourceBuildReferenceLookup>());
             services.TryAddScoped<EnsureNoWebServiceSourceBuildConfiguration>(provider =>
                 provider.GetRequiredService<SourceBuildReferenceLookup>()
                     .EnsureNoWebServiceConfigurationAsync);
+            services.TryAddScoped<EnsureNoSourceRepositoryBuildConfiguration>(provider =>
+                provider.GetRequiredService<SourceBuildReferenceLookup>()
+                    .EnsureNoSourceRepositoryConfigurationAsync);
             services.TryAddSingleton<ISourceBuildJobDispatcher, HangfireSourceBuildJobDispatcher>();
             services.TryAddSingleton<IRepositoryArchiveExtractor, RepositoryArchiveExtractor>();
             services.TryAddSingleton<IProcessRunner, ProcessRunner>();
@@ -266,7 +248,6 @@ public static class DependencyInjection
                 .ValidateOnStart();
             services.AddSingleton(sp => sp.GetRequiredService<IOptions<QuotaSettings>>().Value);
             services.AddSettingsSection<KeycloakOptions>(KeycloakOptions.SectionName, configuration);
-            services.AddSettingsSection<GitHubAppOptions>(GitHubAppOptions.SectionName, configuration);
             services.AddSettingsSection<HarborOptions>(HarborOptions.SectionName, configuration);
             services.AddSettingsSection<SourceBuildExecutionOptions>(SourceBuildExecutionOptions.SectionName, configuration);
             services.AddSettingsSection<BuildKitOptions>(BuildKitOptions.SectionName, configuration);

@@ -6,18 +6,15 @@ using Pole.ResultType;
 namespace Pole.Features.SourceBuilds.Application.Common;
 
 public sealed class SourceBuildReferenceLookup(ISourceBuildDbContext dbContext)
-    : ISourceBuildReferenceLookup
 {
     public async Task<Result<Unit, SourceBuildWebServiceConfigurationExists>>
         EnsureNoWebServiceConfigurationAsync(
             string tenantId,
             string webServiceId,
-            CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default)
     {
         var hasConfiguration = await dbContext.SourceBuildConfigurations
-            .Find(item =>
-                item.TenantId == tenantId &&
-                item.WebServiceId == webServiceId)
+            .Find(SourceBuildFilters.ConfigurationsByTenantAndWebService(tenantId, webServiceId))
             .AnyAsync(cancellationToken);
         return hasConfiguration
             ? new Err<SourceBuildWebServiceConfigurationExists>(
@@ -25,19 +22,21 @@ public sealed class SourceBuildReferenceLookup(ISourceBuildDbContext dbContext)
             : new Ok<Unit>(Unit.Value);
     }
 
-    public async Task<Result> EnsureSourceRepositoryCanBeDeletedAsync(
+    public async Task<Result<Unit, SourceBuildSourceRepositoryConfigurationExists>>
+        EnsureNoSourceRepositoryConfigurationAsync(
         string tenantId,
         string sourceRepositoryId,
         CancellationToken cancellationToken = default)
     {
         var hasConfiguration = await dbContext.SourceBuildConfigurations
-            .Find(item =>
-                item.TenantId == tenantId &&
-                item.SourceRepositoryId == sourceRepositoryId)
+            .Find(SourceBuildFilters.ConfigurationsByTenantAndSourceRepository(
+                tenantId,
+                sourceRepositoryId))
             .AnyAsync(cancellationToken);
         return hasConfiguration
-            ? Failures.Conflict("Delete the source build configuration before unlinking this repository.")
-            : Result.Success();
+            ? new Err<SourceBuildSourceRepositoryConfigurationExists>(
+                new SourceBuildSourceRepositoryConfigurationExists(sourceRepositoryId))
+            : new Ok<Unit>(Unit.Value);
     }
 
 }

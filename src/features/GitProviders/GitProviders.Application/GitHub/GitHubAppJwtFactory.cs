@@ -5,14 +5,11 @@ using Pole.Features.GitProviders.Application.Common;
 
 namespace Pole.Features.GitProviders.Application.GitHub;
 
-public interface IGitHubAppJwtFactory
-{
-    string Create();
-}
+public delegate string CreateGitHubAppJwt();
 
-public sealed class GitHubAppJwtFactory(GitHubAppOptions options, TimeProvider timeProvider) : IGitHubAppJwtFactory
+public sealed class GitHubAppJwtFactory(GitHubAppOptions options, TimeProvider timeProvider)
 {
-    public string Create()
+    public string Invoke()
     {
         if (!options.IsConfigured)
             throw new InvalidOperationException("GitHub App integration is not configured.");

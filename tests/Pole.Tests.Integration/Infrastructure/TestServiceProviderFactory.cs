@@ -136,11 +136,12 @@ public static class TestServiceProviderFactory
         services.AddMigrations(Assemblies);
         services.AddSearchFeature();
         services.AddScoped<SourceBuildReferenceLookup>();
-        services.AddScoped<ISourceBuildReferenceLookup>(provider =>
-            provider.GetRequiredService<SourceBuildReferenceLookup>());
         services.AddScoped<EnsureNoWebServiceSourceBuildConfiguration>(provider =>
             provider.GetRequiredService<SourceBuildReferenceLookup>()
                 .EnsureNoWebServiceConfigurationAsync);
+        services.AddScoped<EnsureNoSourceRepositoryBuildConfiguration>(provider =>
+            provider.GetRequiredService<SourceBuildReferenceLookup>()
+                .EnsureNoSourceRepositoryConfigurationAsync);
         services.AddValidatorsFromAssemblies(Assemblies);
         services.AddPoleMediator(Assemblies);
         services.ReplaceTenantAuthorizationWithFake();

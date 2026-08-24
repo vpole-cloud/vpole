@@ -7,6 +7,8 @@ using Pole.Features.ContainerRegistries.Application.Security;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
 using Pole.Features.GitProviders.Application.Common;
+using Pole.Features.GitProviders.Application.Persistence;
+using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
 using Pole.ResultType;
@@ -68,8 +70,19 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
         await fixture.DbContext.GitProviderConnections.InsertOneAsync(connection);
         await fixture.DbContext.SourceRepositories.InsertOneAsync(repository);
 
-        var repositoryService = new RecordingGitProviderRepositoryService();
-        var access = new SourceRepositoryBuildAccess(fixture.DbContext, repositoryService);
+        var archiveDownloader = new RecordingArchiveDownloader();
+        LoadSourceRepository loadRepository = async (tenantId, sourceRepositoryId, cancellationToken) =>
+            await fixture.DbContext.SourceRepositories
+                .Find(item => item.TenantId == tenantId && item.Id == sourceRepositoryId)
+                .FirstOrDefaultAsync(cancellationToken);
+        LoadGitProviderConnection loadConnection = async (tenantId, connectionId, cancellationToken) =>
+            await fixture.DbContext.GitProviderConnections
+                .Find(item => item.TenantId == tenantId && item.Id == connectionId)
+                .FirstOrDefaultAsync(cancellationToken);
+        var access = new SourceRepositoryBuildAccess(
+            loadRepository,
+            loadConnection,
+            archiveDownloader.InvokeAsync);
 
         var crossTenant = await access.FindAsync(
             ObjectId.GenerateNewId().ToString(),
@@ -91,7 +104,7 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             "exact-commit",
             archive);
         Assert.IsType<NotFoundFailure>(crossTenantDownload.AssertFailure());
-        Assert.Equal(0, repositoryService.DownloadCalls);
+        Assert.Equal(0, archiveDownloader.DownloadCalls);
 
         var download = await access.DownloadArchiveAsync(
             TestData.TenantId,
@@ -99,10 +112,10 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             "exact-commit",
             archive);
         download.AssertSuccess();
-        Assert.Equal(1, repositoryService.DownloadCalls);
-        Assert.Equal(connection.Id, repositoryService.ConnectionId);
-        Assert.Equal(repository.ExternalRepositoryId, repositoryService.ExternalRepositoryId);
-        Assert.Equal("exact-commit", repositoryService.CommitSha);
+        Assert.Equal(1, archiveDownloader.DownloadCalls);
+        Assert.Equal(connection.Id, archiveDownloader.ConnectionId);
+        Assert.Equal(repository.ExternalRepositoryId, archiveDownloader.ExternalRepositoryId);
+        Assert.Equal("exact-commit", archiveDownloader.CommitSha);
     }
 
     [Fact]
@@ -157,36 +170,14 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
 
     public Task DisposeAsync() => Task.CompletedTask;
 
-    private sealed class RecordingGitProviderRepositoryService : IGitProviderRepositoryService
+    private sealed class RecordingArchiveDownloader
     {
         public int DownloadCalls { get; private set; }
         public string? ConnectionId { get; private set; }
         public string? ExternalRepositoryId { get; private set; }
         public string? CommitSha { get; private set; }
 
-        public Task<Result<ProviderPage<ProviderRepository>>> GetRepositoriesAsync(
-            GitProviderConnection connection,
-            int page,
-            int pageSize,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task<Result<ProviderPage<ProviderBranch>>> GetBranchesAsync(
-            GitProviderConnection connection,
-            string repositoryId,
-            int page,
-            int pageSize,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task<Result<RepositorySourceSnapshot>> GetRepositorySnapshotAsync(
-            GitProviderConnection connection,
-            string repositoryId,
-            string branch,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task<Result> DownloadRepositoryArchiveAsync(
+        public Task<Result<Unit, GitProviderRepositoryAccessError>> InvokeAsync(
             GitProviderConnection connection,
             string repositoryId,
             string commitSha,
@@ -197,7 +188,8 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             ConnectionId = connection.Id;
             ExternalRepositoryId = repositoryId;
             CommitSha = commitSha;
-            return Task.FromResult<Result>(Result.Success());
+            return Task.FromResult<Result<Unit, GitProviderRepositoryAccessError>>(
+                new Ok<Unit>(Unit.Value));
         }
     }
 

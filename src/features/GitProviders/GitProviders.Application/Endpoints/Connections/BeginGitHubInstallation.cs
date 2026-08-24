@@ -6,30 +6,34 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
+using Pole.Features.GitProviders.Application.Persistence;
 using Pole.Features.GitProviders.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Application.Endpoints;
 
 public sealed record BeginGitHubInstallationRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue CurrentUserId)
-    : IMediatorRequest<BeginGitHubInstallationResponse>, ITenantWriteOperation;
+    : IMediatorRequest<BeginGitHubInstallationOutcome>, ITenantWriteOperation;
+
+public union BeginGitHubInstallationOutcome(
+    BeginGitHubInstallationResponse,
+    GitHubIntegrationNotConfigured);
 
 public sealed class BeginGitHubInstallationHandler(
-    IGitProviderDbContext dbContext,
-    IGitHubSetupTokenService tokenService,
+    CreateGitHubSetupAttempt createGitHubSetupAttempt,
+    GitHubSetupTokenService tokenService,
     GitHubAppOptions options,
     TimeProvider timeProvider)
-    : IMediatorHandler<BeginGitHubInstallationRequest, BeginGitHubInstallationResponse>
+    : IMediatorOutcomeHandler<BeginGitHubInstallationRequest, BeginGitHubInstallationOutcome>
 {
-    public async Task<Result<BeginGitHubInstallationResponse>> HandleAsync(
+    public async Task<BeginGitHubInstallationOutcome> HandleAsync(
         BeginGitHubInstallationRequest request,
         CancellationToken cancellationToken = default)
     {
         if (!options.IsConfigured)
-            return Failures.Conflict("GitHub App integration is not configured.");
+            return new GitHubIntegrationNotConfigured();
 
         var state = tokenService.CreateState();
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -41,7 +45,7 @@ public sealed class BeginGitHubInstallationHandler(
                 MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
                 now,
                 now.AddMinutes(10)));
-        await dbContext.GitHubSetupAttempts.InsertOneAsync(attempt, cancellationToken: cancellationToken);
+        await createGitHubSetupAttempt(attempt, cancellationToken);
 
         var installUrl = Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(
             $"{options.WebBaseUrl.TrimEnd('/')}/apps/{Uri.EscapeDataString(options.AppSlug)}/installations/new",
@@ -55,14 +59,22 @@ public static class BeginGitHubInstallationEndpoint
 {
     public static IEndpointRouteBuilder MapBeginGitHubInstallationEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/github/install", async (IMediator mediator, [AsParameters] BeginGitHubInstallationRequest request,
+        app.MapPost("/github/install", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
+                [AsParameters] BeginGitHubInstallationRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    BeginGitHubInstallationResponse response => Results.Ok(response),
+                    GitHubIntegrationNotConfigured error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("BeginGitHubInstallation")
-            .Produces<BeginGitHubInstallationResponse>();
+            .Produces<BeginGitHubInstallationResponse>()
+            .ProducesProblem(StatusCodes.Status409Conflict);
         return app;
     }
 }

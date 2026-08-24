@@ -2,33 +2,29 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Domain;
+using Pole.Features.GitProviders.Application.Persistence;
 using Pole.Mediator;
-using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Application.Endpoints;
 
 public sealed record GetGitProviderConnectionsRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<IReadOnlyList<GitProviderConnectionDto>>, ITenantReadOperation;
+    : IMediatorRequest<GetGitProviderConnectionsOutcome>, ITenantReadOperation;
 
-public sealed class GetGitProviderConnectionsHandler(IGitProviderDbContext dbContext)
-    : IMediatorHandler<GetGitProviderConnectionsRequest, IReadOnlyList<GitProviderConnectionDto>>
+public union GetGitProviderConnectionsOutcome(IReadOnlyList<GitProviderConnectionDto>);
+
+public sealed class GetGitProviderConnectionsHandler(
+    LoadGitProviderConnections loadGitProviderConnections)
+    : IMediatorOutcomeHandler<GetGitProviderConnectionsRequest, GetGitProviderConnectionsOutcome>
 {
-    public async Task<Result<IReadOnlyList<GitProviderConnectionDto>>> HandleAsync(
+    public async Task<GetGitProviderConnectionsOutcome> HandleAsync(
         GetGitProviderConnectionsRequest request,
         CancellationToken cancellationToken = default)
     {
-        var connections = await dbContext.GitProviderConnections
-            .Find(Builders<GitProviderConnection>.Filter.ForTenant(request.TenantId))
-            .SortBy(item => item.Provider)
-            .ThenBy(item => item.AccountLogin)
-            .ToListAsync(cancellationToken);
+        var connections = await loadGitProviderConnections(request.TenantId, cancellationToken);
         return connections.Select(item => item.ToDto()).ToArray();
     }
 }
@@ -41,7 +37,10 @@ public static class GetGitProviderConnectionsEndpoint
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    IReadOnlyList<GitProviderConnectionDto> connections => Results.Ok(connections)
+                });
             })
             .WithName("GetGitProviderConnections")
             .Produces<IReadOnlyList<GitProviderConnectionDto>>();

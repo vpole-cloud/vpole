@@ -11,6 +11,7 @@ using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
 using Pole.Features.Domains.Application;
 using Pole.Features.Domains.Application.Common;
+using Pole.Features.GitProviders.Application;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application;
@@ -112,7 +113,7 @@ builder.Services.AddKubernetes(configuration)
     .AddEnvelopeEncryption(configuration)
     .AddDeploymentTargetsFeature(configuration)
     .AddSearchFeature()
-    .AddGitProvidersFeature()
+    .AddGitProvidersFeature(configuration)
     .AddContainerRegistriesFeature()
     .AddSourceBuildsFeature()
     .AddUsersFeature(configuration)

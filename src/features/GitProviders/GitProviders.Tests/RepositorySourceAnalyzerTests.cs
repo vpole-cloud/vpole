@@ -2,7 +2,6 @@ using System.Collections.Immutable;
 using Pole.Features.GitProviders.Application.Analysis;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
-using Pole.ResultType;
 using Xunit;
 
 namespace Pole.Features.GitProviders.Tests;
@@ -119,23 +118,23 @@ public sealed class RepositorySourceAnalyzerTests
     }
 
     [Fact]
-    public void Analyze_TruncatedTree_ReturnsRepositorySizeValidationFailure()
+    public void Analyze_TruncatedTree_ReturnsTypedRejection()
     {
         var result = _analyzer.Analyze(Snapshot(
             ["package.json"],
             new Dictionary<string, string>(),
             isTruncated: true));
 
-        Assert.False(result.TryGetValue(out _, out var failure));
-        var validation = Assert.IsType<ValidationFailure>(failure);
-        Assert.Contains("too large", validation.ValidationErrors["Repository"][0]);
+        Assert.True(result is RepositorySourceSnapshotTooLarge);
     }
 
-    private static SourceRepositoryAnalysis AssertSuccess(Result<SourceRepositoryAnalysis> result)
-    {
-        Assert.True(result.TryGetValue(out var analysis, out var failure), failure?.Message);
-        return analysis;
-    }
+    private static SourceRepositoryAnalysis AssertSuccess(AnalyzeRepositorySourceOutcome result) =>
+        result switch
+        {
+            SourceRepositoryAnalysis analysis => analysis,
+            RepositorySourceSnapshotTooLarge => throw new Xunit.Sdk.XunitException(
+                "Expected a repository analysis, but the repository snapshot was too large.")
+        };
 
     private static RepositorySourceSnapshot Snapshot(
         IEnumerable<string> paths,

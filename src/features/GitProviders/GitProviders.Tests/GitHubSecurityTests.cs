@@ -50,8 +50,8 @@ public sealed class GitHubSecurityTests
                 PublicBaseUrl = "https://pole.test"
             };
             var jwtFactory = new GitHubAppJwtFactory(options, new FixedTimeProvider(now));
-            var token = jwtFactory.Create();
-            var repeatedToken = jwtFactory.Create();
+            var token = jwtFactory.Invoke();
+            var repeatedToken = jwtFactory.Invoke();
             var parts = token.Split('.');
             var repeatedParts = repeatedToken.Split('.');
 

@@ -5,26 +5,19 @@ using System.Text.Json;
 using System.Xml.Linq;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Application.Analysis;
 
-public interface IRepositorySourceAnalyzer
-{
-    Result<SourceRepositoryAnalysis> Analyze(RepositorySourceSnapshot snapshot);
-}
+public union AnalyzeRepositorySourceOutcome(
+    SourceRepositoryAnalysis,
+    RepositorySourceSnapshotTooLarge);
 
-public sealed class RepositorySourceAnalyzer(TimeProvider timeProvider) : IRepositorySourceAnalyzer
+public sealed class RepositorySourceAnalyzer(TimeProvider timeProvider)
 {
-    public Result<SourceRepositoryAnalysis> Analyze(RepositorySourceSnapshot snapshot)
+    public AnalyzeRepositorySourceOutcome Analyze(RepositorySourceSnapshot snapshot)
     {
         if (snapshot.IsTruncated)
-        {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Repository"] = ["The repository tree is too large for automatic analysis."]
-            });
-        }
+            return new RepositorySourceSnapshotTooLarge();
 
         var candidates = AnalyzeDockerfiles(snapshot)
             .Concat(AnalyzeDotNetProjects(snapshot))

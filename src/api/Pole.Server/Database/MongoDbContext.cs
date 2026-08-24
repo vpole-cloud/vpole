@@ -2,7 +2,6 @@ using MongoDB.Driver;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ContainerRegistries.Domain;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
 using Pole.Features.Functions.Domain;
 using Pole.Features.ResourceDeployments.Application.Common;
@@ -29,7 +28,6 @@ public class MongoDbContext(
     ISearchDbContext,
     ITenantDbContext,
     IUserDbContext,
-    IGitProviderDbContext,
     IContainerRegistryDbContext,
     ISourceBuildDbContext
 {
