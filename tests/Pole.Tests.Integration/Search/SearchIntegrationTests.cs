@@ -1,20 +1,25 @@
 using System.Collections.Immutable;
+using Microsoft.FSharp.Collections;
+using Microsoft.FSharp.Core;
 using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.Request;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Consumers;
 using Pole.Features.Search.Domain;
 using Pole.Features.Search.Application.Projection;
-using Pole.Features.Search.Application.Services;
+using Pole.Features.Search.Application.Persistence;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
+using Pole.Mediator;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Events;
 using Pole.Features.Postgres.Domain;
@@ -34,7 +39,9 @@ namespace Pole.Tests.Integration.Search;
 public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
-    private ISearchService SearchService => Services.GetRequiredService<ISearchService>();
+    private PersistSearchDocumentSet PersistSearchDocumentSet => Services.GetRequiredService<PersistSearchDocumentSet>();
+    private RemoveSearchDocumentSet RemoveSearchDocumentSet => Services.GetRequiredService<RemoveSearchDocumentSet>();
+    private SearchIndexedDocuments SearchIndexedDocuments => Services.GetRequiredService<SearchIndexedDocuments>();
     private IMongoCollection<SearchDocument> SearchDocuments => Fixture.Database.GetCollection<SearchDocument>("SearchDocuments");
     private IMongoCollection<SearchSourceDocument> SearchSourceDocuments => Fixture.Database.GetCollection<SearchSourceDocument>("SearchSourceDocuments");
 
@@ -93,9 +100,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             PageSize = 20
         });
 
-        result.TryGetValue(out var response, out var error);
-        Assert.Null(error);
-        Assert.NotNull(response);
+        var response = AssertSearchPage(result);
         Assert.Contains(response.Items, item => item.SourceType == "ResourceGroup");
         Assert.Contains(response.Items, item => item.SourceType == "WebService");
         Assert.Contains(response.Items, item => item.SourceType == "RedisService");
@@ -111,9 +116,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             Types = ["WebService"]
         });
 
-        Assert.True(filtered.TryGetValue(out var filteredResponse, out var filteredError));
-        Assert.Null(filteredError);
-        Assert.NotNull(filteredResponse);
+        var filteredResponse = AssertSearchPage(filtered);
         Assert.Single(filteredResponse.Items);
         Assert.Equal("WebService", filteredResponse.Items.Single().SourceType);
 
@@ -124,7 +127,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             PageNumber = 1,
             PageSize = 20
         });
-        var serviceResult = await SearchService.Get(serviceQuery, CancellationToken.None);
+        var serviceResult = await SearchIndexedDocuments.Invoke(serviceQuery, CancellationToken.None);
 
         Assert.Equal(response.TotalCount, serviceResult.TotalCount);
         Assert.Equal(
@@ -154,10 +157,35 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             PageSize = 10
         });
 
-        result.TryGetValue(out var response, out var error);
-        Assert.Null(error);
-        Assert.NotNull(response);
+        var response = AssertSearchPage(result);
         Assert.Equal(created.WebServiceId, response.Items.First().SourceId);
+    }
+
+    [Fact]
+    public async Task Get_IsTenantScoped()
+    {
+        var tenantId = ObjectId.GenerateNewId().ToString();
+        var otherTenantId = ObjectId.GenerateNewId().ToString();
+        var sourceId = ObjectId.GenerateNewId().ToString();
+        var otherSourceId = ObjectId.GenerateNewId().ToString();
+
+        await PersistSearchDocumentSet.Invoke(
+            CreateSearchDocumentSet(tenantId, sourceId, "shared-service"),
+            CancellationToken.None);
+        await PersistSearchDocumentSet.Invoke(
+            CreateSearchDocumentSet(otherTenantId, otherSourceId, "shared-service"),
+            CancellationToken.None);
+
+        var result = await Mediator.Send(new GetSearchRequest
+        {
+            TenantId = tenantId,
+            Query = "shared",
+            PageNumber = 1,
+            PageSize = 10
+        });
+
+        var hit = Assert.Single(AssertSearchPage(result).Items);
+        Assert.Equal(sourceId, hit.SourceId);
     }
 
     [Fact]
@@ -201,9 +229,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             PageSize = 10
         });
 
-        Assert.True(searchResult.TryGetValue(out var response, out var searchError));
-        Assert.Null(searchError);
-        Assert.NotNull(response);
+        var response = AssertSearchPage(searchResult);
         Assert.Single(response.Items);
         Assert.Equal(created.Id, response.Items.Single().SourceId);
     }
@@ -221,7 +247,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.True(deleteResult.TryGetValue(out _, out var deleteError));
         Assert.Null(deleteError);
 
-        var deletedConsumer = new RemoveWebServiceFromSearchOnWebServiceDeletedConsumer(SearchService);
+        var deletedConsumer = new RemoveWebServiceFromSearchOnWebServiceDeletedConsumer(RemoveSearchDocumentSet);
         await deletedConsumer.Handle(TestData.TenantId, created.WebServiceId, CancellationToken.None);
 
         var serviceRows = await SearchDocuments.CountDocumentsAsync(row => row.SourceType == SearchDocumentType.WebService && row.SourceId == created.WebServiceId);
@@ -234,7 +260,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     private async Task IndexResourceGroupCreatedAsync(string resourceGroupId)
     {
         var resourceGroup = await DbContext.ResourceGroups.Find(group => group.Id == resourceGroupId).FirstAsync();
-        var consumer = new AddResourceGroupToSearchOnResourceGroupCreatedConsumer(SearchService);
+        var consumer = new AddResourceGroupToSearchOnResourceGroupCreatedConsumer(PersistSearchDocumentSet);
         await consumer.Handle(new ResourceGroupCreateEvent(
             resourceGroup.Id,
             resourceGroup.Name,
@@ -250,7 +276,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     private async Task IndexResourceGroupUpdatedAsync(string resourceGroupId)
     {
         var resourceGroup = await DbContext.ResourceGroups.Find(group => group.Id == resourceGroupId).FirstAsync();
-        var consumer = new UpdateResourceGroupInSearchOnResourceGroupUpdatedConsumer(SearchService);
+        var consumer = new UpdateResourceGroupInSearchOnResourceGroupUpdatedConsumer(PersistSearchDocumentSet);
         await consumer.Handle(new ResourceGroupUpdateEvent(
             resourceGroup.Id,
             resourceGroup.Name,
@@ -270,7 +296,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         var webService = await Fixture.Database.WebServices().Find(service => service.Id == webServiceId).FirstAsync();
         var placements = await Services.GetRequiredService<LoadResourceDeploymentSet>()(
             webService.TenantId, WebServiceResourceDeployment.ResourceType, webService.Id);
-        var consumer = new AddWebServiceToSearchOnWebServiceCreatedConsumer(SearchService);
+        var consumer = new AddWebServiceToSearchOnWebServiceCreatedConsumer(PersistSearchDocumentSet);
         await consumer.Handle(new WebServiceCreateEvent(
             webService.Id,
             webService.Name,
@@ -296,7 +322,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     private async Task IndexRedisCreatedAsync(string redisId)
     {
         var redis = await DbContext.Database.RedisServices().Find(service => service.Id == redisId).FirstAsync();
-        var consumer = new AddRedisServiceToSearchOnRedisServiceCreatedConsumer(SearchService);
+        var consumer = new AddRedisServiceToSearchOnRedisServiceCreatedConsumer(PersistSearchDocumentSet);
         await consumer.Handle(new RedisCreateEvent(
             redis.Id,
             redis.Name,
@@ -311,7 +337,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     private async Task IndexPostgresCreatedAsync(string clusterId)
     {
         var cluster = await DbContext.Postgres.Find(cluster => cluster.Id == clusterId).FirstAsync();
-        var consumer = new AddPostgresClusterToSearchOnPostgresClusterCreatedConsumer(SearchService);
+        var consumer = new AddPostgresClusterToSearchOnPostgresClusterCreatedConsumer(PersistSearchDocumentSet);
         await consumer.Handle(new PostgresCreateEvent(
             EventCore.Create(cluster.TenantId),
             cluster.Id,
@@ -319,6 +345,32 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             cluster.GroupId,
             ToSnapshot(cluster.Spec)), CancellationToken.None);
     }
+
+    private static PaginatedResponse<SearchHitDto> AssertSearchPage(MediatorResult<GetSearchOutcome> result) =>
+        result.AssertHandlerOutcome().Item;
+
+    private static SearchDocumentSet CreateSearchDocumentSet(
+        string tenantId,
+        string sourceId,
+        string title) =>
+        new(
+            SearchDocumentType.WebService,
+            tenantId,
+            sourceId,
+            ListModule.OfSeq(
+            [
+                new SearchDocument(
+                    ObjectId.GenerateNewId().ToString(),
+                    SearchDocumentType.WebService,
+                    tenantId,
+                    sourceId,
+                    SearchKeyType.Name,
+                    title,
+                    SearchDocumentFactory.NameWeight,
+                    title,
+                    FSharpOption<string>.None,
+                    FSharpOption<string>.None)
+            ]));
 
     private static WebServiceSpecSnapshot ToSnapshot(WebServiceSpec spec) =>
         new(

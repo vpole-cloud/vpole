@@ -52,7 +52,7 @@ using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Migrations;
 using Pole.Features.Search.Application.Common;
-using Pole.Features.Search.Application.Services;
+using Pole.Features.Search.Application;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;

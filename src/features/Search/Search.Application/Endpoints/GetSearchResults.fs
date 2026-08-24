@@ -8,17 +8,18 @@ open Microsoft.AspNetCore.Routing
 open Pole.ASP.Helpers
 open Pole.Features.Request
 open Pole.Features.Search.Application.Common
-open Pole.Features.Search.Application.Services
+open Pole.Features.Search.Application.Persistence
 open Pole.Mediator
-open Pole.ResultType
 
-type GetSearchHandler(searchService : ISearchService) =
-    interface IMediatorHandler<GetSearchRequest, PaginatedResponse<SearchHitDto>> with
+type GetSearchHandler(searchIndexedDocuments : SearchIndexedDocuments) =
+    interface IMediatorOutcomeHandler<GetSearchRequest, GetSearchOutcome> with
         member _.HandleAsync(request, cancellationToken) =
             task {
-                let response = SearchQuery.ofRequest request
-                let! result = searchService.Get response cancellationToken
-                return Result<PaginatedResponse<SearchHitDto>>.op_Implicit(result)
+                let! response =
+                    searchIndexedDocuments.Invoke(
+                        SearchQuery.ofRequest request,
+                        cancellationToken)
+                return SearchPage response
             }
 
 [<AbstractClass; Sealed>]
@@ -35,5 +36,8 @@ type GetSearchResults =
     static member Handle([<AsParameters>] request : GetSearchRequest, [<FromServices>] mediator : IMediator) =
         task {
             let! result = mediator.Send request
-            return result.ToHttpResult(fun value -> Results.Ok(value))
+            return
+                result.ToHttpResult(fun outcome ->
+                    match outcome with
+                    | SearchPage value -> Results.Ok(value))
         }
