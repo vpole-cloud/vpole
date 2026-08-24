@@ -1,28 +1,21 @@
 using MongoDB.Driver;
 using Pole.Features.StorageProfiles.Domain;
 
-namespace Pole.Features.StorageProfiles.Application.Common;
+namespace Pole.Features.StorageProfiles.Application.Persistence;
 
 internal static class StorageProfileDefaultPersistence
 {
     public static Task DemoteOtherDefaultsAsync(
-        IStorageProfileDbContext dbContext,
+        IMongoCollection<StorageProfile> storageProfiles,
         IClientSessionHandle session,
         string? exceptProfileId,
         DateTime updatedAtUtc,
         CancellationToken cancellationToken)
     {
-        var filter = Builders<StorageProfile>.Filter.Eq(
-            profile => profile.IsDefault,
-            true);
-        if (exceptProfileId is not null)
-        {
-            filter &= Builders<StorageProfile>.Filter.Ne(
-                profile => profile.Id,
-                exceptProfileId);
-        }
-
-        return dbContext.StorageProfiles.UpdateManyAsync(
+        var filter = exceptProfileId is null
+            ? StorageProfileFilters.Default()
+            : StorageProfileFilters.OtherDefaultsExcept(exceptProfileId);
+        return storageProfiles.UpdateManyAsync(
             session,
             filter,
             Builders<StorageProfile>.Update

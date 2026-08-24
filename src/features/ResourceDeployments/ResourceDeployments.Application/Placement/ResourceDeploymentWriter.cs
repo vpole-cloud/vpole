@@ -17,7 +17,7 @@ internal sealed class ResourceDeploymentWriter(
     IResourcePlacementService placementService,
     FenceDeploymentTargetWorkloadConfigurations fenceDeploymentTargetWorkloadConfigurations,
     FenceResolvedComputeProfiles fenceResolvedComputeProfiles,
-    IStorageProfileResolutionFence storageConfigurationFence,
+    FenceStorageProfileResolution fenceStorageProfileResolution,
     TimeProvider timeProvider)
 {
     public async Task<Result<PlacementSummaryDto, CreateResourceDeploymentError>> InvokeAsync(
@@ -143,11 +143,11 @@ internal sealed class ResourceDeploymentWriter(
                          item.Storage.StorageClassName))
                      .Distinct())
         {
-            var storageFence = await storageConfigurationFence.FenceAsync(
+            var storageFence = await fenceStorageProfileResolution(
                 storage,
                 session,
                 cancellationToken);
-            if (storageFence is not ISuccess)
+            if (storageFence is Err<StorageProfileResolutionFenceRejected>)
             {
                 return new Err<CreateResourceDeploymentError>(
                     new CreateResourceDeploymentError(

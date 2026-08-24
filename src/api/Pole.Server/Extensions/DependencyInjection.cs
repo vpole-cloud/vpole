@@ -182,7 +182,6 @@ public static class DependencyInjection
             services.TryAddSingleton<IResourceGroupDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ITenantDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IUserDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddSingleton<IStorageProfileDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IGitProviderDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IContainerRegistryDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ISourceBuildDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
@@ -196,14 +195,10 @@ public static class DependencyInjection
                     .GetOwnershipOutcomeAsync);
             services.TryAddScoped<IResourcePlacementService, ResourcePlacementService>();
             services.TryAddScoped<IResourcePlacementLookup, ResourcePlacementLookup>();
-            services.TryAddScoped<
-                IStorageProfileResolutionFence,
-                StorageProfileResolutionFence>();
             services.TryAddScoped<IResourceGroupDeletionFinalizer, ResourceGroupDeletionFinalizer>();
             services.TryAddSingleton<IRuntimeCellNamespaceNameGenerator, RuntimeCellNamespaceNameGenerator>();
             services.TryAddScoped<IRuntimeCellNamespaceManager, KubernetesRuntimeCellNamespaceManager>();
             services.TryAddScoped<RuntimeCellRecoveryJob>();
-            services.TryAddScoped<IStorageDiscoveryService, KubernetesStorageDiscoveryService>();
             services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
             return services;
         }

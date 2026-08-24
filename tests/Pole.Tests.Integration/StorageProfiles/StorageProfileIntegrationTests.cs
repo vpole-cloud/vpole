@@ -4,9 +4,11 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Endpoints;
 using Pole.Features.StorageProfiles.Application.Migrations;
+using Pole.Features.StorageProfiles.Application.Persistence;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.ResultType;
@@ -50,7 +52,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
         ]);
 
         var response = (await Mediator.Send(
-            new GetStorageProfilesRequest())).AssertSuccess();
+            new GetStorageProfilesRequest())).AssertSuccess().AssertSuccess();
 
         Assert.Equal(
             [defaultId, archiveId, bulkId],
@@ -66,7 +68,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
     }
 
     [Fact]
-    public async Task Create_ReturnsValidationFailure_ForUnknownTargetStorageClass()
+    public async Task Create_ReturnsTypedError_ForUnknownTargetStorageClass()
     {
         var result = await Mediator.Send(new CreateStorageProfileRequest(
             ValidCreateBody(targetMappings:
@@ -76,10 +78,12 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                     "missing-class")
             ])));
 
-        var validation = Assert.IsType<ValidationFailure>(result.AssertFailure());
+        var error = result.AssertSuccess().AssertFailure();
+        var validation = Assert.IsType<StorageProfileMutationValidationError>(error.Value);
+        var invalid = Assert.IsType<StorageProfileTargetMappingsInvalid>(validation.Value);
         Assert.Contains(
             "Body.TargetMappings[0].StorageClassName",
-            validation.ValidationErrors.Keys);
+            invalid.Errors.Keys);
     }
 
     [Fact]
@@ -117,7 +121,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
     public async Task Create_PersistsTargetMappingsAndInitialRevision()
     {
         var response = (await Mediator.Send(new CreateStorageProfileRequest(
-            ValidCreateBody()))).AssertSuccess();
+            ValidCreateBody()))).AssertSuccess().AssertSuccess();
 
         Assert.Equal(1, response.Revision);
         var mapping = Assert.Single(response.TargetMappings);
@@ -164,7 +168,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                 isDefault: true,
                 allowedResourceTypes: ["Redis"],
                 sizeLimits: new StorageProfileSizeLimitsDto(2, 50)))))
-            .AssertSuccess();
+            .AssertSuccess().AssertSuccess();
 
         Assert.Equal(targetId, response.Id);
         Assert.Equal("Fast Redis Updated", response.DisplayName);
@@ -183,7 +187,8 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             ValidUpdateBody(
                 revision: 1,
                 displayName: "Stale update")));
-        Assert.IsType<ConflictFailure>(stale.AssertFailure());
+        var staleError = stale.AssertSuccess().AssertFailure();
+        Assert.IsType<StorageProfileRevisionConflict>(staleError.Value);
     }
 
     [Fact]
@@ -217,13 +222,62 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                     existing.SizeLimits!.MinSizeGb,
                     existing.SizeLimits.MaxSizeGb),
                 existing.Revision))))
-            .AssertSuccess();
+            .AssertSuccess().AssertSuccess();
 
         Assert.Equal(existing.Revision, response.Revision);
         var persisted = await DbContext.StorageProfiles
             .Find(profile => profile.Id == existing.Id)
             .SingleAsync();
         Assert.Equal(existing.UpdatedAtUtc, persisted.UpdatedAtUtc);
+    }
+
+    [Fact]
+    public async Task Update_DoesNotOverwriteAResolutionFenceWrittenAfterItsSnapshot()
+    {
+        var profile = CreateProfile(
+            ObjectId.GenerateNewId().ToString(),
+            "Fenced profile",
+            "fast",
+            [ResourceType.Redis]);
+        await DbContext.StorageProfiles.InsertOneAsync(profile);
+        var fence = Services.GetRequiredService<FenceStorageProfileResolution>();
+        using (var session = await Fixture.Client.StartSessionAsync())
+        {
+            session.StartTransaction();
+            var fenced = await fence(
+                new StorageProfileResolutionFenceRequest(
+                    profile.Id,
+                    profile.Revision,
+                    TestData.DefaultDeploymentTargetId,
+                    "fast"),
+                session);
+            fenced.AssertSuccess();
+            await session.CommitTransactionAsync();
+        }
+
+        var replacement = profile.Reconfigure(
+            "Fenced profile updated",
+            profile.Description,
+            profile.MediaType,
+            profile.PerformanceTier,
+            profile.IsEnabled,
+            profile.IsDefault,
+            profile.TargetMappings,
+            profile.AllowedResourceTypes,
+            profile.TenantAccess,
+            profile.SizeLimits,
+            profile.UpdatedAtUtc.AddSeconds(1));
+        var update = Services.GetRequiredService<PersistUpdatedStorageProfile>();
+
+        var result = await update(profile, replacement);
+
+        Assert.IsType<StorageProfileRevisionConflict>(result.AssertFailure());
+        var saved = await DbContext.StorageProfiles
+            .Find(item => item.Id == profile.Id)
+            .SingleAsync();
+        Assert.Equal(profile.Revision, saved.Revision);
+        Assert.Equal(1, saved.ResolutionFence);
+        Assert.Equal(profile.DisplayName, saved.DisplayName);
     }
 
     [Fact]
@@ -258,9 +312,17 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                 [TestData.DefaultDeploymentTargetId] = ["standard", "fast"],
                 [SecondDeploymentTargetId] = ["second-fast"]
             });
+        var services = new ServiceCollection();
+        services.AddSingleton<IMongoDatabase>(Fixture.Database);
+        services.AddSingleton(discovery);
+        services.AddSingleton<DiscoverKubernetesStorageClassNames>(
+            discovery.GetStorageClassNamesAsync);
+        services.AddStorageProfilesFeature();
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+        using var scope = provider.CreateScope();
         var handler = new GetAvailableStorageProfilesHandler(
-            DbContext,
-            discovery);
+            scope.ServiceProvider.GetRequiredService<DiscoverKubernetesStorageClassNames>(),
+            scope.ServiceProvider.GetRequiredService<LoadAvailableStorageProfiles>());
 
         var response = (await handler.HandleAsync(
             new GetAvailableStorageProfilesRequest(
@@ -277,18 +339,17 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
     [Fact]
     public async Task InventoryEndpoints_RouteEveryQueryToTheRequestedTarget()
     {
-        var discovery = Assert.IsType<TestStorageDiscoveryService>(
-            Services.GetRequiredService<IStorageDiscoveryService>());
+        var discovery = Services.GetRequiredService<TestStorageDiscoveryService>();
 
         var classes = (await Mediator.Send(
             new GetKubernetesStorageClassesRequest(
-                TestData.DefaultDeploymentTargetId))).AssertSuccess();
+                TestData.DefaultDeploymentTargetId))).AssertSuccess().AssertSuccess();
         var volumes = (await Mediator.Send(
             new GetKubernetesPersistentVolumesRequest(
-                TestData.DefaultDeploymentTargetId))).AssertSuccess();
+                TestData.DefaultDeploymentTargetId))).AssertSuccess().AssertSuccess();
         var claims = (await Mediator.Send(
             new GetKubernetesPersistentVolumeClaimsRequest(
-                TestData.DefaultDeploymentTargetId))).AssertSuccess();
+                TestData.DefaultDeploymentTargetId))).AssertSuccess().AssertSuccess();
 
         Assert.Equal(["bulk", "fast", "standard"], classes.Select(item => item.Name).ToArray());
         Assert.Equal("pv-standard-1", Assert.Single(volumes).Name);
@@ -333,9 +394,17 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                 [TestData.DefaultDeploymentTargetId] = ["standard"],
                 [SecondDeploymentTargetId] = ["second-fast"]
             });
-        var resolver = new StorageProfileResolver(DbContext, discovery);
+        var services = new ServiceCollection();
+        services.AddSingleton<IMongoDatabase>(Fixture.Database);
+        services.AddSingleton(discovery);
+        services.AddSingleton<DiscoverKubernetesStorageClassNames>(
+            discovery.GetStorageClassNamesAsync);
+        services.AddStorageProfilesFeature();
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+        using var scope = provider.CreateScope();
+        var resolve = scope.ServiceProvider.GetRequiredService<ResolveStorageProfile>();
 
-        var resolved = (await resolver.InvokeAsync(
+        var resolved = (await resolve(
             new StorageProfileResolutionRequest(
                 profile.Id,
                 SecondDeploymentTargetId,
@@ -355,11 +424,10 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
     [Fact]
     public async Task Resolve_RejectsMissingTargetMappingWithoutQueryingAnotherTarget()
     {
-        var resolver = Services.GetRequiredService<IStorageProfileResolver>();
-        var discovery = Assert.IsType<TestStorageDiscoveryService>(
-            Services.GetRequiredService<IStorageDiscoveryService>());
+        var resolve = Services.GetRequiredService<ResolveStorageProfile>();
+        var discovery = Services.GetRequiredService<TestStorageDiscoveryService>();
 
-        var result = await resolver.ResolveAsync(
+        var result = await resolve(
             new StorageProfileResolutionRequest(
                 TestData.DefaultStorageProfileId,
                 SecondDeploymentTargetId,
@@ -367,13 +435,13 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                 ResourceType.Redis,
                 SizeGb: 5));
 
-        var validation = Assert.IsType<ValidationFailure>(result.AssertFailure());
-        Assert.Contains("StorageProfileId", validation.ValidationErrors.Keys);
+        Assert.IsType<StorageProfileDeploymentTargetNotConfigured>(
+            result.AssertFailure().Value);
         Assert.Empty(discovery.RequestedDeploymentTargetIds);
     }
 
     [Fact]
-    public async Task Resolve_ReturnsValidationFailure_ForCrossTenantProfile()
+    public async Task Resolve_ReturnsTypedError_ForCrossTenantProfile()
     {
         await DbContext.StorageProfiles.DeleteManyAsync(
             Builders<StorageProfile>.Filter.Empty);
@@ -386,17 +454,30 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             tenantAccess: StorageProfileTenantAccess.Create(
                 StorageProfileTenantAccessMode.SelectedTenants,
                 ["507f1f77bcf86cd799439205"])));
-        var resolver = Services.GetRequiredService<IStorageProfileResolver>();
+        var resolve = Services.GetRequiredService<ResolveStorageProfile>();
 
-        var result = await resolver.ResolveAsync(new StorageProfileResolutionRequest(
+        var result = await resolve(new StorageProfileResolutionRequest(
             profileId,
             TestData.DefaultDeploymentTargetId,
             TestData.TenantId,
             ResourceType.Redis,
             SizeGb: 5));
 
-        var validation = Assert.IsType<ValidationFailure>(result.AssertFailure());
-        Assert.Contains("StorageProfileId", validation.ValidationErrors.Keys);
+        Assert.IsType<StorageProfileTenantAccessDenied>(result.AssertFailure().Value);
+    }
+
+    [Fact]
+    public async Task Resolve_ThrowsForStructuralContractInput()
+    {
+        var resolve = Services.GetRequiredService<ResolveStorageProfile>();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => resolve(
+            new StorageProfileResolutionRequest(
+                "not-an-object-id",
+                TestData.DefaultDeploymentTargetId,
+                TestData.TenantId,
+                ResourceType.Redis,
+                SizeGb: 5)));
     }
 
     [Fact]

@@ -5,9 +5,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.StorageProfiles.Application.Common;
-using Pole.Features.StorageProfiles.Application.Discovery;
+using Pole.Features.StorageProfiles.Application.Persistence;
+using Pole.Features.StorageProfiles.Application.Validation;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -39,52 +39,37 @@ public sealed record CreateStorageProfileRequestBody(
 
 public sealed record CreateStorageProfileRequest(
     [FromBody] CreateStorageProfileRequestBody Body)
-    : IMediatorRequest<StorageProfileDto>;
+    : IMediatorRequest<CreateStorageProfileOutcome>;
+
+public union CreateStorageProfileError(StorageProfileMutationValidationError);
+
+public union CreateStorageProfileOutcome(
+    StorageProfileDto,
+    CreateStorageProfileError);
 
 public sealed class CreateStorageProfileHandler(
-    IStorageProfileDbContext dbContext,
-    IStorageDiscoveryService storageDiscovery,
+    ValidateStorageProfileTargetMappings validateTargetMappings,
+    PersistCreatedStorageProfile persistCreatedStorageProfile,
     TimeProvider timeProvider)
-    : IMediatorHandler<CreateStorageProfileRequest, StorageProfileDto>
+    : IMediatorOutcomeHandler<CreateStorageProfileRequest, CreateStorageProfileOutcome>
 {
-    public async Task<Result<StorageProfileDto>> HandleAsync(
+    public async Task<CreateStorageProfileOutcome> HandleAsync(
         CreateStorageProfileRequest request,
         CancellationToken cancellationToken = default)
     {
-        var mappingValidation =
-            await StorageProfileTargetMappingValidation.ValidateKnownStorageClassesAsync(
-                request.Body.TargetMappings,
-                storageDiscovery,
-                cancellationToken);
-        if (!mappingValidation.TryGetValue(out var mappingErrors, out var mappingFailure))
-            return mappingFailure;
-        if (mappingErrors.Count > 0)
-            return Failures.ValidationFailure(mappingErrors);
-
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var profile = request.Body.ToDomain(
             new StorageProfileFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 now));
-
-        return await dbContext.RunInTransactionAsync<StorageProfileDto>(async (session, ct) =>
+        var targetValidation = await validateTargetMappings(profile, cancellationToken);
+        if (targetValidation is Err<StorageProfileMutationValidationError> error)
         {
-            if (profile.IsDefault)
-            {
-                await StorageProfileDefaultPersistence.DemoteOtherDefaultsAsync(
-                    dbContext,
-                    session,
-                    exceptProfileId: null,
-                    now,
-                    ct);
-            }
+            return new CreateStorageProfileError(error.Value);
+        }
 
-            await dbContext.StorageProfiles.InsertOneAsync(
-                session,
-                profile,
-                cancellationToken: ct);
-            return profile.ToDto();
-        }, cancellationToken: cancellationToken);
+        var persisted = await persistCreatedStorageProfile(profile, cancellationToken);
+        return persisted.ToDto();
     }
 }
 
@@ -107,18 +92,24 @@ public static class CreateStorageProfileEndpoint
     {
         app.MapPost("/profiles", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] CreateStorageProfileRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(profile =>
-                    Results.Created(
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    StorageProfileDto profile => Results.Created(
                         $"/api/v1/platform/storage/profiles/{profile.Id}",
-                        profile));
+                        profile),
+                    CreateStorageProfileError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("CreateStorageProfile")
             .RequireAuthorization(Policy.Admin)
-            .Produces<StorageProfileDto>(StatusCodes.Status201Created);
+            .Produces<StorageProfileDto>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         return app;
     }
 }

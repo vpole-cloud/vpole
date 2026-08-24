@@ -12,7 +12,6 @@ using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Domain;
 using Pole.Features.Shared.Models;
-using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Domain;
@@ -30,7 +29,6 @@ public class MongoDbContext(
     ) : 
     IResourceGroupDbContext,
     ISearchDbContext,
-    IStorageProfileDbContext,
     ITenantDbContext,
     IUserDbContext,
     IGitProviderDbContext,

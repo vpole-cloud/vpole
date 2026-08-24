@@ -26,6 +26,8 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application.Discovery;
+using Pole.Features.StorageProfiles.Application.Endpoints;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
@@ -43,7 +45,7 @@ public sealed class HttpProblemMapperTests
         var mapper = new HttpProblemMapper(
         [
             .. RedisHttpMappings.All,
-            .. StorageProfileContractHttpMappings.All
+            .. StorageProfileHttpMappings.All
         ]);
         CreateRedisServiceError error = new(
             new StorageProfileResolutionError(
@@ -54,6 +56,42 @@ public sealed class HttpProblemMapperTests
         Assert.Equal((int)HttpStatusCode.NotFound, problem.StatusCode);
         Assert.Equal("storage-profiles.not-found", problem.Code);
         Assert.Equal("storage-1", problem.Extensions["storageProfileId"]);
+    }
+
+    [Fact]
+    public void StorageProfileCreateOutcomeMapsTargetValidationErrors()
+    {
+        var mapper = new HttpProblemMapper(StorageProfileHttpMappings.All);
+        CreateStorageProfileError error = new(
+            new StorageProfileMutationValidationError(
+                new StorageProfileTargetMappingsInvalid(
+                    new Dictionary<string, string[]>
+                    {
+                        ["Body.TargetMappings[0].StorageClassName"] =
+                            ["Storage class was not found."]
+                    })));
+
+        var problem = mapper.Map(error);
+
+        Assert.Equal((int)HttpStatusCode.UnprocessableEntity, problem.StatusCode);
+        Assert.Equal("storage-profiles.target-mappings.invalid", problem.Code);
+        Assert.Contains(
+            "Body.TargetMappings[0].StorageClassName",
+            Assert.IsAssignableFrom<IReadOnlyDictionary<string, string[]>>(
+                problem.Extensions["errors"]));
+    }
+
+    [Fact]
+    public void StorageProfileDiscoveryOutcomeUsesSanitizedUnavailableProblem()
+    {
+        var mapper = new HttpProblemMapper(StorageProfileHttpMappings.All);
+
+        var problem = mapper.Map(
+            new KubernetesStorageDiscoveryUnavailable("target-1"));
+
+        Assert.Equal((int)HttpStatusCode.ServiceUnavailable, problem.StatusCode);
+        Assert.Equal("storage-profiles.discovery-unavailable", problem.Code);
+        Assert.Equal("target-1", problem.Extensions["deploymentTargetId"]);
     }
 
     [Fact]

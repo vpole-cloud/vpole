@@ -17,6 +17,7 @@ using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.ResourceGroups.Application.Endpoints;
+using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Server.Extensions;
@@ -105,7 +106,7 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
             typeof(WebServiceResourceDeploymentAdapter).Assembly,
             typeof(PostgresResourceDeploymentAdapter).Assembly,
             typeof(FunctionRevisionKubernetesManager).Assembly,
-            typeof(KubernetesStorageDiscoveryService).Assembly
+            typeof(StorageProfileApplicationRegistration).Assembly
         };
         var directClientConsumers = consumerAssemblies
             .Distinct()
@@ -125,9 +126,16 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
     {
         var expected = new TestProviderInfrastructureException();
         var provider = new ThrowingKubernetesClientProvider(expected);
+        var services = new ServiceCollection();
+        services.AddSingleton<IKubernetesClientProvider>(provider);
+        services.AddStorageProfilesFeature();
+        using var serviceProvider = services.BuildServiceProvider(validateScopes: true);
+        using var scope = serviceProvider.CreateScope();
+        var discoverStorageClasses =
+            scope.ServiceProvider.GetRequiredService<DiscoverKubernetesStorageClasses>();
 
         var storageFailure = await Assert.ThrowsAsync<TestProviderInfrastructureException>(
-            () => new KubernetesStorageDiscoveryService(provider).GetStorageClassesAsync(
+            () => discoverStorageClasses(
                 DeploymentTargetId));
         var functionFailure = await Assert.ThrowsAsync<TestProviderInfrastructureException>(
             () => new FunctionRevisionKubernetesManager(provider, []).ApplyAsync(default));

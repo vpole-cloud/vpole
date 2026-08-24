@@ -1,10 +1,9 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.StorageProfiles.Application.Common;
-using Pole.Features.StorageProfiles.Domain;
+using Pole.Features.StorageProfiles.Application.Persistence;
 using Pole.Mediator;
 
 namespace Pole.Features.StorageProfiles.Application.Endpoints;
@@ -16,7 +15,10 @@ public static class GetStorageProfiles
         app.MapGet("/profiles", async (IMediator mediator, CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(new GetStorageProfilesRequest(), cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    IReadOnlyCollection<StorageProfileDto> profiles => Results.Ok(profiles)
+                });
             })
             .WithName("GetStorageProfiles")
             .RequireAuthorization(Policy.Admin)
@@ -27,20 +29,18 @@ public static class GetStorageProfiles
 }
 
 public sealed record GetStorageProfilesRequest
-    : IMediatorRequest<IReadOnlyCollection<StorageProfileDto>>;
+    : IMediatorRequest<GetStorageProfilesOutcome>;
 
-public sealed class GetStorageProfilesHandler(IStorageProfileDbContext dbContext)
-    : IMediatorHandler<GetStorageProfilesRequest, IReadOnlyCollection<StorageProfileDto>>
+public union GetStorageProfilesOutcome(IReadOnlyCollection<StorageProfileDto>);
+
+public sealed class GetStorageProfilesHandler(LoadStorageProfiles loadStorageProfiles)
+    : IMediatorOutcomeHandler<GetStorageProfilesRequest, GetStorageProfilesOutcome>
 {
-    public async Task<Pole.ResultType.Result<IReadOnlyCollection<StorageProfileDto>>> HandleAsync(
+    public async Task<GetStorageProfilesOutcome> HandleAsync(
         GetStorageProfilesRequest request,
         CancellationToken cancellationToken = default)
     {
-        var profiles = await dbContext.StorageProfiles
-            .Find(FilterDefinition<StorageProfile>.Empty)
-            .SortByDescending(profile => profile.IsDefault)
-            .ThenBy(profile => profile.DisplayName)
-            .ToListAsync(cancellationToken);
+        var profiles = await loadStorageProfiles(cancellationToken);
 
         return profiles.Select(profile => profile.ToDto()).ToArray();
     }

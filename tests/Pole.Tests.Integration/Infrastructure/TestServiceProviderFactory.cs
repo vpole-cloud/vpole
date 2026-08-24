@@ -67,7 +67,16 @@ public static class TestServiceProviderFactory
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
         services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
-        services.AddSingleton<IStorageDiscoveryService>(new TestStorageDiscoveryService("standard", "fast", "bulk"));
+        var storageDiscovery = new TestStorageDiscoveryService("standard", "fast", "bulk");
+        services.AddSingleton(storageDiscovery);
+        services.AddSingleton<DiscoverKubernetesStorageClasses>(
+            storageDiscovery.GetStorageClassesAsync);
+        services.AddSingleton<DiscoverKubernetesStorageClassNames>(
+            storageDiscovery.GetStorageClassNamesAsync);
+        services.AddSingleton<DiscoverKubernetesPersistentVolumes>(
+            storageDiscovery.GetPersistentVolumesAsync);
+        services.AddSingleton<DiscoverKubernetesPersistentVolumeClaims>(
+            storageDiscovery.GetPersistentVolumeClaimsAsync);
         services.AddSingleton<IKubernetesClientProvider>(
             new FixedKubernetesClientProvider(null!));
         services.AddMongoDbContextInterfaces();
@@ -77,7 +86,7 @@ public static class TestServiceProviderFactory
         services.AddTenantContractCapabilities();
         services.AddDomainsFeature();
         services.AddComputeProfilesFeature();
-        services.AddStorageProfileResolution();
+        services.AddStorageProfilesFeature();
         services.AddRedisServicesFeature();
         services.AddPostgresFeature();
         services.AddWebServicesFeature();
