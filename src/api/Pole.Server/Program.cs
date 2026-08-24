@@ -95,8 +95,8 @@ builder.Services.AddHttpProblemMappings(DeploymentTargetContractHttpMappings.All
 
 builder.Services.AddKubernetes(configuration)
     .AddEventBus(configuration, assemblies)
-    .AddOutboxEventAssemblies(outboxEventAssemblies)
     .AddDatabase()
+    .AddOutboxFeature(configuration, outboxEventAssemblies)
     .AddResourceGroupsFeature(configuration)
     .AddFunctionAppsFeature()
     .AddFunctionRuntimeFeature(configuration)

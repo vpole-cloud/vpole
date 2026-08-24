@@ -2,9 +2,8 @@ using System.Text.Json;
 using Hangfire;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.Outbox.Application.Persistence;
 using Pole.Features.Shared.Models;
 using Pole.Observability;
 using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
@@ -16,7 +15,10 @@ namespace Pole.Features.Outbox.Application;
 /// repeated when the process stops before the pending-to-published transition.
 /// </summary>
 public sealed class OutboxProcessorJob(
-    IEventDbContext dbContext,
+    LoadDueOutboxMessages loadDueOutboxMessages,
+    TryPersistOutboxMessageTransition tryPersistTransition,
+    CleanupTerminalOutboxMessages cleanupTerminalMessages,
+    LoadOutboxQueueSnapshot loadQueueSnapshot,
     IOutboxPublisher publisher,
     OutboxEventAssemblyCatalog eventCatalog,
     IOptions<OutboxSettings> outboxSettings,
@@ -34,15 +36,10 @@ public sealed class OutboxProcessorJob(
         CancellationToken cancellationToken = default)
     {
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
-        var messages = await dbContext.OutboxMessages
-            .Find(PendingDueFilter(nowUtc))
-            .Sort(Builders<OutboxMessage>.Sort
-                .Ascending(message =>
-                    ((PendingOutboxMessageState)message.State).NextAttemptAtUtc)
-                .Ascending(message => message.EnqueuedAtUtc)
-                .Ascending(message => message.Id))
-            .Limit(_settings.BatchSize)
-            .ToListAsync(cancellationToken);
+        var messages = await loadDueOutboxMessages(
+            nowUtc,
+            _settings.BatchSize,
+            cancellationToken);
 
         foreach (var message in messages)
         {
@@ -62,21 +59,21 @@ public sealed class OutboxProcessorJob(
         var abandonedCutoffUtc =
             nowUtc.AddDays(-_settings.AbandonedRetentionDays);
 
-        var publishedCount = await DeletePublishedBatchesAsync(
-            publishedCutoffUtc,
-            cancellationToken);
-        var abandonedCount = await DeleteAbandonedBatchesAsync(
-            abandonedCutoffUtc,
+        var cleanup = await cleanupTerminalMessages(
+            new OutboxCleanupRequest(
+                publishedCutoffUtc,
+                abandonedCutoffUtc,
+                _settings.CleanupBatchSize),
             cancellationToken);
 
-        metrics.RecordCleaned("published", publishedCount);
-        metrics.RecordCleaned("abandoned", abandonedCount);
-        if (publishedCount + abandonedCount > 0)
+        metrics.RecordCleaned("published", cleanup.PublishedCount);
+        metrics.RecordCleaned("abandoned", cleanup.AbandonedCount);
+        if (cleanup.PublishedCount + cleanup.AbandonedCount > 0)
         {
             logger.LogInformation(
                 "Cleaned {PublishedCount} published and {AbandonedCount} abandoned outbox messages",
-                publishedCount,
-                abandonedCount);
+                cleanup.PublishedCount,
+                cleanup.AbandonedCount);
         }
 
         await UpdateQueueMetricsAsync(cancellationToken);
@@ -170,11 +167,7 @@ public sealed class OutboxProcessorJob(
 
         var publishedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
         var published = message.MarkPublished(publishedAtUtc);
-        var replacement = await dbContext.OutboxMessages.ReplaceOneAsync(
-            PendingAttemptFilter(message),
-            published,
-            cancellationToken: cancellationToken);
-        if (replacement.ModifiedCount != 1)
+        if (!await tryPersistTransition(message, published, cancellationToken))
         {
             logger.LogWarning(
                 "Published outbox message {MessageId} of type {EventType}, but its pending state changed before completion could be recorded",
@@ -207,11 +200,7 @@ public sealed class OutboxProcessorJob(
             : exception.Message;
         var retried = message.ScheduleRetry(nextAttemptAtUtc, error);
 
-        var replacement = await dbContext.OutboxMessages.ReplaceOneAsync(
-            PendingAttemptFilter(message),
-            retried,
-            cancellationToken: cancellationToken);
-        if (replacement.ModifiedCount != 1)
+        if (!await tryPersistTransition(message, retried, cancellationToken))
             return;
 
         metrics.RecordRetry(message.EventType, delay);
@@ -235,11 +224,7 @@ public sealed class OutboxProcessorJob(
             abandonedAtUtc,
             failureCode,
             string.IsNullOrWhiteSpace(error) ? failureCode : error);
-        var replacement = await dbContext.OutboxMessages.ReplaceOneAsync(
-            PendingAttemptFilter(message),
-            abandoned,
-            cancellationToken: cancellationToken);
-        if (replacement.ModifiedCount != 1)
+        if (!await tryPersistTransition(message, abandoned, cancellationToken))
             return;
 
         metrics.RecordAbandoned(
@@ -255,166 +240,19 @@ public sealed class OutboxProcessorJob(
             ((AbandonedOutboxMessageState)abandoned.State).LastError);
     }
 
-    private async Task<long> DeletePublishedBatchesAsync(
-        DateTime cutoffUtc,
-        CancellationToken cancellationToken)
-    {
-        long totalDeleted = 0;
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var deleted = await DeletePublishedBatchAsync(
-                cutoffUtc,
-                cancellationToken);
-            totalDeleted += deleted;
-            if (deleted < _settings.CleanupBatchSize)
-                return totalDeleted;
-        }
-    }
-
-    private async Task<long> DeletePublishedBatchAsync(
-        DateTime cutoffUtc,
-        CancellationToken cancellationToken)
-    {
-        var filter = Builders<OutboxMessage>.Filter.And(
-            Builders<OutboxMessage>.Filter
-                .OfType<OutboxMessageState, PublishedOutboxMessageState>(
-                    message => message.State),
-            Builders<OutboxMessage>.Filter.Lt(
-                message => ((PublishedOutboxMessageState)message.State).PublishedAtUtc,
-                cutoffUtc));
-        var ids = await dbContext.OutboxMessages
-            .Find(filter)
-            .SortBy(message =>
-                ((PublishedOutboxMessageState)message.State).PublishedAtUtc)
-            .ThenBy(message => message.Id)
-            .Limit(_settings.CleanupBatchSize)
-            .Project(message => message.Id)
-            .ToListAsync(cancellationToken);
-
-        return await DeleteTerminalBatchAsync(
-            ids,
-            Builders<OutboxMessage>.Filter
-                .OfType<OutboxMessageState, PublishedOutboxMessageState>(
-                    message => message.State),
-            cancellationToken);
-    }
-
-    private async Task<long> DeleteAbandonedBatchesAsync(
-        DateTime cutoffUtc,
-        CancellationToken cancellationToken)
-    {
-        long totalDeleted = 0;
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var deleted = await DeleteAbandonedBatchAsync(
-                cutoffUtc,
-                cancellationToken);
-            totalDeleted += deleted;
-            if (deleted < _settings.CleanupBatchSize)
-                return totalDeleted;
-        }
-    }
-
-    private async Task<long> DeleteAbandonedBatchAsync(
-        DateTime cutoffUtc,
-        CancellationToken cancellationToken)
-    {
-        var filter = Builders<OutboxMessage>.Filter.And(
-            Builders<OutboxMessage>.Filter
-                .OfType<OutboxMessageState, AbandonedOutboxMessageState>(
-                    message => message.State),
-            Builders<OutboxMessage>.Filter.Lt(
-                message => ((AbandonedOutboxMessageState)message.State).AbandonedAtUtc,
-                cutoffUtc));
-        var ids = await dbContext.OutboxMessages
-            .Find(filter)
-            .SortBy(message =>
-                ((AbandonedOutboxMessageState)message.State).AbandonedAtUtc)
-            .ThenBy(message => message.Id)
-            .Limit(_settings.CleanupBatchSize)
-            .Project(message => message.Id)
-            .ToListAsync(cancellationToken);
-
-        return await DeleteTerminalBatchAsync(
-            ids,
-            Builders<OutboxMessage>.Filter
-                .OfType<OutboxMessageState, AbandonedOutboxMessageState>(
-                    message => message.State),
-            cancellationToken);
-    }
-
-    private async Task<long> DeleteTerminalBatchAsync(
-        IReadOnlyCollection<string> ids,
-        FilterDefinition<OutboxMessage> stateFilter,
-        CancellationToken cancellationToken)
-    {
-        if (ids.Count == 0)
-            return 0;
-
-        var result = await dbContext.OutboxMessages.DeleteManyAsync(
-            Builders<OutboxMessage>.Filter.And(
-                stateFilter,
-                Builders<OutboxMessage>.Filter.In(
-                    message => message.Id,
-                    ids)),
-            cancellationToken);
-        return result.DeletedCount;
-    }
-
     private async Task UpdateQueueMetricsAsync(
         CancellationToken cancellationToken)
     {
-        var pendingFilter = Builders<OutboxMessage>.Filter
-            .OfType<OutboxMessageState, PendingOutboxMessageState>(
-                message => message.State);
-        var abandonedFilter = Builders<OutboxMessage>.Filter
-            .OfType<OutboxMessageState, AbandonedOutboxMessageState>(
-                message => message.State);
-        var pendingCount = await dbContext.OutboxMessages.CountDocumentsAsync(
-            pendingFilter,
-            cancellationToken: cancellationToken);
-        var abandonedCount = await dbContext.OutboxMessages.CountDocumentsAsync(
-            abandonedFilter,
-            cancellationToken: cancellationToken);
-        var oldestPending = await dbContext.OutboxMessages
-            .Find(pendingFilter)
-            .SortBy(message => message.EnqueuedAtUtc)
-            .Project(message => (DateTime?)message.EnqueuedAtUtc)
-            .FirstOrDefaultAsync(cancellationToken);
-        var oldestPendingAge = oldestPending is null
+        var snapshot = await loadQueueSnapshot(cancellationToken);
+        var oldestPendingAge = snapshot.OldestPendingAtUtc is null
             ? TimeSpan.Zero
-            : timeProvider.GetUtcNow().UtcDateTime - oldestPending.Value;
+            : timeProvider.GetUtcNow().UtcDateTime - snapshot.OldestPendingAtUtc.Value;
 
         metrics.UpdateQueueSnapshot(
-            pendingCount,
-            abandonedCount,
+            snapshot.PendingCount,
+            snapshot.AbandonedCount,
             oldestPendingAge);
     }
-
-    private static FilterDefinition<OutboxMessage> PendingDueFilter(
-        DateTime nowUtc) =>
-        Builders<OutboxMessage>.Filter.And(
-            Builders<OutboxMessage>.Filter
-                .OfType<OutboxMessageState, PendingOutboxMessageState>(
-                    message => message.State),
-            Builders<OutboxMessage>.Filter.Lte(
-                message => ((PendingOutboxMessageState)message.State).NextAttemptAtUtc,
-                nowUtc));
-
-    private static FilterDefinition<OutboxMessage> PendingAttemptFilter(
-        OutboxMessage message) =>
-        Builders<OutboxMessage>.Filter.And(
-            Builders<OutboxMessage>.Filter.Eq(
-                item => item.Id,
-                message.Id),
-            Builders<OutboxMessage>.Filter
-                .OfType<OutboxMessageState, PendingOutboxMessageState>(
-                    item => item.State),
-            Builders<OutboxMessage>.Filter.Eq(
-                item => ((PendingOutboxMessageState)item.State).AttemptCount,
-                PendingState(message).AttemptCount));
 
     private static PendingOutboxMessageState PendingState(
         OutboxMessage message) =>

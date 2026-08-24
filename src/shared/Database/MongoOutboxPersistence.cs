@@ -13,14 +13,17 @@ public delegate Task StoreOutboxWrites(
     CancellationToken cancellationToken = default);
 
 public sealed class MongoStoreOutboxWrites(
-    IMongoCollection<OutboxMessage> outboxMessages)
+    IMongoDatabase database)
 {
+    private readonly IMongoCollection<OutboxMessage> _outboxMessages =
+        database.GetCollection<OutboxMessage>("OutboxMessages");
+
     public Task InvokeAsync(
         IClientSessionHandle session,
         IReadOnlyCollection<OutboxWrite> writes,
         CancellationToken cancellationToken = default) =>
         MongoOutboxPersistence.StoreAsync(
-            outboxMessages,
+            _outboxMessages,
             session,
             writes,
             cancellationToken);
@@ -92,9 +95,7 @@ internal static class MongoOutboxPersistence
             .SetOnInsert(item => item.State, message.State);
 
         return new UpdateOneModel<OutboxMessage>(
-            Builders<OutboxMessage>.Filter.Eq(
-                item => item.PendingKey,
-                message.PendingKey),
+            OutboxMessageFilters.ByPendingKey(message.PendingKey),
             update)
         {
             IsUpsert = true
@@ -124,4 +125,13 @@ internal static class MongoOutboxPersistence
             DateTime.UtcNow,
             write.PendingKey);
     }
+}
+
+internal static class OutboxMessageFilters
+{
+    public static FilterDefinition<OutboxMessage> ByPendingKey(
+        string pendingKey) =>
+        Builders<OutboxMessage>.Filter.Eq(
+            message => message.PendingKey,
+            pendingKey);
 }
