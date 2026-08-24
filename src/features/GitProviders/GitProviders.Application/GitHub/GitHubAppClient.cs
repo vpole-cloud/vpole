@@ -13,7 +13,7 @@ namespace Pole.Features.GitProviders.Application.GitHub;
 public sealed class GitHubAppClient(
     HttpClient httpClient,
     GitHubAppOptions options,
-    IGitHubAppJwtFactory jwtFactory,
+    CreateGitHubAppJwt createJwt,
     IMemoryCache cache,
     TimeProvider timeProvider) : IGitHubAppClient
 {
@@ -23,7 +23,7 @@ public sealed class GitHubAppClient(
         string installationId,
         CancellationToken cancellationToken = default)
     {
-        using var request = CreateRequest(HttpMethod.Get, ApiUrl($"/app/installations/{Escape(installationId)}"), jwtFactory.Create());
+        using var request = CreateRequest(HttpMethod.Get, ApiUrl($"/app/installations/{Escape(installationId)}"), createJwt());
         var response = await SendAsync<InstallationResponse>(request, cancellationToken);
 
         return new GitHubInstallation(
@@ -229,7 +229,7 @@ public sealed class GitHubAppClient(
         using var request = CreateRequest(
             HttpMethod.Post,
             ApiUrl($"/app/installations/{Escape(installationId)}/access_tokens"),
-            jwtFactory.Create());
+            createJwt());
         request.Content = JsonContent.Create(new { permissions = new { contents = "read" } });
         var response = await SendAsync<InstallationTokenResponse>(request, cancellationToken);
         var entry = new InstallationTokenCacheEntry(response.Token, response.ExpiresAt);

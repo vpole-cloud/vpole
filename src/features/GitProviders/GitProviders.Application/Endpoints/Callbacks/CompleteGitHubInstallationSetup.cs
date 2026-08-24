@@ -17,7 +17,7 @@ internal static class CompleteGitHubInstallationSetup
     }
 
     internal static async Task<IResult> HandleAsync(
-        IGitHubSetupService setupService,
+        GitHubSetupService setupService,
         [FromQuery(Name = "installation_id")] string? installationId,
         [FromQuery] string? state,
         [FromQuery(Name = "setup_action")] string? setupAction,

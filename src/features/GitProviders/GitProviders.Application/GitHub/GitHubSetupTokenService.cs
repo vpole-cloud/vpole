@@ -3,15 +3,7 @@ using System.Text;
 
 namespace Pole.Features.GitProviders.Application.GitHub;
 
-public interface IGitHubSetupTokenService
-{
-    string CreateState();
-    string Hash(string value);
-    string CreateCodeVerifier();
-    string CreateCodeChallenge(string verifier);
-}
-
-public sealed class GitHubSetupTokenService : IGitHubSetupTokenService
+public sealed class GitHubSetupTokenService
 {
     public string CreateState() => Base64Url(RandomNumberGenerator.GetBytes(32));
 

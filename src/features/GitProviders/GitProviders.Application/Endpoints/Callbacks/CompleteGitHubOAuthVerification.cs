@@ -17,7 +17,7 @@ internal static class CompleteGitHubOAuthVerification
     }
 
     internal static async Task<IResult> HandleAsync(
-        IGitHubSetupService setupService,
+        GitHubSetupService setupService,
         [FromQuery] string? code,
         [FromQuery] string? state,
         CancellationToken cancellationToken)

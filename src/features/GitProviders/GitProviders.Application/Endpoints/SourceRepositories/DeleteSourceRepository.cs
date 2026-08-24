@@ -1,48 +1,76 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Domain;
+using Pole.Features.GitProviders.Application.Persistence;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.GitProviders.Application.Endpoints;
 
 public sealed record DeleteSourceRepositoryRequest(
     [FromRoute] string Id,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<string>, ITenantWriteOperation;
+    : IMediatorRequest<DeleteSourceRepositoryOutcome>, ITenantWriteOperation;
+
+public union DeleteSourceRepositoryError(
+    SourceRepositoryNotFound,
+    SourceRepositoryHasBuildConfiguration);
+
+public union DeleteSourceRepositoryOutcome(
+    string,
+    DeleteSourceRepositoryError);
+
+public sealed class DeleteSourceRepositoryRequestValidator
+    : AbstractValidator<DeleteSourceRepositoryRequest>
+{
+    public DeleteSourceRepositoryRequestValidator() =>
+        RuleFor(request => request.Id).MongoObjectId("Source repository ID");
+}
 
 public sealed class DeleteSourceRepositoryHandler(
-    IGitProviderDbContext dbContext,
-    ISourceBuildReferenceLookup sourceBuildReferences)
-    : IMediatorHandler<DeleteSourceRepositoryRequest, string>
+    EnsureNoSourceRepositoryBuildConfiguration ensureNoSourceRepositoryBuildConfiguration,
+    DeleteSourceRepository deleteSourceRepository)
+    : IMediatorOutcomeHandler<DeleteSourceRepositoryRequest, DeleteSourceRepositoryOutcome>
 {
-    public async Task<Result<string>> HandleAsync(
+    public async Task<DeleteSourceRepositoryOutcome> HandleAsync(
         DeleteSourceRepositoryRequest request,
         CancellationToken cancellationToken = default)
     {
-        var configurationGuard = await sourceBuildReferences.EnsureSourceRepositoryCanBeDeletedAsync(
+        var configurationGuard = await ensureNoSourceRepositoryBuildConfiguration(
             request.TenantId,
             request.Id,
             cancellationToken);
-        if (configurationGuard is Failure failure)
-            return failure;
+        return configurationGuard switch
+        {
+            Err<SourceBuildSourceRepositoryConfigurationExists> =>
+                new DeleteSourceRepositoryError(
+                    new SourceRepositoryHasBuildConfiguration(request.Id)),
+            Ok<Unit> => await DeleteAsync(
+                request,
+                deleteSourceRepository,
+                cancellationToken)
+        };
+    }
 
-        var result = await dbContext.SourceRepositories.DeleteOneAsync(
-            Builders<SourceRepository>.Filter.And(
-                Builders<SourceRepository>.Filter.ForTenant(request.TenantId),
-                Builders<SourceRepository>.Filter.Eq(item => item.Id, request.Id)),
-            cancellationToken);
-        return result.DeletedCount == 0
-            ? Failures.NotFound("Source repository not found.", request.Id)
-            : request.Id;
+    private static async Task<DeleteSourceRepositoryOutcome> DeleteAsync(
+        DeleteSourceRepositoryRequest request,
+        DeleteSourceRepository deleteSourceRepository,
+        CancellationToken cancellationToken)
+    {
+        var deleted = await deleteSourceRepository(request.TenantId, request.Id, cancellationToken);
+        return deleted switch
+        {
+            Ok<Unit> => request.Id,
+            Err<SourceRepositoryNotFound> error =>
+                new DeleteSourceRepositoryError(error.Value)
+        };
     }
 }
 
@@ -50,14 +78,23 @@ public static class DeleteSourceRepositoryEndpoint
 {
     public static IEndpointRouteBuilder MapDeleteSourceRepositoryEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{Id}", async (IMediator mediator, [AsParameters] DeleteSourceRepositoryRequest request,
+        app.MapDelete("/{Id}", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
+                [AsParameters] DeleteSourceRepositoryRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(_ => Results.NoContent());
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    string _ => Results.NoContent(),
+                    DeleteSourceRepositoryError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("DeleteSourceRepository")
-            .Produces(StatusCodes.Status204NoContent);
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
         return app;
     }
 }

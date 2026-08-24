@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Primitives;
 using MongoDB.Bson;
@@ -11,6 +12,7 @@ using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.GitProviders.Application.Migrations;
 using Pole.Features.GitProviders.Domain;
+using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.Tenants.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -316,6 +318,34 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task RepositoryConnectionId_IsValidatedBeforeLoadingPersistenceOrCallingProvider()
+    {
+        var response = await Client.GetAsync(
+            "/api/v1/git-provider-connections/not-an-object-id/repositories");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(0, GitHubClient.RepositoryCalls);
+    }
+
+    [Fact]
+    public async Task RepositoryAnalysis_MapsTruncatedSnapshotsToTheFeatureProblem()
+    {
+        var connection = CreateConnection(TestData.TenantId, "42");
+        await Fixture.DbContext.GitProviderConnections.InsertOneAsync(connection);
+        GitHubClient.Snapshot = GitHubClient.Snapshot with { IsTruncated = true };
+
+        var response = await Client.PostAsJsonAsync(
+            $"/api/v1/git-provider-connections/{connection.Id}/repositories/{GitHubClient.Repository.Id}/analysis",
+            new AnalyzeRepositoryRequestBody("main"));
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.Equal(
+            "git-providers.repository-analysis.snapshot-too-large",
+            problem.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
     public async Task RepositoryProviderFailure_IsMappedAtServiceBoundary()
     {
         var connection = CreateConnection(TestData.TenantId, "42");
@@ -328,6 +358,57 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
             $"/api/v1/git-provider-connections/{connection.Id}/repositories");
 
         Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SourceRepositoryDeletion_RejectsRepositoriesUsedBySourceBuilds()
+    {
+        var connection = CreateConnection(TestData.TenantId, "42");
+        await Fixture.DbContext.GitProviderConnections.InsertOneAsync(connection);
+
+        var analysisResponse = await Client.PostAsJsonAsync(
+            $"/api/v1/git-provider-connections/{connection.Id}/repositories/{GitHubClient.Repository.Id}/analysis",
+            new AnalyzeRepositoryRequestBody("main"));
+        var analysis = await analysisResponse.Content.ReadFromJsonAsync<RepositoryAnalysisDto>();
+        Assert.Equal(HttpStatusCode.OK, analysisResponse.StatusCode);
+        Assert.NotNull(analysis);
+
+        var linkResponse = await Client.PostAsJsonAsync(
+            $"/api/v1/git-provider-connections/{connection.Id}/repositories/{GitHubClient.Repository.Id}/links",
+            new LinkSourceRepositoryRequestBody("main", Assert.Single(analysis.Candidates).CandidateKey));
+        var sourceRepository = await linkResponse.Content.ReadFromJsonAsync<SourceRepositoryDto>();
+        Assert.Equal(HttpStatusCode.Created, linkResponse.StatusCode);
+        Assert.NotNull(sourceRepository);
+
+        var now = DateTime.UtcNow;
+        await Fixture.DbContext.SourceBuildConfigurations.InsertOneAsync(
+            SourceBuildConfigurationFactory.Create(
+                TestData.TenantId,
+                sourceRepository.Id,
+                ObjectId.GenerateNewId().ToString(),
+                new SourceBuildRecipe(
+                    "DotNet:src/App/App.csproj",
+                    SourceBuildRecipeKind.DotNet,
+                    "src/App",
+                    "src/App/App.csproj",
+                    ImmutableList.Create("dotnet publish"),
+                    "dotnet App.dll",
+                    "FROM mcr.microsoft.com/dotnet/aspnet:10.0",
+                    IsCustomized: false),
+                TestData.UserId,
+                new SourceBuildConfigurationFactory.CreateOptions(
+                    ObjectId.GenerateNewId().ToString(), now)));
+
+        var response = await Client.DeleteAsync($"/api/v1/source-repositories/{sourceRepository.Id}");
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(
+            "git-providers.source-repositories.has-build-configuration",
+            problem.RootElement.GetProperty("code").GetString());
+        Assert.True(await Fixture.DbContext.SourceRepositories
+            .Find(item => item.Id == sourceRepository.Id)
+            .AnyAsync());
     }
 
     private async Task<InstallationStart> BeginInstallationAsync()

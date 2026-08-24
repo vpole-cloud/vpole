@@ -27,6 +27,7 @@ using Pole.Features.DeploymentTargets.Application.Migrations;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
+using Pole.Features.GitProviders.Application;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.Functions.Application.Common;
@@ -202,7 +203,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             typeof(PostgresQuotaProfile).Assembly);
         builder.Services.AddMigrations(Assemblies);
         builder.Services.AddSearchFeature();
-        builder.Services.AddGitProvidersFeature();
+        builder.Services.AddGitProvidersFeature(builder.Configuration);
         builder.Services.AddEnvelopeEncryption(builder.Configuration);
         builder.Services.AddDeploymentTargetsFeature(builder.Configuration);
         builder.Services.RemoveAll<ProbeDeploymentTargetConnection>();

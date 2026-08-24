@@ -1,15 +1,17 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.GitProviders.Application.Analysis;
 using Pole.Features.GitProviders.Application.Common;
+using Pole.Features.GitProviders.Application.Persistence;
+using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.GitProviders.Application.Endpoints;
 
@@ -18,45 +20,83 @@ public sealed record LinkProviderRepositoryRequest(
     [FromRoute] string RepositoryId,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
     [FromBody] LinkSourceRepositoryRequestBody Body)
-    : IMediatorRequest<SourceRepositoryDto>, ITenantWriteOperation;
+    : IMediatorRequest<LinkProviderRepositoryOutcome>, ITenantWriteOperation;
+
+public union LinkProviderRepositoryError(
+    AnalyzeProviderRepositoryError,
+    SourceRepositoryBuildPlanNotFound,
+    SourceRepositoryAlreadyLinked);
+
+public union LinkProviderRepositoryOutcome(
+    SourceRepositoryDto,
+    LinkProviderRepositoryError);
 
 public sealed class LinkProviderRepositoryHandler(
-    IGitProviderDbContext dbContext,
-    IGitProviderRepositoryService repositoryService,
-    IRepositorySourceAnalyzer analyzer)
-    : IMediatorHandler<LinkProviderRepositoryRequest, SourceRepositoryDto>
+    AnalyzeProviderRepository analyzeProviderRepository,
+    PersistLinkedSourceRepository persistLinkedSourceRepository)
+    : IMediatorOutcomeHandler<LinkProviderRepositoryRequest, LinkProviderRepositoryOutcome>
 {
-    public async Task<Result<SourceRepositoryDto>> HandleAsync(
+    public async Task<LinkProviderRepositoryOutcome> HandleAsync(
         LinkProviderRepositoryRequest request,
         CancellationToken cancellationToken = default)
     {
-        var analyzed = await AnalyzeProviderRepositoryHandler.AnalyzeAsync(
-            dbContext, repositoryService, analyzer, request.TenantId, request.ConnectionId, request.RepositoryId,
-            request.Body.Branch, cancellationToken);
-        if (!analyzed.TryGetValue(out var value, out var failure))
-            return failure;
+        var analyzed = await analyzeProviderRepository(
+            request.TenantId,
+            request.ConnectionId,
+            request.RepositoryId,
+            request.Body.Branch,
+            cancellationToken);
+        return analyzed switch
+        {
+            Err<AnalyzeProviderRepositoryError> error =>
+                new LinkProviderRepositoryError(error.Value),
+            Ok<AnalyzedProviderRepository> success => await PersistAsync(
+                request,
+                success.Value,
+                persistLinkedSourceRepository,
+                cancellationToken)
+        };
+    }
 
-        var selectedPlan = value.Analysis.Candidates.FirstOrDefault(candidate =>
+    private static async Task<LinkProviderRepositoryOutcome> PersistAsync(
+        LinkProviderRepositoryRequest request,
+        AnalyzedProviderRepository analyzed,
+        PersistLinkedSourceRepository persistLinkedSourceRepository,
+        CancellationToken cancellationToken)
+    {
+        var selectedPlan = analyzed.Analysis.Candidates.FirstOrDefault(candidate =>
             string.Equals(candidate.CandidateKey, request.Body.CandidateKey, StringComparison.Ordinal));
         if (selectedPlan is null)
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Body.CandidateKey"] = ["The selected build-plan candidate was not found in the latest analysis."]
-            });
+            return new LinkProviderRepositoryError(
+                new SourceRepositoryBuildPlanNotFound(request.Body.CandidateKey));
         }
 
         var sourceRepository = SourceRepositoryFactory.Create(
-            request.TenantId, request.ConnectionId, request.RepositoryId, value.Repository.FullName,
-            value.Repository.HtmlUrl, value.Repository.IsPrivate, value.Analysis, selectedPlan,
+            request.TenantId, request.ConnectionId, request.RepositoryId, analyzed.Repository.FullName,
+            analyzed.Repository.HtmlUrl, analyzed.Repository.IsPrivate, analyzed.Analysis, selectedPlan,
             SourceRepositoryFactory.DefaultOptions);
-        var inserted = await dbContext.SourceRepositories.InsertOneAsResultAsync(
+        var inserted = await persistLinkedSourceRepository(
             sourceRepository,
-            () => Failures.Conflict("This repository branch and build-plan candidate is already linked."),
             cancellationToken);
-        return inserted.TryGetValue(out var linkedRepository, out var insertFailure)
-            ? linkedRepository.ToDto()
-            : insertFailure;
+        return inserted switch
+        {
+            Ok<SourceRepository> success => success.Value.ToDto(),
+            Err<SourceRepositoryAlreadyLinked> error => new LinkProviderRepositoryError(error.Value)
+        };
+    }
+}
+
+public sealed class LinkProviderRepositoryRequestValidator
+    : AbstractValidator<LinkProviderRepositoryRequest>
+{
+    public LinkProviderRepositoryRequestValidator()
+    {
+        RuleFor(request => request.ConnectionId).MongoObjectId("Git provider connection ID");
+        RuleFor(request => request.RepositoryId).NotEmpty();
+        RuleFor(request => request.Body).NotNull();
+        RuleFor(request => request.Body.Branch).NotEmpty();
+        RuleFor(request => request.Body.CandidateKey).NotEmpty();
     }
 }
 
@@ -64,15 +104,27 @@ public static class LinkProviderRepositoryEndpoint
 {
     public static IEndpointRouteBuilder MapLinkProviderRepositoryEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/{ConnectionId}/repositories/{RepositoryId}/links", async (IMediator mediator,
+        app.MapPost("/{ConnectionId}/repositories/{RepositoryId}/links", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] LinkProviderRepositoryRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(item => Results.Created($"/api/v1/source-repositories/{item.Id}", item));
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    SourceRepositoryDto repository => Results.Created(
+                        $"/api/v1/source-repositories/{repository.Id}",
+                        repository),
+                    LinkProviderRepositoryError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("LinkProviderRepository")
-            .Produces<SourceRepositoryDto>(StatusCodes.Status201Created);
+            .Produces<SourceRepositoryDto>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+            .ProducesProblem(StatusCodes.Status502BadGateway);
         return app;
     }
 }

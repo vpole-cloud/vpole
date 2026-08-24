@@ -2,33 +2,28 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Domain;
+using Pole.Features.GitProviders.Application.Persistence;
 using Pole.Mediator;
-using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Application.Endpoints;
 
 public sealed record GetSourceRepositoriesRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<IReadOnlyList<SourceRepositoryDto>>, ITenantReadOperation;
+    : IMediatorRequest<GetSourceRepositoriesOutcome>, ITenantReadOperation;
 
-public sealed class GetSourceRepositoriesHandler(IGitProviderDbContext dbContext)
-    : IMediatorHandler<GetSourceRepositoriesRequest, IReadOnlyList<SourceRepositoryDto>>
+public union GetSourceRepositoriesOutcome(IReadOnlyList<SourceRepositoryDto>);
+
+public sealed class GetSourceRepositoriesHandler(LoadSourceRepositories loadSourceRepositories)
+    : IMediatorOutcomeHandler<GetSourceRepositoriesRequest, GetSourceRepositoriesOutcome>
 {
-    public async Task<Result<IReadOnlyList<SourceRepositoryDto>>> HandleAsync(
+    public async Task<GetSourceRepositoriesOutcome> HandleAsync(
         GetSourceRepositoriesRequest request,
         CancellationToken cancellationToken = default)
     {
-        var repositories = await dbContext.SourceRepositories
-            .Find(Builders<SourceRepository>.Filter.ForTenant(request.TenantId))
-            .SortBy(item => item.RepositoryFullName)
-            .ThenBy(item => item.Branch)
-            .ToListAsync(cancellationToken);
+        var repositories = await loadSourceRepositories(request.TenantId, cancellationToken);
         return repositories.Select(item => item.ToDto()).ToArray();
     }
 }
@@ -41,7 +36,10 @@ public static class GetSourceRepositoriesEndpoint
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    IReadOnlyList<SourceRepositoryDto> repositories => Results.Ok(repositories)
+                });
             })
             .WithName("GetSourceRepositories")
             .Produces<IReadOnlyList<SourceRepositoryDto>>();
