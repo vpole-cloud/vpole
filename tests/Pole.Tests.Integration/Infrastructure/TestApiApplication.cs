@@ -19,6 +19,7 @@ using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.Domains.Application;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.Migrations;
+using Pole.Features.ContainerRegistries.Application;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.DeploymentTargets.Application;
 using Pole.Features.DeploymentTargets.Application.Common;
@@ -247,7 +248,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton<FenceDeploymentTargetWorkloadConfigurations>(
             deploymentTargetLookup.FenceManyOutcomeAsync);
         builder.Services.AddSingleton(new HarborOptions());
-        builder.Services.AddContainerRegistriesFeature();
+        builder.Services.AddContainerRegistriesFeature(builder.Configuration);
         builder.Services.AddSingleton<ISourceBuildJobDispatcher, TestSourceBuildJobDispatcher>();
         builder.Services.AddSingleton(new SourceBuildExecutionOptions());
         builder.Services.AddSingleton(new BuildKitOptions());

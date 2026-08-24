@@ -12,11 +12,7 @@ using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Features.ContainerRegistries.Application.Common;
-using Pole.Features.ContainerRegistries.Application.Harbor;
 using Pole.Features.ContainerRegistries.Application.Provisioning;
-using Pole.Features.ContainerRegistries.Application.Security;
-using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.GitProviders.Application.Analysis;
 using Pole.Features.GitProviders.Application.Common;
@@ -177,31 +173,9 @@ public static class DependencyInjection
             services.TryAddSingleton<ISearchDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ITenantDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IUserDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddSingleton<IContainerRegistryDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ISourceBuildDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.AddHttpContextAccessor();
             services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
-            return services;
-        }
-
-        public IServiceCollection AddContainerRegistriesFeature()
-        {
-            services.AddContainerRegistryCapabilities();
-            services.TryAddSingleton(TimeProvider.System);
-            services.TryAddSingleton<IRegistryCredentialProtector, RegistryCredentialProtector>();
-            services.TryAddScoped<IRegistryCredentialResolver, RegistryCredentialResolver>();
-            services.TryAddScoped<IRegistryCredentialRewrapService, RegistryCredentialRewrapService>();
-            services.TryAddScoped<IRuntimeRegistryAccessProvider, RuntimeRegistryAccessProvider>();
-            services.TryAddScoped<IRegistryProvisioningCleanupService, RegistryProvisioningCleanupService>();
-            services.TryAddScoped<IContainerRegistryProvisioningService, ContainerRegistryProvisioningService>();
-            services.AddHttpClient<IContainerRegistryClient, HarborContainerRegistryClient>(client =>
-                    client.Timeout = TimeSpan.FromMinutes(2))
-                .ConfigurePrimaryHttpMessageHandler(static () => new HttpClientHandler
-                {
-                    // Harbor's Basic-auth API can set a browser session cookie. Replaying it without
-                    // the corresponding CSRF context makes subsequent mutating requests fail with 403.
-                    UseCookies = false
-                });
             return services;
         }
 
@@ -248,7 +222,6 @@ public static class DependencyInjection
                 .ValidateOnStart();
             services.AddSingleton(sp => sp.GetRequiredService<IOptions<QuotaSettings>>().Value);
             services.AddSettingsSection<KeycloakOptions>(KeycloakOptions.SectionName, configuration);
-            services.AddSettingsSection<HarborOptions>(HarborOptions.SectionName, configuration);
             services.AddSettingsSection<SourceBuildExecutionOptions>(SourceBuildExecutionOptions.SectionName, configuration);
             services.AddSettingsSection<BuildKitOptions>(BuildKitOptions.SectionName, configuration);
             return services;
@@ -381,7 +354,7 @@ public static class DependencyInjection
                 job => job.RecoverAsync(CancellationToken.None),
                 Cron.Minutely);
 
-            RecurringJob.AddOrUpdate<IRegistryProvisioningCleanupService>(
+            RecurringJob.AddOrUpdate<RegistryProvisioningCleanupService>(
                 "cleanup-container-registry-provisioning",
                 job => job.ReconcileAsync(CancellationToken.None),
                 Cron.Minutely);

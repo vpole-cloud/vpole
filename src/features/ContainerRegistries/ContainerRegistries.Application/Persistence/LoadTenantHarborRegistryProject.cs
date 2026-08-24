@@ -1,0 +1,19 @@
+using MongoDB.Driver;
+using Pole.Features.ContainerRegistries.Domain;
+
+namespace Pole.Features.ContainerRegistries.Application.Persistence;
+
+public delegate Task<RegistryProject?> LoadTenantHarborRegistryProject(
+    string tenantId,
+    CancellationToken cancellationToken = default);
+
+internal sealed class MongoLoadTenantHarborRegistryProject(IMongoDatabase database)
+{
+    public async Task<RegistryProject?> InvokeAsync(
+        string tenantId,
+        CancellationToken cancellationToken = default) =>
+        await database
+            .GetCollection<RegistryProject>("RegistryProjects")
+            .Find(ContainerRegistryFilters.HarborProjectByTenant(tenantId))
+            .FirstOrDefaultAsync(cancellationToken);
+}

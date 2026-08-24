@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ContainerRegistries.Domain;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.GitProviders.Domain;
@@ -28,7 +27,6 @@ public class MongoDbContext(
     ISearchDbContext,
     ITenantDbContext,
     IUserDbContext,
-    IContainerRegistryDbContext,
     ISourceBuildDbContext
 {
     public IMongoDatabase Database { get; } = database;

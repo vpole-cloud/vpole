@@ -58,6 +58,51 @@ public sealed record RegistryArtifact(
     string Digest,
     long SizeBytes);
 
+public sealed record ContainerRegistryProviderNotConfigured(string Provider);
+
+public sealed record ContainerRegistryProviderUnavailable(string Provider);
+
+public union ContainerRegistryProviderError(
+    ContainerRegistryProviderNotConfigured,
+    ContainerRegistryProviderUnavailable);
+
+public sealed record ContainerRegistryArtifactNotFound(string Reference);
+
+public union ContainerRegistryArtifactLookupError(
+    ContainerRegistryArtifactNotFound,
+    ContainerRegistryProviderError);
+
+public sealed record TenantContainerRegistryNotReady(string TenantId);
+
+public sealed record TenantContainerRegistryProvisioningConflict(string TenantId);
+
+public sealed record TenantContainerRegistryProjectNotFound(string RegistryProjectId);
+
+public sealed record RegistryCredentialUnavailable(string RegistryProjectId);
+
+public sealed record RegistryCredentialProtectionFailed;
+
+public union EnsureTenantContainerRegistryProjectError(
+    TenantContainerRegistryProvisioningConflict,
+    ContainerRegistryProviderError,
+    RegistryCredentialProtectionFailed);
+
+public union PrepareRegistryBuildPushError(
+    TenantContainerRegistryNotReady,
+    TenantContainerRegistryProvisioningConflict,
+    ContainerRegistryProviderError,
+    RegistryCredentialUnavailable,
+    RegistryCredentialProtectionFailed);
+
+public union GetTenantRegistryArtifactError(
+    TenantContainerRegistryProjectNotFound,
+    TenantContainerRegistryNotReady,
+    ContainerRegistryArtifactLookupError);
+
+public union ResolveRuntimeRegistryAccessError(
+    TenantContainerRegistryNotReady,
+    RegistryCredentialUnavailable);
+
 public sealed record RegistryBuildAccess(
     string RegistryProjectId,
     RegistryPushTarget Target,
@@ -68,6 +113,22 @@ public sealed record RegistryBuildAccess(
     public override string ToString() =>
         $"RegistryBuildAccess(project={RegistryProjectId}, target={Target.Reference}, credentials=[REDACTED])";
 }
+
+public delegate Task<Result<RegistryBuildAccess, PrepareRegistryBuildPushError>>
+    PrepareRegistryBuildPush(
+        string tenantId,
+        string initiatedByUserId,
+        string repositoryName,
+        string tag,
+        CancellationToken cancellationToken = default);
+
+public delegate Task<Result<RegistryArtifact, GetTenantRegistryArtifactError>>
+    GetTenantRegistryArtifact(
+        string tenantId,
+        string registryProjectId,
+        string repositoryName,
+        string reference,
+        CancellationToken cancellationToken = default);
 
 public interface IContainerRegistryBuildService
 {
@@ -88,21 +149,21 @@ public interface IContainerRegistryBuildService
 
 public interface IContainerRegistryClient
 {
-    Task<Result<ProvisionedRegistryProject>> ProvisionProjectAsync(
+    Task<Result<ProvisionedRegistryProject, ContainerRegistryProviderError>> ProvisionProjectAsync(
         RegistryProjectProvisioningRequest request,
         CancellationToken cancellationToken = default);
 
-    Task<Result<RegistryArtifact>> GetArtifactAsync(
+    Task<Result<RegistryArtifact, ContainerRegistryArtifactLookupError>> GetArtifactAsync(
         string projectName,
         string repositoryName,
         string reference,
         CancellationToken cancellationToken = default);
 
-    Task<Result<RegistryRobotCleanupResult>> DeleteRobotCredentialsAsync(
+    Task<Result<RegistryRobotCleanupResult, ContainerRegistryProviderError>> DeleteRobotCredentialsAsync(
         IReadOnlyCollection<RegistryRobotCleanupTarget> targets,
         CancellationToken cancellationToken = default);
 
-    Task<Result> DeleteProjectAsync(
+    Task<Result<Unit, ContainerRegistryProviderError>> DeleteProjectAsync(
         string externalProjectId,
         CancellationToken cancellationToken = default);
 }
@@ -118,9 +179,7 @@ public sealed record RuntimeRegistryAccess(
     public override string ToString() => "RuntimeRegistryAccess([REDACTED])";
 }
 
-public interface IRuntimeRegistryAccessProvider
-{
-    Task<Result<RuntimeRegistryAccess>> ResolveAsync(
+public delegate Task<Result<RuntimeRegistryAccess, ResolveRuntimeRegistryAccessError>>
+    ResolveRuntimeRegistryAccess(
         string tenantId,
         CancellationToken cancellationToken = default);
-}

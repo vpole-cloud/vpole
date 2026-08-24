@@ -25,3 +25,14 @@ consumer is added, migrated, or removed.
 GitProviders. Its local persistence and GitHub provider operations already use
 the canonical typed capabilities; no new consumer may depend on the legacy
 interface.
+
+## ContainerRegistries
+
+| Temporary boundary | Current consumers | Migration owner and checkpoint | Removal condition |
+| --- | --- | --- | --- |
+| `IContainerRegistryBuildService` returning legacy `Result` | SourceBuild job executor | SourceBuilds, wave 3 | SourceBuilds consumes `PrepareRegistryBuildPush` and `GetTenantRegistryArtifact` directly. |
+
+`SourceBuildContainerRegistryBuildService` is the only typed-to-legacy adapter
+in ContainerRegistries. WebServices already consumes
+`ResolveRuntimeRegistryAccess`; no new consumer may depend on the legacy build
+interface.

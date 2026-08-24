@@ -2,6 +2,7 @@ using System.Reflection;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Encryption;
+using Pole.Features.ContainerRegistries.Application;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ComputeProfiles.Application;
 using Pole.Features.ComputeProfiles.Application.Bootstrap;
@@ -114,7 +115,7 @@ builder.Services.AddKubernetes(configuration)
     .AddDeploymentTargetsFeature(configuration)
     .AddSearchFeature()
     .AddGitProvidersFeature(configuration)
-    .AddContainerRegistriesFeature()
+    .AddContainerRegistriesFeature(configuration)
     .AddSourceBuildsFeature()
     .AddUsersFeature(configuration)
     .AddSettings(configuration)

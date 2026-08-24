@@ -12,7 +12,7 @@ namespace Pole.Features.WebServices.Application.Kubernetes;
 public sealed class WebServiceResourceDeploymentAdapter(
     LoadWebServiceDeploymentSnapshot loadDeploymentSnapshot,
     LoadWebServiceById loadWebServiceById,
-    IRuntimeRegistryAccessProvider registryAccessProvider,
+    ResolveRuntimeRegistryAccess resolveRuntimeRegistryAccess,
     IKubernetesClientProvider kubernetesClientProvider)
     : IResourceDeploymentAdapter
 {
@@ -167,16 +167,17 @@ public sealed class WebServiceResourceDeploymentAdapter(
         WebServiceInKubernetes inKubernetes,
         CancellationToken cancellationToken)
     {
-        var access = await registryAccessProvider.ResolveAsync(
+        var access = await resolveRuntimeRegistryAccess(
             context.Deployment.TenantId,
             cancellationToken);
-        if (!access.TryGetValue(out var registryAccess, out _))
+        if (access is not Ok<RuntimeRegistryAccess> success)
         {
             return ResourceDeploymentAdapterResult.Failed.Create(
                 "RegistryCredentialUnavailable",
                 "The web service registry credential is unavailable.",
                 retryable: true);
         }
+        var registryAccess = success.Value;
 
         if (!string.Equals(
                 webService.Spec.Image.SecretName,
