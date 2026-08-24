@@ -23,16 +23,19 @@ public sealed record GetAvailableDeploymentTargetsRequest(
     [FromQuery] bool RequiresPublicIngress,
     [FromQuery] string? IsolationScopeId,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<IReadOnlyCollection<AvailableDeploymentTargetDto>>,
+    : IMediatorRequest<GetAvailableDeploymentTargetsOutcome>,
         ITenantReadOperation;
+
+public union GetAvailableDeploymentTargetsOutcome(
+    IReadOnlyCollection<AvailableDeploymentTargetDto>);
 
 public sealed class GetAvailableDeploymentTargetsHandler(
     LoadEligibleDeploymentTargets loadEligibleDeploymentTargets)
     : IMediatorOutcomeHandler<
         GetAvailableDeploymentTargetsRequest,
-        IReadOnlyCollection<AvailableDeploymentTargetDto>>
+        GetAvailableDeploymentTargetsOutcome>
 {
-    public async Task<IReadOnlyCollection<AvailableDeploymentTargetDto>> HandleAsync(
+    public async Task<GetAvailableDeploymentTargetsOutcome> HandleAsync(
         GetAvailableDeploymentTargetsRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -74,7 +77,10 @@ public static class GetAvailableDeploymentTargetsEndpoint
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    IReadOnlyCollection<AvailableDeploymentTargetDto> targets => Results.Ok(targets)
+                });
             })
             .WithName("GetAvailableDeploymentTargets")
             .Produces<IReadOnlyCollection<AvailableDeploymentTargetDto>>();

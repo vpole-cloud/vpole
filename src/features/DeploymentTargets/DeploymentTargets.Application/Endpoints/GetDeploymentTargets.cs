@@ -9,14 +9,17 @@ using Pole.Mediator;
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 
 public sealed record GetDeploymentTargetsRequest
-    : IMediatorRequest<IReadOnlyCollection<DeploymentTargetDto>>;
+    : IMediatorRequest<GetDeploymentTargetsOutcome>;
+
+public union GetDeploymentTargetsOutcome(
+    IReadOnlyCollection<DeploymentTargetDto>);
 
 public sealed class GetDeploymentTargetsHandler(
     LoadDefaultDeploymentTargetId loadDefaultDeploymentTargetId,
     LoadDeploymentTargets loadDeploymentTargets)
-    : IMediatorOutcomeHandler<GetDeploymentTargetsRequest, IReadOnlyCollection<DeploymentTargetDto>>
+    : IMediatorOutcomeHandler<GetDeploymentTargetsRequest, GetDeploymentTargetsOutcome>
 {
-    public async Task<IReadOnlyCollection<DeploymentTargetDto>> HandleAsync(
+    public async Task<GetDeploymentTargetsOutcome> HandleAsync(
         GetDeploymentTargetsRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -35,7 +38,10 @@ public static class GetDeploymentTargetsEndpoint
         app.MapGet("/", async (IMediator mediator, CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(new GetDeploymentTargetsRequest(), cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    IReadOnlyCollection<DeploymentTargetDto> targets => Results.Ok(targets)
+                });
             })
             .WithName("GetDeploymentTargets")
             .Produces<IReadOnlyCollection<DeploymentTargetDto>>();
