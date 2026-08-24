@@ -16,9 +16,13 @@ public sealed class DomainsFeatureRegistrationTests
 
         services.AddDomainsFeature();
 
+        AssertScoped<MongoLoadTenantDomainZone>(services);
         AssertScoped<LoadTenantDomainZone>(services);
+        AssertScoped<MongoLoadTenantDomainZones>(services);
         AssertScoped<LoadTenantDomainZones>(services);
+        AssertScoped<MongoCreateManagedDomainZoneReservation>(services);
         AssertScoped<CreateManagedDomainZoneReservation>(services);
+        AssertScoped<MongoDeleteManagedDomainZone>(services);
         AssertScoped<DeleteManagedDomainZone>(services);
         AssertScoped<GetOrCreateGeneratedDomainZoneOutcome>(services);
         AssertScoped<GetOrCreateGeneratedDomainZonesOutcome>(services);

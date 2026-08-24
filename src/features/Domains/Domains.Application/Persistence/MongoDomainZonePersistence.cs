@@ -14,30 +14,6 @@ namespace Pole.Features.Domains.Application.Persistence;
 
 internal sealed partial class MongoDomainPersistence
 {
-    public async Task<Result<TenantDomainZoneSnapshot, DomainZoneNotFound>> GetAsync(
-        string tenantId,
-        string zoneId,
-        CancellationToken cancellationToken = default)
-    {
-        var zone = await _zones.Find(DomainFilters.ZoneById(tenantId, zoneId))
-            .FirstOrDefaultAsync(cancellationToken);
-        return zone is null
-            ? new Err<DomainZoneNotFound>(new DomainZoneNotFound(zoneId))
-            : new Ok<TenantDomainZoneSnapshot>(zone.ToSnapshot());
-    }
-
-    public async Task<IReadOnlyList<TenantDomainZoneSnapshot>> ListAsync(
-        string tenantId,
-        string? deploymentTargetId = null,
-        CancellationToken cancellationToken = default)
-    {
-        var zones = await _zones.Find(
-                DomainFilters.ZonesForTenant(tenantId, deploymentTargetId))
-            .SortBy(item => item.DeploymentTargetId).ThenBy(item => item.Domain).ThenBy(item => item.Id)
-            .ToListAsync(cancellationToken);
-        return zones.Select(DomainContractMappings.ToSnapshot).ToArray();
-    }
-
     public async Task<Result<TenantDomainZoneSnapshot, GeneratedDomainZoneError>>
         GetOrCreateGeneratedOutcomeAsync(
             GetOrCreateGeneratedZoneRequest request,
@@ -58,7 +34,7 @@ internal sealed partial class MongoDomainPersistence
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        EnsureTransaction(session);
+        DomainTransactions.EnsureActive(session);
         EnsureGeneratedZoneSet(requests);
 
         var tenantId = requests[0].TenantId;
@@ -188,121 +164,5 @@ internal sealed partial class MongoDomainPersistence
                 zones
                     .Select(zone => zone.DeploymentTargetId)
                     .ToArray())));
-
-    public async Task<Result<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>>
-        CreateManagedReservationOutcomeAsync(
-            string tenantId,
-            string deploymentTargetId,
-            string label,
-            string publicBaseDomain,
-            long expectedWorkloadConfigurationRevision,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default)
-    {
-        EnsureTransaction(session);
-        TenantDomainZone zone;
-        try
-        {
-            zone = TenantDomainZoneFactory.CreateManagedReservation(
-                tenantId,
-                deploymentTargetId,
-                label,
-                DnsName.Create(publicBaseDomain),
-                CreateOptions());
-        }
-        catch (ArgumentException exception)
-        {
-            return new Err<CreateManagedDomainZoneError>(
-                new InvalidManagedDomainZone(exception.Message));
-        }
-
-        var fence = await fenceDeploymentTargetWorkloadConfigurations(
-            [new DeploymentTargetWorkloadConfigurationFenceRequest(
-                deploymentTargetId,
-                expectedWorkloadConfigurationRevision)],
-            session,
-            cancellationToken);
-        if (fence is Err<DeploymentTargetWorkloadConfigurationFenceRejected>)
-        {
-            return new Err<CreateManagedDomainZoneError>(
-                new ManagedDomainZoneDeploymentTargetChanged(deploymentTargetId));
-        }
-
-        try
-        {
-            await _zones.InsertOneAsync(session, zone, cancellationToken: cancellationToken);
-        }
-        catch (MongoWriteException exception) when (exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
-        {
-            return new Err<CreateManagedDomainZoneError>(
-                new ManagedDomainZoneAlreadyReserved(zone.Domain));
-        }
-
-        var registered = await applyDeploymentTargetReferenceChanges(
-            new DeploymentTargetReferenceOwner(DeploymentTargetReferenceOwnerTypes.DomainZone, zone.Id),
-            [zone.DeploymentTargetId],
-            [],
-            session,
-            cancellationToken);
-        return registered is Ok<Unit>
-            ? new Ok<TenantDomainZoneSnapshot>(
-                zone.ToSnapshot())
-            : new Err<CreateManagedDomainZoneError>(
-                new ManagedDomainZoneReferenceRejected(deploymentTargetId));
-    }
-
-    public async Task<Result<ManagedDomainZoneDeleted, DeleteManagedDomainZoneError>>
-        DeleteManagedReservationAsync(
-            string tenantId,
-            string zoneId,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default)
-    {
-        EnsureTransaction(session);
-        var zoneFilter = DomainFilters.ZoneById(tenantId, zoneId);
-        var zone = await _zones.Find(session, zoneFilter).FirstOrDefaultAsync(cancellationToken);
-        if (zone is null)
-        {
-            return new Err<DeleteManagedDomainZoneError>(
-                new DomainZoneNotFound(zoneId));
-        }
-        if (zone.Kind == TenantDomainZoneKind.Generated)
-        {
-            return new Err<DeleteManagedDomainZoneError>(
-                new GeneratedDomainZoneDeletionRejected(zoneId));
-        }
-        var bindingCount = await _bindings.CountDocumentsAsync(
-            session,
-            DomainFilters.BindingsForZone(zoneId),
-            cancellationToken: cancellationToken);
-        if (bindingCount > 0)
-        {
-            return new Err<DeleteManagedDomainZoneError>(
-                new DomainZoneHasHostnameBindings(zoneId, bindingCount));
-        }
-        var deleted = await _zones.DeleteOneAsync(
-            session,
-            DomainFilters.ZoneAtRevision(tenantId, zone),
-            cancellationToken: cancellationToken);
-        if (deleted.DeletedCount != 1)
-        {
-            return new Err<DeleteManagedDomainZoneError>(
-                new DomainZoneDeletionConflict(zoneId));
-        }
-
-        var unregistered = await applyDeploymentTargetReferenceChanges(
-            new DeploymentTargetReferenceOwner(DeploymentTargetReferenceOwnerTypes.DomainZone, zone.Id),
-            [],
-            [zone.DeploymentTargetId],
-            session,
-            cancellationToken);
-        return unregistered is Ok<Unit>
-            ? new Ok<ManagedDomainZoneDeleted>(
-                new ManagedDomainZoneDeleted(zone.Id))
-            : new Err<DeleteManagedDomainZoneError>(
-                new ManagedDomainZoneReferenceRemovalRejected(
-                    zone.Id,
-                    zone.DeploymentTargetId));
-    }
 
 }

@@ -12,17 +12,20 @@ public static class DomainPersistenceRegistration
     /// <summary>Registers only the provider-owned domain capabilities and transaction delegates.</summary>
     public static IServiceCollection AddDomainPersistence(this IServiceCollection services)
     {
-        services.AddScoped<MongoDomainPersistence>();
+        services.AddScoped<MongoLoadTenantDomainZone>();
         services.AddScoped<LoadTenantDomainZone>(provider =>
-            provider.GetRequiredService<MongoDomainPersistence>().GetAsync);
+            provider.GetRequiredService<MongoLoadTenantDomainZone>().InvokeAsync);
+        services.AddScoped<MongoLoadTenantDomainZones>();
         services.AddScoped<LoadTenantDomainZones>(provider =>
-            provider.GetRequiredService<MongoDomainPersistence>().ListAsync);
+            provider.GetRequiredService<MongoLoadTenantDomainZones>().InvokeAsync);
+        services.AddScoped<MongoCreateManagedDomainZoneReservation>();
         services.AddScoped<CreateManagedDomainZoneReservation>(provider =>
-            provider.GetRequiredService<MongoDomainPersistence>()
-                .CreateManagedReservationOutcomeAsync);
+            provider.GetRequiredService<MongoCreateManagedDomainZoneReservation>()
+                .InvokeAsync);
+        services.AddScoped<MongoDeleteManagedDomainZone>();
         services.AddScoped<DeleteManagedDomainZone>(provider =>
-            provider.GetRequiredService<MongoDomainPersistence>()
-                .DeleteManagedReservationAsync);
+            provider.GetRequiredService<MongoDeleteManagedDomainZone>().InvokeAsync);
+        services.AddScoped<MongoDomainPersistence>();
         services.AddScoped<GetOrCreateGeneratedDomainZoneOutcome>(provider =>
             provider.GetRequiredService<MongoDomainPersistence>()
                 .GetOrCreateGeneratedOutcomeAsync);
