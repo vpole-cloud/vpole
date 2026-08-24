@@ -27,11 +27,6 @@ public static class DomainHttpMappings
     private static HttpProblem MapCreateManagedDomainZoneError(
         CreateManagedDomainZoneError error) => error switch
     {
-        InvalidManagedDomainZone invalid => Problem(
-            HttpStatusCode.UnprocessableEntity,
-            "Domain zone is invalid",
-            "domains.zone.invalid",
-            detail: invalid.Message),
         ManagedDomainZoneAlreadyReserved reserved => Problem(
             HttpStatusCode.Conflict,
             "Domain zone is already reserved",

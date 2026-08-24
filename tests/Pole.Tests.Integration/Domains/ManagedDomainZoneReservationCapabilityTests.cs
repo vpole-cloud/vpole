@@ -101,11 +101,20 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
         Assert.Equal(0, coordinator.RegistrationCalls);
     }
 
+    [Fact]
+    public async Task Structural_input_throws_instead_of_becoming_a_typed_error()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateReservationAsync(
+            new TargetCoordinator(),
+            label: "invalid.label"));
+    }
+
     private async Task<Result<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>>
         CreateReservationAsync(
             TargetCoordinator coordinator,
             string? tenantId = null,
-            string? targetId = null)
+            string? targetId = null,
+            string label = "api")
     {
         var reservation = new MongoCreateManagedDomainZoneReservation(
             fixture.Database,
@@ -124,7 +133,7 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
                 var result = await reservation.InvokeAsync(
                     tenantId,
                     targetId,
-                    "api",
+                    label,
                     "apps.example.test",
                     expectedWorkloadConfigurationRevision: 1,
                     context.Session,

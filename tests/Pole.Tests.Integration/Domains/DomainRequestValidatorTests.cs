@@ -24,6 +24,13 @@ public sealed class DomainRequestValidatorTests
                 $"{TenantDomainZoneLabelPolicy.GeneratedPrefix}acme-12345678"),
             ObjectId.GenerateNewId().ToString()));
         Assert.Contains(reserved.Errors, error => error.PropertyName == "Body.Label");
+
+        var invalidLabel = await validator.ValidateAsync(new CreateDomainZoneRequest(
+            new CreateDomainZoneBody(
+                ObjectId.GenerateNewId().ToString(),
+                "invalid.label"),
+            ObjectId.GenerateNewId().ToString()));
+        Assert.Contains(invalidLabel.Errors, error => error.PropertyName == "Body.Label");
     }
 
     [Fact]
