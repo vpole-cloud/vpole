@@ -20,7 +20,7 @@ namespace Pole.Tests.Integration.SourceBuilds;
 public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
 {
     [Fact]
-    public async Task SourceRepositoryBuildAccess_IsTenantScopedAndMapsTheBuildSnapshot()
+    public async Task SourceRepositoryBuildCapabilities_AreTenantScopedAndMapTheBuildSnapshot()
     {
         var now = DateTime.UtcNow;
         var connection = GitProviderConnectionFactory.Create(
@@ -78,39 +78,45 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             await fixture.DbContext.GitProviderConnections
                 .Find(item => item.TenantId == tenantId && item.Id == connectionId)
                 .FirstOrDefaultAsync(cancellationToken);
-        var access = new SourceRepositoryBuildAccess(
+        var finder = new SourceRepositoryBuildFinder(loadRepository);
+        var archive = new SourceRepositoryArchiveDownloader(
             loadRepository,
             loadConnection,
             archiveDownloader.InvokeAsync);
 
-        var crossTenant = await access.FindAsync(
+        var crossTenant = await finder.InvokeAsync(
             ObjectId.GenerateNewId().ToString(),
             repository.Id);
-        var snapshot = await access.FindAsync(TestData.TenantId, repository.Id);
+        var snapshot = await finder.InvokeAsync(TestData.TenantId, repository.Id);
 
-        Assert.Null(crossTenant);
-        Assert.NotNull(snapshot);
-        Assert.Equal(repository.Id, snapshot.Id);
-        Assert.Equal(repository.CandidateKey, snapshot.CandidateKey);
-        Assert.Equal(SourceRepositoryBuildPlanKind.DotNet, snapshot.SelectedPlan.Kind);
-        Assert.Equal(plan.Commands, snapshot.SelectedPlan.Commands);
-        Assert.Equal(plan.DockerfilePreview, snapshot.SelectedPlan.Dockerfile);
+        var missing = TypedResultExtensions.TryGetValue(crossTenant);
+        Assert.False(missing.Succeeded);
+        Assert.IsType<SourceRepositoryBuildNotFound>(missing.Error!.Value);
+        var found = TypedResultExtensions.TryGetValue(snapshot);
+        Assert.True(found.Succeeded);
+        Assert.Equal(repository.Id, found.Value!.Id);
+        Assert.Equal(repository.CandidateKey, found.Value.CandidateKey);
+        Assert.Equal(SourceRepositoryBuildPlanKind.DotNet, found.Value.SelectedPlan.Kind);
+        Assert.Equal(plan.Commands, found.Value.SelectedPlan.Commands);
+        Assert.Equal(plan.DockerfilePreview, found.Value.SelectedPlan.Dockerfile);
 
-        await using var archive = new MemoryStream();
-        var crossTenantDownload = await access.DownloadArchiveAsync(
+        await using var destination = new MemoryStream();
+        var crossTenantDownload = await archive.InvokeAsync(
             ObjectId.GenerateNewId().ToString(),
             repository.Id,
             "exact-commit",
-            archive);
-        Assert.IsType<NotFoundFailure>(crossTenantDownload.AssertFailure());
+            destination);
+        var missingDownload = TypedResultExtensions.TryGetValue(crossTenantDownload);
+        Assert.False(missingDownload.Succeeded);
+        Assert.IsType<SourceRepositoryBuildNotFound>(missingDownload.Error!.Value);
         Assert.Equal(0, archiveDownloader.DownloadCalls);
 
-        var download = await access.DownloadArchiveAsync(
+        var download = await archive.InvokeAsync(
             TestData.TenantId,
             repository.Id,
             "exact-commit",
-            archive);
-        download.AssertSuccess();
+            destination);
+        Assert.True(TypedResultExtensions.TryGetValue(download).Succeeded);
         Assert.Equal(1, archiveDownloader.DownloadCalls);
         Assert.Equal(connection.Id, archiveDownloader.ConnectionId);
         Assert.Equal(repository.ExternalRepositoryId, archiveDownloader.ExternalRepositoryId);

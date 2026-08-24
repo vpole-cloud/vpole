@@ -4,12 +4,13 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
-using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.SourceBuilds.Application.Common;
+using Pole.Features.SourceBuilds.Application.Persistence;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.SourceBuilds.Application.Endpoints;
 
@@ -17,42 +18,65 @@ public sealed record UpdateSourceBuildConfigurationRequest(
     [FromRoute] string ConfigurationId,
     [FromBody] UpdateSourceBuildConfigurationBody Body,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<SourceBuildConfigurationDto>, ITenantWriteOperation;
+    : IMediatorRequest<UpdateSourceBuildConfigurationOutcome>, ITenantWriteOperation;
 
 public sealed record UpdateSourceBuildConfigurationBody(SourceBuildRecipeDto Recipe);
 
+public union UpdateSourceBuildConfigurationError(
+    SourceBuildConfigurationNotFound,
+    SourceBuildConfigurationRecipeCandidateChanged,
+    SourceBuildConfigurationUpdateConflict);
+
+public union UpdateSourceBuildConfigurationOutcome(
+    SourceBuildConfigurationDto,
+    UpdateSourceBuildConfigurationError);
+
 public sealed class UpdateSourceBuildConfigurationHandler(
-    ISourceBuildDbContext dbContext,
+    LoadSourceBuildConfiguration loadSourceBuildConfiguration,
+    UpdateSourceBuildConfiguration updateSourceBuildConfiguration,
     TimeProvider timeProvider)
-    : IMediatorHandler<UpdateSourceBuildConfigurationRequest, SourceBuildConfigurationDto>
+    : IMediatorOutcomeHandler<
+        UpdateSourceBuildConfigurationRequest,
+        UpdateSourceBuildConfigurationOutcome>
 {
-    public async Task<Result<SourceBuildConfigurationDto>> HandleAsync(
+    public async Task<UpdateSourceBuildConfigurationOutcome> HandleAsync(
         UpdateSourceBuildConfigurationRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<SourceBuildConfiguration>.Filter.And(
-            Builders<SourceBuildConfiguration>.Filter.Eq(item => item.TenantId, request.TenantId),
-            Builders<SourceBuildConfiguration>.Filter.Eq(item => item.Id, request.ConfigurationId));
-        var existing = await dbContext.SourceBuildConfigurations
-            .Find(filter)
-            .FirstOrDefaultAsync(cancellationToken);
+        var existing = await loadSourceBuildConfiguration(
+            request.TenantId,
+            request.ConfigurationId,
+            cancellationToken);
         if (existing is null)
-            return Failures.NotFound("Source build configuration not found.", request.ConfigurationId);
-        if (!string.Equals(existing.Recipe.CandidateKey, request.Body.Recipe.CandidateKey, StringComparison.Ordinal))
         {
-            return Failures.Conflict(
-                "The recipe candidate cannot be changed; relink the source repository candidate instead.");
+            return new UpdateSourceBuildConfigurationError(
+                new SourceBuildConfigurationNotFound(request.ConfigurationId));
+        }
+        if (!string.Equals(
+                existing.Recipe.CandidateKey,
+                request.Body.Recipe.CandidateKey,
+                StringComparison.Ordinal))
+        {
+            return new UpdateSourceBuildConfigurationError(
+                new SourceBuildConfigurationRecipeCandidateChanged(existing.Id));
         }
 
-        var now = timeProvider.GetUtcNow().UtcDateTime;
-        var updated = await dbContext.SourceBuildConfigurations.FindOneAndUpdateAsync(
-            filter,
-            Builders<SourceBuildConfiguration>.Update
-                .Set(item => item.Recipe, request.Body.Recipe.ToDomain(isCustomized: true))
-                .Set(item => item.UpdatedAtUtc, now),
-            new FindOneAndUpdateOptions<SourceBuildConfiguration> { ReturnDocument = ReturnDocument.After },
+        var updated = await updateSourceBuildConfiguration(
+            existing,
+            request.Body.Recipe.ToDomain(isCustomized: true),
+            timeProvider.GetUtcNow().UtcDateTime,
             cancellationToken);
-        return updated.ToDto();
+        return updated switch
+        {
+            Ok<SourceBuildConfiguration> success => success.Value.ToDto(),
+            Err<PersistUpdatedSourceBuildConfigurationError> error => error.Value switch
+            {
+                SourceBuildConfigurationNotFound notFound =>
+                    new UpdateSourceBuildConfigurationError(notFound),
+                SourceBuildConfigurationUpdateConflict conflict =>
+                    new UpdateSourceBuildConfigurationError(conflict)
+            }
+        };
     }
 }
 
@@ -61,7 +85,7 @@ public sealed class UpdateSourceBuildConfigurationRequestValidator
 {
     public UpdateSourceBuildConfigurationRequestValidator()
     {
-        RuleFor(item => item.ConfigurationId).NotEmpty();
+        RuleFor(item => item.ConfigurationId).MongoObjectId("Source build configuration ID");
         RuleFor(item => item.Body)
             .NotNull()
             .SetValidator(new UpdateSourceBuildConfigurationBodyValidator());
@@ -79,17 +103,27 @@ public sealed class UpdateSourceBuildConfigurationBodyValidator
 
 public static class UpdateSourceBuildConfigurationEndpoint
 {
-    public static IEndpointRouteBuilder MapUpdateSourceBuildConfigurationEndpoint(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapUpdateSourceBuildConfigurationEndpoint(
+        this IEndpointRouteBuilder app)
     {
-        app.MapPut("/{ConfigurationId}", async (IMediator mediator,
+        app.MapPut("/{ConfigurationId}", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] UpdateSourceBuildConfigurationRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    SourceBuildConfigurationDto configuration => Results.Ok(configuration),
+                    UpdateSourceBuildConfigurationError error =>
+                        httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("UpdateSourceBuildConfiguration")
-            .Produces<SourceBuildConfigurationDto>();
+            .Produces<SourceBuildConfigurationDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
         return app;
     }
 }

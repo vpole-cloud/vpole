@@ -12,14 +12,13 @@ public sealed record ProcessSpec(
 
 public sealed record ProcessResult(int ExitCode, string StandardOutput, string StandardError);
 
-public interface IProcessRunner
-{
-    Task<ProcessResult> RunAsync(ProcessSpec spec, CancellationToken cancellationToken = default);
-}
+public delegate Task<ProcessResult> RunProcess(
+    ProcessSpec spec,
+    CancellationToken cancellationToken = default);
 
-public sealed class ProcessRunner : IProcessRunner
+public sealed class ProcessRunner
 {
-    public async Task<ProcessResult> RunAsync(
+    public async Task<ProcessResult> InvokeAsync(
         ProcessSpec spec,
         CancellationToken cancellationToken = default)
     {

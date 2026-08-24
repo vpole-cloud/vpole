@@ -130,23 +130,6 @@ public delegate Task<Result<RegistryArtifact, GetTenantRegistryArtifactError>>
         string reference,
         CancellationToken cancellationToken = default);
 
-public interface IContainerRegistryBuildService
-{
-    Task<Result<RegistryBuildAccess>> PreparePushAsync(
-        string tenantId,
-        string initiatedByUserId,
-        string repositoryName,
-        string tag,
-        CancellationToken cancellationToken = default);
-
-    Task<Result<RegistryArtifact>> GetArtifactAsync(
-        string tenantId,
-        string registryProjectId,
-        string repositoryName,
-        string reference,
-        CancellationToken cancellationToken = default);
-}
-
 public interface IContainerRegistryClient
 {
     Task<Result<ProvisionedRegistryProject, ContainerRegistryProviderError>> ProvisionProjectAsync(

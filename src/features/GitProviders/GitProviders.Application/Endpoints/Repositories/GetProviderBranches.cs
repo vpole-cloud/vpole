@@ -8,6 +8,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.Persistence;
 using Pole.Features.GitProviders.Application.ProviderOperations;
+using Pole.Features.GitProviders.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;

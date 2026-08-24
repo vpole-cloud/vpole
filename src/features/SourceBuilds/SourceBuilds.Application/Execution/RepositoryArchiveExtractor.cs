@@ -4,19 +4,19 @@ using Pole.ResultType;
 
 namespace Pole.Features.SourceBuilds.Application.Execution;
 
-public interface IRepositoryArchiveExtractor
-{
-    Task<Result> ExtractAsync(
+public sealed record SourceBuildRepositoryArchiveInvalid(string Message);
+
+public delegate Task<Result<Unit, SourceBuildRepositoryArchiveInvalid>>
+    ExtractRepositoryArchive(
         Stream archive,
         string destinationPath,
         long maxExtractedBytes,
         int maxExtractedFiles,
         CancellationToken cancellationToken = default);
-}
 
-public sealed class RepositoryArchiveExtractor : IRepositoryArchiveExtractor
+public sealed class RepositoryArchiveExtractor
 {
-    public async Task<Result> ExtractAsync(
+    public async Task<Result<Unit, SourceBuildRepositoryArchiveInvalid>> InvokeAsync(
         Stream archive,
         string destinationPath,
         long maxExtractedBytes,
@@ -80,9 +80,9 @@ public sealed class RepositoryArchiveExtractor : IRepositoryArchiveExtractor
 
             return archiveRoot is null
                 ? InvalidArchive("Repository archive is empty.")
-                : Result.Success();
+                : new Ok<Unit>(Unit.Value);
         }
-        catch (Exception exception) when (exception is InvalidDataException or IOException or OverflowException)
+        catch (Exception exception) when (exception is InvalidDataException or OverflowException)
         {
             return InvalidArchive("Repository archive is invalid or exceeds the configured limits.");
         }
@@ -107,9 +107,6 @@ public sealed class RepositoryArchiveExtractor : IRepositoryArchiveExtractor
     private static StringComparison PathComparison =>
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-    private static Failure InvalidArchive(string message) =>
-        Failures.ValidationFailure(new Dictionary<string, string[]>
-        {
-            ["RepositoryArchive"] = [message]
-        });
+    private static Err<SourceBuildRepositoryArchiveInvalid> InvalidArchive(string message) =>
+        new(new SourceBuildRepositoryArchiveInvalid(message));
 }

@@ -2,6 +2,7 @@ using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Execution;
 using Microsoft.Extensions.Logging.Abstractions;
+using Pole.ResultType;
 using Xunit;
 
 namespace Pole.Features.SourceBuilds.Tests;
@@ -67,15 +68,16 @@ public sealed class BuildKitClientTests
         });
         var client = CreateClient(runner);
 
-        var result = await client.BuildAndPushAsync(new BuildKitBuildRequest(
+        var result = await client.InvokeAsync(new BuildKitBuildRequest(
             context.Path,
             "FROM scratch",
             new RegistryPushTarget("harbor.test", "pole-test", "web-services/service-1", "build-1"),
             "robot$build",
             "registry-secret"));
 
-        Assert.True(result.TryGetValue(out var image, out _));
-        Assert.Equal(Digest, image.Digest);
+        var extracted = TypedResultExtensions.TryGetValue(result);
+        Assert.True(extracted.Succeeded, extracted.Error.ToString());
+        Assert.Equal(Digest, extracted.Value!.Digest);
         Assert.NotNull(runner.LastSpec);
         Assert.False(Directory.Exists(runner.LastSpec.EnvironmentVariables["DOCKER_CONFIG"]));
     }
@@ -88,16 +90,18 @@ public sealed class BuildKitClientTests
             new ProcessResult(1, "registry-secret from build", "failed to authorize registry-secret")));
         var client = CreateClient(runner);
 
-        var result = await client.BuildAndPushAsync(new BuildKitBuildRequest(
+        var result = await client.InvokeAsync(new BuildKitBuildRequest(
             context.Path,
             "FROM scratch",
             new RegistryPushTarget("harbor.test", "pole-test", "service", "tag"),
             "robot$build",
             "registry-secret"));
 
-        Assert.False(result.TryGetValue(out _, out var failure));
+        var extracted = TypedResultExtensions.TryGetValue(result);
+        Assert.False(extracted.Succeeded);
+        var failure = Assert.IsType<BuildKitBuildRejected>(extracted.Error!.Value);
         Assert.DoesNotContain("registry-secret", failure.ToString(), StringComparison.Ordinal);
-        Assert.Contains("could not authenticate", failure.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("could not authenticate", failure.Classification, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -108,20 +112,22 @@ public sealed class BuildKitClientTests
             new ProcessResult(1, string.Empty, "dial tcp harbor.test:5000: registry-secret")));
         var client = CreateClient(runner);
 
-        var result = await client.BuildAndPushAsync(new BuildKitBuildRequest(
+        var result = await client.InvokeAsync(new BuildKitBuildRequest(
             context.Path,
             "FROM scratch",
             new RegistryPushTarget("harbor.test:5000", "pole-test", "service", "tag"),
             "robot$build",
             "registry-secret"));
 
-        Assert.False(result.TryGetValue(out _, out var failure));
+        var extracted = TypedResultExtensions.TryGetValue(result);
+        Assert.False(extracted.Succeeded);
+        var failure = Assert.IsType<BuildKitBuildRejected>(extracted.Error!.Value);
         Assert.DoesNotContain("registry-secret", failure.ToString(), StringComparison.Ordinal);
-        Assert.Contains("configured target registry", failure.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("configured target registry", failure.Classification, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static BuildKitClient CreateClient(IProcessRunner runner) =>
-        new(runner, new BuildKitOptions
+    private static BuildKitClient CreateClient(RecordingProcessRunner runner) =>
+        new(runner.InvokeAsync, new BuildKitOptions
         {
             Enabled = true,
             Address = "tcp://buildkit.test:1234",
@@ -131,11 +137,11 @@ public sealed class BuildKitClientTests
         NullLogger<BuildKitClient>.Instance);
 
     private sealed class RecordingProcessRunner(
-        Func<ProcessSpec, Task<ProcessResult>> callback) : IProcessRunner
+        Func<ProcessSpec, Task<ProcessResult>> callback)
     {
         public ProcessSpec? LastSpec { get; private set; }
 
-        public Task<ProcessResult> RunAsync(
+        public Task<ProcessResult> InvokeAsync(
             ProcessSpec spec,
             CancellationToken cancellationToken = default)
         {

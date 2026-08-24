@@ -1,6 +1,7 @@
 using Pole.Features.GitProviders.Application.Analysis;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.Persistence;
+using Pole.Features.GitProviders.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Application.ProviderOperations;

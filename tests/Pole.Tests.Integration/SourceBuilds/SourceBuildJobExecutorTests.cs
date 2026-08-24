@@ -5,6 +5,7 @@ using MongoDB.Driver;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.Features.SourceBuilds.Application.Jobs;
+using Pole.Features.SourceBuilds.Application.Persistence;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Events;
@@ -23,24 +24,16 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
     public async Task Executor_ClaimsOnceBuildsExactCommitAndWaitsForDeploymentCompletion()
     {
         var queued = await QueueJobAsync();
-        var job = queued.Job;
-
         var workspace = new FakeWorkspaceService();
         var buildKit = new FakeBuildKitClient();
         var deployment = new FakeDeploymentService();
-        var executor = new SourceBuildJobExecutor(
-            Fixture.DbContext,
-            workspace,
-            new FakeRegistryBuildService(),
-            buildKit,
-            deployment.DeployAsync,
-            TimeProvider.System,
-            NullLogger<SourceBuildJobExecutor>.Instance);
+        var executor = CreateExecutor(workspace, new FakeRegistryBuildService(), buildKit, deployment);
 
-        await executor.ExecuteAsync(job.Id);
-        await executor.ExecuteAsync(job.Id);
+        await executor.ExecuteAsync(queued.Job.Id);
+        await executor.ExecuteAsync(queued.Job.Id);
 
-        var deployingJob = await Fixture.DbContext.SourceBuildJobs.Find(item => item.Id == job.Id).SingleAsync();
+        var deployingJob = await Fixture.DbContext.SourceBuildJobs.Find(item => item.Id == queued.Job.Id)
+            .SingleAsync();
         var deploying = Assert.IsType<DeployingSourceBuild>(deployingJob.State);
         Assert.Equal("release-1", deploying.ReleaseId);
         Assert.Equal("exact-commit", workspace.DownloadedCommit);
@@ -51,10 +44,12 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         Assert.Equal(Digest, deployment.Request!.Image.Digest);
         Assert.Equal("pole-registry-507f1f77bcf86cd799439012", deployment.Request.Image.PullSecretName);
 
-        var completion = new CompleteSourceBuildOnDeploymentConsumer(Fixture.DbContext, TimeProvider.System);
+        var completion = new CompleteSourceBuildOnDeploymentConsumer(
+            CompleteDeploymentAsync,
+            TimeProvider.System);
         await completion.HandleAsync(new WebServiceDeploymentCompletedEvent(
             "release-1",
-            job.WebServiceId,
+            queued.Job.WebServiceId,
             "507f1f77bcf86cd799439071",
             ResourceRevision: 2,
             DeploymentGeneration: 3,
@@ -70,13 +65,13 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         });
 
         var stillDeployingJob = await Fixture.DbContext.SourceBuildJobs
-            .Find(item => item.Id == job.Id)
+            .Find(item => item.Id == queued.Job.Id)
             .SingleAsync();
         Assert.IsType<DeployingSourceBuild>(stillDeployingJob.State);
 
         await completion.HandleAsync(new WebServiceDeploymentCompletedEvent(
             "release-1",
-            job.WebServiceId,
+            queued.Job.WebServiceId,
             "507f1f77bcf86cd799439072",
             ResourceRevision: 2,
             DeploymentGeneration: 3,
@@ -91,7 +86,8 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
             EventCore = Pole.Features.Events.Abstractions.EventCore.Create(TestData.TenantId)
         });
 
-        var succeededJob = await Fixture.DbContext.SourceBuildJobs.Find(item => item.Id == job.Id).SingleAsync();
+        var succeededJob = await Fixture.DbContext.SourceBuildJobs.Find(item => item.Id == queued.Job.Id)
+            .SingleAsync();
         Assert.IsType<SucceededSourceBuild>(succeededJob.State);
     }
 
@@ -101,20 +97,15 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         var queued = await QueueJobAsync();
         var deployment = new FakeDeploymentService(
             new Err<SourceBuildWebServiceDeploymentError>(
-                new SourceBuildWebServiceDeploymentError(
-                    new SourceBuildWebServiceDeploymentRejected(
-                        queued.Job.WebServiceId,
-                        new SourceBuildResourceDeploymentRejection(
-                            new SourceBuildResourceDeploymentPlacementUnavailable(
-                                "deployment-1"))))));
-        var executor = new SourceBuildJobExecutor(
-            Fixture.DbContext,
+                new(new SourceBuildWebServiceDeploymentRejected(
+                    queued.Job.WebServiceId,
+                    new SourceBuildResourceDeploymentRejection(
+                        new SourceBuildResourceDeploymentPlacementUnavailable("deployment-1"))))));
+        var executor = CreateExecutor(
             new FakeWorkspaceService(),
             new FakeRegistryBuildService(),
             new FakeBuildKitClient(),
-            deployment.DeployAsync,
-            TimeProvider.System,
-            NullLogger<SourceBuildJobExecutor>.Instance);
+            deployment);
 
         await executor.ExecuteAsync(queued.Job.Id);
 
@@ -124,6 +115,92 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         var failed = Assert.IsType<FailedSourceBuild>(failedJob.State);
         Assert.Equal("ResourceDeploymentPlacementUnavailable", failed.Code);
         Assert.Contains("SourceBuildResourceDeploymentPlacementUnavailable", failed.Message);
+    }
+
+    private SourceBuildJobExecutor CreateExecutor(
+        FakeWorkspaceService workspace,
+        FakeRegistryBuildService registry,
+        FakeBuildKitClient buildKit,
+        FakeDeploymentService deployment) =>
+        new(
+            ClaimAsync,
+            LoadConfigurationAsync,
+            LoadForExecutionAsync,
+            workspace.InvokeAsync,
+            registry.PreparePushAsync,
+            buildKit.InvokeAsync,
+            registry.GetArtifactAsync,
+            deployment.DeployAsync,
+            TryPersistAsync,
+            TimeProvider.System,
+            NullLogger<SourceBuildJobExecutor>.Instance);
+
+    private async Task<SourceBuildJob?> ClaimAsync(
+        string buildJobId,
+        DateTime claimedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var claimed = await Fixture.DbContext.SourceBuildJobs.FindOneAndUpdateAsync(
+            Builders<SourceBuildJob>.Filter.And(
+                Builders<SourceBuildJob>.Filter.Eq(item => item.Id, buildJobId),
+                Builders<SourceBuildJob>.Filter.OfType<SourceBuildJobState, QueuedSourceBuild>(
+                    item => item.State)),
+            Builders<SourceBuildJob>.Update
+                .Set(item => item.State, new CloningSourceBuild(claimedAtUtc))
+                .Set(item => item.UpdatedAtUtc, claimedAtUtc),
+            new FindOneAndUpdateOptions<SourceBuildJob> { ReturnDocument = ReturnDocument.After },
+            cancellationToken);
+        return claimed;
+    }
+
+    private async Task<SourceBuildConfiguration?> LoadConfigurationAsync(
+        string tenantId,
+        string configurationId,
+        CancellationToken cancellationToken) =>
+        await Fixture.DbContext.SourceBuildConfigurations
+            .Find(item => item.TenantId == tenantId && item.Id == configurationId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    private async Task<SourceBuildJob?> LoadForExecutionAsync(
+        string buildJobId,
+        CancellationToken cancellationToken) =>
+        await Fixture.DbContext.SourceBuildJobs
+            .Find(item => item.Id == buildJobId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    private async Task<bool> TryPersistAsync(
+        SourceBuildJob current,
+        SourceBuildJob next,
+        CancellationToken cancellationToken)
+    {
+        var updated = await Fixture.DbContext.SourceBuildJobs.ReplaceOneAsync(
+            item => item.Id == current.Id && item.TenantId == current.TenantId &&
+                    item.UpdatedAtUtc == current.UpdatedAtUtc,
+            next,
+            cancellationToken: cancellationToken);
+        return updated.ModifiedCount == 1;
+    }
+
+    private async Task CompleteDeploymentAsync(
+        SourceBuildDeploymentCompletion completion,
+        CancellationToken cancellationToken)
+    {
+        var job = await Fixture.DbContext.SourceBuildJobs.Find(item =>
+                item.TenantId == completion.TenantId &&
+                item.State is DeployingSourceBuild &&
+                ((DeployingSourceBuild)item.State).ReleaseId == completion.ReleaseId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (job is null)
+            return;
+
+        var terminal = completion.ReleaseOutcome == "Succeeded"
+            ? job.Succeed(completion.CompletedAtUtc)
+            : job.Fail(
+                SourceBuildPhase.Deploying,
+                "WebServiceDeploymentFailed",
+                completion.FailureMessage ?? "Web service deployment failed.",
+                completion.CompletedAtUtc);
+        await TryPersistAsync(job, terminal, cancellationToken);
     }
 
     private async Task<QueuedJob> QueueJobAsync()
@@ -136,7 +213,7 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
             "App.csproj",
             ImmutableList.Create("dotnet publish"),
             "dotnet App.dll",
-            "FROM scratch",
+            "FROM snapshot",
             false);
         var sourceRepositoryId = ObjectId.GenerateNewId().ToString();
         var configuration = SourceBuildConfigurationFactory.Create(
@@ -153,7 +230,7 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
             configuration.WebServiceId,
             "main",
             "exact-commit",
-            recipe with { Dockerfile = "FROM snapshot" },
+            recipe,
             TestData.UserId,
             TestData.UserEmail,
             new SourceBuildJobFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
@@ -162,17 +239,15 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         return new QueuedJob(job, sourceRepositoryId);
     }
 
-    private sealed record QueuedJob(
-        SourceBuildJob Job,
-        string SourceRepositoryId);
+    private sealed record QueuedJob(SourceBuildJob Job, string SourceRepositoryId);
 
-    private sealed class FakeWorkspaceService : ISourceBuildWorkspaceService
+    private sealed class FakeWorkspaceService
     {
         public string? TenantId { get; private set; }
         public string? SourceRepositoryId { get; private set; }
         public string? DownloadedCommit { get; private set; }
 
-        public async Task<Result<SourceBuildWorkspace>> CreateAsync(
+        public async Task<Result<SourceBuildWorkspace, CreateSourceBuildWorkspaceError>> InvokeAsync(
             string tenantId,
             string sourceRepositoryId,
             string commitSha,
@@ -185,49 +260,54 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
             var root = Path.Combine(Path.GetTempPath(), $"pole-executor-test-{Guid.NewGuid():N}");
             var source = Path.Combine(root, "source");
             Directory.CreateDirectory(source);
-            await File.WriteAllTextAsync(Path.Combine(source, "App.csproj"), "<Project />", cancellationToken);
-            return new SourceBuildWorkspace(root, source);
+            await File.WriteAllTextAsync(
+                Path.Combine(source, "App.csproj"),
+                "<Project />",
+                cancellationToken);
+            return new Ok<SourceBuildWorkspace>(new SourceBuildWorkspace(root, source));
         }
     }
 
-    private sealed class FakeRegistryBuildService : IContainerRegistryBuildService
+    private sealed class FakeRegistryBuildService
     {
-        public Task<Result<RegistryBuildAccess>> PreparePushAsync(
+        public Task<Result<RegistryBuildAccess, PrepareRegistryBuildPushError>> PreparePushAsync(
             string tenantId,
             string initiatedByUserId,
             string repositoryName,
             string tag,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<RegistryBuildAccess>>(new RegistryBuildAccess(
-                "507f1f77bcf86cd799439012",
-                new RegistryPushTarget("harbor.test", "pole-test", repositoryName, tag),
-                "pole-registry-507f1f77bcf86cd799439012",
-                "robot$build",
-                "build-secret"));
+            Task.FromResult<Result<RegistryBuildAccess, PrepareRegistryBuildPushError>>(
+                new Ok<RegistryBuildAccess>(new RegistryBuildAccess(
+                    "507f1f77bcf86cd799439012",
+                    new RegistryPushTarget("harbor.test", "pole-test", repositoryName, tag),
+                    "pole-registry-507f1f77bcf86cd799439012",
+                    "robot$build",
+                    "build-secret")));
 
-        public Task<Result<RegistryArtifact>> GetArtifactAsync(
+        public Task<Result<RegistryArtifact, GetTenantRegistryArtifactError>> GetArtifactAsync(
             string tenantId,
             string registryProjectId,
             string repositoryName,
             string reference,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<RegistryArtifact>>(
-                new RegistryArtifact(repositoryName, reference, Digest, 100));
+            Task.FromResult<Result<RegistryArtifact, GetTenantRegistryArtifactError>>(
+                new Ok<RegistryArtifact>(
+                    new RegistryArtifact(repositoryName, reference, Digest, 100)));
     }
 
-    private sealed class FakeBuildKitClient : IBuildKitClient
+    private sealed class FakeBuildKitClient
     {
         public int Calls { get; private set; }
         public BuildKitBuildRequest? Request { get; private set; }
 
-        public Task<Result<BuiltContainerImage>> BuildAndPushAsync(
+        public Task<Result<BuiltContainerImage, BuildContainerImageError>> InvokeAsync(
             BuildKitBuildRequest request,
             CancellationToken cancellationToken = default)
         {
             Calls++;
             Request = request;
-            return Task.FromResult<Result<BuiltContainerImage>>(
-                new BuiltContainerImage(request.Target.Reference, Digest));
+            return Task.FromResult<Result<BuiltContainerImage, BuildContainerImageError>>(
+                new Ok<BuiltContainerImage>(new BuiltContainerImage(request.Target.Reference, Digest)));
         }
     }
 
@@ -236,9 +316,7 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
     {
         public SourceBuildDeploymentRequest? Request { get; private set; }
 
-        public Task<Result<
-            SourceBuildDeploymentResult,
-            SourceBuildWebServiceDeploymentError>> DeployAsync(
+        public Task<Result<SourceBuildDeploymentResult, SourceBuildWebServiceDeploymentError>> DeployAsync(
             SourceBuildDeploymentRequest request,
             CancellationToken cancellationToken = default)
         {

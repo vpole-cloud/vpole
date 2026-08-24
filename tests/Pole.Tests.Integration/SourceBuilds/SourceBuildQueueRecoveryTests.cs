@@ -1,5 +1,7 @@
 using MongoDB.Bson;
+using MongoDB.Driver;
 using Pole.Features.SourceBuilds.Application.Jobs;
+using Pole.Features.SourceBuilds.Application.Persistence;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -22,9 +24,19 @@ public sealed class SourceBuildQueueRecoveryTests(MongoReplicaSetFixture fixture
             now.UtcDateTime.AddMinutes(-1));
         await Fixture.DbContext.SourceBuildJobs.InsertManyAsync([stale, recent, terminal]);
         var dispatcher = new RecordingDispatcher();
+        LoadStaleQueuedSourceBuildJobs loadStale = async (cutoff, limit, cancellationToken) =>
+            await Fixture.DbContext.SourceBuildJobs
+                .Find(Builders<SourceBuildJob>.Filter.And(
+                    Builders<SourceBuildJob>.Filter.OfType<SourceBuildJobState, QueuedSourceBuild>(
+                        item => item.State),
+                    Builders<SourceBuildJob>.Filter.Lte(item => item.UpdatedAtUtc, cutoff)))
+                .SortBy(item => item.UpdatedAtUtc)
+                .Limit(limit)
+                .Project(item => item.Id)
+                .ToListAsync(cancellationToken);
         var recovery = new SourceBuildQueueRecoveryJob(
-            Fixture.DbContext,
-            dispatcher,
+            loadStale,
+            dispatcher.Invoke,
             new FixedTimeProvider(now));
 
         await recovery.RecoverAsync();
@@ -55,11 +67,11 @@ public sealed class SourceBuildQueueRecoveryTests(MongoReplicaSetFixture fixture
                 ObjectId.GenerateNewId().ToString(),
                 createdAtUtc));
 
-    private sealed class RecordingDispatcher : ISourceBuildJobDispatcher
+    private sealed class RecordingDispatcher
     {
         public List<string> BuildJobIds { get; } = [];
 
-        public string Enqueue(string buildJobId)
+        public string Invoke(string buildJobId)
         {
             BuildJobIds.Add(buildJobId);
             return $"recorded-{buildJobId}";

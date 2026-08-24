@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
     <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
     <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
+    <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FluentValidation" />

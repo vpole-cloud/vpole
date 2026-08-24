@@ -72,8 +72,9 @@ public sealed class HarborContractTests
                 Assert.Fail(provisioningFailure.ToString());
             provisioned = created;
 
+            var processRunner = new ProcessRunner();
             var buildKit = new BuildKitClient(
-                new ProcessRunner(),
+                processRunner.InvokeAsync,
                 new BuildKitOptions
                 {
                     Enabled = true,
@@ -88,17 +89,18 @@ public sealed class HarborContractTests
                 "web-services/buildkit-contract",
                 $"run-{Guid.NewGuid():N}");
 
-            var buildResult = await buildKit.BuildAndPushAsync(new BuildKitBuildRequest(
+            var buildResult = await buildKit.InvokeAsync(new BuildKitBuildRequest(
                 context.Path,
                 "FROM scratch\nLABEL pole.contract-test=buildkit\n",
                 target,
                 provisioned.BuildCredential.Username,
                 provisioned.BuildCredential.Secret));
 
-            if (!buildResult.TryGetValue(out var image, out var buildFailure))
-                Assert.Fail(buildFailure.ToString());
-            Assert.Equal(target.Reference, image.Reference);
-            Assert.StartsWith("sha256:", image.Digest, StringComparison.Ordinal);
+            var build = TypedResultExtensions.TryGetValue(buildResult);
+            if (!build.Succeeded)
+                Assert.Fail(build.Error.ToString());
+            Assert.Equal(target.Reference, build.Value!.Reference);
+            Assert.StartsWith("sha256:", build.Value.Digest, StringComparison.Ordinal);
             completed = true;
         }
         finally

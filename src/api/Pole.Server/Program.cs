@@ -38,6 +38,7 @@ using Pole.Features.Search.Application.Services;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application;
 using Pole.Features.SourceBuilds.Application.Common;
+using Pole.Features.SourceBuilds.Application;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Middleware;
 using Pole.Features.Users.Application.Common;
@@ -116,7 +117,7 @@ builder.Services.AddKubernetes(configuration)
     .AddSearchFeature()
     .AddGitProvidersFeature(configuration)
     .AddContainerRegistriesFeature(configuration)
-    .AddSourceBuildsFeature()
+    .AddSourceBuildsFeature(configuration)
     .AddUsersFeature(configuration)
     .AddSettings(configuration)
     .AddHangfireWithMongo(configuration)
