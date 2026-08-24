@@ -14,7 +14,7 @@ public sealed class ResourceDeploymentReconciler(
     ClaimResourceDeployment claimResourceDeployment,
     PersistResourceDeploymentSuccess persistResourceDeploymentSuccess,
     PersistResourceDeploymentFailure persistResourceDeploymentFailure,
-    IResourcePlacementLookup placementLookup,
+    LoadResourcePlacement loadResourcePlacement,
     ResolveResourceDeploymentAdapter resolveResourceDeploymentAdapter,
     ResourceDeploymentMetrics metrics,
     ILogger<ResourceDeploymentReconciler> logger)
@@ -38,7 +38,7 @@ public sealed class ResourceDeploymentReconciler(
             return;
         metrics.RecordAttempt(claimed.ResourceType, operation);
 
-        var runtimeCell = await placementLookup.FindAsync(
+        var runtimeCell = await loadResourcePlacement(
             claimed.TenantId,
             claimed.RuntimeCellId,
             cancellationToken);

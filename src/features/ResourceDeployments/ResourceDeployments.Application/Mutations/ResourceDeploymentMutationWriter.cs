@@ -13,7 +13,8 @@ namespace Pole.Features.ResourceDeployments.Application.Mutations;
 internal sealed class ResourceDeploymentMutationWriter(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     StoreOutboxWrites storeOutboxWrites,
-    IResourcePlacementLookup placementLookup,
+    LoadResourcePlacementInTransaction loadResourcePlacement,
+    LoadResourcePlacementsInTransaction loadResourcePlacements,
     FenceResolvedComputeProfiles fenceResolvedComputeProfiles,
     TimeProvider timeProvider)
 {
@@ -38,7 +39,7 @@ internal sealed class ResourceDeploymentMutationWriter(
             return Error(new ResourceDeploymentPendingDeletion(command.ResourceId));
         }
 
-        var runtimeCell = await placementLookup.FindAsync(
+        var runtimeCell = await loadResourcePlacement(
             command.TenantId,
             current.RuntimeCellId,
             session,
@@ -182,7 +183,7 @@ internal sealed class ResourceDeploymentMutationWriter(
                 command.ResourceDeploymentId));
         }
 
-        var runtimeCell = await placementLookup.FindAsync(
+        var runtimeCell = await loadResourcePlacement(
             command.TenantId,
             current.RuntimeCellId,
             session,
@@ -521,7 +522,7 @@ internal sealed class ResourceDeploymentMutationWriter(
             }
         }
 
-        var runtimeCells = await placementLookup.FindManyAsync(
+        var runtimeCells = await loadResourcePlacements(
             command.TenantId,
             current.Select(deployment => deployment.RuntimeCellId).ToArray(),
             session,

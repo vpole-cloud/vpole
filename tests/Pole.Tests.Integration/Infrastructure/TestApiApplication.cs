@@ -46,9 +46,9 @@ using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Migrations;
 using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
+using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Migrations;
-using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
 using Pole.Features.StorageProfiles.Application.Common;
@@ -155,7 +155,8 @@ public sealed class TestApiApplication : IAsyncDisposable
             ["EnvelopeEncryption:LocalKeyFile:Keys:0:Id"] = "api-integration",
             ["EnvelopeEncryption:LocalKeyFile:Keys:0:Version"] = "1",
             ["EnvelopeEncryption:LocalKeyFile:Keys:0:Path"] = encryptionKeyPath,
-            ["DeploymentTargets:Bootstrap:Enabled"] = "false"
+            ["DeploymentTargets:Bootstrap:Enabled"] = "false",
+            ["kubernetes:NamespaceNamePrefix"] = "test"
         });
 
         builder.WebHost.UseTestServer();
@@ -175,6 +176,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddMongoDbContextInterfaces();
         builder.Services.AddFunctionAppsFeature();
         builder.Services.AddResourceDeploymentsFeature(builder.Configuration);
+        builder.Services.AddResourceGroupsFeature(builder.Configuration);
         builder.Services.AddHttpProblemMappings(
             ResourceDeploymentContractHttpMappings.All);
         builder.Services.AddHttpProblemMappings(
@@ -187,7 +189,6 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddRedisServicesFeature();
         builder.Services.AddPostgresFeature();
         builder.Services.AddWebServicesFeature();
-        builder.Services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         builder.Services.AddSingleton(new PostgresSettings
         {
             DefaultDeploymentMode = Pole.Features.Postgres.Domain.PostgresDeploymentMode.Operator,
@@ -199,7 +200,6 @@ public sealed class TestApiApplication : IAsyncDisposable
             typeof(FunctionAppQuotaProfile).Assembly,
             typeof(WebServiceQuotaProfile).Assembly,
             typeof(PostgresQuotaProfile).Assembly);
-        builder.Services.AddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
         builder.Services.AddMigrations(Assemblies);
         builder.Services.AddSearchFeature();
         builder.Services.AddGitProvidersFeature();

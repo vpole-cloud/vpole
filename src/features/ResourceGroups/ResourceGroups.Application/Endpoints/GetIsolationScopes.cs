@@ -5,12 +5,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceGroups.Application.Persistence;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -19,30 +17,32 @@ namespace Pole.Features.ResourceGroups.Application.Endpoints;
 public sealed record GetIsolationScopesRequest(
     [FromRoute] string ResourceGroupId,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<IReadOnlyList<IsolationScopeDto>>, ITenantReadOperation;
+    : IMediatorRequest<GetIsolationScopesOutcome>, ITenantReadOperation;
 
-public sealed class GetIsolationScopesHandler(IResourceGroupDbContext dbContext)
-    : IMediatorHandler<GetIsolationScopesRequest, IReadOnlyList<IsolationScopeDto>>
+public union GetIsolationScopesOutcome(
+    IReadOnlyList<IsolationScopeDto>,
+    ResourceGroupNotFound);
+
+public sealed class GetIsolationScopesHandler(
+    LoadResourceGroup loadResourceGroup,
+    LoadIsolationScopes loadIsolationScopes)
+    : IMediatorOutcomeHandler<GetIsolationScopesRequest, GetIsolationScopesOutcome>
 {
-    public async Task<Result<IReadOnlyList<IsolationScopeDto>>> HandleAsync(
+    public async Task<GetIsolationScopesOutcome> HandleAsync(
         GetIsolationScopesRequest request,
         CancellationToken cancellationToken = default)
     {
-        var resourceGroup = await dbContext.ResourceGroups
-            .Find(Builders<ResourceGroup>.Filter.And(
-                Builders<ResourceGroup>.Filter.ForTenant(request.TenantId),
-                Builders<ResourceGroup>.Filter.Eq(group => group.Id, request.ResourceGroupId)))
-            .FirstOrDefaultAsync(cancellationToken);
+        var resourceGroup = await loadResourceGroup(
+            request.TenantId,
+            request.ResourceGroupId,
+            cancellationToken);
         if (resourceGroup is null)
-            return Failures.NotFound("Resource group not found.", request.ResourceGroupId);
+            return new ResourceGroupNotFound(request.ResourceGroupId);
 
-        var scopes = await dbContext.IsolationScopes
-            .Find(scope =>
-                scope.TenantId == resourceGroup.TenantId &&
-                scope.ResourceGroupId == resourceGroup.Id)
-            .SortByDescending(scope => scope.IsDefault)
-            .ThenBy(scope => scope.NormalizedName)
-            .ToListAsync(cancellationToken);
+        var scopes = await loadIsolationScopes(
+            resourceGroup.TenantId,
+            resourceGroup.Id,
+            cancellationToken);
 
         return scopes.Select(scope => scope.ToDto()).ToList();
     }
@@ -62,11 +62,16 @@ public static class GetIsolationScopesEndpoint
     {
         app.MapGet("/{ResourceGroupId}/isolation-scopes", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] GetIsolationScopesRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    IReadOnlyList<IsolationScopeDto> scopes => Results.Ok(scopes),
+                    ResourceGroupNotFound error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("GetIsolationScopes")
             .WithSummary("Lists isolation scopes owned by a resource group.")

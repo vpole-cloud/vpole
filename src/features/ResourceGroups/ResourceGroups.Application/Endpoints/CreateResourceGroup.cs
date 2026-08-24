@@ -1,20 +1,16 @@
 using System.Collections.Immutable;
 using FluentValidation;
-using k8s;
-using k8s.Models;
-using MassTransit;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Application.Kubernetes;
+using Pole.Features.ResourceGroups.Application.Persistence;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.Features.ResourceGroups.Events;
-using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -24,15 +20,25 @@ public static class CreateResourceGroup
 {
     public static IEndpointRouteBuilder MapCreateResourceGroupEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/", async ([AsParameters] CreateResourceGroupRequest request, [FromServices] IMediator mediator) =>
+        app.MapPost("/", async (
+                [AsParameters] CreateResourceGroupRequest request,
+                [FromServices] IMediator mediator,
+                IHttpProblemMapper httpProblems,
+                CancellationToken cancellationToken) =>
             {
-                var result = await mediator.Send(request);
-                return result.ToHttpResult(r => Results.Created($"/resource-groups/{r.Id}", r));
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    ResourceGroupDto resourceGroup =>
+                        Results.Created($"/resource-groups/{resourceGroup.Id}", resourceGroup),
+                    CreateResourceGroupError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("CreateResourceGroup")
             .WithSummary("Creates a new resource group.")
             .WithDescription("Creates a new resource group with the specified details.")
-            .Produces<ResourceGroupDto>(StatusCodes.Status201Created);
+            .Produces<ResourceGroupDto>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return app;
     }
@@ -42,7 +48,11 @@ public static class CreateResourceGroup
 public sealed record CreateResourceGroupRequest(
     [FromBody] CreateResourceGroupRequestBody Body,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
-) : IMediatorRequest<ResourceGroupDto>, ITenantCreateOperation;
+) : IMediatorRequest<CreateResourceGroupOutcome>, ITenantCreateOperation;
+
+public union CreateResourceGroupError(DefaultDeploymentTargetWorkloadAdmissionError);
+
+public union CreateResourceGroupOutcome(ResourceGroupDto, CreateResourceGroupError);
 
 public sealed record CreateResourceGroupRequestBody(
     string Name,
@@ -51,25 +61,18 @@ public sealed record CreateResourceGroupRequestBody(
     );
 
 public sealed class CreateResourceGroupHandler(
-    IKubernetesNamespaceGenerator namespaceGenerator,
-    IResourceGroupDbContext dbContext,
-    AdmitDefaultDeploymentTargetForNewWorkload admitDefaultDeploymentTarget
-    ) : IMediatorHandler<CreateResourceGroupRequest, ResourceGroupDto>
+    GenerateResourceGroupNamespaceName generateNamespaceName,
+    AdmitDefaultDeploymentTargetForNewWorkload admitDefaultDeploymentTarget,
+    PersistCreatedResourceGroup persistCreatedResourceGroup)
+    : IMediatorOutcomeHandler<CreateResourceGroupRequest, CreateResourceGroupOutcome>
 {
-    public async Task<Result<ResourceGroupDto>> HandleAsync(
+    public async Task<CreateResourceGroupOutcome> HandleAsync(
         CreateResourceGroupRequest request,
         CancellationToken cancellationToken = default)
     {
         var admission = await admitDefaultDeploymentTarget(cancellationToken);
         if (admission is Err<DefaultDeploymentTargetWorkloadAdmissionError> error)
-        {
-            return DefaultTargetAdmissionFailure(error.Value);
-        }
-        if (admission is not Ok<DeploymentTargetLookupDto>)
-        {
-            throw new InvalidOperationException(
-                "Default deployment-target admission returned an unsupported result case.");
-        }
+            return new CreateResourceGroupError(error.Value);
 
         var createOptions = ResourceGroupFactory.DefaultCreateOptions with
         {
@@ -79,7 +82,7 @@ public sealed class CreateResourceGroupHandler(
             tenantId: request.TenantId,
             name: request.Body.Name,
             description: request.Body.Description,
-            kubernetesNamespace: namespaceGenerator.GenerateNamespaceName(request.TenantId, createOptions.Id),
+            kubernetesNamespace: generateNamespaceName(request.TenantId, createOptions.Id),
             options: createOptions
         );
         var defaultScope = IsolationScopeFactory.CreateDefault(
@@ -88,39 +91,12 @@ public sealed class CreateResourceGroupHandler(
             new IsolationScopeFactory.CreateOptions(
                 resourceGroup.DefaultIsolationScopeId,
                 resourceGroup.CreatedAtUtc));
-        return await dbContext.RunInTransactionAsync<ResourceGroupDto>(async (sh, ct) =>
-        {
-            await dbContext.ResourceGroups.InsertOneAsync(
-                session: sh,
-                document: resourceGroup,
-                cancellationToken: ct);
-            await dbContext.IsolationScopes.InsertOneAsync(
-                session: sh,
-                document: defaultScope,
-                cancellationToken: ct);
-
-            await dbContext.StoreEventAsync(
-                resourceGroup.ToCreateEvent(),
-                sh,
-                ct);
-            
-            return resourceGroup.ToDto();
-        }, cancellationToken: cancellationToken);
+        var persisted = await persistCreatedResourceGroup(
+            resourceGroup,
+            defaultScope,
+            cancellationToken);
+        return persisted.ToDto();
     }
-
-    private static Failure DefaultTargetAdmissionFailure(
-        DefaultDeploymentTargetWorkloadAdmissionError error) => error switch
-    {
-        DefaultDeploymentTargetNotConfigured => Failures.Conflict(
-            "An eligible default deployment target is required before a resource group can be created."),
-        DeploymentTargetDisabled => Failures.Conflict("The default deployment target is disabled."),
-        DeploymentTargetDeletionRequested => Failures.Conflict(
-            "The default deployment target is pending deletion."),
-        DeploymentTargetNewWorkloadsDisabled => Failures.Conflict(
-            "The default deployment target does not accept new workloads."),
-        _ => throw new InvalidOperationException(
-            "Default deployment-target admission returned an unsupported error case.")
-    };
 }
 
 public sealed class CreateResourceGroupValidator : AbstractValidator<CreateResourceGroupRequest>
@@ -135,32 +111,5 @@ public sealed class CreateResourceGroupValidator : AbstractValidator<CreateResou
         RuleForEach(x => x.Body.Tags)
             .NotEmpty()
             .MaximumLength(30);
-    }
-}
-
-public class ProvisionResourceGroupOnResourceGroupCreatedConsumer(
-    IKubernetesClientProvider kubernetesClientProvider
-    ) : IConsumer<ResourceGroupCreatedEvent>
-{
-    public async Task Consume(ConsumeContext<ResourceGroupCreatedEvent> context)
-    {
-        var message = context.Message;
-        var ct = context.CancellationToken;
-        var kubernetes = await kubernetesClientProvider.GetDefaultAsync(ct);
-
-        await kubernetes.CoreV1.CreateNamespaceAsync(new V1Namespace()
-        {
-            ApiVersion = "v1",
-            Kind = "Namespace",
-            Metadata = new V1ObjectMeta()
-            {
-                Name = message.KubernetesNamespace,
-                Labels = new Dictionary<string, string>
-                {
-                    ["pole.io/tenant-id"] = message.EventCore.TenantId,
-                    ["pole.io/resource-group-id"] = message.ResourceGroupId
-                }
-            },
-        }, cancellationToken: ct);
     }
 }

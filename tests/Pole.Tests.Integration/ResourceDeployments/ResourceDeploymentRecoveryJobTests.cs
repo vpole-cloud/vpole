@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceDeployments.Application.Common;
@@ -7,7 +8,7 @@ using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;
-using Pole.Features.ResourceGroups.Application.Services;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -19,6 +20,8 @@ public sealed class ResourceDeploymentRecoveryJobTests(
     MongoReplicaSetFixture fixture)
     : IAsyncLifetime
 {
+    private ServiceProvider? serviceProvider;
+    private IServiceScope? serviceScope;
     private const string TenantId = "507f1f77bcf86cd799439071";
     private const string ResourceId = "507f1f77bcf86cd799439072";
     private const string ResourceGroupId = "507f1f77bcf86cd799439073";
@@ -30,9 +33,19 @@ public sealed class ResourceDeploymentRecoveryJobTests(
     private static readonly ResourceTypeId TestResourceType =
         ResourceTypeId.Create("pole/test-resource");
 
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
+    public async Task InitializeAsync()
+    {
+        await fixture.ResetDatabaseAsync();
+        serviceProvider = TestServiceProviderFactory.Create(fixture);
+        serviceScope = serviceProvider.CreateScope();
+    }
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public Task DisposeAsync()
+    {
+        serviceScope?.Dispose();
+        serviceProvider?.Dispose();
+        return Task.CompletedTask;
+    }
 
     [Fact]
     public async Task ExpiredClaim_IsRecovered_QueuesCurrentRequest_AndRecordsMetric()
@@ -106,7 +119,7 @@ public sealed class ResourceDeploymentRecoveryJobTests(
                 writes,
                 session,
                 cancellationToken),
-            new ResourcePlacementLookup(fixture.DbContext));
+            Services.GetRequiredService<LoadResourcePlacementInTransaction>());
         var job = new ResourceDeploymentRecoveryJob(
             loadCandidates.InvokeAsync,
             recover.InvokeAsync,
@@ -135,4 +148,7 @@ public sealed class ResourceDeploymentRecoveryJobTests(
         public override DateTimeOffset GetUtcNow() =>
             new(utcNow, TimeSpan.Zero);
     }
+
+    private IServiceProvider Services => serviceScope?.ServiceProvider ??
+        throw new InvalidOperationException("The test service scope was not initialized.");
 }

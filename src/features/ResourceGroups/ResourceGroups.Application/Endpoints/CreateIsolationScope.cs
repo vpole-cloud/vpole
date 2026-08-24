@@ -5,11 +5,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Application.Persistence;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -20,65 +19,65 @@ public sealed record CreateIsolationScopeRequest(
     [FromRoute] string ResourceGroupId,
     [FromBody] CreateIsolationScopeRequestBody Body,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<IsolationScopeDto>, ITenantCreateOperation;
+    : IMediatorRequest<CreateIsolationScopeOutcome>, ITenantCreateOperation;
+
+public union CreateIsolationScopeError(
+    ResourceGroupNotFound,
+    ResourceGroupDeleting,
+    ResourceGroupRevisionConflict,
+    IsolationScopeNameConflict);
+
+public union CreateIsolationScopeOutcome(IsolationScopeDto, CreateIsolationScopeError);
 
 public sealed record CreateIsolationScopeRequestBody(string Name);
 
 public sealed class CreateIsolationScopeHandler(
-    IResourceGroupDbContext dbContext,
+    LoadResourceGroup loadResourceGroup,
+    PersistCreatedIsolationScope persistCreatedIsolationScope,
     TimeProvider timeProvider)
-    : IMediatorHandler<CreateIsolationScopeRequest, IsolationScopeDto>
+    : IMediatorOutcomeHandler<CreateIsolationScopeRequest, CreateIsolationScopeOutcome>
 {
-    public async Task<Result<IsolationScopeDto>> HandleAsync(
+    public async Task<CreateIsolationScopeOutcome> HandleAsync(
         CreateIsolationScopeRequest request,
         CancellationToken cancellationToken = default)
     {
-        return await dbContext.RunInTransactionAsync<IsolationScopeDto>(async (session, ct) =>
+        var resourceGroup = await loadResourceGroup(
+            request.TenantId,
+            request.ResourceGroupId,
+            cancellationToken);
+        if (resourceGroup is null)
+            return new CreateIsolationScopeError(
+                new ResourceGroupNotFound(request.ResourceGroupId));
+        if (resourceGroup.Lifecycle is DeletingResourceGroupLifecycleState)
+            return new CreateIsolationScopeError(
+                new ResourceGroupDeleting(resourceGroup.Id));
+        if (resourceGroup.Lifecycle is not ActiveResourceGroupLifecycleState)
         {
-            var resourceGroupFilter = Builders<ResourceGroup>.Filter.And(
-                Builders<ResourceGroup>.Filter.ForTenant(request.TenantId),
-                Builders<ResourceGroup>.Filter.Eq(group => group.Id, request.ResourceGroupId));
-            var resourceGroup = await dbContext.ResourceGroups
-                .Find(session, resourceGroupFilter)
-                .FirstOrDefaultAsync(ct);
-            if (resourceGroup is null)
-                return Failures.NotFound("Resource group not found.", request.ResourceGroupId);
-            if (resourceGroup.Lifecycle is not ActiveResourceGroupLifecycleState)
-                return Failures.Conflict("The resource group is being deleted.");
+            throw new InvalidOperationException(
+                $"Resource group '{resourceGroup.Id}' has an unsupported lifecycle state.");
+        }
 
-            var now = timeProvider.GetUtcNow().UtcDateTime;
-            var fencedFilter = Builders<ResourceGroup>.Filter.And(
-                resourceGroupFilter,
-                Builders<ResourceGroup>.Filter.Eq(group => group.Revision, resourceGroup.Revision),
-                Builders<ResourceGroup>.Filter
-                    .OfType<ResourceGroupLifecycleState, ActiveResourceGroupLifecycleState>(
-                        group => group.Lifecycle));
-            var fence = await dbContext.ResourceGroups.UpdateOneAsync(
-                session,
-                fencedFilter,
-                Builders<ResourceGroup>.Update
-                    .Inc(group => group.Revision, 1)
-                    .Set(group => group.UpdatedAtUtc, now),
-                cancellationToken: ct);
-            if (fence.ModifiedCount != 1)
-                return Failures.Conflict("The resource group changed while the isolation scope was being created.");
-
-            var scope = IsolationScopeFactory.CreateAdditional(
-                request.TenantId,
-                resourceGroup.Id,
-                request.Body.Name,
-                IsolationScopeFactory.DefaultOptions with
-                {
-                    CreatedAtUtc = now
-                });
-            await dbContext.IsolationScopes.InsertOneAsync(
-                session,
-                scope,
-                cancellationToken: ct);
-            await dbContext.StoreEventAsync(scope.ToCreatedEvent(), session, ct);
-
-            return scope.ToDto();
-        }, cancellationToken: cancellationToken);
+        var scope = IsolationScopeFactory.CreateAdditional(
+            request.TenantId,
+            resourceGroup.Id,
+            request.Body.Name,
+            IsolationScopeFactory.DefaultOptions with
+            {
+                CreatedAtUtc = timeProvider.GetUtcNow().UtcDateTime
+            });
+        var persisted = await persistCreatedIsolationScope(
+            resourceGroup,
+            scope,
+            cancellationToken);
+        return persisted switch
+        {
+            Ok<IsolationScope> success => success.Value.ToDto(),
+            Err<PersistCreatedIsolationScopeError> error => error.Value switch
+            {
+                ResourceGroupRevisionConflict conflict => new CreateIsolationScopeError(conflict),
+                IsolationScopeNameConflict conflict => new CreateIsolationScopeError(conflict)
+            }
+        };
     }
 }
 
@@ -117,17 +116,24 @@ public static class CreateIsolationScopeEndpoint
     {
         app.MapPost("/{ResourceGroupId}/isolation-scopes", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] CreateIsolationScopeRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(scope => Results.Created(
-                    $"/api/v1/resource-groups/{scope.ResourceGroupId}/isolation-scopes/{scope.Id}",
-                    scope));
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    IsolationScopeDto scope => Results.Created(
+                        $"/api/v1/resource-groups/{scope.ResourceGroupId}/isolation-scopes/{scope.Id}",
+                        scope),
+                    CreateIsolationScopeError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("CreateIsolationScope")
             .WithSummary("Creates an additional isolation scope.")
-            .Produces<IsolationScopeDto>(StatusCodes.Status201Created);
+            .Produces<IsolationScopeDto>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return app;
     }

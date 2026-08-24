@@ -17,6 +17,7 @@ using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.ResourceGroups.Application.Endpoints;
+using Pole.Features.ResourceGroups.Application.Consumers;
 using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.WebServices.Application.Kubernetes;

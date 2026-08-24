@@ -9,7 +9,7 @@ using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Application.Endpoints;
-using Pole.Features.ResourceGroups.Application.Services;
+using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
@@ -29,8 +29,8 @@ public static class TestData
     public const string UserId = "test-user";
     public const string UserEmail = "test-user@example.test";
 
-    private static readonly IKubernetesNamespaceGenerator NamespaceGenerator =
-        new KubernetesNamespaceGenerator(new KubernetesOptions { NamespaceNamePrefix = "test" });
+    private static readonly KubernetesResourceGroupNamespaceNameGenerator NamespaceGenerator =
+        new(new KubernetesOptions { NamespaceNamePrefix = "test" });
 
     public static CreateResourceGroupRequest CreateResourceGroupRequest(
         string name = "alpha",
@@ -201,7 +201,7 @@ public static class TestData
             name: name,
             tenantId: tenantId,
             description: $"{name} description",
-            kubernetesNamespace: kubernetesNamespace ?? NamespaceGenerator.GenerateNamespaceName(tenantId, options.Id),
+            kubernetesNamespace: kubernetesNamespace ?? NamespaceGenerator.Invoke(tenantId, options.Id),
             options: options);
     }
 

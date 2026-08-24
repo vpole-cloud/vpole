@@ -4,16 +4,16 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.Events.Abstractions;
+using Pole.Features.ResourceGroups.Application.Persistence;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Mediator;
 using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.ResourceGroups.Application.Endpoints;
 
@@ -21,15 +21,25 @@ public static class UpdateResourceGroup
 {
     public static IEndpointRouteBuilder MapUpdateResourceGroupEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPut("/{Id}", async (IMediator mediator, [AsParameters] UpdateResourceGroupRequest request, CancellationToken cancellationToken) =>
+        app.MapPut("/{Id}", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
+                [AsParameters] UpdateResourceGroupRequest request,
+                CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    ResourceGroupDto resourceGroup => Results.Ok(resourceGroup),
+                    UpdateResourceGroupError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("UpdateResourceGroup")
             .WithSummary("Updates a resource group by its ID.")
             .WithDescription("Updates the resource group's metadata while preserving its Kubernetes namespace.")
-            .Produces<ResourceGroupDto>(StatusCodes.Status200OK);
+            .Produces<ResourceGroupDto>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return app;
     }
@@ -39,7 +49,13 @@ public sealed record UpdateResourceGroupRequest(
     [FromRoute] string Id,
     [FromBody] UpdateResourceGroupRequestBody Body,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
-) : IMediatorRequest<ResourceGroupDto>, ITenantWriteOperation;
+) : IMediatorRequest<UpdateResourceGroupOutcome>, ITenantWriteOperation;
+
+public union UpdateResourceGroupError(
+    ResourceGroupNotFound,
+    ResourceGroupRevisionConflict);
+
+public union UpdateResourceGroupOutcome(ResourceGroupDto, UpdateResourceGroupError);
 
 public sealed record UpdateResourceGroupRequestBody(
     string Description,
@@ -47,24 +63,22 @@ public sealed record UpdateResourceGroupRequestBody(
 );
 
 public sealed class UpdateResourceGroupHandler(
-    IResourceGroupDbContext dbContext,
+    LoadResourceGroup loadResourceGroup,
+    PersistUpdatedResourceGroup persistUpdatedResourceGroup,
     TimeProvider timeProvider)
-    : IMediatorHandler<UpdateResourceGroupRequest, ResourceGroupDto>
+    : IMediatorOutcomeHandler<UpdateResourceGroupRequest, UpdateResourceGroupOutcome>
 {
-    public async Task<Result<ResourceGroupDto>> HandleAsync(
+    public async Task<UpdateResourceGroupOutcome> HandleAsync(
         UpdateResourceGroupRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<ResourceGroup>.Filter.And(
-            Builders<ResourceGroup>.Filter.ForTenant(request.TenantId),
-            Builders<ResourceGroup>.Filter.Eq(rg => rg.Id, request.Id));
-
-        var resourceGroup = await dbContext.ResourceGroups
-            .Find(filter)
-            .FirstOrDefaultAsync(cancellationToken);
+        var resourceGroup = await loadResourceGroup(
+            request.TenantId,
+            request.Id,
+            cancellationToken);
 
         if (resourceGroup is null)
-            return Failures.NotFound("Resource group not found.", request.Id);
+            return new UpdateResourceGroupError(new ResourceGroupNotFound(request.Id));
 
         var updated = resourceGroup.UpdateMetadata(
             request.Body.Description,
@@ -72,36 +86,16 @@ public sealed class UpdateResourceGroupHandler(
             timeProvider.GetUtcNow().UtcDateTime);
         var changes = GetChanges(resourceGroup, updated);
 
-        return await dbContext.RunInTransactionAsync<ResourceGroupDto>(async (sh, ct) =>
+        var persisted = await persistUpdatedResourceGroup(
+            resourceGroup,
+            updated,
+            changes,
+            cancellationToken);
+        return persisted switch
         {
-            if (updated.Revision != resourceGroup.Revision)
-            {
-                var replacement = await dbContext.ResourceGroups.ReplaceOneAsync(
-                    sh,
-                    Builders<ResourceGroup>.Filter.And(
-                        filter,
-                        Builders<ResourceGroup>.Filter.Eq(
-                            group => group.Revision,
-                            resourceGroup.Revision)),
-                    updated,
-                    cancellationToken: ct);
-                if (replacement.ModifiedCount != 1)
-                    return Failures.Conflict("The resource group changed while it was being updated.");
-            }
-
-            await dbContext.StoreEventAsync(new ResourceGroupUpdatedEvent(
-                request.Id,
-                updated.Name,
-                updated.Description,
-                updated.KubernetesNamespace,
-                updated.Resources,
-                changes)
-            {
-                EventCore = EventCore.Create(updated.TenantId)
-            }, sh, ct);
-
-            return updated.ToDto();
-        }, cancellationToken: cancellationToken);
+            Ok<ResourceGroup> success => success.Value.ToDto(),
+            Err<ResourceGroupRevisionConflict> error => new UpdateResourceGroupError(error.Value)
+        };
     }
 
     private static ResourceGroupUpdatedEventChanges GetChanges(ResourceGroup previous, ResourceGroup updated) =>
@@ -116,7 +110,7 @@ public sealed class UpdateResourceGroupValidator : AbstractValidator<UpdateResou
     public UpdateResourceGroupValidator()
     {
         RuleFor(x => x.Id)
-            .NotEmpty();
+            .MongoObjectId("Resource group ID");
         RuleFor(x => x.Body.Description)
             .MaximumLength(200);
         RuleForEach(x => x.Body.Tags)

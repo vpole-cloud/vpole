@@ -5,12 +5,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceGroups.Application.Persistence;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -20,78 +19,35 @@ public sealed record RetryRuntimeCellRequest(
     [FromRoute] string ResourceGroupId,
     [FromRoute] string CellId,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<RuntimeCellDto>, ITenantWriteOperation;
+    : IMediatorRequest<RetryRuntimeCellOutcome>, ITenantWriteOperation;
+
+public union RetryRuntimeCellError(
+    RuntimeCellNotFound,
+    RuntimeCellRetryRejected,
+    ResourceGroupRevisionConflict);
+
+public union RetryRuntimeCellOutcome(RuntimeCellDto, RetryRuntimeCellError);
 
 public sealed class RetryRuntimeCellHandler(
-    IResourceGroupDbContext dbContext,
-    TimeProvider timeProvider)
-    : IMediatorHandler<RetryRuntimeCellRequest, RuntimeCellDto>
+    PersistRuntimeCellRetry persistRuntimeCellRetry)
+    : IMediatorOutcomeHandler<RetryRuntimeCellRequest, RetryRuntimeCellOutcome>
 {
-    public async Task<Result<RuntimeCellDto>> HandleAsync(
+    public async Task<RetryRuntimeCellOutcome> HandleAsync(
         RetryRuntimeCellRequest request,
         CancellationToken cancellationToken = default)
     {
-        return await dbContext.RunInTransactionAsync<RuntimeCellDto>(async (session, ct) =>
+        var retried = await persistRuntimeCellRetry(
+            request.TenantId,
+            request.ResourceGroupId,
+            request.CellId,
+            cancellationToken);
+        return retried switch
         {
-            var filter = Builders<RuntimeCell>.Filter.And(
-                Builders<RuntimeCell>.Filter.Eq(cell => cell.Id, request.CellId),
-                Builders<RuntimeCell>.Filter.Eq(cell => cell.ResourceGroupId, request.ResourceGroupId),
-                Builders<RuntimeCell>.Filter.ForTenant(request.TenantId));
-            var current = await dbContext.RuntimeCells
-                .Find(session, filter)
-                .FirstOrDefaultAsync(ct);
-            if (current is null)
-                return Failures.NotFound("Runtime cell not found.", request.CellId);
-            if (current.State is not FailedRuntimeCellState failed)
-                return Failures.Conflict("Only a failed runtime cell can be retried explicitly.");
-
-            var now = timeProvider.GetUtcNow().UtcDateTime;
-            var retried = failed.Operation switch
-            {
-                RuntimeCellOperation.Reconciliation => current.RequestReconciliation(now),
-                RuntimeCellOperation.Deletion => current.RequestDeletion(now),
-                _ => throw new InvalidOperationException(
-                    $"Unsupported runtime cell operation '{failed.Operation}'.")
-            };
-            var replacement = await dbContext.RuntimeCells.ReplaceOneAsync(
-                session,
-                Builders<RuntimeCell>.Filter.And(
-                    filter,
-                    Builders<RuntimeCell>.Filter.Eq(
-                        cell => cell.DesiredGeneration,
-                        current.DesiredGeneration),
-                    Builders<RuntimeCell>.Filter
-                        .OfType<RuntimeCellState, FailedRuntimeCellState>(
-                            cell => cell.State)),
-                retried,
-                cancellationToken: ct);
-            if (replacement.ModifiedCount != 1)
-                return Failures.Conflict("The runtime cell changed while retry was being requested.");
-
-            if (failed.Operation == RuntimeCellOperation.Reconciliation)
-            {
-                await dbContext.StoreEventAsync(
-                    OutboxWrite.Create(
-                        retried.ToReconciliationRequestedEvent(),
-                        RuntimeCellPendingKey.Reconciliation(
-                            retried.Id,
-                            retried.DesiredGeneration)),
-                    session,
-                    ct);
-            }
-            else
-            {
-                await dbContext.StoreEventAsync(
-                    OutboxWrite.Create(
-                        retried.ToDeletionRequestedEvent(),
-                        RuntimeCellPendingKey.Deletion(
-                            retried.Id,
-                            retried.DesiredGeneration)),
-                    session,
-                    ct);
-            }
-            return retried.ToDto();
-        }, cancellationToken: cancellationToken);
+            RuntimeCell runtimeCell => runtimeCell.ToDto(),
+            RuntimeCellNotFound error => new RetryRuntimeCellError(error),
+            RuntimeCellRetryRejected error => new RetryRuntimeCellError(error),
+            ResourceGroupRevisionConflict error => new RetryRuntimeCellError(error)
+        };
     }
 }
 
@@ -113,15 +69,22 @@ public static class RetryRuntimeCellEndpoint
     {
         app.MapPost("/{ResourceGroupId}/runtime-cells/{CellId}/retry", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] RetryRuntimeCellRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(cell => Results.Accepted(value: cell));
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    RuntimeCellDto runtimeCell => Results.Accepted(value: runtimeCell),
+                    RetryRuntimeCellError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("RetryRuntimeCell")
             .WithSummary("Requests another attempt for a failed runtime cell.")
-            .Produces<RuntimeCellDto>(StatusCodes.Status202Accepted);
+            .Produces<RuntimeCellDto>(StatusCodes.Status202Accepted)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return app;
     }

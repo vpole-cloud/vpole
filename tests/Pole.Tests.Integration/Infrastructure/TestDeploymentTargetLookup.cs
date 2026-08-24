@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using MongoDB.Driver;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.ResultType;
@@ -13,6 +14,10 @@ internal sealed class TestDeploymentTargetLookup
         {
             [Target.Id] = Target
         };
+    private readonly ConcurrentQueue<DeploymentTargetReferenceChange> _referenceChanges = [];
+
+    public IReadOnlyCollection<DeploymentTargetReferenceChange> ReferenceChanges =>
+        _referenceChanges.ToArray();
 
     private static readonly DeploymentTargetLookupDto Target = new(
         TestData.DefaultDeploymentTargetId,
@@ -304,17 +309,25 @@ internal sealed class TestDeploymentTargetLookup
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
     {
-        return Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
-            RejectReferenceRemoval && removedDeploymentTargetIds.Count > 0
-                ? new Err<DeploymentTargetReferenceChangeRejected>(
+        if (RejectReferenceRemoval && removedDeploymentTargetIds.Count > 0)
+        {
+            return Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
+                new Err<DeploymentTargetReferenceChangeRejected>(
                 new DeploymentTargetReferenceChangeRejected(
                     owner,
                     addedDeploymentTargetIds
                         .Concat(removedDeploymentTargetIds)
                         .Distinct(StringComparer.Ordinal)
                         .Order(StringComparer.Ordinal)
-                        .ToArray()))
-                : new Ok<Unit>(Unit.Value));
+                        .ToArray())));
+        }
+
+        _referenceChanges.Enqueue(new DeploymentTargetReferenceChange(
+            owner,
+            addedDeploymentTargetIds.ToArray(),
+            removedDeploymentTargetIds.ToArray()));
+        return Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
+            new Ok<Unit>(Unit.Value));
     }
 
     public Task<Result<
@@ -337,3 +350,8 @@ internal sealed class TestDeploymentTargetLookup
                     new DeploymentTargetWorkloadConfigurationFenceRejected(requests)));
     }
 }
+
+internal sealed record DeploymentTargetReferenceChange(
+    DeploymentTargetReferenceOwner Owner,
+    IReadOnlyList<string> AddedDeploymentTargetIds,
+    IReadOnlyList<string> RemovedDeploymentTargetIds);

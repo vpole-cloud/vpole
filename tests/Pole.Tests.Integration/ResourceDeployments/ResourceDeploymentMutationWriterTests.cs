@@ -1,14 +1,15 @@
 using MongoDB.Bson;
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Mutations;
+using Pole.Features.ResourceGroups.Application.Persistence;
 using Pole.Features.ResourceDeployments.Application.Placement;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;
-using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
@@ -22,6 +23,8 @@ public sealed class ResourceDeploymentMutationWriterTests(
     MongoReplicaSetFixture fixture)
     : IAsyncLifetime
 {
+    private ServiceProvider? serviceProvider;
+    private IServiceScope? serviceScope;
     private const string TenantId = "507f1f77bcf86cd799439011";
     private const string OtherTenantId = "507f1f77bcf86cd799439012";
     private const string ResourceId = "507f1f77bcf86cd799439013";
@@ -37,9 +40,19 @@ public sealed class ResourceDeploymentMutationWriterTests(
     private static readonly DateTime MutationAtUtc =
         CreatedAtUtc.AddMinutes(2);
 
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
+    public async Task InitializeAsync()
+    {
+        await fixture.ResetDatabaseAsync();
+        serviceProvider = TestServiceProviderFactory.Create(fixture);
+        serviceScope = serviceProvider.CreateScope();
+    }
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public Task DisposeAsync()
+    {
+        serviceScope?.Dispose();
+        serviceProvider?.Dispose();
+        return Task.CompletedTask;
+    }
 
     [Fact]
     public async Task RequestApply_AdvancesGeneration_PreservesPlacement_AndQueuesCurrentRequest()
@@ -367,8 +380,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
             [first.RuntimeCell, second.RuntimeCell]);
         await fixture.DbContext.ResourceDeployments.InsertManyAsync(
             [first.Deployment, second.Deployment]);
-        var placementLookup = new RecordingPlacementLookup(
-            new ResourcePlacementLookup(fixture.DbContext));
+        var placementLookup = CreateRecordingPlacementLookup();
         var fence = new RecordingComputeProfileFence();
         var writer = CreateWriter(fence, placementLookup);
 
@@ -538,23 +550,38 @@ public sealed class ResourceDeploymentMutationWriterTests(
 
     private ResourceDeploymentLegacyMutationAdapters CreateWriter(
         RecordingComputeProfileFence fence,
-        IResourcePlacementLookup? placementLookup = null) =>
+        RecordingPlacementLookup? placementLookup = null) =>
         new(CreateTypedWriter(fence, placementLookup));
 
     private ResourceDeploymentMutationWriter CreateTypedWriter(
         RecordingComputeProfileFence fence,
-        IResourcePlacementLookup? placementLookup = null) =>
-        new(
+        RecordingPlacementLookup? placementLookup = null)
+    {
+        var defaultLookup = Services.GetRequiredService<LoadResourcePlacementInTransaction>();
+        var defaultManyLookup = Services.GetRequiredService<LoadResourcePlacementsInTransaction>();
+        var load = placementLookup is null ? defaultLookup : placementLookup.LoadAsync;
+        var loadMany = placementLookup is null ? defaultManyLookup : placementLookup.LoadManyAsync;
+        return new(
             fixture.DbContext.ResourceDeployments,
             (session, writes, cancellationToken) => fixture.DbContext.StoreEventAsync(
                 writes,
                 session,
                 cancellationToken),
-            placementLookup ?? new ResourcePlacementLookup(fixture.DbContext),
+            load,
+            loadMany,
             fence.InvokeAsync,
             new FixedTimeProvider(new DateTimeOffset(
                 MutationAtUtc,
                 TimeSpan.Zero)));
+    }
+
+    private RecordingPlacementLookup CreateRecordingPlacementLookup() =>
+        new(
+            Services.GetRequiredService<LoadResourcePlacementInTransaction>(),
+            Services.GetRequiredService<LoadResourcePlacementsInTransaction>());
+
+    private IServiceProvider Services => serviceScope?.ServiceProvider ??
+        throw new InvalidOperationException("The test service scope was not initialized.");
 
     private async Task AssertStructuralRequestRejectedAsync(
         Func<IClientSessionHandle, Task> operation)
@@ -674,39 +701,31 @@ public sealed class ResourceDeploymentMutationWriterTests(
         }
     }
 
-    private sealed class RecordingPlacementLookup(IResourcePlacementLookup inner)
-        : IResourcePlacementLookup
+    private sealed class RecordingPlacementLookup(
+        LoadResourcePlacementInTransaction load,
+        LoadResourcePlacementsInTransaction loadMany)
     {
         public int FindCallCount { get; private set; }
         public int FindManyCallCount { get; private set; }
 
-        public Task<ResourcePlacement?> FindAsync(
-            string tenantId,
-            string runtimeCellId,
-            CancellationToken cancellationToken = default)
-        {
-            FindCallCount++;
-            return inner.FindAsync(tenantId, runtimeCellId, cancellationToken);
-        }
-
-        public Task<ResourcePlacement?> FindAsync(
+        public Task<ResourcePlacement?> LoadAsync(
             string tenantId,
             string runtimeCellId,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
             FindCallCount++;
-            return inner.FindAsync(tenantId, runtimeCellId, session, cancellationToken);
+            return load(tenantId, runtimeCellId, session, cancellationToken);
         }
 
-        public Task<IReadOnlyList<ResourcePlacement>> FindManyAsync(
+        public Task<IReadOnlyList<ResourcePlacement>> LoadManyAsync(
             string tenantId,
             IReadOnlyCollection<string> runtimeCellIds,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
             FindManyCallCount++;
-            return inner.FindManyAsync(tenantId, runtimeCellIds, session, cancellationToken);
+            return loadMany(tenantId, runtimeCellIds, session, cancellationToken);
         }
     }
 }

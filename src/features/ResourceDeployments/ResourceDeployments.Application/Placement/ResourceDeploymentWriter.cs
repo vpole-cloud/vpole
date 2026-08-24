@@ -14,7 +14,7 @@ namespace Pole.Features.ResourceDeployments.Application.Placement;
 internal sealed class ResourceDeploymentWriter(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     StoreOutboxWrites storeOutboxWrites,
-    IResourcePlacementService placementService,
+    ResolveResourceGroupPlacements resolveResourceGroupPlacements,
     FenceDeploymentTargetWorkloadConfigurations fenceDeploymentTargetWorkloadConfigurations,
     FenceResolvedComputeProfiles fenceResolvedComputeProfiles,
     FenceStorageProfileResolution fenceStorageProfileResolution,
@@ -156,7 +156,7 @@ internal sealed class ResourceDeploymentWriter(
             }
         }
 
-        var placementResult = await placementService.ResolveOrCreateManyAsync(
+        var placementResult = await resolveResourceGroupPlacements(
             first.TenantId,
             first.ResourceGroupId,
             first.IsolationScopeId,
@@ -165,17 +165,27 @@ internal sealed class ResourceDeploymentWriter(
                 .ToArray(),
             session,
             cancellationToken);
-        if (!placementResult.TryGetValue(out var placements, out var placementFailure))
+        return placementResult switch
         {
-            return new Err<CreateResourceDeploymentError>(
-                placementFailure is NotFoundFailure
-                    ? new CreateResourceDeploymentError(
-                        new ResourcePlacementResourceGroupNotFound(
-                            first.ResourceGroupId))
-                    : new CreateResourceDeploymentError(
-                        new ResourcePlacementUnavailable(
-                            first.ResourceGroupId)));
-        }
+            Err<ResourceGroupPlacementError> placementFailure =>
+                new Err<CreateResourceDeploymentError>(
+                    MapPlacementFailure(first.ResourceGroupId, placementFailure.Value)),
+            Ok<IReadOnlyList<ResourcePlacement>> success => await PersistResolvedDeploymentsAsync(
+                request,
+                success.Value,
+                session,
+                cancellationToken)
+        };
+    }
+
+    private async Task<Result<
+        IReadOnlyList<PlacementSummaryDto>,
+        CreateResourceDeploymentError>> PersistResolvedDeploymentsAsync(
+        CreateResourceDeploymentSetRequest request,
+        IReadOnlyList<ResourcePlacement> placements,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
         if (placements.Count != request.Deployments.Count)
             throw new InvalidOperationException("Resource placement returned an incomplete deployment set.");
         if (placements.Any(placement =>
@@ -244,8 +254,18 @@ internal sealed class ResourceDeploymentWriter(
         return new Ok<IReadOnlyList<PlacementSummaryDto>>(
             deployments
                 .Select(deployment => deployment.ToPlacementSummaryDto())
-                .ToArray());
+            .ToArray());
     }
+
+    private static CreateResourceDeploymentError MapPlacementFailure(
+        string resourceGroupId,
+        ResourceGroupPlacementError error) =>
+        error switch
+        {
+            ResourceGroupPlacementResourceGroupNotFound => new(
+                new ResourcePlacementResourceGroupNotFound(resourceGroupId)),
+            _ => new(new ResourcePlacementUnavailable(resourceGroupId))
+        };
 
     private static void EnsureTransaction(IClientSessionHandle session)
     {

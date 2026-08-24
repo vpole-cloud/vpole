@@ -1,17 +1,14 @@
+using System.ComponentModel;
 using FluentValidation;
-using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Request;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceGroups.Application.Persistence;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -24,7 +21,10 @@ public static class GetResourceGroups
         app.MapGet("/", async (IMediator mediator, [AsParameters] GetResourceGroupsRequest request) =>
             {
                 var result = await mediator.Send(request);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    PaginatedResponse<ResourceGroupDto> page => Results.Ok(page)
+                });
             })
             .WithName("GetResourceGroups")
             .WithSummary("Retrieves all resource groups.")
@@ -35,44 +35,47 @@ public static class GetResourceGroups
     }
 }
 
-public record GetResourceGroupsRequest : PaginatedRequest<ResourceGroupDto>, ITenantReadOperation
+public record GetResourceGroupsRequest
+    : IMediatorRequest<GetResourceGroupsOutcome>, ITenantReadOperation
 {
+    [FromQuery, DefaultValue(1)] public int PageNumber { get; init; } = 1;
+    [FromQuery, DefaultValue(10)] public int PageSize { get; init; } = 10;
     [FromHeader(Name = TenantHeaders.TenantId)] public string TenantId { get; init; } = string.Empty;
     [FromQuery] public string? Search { get; init; }
 }
 
 
 public sealed class GetResourceGroupsHandler(
-    IResourceGroupDbContext dbContext)
-    : IMediatorHandler<GetResourceGroupsRequest, PaginatedResponse<ResourceGroupDto>>
+    LoadResourceGroupPage loadResourceGroupPage)
+    : IMediatorOutcomeHandler<GetResourceGroupsRequest, GetResourceGroupsOutcome>
 {
-    public async Task<Result<PaginatedResponse<ResourceGroupDto>>> HandleAsync(
+    public async Task<GetResourceGroupsOutcome> HandleAsync(
         GetResourceGroupsRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filter = Builders<ResourceGroup>.Filter.ForTenant(request.TenantId);
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var pattern = $".*{Regex.Escape(request.Search)}.*";
-            filter &= Builders<ResourceGroup>.Filter.Regex(rg => rg.Name, new BsonRegularExpression(pattern, "i"));
-        }
-
-        var totalCount = await dbContext.ResourceGroups.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
-        var items = await dbContext.ResourceGroups.Find(filter)
-            .ApplyPagination(request)
-            .ToListAsync(cancellationToken);
+        var page = await loadResourceGroupPage(
+            new ResourceGroupPageQuery(
+                request.TenantId,
+                request.PageNumber,
+                request.PageSize,
+                request.Search),
+            cancellationToken);
 
         return new PaginatedResponse<ResourceGroupDto>(
-            Items: items.Select(x => x.ToDto()),
-            TotalCount: totalCount,
+            Items: page.Items.Select(x => x.ToDto()),
+            TotalCount: page.TotalCount,
             PageNumber: request.PageNumber,
             PageSize: request.PageSize);
     }
 }
 
+public union GetResourceGroupsOutcome(PaginatedResponse<ResourceGroupDto>);
+
 public class GetResourceGroupsRequestValidator : AbstractValidator<GetResourceGroupsRequest>
 {
     public GetResourceGroupsRequestValidator()
     {
+        RuleFor(request => request.PageNumber).GreaterThan(0);
+        RuleFor(request => request.PageSize).InclusiveBetween(1, 200);
     }
 }

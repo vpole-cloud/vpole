@@ -21,9 +21,8 @@ using Pole.Features.Quotas.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application;
 using Pole.Features.ResourceDeployments.Application;
+using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Application.Services;
-using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
 using Pole.Features.StorageProfiles.Application.Common;
@@ -61,6 +60,12 @@ public static class TestServiceProviderFactory
 
     public static ServiceProvider Create(MongoReplicaSetFixture fixture)
     {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["kubernetes:NamespaceNamePrefix"] = "test"
+            })
+            .Build();
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Debug));
         services.AddSingleton(TimeProvider.System);
@@ -82,7 +87,8 @@ public static class TestServiceProviderFactory
         services.AddMongoDbContextInterfaces();
         services.AddFunctionAppsFeature();
         services.AddResourceDeploymentsFeature(
-            new ConfigurationBuilder().Build());
+            configuration);
+        services.AddResourceGroupsFeature(configuration);
         services.AddTenantContractCapabilities();
         services.AddDomainsFeature();
         services.AddComputeProfilesFeature();
@@ -90,7 +96,6 @@ public static class TestServiceProviderFactory
         services.AddRedisServicesFeature();
         services.AddPostgresFeature();
         services.AddWebServicesFeature();
-        services.AddSingleton(new KubernetesOptions { NamespaceNamePrefix = "test" });
         services.AddSingleton(new PostgresSettings
         {
             DefaultDeploymentMode = PostgresDeploymentMode.Operator,
@@ -102,7 +107,6 @@ public static class TestServiceProviderFactory
             typeof(FunctionAppQuotaProfile).Assembly,
             typeof(WebServiceQuotaProfile).Assembly,
             typeof(PostgresQuotaProfile).Assembly);
-        services.AddSingleton<IKubernetesNamespaceGenerator, KubernetesNamespaceGenerator>();
         var deploymentTargetLookup = new TestDeploymentTargetLookup();
         services.AddSingleton(deploymentTargetLookup);
         services.AddSingleton<LookupDeploymentTarget>(
@@ -127,10 +131,6 @@ public static class TestServiceProviderFactory
             deploymentTargetLookup.ApplyChangesOutcomeAsync);
         services.AddSingleton<FenceDeploymentTargetWorkloadConfigurations>(
             deploymentTargetLookup.FenceManyOutcomeAsync);
-        services.AddScoped<ResourceGroupLookup>();
-        services.AddScoped<GetResourceGroupOwnership>(provider =>
-            provider.GetRequiredService<ResourceGroupLookup>()
-                .GetOwnershipOutcomeAsync);
         services.AddSingleton<IEnvelopeEncryptionService>(
             TestPostgresEnvelopeEncryption.Create());
         services.AddMigrations(Assemblies);
