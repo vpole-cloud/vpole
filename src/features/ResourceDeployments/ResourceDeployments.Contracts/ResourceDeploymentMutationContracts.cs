@@ -168,20 +168,6 @@ public delegate Task<Result<
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
-/// <summary>
-/// Temporary shared-result adapters for wave 1 consumers that do not yet expose
-/// ResourceDeploymentMutationError in their own outcome unions.
-/// </summary>
-public delegate Task<Result<PlacementSummaryDto>> RequestResourceDeploymentApplyLegacy(
-    ResourceDeploymentMutationRequest request,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
-
-public delegate Task<Result<PlacementSummaryDto>> RequestResourceDeploymentDeletionLegacy(
-    ResourceDeploymentMutationRequest request,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
-
 public sealed record ResourceDeploymentsNotFound(string ResourceId);
 
 public sealed record ResourceDeploymentsHaveNoActivePlacement(string ResourceId);

@@ -167,26 +167,3 @@ public delegate Task<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryD
         ResourceTypeId resourceType,
         IReadOnlyCollection<string> resourceIds,
         CancellationToken cancellationToken = default);
-
-/// <summary>
-/// Temporary shared-result adapters for wave 1 consumers.
-/// </summary>
-public delegate Task<Result> EnsureNoUnfinishedResourceGroupDeploymentsLegacy(
-    string tenantId,
-    string resourceGroupId,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
-
-public delegate Task<Result> EnsureNoUnfinishedIsolationScopeDeploymentsLegacy(
-    string tenantId,
-    string resourceGroupId,
-    string isolationScopeId,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
-
-public delegate Task<Result<CurrentResourceDeploymentComputeDto>>
-    LoadCurrentResourceDeploymentComputeLegacy(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
-        CancellationToken cancellationToken = default);

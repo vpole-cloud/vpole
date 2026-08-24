@@ -73,15 +73,6 @@ public union CreateResourceDeploymentError(
     ResourcePlacementUnavailable,
     ResourcePlacementDeleting);
 
-/// <summary>
-/// Temporary shared-result adapter. Remove when DeploymentTargets consumers in
-/// migration wave 1 expose the provider-owned admission union directly.
-/// </summary>
-public delegate Task<Result<ResolvedResourceDeploymentTarget>> ResolveResourceDeploymentTargetLegacy(
-    string? deploymentTargetId,
-    bool requiresIngress,
-    CancellationToken cancellationToken = default);
-
 public delegate Task<Result<PlacementSummaryDto, CreateResourceDeploymentError>>
     CreateResourceDeployment(
     CreateResourceDeploymentRequest request,
@@ -92,13 +83,5 @@ public delegate Task<Result<
     IReadOnlyList<PlacementSummaryDto>,
     CreateResourceDeploymentError>> CreateResourceDeploymentSet(
     CreateResourceDeploymentSetRequest request,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
-
-/// <summary>
-/// Temporary shared-result adapter for consumers not yet migrated in wave 1.
-/// </summary>
-public delegate Task<Result<PlacementSummaryDto>> CreateResourceDeploymentLegacy(
-    CreateResourceDeploymentRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);

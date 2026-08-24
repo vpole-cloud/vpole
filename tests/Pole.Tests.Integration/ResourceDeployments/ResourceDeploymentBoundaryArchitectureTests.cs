@@ -64,8 +64,7 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
             typeof(LoadResourceDeploymentRecoveryCandidatesOperation),
             typeof(RecoverResourceDeploymentOperation),
             typeof(ResourceDeploymentWakePersistence),
-            typeof(ResourceDeploymentFilters),
-            typeof(ResourceDeploymentPlacementResolver)
+            typeof(ResourceDeploymentFilters)
         ];
 
         Assert.All(implementationTypes, type => Assert.False(type.IsPublic));
@@ -84,6 +83,17 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
             .ToArray();
 
         Assert.Equal([typeof(IResourceDeploymentAdapter)], interfaces);
+    }
+
+    [Fact]
+    public void Contracts_DoNotRetainLegacyResultCapabilities()
+    {
+        var legacyContractTypes = typeof(CreateResourceDeployment).Assembly
+            .GetTypes()
+            .Where(type => type.Name.Contains("Legacy", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.Empty(legacyContractTypes);
     }
 
     [Fact]
