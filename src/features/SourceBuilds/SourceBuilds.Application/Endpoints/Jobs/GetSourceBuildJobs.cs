@@ -3,15 +3,13 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Request;
 using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Domain;
+using Pole.Features.SourceBuilds.Application.Persistence;
 using Pole.Mediator;
-using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.SourceBuilds.Application.Endpoints;
 
@@ -21,45 +19,37 @@ public sealed record GetSourceBuildJobsRequest(
     [FromQuery] string? WebServiceId = null,
     [FromQuery] int PageNumber = 1,
     [FromQuery] int PageSize = 20)
-    : IMediatorRequest<PaginatedResponse<SourceBuildJobDto>>, ITenantReadOperation;
+    : IMediatorRequest<GetSourceBuildJobsOutcome>, ITenantReadOperation;
 
-public sealed class GetSourceBuildJobsHandler(ISourceBuildDbContext dbContext)
-    : IMediatorHandler<GetSourceBuildJobsRequest, PaginatedResponse<SourceBuildJobDto>>
+public union GetSourceBuildJobsOutcome(PaginatedResponse<SourceBuildJobDto>);
+
+public sealed class GetSourceBuildJobsHandler(LoadSourceBuildJobPage loadSourceBuildJobPage)
+    : IMediatorOutcomeHandler<GetSourceBuildJobsRequest, GetSourceBuildJobsOutcome>
 {
-    public async Task<Result<PaginatedResponse<SourceBuildJobDto>>> HandleAsync(
+    public async Task<GetSourceBuildJobsOutcome> HandleAsync(
         GetSourceBuildJobsRequest request,
         CancellationToken cancellationToken = default)
     {
-        var filters = new List<FilterDefinition<SourceBuildJob>>
-        {
-            Builders<SourceBuildJob>.Filter.Eq(item => item.TenantId, request.TenantId)
-        };
-        if (!string.IsNullOrWhiteSpace(request.ConfigurationId))
-            filters.Add(Builders<SourceBuildJob>.Filter.Eq(item => item.ConfigurationId, request.ConfigurationId));
-        if (!string.IsNullOrWhiteSpace(request.WebServiceId))
-            filters.Add(Builders<SourceBuildJob>.Filter.Eq(item => item.WebServiceId, request.WebServiceId));
-
-        var filter = Builders<SourceBuildJob>.Filter.And(filters);
-        var totalCount = await dbContext.SourceBuildJobs.CountDocumentsAsync(
-            filter,
-            cancellationToken: cancellationToken);
-        var jobs = await dbContext.SourceBuildJobs
-            .Find(filter)
-            .SortByDescending(item => item.CreatedAtUtc)
-            .ApplyPagination(request.PageNumber, request.PageSize)
-            .ToListAsync(cancellationToken);
-        return new PaginatedResponse<SourceBuildJobDto>(
-            jobs.Select(item => item.ToDto()).ToArray(),
-            totalCount,
-            request.PageNumber,
-            request.PageSize);
+        var page = await loadSourceBuildJobPage(
+            new SourceBuildJobListQuery(
+                request.TenantId,
+                request.ConfigurationId,
+                request.WebServiceId,
+                request.PageNumber,
+                request.PageSize),
+            cancellationToken);
+        return page.Map(item => item.ToDto());
     }
 }
 
-public sealed class GetSourceBuildJobsRequestValidator : AbstractValidator<GetSourceBuildJobsRequest>
+public sealed class GetSourceBuildJobsRequestValidator
+    : AbstractValidator<GetSourceBuildJobsRequest>
 {
     public GetSourceBuildJobsRequestValidator()
     {
+        RuleFor(item => item.ConfigurationId)
+            .OptionalMongoObjectId("Source build configuration ID");
+        RuleFor(item => item.WebServiceId).OptionalMongoObjectId("Web service ID");
         RuleFor(item => item.PageNumber).GreaterThanOrEqualTo(1);
         RuleFor(item => item.PageSize).InclusiveBetween(1, 100);
     }
@@ -69,11 +59,16 @@ public static class GetSourceBuildJobsEndpoint
 {
     public static IEndpointRouteBuilder MapGetSourceBuildJobsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/", async (IMediator mediator, [AsParameters] GetSourceBuildJobsRequest request,
+        app.MapGet("/", async (
+                IMediator mediator,
+                [AsParameters] GetSourceBuildJobsRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    PaginatedResponse<SourceBuildJobDto> page => Results.Ok(page)
+                });
             })
             .WithName("GetSourceBuildJobs")
             .Produces<PaginatedResponse<SourceBuildJobDto>>();

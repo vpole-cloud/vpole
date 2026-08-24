@@ -58,7 +58,9 @@ using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Migrations;
 using Pole.Features.SourceBuilds.Application.Common;
+using Pole.Features.SourceBuilds.Application;
 using Pole.Features.SourceBuilds.Application.Jobs;
+using Pole.Features.SourceBuilds.Application.Migrations;
 using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Migrations;
@@ -249,10 +251,12 @@ public sealed class TestApiApplication : IAsyncDisposable
             deploymentTargetLookup.FenceManyOutcomeAsync);
         builder.Services.AddSingleton(new HarborOptions());
         builder.Services.AddContainerRegistriesFeature(builder.Configuration);
-        builder.Services.AddSingleton<ISourceBuildJobDispatcher, TestSourceBuildJobDispatcher>();
+        builder.Services.AddSingleton<TestSourceBuildJobDispatcher>();
+        builder.Services.AddSingleton<DispatchSourceBuildJob>(provider =>
+            provider.GetRequiredService<TestSourceBuildJobDispatcher>().Invoke);
         builder.Services.AddSingleton(new SourceBuildExecutionOptions());
         builder.Services.AddSingleton(new BuildKitOptions());
-        builder.Services.AddSourceBuildsFeature();
+        builder.Services.AddSourceBuildsFeature(builder.Configuration);
         var gitHubClient = new FakeGitHubAppClient();
         builder.Services.RemoveAll<IGitHubAppClient>();
         builder.Services.AddSingleton<IGitHubAppClient>(gitHubClient);
@@ -304,6 +308,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         await ((IMigration)new PostgresCredentialMigration()).Up(fixture.Database);
         await new StorageProfileMigration().Up(fixture.Database);
         await new OutboxMessageMigration().Up(fixture.Database);
+        await new SourceBuildMigration().Up(fixture.Database);
         await fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
             .InsertOneAsync(TestData.SeedComputeProfile());

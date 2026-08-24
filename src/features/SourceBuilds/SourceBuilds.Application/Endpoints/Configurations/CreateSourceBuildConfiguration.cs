@@ -3,16 +3,16 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
+using Pole.Features.SourceBuilds.Application.Persistence;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.WebServices.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.SourceBuilds.Application.Endpoints;
 
@@ -20,42 +20,72 @@ public sealed record CreateSourceBuildConfigurationRequest(
     [FromBody] CreateSourceBuildConfigurationBody Body,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue CurrentUserId)
-    : IMediatorRequest<SourceBuildConfigurationDto>, ITenantWriteOperation;
+    : IMediatorRequest<CreateSourceBuildConfigurationOutcome>, ITenantWriteOperation;
 
 public sealed record CreateSourceBuildConfigurationBody(
     string SourceRepositoryId,
     string WebServiceId);
 
+public union CreateSourceBuildConfigurationError(
+    SourceRepositoryBuildNotFound,
+    SourceBuildConfigurationWebServiceNotFound,
+    SourceBuildConfigurationAlreadyExists);
+
+public union CreateSourceBuildConfigurationOutcome(
+    SourceBuildConfigurationDto,
+    CreateSourceBuildConfigurationError);
+
 public sealed class CreateSourceBuildConfigurationHandler(
-    ISourceBuildDbContext dbContext,
-    ISourceRepositoryBuildAccess sourceRepositoryBuildAccess,
+    FindSourceRepositoryBuild findSourceRepositoryBuild,
     WebServiceExists webServiceExists,
+    CreateSourceBuildConfiguration createSourceBuildConfiguration,
     TimeProvider timeProvider)
-    : IMediatorHandler<CreateSourceBuildConfigurationRequest, SourceBuildConfigurationDto>
+    : IMediatorOutcomeHandler<
+        CreateSourceBuildConfigurationRequest,
+        CreateSourceBuildConfigurationOutcome>
 {
-    public async Task<Result<SourceBuildConfigurationDto>> HandleAsync(
+    public async Task<CreateSourceBuildConfigurationOutcome> HandleAsync(
         CreateSourceBuildConfigurationRequest request,
         CancellationToken cancellationToken = default)
     {
-        var sourceRepository = await sourceRepositoryBuildAccess.FindAsync(
+        var sourceRepository = await findSourceRepositoryBuild(
             request.TenantId,
             request.Body.SourceRepositoryId,
             cancellationToken);
-        if (sourceRepository is null)
-            return Failures.NotFound("Source repository not found.", request.Body.SourceRepositoryId);
+        return sourceRepository switch
+        {
+            Err<FindSourceRepositoryBuildError> error => error.Value switch
+            {
+                SourceRepositoryBuildNotFound notFound =>
+                    new CreateSourceBuildConfigurationError(notFound)
+            },
+            Ok<SourceRepositoryBuildSnapshot> success => await CreateAsync(
+                request,
+                success.Value,
+                webServiceExists,
+                createSourceBuildConfiguration,
+                timeProvider,
+                cancellationToken)
+        };
+    }
 
+    private static async Task<CreateSourceBuildConfigurationOutcome> CreateAsync(
+        CreateSourceBuildConfigurationRequest request,
+        SourceRepositoryBuildSnapshot sourceRepository,
+        WebServiceExists webServiceExists,
+        CreateSourceBuildConfiguration createSourceBuildConfiguration,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
         var exists = await webServiceExists(
             request.TenantId,
             request.Body.WebServiceId,
             cancellationToken);
         if (!exists)
-            return Failures.NotFound("Web service not found.", request.Body.WebServiceId);
-
-        var alreadyConfigured = await dbContext.SourceBuildConfigurations
-            .Find(item => item.TenantId == request.TenantId && item.WebServiceId == request.Body.WebServiceId)
-            .AnyAsync(cancellationToken);
-        if (alreadyConfigured)
-            return Failures.Conflict("This web service already has a source build configuration.");
+        {
+            return new CreateSourceBuildConfigurationError(
+                new SourceBuildConfigurationWebServiceNotFound(request.Body.WebServiceId));
+        }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var configuration = SourceBuildConfigurationFactory.Create(
@@ -64,14 +94,16 @@ public sealed class CreateSourceBuildConfigurationHandler(
             request.Body.WebServiceId,
             sourceRepository.SelectedPlan.ToBuildRecipe(),
             request.CurrentUserId.Value,
-            new SourceBuildConfigurationFactory.CreateOptions(MongoDB.Bson.ObjectId.GenerateNewId().ToString(), now));
-        var inserted = await dbContext.SourceBuildConfigurations.InsertOneAsResultAsync(
-            configuration,
-            () => Failures.Conflict("This web service already has a source build configuration."),
-            cancellationToken);
-        return inserted.TryGetValue(out var value, out var failure)
-            ? value.ToDto()
-            : failure;
+            new SourceBuildConfigurationFactory.CreateOptions(
+                MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
+                now));
+        var created = await createSourceBuildConfiguration(configuration, cancellationToken);
+        return created switch
+        {
+            Ok<SourceBuildConfiguration> success => success.Value.ToDto(),
+            Err<SourceBuildConfigurationAlreadyExists> error =>
+                new CreateSourceBuildConfigurationError(error.Value)
+        };
     }
 }
 
@@ -89,24 +121,40 @@ public sealed class CreateSourceBuildConfigurationBodyValidator
 {
     public CreateSourceBuildConfigurationBodyValidator()
     {
-        RuleFor(item => item.SourceRepositoryId).NotEmpty();
-        RuleFor(item => item.WebServiceId).NotEmpty();
+        RuleFor(item => item.SourceRepositoryId)
+            .NotEmpty()
+            .MongoObjectId("Source repository ID");
+        RuleFor(item => item.WebServiceId)
+            .NotEmpty()
+            .MongoObjectId("Web service ID");
     }
 }
 
 public static class CreateSourceBuildConfigurationEndpoint
 {
-    public static IEndpointRouteBuilder MapCreateSourceBuildConfigurationEndpoint(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapCreateSourceBuildConfigurationEndpoint(
+        this IEndpointRouteBuilder app)
     {
-        app.MapPost("/", async (IMediator mediator, [AsParameters] CreateSourceBuildConfigurationRequest request,
+        app.MapPost("/", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
+                [AsParameters] CreateSourceBuildConfigurationRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(value => Results.Created(
-                    $"/api/v1/source-build-configurations/{value.Id}", value));
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    SourceBuildConfigurationDto configuration => Results.Created(
+                        $"/api/v1/source-build-configurations/{configuration.Id}",
+                        configuration),
+                    CreateSourceBuildConfigurationError error =>
+                        httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("CreateSourceBuildConfiguration")
-            .Produces<SourceBuildConfigurationDto>(StatusCodes.Status201Created);
+            .Produces<SourceBuildConfigurationDto>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
         return app;
     }
 }

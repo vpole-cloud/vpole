@@ -21,28 +21,37 @@ public sealed record BuildKitBuildRequest(
 
 public sealed record BuiltContainerImage(string Reference, string Digest);
 
-public interface IBuildKitClient
-{
-    Task<Result<BuiltContainerImage>> BuildAndPushAsync(
+public sealed record BuildKitNotConfigured;
+
+public sealed record BuildKitTimedOut(int TimeoutMinutes);
+
+public sealed record BuildKitUnavailable;
+
+public sealed record BuildKitBuildRejected(string Classification);
+
+public union BuildContainerImageError(
+    BuildKitNotConfigured,
+    BuildKitTimedOut,
+    BuildKitUnavailable,
+    BuildKitBuildRejected);
+
+public delegate Task<Result<BuiltContainerImage, BuildContainerImageError>>
+    BuildContainerImage(
         BuildKitBuildRequest request,
         CancellationToken cancellationToken = default);
-}
 
 public sealed class BuildKitClient(
-    IProcessRunner processRunner,
+    RunProcess runProcess,
     BuildKitOptions options,
-    ILogger<BuildKitClient> logger) : IBuildKitClient
+    ILogger<BuildKitClient> logger)
 {
-    public async Task<Result<BuiltContainerImage>> BuildAndPushAsync(
+    public async Task<Result<BuiltContainerImage, BuildContainerImageError>> InvokeAsync(
         BuildKitBuildRequest request,
         CancellationToken cancellationToken = default)
     {
         if (!options.IsConfigured)
         {
-            return Failures.ExternalService(
-                "Container image building is not configured.",
-                "BuildKit",
-                "BuildKit configuration is disabled or incomplete.");
+            return new Err<BuildContainerImageError>(new(new BuildKitNotConfigured()));
         }
 
         var operationRoot = Path.Combine(
@@ -93,21 +102,16 @@ public sealed class BuildKitClient(
             ProcessResult process;
             try
             {
-                process = await processRunner.RunAsync(spec, timeout.Token);
+                process = await runProcess(spec, timeout.Token);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                return Failures.ExternalService(
-                    "BuildKit timed out while building the container image.",
-                    "BuildKit",
-                    $"Timeout: {options.TimeoutMinutes} minutes.");
+                return new Err<BuildContainerImageError>(
+                    new(new BuildKitTimedOut(options.TimeoutMinutes)));
             }
             catch (Exception exception) when (exception is Win32Exception or IOException)
             {
-                return Failures.ExternalService(
-                    "BuildKit could not be started.",
-                    "BuildKit",
-                    "The buildctl executable or BuildKit endpoint is unavailable.");
+                return new Err<BuildContainerImageError>(new(new BuildKitUnavailable()));
             }
 
             if (process.ExitCode != 0)
@@ -117,22 +121,19 @@ public sealed class BuildKitClient(
                     "[buildkit-build-failed] buildctl exited with code {ExitCode}. {Diagnostic}",
                     process.ExitCode,
                     classification);
-                return Failures.ExternalService(
-                    $"BuildKit failed to build or push the container image. {classification}",
-                    "BuildKit",
-                    $"buildctl exited with code {process.ExitCode}. Classification: {classification}");
+                return new Err<BuildContainerImageError>(
+                    new(new BuildKitBuildRejected(classification)));
             }
 
             var digest = await ReadDigestAsync(metadataPath, cancellationToken);
             if (digest is null)
             {
-                return Failures.ExternalService(
-                    "BuildKit did not return a valid image digest.",
-                    "BuildKit",
-                    "The metadata file did not contain containerimage.digest.");
+                return new Err<BuildContainerImageError>(
+                    new(new BuildKitBuildRejected("BuildKit did not return a valid image digest.")));
             }
 
-            return new BuiltContainerImage(request.Target.Reference, digest);
+            return new Ok<BuiltContainerImage>(
+                new BuiltContainerImage(request.Target.Reference, digest));
         }
         finally
         {

@@ -2,6 +2,7 @@ using System.Formats.Tar;
 using System.IO.Compression;
 using System.Text;
 using Pole.Features.SourceBuilds.Application.Execution;
+using Pole.ResultType;
 using Xunit;
 
 namespace Pole.Features.SourceBuilds.Tests;
@@ -17,9 +18,9 @@ public sealed class RepositoryArchiveExtractorTests
         using var destination = new TemporaryDirectory();
         var extractor = new RepositoryArchiveExtractor();
 
-        var result = await extractor.ExtractAsync(archive, destination.Path, 1024, 10);
+        var result = await extractor.InvokeAsync(archive, destination.Path, 1024, 10);
 
-        Assert.IsType<Pole.ResultType.Success>(result);
+        Assert.True(TypedResultExtensions.TryGetValue(result).Succeeded);
         Assert.Equal("<Project />", await File.ReadAllTextAsync(
             System.IO.Path.Combine(destination.Path, "src", "App.csproj")));
     }
@@ -33,9 +34,9 @@ public sealed class RepositoryArchiveExtractorTests
         using var destination = new TemporaryDirectory();
         var extractor = new RepositoryArchiveExtractor();
 
-        var result = await extractor.ExtractAsync(archive, destination.Path, 1024, 10);
+        var result = await extractor.InvokeAsync(archive, destination.Path, 1024, 10);
 
-        Assert.IsAssignableFrom<Pole.ResultType.Failure>(result);
+        Assert.False(TypedResultExtensions.TryGetValue(result).Succeeded);
     }
 
     [Fact]
@@ -46,9 +47,9 @@ public sealed class RepositoryArchiveExtractorTests
         using var destination = new TemporaryDirectory();
         var extractor = new RepositoryArchiveExtractor();
 
-        var result = await extractor.ExtractAsync(archive, destination.Path, 10, 10);
+        var result = await extractor.InvokeAsync(archive, destination.Path, 10, 10);
 
-        Assert.IsAssignableFrom<Pole.ResultType.Failure>(result);
+        Assert.False(TypedResultExtensions.TryGetValue(result).Succeeded);
     }
 
     private static MemoryStream CreateArchive(

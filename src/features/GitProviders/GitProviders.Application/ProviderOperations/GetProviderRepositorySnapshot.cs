@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Pole.Features.GitProviders.Application.Common;
+using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
 using Pole.ResultType;
 

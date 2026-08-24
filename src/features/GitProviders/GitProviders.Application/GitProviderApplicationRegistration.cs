@@ -31,9 +31,12 @@ public static class GitProviderApplicationRegistration
         services.TryAddScoped<GitHubSetupPersistence>();
         services.TryAddScoped<GitHubSetupService>();
         services.TryAddScoped<RepositorySourceAnalyzer>();
-        services.TryAddScoped<SourceRepositoryBuildAccess>();
-        services.TryAddScoped<ISourceRepositoryBuildAccess>(provider =>
-            provider.GetRequiredService<SourceRepositoryBuildAccess>());
+        services.TryAddScoped<SourceRepositoryBuildFinder>();
+        services.TryAddScoped<FindSourceRepositoryBuild>(provider =>
+            provider.GetRequiredService<SourceRepositoryBuildFinder>().InvokeAsync);
+        services.TryAddScoped<SourceRepositoryArchiveDownloader>();
+        services.TryAddScoped<DownloadSourceRepositoryArchive>(provider =>
+            provider.GetRequiredService<SourceRepositoryArchiveDownloader>().InvokeAsync);
 
         services.AddCapability<GitHubAppJwtFactory, CreateGitHubAppJwt>(factory => factory.Invoke);
         services.AddCapability<MongoCreateGitHubSetupAttempt, CreateGitHubSetupAttempt>(

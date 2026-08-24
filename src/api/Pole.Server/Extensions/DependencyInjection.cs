@@ -39,10 +39,7 @@ using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Contracts;
-using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Application.Jobs;
-using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.Features.Tenants;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Users.Application.Common;
@@ -173,28 +170,8 @@ public static class DependencyInjection
             services.TryAddSingleton<ISearchDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ITenantDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IUserDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddSingleton<ISourceBuildDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.AddHttpContextAccessor();
             services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
-            return services;
-        }
-
-        public IServiceCollection AddSourceBuildsFeature()
-        {
-            services.TryAddSingleton(TimeProvider.System);
-            services.TryAddScoped<SourceBuildReferenceLookup>();
-            services.TryAddScoped<EnsureNoWebServiceSourceBuildConfiguration>(provider =>
-                provider.GetRequiredService<SourceBuildReferenceLookup>()
-                    .EnsureNoWebServiceConfigurationAsync);
-            services.TryAddScoped<EnsureNoSourceRepositoryBuildConfiguration>(provider =>
-                provider.GetRequiredService<SourceBuildReferenceLookup>()
-                    .EnsureNoSourceRepositoryConfigurationAsync);
-            services.TryAddSingleton<ISourceBuildJobDispatcher, HangfireSourceBuildJobDispatcher>();
-            services.TryAddSingleton<IRepositoryArchiveExtractor, RepositoryArchiveExtractor>();
-            services.TryAddSingleton<IProcessRunner, ProcessRunner>();
-            services.TryAddSingleton<IBuildKitClient, BuildKitClient>();
-            services.TryAddScoped<ISourceBuildWorkspaceService, SourceBuildWorkspaceService>();
-            services.TryAddScoped<ISourceBuildJobExecutor, SourceBuildJobExecutor>();
             return services;
         }
 
@@ -222,8 +199,6 @@ public static class DependencyInjection
                 .ValidateOnStart();
             services.AddSingleton(sp => sp.GetRequiredService<IOptions<QuotaSettings>>().Value);
             services.AddSettingsSection<KeycloakOptions>(KeycloakOptions.SectionName, configuration);
-            services.AddSettingsSection<SourceBuildExecutionOptions>(SourceBuildExecutionOptions.SectionName, configuration);
-            services.AddSettingsSection<BuildKitOptions>(BuildKitOptions.SectionName, configuration);
             return services;
         }
 

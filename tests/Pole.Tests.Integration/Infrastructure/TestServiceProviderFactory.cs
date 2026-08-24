@@ -29,8 +29,8 @@ using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.Tenants.Application.Common;
-using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Contracts;
+using Pole.Features.SourceBuilds.Application;
+using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Mediator;
@@ -135,13 +135,10 @@ public static class TestServiceProviderFactory
             TestPostgresEnvelopeEncryption.Create());
         services.AddMigrations(Assemblies);
         services.AddSearchFeature();
-        services.AddScoped<SourceBuildReferenceLookup>();
-        services.AddScoped<EnsureNoWebServiceSourceBuildConfiguration>(provider =>
-            provider.GetRequiredService<SourceBuildReferenceLookup>()
-                .EnsureNoWebServiceConfigurationAsync);
-        services.AddScoped<EnsureNoSourceRepositoryBuildConfiguration>(provider =>
-            provider.GetRequiredService<SourceBuildReferenceLookup>()
-                .EnsureNoSourceRepositoryConfigurationAsync);
+        services.AddSingleton<TestSourceBuildJobDispatcher>();
+        services.AddSingleton<DispatchSourceBuildJob>(provider =>
+            provider.GetRequiredService<TestSourceBuildJobDispatcher>().Invoke);
+        services.AddSourceBuildsFeature(configuration);
         services.AddValidatorsFromAssemblies(Assemblies);
         services.AddPoleMediator(Assemblies);
         services.ReplaceTenantAuthorizationWithFake();

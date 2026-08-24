@@ -55,9 +55,6 @@ public static class ContainerRegistryApplicationRegistration
         services.TryAddScoped<TenantRegistryArtifactLookup>();
         services.TryAddScoped<GetTenantRegistryArtifact>(provider =>
             provider.GetRequiredService<TenantRegistryArtifactLookup>().InvokeAsync);
-        services.TryAddScoped<SourceBuildContainerRegistryBuildService>();
-        services.TryAddScoped<IContainerRegistryBuildService>(provider =>
-            provider.GetRequiredService<SourceBuildContainerRegistryBuildService>());
         services.TryAddScoped<RuntimeRegistryAccessProvider>();
         services.TryAddScoped<ResolveRuntimeRegistryAccess>(provider =>
             provider.GetRequiredService<RuntimeRegistryAccessProvider>().ResolveAsync);

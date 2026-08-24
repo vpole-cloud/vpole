@@ -25,21 +25,41 @@ public sealed record SourceRepositoryBuildSnapshot(
     string CommitSha,
     SourceRepositoryBuildPlanSnapshot SelectedPlan);
 
-public interface ISourceRepositoryBuildAccess
-{
-    Task<SourceRepositoryBuildSnapshot?> FindAsync(
+public sealed record SourceRepositoryBuildNotFound(string SourceRepositoryId);
+
+public sealed record SourceRepositoryBuildConnectionNotFound(
+    string SourceRepositoryId,
+    string ConnectionId);
+
+public sealed record GitProviderUnsupported(string Provider);
+
+public sealed record GitProviderUnavailable(string Provider);
+
+public union GitProviderRepositoryAccessError(
+    GitProviderUnsupported,
+    GitProviderUnavailable);
+
+public union FindSourceRepositoryBuildError(SourceRepositoryBuildNotFound);
+
+public union DownloadSourceRepositoryArchiveError(
+    SourceRepositoryBuildNotFound,
+    SourceRepositoryBuildConnectionNotFound,
+    GitProviderRepositoryAccessError);
+
+public delegate Task<Result<SourceRepositoryBuildSnapshot, FindSourceRepositoryBuildError>>
+    FindSourceRepositoryBuild(
         string tenantId,
         string sourceRepositoryId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Writes the exact requested commit to the caller-owned destination stream.
-    /// The destination remains owned by the caller and is not disposed by the provider.
-    /// </summary>
-    Task<Result> DownloadArchiveAsync(
+/// <summary>
+/// Writes the exact requested commit to the caller-owned destination stream.
+/// The destination remains owned by the caller and is not disposed by the provider.
+/// </summary>
+public delegate Task<Result<Unit, DownloadSourceRepositoryArchiveError>>
+    DownloadSourceRepositoryArchive(
         string tenantId,
         string sourceRepositoryId,
         string commitSha,
         Stream destination,
         CancellationToken cancellationToken = default);
-}

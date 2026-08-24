@@ -23,11 +23,3 @@ public sealed record SourceRepositorySelectedBuildPlanUnavailable(
 public sealed record SourceRepositoryHasBuildConfiguration(string SourceRepositoryId);
 
 public sealed record RepositorySourceSnapshotTooLarge;
-
-public sealed record GitProviderUnsupported(string Provider);
-
-public sealed record GitProviderUnavailable(string Provider);
-
-public union GitProviderRepositoryAccessError(
-    GitProviderUnsupported,
-    GitProviderUnavailable);

@@ -1,5 +1,6 @@
 using System.Net;
 using Pole.ASP.Helpers;
+using Pole.Features.GitProviders.Contracts;
 
 namespace Pole.Features.GitProviders.Application.Common;
 
@@ -19,6 +20,7 @@ public static class GitProviderHttpMappings
                 MapSelectedBuildPlanUnavailable),
             HttpProblemMapping.For<SourceRepositoryHasBuildConfiguration>(
                 MapSourceRepositoryHasBuildConfiguration),
+            HttpProblemMapping.For<SourceRepositoryBuildNotFound>(MapSourceRepositoryBuildNotFound),
             HttpProblemMapping.For<RepositorySourceSnapshotTooLarge>(MapSnapshotTooLarge),
             HttpProblemMapping.For<GitProviderUnsupported>(MapProviderUnsupported),
             HttpProblemMapping.For<GitProviderUnavailable>(MapProviderUnavailable)
@@ -46,6 +48,14 @@ public static class GitProviderHttpMappings
             ("connectionId", conflict.ConnectionId));
 
     private static HttpProblem MapSourceRepositoryNotFound(SourceRepositoryNotFound notFound) =>
+        Problem(
+            HttpStatusCode.NotFound,
+            "git-providers.source-repositories.not-found",
+            "Source repository not found",
+            ("sourceRepositoryId", notFound.SourceRepositoryId));
+
+    private static HttpProblem MapSourceRepositoryBuildNotFound(
+        SourceRepositoryBuildNotFound notFound) =>
         Problem(
             HttpStatusCode.NotFound,
             "git-providers.source-repositories.not-found",

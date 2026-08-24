@@ -1,50 +1,68 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Domain;
+using Pole.Features.SourceBuilds.Application.Persistence;
 using Pole.Mediator;
-using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.SourceBuilds.Application.Endpoints;
 
 public sealed record GetSourceBuildJobRequest(
     [FromRoute] string BuildJobId,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<SourceBuildJobDto>, ITenantReadOperation;
+    : IMediatorRequest<GetSourceBuildJobOutcome>, ITenantReadOperation;
 
-public sealed class GetSourceBuildJobHandler(ISourceBuildDbContext dbContext)
-    : IMediatorHandler<GetSourceBuildJobRequest, SourceBuildJobDto>
+public union GetSourceBuildJobOutcome(SourceBuildJobDto, SourceBuildJobNotFound);
+
+public sealed class GetSourceBuildJobHandler(LoadSourceBuildJob loadSourceBuildJob)
+    : IMediatorOutcomeHandler<GetSourceBuildJobRequest, GetSourceBuildJobOutcome>
 {
-    public async Task<Result<SourceBuildJobDto>> HandleAsync(
+    public async Task<GetSourceBuildJobOutcome> HandleAsync(
         GetSourceBuildJobRequest request,
         CancellationToken cancellationToken = default)
     {
-        var job = await dbContext.SourceBuildJobs
-            .Find(item => item.TenantId == request.TenantId && item.Id == request.BuildJobId)
-            .FirstOrDefaultAsync(cancellationToken);
+        var job = await loadSourceBuildJob(
+            request.TenantId,
+            request.BuildJobId,
+            cancellationToken);
         return job is null
-            ? Failures.NotFound("Source build job not found.", request.BuildJobId)
+            ? new SourceBuildJobNotFound(request.BuildJobId)
             : job.ToDto();
     }
+}
+
+public sealed class GetSourceBuildJobRequestValidator
+    : AbstractValidator<GetSourceBuildJobRequest>
+{
+    public GetSourceBuildJobRequestValidator() =>
+        RuleFor(item => item.BuildJobId).MongoObjectId("Source build job ID");
 }
 
 public static class GetSourceBuildJobEndpoint
 {
     public static IEndpointRouteBuilder MapGetSourceBuildJobEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{BuildJobId}", async (IMediator mediator, [AsParameters] GetSourceBuildJobRequest request,
+        app.MapGet("/{BuildJobId}", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
+                [AsParameters] GetSourceBuildJobRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    SourceBuildJobDto job => Results.Ok(job),
+                    SourceBuildJobNotFound error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("GetSourceBuildJob")
-            .Produces<SourceBuildJobDto>();
+            .Produces<SourceBuildJobDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
         return app;
     }
 }

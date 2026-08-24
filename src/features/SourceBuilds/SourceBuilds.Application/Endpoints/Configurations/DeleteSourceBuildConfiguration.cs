@@ -1,63 +1,80 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Domain;
+using Pole.Features.SourceBuilds.Application.Persistence;
 using Pole.Mediator;
 using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.SourceBuilds.Application.Endpoints;
 
 public sealed record DeleteSourceBuildConfigurationRequest(
     [FromRoute] string ConfigurationId,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<string>, ITenantWriteOperation;
+    : IMediatorRequest<DeleteSourceBuildConfigurationOutcome>, ITenantWriteOperation;
 
-public sealed class DeleteSourceBuildConfigurationHandler(ISourceBuildDbContext dbContext)
-    : IMediatorHandler<DeleteSourceBuildConfigurationRequest, string>
+public sealed record SourceBuildConfigurationDeleted(string ConfigurationId);
+
+public union DeleteSourceBuildConfigurationOutcome(
+    SourceBuildConfigurationDeleted,
+    DeleteSourceBuildConfigurationError);
+
+public sealed class DeleteSourceBuildConfigurationHandler(
+    DeleteSourceBuildConfiguration deleteSourceBuildConfiguration)
+    : IMediatorOutcomeHandler<
+        DeleteSourceBuildConfigurationRequest,
+        DeleteSourceBuildConfigurationOutcome>
 {
-    public async Task<Result<string>> HandleAsync(
+    public async Task<DeleteSourceBuildConfigurationOutcome> HandleAsync(
         DeleteSourceBuildConfigurationRequest request,
         CancellationToken cancellationToken = default)
     {
-        var terminalStates = Builders<SourceBuildJob>.Filter.Or(
-            Builders<SourceBuildJob>.Filter.OfType<SourceBuildJobState, SucceededSourceBuild>(item => item.State),
-            Builders<SourceBuildJob>.Filter.OfType<SourceBuildJobState, FailedSourceBuild>(item => item.State));
-        var hasActiveBuilds = await dbContext.SourceBuildJobs
-            .Find(Builders<SourceBuildJob>.Filter.And(
-                Builders<SourceBuildJob>.Filter.Eq(item => item.TenantId, request.TenantId),
-                Builders<SourceBuildJob>.Filter.Eq(item => item.ConfigurationId, request.ConfigurationId),
-                Builders<SourceBuildJob>.Filter.Not(terminalStates)))
-            .AnyAsync(cancellationToken);
-        if (hasActiveBuilds)
-            return Failures.Conflict("Wait for active builds to finish before deleting this configuration.");
-
-        var deleted = await dbContext.SourceBuildConfigurations.DeleteOneAsync(
-            item => item.TenantId == request.TenantId && item.Id == request.ConfigurationId,
+        var deleted = await deleteSourceBuildConfiguration(
+            request.TenantId,
+            request.ConfigurationId,
             cancellationToken);
-        return deleted.DeletedCount == 0
-            ? Failures.NotFound("Source build configuration not found.", request.ConfigurationId)
-            : request.ConfigurationId;
+        return deleted switch
+        {
+            Ok<Unit> => new SourceBuildConfigurationDeleted(request.ConfigurationId),
+            Err<DeleteSourceBuildConfigurationError> error => error.Value
+        };
     }
+}
+
+public sealed class DeleteSourceBuildConfigurationRequestValidator
+    : AbstractValidator<DeleteSourceBuildConfigurationRequest>
+{
+    public DeleteSourceBuildConfigurationRequestValidator() =>
+        RuleFor(item => item.ConfigurationId).MongoObjectId("Source build configuration ID");
 }
 
 public static class DeleteSourceBuildConfigurationEndpoint
 {
-    public static IEndpointRouteBuilder MapDeleteSourceBuildConfigurationEndpoint(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapDeleteSourceBuildConfigurationEndpoint(
+        this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{ConfigurationId}", async (IMediator mediator,
+        app.MapDelete("/{ConfigurationId}", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] DeleteSourceBuildConfigurationRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(_ => Results.NoContent());
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    SourceBuildConfigurationDeleted => Results.NoContent(),
+                    DeleteSourceBuildConfigurationError error =>
+                        httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("DeleteSourceBuildConfiguration")
-            .Produces(StatusCodes.Status204NoContent);
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
         return app;
     }
 }

@@ -3,17 +3,17 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
+using Pole.Features.SourceBuilds.Application.Persistence;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.SourceBuilds.Events;
 using Pole.Mediator;
 using Pole.ResultType;
+using Pole.Validation;
 
 namespace Pole.Features.SourceBuilds.Application.Endpoints;
 
@@ -22,37 +22,73 @@ public sealed record StartManualSourceBuildRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue CurrentUserId,
     [FromClaim(Claims.Email)] ClaimValue<string?> CurrentUserEmail = default)
-    : IMediatorRequest<SourceBuildJobDto>, ITenantWriteOperation;
+    : IMediatorRequest<StartManualSourceBuildOutcome>, ITenantWriteOperation;
+
+public union StartManualSourceBuildError(
+    SourceBuildConfigurationNotFound,
+    SourceBuildLinkedRepositoryNotFound,
+    SourceBuildLinkedRepositoryCandidateChanged);
+
+public union StartManualSourceBuildOutcome(SourceBuildJobDto, StartManualSourceBuildError);
 
 public sealed class StartManualSourceBuildHandler(
-    ISourceBuildDbContext dbContext,
-    ISourceRepositoryBuildAccess sourceRepositoryBuildAccess,
+    LoadSourceBuildConfiguration loadSourceBuildConfiguration,
+    FindSourceRepositoryBuild findSourceRepositoryBuild,
+    QueueSourceBuildJob queueSourceBuildJob,
     TimeProvider timeProvider)
-    : IMediatorHandler<StartManualSourceBuildRequest, SourceBuildJobDto>
+    : IMediatorOutcomeHandler<StartManualSourceBuildRequest, StartManualSourceBuildOutcome>
 {
-    public async Task<Result<SourceBuildJobDto>> HandleAsync(
+    public async Task<StartManualSourceBuildOutcome> HandleAsync(
         StartManualSourceBuildRequest request,
         CancellationToken cancellationToken = default)
     {
-        var configuration = await dbContext.SourceBuildConfigurations
-            .Find(item => item.TenantId == request.TenantId && item.Id == request.ConfigurationId)
-            .FirstOrDefaultAsync(cancellationToken);
+        var configuration = await loadSourceBuildConfiguration(
+            request.TenantId,
+            request.ConfigurationId,
+            cancellationToken);
         if (configuration is null)
-            return Failures.NotFound("Source build configuration not found.", request.ConfigurationId);
+        {
+            return new StartManualSourceBuildError(
+                new SourceBuildConfigurationNotFound(request.ConfigurationId));
+        }
 
-        var sourceRepository = await sourceRepositoryBuildAccess.FindAsync(
+        var sourceRepository = await findSourceRepositoryBuild(
             request.TenantId,
             configuration.SourceRepositoryId,
             cancellationToken);
-        if (sourceRepository is null)
-            return Failures.Conflict("The linked source repository no longer exists.");
+        return sourceRepository switch
+        {
+            Err<FindSourceRepositoryBuildError> => new StartManualSourceBuildError(
+                new SourceBuildLinkedRepositoryNotFound(
+                    configuration.Id,
+                    configuration.SourceRepositoryId)),
+            Ok<SourceRepositoryBuildSnapshot> success => await QueueAsync(
+                request,
+                configuration,
+                success.Value,
+                queueSourceBuildJob,
+                timeProvider,
+                cancellationToken)
+        };
+    }
+
+    private static async Task<StartManualSourceBuildOutcome> QueueAsync(
+        StartManualSourceBuildRequest request,
+        SourceBuildConfiguration configuration,
+        SourceRepositoryBuildSnapshot sourceRepository,
+        QueueSourceBuildJob queueSourceBuildJob,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
         if (!string.Equals(
                 sourceRepository.CandidateKey,
                 configuration.Recipe.CandidateKey,
                 StringComparison.Ordinal))
         {
-            return Failures.Conflict(
-                "The linked source candidate changed; update or recreate the build configuration.");
+            return new StartManualSourceBuildError(
+                new SourceBuildLinkedRepositoryCandidateChanged(
+                    configuration.Id,
+                    sourceRepository.Id));
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -69,41 +105,45 @@ public sealed class StartManualSourceBuildHandler(
             new SourceBuildJobFactory.CreateOptions(
                 MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
                 now));
-
-        return await dbContext.RunInTransactionAsync<SourceBuildJobDto>(async (session, ct) =>
-        {
-            await dbContext.SourceBuildJobs.InsertOneAsync(session, build, cancellationToken: ct);
-            await dbContext.StoreEventAsync(
-                new SourceBuildRequestedEvent(build.Id)
-                {
-                    EventCore = EventCore.Create(request.TenantId)
-                },
-                session,
-                ct);
-            return build.ToDto();
-        }, cancellationToken: cancellationToken);
+        var queued = await queueSourceBuildJob(
+            build,
+            new SourceBuildRequestedEvent(build.Id)
+            {
+                EventCore = EventCore.Create(request.TenantId)
+            },
+            cancellationToken);
+        return queued.ToDto();
     }
 }
 
-public sealed class StartManualSourceBuildRequestValidator : AbstractValidator<StartManualSourceBuildRequest>
+public sealed class StartManualSourceBuildRequestValidator
+    : AbstractValidator<StartManualSourceBuildRequest>
 {
     public StartManualSourceBuildRequestValidator() =>
-        RuleFor(item => item.ConfigurationId).NotEmpty();
+        RuleFor(item => item.ConfigurationId).MongoObjectId("Source build configuration ID");
 }
 
 public static class StartManualSourceBuildEndpoint
 {
     public static IEndpointRouteBuilder MapManualSourceBuildEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/{ConfigurationId}/builds", async (IMediator mediator,
+        app.MapPost("/{ConfigurationId}/builds", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] StartManualSourceBuildRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(value => Results.Accepted(value: value));
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    SourceBuildJobDto job => Results.Accepted(value: job),
+                    StartManualSourceBuildError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("StartManualSourceBuild")
-            .Produces<SourceBuildJobDto>(StatusCodes.Status202Accepted);
+            .Produces<SourceBuildJobDto>(StatusCodes.Status202Accepted)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
         return app;
     }
 }

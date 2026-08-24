@@ -15,20 +15,22 @@ public sealed class SourceBuildWorkspaceServiceTests
     public async Task CreateAsync_DisposesTheArchiveBeforeDeletingIt()
     {
         using var workspaceRoot = new TemporaryDirectory();
-        var repositoryAccess = new ArchiveRepositoryService(CreateArchive());
+        var repositoryArchive = new ArchiveRepositoryArchive(CreateArchive());
         var service = new SourceBuildWorkspaceService(
-            repositoryAccess,
-            new RepositoryArchiveExtractor(),
+            repositoryArchive.InvokeAsync,
+            new RepositoryArchiveExtractor().InvokeAsync,
             new SourceBuildExecutionOptions { WorkspaceRoot = workspaceRoot.Path });
 
-        var result = await service.CreateAsync(
+        var result = await service.InvokeAsync(
             "tenant",
             "source",
             "commit",
             "build-job");
 
-        Assert.True(result.TryGetValue(out var workspace, out var failure), failure?.Message);
-        Assert.Equal(("tenant", "source", "commit"), repositoryAccess.Request);
+        var extracted = TypedResultExtensions.TryGetValue(result);
+        Assert.True(extracted.Succeeded, extracted.Error.ToString());
+        var workspace = extracted.Value!;
+        Assert.Equal(("tenant", "source", "commit"), repositoryArchive.Request);
         await using (workspace)
         {
             Assert.False(File.Exists(Path.Combine(workspace.RootPath, "source.tar.gz")));
@@ -52,17 +54,11 @@ public sealed class SourceBuildWorkspaceServiceTests
         return archive.ToArray();
     }
 
-    private sealed class ArchiveRepositoryService(byte[] archive) : ISourceRepositoryBuildAccess
+    private sealed class ArchiveRepositoryArchive(byte[] archive)
     {
         public (string TenantId, string SourceRepositoryId, string CommitSha)? Request { get; private set; }
 
-        public Task<SourceRepositoryBuildSnapshot?> FindAsync(
-            string tenantId,
-            string sourceRepositoryId,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public async Task<Result> DownloadArchiveAsync(
+        public async Task<Result<Unit, DownloadSourceRepositoryArchiveError>> InvokeAsync(
             string tenantId,
             string sourceRepositoryId,
             string commitSha,
@@ -71,7 +67,7 @@ public sealed class SourceBuildWorkspaceServiceTests
         {
             Request = (tenantId, sourceRepositoryId, commitSha);
             await destination.WriteAsync(archive, cancellationToken);
-            return Result.Success();
+            return new Ok<Unit>(Unit.Value);
         }
     }
 

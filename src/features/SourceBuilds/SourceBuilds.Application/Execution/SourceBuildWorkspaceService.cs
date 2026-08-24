@@ -4,53 +4,27 @@ using Pole.ResultType;
 
 namespace Pole.Features.SourceBuilds.Application.Execution;
 
-public sealed class SourceBuildWorkspace : IAsyncDisposable
-{
-    public SourceBuildWorkspace(string rootPath, string sourcePath)
-    {
-        RootPath = rootPath;
-        SourcePath = sourcePath;
-    }
+public sealed record SourceBuildWorkspaceArchiveLimitExceeded;
 
-    public string RootPath { get; }
-    public string SourcePath { get; }
+public union CreateSourceBuildWorkspaceError(
+    DownloadSourceRepositoryArchiveError,
+    SourceBuildRepositoryArchiveInvalid,
+    SourceBuildWorkspaceArchiveLimitExceeded);
 
-    public ValueTask DisposeAsync()
-    {
-        try
-        {
-            if (Directory.Exists(RootPath))
-                Directory.Delete(RootPath, recursive: true);
-        }
-        catch (IOException)
-        {
-            // A later workspace cleanup job can remove abandoned directories.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // A later workspace cleanup job can remove abandoned directories.
-        }
-
-        return ValueTask.CompletedTask;
-    }
-}
-
-public interface ISourceBuildWorkspaceService
-{
-    Task<Result<SourceBuildWorkspace>> CreateAsync(
+public delegate Task<Result<SourceBuildWorkspace, CreateSourceBuildWorkspaceError>>
+    CreateSourceBuildWorkspace(
         string tenantId,
         string sourceRepositoryId,
         string commitSha,
         string buildJobId,
         CancellationToken cancellationToken = default);
-}
 
 public sealed class SourceBuildWorkspaceService(
-    ISourceRepositoryBuildAccess sourceRepositoryBuildAccess,
-    IRepositoryArchiveExtractor archiveExtractor,
-    SourceBuildExecutionOptions options) : ISourceBuildWorkspaceService
+    DownloadSourceRepositoryArchive downloadSourceRepositoryArchive,
+    ExtractRepositoryArchive extractRepositoryArchive,
+    SourceBuildExecutionOptions options)
 {
-    public async Task<Result<SourceBuildWorkspace>> CreateAsync(
+    public async Task<Result<SourceBuildWorkspace, CreateSourceBuildWorkspaceError>> InvokeAsync(
         string tenantId,
         string sourceRepositoryId,
         string commitSha,
@@ -75,20 +49,20 @@ public sealed class SourceBuildWorkspaceService(
                              useAsync: true))
             await using (var limitedArchive = new SizeLimitedWriteStream(archiveFile, options.MaxArchiveBytes))
             {
-                var download = await sourceRepositoryBuildAccess.DownloadArchiveAsync(
+                var download = await downloadSourceRepositoryArchive(
                     tenantId,
                     sourceRepositoryId,
                     commitSha,
                     limitedArchive,
                     cancellationToken);
-                if (download is Failure failure)
+                if (download is Err<DownloadSourceRepositoryArchiveError> failure)
                 {
                     await DeleteWorkspaceAsync(buildRoot);
-                    return failure;
+                    return new Err<CreateSourceBuildWorkspaceError>(new(failure.Value));
                 }
             }
 
-            Result extraction;
+            Result<Unit, SourceBuildRepositoryArchiveInvalid> extraction;
             await using (var archive = new FileStream(
                              archivePath,
                              FileMode.Open,
@@ -97,34 +71,27 @@ public sealed class SourceBuildWorkspaceService(
                              bufferSize: 64 * 1024,
                              useAsync: true))
             {
-                extraction = await archiveExtractor.ExtractAsync(
+                extraction = await extractRepositoryArchive(
                     archive,
                     sourcePath,
                     options.MaxExtractedBytes,
                     options.MaxExtractedFiles,
                     cancellationToken);
             }
-            if (extraction is Failure extractionFailure)
+            if (extraction is Err<SourceBuildRepositoryArchiveInvalid> extractionFailure)
             {
                 await DeleteWorkspaceAsync(buildRoot);
-                return extractionFailure;
+                return new Err<CreateSourceBuildWorkspaceError>(new(extractionFailure.Value));
             }
 
             File.Delete(archivePath);
-            return new SourceBuildWorkspace(buildRoot, sourcePath);
+            return new Ok<SourceBuildWorkspace>(new SourceBuildWorkspace(buildRoot, sourcePath));
         }
         catch (InvalidDataException)
         {
             await DeleteWorkspaceAsync(buildRoot);
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["RepositoryArchive"] = ["Repository archive exceeds the configured download limit."]
-            });
-        }
-        catch (IOException)
-        {
-            await DeleteWorkspaceAsync(buildRoot);
-            return Failures.Internal("The source build workspace could not be prepared.");
+            return new Err<CreateSourceBuildWorkspaceError>(
+                new(new SourceBuildWorkspaceArchiveLimitExceeded()));
         }
     }
 
