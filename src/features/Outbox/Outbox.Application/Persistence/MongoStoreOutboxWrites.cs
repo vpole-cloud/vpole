@@ -1,19 +1,13 @@
 using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Shared.Models;
+using Pole.Features.Outbox.Contracts;
 using Pole.Observability;
 using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
 
-namespace Pole.Database;
+namespace Pole.Features.Outbox.Application.Persistence;
 
-public delegate Task StoreOutboxWrites(
-    IClientSessionHandle session,
-    IReadOnlyCollection<OutboxWrite> writes,
-    CancellationToken cancellationToken = default);
-
-public sealed class MongoStoreOutboxWrites(
-    IMongoDatabase database)
+internal sealed class MongoStoreOutboxWrites(IMongoDatabase database)
 {
     private readonly IMongoCollection<OutboxMessage> _outboxMessages =
         database.GetCollection<OutboxMessage>("OutboxMessages");
@@ -125,13 +119,4 @@ internal static class MongoOutboxPersistence
             DateTime.UtcNow,
             write.PendingKey);
     }
-}
-
-internal static class OutboxMessageFilters
-{
-    public static FilterDefinition<OutboxMessage> ByPendingKey(
-        string pendingKey) =>
-        Builders<OutboxMessage>.Filter.Eq(
-            message => message.PendingKey,
-            pendingKey);
 }

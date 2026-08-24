@@ -1,7 +1,10 @@
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Features.Outbox.Application.Persistence;
+using Pole.Features.Outbox.Contracts;
 using System.Net;
 using System.Net.Sockets;
 using Pole.Server.Database;
@@ -15,12 +18,15 @@ public sealed class MongoReplicaSetFixture : IAsyncLifetime
 
     private readonly int _mongoPort;
     private readonly IContainer _container;
+    private ServiceProvider? _outboxServices;
 
     public string ConnectionString { get; private set; } = string.Empty;
     public string DirectConnectionString { get; private set; } = string.Empty;
     public IMongoClient Client { get; private set; } = null!;
     public IMongoDatabase Database { get; private set; } = null!;
     public MongoDbContext DbContext { get; private set; } = null!;
+    public StoreOutboxWrites StoreOutboxWrites =>
+        _outboxServices!.GetRequiredService<StoreOutboxWrites>();
 
     public MongoReplicaSetFixture()
     {
@@ -48,10 +54,15 @@ public sealed class MongoReplicaSetFixture : IAsyncLifetime
         Client = new MongoClient(ConnectionString);
         Database = Client.GetDatabase("pole-integration-tests");
         DbContext = new MongoDbContext(Client, Database);
+        _outboxServices = new ServiceCollection()
+            .AddSingleton(Database)
+            .AddOutboxPersistence()
+            .BuildServiceProvider();
     }
 
     public async Task DisposeAsync()
     {
+        await _outboxServices!.DisposeAsync();
         await _container.DisposeAsync();
     }
 

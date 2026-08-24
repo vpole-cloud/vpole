@@ -283,7 +283,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         IClientSessionHandle session,
         IReadOnlyCollection<OutboxWrite> writes,
         CancellationToken cancellationToken = default) =>
-        DbContext.StoreEventAsync(writes, session, cancellationToken);
+        Fixture.StoreOutboxWrites(session, writes, cancellationToken);
 
     private static Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
         NoOpReferenceChanges(

@@ -45,6 +45,8 @@
         <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Domain\ResourceDeployments.Domain.csproj" />
         <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />
         <ProjectReference Include="..\..\src\features\SourceBuilds\SourceBuilds.Application\SourceBuilds.Application.csproj" />
+        <ProjectReference Include="..\..\src\features\Outbox\Outbox.Application\Outbox.Application.csproj" />
+        <ProjectReference Include="..\..\src\features\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
         <ProjectReference Include="..\..\src\shared\Encryption\Encryption.csproj" />
         <ProjectReference Include="..\..\src\shared\Dns\Dns.csproj" />
         <ProjectReference Include="..\..\src\shared\Observability\Observability.csproj" />

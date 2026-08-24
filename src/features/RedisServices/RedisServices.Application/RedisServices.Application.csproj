@@ -30,6 +30,7 @@
       <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
       <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
       <ProjectReference Include="..\..\Quotas\Quotas.Primitives\Quotas.Primitives.csproj" />
+      <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
     </ItemGroup>
 
     <ItemGroup>

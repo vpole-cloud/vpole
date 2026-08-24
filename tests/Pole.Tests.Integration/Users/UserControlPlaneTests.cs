@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Outbox.Application.Persistence;
 using Pole.Features.Tenants.Application;
 using Pole.Features.Tenants.Application.Consumers;
 using Pole.Features.Tenants.Application.Persistence;
@@ -34,6 +35,7 @@ public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsy
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
         services.AddMongoDbContextInterfaces();
+        services.AddOutboxPersistence();
         services.AddTenantsFeature();
         services.AddUsersFeature(CreateConfiguration());
         _services = services.BuildServiceProvider(validateScopes: true);
@@ -52,6 +54,7 @@ public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsy
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
         services.AddMongoDbContextInterfaces();
+        services.AddOutboxPersistence();
         services.AddUsersFeature(CreateConfiguration());
 
         Assert.DoesNotContain(services, descriptor =>

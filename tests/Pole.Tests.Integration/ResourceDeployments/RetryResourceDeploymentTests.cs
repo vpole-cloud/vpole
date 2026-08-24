@@ -48,7 +48,7 @@ public sealed class RetryResourceDeploymentTests(
         Assert.Equal(
             0,
             await DbContext.OutboxMessages.CountDocumentsAsync(
-                FilterDefinition<Pole.Features.Shared.Models.OutboxMessage>.Empty));
+                FilterDefinition<Pole.Features.Outbox.Application.Model.OutboxMessage>.Empty));
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public sealed class RetryResourceDeploymentTests(
         Assert.Equal(
             0,
             await DbContext.OutboxMessages.CountDocumentsAsync(
-                FilterDefinition<Pole.Features.Shared.Models.OutboxMessage>.Empty));
+                FilterDefinition<Pole.Features.Outbox.Application.Model.OutboxMessage>.Empty));
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public sealed class RetryResourceDeploymentTests(
         Assert.Equal(ResourceDeploymentOperation.Apply, pending.Operation);
         Assert.Equal(deployment.Revision + 1, persisted.Revision);
         var message = await DbContext.OutboxMessages
-            .Find(FilterDefinition<Pole.Features.Shared.Models.OutboxMessage>.Empty)
+            .Find(FilterDefinition<Pole.Features.Outbox.Application.Model.OutboxMessage>.Empty)
             .SingleAsync();
         Assert.Equal(
             "resource-deployment-reconciliation-requested",

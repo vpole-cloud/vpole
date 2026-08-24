@@ -221,9 +221,9 @@ public sealed class ResourceDeploymentTargetRoutingTests(
                 .RunInTransactionAsync(
                     operation,
                     cancellationToken: cancellationToken),
-            (session, writes, cancellationToken) => fixture.DbContext.StoreEventAsync(
-                writes,
+            (session, writes, cancellationToken) => fixture.StoreOutboxWrites(
                 session,
+                writes,
                 cancellationToken));
         var claim = new ClaimResourceDeploymentOperation(
             fixture.DbContext.ResourceDeployments,

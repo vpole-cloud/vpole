@@ -1,10 +1,14 @@
 using MongoDB.Driver;
-using Pole.Features.Shared.Models;
-
 namespace Pole.Features.Outbox.Application.Persistence;
 
 internal static class OutboxMessageFilters
 {
+    public static FilterDefinition<OutboxMessage> ByPendingKey(
+        string pendingKey) =>
+        Builders<OutboxMessage>.Filter.Eq(
+            message => message.PendingKey,
+            pendingKey);
+
     public static FilterDefinition<OutboxMessage> Pending() =>
         Builders<OutboxMessage>.Filter
             .OfType<OutboxMessageState, PendingOutboxMessageState>(

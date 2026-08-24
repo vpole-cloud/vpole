@@ -7,7 +7,7 @@ using Pole.Features.Functions.Domain;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.Features.Shared.Models;
+using Pole.Features.Outbox.Application.Model;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.Tenants.Domain;

@@ -56,9 +56,9 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
                     transaction.Session,
                     new BsonDocument("name", "must-not-commit"),
                     cancellationToken: cancellationToken);
-                await fixture.DbContext.StoreEventAsync(
-                    CreateWrite(runtimeCellId, pendingKey: null),
+                await fixture.StoreOutboxWrites(
                     transaction.Session,
+                    [CreateWrite(runtimeCellId, pendingKey: null)],
                     cancellationToken);
 
                 return transaction.Abort("rejected");
@@ -99,9 +99,9 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
                     }
 
                     await releaseCallbacks.Task.WaitAsync(cancellationToken);
-                    await fixture.DbContext.StoreEventAsync(
-                        CreateWrite(runtimeCellId, pendingKey),
+                    await fixture.StoreOutboxWrites(
                         session,
+                        [CreateWrite(runtimeCellId, pendingKey)],
                         cancellationToken);
                     return Result.Success();
                 }))
@@ -170,9 +170,9 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
         var result = await fixture.DbContext.RunInTransactionAsync(
             async (session, cancellationToken) =>
             {
-                await fixture.DbContext.StoreEventAsync(
-                    CreateWrite(runtimeCellId, pendingKey),
+                await fixture.StoreOutboxWrites(
                     session,
+                    [CreateWrite(runtimeCellId, pendingKey)],
                     cancellationToken);
                 return Result.Success();
             });
