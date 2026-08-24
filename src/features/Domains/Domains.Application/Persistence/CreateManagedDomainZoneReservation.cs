@@ -9,8 +9,6 @@ using Pole.ResultType;
 
 namespace Pole.Features.Domains.Application.Persistence;
 
-public sealed record InvalidManagedDomainZone(string Message);
-
 public sealed record ManagedDomainZoneAlreadyReserved(string Domain);
 
 public sealed record ManagedDomainZoneDeploymentTargetChanged(
@@ -20,7 +18,6 @@ public sealed record ManagedDomainZoneReferenceRejected(
     string DeploymentTargetId);
 
 public union CreateManagedDomainZoneError(
-    InvalidManagedDomainZone,
     ManagedDomainZoneAlreadyReserved,
     ManagedDomainZoneDeploymentTargetChanged,
     ManagedDomainZoneReferenceRejected);
@@ -55,23 +52,14 @@ internal sealed class MongoCreateManagedDomainZoneReservation(
             CancellationToken cancellationToken = default)
     {
         DomainTransactions.EnsureActive(session);
-        TenantDomainZone zone;
-        try
-        {
-            zone = TenantDomainZoneFactory.CreateManagedReservation(
-                tenantId,
-                deploymentTargetId,
-                label,
-                DnsName.Create(publicBaseDomain),
-                new TenantDomainZoneFactory.CreateOptions(
-                    ObjectId.GenerateNewId().ToString(),
-                    timeProvider.GetUtcNow().UtcDateTime));
-        }
-        catch (ArgumentException exception)
-        {
-            return new Err<CreateManagedDomainZoneError>(
-                new InvalidManagedDomainZone(exception.Message));
-        }
+        var zone = TenantDomainZoneFactory.CreateManagedReservation(
+            tenantId,
+            deploymentTargetId,
+            label,
+            DnsName.Create(publicBaseDomain),
+            new TenantDomainZoneFactory.CreateOptions(
+                ObjectId.GenerateNewId().ToString(),
+                timeProvider.GetUtcNow().UtcDateTime));
 
         var fence = await fenceDeploymentTargetWorkloadConfigurations(
             [new DeploymentTargetWorkloadConfigurationFenceRequest(
