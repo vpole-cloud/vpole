@@ -12,7 +12,6 @@ using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.Tenants.Domain;
-using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Domain;
 using PostgresCluster = Pole.Features.Postgres.Domain.PostgresCluster;
 
@@ -22,8 +21,7 @@ public class MongoDbContext(
     IMongoClient client,
     IMongoDatabase database
     ) : 
-    ISearchDbContext,
-    IUserDbContext
+    ISearchDbContext
 {
     public IMongoDatabase Database { get; } = database;
     public IMongoClient Client { get; } = client;

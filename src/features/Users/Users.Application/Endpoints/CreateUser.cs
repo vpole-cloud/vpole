@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -6,14 +5,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
-using Pole.Features.Events.Abstractions;
-using Pole.Features.Users.Events;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Domain;
 using Pole.Features.Users.Application.Identity;
+using Pole.Features.Users.Application.Persistence;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -23,14 +19,24 @@ public static class CreateUser
 {
     public static IEndpointRouteBuilder MapCreateUserEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/", async (IMediator mediator, [AsParameters] CreateUserRequest request, CancellationToken cancellationToken) =>
-        {
-            var result = await mediator.Send(request, cancellationToken);
-            return result.ToHttpResult(u => Results.Created($"/api/v1/users/{u.Id}", u));
-        })
+        app.MapPost("/", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
+                [AsParameters] CreateUserRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    UserDto user => Results.Created($"/api/v1/users/{user.Id}", user),
+                    CreateUserError error => httpProblems.Map(error).ToHttpResult()
+                });
+            })
         .WithName("CreateUser")
         .RequireAuthorization(Policy.Admin)
-        .Produces<UserDto>(StatusCodes.Status201Created);
+        .Produces<UserDto>(StatusCodes.Status201Created)
+        .ProducesProblem(StatusCodes.Status409Conflict)
+        .ProducesProblem(StatusCodes.Status502BadGateway);
 
         return app;
     }
@@ -38,31 +44,43 @@ public static class CreateUser
 
 public sealed record CreateUserRequest(
     [FromBody] CreateUserRequestBody Body)
-    : IMediatorRequest<UserDto>;
+    : IMediatorRequest<CreateUserOutcome>;
 
 public sealed record CreateUserRequestBody(
     string Email,
     string? FirstName,
     string? LastName);
 
+public union CreateUserError(
+    CreateUserPersistenceError,
+    IdentityUserCreationFailed);
+
+public union CreateUserOutcome(UserDto, CreateUserError);
+
 public sealed class CreateUserHandler(
-    IUserDbContext userDbContext,
+    EnsureUserEmailAvailable ensureUserEmailAvailable,
+    PersistCreatedUser persistCreatedUser,
     IIdentityProvider identityProvider,
-    ILogger<CreateUserHandler> logger)
-    : IMediatorHandler<CreateUserRequest, UserDto>
+    ILogger<CreateUserHandler> logger,
+    TimeProvider timeProvider)
+    : IMediatorOutcomeHandler<CreateUserRequest, CreateUserOutcome>
 {
-    public async Task<Result<UserDto>> HandleAsync(CreateUserRequest request, CancellationToken cancellationToken = default)
+    public async Task<CreateUserOutcome> HandleAsync(
+        CreateUserRequest request,
+        CancellationToken cancellationToken = default)
     {
         var email = NormalizeEmail(request.Body.Email);
-        var existing = await userDbContext.Users.Find(u => u.Email == email).AnyAsync(cancellationToken);
-        if (existing)
-            return Failures.Conflict($"User '{email}' already exists.");
+        var available = await ensureUserEmailAvailable(email, cancellationToken);
+        if (available is Err<CreateUserPersistenceError> existing)
+            return new CreateUserOutcome(new CreateUserError(existing.Value));
 
-        var keycloakUserIdResult = await identityProvider.CreateUserAsync(
+        var identityUser = await identityProvider.CreateUserAsync(
             new CreateIdentityUser(email, request.Body.FirstName, request.Body.LastName),
             cancellationToken);
-        if (!keycloakUserIdResult.TryGetValue(out var keycloakUserId, out var keycloakFailure))
-            return keycloakFailure;
+        var identityResult = TypedResultExtensions.TryGetValue(identityUser);
+        if (!identityResult.Succeeded)
+            return new CreateUserOutcome(new CreateUserError(identityResult.Error!));
+        var keycloakUserId = identityResult.Value!;
 
         var defaultTenantId = ObjectId.GenerateNewId().ToString();
         var defaultTenantName = CreateDefaultTenantName(email);
@@ -72,36 +90,20 @@ public sealed class CreateUserHandler(
             FirstName: request.Body.FirstName,
             LastName: request.Body.LastName,
             DefaultTenantId: defaultTenantId,
-            CreatedAtUtc: DateTime.UtcNow);
+            CreatedAtUtc: timeProvider.GetUtcNow().UtcDateTime);
 
-        var result = await userDbContext.RunInTransactionAsync<UserDto>(async (session, ct) =>
-        {
-            await userDbContext.Users.InsertOneAsync(session, user, cancellationToken: ct);
-            await userDbContext.StoreEventAsync(
-                new UserCreatedEvent(
-                    user.Id,
-                    user.Email,
-                    user.FirstName,
-                    user.LastName,
-                    user.DefaultTenantId,
-                    defaultTenantName)
-                {
-                    EventCore = EventCore.Create()
-                },
-                session,
-                ct);
-
+        var persisted = await persistCreatedUser(
+            new PersistCreatedUserRequest(user, defaultTenantName),
+            cancellationToken);
+        var persistenceResult = TypedResultExtensions.TryGetValue(persisted);
+        if (persistenceResult.Succeeded)
             return user.ToDto();
-        }, cancellationToken: cancellationToken);
-
-        if (result.TryGetValue(out _, out _))
-            return result;
 
         var cleanupSucceeded = await identityProvider.DeleteUserAsync(keycloakUserId, cancellationToken);
         if (!cleanupSucceeded)
             logger.LogError("Failed to delete Keycloak user {UserId} after Mongo user creation rollback.", keycloakUserId);
 
-        return result;
+        return new CreateUserOutcome(new CreateUserError(persistenceResult.Error!));
     }
 
     private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();

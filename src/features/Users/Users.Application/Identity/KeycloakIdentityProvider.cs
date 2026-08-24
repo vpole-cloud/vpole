@@ -14,11 +14,13 @@ public sealed class KeycloakIdentityProvider(
 {
     private readonly KeycloakOptions _options = options.Value;
 
-    public async Task<Result<string>> CreateUserAsync(CreateIdentityUser user, CancellationToken cancellationToken)
+    public async Task<Result<string, IdentityUserCreationFailed>> CreateUserAsync(
+        CreateIdentityUser user,
+        CancellationToken cancellationToken)
     {
         var token = await GetAccessTokenAsync(cancellationToken);
         if (token is null)
-            return Failures.ExternalService("Unable to get Keycloak admin token.", "Keycloak", "Token endpoint did not return an access token.");
+            return new Err<IdentityUserCreationFailed>(new IdentityUserCreationFailed());
 
         using var request = new HttpRequestMessage(HttpMethod.Post, AdminUsersPath());
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -33,18 +35,17 @@ public sealed class KeycloakIdentityProvider(
         using var response = await httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            var details = await response.Content.ReadAsStringAsync(cancellationToken);
-            return Failures.ExternalService("Unable to create Keycloak user.", "Keycloak", details);
+            return new Err<IdentityUserCreationFailed>(new IdentityUserCreationFailed());
         }
 
         var idFromLocation = TryReadUserIdFromLocation(response.Headers.Location);
         if (!string.IsNullOrWhiteSpace(idFromLocation))
-            return idFromLocation;
+            return new Ok<string>(idFromLocation);
 
         var idFromLookup = await LookupUserIdByUsernameAsync(user.Email, token, cancellationToken);
         return idFromLookup is null
-            ? Failures.ExternalService("Unable to resolve created Keycloak user id.", "Keycloak", "Create response had no Location header and lookup returned no user.")
-            : idFromLookup;
+            ? new Err<IdentityUserCreationFailed>(new IdentityUserCreationFailed())
+            : new Ok<string>(idFromLookup);
     }
 
     public async Task<bool> DeleteUserAsync(string userId, CancellationToken cancellationToken)
@@ -114,4 +115,3 @@ public sealed class KeycloakIdentityProvider(
         bool Enabled,
         IReadOnlyCollection<string> RequiredActions);
 }
-

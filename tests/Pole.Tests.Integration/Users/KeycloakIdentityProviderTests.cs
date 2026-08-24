@@ -19,7 +19,7 @@ public sealed class KeycloakIdentityProviderTests(KeycloakContainerFixture fixtu
                 new CreateIdentityUser(email, "Ada", "Lovelace"),
                 CancellationToken.None);
 
-            Assert.True(result.TryGetValue(out var userId, out var failure), failure?.ToString());
+            var userId = AssertCreated(result);
             Assert.False(string.IsNullOrWhiteSpace(userId));
 
             var user = await fixture.FindUserByUsernameAsync(email);
@@ -50,15 +50,13 @@ public sealed class KeycloakIdentityProviderTests(KeycloakContainerFixture fixtu
             var first = await fixture.IdentityProvider.CreateUserAsync(
                 new CreateIdentityUser(email, "Grace", "Hopper"),
                 CancellationToken.None);
-            Assert.True(first.TryGetValue(out _, out var firstFailure), firstFailure?.ToString());
+            AssertCreated(first);
 
             var duplicate = await fixture.IdentityProvider.CreateUserAsync(
                 new CreateIdentityUser(email, "Grace", "Hopper"),
                 CancellationToken.None);
 
-            Assert.False(duplicate.TryGetValue(out _, out var failure));
-            var externalFailure = Assert.IsType<ExternalServiceFailure>(failure);
-            Assert.Equal("Keycloak", externalFailure.ServiceName);
+            Assert.True(duplicate is Err<IdentityUserCreationFailed>);
         }
         finally
         {
@@ -74,7 +72,7 @@ public sealed class KeycloakIdentityProviderTests(KeycloakContainerFixture fixtu
         var create = await fixture.IdentityProvider.CreateUserAsync(
             new CreateIdentityUser(email, "Katherine", "Johnson"),
             CancellationToken.None);
-        Assert.True(create.TryGetValue(out var userId, out var createFailure), createFailure?.ToString());
+        var userId = AssertCreated(create);
 
         var deleted = await fixture.IdentityProvider.DeleteUserAsync(userId, CancellationToken.None);
         var user = await fixture.FindUserByUsernameAsync(email);
@@ -102,12 +100,17 @@ public sealed class KeycloakIdentityProviderTests(KeycloakContainerFixture fixtu
             CancellationToken.None);
         var user = await fixture.FindUserByUsernameAsync(email);
 
-        Assert.False(result.TryGetValue(out _, out var failure));
-        var externalFailure = Assert.IsType<ExternalServiceFailure>(failure);
-        Assert.Equal("Keycloak", externalFailure.ServiceName);
+        Assert.True(result is Err<IdentityUserCreationFailed>);
         Assert.Null(user);
     }
 
+    private static string AssertCreated(Result<string, IdentityUserCreationFailed> result) =>
+        result switch
+        {
+            Ok<string> success => success.Value,
+            Err<IdentityUserCreationFailed> => throw new Xunit.Sdk.XunitException(
+                "Expected Keycloak user creation to succeed.")
+        };
+
     private static string CreateEmail() => $"pole-it-{Guid.NewGuid():N}@example.test";
 }
-

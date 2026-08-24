@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
@@ -17,10 +16,6 @@ using Pole.Features.Tenants.Application.Persistence;
 using Pole.Features.Tenants.Application;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.Tenants.Application.Endpoints;
-using Pole.Features.Users.Events;
-using Pole.Features.Users.Domain;
-using Pole.Features.Users.Application.Endpoints;
-using Pole.Features.Users.Application.Identity;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
@@ -107,89 +102,6 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         Assert.True(tenants.Single(t => t.Id == defaultTenant.Id).IsDefault);
         Assert.False(tenants.Single(t => t.Id == otherTenant.Id).IsDefault);
         Assert.DoesNotContain(tenants, t => t.Id == hiddenTenant.Id);
-    }
-
-    [Fact]
-    public async Task CreateUser_PlatformAdminCreatesPoleUserAndDefaultTenant()
-    {
-        var identityAdmin = new FakeIdentityProvider("keycloak-user-1");
-        var handler = new CreateUserHandler(
-            fixture.DbContext,
-            identityAdmin,
-            NullLogger<CreateUserHandler>.Instance);
-
-        var result = await handler.HandleAsync(new CreateUserRequest(
-            new CreateUserRequestBody("New.User@Example.com", "New", "User")));
-
-        Assert.True(result.TryGetValue(out var user, out _));
-        Assert.Equal("new.user@example.com", user.Email);
-
-        var storedUser = await fixture.DbContext.Users.Find(u => u.Id == "keycloak-user-1").FirstAsync();
-        Assert.Equal(1L, await fixture.DbContext.CountOutboxMessagesAsync("user-created"));
-
-        using var scope = Services.CreateScope();
-        var consumer = new CreateDefaultTenantOnUserCreatedConsumer(
-            scope.ServiceProvider.GetRequiredService<EnsureDefaultTenant>());
-        var created = new UserCreatedEvent(
-            storedUser.Id,
-            storedUser.Email,
-            storedUser.FirstName,
-            storedUser.LastName,
-            storedUser.DefaultTenantId,
-            $"{storedUser.Email} personal");
-        await consumer.Handle(created);
-        await consumer.Handle(created);
-
-        var defaultTenant = await fixture.DbContext.Tenants.Find(t => t.Id == storedUser.DefaultTenantId).FirstAsync();
-        Assert.Equal(
-            1,
-            await fixture.DbContext.Tenants.CountDocumentsAsync(
-                tenant => tenant.Id == storedUser.DefaultTenantId));
-        var owner = Assert.Single(defaultTenant.Members);
-        Assert.Equal("keycloak-user-1", owner.UserId);
-        Assert.Equal(TenantRole.Owner, owner.Role);
-        Assert.True(owner.IsDefault);
-    }
-
-    [Fact]
-    public async Task CreateUser_KeycloakFailureDoesNotCreatePoleRecords()
-    {
-        var identityAdmin = new FakeIdentityProvider("keycloak-user-1")
-        {
-            CreateFailure = Failures.ExternalService("failed", "Keycloak", "boom")
-        };
-        var handler = new CreateUserHandler(
-            fixture.DbContext,
-            identityAdmin,
-            NullLogger<CreateUserHandler>.Instance);
-
-        var result = await handler.HandleAsync(new CreateUserRequest(
-            new CreateUserRequestBody("user@example.com", null, null)));
-
-        Assert.False(result.TryGetValue(out _, out var failure));
-        Assert.IsType<ExternalServiceFailure>(failure);
-        Assert.Equal(0, await fixture.DbContext.Users.CountDocumentsAsync(Builders<PoleUser>.Filter.Empty));
-        Assert.Equal(0, await fixture.DbContext.Tenants.CountDocumentsAsync(Builders<Tenant>.Filter.Empty));
-    }
-
-    [Fact]
-    public async Task CreateUser_MongoFailureAfterKeycloakCreateAttemptsCleanup()
-    {
-        await fixture.DbContext.Users.InsertOneAsync(new PoleUser("keycloak-user-1", "existing@example.com", null, null, "tenant-1", DateTime.UtcNow));
-        var identityAdmin = new FakeIdentityProvider("keycloak-user-1");
-        var handler = new CreateUserHandler(
-            fixture.DbContext,
-            identityAdmin,
-            NullLogger<CreateUserHandler>.Instance);
-
-        var result = await handler.HandleAsync(new CreateUserRequest(
-            new CreateUserRequestBody("new@example.com", null, null)));
-
-        Assert.False(result.TryGetValue(out _, out var failure));
-        Assert.IsType<ConflictFailure>(failure);
-        Assert.Equal(["keycloak-user-1"], identityAdmin.DeletedUserIds);
-        Assert.Equal(1, await fixture.DbContext.Users.CountDocumentsAsync(Builders<PoleUser>.Filter.Empty));
-        Assert.Equal(0, await fixture.DbContext.Tenants.CountDocumentsAsync(Builders<Tenant>.Filter.Empty));
     }
 
     [Fact]
@@ -636,22 +548,4 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
 
     private sealed record ClaimBoundResponse(string CurrentUserId, string CurrentUserEmail, IEnumerable<string> Roles);
 
-    private sealed class FakeIdentityProvider(string userId) : IIdentityProvider
-    {
-        public Failure? CreateFailure { get; init; }
-        public int CreateCalls { get; private set; }
-        public List<string> DeletedUserIds { get; } = [];
-
-        public Task<Result<string>> CreateUserAsync(CreateIdentityUser user, CancellationToken cancellationToken)
-        {
-            CreateCalls++;
-            return Task.FromResult<Result<string>>(CreateFailure is null ? userId : CreateFailure);
-        }
-
-        public Task<bool> DeleteUserAsync(string deletedUserId, CancellationToken cancellationToken)
-        {
-            DeletedUserIds.Add(deletedUserId);
-            return Task.FromResult(true);
-        }
-    }
 }

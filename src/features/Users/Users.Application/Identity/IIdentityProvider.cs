@@ -7,9 +7,12 @@ public sealed record CreateIdentityUser(
     string? FirstName,
     string? LastName);
 
+public sealed record IdentityUserCreationFailed;
+
 public interface IIdentityProvider
 {
-    Task<Result<string>> CreateUserAsync(CreateIdentityUser user, CancellationToken cancellationToken);
+    Task<Result<string, IdentityUserCreationFailed>> CreateUserAsync(
+        CreateIdentityUser user,
+        CancellationToken cancellationToken);
     Task<bool> DeleteUserAsync(string userId, CancellationToken cancellationToken);
 }
-
