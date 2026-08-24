@@ -40,8 +40,7 @@ using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.SourceBuilds.Application.Jobs;
-using Pole.Features.Tenants;
-using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Tenants.Application;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Application.Identity;
 using Pole.Mediator;
@@ -59,13 +58,11 @@ public static class DependencyInjection
             services.AddHttpProblemMappings(MediatorHttpProblemMappings.All);
             services.AddHttpProblemMappings(
                 TenantAuthorizationHttpProblemMappings.All);
-            services.AddHttpProblemMappings(
-                TenantMemberAuthorizationHttpProblemMappings.All);
             services.AddScoped<IMediator, Pole.Mediator.Mediator>();
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(TenantAuthorizationBehavior<,>));
-            services.AddScoped(typeof(IPipelineBehavior<,>), typeof(TenantMemberAuthorizationBehavior<,>));
+            services.AddTenantMemberAuthorizationBehavior();
 
             foreach (var assembly in assemblies)
             {
@@ -168,10 +165,7 @@ public static class DependencyInjection
                     .GetRequiredService<MongoRunTransaction>()
                     .InvokeAsync);
             services.TryAddSingleton<ISearchDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddSingleton<ITenantDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IUserDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.AddHttpContextAccessor();
-            services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
             return services;
         }
 

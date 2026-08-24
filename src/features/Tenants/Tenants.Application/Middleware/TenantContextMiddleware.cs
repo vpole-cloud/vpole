@@ -2,16 +2,15 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Tenants.Application.Persistence;
 
 namespace Pole.Features.Tenants.Application.Middleware;
 
 public sealed class TenantContextMiddleware(RequestDelegate next)
 {
-    public async Task InvokeAsync(HttpContext httpContext, ITenantDbContext dbContext)
+    public async Task InvokeAsync(HttpContext httpContext, LoadTenant loadTenant)
     {
         var tenantContextAccessor = httpContext.RequestServices.GetRequiredService<ITenantContextAccessor>();
         tenantContextAccessor.Current = null;
@@ -41,9 +40,7 @@ public sealed class TenantContextMiddleware(RequestDelegate next)
             return;
         }
 
-        var tenant = await dbContext.Tenants
-            .Find(t => t.Id == tenantId)
-            .FirstOrDefaultAsync(httpContext.RequestAborted);
+        var tenant = await loadTenant(tenantId, httpContext.RequestAborted);
 
         if (tenant is null)
         {

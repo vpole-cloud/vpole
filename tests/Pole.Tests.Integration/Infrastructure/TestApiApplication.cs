@@ -67,6 +67,7 @@ using Pole.Features.WebServices.Application.Migrations;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Middleware;
 using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Tenants.Application;
 using Pole.Observability;
 using Pole.Server.Database;
 using Pole.Server.Extensions;
@@ -95,7 +96,8 @@ public sealed class TestApiApplication : IAsyncDisposable
         typeof(DeploymentTargetFeature).Assembly,
         typeof(SourceBuildFeature).Assembly,
         typeof(SearchEndpoints).Assembly,
-        typeof(StorageProfileEndpoints).Assembly
+        typeof(StorageProfileEndpoints).Assembly,
+        typeof(TenantEndpoints).Assembly
     ];
 
     private TestApiApplication(
@@ -185,7 +187,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             ResourceDeploymentContractHttpMappings.All);
         builder.Services.AddHttpProblemMappings(
             DeploymentTargetContractHttpMappings.All);
-        builder.Services.AddTenantContractCapabilities();
+        builder.Services.AddTenantsFeature();
         builder.Services.AddDomainsFeature();
         builder.Services.AddHttpProblemMappings(QuotaContractHttpMappings.All);
         builder.Services.AddComputeProfilesFeature();
@@ -336,7 +338,8 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapDomainZoneEndpoints()
             .MapStorageProfileEndpoints()
             .MapGitProviderEndpoints()
-            .MapSourceBuildEndpoints();
+            .MapSourceBuildEndpoints()
+            .MapTenantEndpoints();
 
         api.MapGroup("/platform/compute-profiles")
             .WithTags("PlatformComputeProfiles")

@@ -38,8 +38,13 @@ internal sealed partial class MongoDomainPersistence
         EnsureGeneratedZoneSet(requests);
 
         var tenantId = requests[0].TenantId;
-        var identity = await tenantIdentityLookup.GetAsync(tenantId, cancellationToken);
-        if (!identity.TryGetValue(out var tenant, out _))
+        var identity = await loadTenantIdentity(tenantId, cancellationToken);
+        var tenant = identity switch
+        {
+            Ok<TenantIdentitySnapshot> success => success.Value,
+            Err<TenantIdentityNotFound> => null
+        };
+        if (tenant is null)
         {
             return new Err<GeneratedDomainZoneError>(
                 new GeneratedDomainZoneError(

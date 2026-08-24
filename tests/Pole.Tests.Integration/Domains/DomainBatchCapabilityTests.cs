@@ -304,7 +304,7 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
             fixture.Database,
             coordinator.ApplyChangesOutcomeAsync,
             coordinator.FenceManyOutcomeAsync,
-            new FixedTenantIdentityLookup(tenantId),
+            FixedTenantIdentityLookup(tenantId),
             TimeProvider.System);
 
     private static async Task<MongoTransactionDecision<Result<T, TError>>>
@@ -340,16 +340,15 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
         await new DomainIndexesMigration().Up(fixture.Database);
     }
 
-    private sealed class FixedTenantIdentityLookup(string tenantId) : ITenantIdentityLookup
-    {
-        public Task<Result<TenantIdentitySnapshot>> GetAsync(
-            string requestedTenantId,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<TenantIdentitySnapshot>>(
-                string.Equals(requestedTenantId, tenantId, StringComparison.Ordinal)
-                    ? new TenantIdentitySnapshot(tenantId, "Acme Corporation")
-                    : Failures.NotFound("Tenant not found.", requestedTenantId));
-    }
+    private static LoadTenantIdentity FixedTenantIdentityLookup(string tenantId) =>
+        (requestedTenantId, _) => Task.FromResult<Result<
+            TenantIdentitySnapshot,
+            TenantIdentityNotFound>>(
+            string.Equals(requestedTenantId, tenantId, StringComparison.Ordinal)
+                ? new Ok<TenantIdentitySnapshot>(
+                    new TenantIdentitySnapshot(tenantId, "Acme Corporation"))
+                : new Err<TenantIdentityNotFound>(
+                    new TenantIdentityNotFound(requestedTenantId)));
 
     private sealed class RecordingTargetCoordinator
     {

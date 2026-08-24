@@ -1,5 +1,6 @@
 using System.Net;
 using Pole.ASP.Helpers;
+using Pole.Features.Tenants.Application.Persistence;
 
 namespace Pole.Features.Tenants;
 
@@ -15,7 +16,9 @@ public static class TenantMemberAuthorizationHttpProblemMappings
             HttpProblemMapping.For<TenantNotFound>(MapTenantNotFound),
             HttpProblemMapping.For<TenantMembershipRequired>(
                 MapMembershipRequired),
-            HttpProblemMapping.For<TenantMemberNotFound>(MapMemberNotFound)
+            HttpProblemMapping.For<TenantMemberNotFound>(MapMemberNotFound),
+            HttpProblemMapping.For<TenantMemberAlreadyExists>(MapMemberAlreadyExists),
+            HttpProblemMapping.For<TenantLastOwner>(MapLastOwner)
         ]);
 
     private static HttpProblem MapAuthenticationRequired(
@@ -67,6 +70,31 @@ public static class TenantMemberAuthorizationHttpProblemMappings
             {
                 ["tenantId"] = notFound.TenantId,
                 ["memberId"] = notFound.MemberId
+            });
+
+    private static HttpProblem MapMemberAlreadyExists(
+        TenantMemberAlreadyExists conflict) =>
+        Problem(
+            HttpStatusCode.Conflict,
+            "Tenant member already exists",
+            "tenants.member.already-exists",
+            extensions: new Dictionary<string, object>
+            {
+                ["tenantId"] = conflict.TenantId,
+                ["userId"] = conflict.UserId
+            });
+
+    private static HttpProblem MapLastOwner(
+        TenantLastOwner conflict) =>
+        Problem(
+            HttpStatusCode.Conflict,
+            "Tenant must keep an owner",
+            "tenants.member.last-owner",
+            "A tenant must retain at least one owner.",
+            new Dictionary<string, object>
+            {
+                ["tenantId"] = conflict.TenantId,
+                ["memberId"] = conflict.MemberId
             });
 
     private static HttpProblem Problem(

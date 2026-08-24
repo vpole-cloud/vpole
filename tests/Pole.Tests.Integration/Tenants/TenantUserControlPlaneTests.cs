@@ -5,6 +5,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
@@ -12,6 +13,8 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Consumers;
+using Pole.Features.Tenants.Application.Persistence;
+using Pole.Features.Tenants.Application;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.Tenants.Application.Endpoints;
 using Pole.Features.Users.Events;
@@ -28,13 +31,29 @@ namespace Pole.Tests.Integration.Tenants;
 [Collection(IntegrationTestCollection.Name)]
 public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
 {
-    public async Task InitializeAsync() => await fixture.ResetDatabaseAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    private ServiceProvider? _services;
+
+    public async Task InitializeAsync()
+    {
+        await fixture.ResetDatabaseAsync();
+        var services = new ServiceCollection();
+        services.AddSingleton(fixture.Database);
+        services.AddTenantsFeature();
+        _services = services.BuildServiceProvider(validateScopes: true);
+    }
+
+    public Task DisposeAsync()
+    {
+        _services?.Dispose();
+        return Task.CompletedTask;
+    }
     
     [Fact]
     public async Task CreateTenant_UsesAuthenticatedUserAsOwner()
     {
-        var handler = new CreateTenantHandler(fixture.DbContext);
+        using var scope = Services.CreateScope();
+        var handler = new CreateTenantHandler(
+            scope.ServiceProvider.GetRequiredService<PersistCreatedTenant>());
         var request = new CreateTenantRequest(
             new CreateTenantRequestBody("personal"),
             new ClaimValue("user-1"),
@@ -42,7 +61,10 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
 
         var result = await handler.HandleAsync(request);
 
-        Assert.True(result.TryGetValue(out var tenantDto, out _));
+        var tenantDto = result switch
+        {
+            TenantDto createdTenant => createdTenant
+        };
         Assert.Equal(TenantRole.Owner, tenantDto.Role);
 
         var tenant = await fixture.DbContext.Tenants.Find(t => t.Id == tenantDto.Id).FirstAsync();
@@ -72,10 +94,15 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         };
 
         await fixture.DbContext.Tenants.InsertManyAsync([defaultTenant, otherTenant, hiddenTenant]);
-        var handler = new GetTenantsHandler(fixture.DbContext);
+        using var scope = Services.CreateScope();
+        var handler = new GetTenantsHandler(
+            scope.ServiceProvider.GetRequiredService<LoadTenantsForUser>());
         var result = await handler.HandleAsync(new GetTenantsRequest(new ClaimValue("user-1")));
 
-        Assert.True(result.TryGetValue(out var tenants, out _));
+        var tenants = result switch
+        {
+            IReadOnlyCollection<TenantDto> value => value
+        };
         Assert.Equal(2, tenants.Count);
         Assert.True(tenants.Single(t => t.Id == defaultTenant.Id).IsDefault);
         Assert.False(tenants.Single(t => t.Id == otherTenant.Id).IsDefault);
@@ -100,16 +127,24 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var storedUser = await fixture.DbContext.Users.Find(u => u.Id == "keycloak-user-1").FirstAsync();
         Assert.Equal(1L, await fixture.DbContext.CountOutboxMessagesAsync("user-created"));
 
-        var consumer = new CreateDefaultTenantOnUserCreatedConsumer(fixture.DbContext);
-        await consumer.Handle(new UserCreatedEvent(
+        using var scope = Services.CreateScope();
+        var consumer = new CreateDefaultTenantOnUserCreatedConsumer(
+            scope.ServiceProvider.GetRequiredService<EnsureDefaultTenant>());
+        var created = new UserCreatedEvent(
             storedUser.Id,
             storedUser.Email,
             storedUser.FirstName,
             storedUser.LastName,
             storedUser.DefaultTenantId,
-            $"{storedUser.Email} personal"));
+            $"{storedUser.Email} personal");
+        await consumer.Handle(created);
+        await consumer.Handle(created);
 
         var defaultTenant = await fixture.DbContext.Tenants.Find(t => t.Id == storedUser.DefaultTenantId).FirstAsync();
+        Assert.Equal(
+            1,
+            await fixture.DbContext.Tenants.CountDocumentsAsync(
+                tenant => tenant.Id == storedUser.DefaultTenantId));
         var owner = Assert.Single(defaultTenant.Members);
         Assert.Equal("keycloak-user-1", owner.UserId);
         Assert.Equal(TenantRole.Owner, owner.Role);
@@ -164,14 +199,22 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var request = new AddTenantMemberRequest(
             tenant.Id,
             new AddTenantMemberRequestBody("user-2", "other@example.com", TenantRole.Member));
-        var behavior = CreateTenantMemberAuthorizationBehavior<AddTenantMemberRequest, TenantMemberDto>("user-1");
+        var behavior = CreateTenantMemberAuthorizationBehavior<
+            AddTenantMemberRequest,
+            AddTenantMemberOutcome>("user-1");
         var nextCalled = false;
 
         var result = await behavior.Handle(request, () =>
         {
             nextCalled = true;
-            return Task.FromResult<MediatorResult<TenantMemberDto>>(
-                new TenantMemberDto("member-2", tenant.Id, "user-2", "other@example.com", TenantRole.Member));
+            return Task.FromResult<MediatorResult<AddTenantMemberOutcome>>(
+                new AddTenantMemberOutcome(
+                    new TenantMemberDto(
+                        "member-2",
+                        tenant.Id,
+                        "user-2",
+                        "other@example.com",
+                        TenantRole.Member)));
         }, CancellationToken.None);
 
         var rejection = Assert.IsType<TenantRoleRequired>(
@@ -187,18 +230,26 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var request = new AddTenantMemberRequest(
             tenant.Id,
             new AddTenantMemberRequestBody("user-2", "other@example.com", TenantRole.Member));
-        var behavior = CreateTenantMemberAuthorizationBehavior<AddTenantMemberRequest, TenantMemberDto>("user-1");
+        var behavior = CreateTenantMemberAuthorizationBehavior<
+            AddTenantMemberRequest,
+            AddTenantMemberOutcome>("user-1");
         var nextCalled = false;
 
         var result = await behavior.Handle(request, () =>
         {
             nextCalled = true;
-            return Task.FromResult<MediatorResult<TenantMemberDto>>(
-                new TenantMemberDto("member-2", tenant.Id, "user-2", "other@example.com", TenantRole.Member));
+            return Task.FromResult<MediatorResult<AddTenantMemberOutcome>>(
+                new AddTenantMemberOutcome(
+                    new TenantMemberDto(
+                        "member-2",
+                        tenant.Id,
+                        "user-2",
+                        "other@example.com",
+                        TenantRole.Member)));
         }, CancellationToken.None);
 
         var member = AssertOutcome(result);
-        Assert.NotNull(member);
+        Assert.True(member is TenantMemberDto);
         Assert.True(nextCalled);
     }
 
@@ -209,11 +260,19 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var request = new AddTenantMemberRequest(
             tenant.Id,
             new AddTenantMemberRequestBody("user-2", "other@example.com", TenantRole.Owner));
-        var behavior = CreateTenantMemberAuthorizationBehavior<AddTenantMemberRequest, TenantMemberDto>("user-1");
+        var behavior = CreateTenantMemberAuthorizationBehavior<
+            AddTenantMemberRequest,
+            AddTenantMemberOutcome>("user-1");
 
         var result = await behavior.Handle(request, () =>
-            Task.FromResult<MediatorResult<TenantMemberDto>>(
-                new TenantMemberDto("member-2", tenant.Id, "user-2", "other@example.com", TenantRole.Owner)),
+            Task.FromResult<MediatorResult<AddTenantMemberOutcome>>(
+                new AddTenantMemberOutcome(
+                    new TenantMemberDto(
+                        "member-2",
+                        tenant.Id,
+                        "user-2",
+                        "other@example.com",
+                        TenantRole.Owner))),
             CancellationToken.None);
 
         var rejection = Assert.IsType<TenantRoleRequired>(
@@ -227,14 +286,14 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var request = new GetTenantMembersRequest("tenant-1");
         var behavior = CreateTenantMemberAuthorizationBehavior<
             GetTenantMembersRequest,
-            IReadOnlyCollection<TenantMemberDto>>(
+            GetTenantMembersOutcome>(
             userId: null,
             isAuthenticated: false);
 
         var result = await behavior.Handle(
             request,
-            () => Task.FromResult<MediatorResult<IReadOnlyCollection<TenantMemberDto>>>(
-                Array.Empty<TenantMemberDto>()),
+            () => Task.FromResult<MediatorResult<GetTenantMembersOutcome>>(
+                new GetTenantMembersOutcome(Array.Empty<TenantMemberDto>())),
             CancellationToken.None);
 
         Assert.IsType<TenantAuthenticationRequired>(AssertRejected(result));
@@ -246,12 +305,12 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var request = new GetTenantMembersRequest("tenant-1");
         var behavior = CreateTenantMemberAuthorizationBehavior<
             GetTenantMembersRequest,
-            IReadOnlyCollection<TenantMemberDto>>(userId: null);
+            GetTenantMembersOutcome>(userId: null);
 
         var result = await behavior.Handle(
             request,
-            () => Task.FromResult<MediatorResult<IReadOnlyCollection<TenantMemberDto>>>(
-                Array.Empty<TenantMemberDto>()),
+            () => Task.FromResult<MediatorResult<GetTenantMembersOutcome>>(
+                new GetTenantMembersOutcome(Array.Empty<TenantMemberDto>())),
             CancellationToken.None);
 
         Assert.IsType<TenantUserIdentityRequired>(AssertRejected(result));
@@ -264,12 +323,12 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var request = new GetTenantMembersRequest(tenantId);
         var behavior = CreateTenantMemberAuthorizationBehavior<
             GetTenantMembersRequest,
-            IReadOnlyCollection<TenantMemberDto>>("user-1");
+            GetTenantMembersOutcome>("user-1");
 
         var result = await behavior.Handle(
             request,
-            () => Task.FromResult<MediatorResult<IReadOnlyCollection<TenantMemberDto>>>(
-                Array.Empty<TenantMemberDto>()),
+            () => Task.FromResult<MediatorResult<GetTenantMembersOutcome>>(
+                new GetTenantMembersOutcome(Array.Empty<TenantMemberDto>())),
             CancellationToken.None);
 
         var rejection = Assert.IsType<TenantNotFound>(AssertRejected(result));
@@ -283,12 +342,12 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var request = new GetTenantMembersRequest(tenant.Id);
         var behavior = CreateTenantMemberAuthorizationBehavior<
             GetTenantMembersRequest,
-            IReadOnlyCollection<TenantMemberDto>>("user-1");
+            GetTenantMembersOutcome>("user-1");
 
         var result = await behavior.Handle(
             request,
-            () => Task.FromResult<MediatorResult<IReadOnlyCollection<TenantMemberDto>>>(
-                Array.Empty<TenantMemberDto>()),
+            () => Task.FromResult<MediatorResult<GetTenantMembersOutcome>>(
+                new GetTenantMembersOutcome(Array.Empty<TenantMemberDto>())),
             CancellationToken.None);
 
         var rejection = Assert.IsType<TenantMembershipRequired>(
@@ -306,11 +365,12 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             missingMemberId);
         var behavior = CreateTenantMemberAuthorizationBehavior<
             DeleteTenantMemberRequest,
-            string>("user-1");
+            DeleteTenantMemberOutcome>("user-1");
 
         var result = await behavior.Handle(
             request,
-            () => Task.FromResult<MediatorResult<string>>(missingMemberId),
+            () => Task.FromResult<MediatorResult<DeleteTenantMemberOutcome>>(
+                new DeleteTenantMemberOutcome(missingMemberId)),
             CancellationToken.None);
 
         var rejection = Assert.IsType<TenantMemberNotFound>(
@@ -338,11 +398,12 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var request = new DeleteTenantMemberRequest(tenant.Id, owner.Id);
         var behavior = CreateTenantMemberAuthorizationBehavior<
             DeleteTenantMemberRequest,
-            string>("user-1");
+            DeleteTenantMemberOutcome>("user-1");
 
         var result = await behavior.Handle(
             request,
-            () => Task.FromResult<MediatorResult<string>>(owner.Id),
+            () => Task.FromResult<MediatorResult<DeleteTenantMemberOutcome>>(
+                new DeleteTenantMemberOutcome(owner.Id)),
             CancellationToken.None);
 
         var rejection = Assert.IsType<TenantRoleRequired>(
@@ -356,17 +417,24 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var request = new GetTenantMembersRequest("missing-tenant");
         var behavior = CreateTenantMemberAuthorizationBehavior<
             GetTenantMembersRequest,
-            IReadOnlyCollection<TenantMemberDto>>(
+            GetTenantMembersOutcome>(
             userId: null,
             roles: [Roles.Admin]);
 
         var result = await behavior.Handle(
             request,
-            () => Task.FromResult<MediatorResult<IReadOnlyCollection<TenantMemberDto>>>(
-                Array.Empty<TenantMemberDto>()),
+            () => Task.FromResult<MediatorResult<GetTenantMembersOutcome>>(
+                new GetTenantMembersOutcome(Array.Empty<TenantMemberDto>())),
             CancellationToken.None);
 
-        Assert.Empty(AssertOutcome(result));
+        var outcome = AssertOutcome(result);
+        var members = outcome switch
+        {
+            IReadOnlyCollection<TenantMemberDto> value => value,
+            TenantNotFound error => throw new Xunit.Sdk.XunitException(
+                $"Expected a platform-admin outcome, but tenant '{error.TenantId}' was not found.")
+        };
+        Assert.Empty(members);
     }
 
     [Fact]
@@ -374,15 +442,47 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
     {
         var tenant = await InsertTenantAsync(TenantRole.Owner);
         var owner = tenant.Members.Single();
-        var handler = new UpdateTenantMemberHandler(fixture.DbContext);
+        using var scope = Services.CreateScope();
+        var handler = new UpdateTenantMemberHandler(
+            scope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>());
 
         var result = await handler.HandleAsync(new UpdateTenantMemberRequest(
             tenant.Id,
             owner.Id,
             new UpdateTenantMemberRequestBody(TenantRole.Admin)));
 
-        Assert.False(result.TryGetValue(out _, out var failure));
-        Assert.IsType<ConflictFailure>(failure);
+        Assert.True(
+            result is UpdateTenantMemberError error &&
+            error is TenantMemberMutationError mutation &&
+            mutation is TenantLastOwner);
+    }
+
+    [Fact]
+    public async Task UpdateTenantMember_CanDemoteOwnerWhenAnotherOwnerExists()
+    {
+        var tenant = await InsertTenantAsync(TenantRole.Owner);
+        var firstOwner = tenant.Members.Single();
+        var secondOwner = TenantFactory.CreateMember(
+            tenant.Id,
+            "owner-2",
+            "owner-2@example.com",
+            TenantRole.Owner);
+        tenant = tenant with { Members = tenant.Members.Add(secondOwner) };
+        await fixture.DbContext.Tenants.ReplaceOneAsync(
+            stored => stored.Id == tenant.Id,
+            tenant);
+
+        using var scope = Services.CreateScope();
+        var handler = new UpdateTenantMemberHandler(
+            scope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>());
+        var result = await handler.HandleAsync(new UpdateTenantMemberRequest(
+            tenant.Id,
+            firstOwner.Id,
+            new UpdateTenantMemberRequestBody(TenantRole.Admin)));
+
+        Assert.True(result is TenantMemberDto { Role: TenantRole.Admin });
+        var stored = await fixture.DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync();
+        Assert.Single(stored.Members, member => member.Role == TenantRole.Owner);
     }
 
     [Fact]
@@ -390,14 +490,46 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
     {
         var tenant = await InsertTenantAsync(TenantRole.Owner);
         var owner = tenant.Members.Single();
-        var handler = new DeleteTenantMemberHandler(fixture.DbContext);
+        using var scope = Services.CreateScope();
+        var handler = new DeleteTenantMemberHandler(
+            scope.ServiceProvider.GetRequiredService<PersistRemovedTenantMember>());
 
         var result = await handler.HandleAsync(new DeleteTenantMemberRequest(
             tenant.Id,
             owner.Id));
 
-        Assert.False(result.TryGetValue(out _, out var failure));
-        Assert.IsType<ConflictFailure>(failure);
+        Assert.True(
+            result is DeleteTenantMemberError error &&
+            error is TenantMemberMutationError mutation &&
+            mutation is TenantLastOwner);
+    }
+
+    [Fact]
+    public async Task DeleteTenantMember_CanRemoveOwnerWhenAnotherOwnerExists()
+    {
+        var tenant = await InsertTenantAsync(TenantRole.Owner);
+        var firstOwner = tenant.Members.Single();
+        var secondOwner = TenantFactory.CreateMember(
+            tenant.Id,
+            "owner-2",
+            "owner-2@example.com",
+            TenantRole.Owner);
+        tenant = tenant with { Members = tenant.Members.Add(secondOwner) };
+        await fixture.DbContext.Tenants.ReplaceOneAsync(
+            stored => stored.Id == tenant.Id,
+            tenant);
+
+        using var scope = Services.CreateScope();
+        var handler = new DeleteTenantMemberHandler(
+            scope.ServiceProvider.GetRequiredService<PersistRemovedTenantMember>());
+        var result = await handler.HandleAsync(new DeleteTenantMemberRequest(
+            tenant.Id,
+            firstOwner.Id));
+
+        Assert.True(result is string deletedMemberId && deletedMemberId == firstOwner.Id);
+        var stored = await fixture.DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync();
+        Assert.DoesNotContain(stored.Members, member => member.Id == firstOwner.Id);
+        Assert.Single(stored.Members, member => member.Role == TenantRole.Owner);
     }
 
     private async Task<Tenant> InsertTenantAsync(
@@ -450,8 +582,20 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             }
         };
 
-        return new TenantMemberAuthorizationBehavior<TRequest, TResponse>(fixture.DbContext, accessor);
+        return new TenantMemberAuthorizationBehavior<TRequest, TResponse>(
+            LoadTenantAsync,
+            accessor);
     }
+
+    private async Task<Tenant?> LoadTenantAsync(
+        string tenantId,
+        CancellationToken cancellationToken) =>
+        await fixture.DbContext.Tenants
+            .Find(tenant => tenant.Id == tenantId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    private IServiceProvider Services => _services
+        ?? throw new InvalidOperationException("Tenant test services are not initialized.");
 
     private static IMediatorRejection AssertRejected<T>(
         MediatorResult<T> result)

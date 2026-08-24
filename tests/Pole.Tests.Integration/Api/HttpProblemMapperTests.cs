@@ -32,6 +32,8 @@ using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.Tenants;
+using Pole.Features.Tenants.Application.Endpoints;
+using Pole.Features.Tenants.Application.Persistence;
 using Pole.Mediator;
 using Xunit;
 
@@ -487,6 +489,30 @@ public sealed class HttpProblemMapperTests
             new TenantMemberNotFound("tenant-1", "member-1"));
         Assert.Equal("tenant-1", memberNotFound.Extensions["tenantId"]);
         Assert.Equal("member-1", memberNotFound.Extensions["memberId"]);
+    }
+
+    [Fact]
+    public void TenantMemberMutationErrorsHaveStableProblemMappings()
+    {
+        var mapper = new HttpProblemMapper(
+            TenantMemberAuthorizationHttpProblemMappings.All);
+
+        AddTenantMemberError duplicateError = new(
+            new TenantMemberAdditionError(
+                new TenantMemberAlreadyExists("tenant-1", "user-1")));
+        DeleteTenantMemberError lastOwnerError = new(
+            new TenantMemberMutationError(
+                new TenantLastOwner("tenant-1", "member-1")));
+        var duplicate = mapper.Map(duplicateError);
+        var lastOwner = mapper.Map(lastOwnerError);
+
+        Assert.Equal((int)HttpStatusCode.Conflict, duplicate.StatusCode);
+        Assert.Equal("tenants.member.already-exists", duplicate.Code);
+        Assert.Equal("tenant-1", duplicate.Extensions["tenantId"]);
+        Assert.Equal("user-1", duplicate.Extensions["userId"]);
+        Assert.Equal((int)HttpStatusCode.Conflict, lastOwner.StatusCode);
+        Assert.Equal("tenants.member.last-owner", lastOwner.Code);
+        Assert.Equal("member-1", lastOwner.Extensions["memberId"]);
     }
 
     [Fact]

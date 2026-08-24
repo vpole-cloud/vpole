@@ -1,15 +1,14 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Tenants.Application.Persistence;
 using Pole.Mediator;
 
 namespace Pole.Features.Tenants;
 
 public sealed class TenantMemberAuthorizationBehavior<TRequest, TResponse>(
-    ITenantDbContext dbContext,
+    LoadTenant loadTenant,
     IHttpContextAccessor httpContextAccessor)
     : IPipelineBehavior<TRequest, TResponse>
     where TRequest : IMediatorRequest<TResponse>
@@ -34,9 +33,7 @@ public sealed class TenantMemberAuthorizationBehavior<TRequest, TResponse>(
         if (string.IsNullOrWhiteSpace(userId))
             return Reject(new TenantUserIdentityRequired());
 
-        var tenant = await dbContext.Tenants
-            .Find(t => t.Id == tenantOperation.TenantId)
-            .FirstOrDefaultAsync(cancellationToken);
+        var tenant = await loadTenant(tenantOperation.TenantId, cancellationToken);
 
         if (tenant is null)
             return Reject(new TenantNotFound(tenantOperation.TenantId));

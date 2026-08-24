@@ -11,7 +11,6 @@ using Pole.Features.Search.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Features.SourceBuilds.Domain;
-using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Domain;
@@ -24,7 +23,6 @@ public class MongoDbContext(
     IMongoDatabase database
     ) : 
     ISearchDbContext,
-    ITenantDbContext,
     IUserDbContext
 {
     public IMongoDatabase Database { get; } = database;
