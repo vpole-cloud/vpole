@@ -1,0 +1,74 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Pole.ASP.Helpers;
+using Pole.Features.Core.Multitenancy;
+using Pole.Features.Tenants;
+using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Tenants.Application.Persistence;
+using Pole.Features.Tenants.Contracts;
+using Pole.Mediator;
+
+namespace Pole.Features.Tenants.Application;
+
+public static class TenantFeature
+{
+    public static IServiceCollection AddTenantsFeature(this IServiceCollection services)
+    {
+        services.AddHttpContextAccessor();
+        services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
+        services.AddHttpProblemMappings(TenantMemberAuthorizationHttpProblemMappings.All);
+
+        services.TryAddScoped<MongoLoadTenant>();
+        services.TryAddScoped<LoadTenant>(provider => provider
+            .GetRequiredService<MongoLoadTenant>()
+            .InvokeAsync);
+        services.TryAddScoped<MongoLoadTenantsForUser>();
+        services.TryAddScoped<LoadTenantsForUser>(provider => provider
+            .GetRequiredService<MongoLoadTenantsForUser>()
+            .InvokeAsync);
+        services.TryAddScoped<MongoPersistCreatedTenant>();
+        services.TryAddScoped<PersistCreatedTenant>(provider => provider
+            .GetRequiredService<MongoPersistCreatedTenant>()
+            .InvokeAsync);
+        services.TryAddScoped<MongoPersistAddedTenantMember>();
+        services.TryAddScoped<PersistAddedTenantMember>(provider => provider
+            .GetRequiredService<MongoPersistAddedTenantMember>()
+            .InvokeAsync);
+        services.TryAddScoped<MongoPersistUpdatedTenantMemberRole>();
+        services.TryAddScoped<PersistUpdatedTenantMemberRole>(provider => provider
+            .GetRequiredService<MongoPersistUpdatedTenantMemberRole>()
+            .InvokeAsync);
+        services.TryAddScoped<MongoPersistRemovedTenantMember>();
+        services.TryAddScoped<PersistRemovedTenantMember>(provider => provider
+            .GetRequiredService<MongoPersistRemovedTenantMember>()
+            .InvokeAsync);
+        services.TryAddScoped<MongoEnsureDefaultTenant>();
+        services.TryAddScoped<EnsureDefaultTenant>(provider => provider
+            .GetRequiredService<MongoEnsureDefaultTenant>()
+            .InvokeAsync);
+        services.TryAddScoped<MongoLoadTenantIdentity>();
+        services.TryAddScoped<LoadTenantIdentity>(provider => provider
+            .GetRequiredService<MongoLoadTenantIdentity>()
+            .InvokeAsync);
+        services.TryAddScoped<MongoEnsureTenantsExist>();
+        services.TryAddScoped<EnsureTenantsExist>(provider => provider
+            .GetRequiredService<MongoEnsureTenantsExist>()
+            .InvokeAsync);
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds the tenant-member authorization stage after the common mediator stages.
+    /// The composition root invokes this separately so its position in the pipeline
+    /// remains validation, tenant authorization, then tenant-member authorization.
+    /// </summary>
+    public static IServiceCollection AddTenantMemberAuthorizationBehavior(
+        this IServiceCollection services)
+    {
+        services.AddScoped(
+            typeof(IPipelineBehavior<,>),
+            typeof(TenantMemberAuthorizationBehavior<,>));
+        return services;
+    }
+}

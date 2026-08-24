@@ -1,17 +1,20 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Contracts;
+using Pole.Features.Tenants.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.Tenants.Application.Common;
+namespace Pole.Features.Tenants.Application.Persistence;
 
-internal sealed class MongoEnsureTenantsExist(ITenantDbContext dbContext)
+internal sealed class MongoEnsureTenantsExist(IMongoDatabase database)
 {
+    private readonly IMongoCollection<Tenant> _tenants = database.GetCollection<Tenant>("Tenants");
+
     public async Task<Result<Unit, TenantSetNotFound>> InvokeAsync(
         IReadOnlyCollection<string> tenantIds,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(tenantIds);
         var normalizedTenantIds = tenantIds
             .Select(tenantId => tenantId?.Trim() ?? string.Empty)
             .Distinct(StringComparer.Ordinal)
@@ -26,7 +29,7 @@ internal sealed class MongoEnsureTenantsExist(ITenantDbContext dbContext)
         if (normalizedTenantIds.Length == 0)
             return new Ok<Unit>(Unit.Value);
 
-        var found = await dbContext.Tenants
+        var found = await _tenants
             .Find(TenantFilters.ByIds(normalizedTenantIds))
             .Project(tenant => tenant.Id)
             .ToListAsync(cancellationToken);

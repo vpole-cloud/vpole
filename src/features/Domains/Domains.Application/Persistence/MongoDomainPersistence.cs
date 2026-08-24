@@ -16,7 +16,7 @@ internal sealed partial class MongoDomainPersistence(
     IMongoDatabase database,
     ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges,
     FenceDeploymentTargetWorkloadConfigurations fenceDeploymentTargetWorkloadConfigurations,
-    ITenantIdentityLookup tenantIdentityLookup,
+    LoadTenantIdentity loadTenantIdentity,
     TimeProvider timeProvider)
 {
     private readonly IMongoCollection<TenantDomainZone> _zones =

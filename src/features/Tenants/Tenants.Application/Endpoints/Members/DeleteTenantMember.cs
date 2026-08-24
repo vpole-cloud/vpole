@@ -2,10 +2,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Tenants.Application.Persistence;
 using Pole.Features.Tenants.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -15,32 +15,26 @@ namespace Pole.Features.Tenants.Application.Endpoints;
 public sealed record DeleteTenantMemberRequest(
     [FromRoute] string TenantId,
     [FromRoute] string MemberId
-) : IMediatorRequest<string>, ITenantMemberTargetOperation;
+) : IMediatorRequest<DeleteTenantMemberOutcome>, ITenantMemberTargetOperation;
 
-public sealed class DeleteTenantMemberHandler(ITenantDbContext dbContext)
-    : IMediatorHandler<DeleteTenantMemberRequest, string>
+public union DeleteTenantMemberError(TenantMemberMutationError);
+
+public union DeleteTenantMemberOutcome(string, DeleteTenantMemberError);
+
+public sealed class DeleteTenantMemberHandler(
+    PersistRemovedTenantMember persistRemovedTenantMember)
+    : IMediatorOutcomeHandler<DeleteTenantMemberRequest, DeleteTenantMemberOutcome>
 {
-    public async Task<Result<string>> HandleAsync(
+    public async Task<DeleteTenantMemberOutcome> HandleAsync(
         DeleteTenantMemberRequest request,
         CancellationToken cancellationToken = default)
     {
-        var ownerValidation = await TenantMemberMutationGuard.ValidateAsync(
-            dbContext,
-            request.TenantId,
-            request.MemberId,
-            nextRole: null,
+        var persisted = await persistRemovedTenantMember(
+            new RemoveTenantMember(request.TenantId, request.MemberId),
             cancellationToken);
-        if (ownerValidation is not null)
-            return ownerValidation;
-
-        var result = await dbContext.Tenants.UpdateOneAsync(
-            t => t.Id == request.TenantId && t.Members.Any(m => m.Id == request.MemberId),
-            Builders<Tenant>.Update.PullFilter(t => t.Members, m => m.Id == request.MemberId),
-            cancellationToken: cancellationToken);
-
-        return result.ModifiedCount == 0
-            ? Failures.NotFound("Tenant member not found.", request.MemberId)
-            : request.MemberId;
+        return persisted.Match(
+            _ => new DeleteTenantMemberOutcome(request.MemberId),
+            error => new DeleteTenantMemberOutcome(new DeleteTenantMemberError(error)));
     }
 }
 
@@ -48,14 +42,23 @@ public static class DeleteTenantMemberEndpoint
 {
     public static IEndpointRouteBuilder MapDeleteTenantMemberEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{TenantId}/members/{MemberId}", async (IMediator mediator, [AsParameters] DeleteTenantMemberRequest request,
+        app.MapDelete("/{TenantId}/members/{MemberId}", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
+                [AsParameters] DeleteTenantMemberRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(_ => Results.NoContent());
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    string => Results.NoContent(),
+                    DeleteTenantMemberError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("DeleteTenantMember")
-            .Produces(StatusCodes.Status204NoContent);
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
         return app;
     }
 }

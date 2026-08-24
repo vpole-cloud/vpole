@@ -2,10 +2,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Tenants.Application.Persistence;
 using Pole.Features.Tenants.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -16,39 +16,37 @@ public sealed record UpdateTenantMemberRequest(
     [FromRoute] string TenantId,
     [FromRoute] string MemberId,
     [FromBody] UpdateTenantMemberRequestBody Body
-) : IMediatorRequest<TenantMemberDto>, ITenantMemberRoleOperation
+) : IMediatorRequest<UpdateTenantMemberOutcome>, ITenantMemberRoleOperation
 {
     public TenantRole Role => Body.Role;
 }
 
 public sealed record UpdateTenantMemberRequestBody(TenantRole Role);
 
-public sealed class UpdateTenantMemberHandler(ITenantDbContext dbContext)
-    : IMediatorHandler<UpdateTenantMemberRequest, TenantMemberDto>
+public union UpdateTenantMemberError(TenantMemberMutationError);
+
+public union UpdateTenantMemberOutcome(
+    TenantMemberDto,
+    UpdateTenantMemberError);
+
+public sealed class UpdateTenantMemberHandler(
+    PersistUpdatedTenantMemberRole persistUpdatedTenantMemberRole)
+    : IMediatorOutcomeHandler<UpdateTenantMemberRequest, UpdateTenantMemberOutcome>
 {
-    public async Task<Result<TenantMemberDto>> HandleAsync(
+    public async Task<UpdateTenantMemberOutcome> HandleAsync(
         UpdateTenantMemberRequest request,
         CancellationToken cancellationToken = default)
     {
-        var ownerValidation = await TenantMemberMutationGuard.ValidateAsync(
-            dbContext,
-            request.TenantId,
-            request.MemberId,
-            nextRole: request.Body.Role,
+        var persisted = await persistUpdatedTenantMemberRole(
+            new UpdateTenantMemberRole(
+                request.TenantId,
+                request.MemberId,
+                request.Body.Role),
             cancellationToken);
-        if (ownerValidation is not null)
-            return ownerValidation;
-
-        var updated = await dbContext.Tenants.FindOneAndUpdateAsync(
-            t => t.Id == request.TenantId && t.Members.Any(m => m.Id == request.MemberId),
-            Builders<Tenant>.Update.Set("Members.$.Role", request.Body.Role),
-            new FindOneAndUpdateOptions<Tenant> { ReturnDocument = ReturnDocument.After },
-            cancellationToken);
-
-        var member = updated?.Members.FirstOrDefault(m => m.Id == request.MemberId);
-        return member is null
-            ? Failures.NotFound("Tenant member not found.", request.MemberId)
-            : member.ToDto();
+        return TypedResultCompositionExtensions.Match(
+            persisted,
+            updated => new UpdateTenantMemberOutcome(updated.ToDto()),
+            error => new UpdateTenantMemberOutcome(new UpdateTenantMemberError(error)));
     }
 }
 
@@ -56,14 +54,23 @@ public static class UpdateTenantMemberEndpoint
 {
     public static IEndpointRouteBuilder MapUpdateTenantMemberEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPut("/{TenantId}/members/{MemberId}", async (IMediator mediator, [AsParameters] UpdateTenantMemberRequest request,
+        app.MapPut("/{TenantId}/members/{MemberId}", async (
+                IMediator mediator,
+                IHttpProblemMapper httpProblems,
+                [AsParameters] UpdateTenantMemberRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    TenantMemberDto member => Results.Ok(member),
+                    UpdateTenantMemberError error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("UpdateTenantMember")
-            .Produces<TenantMemberDto>();
+            .Produces<TenantMemberDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
         return app;
     }
 }

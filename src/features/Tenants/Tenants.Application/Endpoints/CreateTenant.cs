@@ -6,9 +6,9 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Tenants.Application.Persistence;
 using Pole.Features.Tenants.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
 
 namespace Pole.Features.Tenants.Application.Endpoints;
 
@@ -19,7 +19,10 @@ public static class CreateTenant
         app.MapPost("/", async (IMediator mediator, [AsParameters] CreateTenantRequest request, CancellationToken cancellationToken) =>
         {
             var result = await mediator.Send(request, cancellationToken);
-            return result.ToHttpResult(t => Results.Created($"/api/v1/tenants/{t.Id}", t));
+            return result.ToHttpResult(outcome => outcome switch
+            {
+                TenantDto tenant => Results.Created($"/api/v1/tenants/{tenant.Id}", tenant)
+            });
         })
         .WithName("CreateTenant")
         .RequireAuthorization(Policy.Admin)
@@ -33,16 +36,18 @@ public sealed record CreateTenantRequest(
     [FromBody] CreateTenantRequestBody Body,
     [FromClaim(Claims.UserId)] ClaimValue CurrentUserId,
     [FromClaim(Claims.Email)] ClaimValue CurrentUserEmail
-    ) : IMediatorRequest<TenantDto>;
+    ) : IMediatorRequest<CreateTenantOutcome>;
+
+public union CreateTenantOutcome(TenantDto);
 
 public sealed record CreateTenantRequestBody(
     string Name);
 
 public sealed class CreateTenantHandler(
-    ITenantDbContext dbContext)
-    : IMediatorHandler<CreateTenantRequest, TenantDto>
+    PersistCreatedTenant persistCreatedTenant)
+    : IMediatorOutcomeHandler<CreateTenantRequest, CreateTenantOutcome>
 {
-    public async Task<Result<TenantDto>> HandleAsync(
+    public async Task<CreateTenantOutcome> HandleAsync(
         CreateTenantRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -55,7 +60,7 @@ public sealed class CreateTenantHandler(
             TenantRole.Owner);
         tenant = tenant with { Members = [owner] };
 
-        await dbContext.Tenants.InsertOneAsync(tenant, cancellationToken: cancellationToken);
+        await persistCreatedTenant(tenant, cancellationToken);
         return tenant.ToDto(TenantRole.Owner);
     }
 }
@@ -69,4 +74,3 @@ public sealed class CreateTenantValidator : AbstractValidator<CreateTenantReques
         RuleFor(x => x.CurrentUserEmail.Value).NotEmpty().MaximumLength(254);
     }
 }
-

@@ -1,0 +1,82 @@
+using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Driver;
+using Pole.Features.Tenants;
+using Pole.Features.Tenants.Application;
+using Pole.Features.Tenants.Application.Persistence;
+using Pole.Features.Tenants.Contracts;
+using Pole.Mediator;
+using Pole.Server.Extensions;
+using Pole.Tests.Integration.Infrastructure;
+using Xunit;
+
+namespace Pole.Tests.Integration.Tenants;
+
+[Collection(IntegrationTestCollection.Name)]
+public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixture)
+{
+    [Fact]
+    public void FeatureRegistration_ResolvesTheTenantCapabilityGraph()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IMongoDatabase>(fixture.Database);
+        services.AddTenantsFeature();
+
+        Assert.DoesNotContain(services, descriptor =>
+            descriptor.ServiceType.Name.Contains("DbContext", StringComparison.Ordinal));
+        Assert.Contains(services, descriptor =>
+            descriptor.ServiceType == typeof(LoadTenantIdentity) &&
+            descriptor.Lifetime == ServiceLifetime.Scoped);
+
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+        using var scope = provider.CreateScope();
+        AssertResolved<LoadTenant>(scope.ServiceProvider);
+        AssertResolved<LoadTenantsForUser>(scope.ServiceProvider);
+        AssertResolved<PersistCreatedTenant>(scope.ServiceProvider);
+        AssertResolved<PersistAddedTenantMember>(scope.ServiceProvider);
+        AssertResolved<PersistUpdatedTenantMemberRole>(scope.ServiceProvider);
+        AssertResolved<PersistRemovedTenantMember>(scope.ServiceProvider);
+        AssertResolved<EnsureDefaultTenant>(scope.ServiceProvider);
+        AssertResolved<LoadTenantIdentity>(scope.ServiceProvider);
+        AssertResolved<EnsureTenantsExist>(scope.ServiceProvider);
+    }
+
+    [Fact]
+    public void FeatureRegistration_PreservesTheTenantAuthorizationPipelineOrder()
+    {
+        var services = new ServiceCollection();
+        services.AddTenantsFeature();
+        services.AddPoleMediator();
+
+        var pipelineTypes = services
+            .Where(descriptor => descriptor.ServiceType == typeof(IPipelineBehavior<,>))
+            .Select(descriptor => descriptor.ImplementationType)
+            .ToArray();
+
+        Assert.Equal(
+            [
+                typeof(LoggingBehavior<,>),
+                typeof(ValidationBehavior<,>),
+                typeof(TenantAuthorizationBehavior<,>),
+                typeof(TenantMemberAuthorizationBehavior<,>)
+            ],
+            pipelineTypes);
+    }
+
+    [Fact]
+    public async Task TenantExistenceContract_RejectsMalformedObjectIds()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IMongoDatabase>(fixture.Database);
+        services.AddTenantsFeature();
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+        using var scope = provider.CreateScope();
+        var ensureTenantsExist = scope.ServiceProvider.GetRequiredService<EnsureTenantsExist>();
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => ensureTenantsExist(["not-an-object-id"]));
+    }
+
+    private static void AssertResolved<T>(IServiceProvider provider)
+        where T : notnull =>
+        Assert.NotNull(provider.GetRequiredService<T>());
+}

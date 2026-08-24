@@ -1,11 +1,10 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Tenants.Application.Persistence;
 using Pole.Mediator;
-using Pole.ResultType;
 
 namespace Pole.Features.Tenants.Application.Endpoints;
 
@@ -16,7 +15,10 @@ public static class GetTenants
         app.MapGet("/", async (IMediator mediator, [AsParameters] GetTenantsRequest request, CancellationToken cancellationToken) =>
         {
             var result = await mediator.Send(request, cancellationToken);
-            return result.ToHttpResult(Results.Ok);
+            return result.ToHttpResult(outcome => outcome switch
+            {
+                IReadOnlyCollection<TenantDto> tenants => Results.Ok(tenants)
+            });
         })
         .WithName("GetTenants")
         .Produces<IReadOnlyCollection<TenantDto>>();
@@ -27,19 +29,21 @@ public static class GetTenants
 
 public sealed record GetTenantsRequest(
     [FromClaim(Claims.UserId)] ClaimValue CurrentUserId
-) : IMediatorRequest<IReadOnlyCollection<TenantDto>>;
+) : IMediatorRequest<GetTenantsOutcome>;
+
+public union GetTenantsOutcome(IReadOnlyCollection<TenantDto>);
 
 public sealed class GetTenantsHandler(
-    ITenantDbContext dbContext)
-    : IMediatorHandler<GetTenantsRequest, IReadOnlyCollection<TenantDto>>
+    LoadTenantsForUser loadTenantsForUser)
+    : IMediatorOutcomeHandler<GetTenantsRequest, GetTenantsOutcome>
 {
-    public async Task<Result<IReadOnlyCollection<TenantDto>>> HandleAsync(
+    public async Task<GetTenantsOutcome> HandleAsync(
         GetTenantsRequest request,
         CancellationToken cancellationToken = default)
     {
-        var memberTenants = await dbContext.Tenants
-            .Find(t => t.Members.Any(m => m.UserId == request.CurrentUserId))
-            .ToListAsync(cancellationToken);
+        var memberTenants = await loadTenantsForUser(
+            request.CurrentUserId,
+            cancellationToken);
 
         return memberTenants
             .Select(t =>
@@ -50,4 +54,3 @@ public sealed class GetTenantsHandler(
             .ToList();
     }
 }
-
