@@ -87,16 +87,6 @@ public static class ResourceDeploymentFeature
         services.TryAddScoped<LoadCurrentResourceDeploymentCompute>(provider =>
             provider.GetRequiredService<ResourceDeploymentComputeLookup>()
                 .GetCurrentAsync);
-        services.TryAddScoped<ResourceDeploymentLegacyAdapters>();
-        services.TryAddScoped<EnsureNoUnfinishedResourceGroupDeploymentsLegacy>(provider =>
-            provider.GetRequiredService<ResourceDeploymentLegacyAdapters>()
-                .EnsureNoUnfinishedForResourceGroupAsync);
-        services.TryAddScoped<EnsureNoUnfinishedIsolationScopeDeploymentsLegacy>(provider =>
-            provider.GetRequiredService<ResourceDeploymentLegacyAdapters>()
-                .EnsureNoUnfinishedForIsolationScopeAsync);
-        services.TryAddScoped<LoadCurrentResourceDeploymentComputeLegacy>(provider =>
-            provider.GetRequiredService<ResourceDeploymentLegacyAdapters>()
-                .LoadCurrentComputeAsync);
     }
 
     private static void AddResourceDeploymentReconciliationCapabilities(

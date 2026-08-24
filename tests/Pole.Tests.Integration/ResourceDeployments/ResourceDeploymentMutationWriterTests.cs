@@ -61,12 +61,8 @@ public sealed class ResourceDeploymentMutationWriterTests(
         await InsertAsync(runtimeCell, deployment);
         var writer = CreateWriter();
 
-        var result = await fixture.DbContext
-            .RunInTransactionAsync<PlacementSummaryDto>(
-                (session, cancellationToken) => writer.RequestApplyAsync(
-                    CreateCommand(),
-                    session,
-                    cancellationToken));
+        var result = await RunTypedTransactionAsync((session, cancellationToken) =>
+            writer.RequestApplyAsync(CreateCommand(), session, cancellationToken));
 
         var summary = result.AssertSuccess();
         Assert.Equal(2, summary.DesiredGeneration);
@@ -90,12 +86,8 @@ public sealed class ResourceDeploymentMutationWriterTests(
         await InsertAsync(runtimeCell, deployment);
         var writer = CreateWriter();
 
-        var result = await fixture.DbContext
-            .RunInTransactionAsync<PlacementSummaryDto>(
-                (session, cancellationToken) => writer.RequestApplyAsync(
-                    CreateCommand(),
-                    session,
-                    cancellationToken));
+        var result = await RunTypedTransactionAsync((session, cancellationToken) =>
+            writer.RequestApplyAsync(CreateCommand(), session, cancellationToken));
 
         _ = result.AssertSuccess();
         var updated = await LoadDeploymentAsync();
@@ -115,12 +107,8 @@ public sealed class ResourceDeploymentMutationWriterTests(
         await InsertAsync(runtimeCell, deployment);
         var writer = CreateWriter();
 
-        var result = await fixture.DbContext
-            .RunInTransactionAsync<PlacementSummaryDto>(
-                (session, cancellationToken) => writer.RequestDeletionAsync(
-                    CreateCommand(),
-                    session,
-                    cancellationToken));
+        var result = await RunTypedTransactionAsync((session, cancellationToken) =>
+            writer.RequestDeletionAsync(CreateCommand(), session, cancellationToken));
 
         var summary = result.AssertSuccess();
         Assert.Equal(2, summary.DesiredGeneration);
@@ -160,9 +148,8 @@ public sealed class ResourceDeploymentMutationWriterTests(
         await InsertAsync(runtimeCell, failed);
         var writer = CreateWriter();
 
-        var mismatch = await fixture.DbContext
-            .RunInTransactionAsync<PlacementSummaryDto>(
-                (session, cancellationToken) => writer.RequestRetryAsync(
+        var mismatch = await RunTypedTransactionAsync((session, cancellationToken) =>
+            writer.RequestRetryAsync(
                     new ResourceDeploymentExactRetryRequest(
                         TenantId,
                         TestResourceType,
@@ -173,11 +160,10 @@ public sealed class ResourceDeploymentMutationWriterTests(
                     session,
                     cancellationToken));
 
-        Assert.IsType<ConflictFailure>(mismatch.AssertFailure());
+        Assert.IsType<ResourceDeploymentRetryUnavailable>(mismatch.AssertFailure().Value);
 
-        var result = await fixture.DbContext
-            .RunInTransactionAsync<PlacementSummaryDto>(
-                (session, cancellationToken) => writer.RequestRetryAsync(
+        var result = await RunTypedTransactionAsync((session, cancellationToken) =>
+            writer.RequestRetryAsync(
                     new ResourceDeploymentExactRetryRequest(
                         TenantId,
                         TestResourceType,
@@ -211,14 +197,13 @@ public sealed class ResourceDeploymentMutationWriterTests(
         await InsertAsync(runtimeCell, deployment);
         var writer = CreateWriter();
 
-        var result = await fixture.DbContext
-            .RunInTransactionAsync<PlacementSummaryDto>(
-                (session, cancellationToken) => writer.RequestApplyAsync(
-                    CreateCommand() with { TenantId = OtherTenantId },
-                    session,
-                    cancellationToken));
+        var result = await RunTypedTransactionAsync((session, cancellationToken) =>
+            writer.RequestApplyAsync(
+                CreateCommand() with { TenantId = OtherTenantId },
+                session,
+                cancellationToken));
 
-        Assert.IsType<NotFoundFailure>(result.AssertFailure());
+        Assert.IsType<ResourceDeploymentMutationNotFound>(result.AssertFailure().Value);
         var saved = await fixture.DbContext.ResourceDeployments
             .Find(item => item.Id == DeploymentId)
             .SingleAsync();
@@ -228,7 +213,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
     [Fact]
     public async Task Mutation_ReturnsProviderOwnedNotFoundError()
     {
-        var writer = CreateTypedWriter(new RecordingComputeProfileFence());
+        var writer = CreateWriter(new RecordingComputeProfileFence());
         using var session = await fixture.DbContext.Client.StartSessionAsync();
         session.StartTransaction();
         try
@@ -262,12 +247,11 @@ public sealed class ResourceDeploymentMutationWriterTests(
             requestsCpuMillis: 500,
             requestsMemoryMi: 512);
 
-        var result = await fixture.DbContext
-            .RunInTransactionAsync<PlacementSummaryDto>(
-                (session, cancellationToken) => writer.RequestApplyAsync(
-                    CreateCommand() with { ReplacementCompute = replacement },
-                    session,
-                    cancellationToken));
+        var result = await RunTypedTransactionAsync((session, cancellationToken) =>
+            writer.RequestApplyAsync(
+                CreateCommand() with { ReplacementCompute = replacement },
+                session,
+                cancellationToken));
 
         _ = result.AssertSuccess();
         var updated = await LoadDeploymentAsync();
@@ -285,9 +269,8 @@ public sealed class ResourceDeploymentMutationWriterTests(
         var fence = new RecordingComputeProfileFence();
         var writer = CreateWriter(fence);
 
-        var result = await fixture.DbContext
-            .RunInTransactionAsync<PlacementSummaryDto>(
-                (session, cancellationToken) => writer.RequestApplyAsync(
+        var result = await RunTypedTransactionAsync((session, cancellationToken) =>
+            writer.RequestApplyAsync(
                     CreateCommand() with
                     {
                         ExpectedCompute = new ComputeProfileReference(
@@ -301,7 +284,8 @@ public sealed class ResourceDeploymentMutationWriterTests(
                     session,
                     cancellationToken));
 
-        Assert.IsType<ConflictFailure>(result.AssertFailure());
+        Assert.IsType<ResourceDeploymentComputeConfigurationChanged>(
+            result.AssertFailure().Value);
         Assert.Equal(0, fence.CallCount);
         var saved = await fixture.DbContext.ResourceDeployments
             .Find(item => item.Id == DeploymentId)
@@ -384,7 +368,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
         var fence = new RecordingComputeProfileFence();
         var writer = CreateWriter(fence, placementLookup);
 
-        var result = await fixture.DbContext.RunInTransactionAsync<IReadOnlyList<PlacementSummaryDto>>(
+        var result = await RunTypedTransactionAsync(
             (session, cancellationToken) => writer.RequestSetApplyAsync(
                 new ResourceDeploymentSetApplyRequest(
                     TenantId,
@@ -445,7 +429,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
             [first.Deployment, second.Deployment]);
         var writer = CreateWriter();
 
-        var result = await fixture.DbContext.RunInTransactionAsync<IReadOnlyList<PlacementSummaryDto>>(
+        var result = await RunTypedTransactionAsync(
             (session, cancellationToken) => writer.RequestSetDeletionAsync(
                 new ResourceDeploymentSetDeletionRequest(
                     TenantId,
@@ -477,7 +461,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
             await fixture.DbContext.CountOutboxMessagesAsync(
                 "resource-deployment-deletion-requested"));
 
-        var retry = await fixture.DbContext.RunInTransactionAsync<IReadOnlyList<PlacementSummaryDto>>(
+        var retry = await RunTypedTransactionAsync(
             (session, cancellationToken) => writer.RequestSetDeletionAsync(
                 new ResourceDeploymentSetDeletionRequest(
                     TenantId,
@@ -502,7 +486,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
     [Fact]
     public async Task SetMutation_RejectsEmptyAndDuplicateDeploymentSets()
     {
-        var writer = CreateTypedWriter(new RecordingComputeProfileFence());
+        var writer = CreateWriter(new RecordingComputeProfileFence());
         var item = new ResourceDeploymentSetApplyItem(
             DeploymentId,
             ExpectedDeploymentRevision: 1,
@@ -545,15 +529,10 @@ public sealed class ResourceDeploymentMutationWriterTests(
             StringComparison.Ordinal);
     }
 
-    private ResourceDeploymentLegacyMutationAdapters CreateWriter() =>
+    private ResourceDeploymentMutationWriter CreateWriter() =>
         CreateWriter(new RecordingComputeProfileFence());
 
-    private ResourceDeploymentLegacyMutationAdapters CreateWriter(
-        RecordingComputeProfileFence fence,
-        RecordingPlacementLookup? placementLookup = null) =>
-        new(CreateTypedWriter(fence, placementLookup));
-
-    private ResourceDeploymentMutationWriter CreateTypedWriter(
+    private ResourceDeploymentMutationWriter CreateWriter(
         RecordingComputeProfileFence fence,
         RecordingPlacementLookup? placementLookup = null)
     {
@@ -574,6 +553,24 @@ public sealed class ResourceDeploymentMutationWriterTests(
                 MutationAtUtc,
                 TimeSpan.Zero)));
     }
+
+    private Task<Result<T, TError>> RunTypedTransactionAsync<T, TError>(
+        Func<
+            IClientSessionHandle,
+            CancellationToken,
+            Task<Result<T, TError>>> operation)
+        where T : notnull
+        where TError : notnull =>
+        new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<Result<T, TError>>(
+            async (transaction, cancellationToken) =>
+            {
+                var result = await operation(transaction.Session, cancellationToken);
+                return result switch
+                {
+                    Ok<T> => transaction.Commit(result),
+                    Err<TError> => transaction.Abort(result)
+                };
+            });
 
     private RecordingPlacementLookup CreateRecordingPlacementLookup() =>
         new(

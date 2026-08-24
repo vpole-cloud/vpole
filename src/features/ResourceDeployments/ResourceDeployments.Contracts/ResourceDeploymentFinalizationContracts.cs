@@ -48,13 +48,3 @@ public delegate Task<Result<Unit, ResourceDeploymentFinalizationConflict>>
     string resourceDeploymentId,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
-
-/// <summary>
-/// Temporary shared-result adapters for wave 1 consumers.
-/// </summary>
-public delegate Task<Result> PurgeDeletedResourceDeploymentsLegacy(
-    string tenantId,
-    ResourceTypeId resourceType,
-    string resourceId,
-    IClientSessionHandle session,
-    CancellationToken cancellationToken = default);
