@@ -1,13 +1,12 @@
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
-using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Outbox.Application.Persistence;
 using Pole.Features.Outbox.Contracts;
 using System.Net;
 using System.Net.Sockets;
-using Pole.Server.Database;
 using Xunit;
 
 namespace Pole.Tests.Integration.Infrastructure;
@@ -24,7 +23,7 @@ public sealed class MongoReplicaSetFixture : IAsyncLifetime
     public string DirectConnectionString { get; private set; } = string.Empty;
     public IMongoClient Client { get; private set; } = null!;
     public IMongoDatabase Database { get; private set; } = null!;
-    public MongoDbContext DbContext { get; private set; } = null!;
+    public MongoTestStore DbContext { get; private set; } = null!;
     public StoreOutboxWrites StoreOutboxWrites =>
         _outboxServices!.GetRequiredService<StoreOutboxWrites>();
 
@@ -53,7 +52,7 @@ public sealed class MongoReplicaSetFixture : IAsyncLifetime
 
         Client = new MongoClient(ConnectionString);
         Database = Client.GetDatabase("pole-integration-tests");
-        DbContext = new MongoDbContext(Client, Database);
+        DbContext = new MongoTestStore(Client, Database);
         _outboxServices = new ServiceCollection()
             .AddSingleton(Database)
             .AddOutboxPersistence()
@@ -70,7 +69,12 @@ public sealed class MongoReplicaSetFixture : IAsyncLifetime
     {
         await Database.Client.DropDatabaseAsync(Database.DatabaseNamespace.DatabaseName);
         Database = Client.GetDatabase("pole-integration-tests");
-        DbContext = new MongoDbContext(Client, Database);
+        DbContext = new MongoTestStore(Client, Database);
+        await _outboxServices!.DisposeAsync();
+        _outboxServices = new ServiceCollection()
+            .AddSingleton(Database)
+            .AddOutboxPersistence()
+            .BuildServiceProvider();
     }
 
     private async Task InitializeReplicaSetAsync()

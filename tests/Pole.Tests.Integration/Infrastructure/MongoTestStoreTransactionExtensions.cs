@@ -1,45 +1,37 @@
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.ResultType;
 
-namespace Pole.Database;
+namespace Pole.Tests.Integration.Infrastructure;
 
-public static class ClientSessionHandleExtensions
+public static class MongoTestStoreTransactionExtensions
 {
     public static Task<TOutcome> RunOutcomeInTransactionAsync<TOutcome>(
-        this IMongoDbContext dbContext,
+        this MongoTestStore store,
         Func<
             MongoTransactionContext<TOutcome>,
             CancellationToken,
             Task<MongoTransactionDecision<TOutcome>>> callbackAsync,
-        TransactionOptions? transactionOptions = null,
         CancellationToken cancellationToken = default)
         where TOutcome : notnull =>
-        MongoTransactionPersistence.RunOutcomeAsync(
-            dbContext.Client,
+        new MongoRunTransaction(store.Client).InvokeOutcomeAsync(
             callbackAsync,
-            transactionOptions,
             cancellationToken);
 
     public static Task<Result> RunInTransactionAsync(
-        this IMongoDbContext dbContext,
+        this MongoTestStore store,
         Func<IClientSessionHandle, CancellationToken, Task<Result>> callbackAsync,
-        TransactionOptions? transactionOptions = null,
         CancellationToken cancellationToken = default) =>
-        MongoTransactionPersistence.RunAsync(
-            dbContext.Client,
+        new MongoRunTransaction(store.Client).InvokeAsync(
             callbackAsync,
-            transactionOptions,
             cancellationToken);
 
     public static Task<Result<T>> RunInTransactionAsync<T>(
-        this IMongoDbContext dbContext,
+        this MongoTestStore store,
         Func<IClientSessionHandle, CancellationToken, Task<Result<T>>> callbackAsync,
-        TransactionOptions? transactionOptions = null,
         CancellationToken cancellationToken = default)
         where T : notnull =>
-        MongoTransactionPersistence.RunAsync(
-            dbContext.Client,
+        new MongoRunTransaction(store.Client).InvokeAsync(
             callbackAsync,
-            transactionOptions,
             cancellationToken);
 }

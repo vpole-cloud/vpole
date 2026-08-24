@@ -7,7 +7,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Database;
 
-public sealed class ClientSessionHandleExtensionsTests(MongoReplicaSetFixture fixture)
+public sealed class MongoTestStoreTransactionExtensionsTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
     [Fact]

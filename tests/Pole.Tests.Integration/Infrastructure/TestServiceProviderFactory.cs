@@ -2,6 +2,7 @@ using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Pole.Database;
 using Pole.Encryption;
 using Pole.Features.ComputeProfiles.Application;
 using Pole.Features.Domains.Application;
@@ -38,7 +39,6 @@ using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Mediator;
-using Pole.Server.Database;
 using Pole.Server.Extensions;
 
 namespace Pole.Tests.Integration.Infrastructure;
@@ -77,7 +77,11 @@ public static class TestServiceProviderFactory
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
-        services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
+        services.AddSingleton<MongoRunTransaction>();
+        services.AddSingleton<RunMongoTransaction>(serviceProvider =>
+            serviceProvider
+                .GetRequiredService<MongoRunTransaction>()
+                .InvokeAsync);
         var storageDiscovery = new TestStorageDiscoveryService("standard", "fast", "bulk");
         services.AddSingleton(storageDiscovery);
         services.AddSingleton<DiscoverKubernetesStorageClasses>(
@@ -90,7 +94,6 @@ public static class TestServiceProviderFactory
             storageDiscovery.GetPersistentVolumeClaimsAsync);
         services.AddSingleton<IKubernetesClientProvider>(
             new FixedKubernetesClientProvider(null!));
-        services.AddMongoDbContextInterfaces();
         services.AddOutboxPersistence();
         services.AddFunctionAppsFeature();
         services.AddResourceDeploymentsFeature(

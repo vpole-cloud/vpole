@@ -3,7 +3,6 @@ using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.Tenants.Domain;
 using Pole.Mediator;
-using Pole.Server.Database;
 using Xunit;
 
 namespace Pole.Tests.Integration.Infrastructure;
@@ -20,7 +19,7 @@ public abstract class MediatorIntegrationTestBase : IAsyncLifetime
     }
 
     protected MongoReplicaSetFixture Fixture { get; }
-    protected MongoDbContext DbContext => Fixture.DbContext;
+    protected MongoTestStore DbContext => Fixture.DbContext;
     protected IMediator Mediator => _scope!.ServiceProvider.GetRequiredService<IMediator>();
     protected IServiceProvider Services => _scope!.ServiceProvider;
 

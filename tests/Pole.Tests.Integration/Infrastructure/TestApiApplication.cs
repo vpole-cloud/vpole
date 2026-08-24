@@ -37,9 +37,9 @@ using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application;
 using Pole.Features.Postgres.Application.Kubernetes;
-using Pole.Features.Outbox.Application.Persistence;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Outbox.Application.Migrations;
+using Pole.Features.Outbox.Application.Persistence;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Contracts.HttpMapping;
@@ -73,7 +73,6 @@ using Pole.Features.Users.Application;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Application.Identity;
 using Pole.Observability;
-using Pole.Server.Database;
 using Pole.Server.Extensions;
 
 namespace Pole.Tests.Integration.Infrastructure;
@@ -173,7 +172,12 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.WebHost.UseTestServer();
         builder.Services.AddSingleton(fixture.Client);
         builder.Services.AddSingleton(fixture.Database);
-        builder.Services.AddSingleton<MongoDbContext>(_ => fixture.DbContext);
+        builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddSingleton<MongoRunTransaction>();
+        builder.Services.AddSingleton<RunMongoTransaction>(serviceProvider =>
+            serviceProvider
+                .GetRequiredService<MongoRunTransaction>()
+                .InvokeAsync);
         var storageDiscovery = new TestStorageDiscoveryService("standard", "fast", "bulk");
         builder.Services.AddSingleton(storageDiscovery);
         builder.Services.AddSingleton<DiscoverKubernetesStorageClasses>(
@@ -184,7 +188,6 @@ public sealed class TestApiApplication : IAsyncDisposable
             storageDiscovery.GetPersistentVolumesAsync);
         builder.Services.AddSingleton<DiscoverKubernetesPersistentVolumeClaims>(
             storageDiscovery.GetPersistentVolumeClaimsAsync);
-        builder.Services.AddMongoDbContextInterfaces();
         builder.Services.AddOutboxPersistence();
         builder.Services.AddFunctionAppsFeature();
         builder.Services.AddResourceDeploymentsFeature(builder.Configuration);

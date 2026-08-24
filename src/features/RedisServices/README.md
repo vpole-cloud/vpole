@@ -18,9 +18,8 @@ deployment snapshot.
 - `RedisServices.Events` owns durable Redis event contracts.
 - `RedisServices.Application` owns HTTP application flows, persistence capabilities, deployment
   integration, and Kubernetes mapping.
-- `Pole.Server` is the composition root. It provides the Mongo client/database and registers the
-  feature persistence module, but `MongoDbContext` does not expose a Redis collection or implement
-  a Redis-specific context interface.
+- `Pole.Server` is the composition root. It provides the Mongo client/database and composes the
+  feature persistence module. Production code has no general `MongoDbContext`.
 
 Redis is tenant-owned. Every identity lookup and mutation fence must include `TenantId`; callers
 must not treat an absent tenant as an unscoped query.
@@ -130,8 +129,7 @@ Useful audit searches:
 ```bash
 rg -n "IRedisDbContext|IMongoCollection<Redis>|Builders<Redis>" \
   src/features/RedisServices src/api/Pole.Server
-rg -n "StoreEventAsync|RunInTransactionAsync" \
-  src/features/RedisServices/RedisServices.Application
+rg -n "IRedisDbContext|MongoDbContext|StoreEventAsync" src tests
 ```
 
 Related platform rules:

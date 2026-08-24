@@ -61,9 +61,8 @@ Exact and set capabilities preserve the `TenantId + ResourceType + ResourceId` o
 optimistic physical revision, compute/target fences, and caller-owned transaction without exposing
 ResourceDeployments Domain or Application types.
 
-`MongoDbContext` does not implement a WebServices context or expose the feature collections.
-Raw WebService Mongo access is limited to the feature persistence directory, historical migrations,
-and explicit integration-test helpers.
+Production code has no general `MongoDbContext`. Raw WebService Mongo access is limited to the
+feature persistence directory, historical migrations, and explicit integration-test helpers.
 
 ## Mongo document validation
 
@@ -93,8 +92,7 @@ their own migration and persistence rules.
 ```bash
 rg -n "IWebServiceDbContext|IMongoCollection<WebService>|Builders<WebService>" \
   src/features/WebServices src/features/SourceBuilds src/api/Pole.Server
-rg -n "StoreEventAsync|RunInTransactionAsync" \
-  src/features/WebServices/WebServices.Application
+rg -n "IWebServiceDbContext|MongoDbContext|StoreEventAsync" src tests
 ```
 
 Related rules:
