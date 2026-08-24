@@ -6,7 +6,6 @@ using Pole.Features.Domains.Application.Migrations;
 using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
-using Pole.Features.Tenants.Contracts;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -108,11 +107,10 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
             string? tenantId = null,
             string? targetId = null)
     {
-        var persistence = new MongoDomainPersistence(
+        var reservation = new MongoCreateManagedDomainZoneReservation(
             fixture.Database,
             coordinator.ApplyChangesOutcomeAsync,
             coordinator.FenceManyOutcomeAsync,
-            new UnusedTenantIdentityLookup(),
             TimeProvider.System);
         var transaction = new MongoRunTransaction(fixture.Client);
         tenantId ??= ObjectId.GenerateNewId().ToString();
@@ -123,7 +121,7 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
             CreateManagedDomainZoneError>>(
             async (context, cancellationToken) =>
             {
-                var result = await persistence.CreateManagedReservationOutcomeAsync(
+                var result = await reservation.InvokeAsync(
                     tenantId,
                     targetId,
                     "api",
@@ -176,12 +174,4 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
                     : new Ok<Unit>(Unit.Value));
     }
 
-    private sealed class UnusedTenantIdentityLookup : ITenantIdentityLookup
-    {
-        public Task<Result<TenantIdentitySnapshot>> GetAsync(
-            string tenantId,
-            CancellationToken cancellationToken = default) =>
-            throw new Xunit.Sdk.XunitException(
-                "Managed reservation creation must not resolve tenant identity.");
-    }
 }

@@ -20,9 +20,9 @@ internal sealed partial class MongoDomainPersistence(
     TimeProvider timeProvider)
 {
     private readonly IMongoCollection<TenantDomainZone> _zones =
-        database.GetCollection<TenantDomainZone>("TenantDomainZones");
+        database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
     private readonly IMongoCollection<HostnameBinding> _bindings =
-        database.GetCollection<HostnameBinding>("HostnameBindings");
+        database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
 
     private async Task<Result> DeleteBindingsAndReleaseGeneratedZonesAsync(
         string tenantId,
@@ -332,10 +332,4 @@ internal sealed partial class MongoDomainPersistence(
         }
     }
 
-    private static void EnsureTransaction(IClientSessionHandle session)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        if (!session.IsInTransaction)
-            throw new InvalidOperationException("Domain mutations must run inside the caller-owned MongoDB transaction.");
-    }
 }

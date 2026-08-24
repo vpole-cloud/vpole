@@ -36,7 +36,7 @@ internal sealed partial class MongoDomainPersistence
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        EnsureTransaction(session);
+        DomainTransactions.EnsureActive(session);
         var bindings = await _bindings.Find(session, DomainFilters.BindingForDeployment(
                 tenantId, resourceType, resourceId, resourceDeploymentId))
             .SortBy(item => item.Hostname).ThenBy(item => item.Id)
@@ -64,7 +64,7 @@ internal sealed partial class MongoDomainPersistence
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        EnsureTransaction(session);
+        DomainTransactions.EnsureActive(session);
         EnsureGeneratedBindingSet(requests);
 
         var tenantId = requests[0].TenantId;
@@ -191,7 +191,7 @@ internal sealed partial class MongoDomainPersistence
             CancellationToken cancellationToken = default)
     {
         EnsureCustomCreateRequest(request);
-        EnsureTransaction(session);
+        DomainTransactions.EnsureActive(session);
         var zone = await _zones.Find(
                 session,
                 DomainFilters.ZoneById(
@@ -257,7 +257,7 @@ internal sealed partial class MongoDomainPersistence
         CancellationToken cancellationToken = default)
     {
         EnsureCustomDeleteRequest(request);
-        EnsureTransaction(session);
+        DomainTransactions.EnsureActive(session);
         var filter = DomainFilters.BindingById(request);
         var binding = await _bindings.Find(session, filter).FirstOrDefaultAsync(cancellationToken);
         if (binding is null)
@@ -324,7 +324,7 @@ internal sealed partial class MongoDomainPersistence
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        EnsureTransaction(session);
+        DomainTransactions.EnsureActive(session);
         return await DeleteBindingsAndReleaseGeneratedZonesAsync(
             tenantId,
             DomainFilters.BindingForDeployment(
@@ -343,7 +343,7 @@ internal sealed partial class MongoDomainPersistence
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        EnsureTransaction(session);
+        DomainTransactions.EnsureActive(session);
         return await DeleteBindingsAndReleaseGeneratedZonesAsync(
             tenantId,
             DomainFilters.BindingsForResource(
