@@ -1,6 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.Shared.Models;
-
 namespace Pole.Features.Outbox.Application.Persistence;
 
 public delegate Task<bool> TryPersistOutboxMessageTransition(

@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
-using Pole.Features.Shared.Models;
+using Pole.Features.Outbox.Contracts;
 
 namespace Pole.Features.Outbox.Application.Persistence;
 
@@ -26,6 +26,9 @@ public static class OutboxPersistenceRegistration
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoLoadOutboxQueueSnapshot, LoadOutboxQueueSnapshot>(
+            services,
+            implementation => implementation.InvokeAsync);
+        AddCapability<MongoStoreOutboxWrites, StoreOutboxWrites>(
             services,
             implementation => implementation.InvokeAsync);
         return services;

@@ -1,6 +1,6 @@
 using Pole.Features.Events.Abstractions;
 
-namespace Pole.Database;
+namespace Pole.Features.Outbox.Contracts;
 
 public sealed record OutboxWrite(
     IPoleEvent Event,
@@ -12,7 +12,7 @@ public sealed record OutboxWrite(
     {
         ArgumentNullException.ThrowIfNull(@event);
         if (pendingKey is not null && string.IsNullOrWhiteSpace(pendingKey))
-            throw new ArgumentException("Pending key cannot be empty.", nameof(pendingKey));
+            throw new ArgumentException("A pending key cannot be whitespace.", nameof(pendingKey));
 
         return new OutboxWrite(@event, pendingKey);
     }

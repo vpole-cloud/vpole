@@ -115,9 +115,9 @@ public sealed class ResourceDeploymentRecoveryJobTests(
                 .RunInTransactionAsync<long>(
                     operation,
                     cancellationToken: cancellationToken),
-            (session, writes, cancellationToken) => fixture.DbContext.StoreEventAsync(
-                writes,
+            (session, writes, cancellationToken) => fixture.StoreOutboxWrites(
                 session,
+                writes,
                 cancellationToken),
             Services.GetRequiredService<LoadResourcePlacementInTransaction>());
         var job = new ResourceDeploymentRecoveryJob(

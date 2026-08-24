@@ -145,11 +145,6 @@ public static class DependencyInjection
             services.TryAddSingleton<MongoDbContext>();
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IMongoDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddSingleton<MongoStoreOutboxWrites>();
-            services.TryAddSingleton<StoreOutboxWrites>(serviceProvider =>
-                serviceProvider
-                    .GetRequiredService<MongoStoreOutboxWrites>()
-                    .InvokeAsync);
             services.TryAddSingleton<MongoRunTransaction>();
             services.TryAddSingleton<RunMongoTransaction>(serviceProvider =>
                 serviceProvider

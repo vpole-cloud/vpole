@@ -11,6 +11,7 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Runtime.Consumers;
+using Pole.Features.Outbox.Application.Persistence;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application;
 using Pole.Features.Postgres.Domain;
@@ -90,6 +91,7 @@ public static class TestServiceProviderFactory
         services.AddSingleton<IKubernetesClientProvider>(
             new FixedKubernetesClientProvider(null!));
         services.AddMongoDbContextInterfaces();
+        services.AddOutboxPersistence();
         services.AddFunctionAppsFeature();
         services.AddResourceDeploymentsFeature(
             configuration);

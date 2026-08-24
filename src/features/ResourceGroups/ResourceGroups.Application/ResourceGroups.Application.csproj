@@ -14,6 +14,7 @@
       <ProjectReference Include="..\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
       <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
       <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
+      <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
       <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
       <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />

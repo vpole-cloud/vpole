@@ -97,7 +97,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
         Assert.Equal(
             0,
             await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
-                FilterDefinition<Pole.Features.Shared.Models.OutboxMessage>.Empty));
+                FilterDefinition<Pole.Features.Outbox.Application.Model.OutboxMessage>.Empty));
     }
 
     [Fact]
@@ -345,7 +345,7 @@ public sealed class ResourceDeploymentMutationWriterTests(
         Assert.Equal(
             0,
             await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
-                FilterDefinition<Pole.Features.Shared.Models.OutboxMessage>.Empty));
+                FilterDefinition<Pole.Features.Outbox.Application.Model.OutboxMessage>.Empty));
     }
 
     [Fact]
@@ -542,9 +542,9 @@ public sealed class ResourceDeploymentMutationWriterTests(
         var loadMany = placementLookup is null ? defaultManyLookup : placementLookup.LoadManyAsync;
         return new(
             fixture.DbContext.ResourceDeployments,
-            (session, writes, cancellationToken) => fixture.DbContext.StoreEventAsync(
-                writes,
+            (session, writes, cancellationToken) => fixture.StoreOutboxWrites(
                 session,
+                writes,
                 cancellationToken),
             load,
             loadMany,

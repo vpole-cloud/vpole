@@ -27,6 +27,7 @@
         <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj" />
         <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
         <ProjectReference Include="..\..\Quotas\Quotas.Primitives\Quotas.Primitives.csproj" />
+        <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
     <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
     <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
     </ItemGroup>

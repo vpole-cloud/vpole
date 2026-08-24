@@ -5,6 +5,7 @@ open System.Threading
 open System.Threading.Tasks
 open MongoDB.Driver
 open Pole.Database
+open Pole.Features.Outbox.Contracts
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Persistence
 open Pole.Features.Postgres.Domain

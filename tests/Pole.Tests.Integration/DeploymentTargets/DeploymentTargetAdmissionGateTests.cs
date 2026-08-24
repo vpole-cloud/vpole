@@ -74,7 +74,7 @@ public sealed class DeploymentTargetAdmissionGateTests(MongoReplicaSetFixture fi
             await Fixture.DbContext.Postgres.CountDocumentsAsync(
                 Builders<Pole.Features.Postgres.Domain.PostgresCluster>.Filter.Empty),
             await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
-                Builders<Pole.Features.Shared.Models.OutboxMessage>.Filter.Empty),
+                Builders<Pole.Features.Outbox.Application.Model.OutboxMessage>.Filter.Empty),
             await Fixture.Database
                 .GetCollection<Pole.Features.Quotas.Domain.QuotaReservation>("QuotaReservations")
                 .CountDocumentsAsync(

@@ -22,7 +22,7 @@
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
       <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
+      <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
     </ItemGroup>
 
 </Project>
-

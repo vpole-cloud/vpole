@@ -37,6 +37,7 @@ using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application;
 using Pole.Features.Postgres.Application.Kubernetes;
+using Pole.Features.Outbox.Application.Persistence;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Outbox.Application.Migrations;
 using Pole.Features.Quotas.Application;
@@ -184,6 +185,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton<DiscoverKubernetesPersistentVolumeClaims>(
             storageDiscovery.GetPersistentVolumeClaimsAsync);
         builder.Services.AddMongoDbContextInterfaces();
+        builder.Services.AddOutboxPersistence();
         builder.Services.AddFunctionAppsFeature();
         builder.Services.AddResourceDeploymentsFeature(builder.Configuration);
         builder.Services.AddResourceGroupsFeature(builder.Configuration);
