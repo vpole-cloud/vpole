@@ -264,7 +264,13 @@ internal sealed class ResourceDeploymentWriter(
         {
             ResourceGroupPlacementResourceGroupNotFound => new(
                 new ResourcePlacementResourceGroupNotFound(resourceGroupId)),
-            _ => new(new ResourcePlacementUnavailable(resourceGroupId))
+            ResourceGroupPlacementResourceGroupDeleting
+            or ResourceGroupPlacementIsolationScopeNotFound
+            or ResourceGroupPlacementIsolationScopeDeleting
+            or ResourceGroupPlacementDeploymentTargetRejected
+            or ResourceGroupPlacementDeploymentTargetReferenceRejected
+            or ResourceGroupPlacementTargetResolutionChanged
+            or ResourceGroupPlacementChanged => new(new ResourcePlacementUnavailable(resourceGroupId))
         };
 
     private static void EnsureTransaction(IClientSessionHandle session)
