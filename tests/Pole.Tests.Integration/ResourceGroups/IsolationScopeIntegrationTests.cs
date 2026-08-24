@@ -2,6 +2,7 @@ using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.ResourceGroups.Application.Migrations;
+using Pole.Features.ResourceGroups.Application.Persistence;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Shared.Models;
 using Pole.ResultType;
@@ -29,14 +30,14 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             new CreateIsolationScopeRequestBody("Production"),
             resourceGroup.TenantId));
 
-        var created = createResult.AssertSuccess();
+        var created = AssertCreated(createResult.AssertHandlerOutcome());
         Assert.False(created.IsDefault);
         Assert.Equal("Production", created.Name);
 
         var listResult = await Mediator.Send(new GetIsolationScopesRequest(
             resourceGroup.Id,
             resourceGroup.TenantId));
-        var scopes = listResult.AssertSuccess();
+        var scopes = AssertScopes(listResult.AssertHandlerOutcome());
         Assert.Equal(2, scopes.Count);
         Assert.True(scopes[0].IsDefault);
         Assert.Equal(created.Id, scopes[1].Id);
@@ -45,7 +46,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             resourceGroup.Id,
             created.Id,
             resourceGroup.TenantId));
-        var found = getResult.AssertSuccess();
+        var found = AssertScope(getResult.AssertHandlerOutcome());
         Assert.Equal(created.Id, found.Id);
         Assert.Equal(created.ResourceGroupId, found.ResourceGroupId);
         Assert.Equal(created.Name, found.Name);
@@ -68,9 +69,13 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             new CreateIsolationScopeRequestBody(" production "),
             resourceGroup.TenantId));
 
-        _ = first.AssertSuccess();
-        var failure = duplicate.AssertFailure();
-        Assert.IsType<ConflictFailure>(failure);
+        _ = AssertCreated(first.AssertHandlerOutcome());
+        var failure = duplicate.AssertHandlerOutcome() switch
+        {
+            CreateIsolationScopeError error => error,
+            _ => throw new Xunit.Sdk.XunitException("Expected isolation-scope creation failure.")
+        };
+        Assert.True(failure is IsolationScopeNameConflict);
         Assert.Equal(2L, await DbContext.IsolationScopes.CountDocumentsAsync(
             scope => scope.ResourceGroupId == resourceGroup.Id));
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("isolation-scope-created"));
@@ -97,10 +102,8 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             scope.Id,
             "507f1f77bcf86cd799439012"));
 
-        var crossGroupFailure = crossGroup.AssertFailure();
-        Assert.IsType<NotFoundFailure>(crossGroupFailure);
-        var crossTenantFailure = crossTenant.AssertFailure();
-        Assert.IsType<NotFoundFailure>(crossTenantFailure);
+        Assert.True(crossGroup.AssertHandlerOutcome() is ResourceGroupNotFound or IsolationScopeNotFound);
+        Assert.True(crossTenant.AssertHandlerOutcome() is ResourceGroupNotFound or IsolationScopeNotFound);
     }
 
     [Fact]
@@ -137,13 +140,13 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
                 cell.Id,
                 resourceGroup.TenantId));
 
-        var scopes = scopesResult.AssertSuccess();
+        var scopes = AssertScopes(scopesResult.AssertHandlerOutcome());
         Assert.Contains(scopes, item => item.Id == scope.Id);
-        var foundScope = scopeResult.AssertSuccess();
+        var foundScope = AssertScope(scopeResult.AssertHandlerOutcome());
         Assert.Equal(scope.Id, foundScope.Id);
-        var cells = cellsResult.AssertSuccess();
+        var cells = AssertRuntimeCells(cellsResult.AssertHandlerOutcome());
         Assert.Contains(cells, item => item.Id == cell.Id);
-        var foundCell = cellResult.AssertSuccess();
+        var foundCell = AssertRuntimeCell(cellResult.AssertHandlerOutcome());
         Assert.Equal(cell.Id, foundCell.Id);
     }
 
@@ -163,8 +166,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             scope.Id,
             resourceGroup.TenantId));
 
-        var response = result.AssertSuccess();
-        Assert.True(response.Deleted);
+        Assert.True(result.AssertHandlerOutcome() is IsolationScopeDeletionCompleted);
         Assert.False(await DbContext.IsolationScopes
             .Find(item => item.Id == scope.Id)
             .AnyAsync());
@@ -182,8 +184,12 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             resourceGroup.DefaultIsolationScopeId,
             resourceGroup.TenantId));
 
-        var failure = result.AssertFailure();
-        Assert.IsType<ConflictFailure>(failure);
+        var failure = result.AssertHandlerOutcome() switch
+        {
+            IsolationScopeDeletionError error => error,
+            _ => throw new Xunit.Sdk.XunitException("Expected isolation-scope deletion failure.")
+        };
+        Assert.True(failure is DefaultIsolationScopeDeletionForbidden);
         Assert.True(await DbContext.IsolationScopes
             .Find(scope => scope.Id == resourceGroup.DefaultIsolationScopeId)
             .AnyAsync());
@@ -223,9 +229,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             scope.Id,
             resourceGroup.TenantId));
 
-        var response = result.AssertSuccess();
-        Assert.False(response.Deleted);
-        Assert.True(response.DeletionRequested);
+        Assert.True(result.AssertHandlerOutcome() is IsolationScopeDeletionRequested);
         var savedScope = await DbContext.IsolationScopes
             .Find(item => item.Id == scope.Id)
             .SingleAsync();
@@ -280,4 +284,45 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.Contains(cellIndexes, index =>
             index["name"] == "IX_RuntimeCells_Tenant_Id");
     }
+
+    private static IsolationScopeDto AssertCreated(CreateIsolationScopeOutcome outcome) => outcome switch
+    {
+        IsolationScopeDto success => success,
+        CreateIsolationScopeError error => throw new Xunit.Sdk.XunitException(
+            $"Expected isolation-scope creation success, got {error.GetType().Name}.")
+    };
+
+    private static IReadOnlyList<IsolationScopeDto> AssertScopes(
+        GetIsolationScopesOutcome outcome) => outcome switch
+    {
+        IReadOnlyList<IsolationScopeDto> success => success,
+        ResourceGroupNotFound error => throw new Xunit.Sdk.XunitException(
+            $"Expected isolation scopes, resource group '{error.ResourceGroupId}' was not found.")
+    };
+
+    private static IsolationScopeDto AssertScope(GetIsolationScopeOutcome outcome) => outcome switch
+    {
+        IsolationScopeDto success => success,
+        ResourceGroupNotFound error => throw new Xunit.Sdk.XunitException(
+            $"Expected isolation scope, resource group '{error.ResourceGroupId}' was not found."),
+        IsolationScopeNotFound error => throw new Xunit.Sdk.XunitException(
+            $"Expected isolation scope '{error.IsolationScopeId}' to exist.")
+    };
+
+    private static IReadOnlyList<RuntimeCellDto> AssertRuntimeCells(
+        GetRuntimeCellsOutcome outcome) => outcome switch
+    {
+        IReadOnlyList<RuntimeCellDto> success => success,
+        ResourceGroupNotFound error => throw new Xunit.Sdk.XunitException(
+            $"Expected runtime cells, resource group '{error.ResourceGroupId}' was not found.")
+    };
+
+    private static RuntimeCellDto AssertRuntimeCell(GetRuntimeCellOutcome outcome) => outcome switch
+    {
+        RuntimeCellDto success => success,
+        ResourceGroupNotFound error => throw new Xunit.Sdk.XunitException(
+            $"Expected runtime cell, resource group '{error.ResourceGroupId}' was not found."),
+        RuntimeCellNotFound error => throw new Xunit.Sdk.XunitException(
+            $"Expected runtime cell '{error.RuntimeCellId}' to exist.")
+    };
 }

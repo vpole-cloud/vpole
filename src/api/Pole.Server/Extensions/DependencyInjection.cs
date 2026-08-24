@@ -36,11 +36,7 @@ using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Application.Placement;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Jobs;
-using Pole.Features.ResourceGroups.Application.Kubernetes;
-using Pole.Features.ResourceGroups.Application.Services;
-using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Shared.Models;
@@ -179,26 +175,12 @@ public static class DependencyInjection
                     .GetRequiredService<MongoRunTransaction>()
                     .InvokeAsync);
             services.TryAddSingleton<ISearchDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
-            services.TryAddSingleton<IResourceGroupDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ITenantDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IUserDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IGitProviderDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<IContainerRegistryDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.TryAddSingleton<ISourceBuildDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             services.AddHttpContextAccessor();
-            services.AddResourceGroupHttpMappings();
-            services.TryAddScoped<ResourceGroupLookup>();
-            services.TryAddScoped<IResourceGroupLookup>(provider =>
-                provider.GetRequiredService<ResourceGroupLookup>());
-            services.TryAddScoped<GetResourceGroupOwnership>(provider =>
-                provider.GetRequiredService<ResourceGroupLookup>()
-                    .GetOwnershipOutcomeAsync);
-            services.TryAddScoped<IResourcePlacementService, ResourcePlacementService>();
-            services.TryAddScoped<IResourcePlacementLookup, ResourcePlacementLookup>();
-            services.TryAddScoped<IResourceGroupDeletionFinalizer, ResourceGroupDeletionFinalizer>();
-            services.TryAddSingleton<IRuntimeCellNamespaceNameGenerator, RuntimeCellNamespaceNameGenerator>();
-            services.TryAddScoped<IRuntimeCellNamespaceManager, KubernetesRuntimeCellNamespaceManager>();
-            services.TryAddScoped<RuntimeCellRecoveryJob>();
             services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
             return services;
         }
@@ -277,14 +259,6 @@ public static class DependencyInjection
                 .ValidateOnStart();
             services.AddSingleton(
                 sp => sp.GetRequiredService<IOptions<OutboxSettings>>().Value);
-            services.AddSingleton<
-                IValidateOptions<KubernetesOptions>,
-                RuntimeCellNamespaceOptionsValidator>();
-            services.AddOptions<KubernetesOptions>()
-                .Bind(configuration.GetSection(KubernetesOptions.SectionName))
-                .ValidateOnStart();
-            services.AddSingleton(
-                sp => sp.GetRequiredService<IOptions<KubernetesOptions>>().Value);
             services.AddSettingsSection<PostgresSettings>(PostgresSettings.SectionName, configuration);
             services.AddOptions<QuotaSettings>()
                 .Bind(configuration.GetSection(QuotaSettings.SectionName))

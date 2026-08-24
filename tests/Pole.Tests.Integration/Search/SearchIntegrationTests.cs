@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Search.Application.Common;
@@ -163,7 +164,12 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     public async Task ResourceGroupUpdate_RebuildsProjection_WithoutDescriptionRows()
     {
         var createResult = await Mediator.Send(TestData.CreateResourceGroupRequest("ops"));
-        Assert.True(createResult.TryGetValue(out var created, out _));
+        var created = createResult.AssertHandlerOutcome() switch
+        {
+            ResourceGroupDto success => success,
+            CreateResourceGroupError creationError => throw new Xunit.Sdk.XunitException(
+                $"Expected resource-group creation success, got {creationError.GetType().Name}.")
+        };
 
         await IndexResourceGroupCreatedAsync(created.Id);
 

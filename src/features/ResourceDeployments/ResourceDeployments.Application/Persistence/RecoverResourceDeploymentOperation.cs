@@ -16,7 +16,7 @@ internal sealed class RecoverResourceDeploymentOperation(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     RunMongoTransaction<long> runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites,
-    IResourcePlacementLookup placementLookup)
+    LoadResourcePlacementInTransaction loadResourcePlacement)
 {
     public Task<Result<long>> InvokeAsync(
         string deploymentId,
@@ -64,7 +64,7 @@ internal sealed class RecoverResourceDeploymentOperation(
                         ct);
 
                 case WaitingForRuntimeCellResourceDeploymentState:
-                    var runtimeCell = await placementLookup.FindAsync(
+                    var runtimeCell = await loadResourcePlacement(
                         current.TenantId,
                         current.RuntimeCellId,
                         session,

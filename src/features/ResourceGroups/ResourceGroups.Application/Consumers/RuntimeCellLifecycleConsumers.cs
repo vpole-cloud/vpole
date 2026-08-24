@@ -1,10 +1,6 @@
 using MassTransit;
-using MongoDB.Driver;
-using Pole.Database;
-using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
-using Pole.Features.ResourceGroups.Application.Services;
+using Pole.Features.ResourceGroups.Application.Persistence;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.ResultType;
@@ -12,9 +8,8 @@ using Pole.ResultType;
 namespace Pole.Features.ResourceGroups.Application.Consumers;
 
 public sealed class ReconcileRuntimeCellOnReconciliationRequestedConsumer(
-    IResourceGroupDbContext dbContext,
-    IRuntimeCellNamespaceManager namespaceManager,
-    TimeProvider timeProvider)
+    RuntimeCellLifecyclePersistence persistence,
+    EnsureRuntimeCellNamespace ensureRuntimeCellNamespace)
     : IConsumer<RuntimeCellReconciliationRequestedEvent>
 {
     public Task Consume(ConsumeContext<RuntimeCellReconciliationRequestedEvent> context) =>
@@ -24,11 +19,10 @@ public sealed class ReconcileRuntimeCellOnReconciliationRequestedConsumer(
         RuntimeCellReconciliationRequestedEvent message,
         CancellationToken cancellationToken = default)
     {
-        var runtimeCell = await dbContext.RuntimeCells
-            .Find(cell =>
-                cell.Id == message.RuntimeCellId &&
-                cell.TenantId == message.EventCore.TenantId)
-            .FirstOrDefaultAsync(cancellationToken);
+        var runtimeCell = await persistence.LoadAsync(
+            message.EventCore.TenantId,
+            message.RuntimeCellId,
+            cancellationToken);
         if (runtimeCell is null ||
             runtimeCell.DesiredGeneration != message.Generation ||
             runtimeCell.State is not ProvisioningRuntimeCellState provisioning ||
@@ -37,113 +31,21 @@ public sealed class ReconcileRuntimeCellOnReconciliationRequestedConsumer(
             return;
         }
 
-        var namespaceResult = await namespaceManager.EnsureCreatedAsync(
+        var namespaceResult = await ensureRuntimeCellNamespace(
             runtimeCell,
             cancellationToken);
-        if (namespaceResult is ISuccess)
-        {
-            await PersistReadyAsync(runtimeCell, message.Generation, cancellationToken);
-            return;
-        }
-
-        await PersistFailureAsync(
+        await persistence.PersistReconciliationAsync(
             runtimeCell,
             message.Generation,
-            (Failure)namespaceResult,
+            namespaceResult,
             cancellationToken);
-    }
-
-    private async Task PersistReadyAsync(
-        RuntimeCell runtimeCell,
-        long generation,
-        CancellationToken cancellationToken)
-    {
-        var ready = runtimeCell.MarkReady(
-            generation,
-            timeProvider.GetUtcNow().UtcDateTime);
-        await dbContext.RunInTransactionAsync(async (session, ct) =>
-        {
-            var replacement = await dbContext.RuntimeCells.ReplaceOneAsync(
-                session,
-                CurrentStateFilter<ProvisioningRuntimeCellState>(
-                    runtimeCell,
-                    generation),
-                ready,
-                cancellationToken: ct);
-            if (replacement.ModifiedCount == 0)
-                return Result.Success();
-
-            await dbContext.StoreEventAsync(ready.ToReadyEvent(), session, ct);
-            return Result.Success();
-        }, cancellationToken: cancellationToken);
-    }
-
-    private async Task PersistFailureAsync(
-        RuntimeCell runtimeCell,
-        long generation,
-        Failure failure,
-        CancellationToken cancellationToken)
-    {
-        var attemptedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
-        var failed = runtimeCell.MarkFailed(
-            generation,
-            RuntimeCellOperation.Reconciliation,
-            FailureCode(failure),
-            "The Kubernetes namespace reconciliation attempt failed.",
-            attemptedAtUtc,
-            attemptedAtUtc.Add(RetryDelay(generation)));
-        await dbContext.RunInTransactionAsync(async (session, ct) =>
-        {
-            var replacement = await dbContext.RuntimeCells.ReplaceOneAsync(
-                session,
-                CurrentStateFilter<ProvisioningRuntimeCellState>(
-                    runtimeCell,
-                    generation),
-                failed,
-                cancellationToken: ct);
-            if (replacement.ModifiedCount == 0)
-                return Result.Success();
-
-            await dbContext.StoreEventAsync(
-                failed.ToReconciliationFailedEvent(),
-                session,
-                ct);
-            return Result.Success();
-        }, cancellationToken: cancellationToken);
-    }
-
-    internal static FilterDefinition<RuntimeCell> CurrentStateFilter<TState>(
-        RuntimeCell runtimeCell,
-        long generation)
-        where TState : RuntimeCellState =>
-        Builders<RuntimeCell>.Filter.And(
-            Builders<RuntimeCell>.Filter.Eq(cell => cell.Id, runtimeCell.Id),
-            Builders<RuntimeCell>.Filter.Eq(cell => cell.TenantId, runtimeCell.TenantId),
-            Builders<RuntimeCell>.Filter.Eq(cell => cell.DesiredGeneration, generation),
-            Builders<RuntimeCell>.Filter.OfType<RuntimeCellState, TState>(
-                cell => cell.State));
-
-    internal static string FailureCode(Failure failure) =>
-        failure switch
-        {
-            ConflictFailure => "NamespaceOwnershipConflict",
-            ExternalServiceFailure => "NamespaceOperationFailed",
-            _ => "NamespaceOperationRejected"
-        };
-
-    internal static TimeSpan RetryDelay(long generation)
-    {
-        var exponent = (int)Math.Clamp(generation - 1, 0, 5);
-        return TimeSpan.FromSeconds(Math.Min(30 * (1 << exponent), 900));
     }
 }
 
 public sealed class DeleteRuntimeCellOnDeletionRequestedConsumer(
-    IResourceGroupDbContext dbContext,
-    IRuntimeCellNamespaceManager namespaceManager,
-    ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges,
-    IResourceGroupDeletionFinalizer deletionFinalizer,
-    TimeProvider timeProvider)
+    RuntimeCellLifecyclePersistence persistence,
+    DeleteRuntimeCellNamespace deleteRuntimeCellNamespace,
+    FinalizeResourceGroupDeletion finalizeResourceGroupDeletion)
     : IConsumer<RuntimeCellDeletionRequestedEvent>
 {
     public Task Consume(ConsumeContext<RuntimeCellDeletionRequestedEvent> context) =>
@@ -153,11 +55,10 @@ public sealed class DeleteRuntimeCellOnDeletionRequestedConsumer(
         RuntimeCellDeletionRequestedEvent message,
         CancellationToken cancellationToken = default)
     {
-        var runtimeCell = await dbContext.RuntimeCells
-            .Find(cell =>
-                cell.Id == message.RuntimeCellId &&
-                cell.TenantId == message.EventCore.TenantId)
-            .FirstOrDefaultAsync(cancellationToken);
+        var runtimeCell = await persistence.LoadAsync(
+            message.EventCore.TenantId,
+            message.RuntimeCellId,
+            cancellationToken);
         if (runtimeCell is null ||
             runtimeCell.DesiredGeneration != message.Generation ||
             runtimeCell.State is not DeletingRuntimeCellState deleting ||
@@ -166,90 +67,22 @@ public sealed class DeleteRuntimeCellOnDeletionRequestedConsumer(
             return;
         }
 
-        var namespaceResult = await namespaceManager.DeleteAsync(
+        var namespaceResult = await deleteRuntimeCellNamespace(
             runtimeCell,
             cancellationToken);
-        if (namespaceResult is not ISuccess)
-        {
-            await PersistFailureAsync(
-                runtimeCell,
-                message.Generation,
-                (Failure)namespaceResult,
-                cancellationToken);
-            return;
-        }
-
-        var deleted = runtimeCell.MarkDeleted(
+        var finalizationAllowed = await persistence.PersistDeletionAsync(
+            runtimeCell,
             message.Generation,
-            timeProvider.GetUtcNow().UtcDateTime);
-        var persistence = await dbContext.RunInTransactionAsync(async (session, ct) =>
+            namespaceResult,
+            cancellationToken);
+        if (finalizationAllowed)
         {
-            var replacement = await dbContext.RuntimeCells.ReplaceOneAsync(
-                session,
-                ReconcileRuntimeCellOnReconciliationRequestedConsumer
-                    .CurrentStateFilter<DeletingRuntimeCellState>(
-                    runtimeCell,
-                    message.Generation),
-                deleted,
-                cancellationToken: ct);
-            if (replacement.ModifiedCount == 0)
-                return Result.Success();
-
-            var unregister = await applyDeploymentTargetReferenceChanges(
-                new DeploymentTargetReferenceOwner(
-                    ResourcePlacementService.ReferenceOwnerType,
-                    runtimeCell.Id),
-                [],
-                [runtimeCell.DeploymentTargetId],
-                session,
-                ct);
-            if (unregister is Err<DeploymentTargetReferenceChangeRejected>)
-            {
-                return Failures.Conflict(
-                    "The deployment-target reference could not be removed while deleting the runtime cell.");
-            }
-
-            await dbContext.StoreEventAsync(deleted.ToDeletedEvent(), session, ct);
-            return Result.Success();
-        }, cancellationToken: cancellationToken);
-
-        if (persistence is ISuccess)
-        {
-            await deletionFinalizer.TryFinalizeAsync(
+            await finalizeResourceGroupDeletion(
                 runtimeCell.TenantId,
                 runtimeCell.ResourceGroupId,
                 runtimeCell.IsolationScopeId,
                 cancellationToken);
         }
-    }
-
-    private async Task PersistFailureAsync(
-        RuntimeCell runtimeCell,
-        long generation,
-        Failure failure,
-        CancellationToken cancellationToken)
-    {
-        var attemptedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
-        var failed = runtimeCell.MarkFailed(
-            generation,
-            RuntimeCellOperation.Deletion,
-            ReconcileRuntimeCellOnReconciliationRequestedConsumer.FailureCode(failure),
-            "The Kubernetes namespace deletion attempt failed.",
-            attemptedAtUtc,
-            attemptedAtUtc.Add(
-                ReconcileRuntimeCellOnReconciliationRequestedConsumer.RetryDelay(generation)));
-        await dbContext.RunInTransactionAsync(async (session, ct) =>
-        {
-            await dbContext.RuntimeCells.ReplaceOneAsync(
-                session,
-                ReconcileRuntimeCellOnReconciliationRequestedConsumer
-                    .CurrentStateFilter<DeletingRuntimeCellState>(
-                    runtimeCell,
-                    generation),
-                failed,
-                cancellationToken: ct);
-            return Result.Success();
-        }, cancellationToken: cancellationToken);
     }
 }
 

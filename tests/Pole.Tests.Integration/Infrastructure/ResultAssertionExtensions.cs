@@ -346,6 +346,14 @@ public static class ResultAssertionExtensions
             $"{failure.GetType().Name}: {failure.Message}");
     }
 
+    public static T AssertHandlerOutcome<T>(this MediatorResult<T> result)
+        where T : notnull =>
+        result.Match(
+            outcome => outcome,
+            rejected => throw new XunitException(
+                $"Expected a handler outcome, but the pipeline returned " +
+                $"'{rejected.Reason.GetType().Name}'."));
+
     public static Failure AssertFailure<T>(this MediatorResult<T> result)
         where T : notnull
     {

@@ -1,15 +1,13 @@
 using MongoDB.Bson;
 using Microsoft.Extensions.Options;
-using Pole.Features.ResourceGroups.Application.Services;
 
 namespace Pole.Features.ResourceGroups.Application.Kubernetes;
 
-public interface IRuntimeCellNamespaceNameGenerator
-{
-    string Generate(string tenantId, string isolationScopeId);
-}
+public delegate string GenerateRuntimeCellNamespaceName(
+    string tenantId,
+    string isolationScopeId);
 
-public sealed class RuntimeCellNamespaceNameGenerator : IRuntimeCellNamespaceNameGenerator
+public sealed class RuntimeCellNamespaceNameGenerator
 {
     private const int MaximumPrefixLength = 24;
     private readonly string _prefix;
@@ -20,7 +18,7 @@ public sealed class RuntimeCellNamespaceNameGenerator : IRuntimeCellNamespaceNam
         _prefix = NormalizePrefix(options.NamespaceNamePrefix);
     }
 
-    public string Generate(string tenantId, string isolationScopeId)
+    public string Invoke(string tenantId, string isolationScopeId)
     {
         var normalizedTenantId = NormalizeObjectId(tenantId, nameof(tenantId));
         var normalizedScopeId = NormalizeObjectId(isolationScopeId, nameof(isolationScopeId));

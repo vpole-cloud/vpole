@@ -7,8 +7,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
-using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
 using Pole.Server.Extensions;
@@ -26,8 +26,8 @@ public sealed class RuntimeCellNamespaceTests
             NamespaceNamePrefix = " --POLE__Control-Plane-With-A-Very-Long-Prefix!!-- "
         });
 
-        var first = subject.Generate(TenantId, ScopeId);
-        var repeated = subject.Generate(TenantId, ScopeId);
+        var first = subject.Invoke(TenantId, ScopeId);
+        var repeated = subject.Invoke(TenantId, ScopeId);
 
         Assert.Equal(first, repeated);
         Assert.Equal("polecontrol-plane-with-a-t-507f1f77-is-507f1f77bcf86cd799439013", first);
@@ -44,8 +44,8 @@ public sealed class RuntimeCellNamespaceTests
         });
         const string otherScopeId = "507f1f77bcf86cd799439099";
 
-        var first = subject.Generate(TenantId, ScopeId);
-        var second = subject.Generate(TenantId, otherScopeId);
+        var first = subject.Invoke(TenantId, ScopeId);
+        var second = subject.Invoke(TenantId, otherScopeId);
 
         Assert.EndsWith(ScopeId, first, StringComparison.Ordinal);
         Assert.EndsWith(otherScopeId, second, StringComparison.Ordinal);
@@ -77,7 +77,7 @@ public sealed class RuntimeCellNamespaceTests
             })
             .Build();
         using var host = new HostBuilder()
-            .ConfigureServices(services => services.AddSettings(configuration))
+            .ConfigureServices(services => services.AddResourceGroupsFeature(configuration))
             .Build();
 
         await Assert.ThrowsAsync<OptionsValidationException>(() => host.StartAsync());
@@ -112,7 +112,7 @@ public sealed class RuntimeCellNamespaceTests
 
         var result = await subject.EnsureCreatedAsync(runtimeCell);
 
-        Assert.IsAssignableFrom<ISuccess>(result);
+        Assert.True(result is Unit);
         Assert.Equal([runtimeCell.DeploymentTargetId], provider.RequestedTargetIds);
         Assert.Equal(1, handler.CreateRequests);
         Assert.NotNull(handler.CreatedNamespace);
@@ -135,7 +135,7 @@ public sealed class RuntimeCellNamespaceTests
 
         var result = await subject.EnsureCreatedAsync(runtimeCell);
 
-        Assert.IsAssignableFrom<ISuccess>(result);
+        Assert.True(result is Unit);
         Assert.Equal(1, handler.CreateRequests);
         Assert.Equal(1, handler.ReadRequests);
     }
@@ -157,8 +157,7 @@ public sealed class RuntimeCellNamespaceTests
 
         var result = await subject.EnsureCreatedAsync(runtimeCell);
 
-        var failure = Assert.IsType<ConflictFailure>(result);
-        Assert.DoesNotContain("provider-secret", failure.Message, StringComparison.Ordinal);
+        Assert.True(result is RuntimeCellNamespaceOwnershipConflict);
     }
 
     [Fact]
@@ -175,7 +174,7 @@ public sealed class RuntimeCellNamespaceTests
 
         var result = await subject.DeleteAsync(runtimeCell);
 
-        Assert.IsAssignableFrom<ISuccess>(result);
+        Assert.True(result is Unit);
         Assert.Equal(1, handler.ReadRequests);
         Assert.Equal(0, handler.DeleteRequests);
     }
@@ -195,7 +194,7 @@ public sealed class RuntimeCellNamespaceTests
 
         var result = await subject.DeleteAsync(runtimeCell);
 
-        Assert.IsAssignableFrom<ISuccess>(result);
+        Assert.True(result is Unit);
         Assert.Equal([runtimeCell.DeploymentTargetId], provider.RequestedTargetIds);
         Assert.Equal(1, handler.DeleteRequests);
     }
@@ -215,7 +214,7 @@ public sealed class RuntimeCellNamespaceTests
 
         var result = await subject.DeleteAsync(runtimeCell);
 
-        Assert.IsAssignableFrom<ISuccess>(result);
+        Assert.True(result is Unit);
         Assert.Equal(2, handler.ReadRequests);
         Assert.Equal(1, handler.DeleteRequests);
     }
@@ -235,8 +234,7 @@ public sealed class RuntimeCellNamespaceTests
 
         var result = await subject.DeleteAsync(runtimeCell);
 
-        var failure = Assert.IsType<ExternalServiceFailure>(result);
-        Assert.DoesNotContain("provider-secret", failure.Message, StringComparison.Ordinal);
+        Assert.True(result is RuntimeCellNamespaceUnavailable { DeletionPending: true });
         Assert.Equal(2, handler.ReadRequests);
         Assert.Equal(1, handler.DeleteRequests);
     }
@@ -258,7 +256,7 @@ public sealed class RuntimeCellNamespaceTests
 
         var result = await subject.DeleteAsync(runtimeCell);
 
-        Assert.IsType<ConflictFailure>(result);
+        Assert.True(result is RuntimeCellNamespaceOwnershipConflict);
         Assert.Equal(0, handler.DeleteRequests);
     }
 
@@ -275,9 +273,15 @@ public sealed class RuntimeCellNamespaceTests
 
         var result = await subject.EnsureCreatedAsync(CreateRuntimeCell());
 
-        var failure = Assert.IsType<ExternalServiceFailure>(result);
-        Assert.DoesNotContain("provider-secret-token", failure.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain("provider-secret-token", failure.Details, StringComparison.Ordinal);
+        var unavailable = result switch
+        {
+            RuntimeCellNamespaceUnavailable failure => failure,
+            RuntimeCellNamespaceOwnershipConflict => throw new Xunit.Sdk.XunitException(
+                "Expected a sanitized namespace-provider failure, got an ownership conflict."),
+            Unit => throw new Xunit.Sdk.XunitException(
+                "Expected a sanitized namespace-provider failure, got success.")
+        };
+        Assert.DoesNotContain("provider-secret-token", unavailable.KubernetesNamespace, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -303,7 +307,7 @@ public sealed class RuntimeCellNamespaceTests
         var namespaceName = new RuntimeCellNamespaceNameGenerator(new KubernetesOptions
         {
             NamespaceNamePrefix = "pole"
-        }).Generate(TenantId, ScopeId);
+        }).Invoke(TenantId, ScopeId);
         return RuntimeCellFactory.Create(
             TenantId,
             ResourceGroupId,

@@ -1,14 +1,11 @@
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.DeploymentTargets.Domain;
-using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Application.Kubernetes;
+using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.ResourceGroups.Application.Migrations;
-using Pole.Features.ResourceGroups.Application.Services;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Shared.Models;
@@ -21,7 +18,7 @@ namespace Pole.Tests.Integration.ResourceGroups;
 public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
-    private const string DefaultTargetId = "507f1f77bcf86cd799439071";
+    private const string DefaultTargetId = TestData.DefaultDeploymentTargetId;
     private const string SecondTargetId = "507f1f77bcf86cd799439072";
 
     public override async Task InitializeAsync()
@@ -35,32 +32,28 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
     public async Task ConcurrentResolve_CreatesOneCellReferenceAndInitialEvent()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var lookup = new PlacementTargetLookup();
-        var service = CreateService(lookup);
+        var resolve = Services.GetRequiredService<ResolveResourceGroupPlacement>();
+        var targets = Services.GetRequiredService<TestDeploymentTargetLookup>();
 
         var results = await Task.WhenAll(Enumerable.Range(0, 12)
-            .Select(_ => ResolveAsync(service, resourceGroup.Id, null, null)));
+            .Select(_ => ResolveAsync(resolve, resourceGroup.Id, null, null)));
 
-        var placements = results
-            .Select(result => result.AssertSuccess())
-            .ToList();
+        var placements = results.Select(AssertPlacement).ToList();
         Assert.Single(placements.Select(placement => placement.RuntimeCellId).Distinct());
         Assert.Equal(1L, await DbContext.RuntimeCells.CountDocumentsAsync(
             cell => cell.ResourceGroupId == resourceGroup.Id));
-        Assert.Equal(1L, await DbContext.DeploymentTargetReferences.CountDocumentsAsync(
-            reference =>
-                reference.OwnerType == ResourcePlacementService.ReferenceOwnerType &&
-                reference.OwnerId == placements[0].RuntimeCellId));
+        var referenceChange = Assert.Single(targets.ReferenceChanges);
+        Assert.Equal(ResourcePlacementReferenceOwnerTypes.RuntimeCell, referenceChange.Owner.Type);
+        Assert.Equal(placements[0].RuntimeCellId, referenceChange.Owner.Id);
+        Assert.Equal([DefaultTargetId], referenceChange.AddedDeploymentTargetIds);
+        Assert.Empty(referenceChange.RemovedDeploymentTargetIds);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
             "runtime-cell-reconciliation-requested"));
         var requestMessage = await DbContext.OutboxMessages
-            .Find(message =>
-                message.EventType == "runtime-cell-reconciliation-requested")
+            .Find(message => message.EventType == "runtime-cell-reconciliation-requested")
             .SingleAsync();
         Assert.Equal(
-            RuntimeCellPendingKey.Reconciliation(
-                placements[0].RuntimeCellId,
-                1),
+            RuntimeCellPendingKey.Reconciliation(placements[0].RuntimeCellId, 1),
             requestMessage.PendingKey);
         Assert.IsType<PendingOutboxMessageState>(requestMessage.State);
     }
@@ -69,19 +62,20 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
     public async Task ExistingCell_RemainsUsable_WhenTargetRejectsNewWorkloads()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var lookup = new PlacementTargetLookup();
-        var service = CreateService(lookup);
-        var created = await ResolveAsync(service, resourceGroup.Id, null, DefaultTargetId);
-        var first = created.AssertSuccess();
+        var targets = ConfigureTargets();
+        var resolve = Services.GetRequiredService<ResolveResourceGroupPlacement>();
+        var first = AssertPlacement(await ResolveAsync(
+            resolve,
+            resourceGroup.Id,
+            null,
+            DefaultTargetId));
 
-        lookup.RejectNewWorkloads = true;
-        var existing = await ResolveAsync(service, resourceGroup.Id, null, DefaultTargetId);
-        var rejectedNewTarget = await ResolveAsync(service, resourceGroup.Id, null, SecondTargetId);
+        targets.RejectNewWorkloads = true;
+        var existing = await ResolveAsync(resolve, resourceGroup.Id, null, DefaultTargetId);
+        var rejectedNewTarget = await ResolveAsync(resolve, resourceGroup.Id, null, SecondTargetId);
 
-        var same = existing.AssertSuccess();
-        Assert.Equal(first.RuntimeCellId, same.RuntimeCellId);
-        var failure = rejectedNewTarget.AssertFailure();
-        Assert.IsType<ConflictFailure>(failure);
+        Assert.Equal(first.RuntimeCellId, AssertPlacement(existing).RuntimeCellId);
+        _ = AssertDeploymentTargetRejected(rejectedNewTarget);
         Assert.Equal(1L, await DbContext.RuntimeCells.CountDocumentsAsync(
             cell => cell.ResourceGroupId == resourceGroup.Id));
     }
@@ -90,21 +84,20 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
     public async Task SameScope_UsesSameNamespaceName_InDifferentTargets()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var service = CreateService(new PlacementTargetLookup());
+        ConfigureTargets();
+        var resolve = Services.GetRequiredService<ResolveResourceGroupPlacement>();
 
-        var firstResult = await ResolveAsync(
-            service,
+        var first = AssertPlacement(await ResolveAsync(
+            resolve,
             resourceGroup.Id,
             resourceGroup.DefaultIsolationScopeId,
-            DefaultTargetId);
-        var secondResult = await ResolveAsync(
-            service,
+            DefaultTargetId));
+        var second = AssertPlacement(await ResolveAsync(
+            resolve,
             resourceGroup.Id,
             resourceGroup.DefaultIsolationScopeId,
-            SecondTargetId);
+            SecondTargetId));
 
-        var first = firstResult.AssertSuccess();
-        var second = secondResult.AssertSuccess();
         Assert.NotEqual(first.RuntimeCellId, second.RuntimeCellId);
         Assert.NotEqual(first.DeploymentTargetId, second.DeploymentTargetId);
         Assert.Equal(first.KubernetesNamespace, second.KubernetesNamespace);
@@ -114,18 +107,15 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
     public async Task BatchResolve_CreatesCellsOnce_AndPreservesRequestedTargetOrder()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var service = CreateService(new PlacementTargetLookup());
+        ConfigureTargets();
+        var resolve = Services.GetRequiredService<ResolveResourceGroupPlacements>();
 
-        var result = await DbContext.RunInTransactionAsync<IReadOnlyList<ResourcePlacement>>(
-            (session, cancellationToken) => service.ResolveOrCreateManyAsync(
-                resourceGroup.TenantId,
-                resourceGroup.Id,
-                resourceGroup.DefaultIsolationScopeId,
-                [SecondTargetId, DefaultTargetId],
-                session,
-                cancellationToken));
+        var placements = AssertPlacements(await ResolveManyAsync(
+            resolve,
+            resourceGroup.Id,
+            resourceGroup.DefaultIsolationScopeId,
+            [SecondTargetId, DefaultTargetId]));
 
-        var placements = result.AssertSuccess();
         Assert.Equal(
             [SecondTargetId, DefaultTargetId],
             placements.Select(placement => placement.DeploymentTargetId));
@@ -136,17 +126,18 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
     }
 
     [Fact]
-    public async Task Find_many_returns_requested_tenant_scoped_placement_snapshots()
+    public async Task LoadMany_ReturnsRequestedTenantScopedPlacementSnapshots()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var service = CreateService(new PlacementTargetLookup());
-        var first = (await ResolveAsync(service, resourceGroup.Id, null, DefaultTargetId)).AssertSuccess();
-        var second = (await ResolveAsync(service, resourceGroup.Id, null, SecondTargetId)).AssertSuccess();
-        var lookup = new ResourcePlacementLookup(DbContext);
+        ConfigureTargets();
+        var resolve = Services.GetRequiredService<ResolveResourceGroupPlacement>();
+        var first = AssertPlacement(await ResolveAsync(resolve, resourceGroup.Id, null, DefaultTargetId));
+        var second = AssertPlacement(await ResolveAsync(resolve, resourceGroup.Id, null, SecondTargetId));
+        var load = Services.GetRequiredService<LoadResourcePlacementsInTransaction>();
 
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        var placements = await lookup.FindManyAsync(
+        var placements = await load(
             resourceGroup.TenantId,
             [first.RuntimeCellId, second.RuntimeCellId, ObjectId.GenerateNewId().ToString()],
             session);
@@ -154,8 +145,7 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
 
         Assert.Equal(
             [first.RuntimeCellId, second.RuntimeCellId],
-            placements
-                .Select(placement => placement.RuntimeCellId)
+            placements.Select(placement => placement.RuntimeCellId)
                 .OrderBy(id => id, StringComparer.Ordinal));
         Assert.All(placements, placement =>
             Assert.Equal(resourceGroup.Id, placement.ResourceGroupId));
@@ -165,54 +155,96 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
     public async Task ConcurrentPlacementAndDeletion_DoNotLeaveActivePlacementUnderDeletedAggregate()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var service = CreateService(new PlacementTargetLookup());
+        var resolve = Services.GetRequiredService<ResolveResourceGroupPlacement>();
 
         await Task.WhenAll(
-            ResolveAsync(service, resourceGroup.Id, null, DefaultTargetId),
-            Mediator.Send(new DeleteResourceGroupRequest(
-                resourceGroup.Id,
-                resourceGroup.TenantId)));
+            ResolveAsync(resolve, resourceGroup.Id, null, DefaultTargetId),
+            Mediator.Send(new DeleteResourceGroupRequest(resourceGroup.Id, resourceGroup.TenantId)));
 
-        var savedGroup = await DbContext.ResourceGroups
-            .Find(group => group.Id == resourceGroup.Id)
-            .FirstOrDefaultAsync();
-        var cells = await DbContext.RuntimeCells
-            .Find(cell => cell.ResourceGroupId == resourceGroup.Id)
-            .ToListAsync();
-        if (savedGroup is null)
-        {
-            Assert.Empty(cells);
-            return;
-        }
-
-        Assert.IsType<DeletingResourceGroupLifecycleState>(savedGroup.Lifecycle);
-        Assert.All(cells, cell =>
-            Assert.IsType<DeletingRuntimeCellState>(cell.State));
+        await AssertDeletionFenceAsync(resourceGroup.Id);
     }
 
     [Fact]
     public async Task ConcurrentExistingCellReuseAndDeletion_AreParentFenced()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var service = CreateService(new PlacementTargetLookup());
-        var initial = await ResolveAsync(
-            service,
-            resourceGroup.Id,
-            null,
-            DefaultTargetId);
-        _ = initial.AssertSuccess();
+        var resolve = Services.GetRequiredService<ResolveResourceGroupPlacement>();
+        _ = AssertPlacement(await ResolveAsync(resolve, resourceGroup.Id, null, DefaultTargetId));
 
         await Task.WhenAll(
-            ResolveAsync(service, resourceGroup.Id, null, DefaultTargetId),
-            Mediator.Send(new DeleteResourceGroupRequest(
-                resourceGroup.Id,
-                resourceGroup.TenantId)));
+            ResolveAsync(resolve, resourceGroup.Id, null, DefaultTargetId),
+            Mediator.Send(new DeleteResourceGroupRequest(resourceGroup.Id, resourceGroup.TenantId)));
 
+        await AssertDeletionFenceAsync(resourceGroup.Id);
+    }
+
+    private TestDeploymentTargetLookup ConfigureTargets()
+    {
+        var targets = Services.GetRequiredService<TestDeploymentTargetLookup>();
+        targets.AddEligibleTarget(SecondTargetId, "apps.test.local");
+        return targets;
+    }
+
+    private async Task<Result<ResourcePlacement, ResourceGroupPlacementError>> ResolveAsync(
+        ResolveResourceGroupPlacement resolve,
+        string resourceGroupId,
+        string? isolationScopeId,
+        string? deploymentTargetId)
+    {
+        var transaction = new MongoRunTransaction(Fixture.Client);
+        return await transaction.InvokeOutcomeAsync<Result<
+            ResourcePlacement,
+            ResourceGroupPlacementError>>(async (context, ct) =>
+        {
+            var result = await resolve(
+                TestData.TenantId,
+                resourceGroupId,
+                isolationScopeId,
+                deploymentTargetId,
+                context.Session,
+                ct);
+            return result switch
+            {
+                Ok<ResourcePlacement> => context.Commit(result),
+                Err<ResourceGroupPlacementError> => context.Abort(result)
+            };
+        });
+    }
+
+    private async Task<Result<IReadOnlyList<ResourcePlacement>, ResourceGroupPlacementError>>
+        ResolveManyAsync(
+            ResolveResourceGroupPlacements resolve,
+            string resourceGroupId,
+            string isolationScopeId,
+            IReadOnlyList<string> deploymentTargetIds)
+    {
+        var transaction = new MongoRunTransaction(Fixture.Client);
+        return await transaction.InvokeOutcomeAsync<Result<
+            IReadOnlyList<ResourcePlacement>,
+            ResourceGroupPlacementError>>(async (context, ct) =>
+        {
+            var result = await resolve(
+                TestData.TenantId,
+                resourceGroupId,
+                isolationScopeId,
+                deploymentTargetIds,
+                context.Session,
+                ct);
+            return result switch
+            {
+                Ok<IReadOnlyList<ResourcePlacement>> => context.Commit(result),
+                Err<ResourceGroupPlacementError> => context.Abort(result)
+            };
+        });
+    }
+
+    private async Task AssertDeletionFenceAsync(string resourceGroupId)
+    {
         var savedGroup = await DbContext.ResourceGroups
-            .Find(group => group.Id == resourceGroup.Id)
+            .Find(group => group.Id == resourceGroupId)
             .FirstOrDefaultAsync();
         var cells = await DbContext.RuntimeCells
-            .Find(cell => cell.ResourceGroupId == resourceGroup.Id)
+            .Find(cell => cell.ResourceGroupId == resourceGroupId)
             .ToListAsync();
         if (savedGroup is null)
         {
@@ -221,151 +253,39 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
         }
 
         Assert.IsType<DeletingResourceGroupLifecycleState>(savedGroup.Lifecycle);
-        Assert.All(cells, cell =>
-            Assert.IsType<DeletingRuntimeCellState>(cell.State));
+        Assert.All(cells, cell => Assert.IsType<DeletingRuntimeCellState>(cell.State));
     }
 
-    private ResourcePlacementService CreateService(PlacementTargetLookup lookup) =>
-        new(
-            DbContext,
-            lookup.LookupAsync,
-            lookup.LookupDefaultAsync,
-            lookup.AdmitForWorkloadAsync,
-            lookup.AdmitDefaultForNewWorkloadAsync,
-            new MongoReferenceAdmission(DbContext).ApplyChangesOutcomeAsync,
-            new RuntimeCellNamespaceNameGenerator(
-                new KubernetesOptions { NamespaceNamePrefix = "pole-test" }),
-            TimeProvider.System);
-
-    private Task<Result<ResourcePlacement>> ResolveAsync(
-        IResourcePlacementService service,
-        string resourceGroupId,
-        string? isolationScopeId,
-        string? deploymentTargetId) =>
-        DbContext.RunInTransactionAsync<ResourcePlacement>(
-            (session, cancellationToken) => service.ResolveOrCreateAsync(
-                TestData.TenantId,
-                resourceGroupId,
-                isolationScopeId,
-                deploymentTargetId,
-                session,
-                cancellationToken));
-
-    private sealed class PlacementTargetLookup
-    {
-        public bool RejectNewWorkloads { get; set; }
-
-        public Task<Result<
-            DeploymentTargetLookupDto,
-            DeploymentTargetLookupError>> LookupAsync(
-            string deploymentTargetId,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
-                new Ok<DeploymentTargetLookupDto>(CreateTarget(deploymentTargetId)));
-
-        public Task<Result<
-            DeploymentTargetLookupDto,
-            DefaultDeploymentTargetLookupError>> LookupDefaultAsync(
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<
-                DeploymentTargetLookupDto,
-                DefaultDeploymentTargetLookupError>>(
-                new Ok<DeploymentTargetLookupDto>(CreateTarget(DefaultTargetId)));
-
-        public Task<Result<
-            DeploymentTargetLookupDto,
-            DeploymentTargetWorkloadAdmissionError>> AdmitForWorkloadAsync(
-            string deploymentTargetId,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<
-                DeploymentTargetLookupDto,
-                DeploymentTargetWorkloadAdmissionError>>(
-                RejectNewWorkloads
-                    ? new Err<DeploymentTargetWorkloadAdmissionError>(
-                        new DeploymentTargetWorkloadAdmissionError(
-                            new DeploymentTargetNewWorkloadsDisabled(deploymentTargetId)))
-                    : new Ok<DeploymentTargetLookupDto>(CreateTarget(deploymentTargetId)));
-
-        public async Task<Result<
-            DeploymentTargetLookupDto,
-            DefaultDeploymentTargetWorkloadAdmissionError>> AdmitDefaultForNewWorkloadAsync(
-            CancellationToken cancellationToken = default)
+    private static ResourcePlacement AssertPlacement(
+        Result<ResourcePlacement, ResourceGroupPlacementError> result) =>
+        result switch
         {
-            var admission = await AdmitForWorkloadAsync(DefaultTargetId, cancellationToken);
-            return admission switch
-            {
-                Ok<DeploymentTargetLookupDto> target => new Ok<DeploymentTargetLookupDto>(target.Value),
-                Err<DeploymentTargetWorkloadAdmissionError> error => error.Value switch
-                {
-                    DeploymentTargetDisabled disabled =>
-                        new Err<DefaultDeploymentTargetWorkloadAdmissionError>(disabled),
-                    DeploymentTargetDeletionRequested deleting =>
-                        new Err<DefaultDeploymentTargetWorkloadAdmissionError>(deleting),
-                    DeploymentTargetNewWorkloadsDisabled unavailable =>
-                        new Err<DefaultDeploymentTargetWorkloadAdmissionError>(unavailable),
-                    DeploymentTargetNotFound notFound => throw new InvalidOperationException(
-                        $"Configured default deployment target '{notFound.DeploymentTargetId}' does not exist."),
-                    _ => throw new InvalidOperationException(
-                        "Test deployment-target admission returned an unsupported error case.")
-                },
-                _ => throw new InvalidOperationException(
-                    "Test deployment-target admission returned an unsupported result case.")
-            };
-        }
+            Ok<ResourcePlacement> success => success.Value,
+            Err<ResourceGroupPlacementError> error => throw new Xunit.Sdk.XunitException(
+                $"Expected placement, got {error.Value.GetType().Name}.")
+        };
 
-        private static DeploymentTargetLookupDto CreateTarget(string id) =>
-            new(
-                id,
-                $"Target {id[^2..]}",
-                $"test:kubernetes:{id}",
-                "InCluster",
-                ConnectionVersion: 1,
-                new DeploymentTargetWorkloadConfigurationLookupDto(
-                    Revision: 1,
-                    new DeploymentTargetIngressConfigurationLookupDto(
-                        "traefik",
-                        "letsencrypt-prod")),
-                Revision: 1,
-                Enabled: true,
-                AcceptsWorkloads: true,
-                DeletionRequested: false,
-                HealthStatus: "Healthy");
-    }
-
-    private sealed class MongoReferenceAdmission(
-        Pole.Server.Database.MongoDbContext dbContext)
-    {
-        public async Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
-            ApplyChangesOutcomeAsync(
-                DeploymentTargetReferenceOwner owner,
-                IReadOnlyCollection<string> addedDeploymentTargetIds,
-                IReadOnlyCollection<string> removedDeploymentTargetIds,
-                IClientSessionHandle session,
-                CancellationToken cancellationToken = default)
+    private static IReadOnlyList<ResourcePlacement> AssertPlacements(
+        Result<IReadOnlyList<ResourcePlacement>, ResourceGroupPlacementError> result) =>
+        result switch
         {
-            foreach (var deploymentTargetId in addedDeploymentTargetIds)
-            {
-                await dbContext.DeploymentTargetReferences.UpdateOneAsync(
-                    session,
-                    DeploymentTargetReferenceFilters.ByOwner(deploymentTargetId, owner),
-                    Builders<DeploymentTargetReference>.Update
-                        .SetOnInsert(reference => reference.Id, ObjectId.GenerateNewId().ToString())
-                        .SetOnInsert(reference => reference.DeploymentTargetId, deploymentTargetId)
-                        .SetOnInsert(reference => reference.OwnerType, owner.Type)
-                        .SetOnInsert(reference => reference.OwnerId, owner.Id)
-                        .SetOnInsert(reference => reference.CreatedAtUtc, DateTime.UtcNow),
-                    new UpdateOptions { IsUpsert = true },
-                    cancellationToken);
-            }
-            foreach (var deploymentTargetId in removedDeploymentTargetIds)
-            {
-                await dbContext.DeploymentTargetReferences.DeleteOneAsync(
-                    session,
-                    DeploymentTargetReferenceFilters.ByOwner(deploymentTargetId, owner),
-                    cancellationToken: cancellationToken);
-            }
+            Ok<IReadOnlyList<ResourcePlacement>> success => success.Value,
+            Err<ResourceGroupPlacementError> error => throw new Xunit.Sdk.XunitException(
+                $"Expected placements, got {error.Value.GetType().Name}.")
+        };
 
-            return new Ok<Unit>(Unit.Value);
-        }
-    }
+    private static ResourceGroupPlacementDeploymentTargetRejected
+        AssertDeploymentTargetRejected(
+            Result<ResourcePlacement, ResourceGroupPlacementError> result) =>
+        result switch
+        {
+            Err<ResourceGroupPlacementError> error => error.Value switch
+            {
+                ResourceGroupPlacementDeploymentTargetRejected rejected => rejected,
+                _ => throw new Xunit.Sdk.XunitException(
+                    "Expected a deployment-target placement rejection.")
+            },
+            Ok<ResourcePlacement> => throw new Xunit.Sdk.XunitException(
+                "Expected placement failure, got success.")
+        };
 }

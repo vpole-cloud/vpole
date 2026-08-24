@@ -5,12 +5,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceGroups.Application.Persistence;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -19,30 +17,32 @@ namespace Pole.Features.ResourceGroups.Application.Endpoints;
 public sealed record GetRuntimeCellsRequest(
     [FromRoute] string ResourceGroupId,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<IReadOnlyList<RuntimeCellDto>>, ITenantReadOperation;
+    : IMediatorRequest<GetRuntimeCellsOutcome>, ITenantReadOperation;
 
-public sealed class GetRuntimeCellsHandler(IResourceGroupDbContext dbContext)
-    : IMediatorHandler<GetRuntimeCellsRequest, IReadOnlyList<RuntimeCellDto>>
+public union GetRuntimeCellsOutcome(
+    IReadOnlyList<RuntimeCellDto>,
+    ResourceGroupNotFound);
+
+public sealed class GetRuntimeCellsHandler(
+    LoadResourceGroup loadResourceGroup,
+    LoadRuntimeCells loadRuntimeCells)
+    : IMediatorOutcomeHandler<GetRuntimeCellsRequest, GetRuntimeCellsOutcome>
 {
-    public async Task<Result<IReadOnlyList<RuntimeCellDto>>> HandleAsync(
+    public async Task<GetRuntimeCellsOutcome> HandleAsync(
         GetRuntimeCellsRequest request,
         CancellationToken cancellationToken = default)
     {
-        var resourceGroup = await dbContext.ResourceGroups
-            .Find(Builders<ResourceGroup>.Filter.And(
-                Builders<ResourceGroup>.Filter.ForTenant(request.TenantId),
-                Builders<ResourceGroup>.Filter.Eq(group => group.Id, request.ResourceGroupId)))
-            .FirstOrDefaultAsync(cancellationToken);
+        var resourceGroup = await loadResourceGroup(
+            request.TenantId,
+            request.ResourceGroupId,
+            cancellationToken);
         if (resourceGroup is null)
-            return Failures.NotFound("Resource group not found.", request.ResourceGroupId);
+            return new ResourceGroupNotFound(request.ResourceGroupId);
 
-        var runtimeCells = await dbContext.RuntimeCells
-            .Find(cell =>
-                cell.ResourceGroupId == resourceGroup.Id &&
-                cell.TenantId == resourceGroup.TenantId)
-            .SortBy(cell => cell.IsolationScopeId)
-            .ThenBy(cell => cell.DeploymentTargetId)
-            .ToListAsync(cancellationToken);
+        var runtimeCells = await loadRuntimeCells(
+            resourceGroup.TenantId,
+            resourceGroup.Id,
+            cancellationToken);
         return runtimeCells.Select(cell => cell.ToDto()).ToList();
     }
 }
@@ -61,11 +61,16 @@ public static class GetRuntimeCellsEndpoint
     {
         app.MapGet("/{ResourceGroupId}/runtime-cells", async (
                 IMediator mediator,
+                IHttpProblemMapper httpProblems,
                 [AsParameters] GetRuntimeCellsRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    IReadOnlyList<RuntimeCellDto> runtimeCells => Results.Ok(runtimeCells),
+                    ResourceGroupNotFound error => httpProblems.Map(error).ToHttpResult()
+                });
             })
             .WithName("GetRuntimeCells")
             .WithSummary("Lists the runtime cells owned by a resource group.")

@@ -29,6 +29,7 @@ using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.ResourceDeployments.Application;
+using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Services;
@@ -91,6 +92,7 @@ builder.Services.AddKubernetes(configuration)
     .AddEventBus(configuration, assemblies)
     .AddOutboxEventAssemblies(outboxEventAssemblies)
     .AddDatabase()
+    .AddResourceGroupsFeature(configuration)
     .AddFunctionAppsFeature()
     .AddFunctionRuntimeFeature(configuration)
     .AddResourceDeploymentsFeature(configuration)

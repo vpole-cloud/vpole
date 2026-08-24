@@ -7,7 +7,6 @@ using Pole.Features.GitProviders.Domain;
 using Pole.Features.Functions.Domain;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Domain;
@@ -27,7 +26,6 @@ public class MongoDbContext(
     IMongoClient client,
     IMongoDatabase database
     ) : 
-    IResourceGroupDbContext,
     ISearchDbContext,
     ITenantDbContext,
     IUserDbContext,
@@ -38,6 +36,8 @@ public class MongoDbContext(
     public IMongoDatabase Database { get; } = database;
     public IMongoClient Client { get; } = client;
     public IMongoCollection<SearchDocument> SearchDocuments { get; } = database.GetCollection<SearchDocument>("SearchDocuments");
+    // Transitional host/test convenience accessors. ResourceGroups.Application consumes only
+    // feature-owned capabilities and does not depend on this concrete context.
     public IMongoCollection<ResourceGroup> ResourceGroups { get; } = database.GetCollection<ResourceGroup>("ResourceGroups");
     public IMongoCollection<IsolationScope> IsolationScopes { get; } = database.GetCollection<IsolationScope>("IsolationScopes");
     public IMongoCollection<RuntimeCell> RuntimeCells { get; } = database.GetCollection<RuntimeCell>("RuntimeCells");

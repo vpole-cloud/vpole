@@ -1,9 +1,12 @@
 using System.Collections.Immutable;
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Endpoints;
-using Pole.Features.ResourceGroups.Application.Services;
+using Pole.Features.ResourceGroups.Application.Persistence;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.Request;
 using Pole.Features.Shared.Models;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
@@ -21,7 +24,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
 
         var result = await Mediator.Send(request);
 
-        var created = result.AssertSuccess();
+        var created = AssertCreated(result.AssertHandlerOutcome());
 
         var saved = await DbContext.ResourceGroups.Find(group => group.Id == created.Id).FirstOrDefaultAsync();
         Assert.NotNull(saved);
@@ -58,7 +61,10 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             PageSize = 10
         });
 
-        var response = result.AssertSuccess();
+        var response = result.AssertHandlerOutcome() switch
+        {
+            PaginatedResponse<ResourceGroupDto> success => success
+        };
         Assert.Single(response.Items);
         Assert.Equal("alpha", response.Items.Single().Name);
     }
@@ -72,8 +78,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             resourceGroup.Id,
             resourceGroup.TenantId));
 
-        var response = result.AssertSuccess();
-        Assert.True(response.Deleted);
+        Assert.True(result.AssertHandlerOutcome() is ResourceGroupDeletionCompleted);
 
         var deleted = await DbContext.ResourceGroups.Find(group => group.Id == resourceGroup.Id).FirstOrDefaultAsync();
         Assert.Null(deleted);
@@ -102,8 +107,12 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             resourceGroup.Id,
             resourceGroup.TenantId));
 
-        var failure = result.AssertFailure();
-        Assert.IsType<ConflictFailure>(failure);
+        var error = result.AssertHandlerOutcome() switch
+        {
+            ResourceGroupDeletionError failure => failure,
+            _ => throw new Xunit.Sdk.XunitException("Expected resource-group deletion failure.")
+        };
+        Assert.True(error is ResourceGroupContainsResources);
         Assert.True(await DbContext.ResourceGroups
             .Find(group => group.Id == resourceGroup.Id)
             .AnyAsync());
@@ -126,9 +135,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             resourceGroup.Id,
             resourceGroup.TenantId));
 
-        var response = result.AssertSuccess();
-        Assert.False(response.Deleted);
-        Assert.True(response.DeletionRequested);
+        Assert.True(result.AssertHandlerOutcome() is ResourceGroupDeletionRequested);
         var savedGroup = await DbContext.ResourceGroups
             .Find(group => group.Id == resourceGroup.Id)
             .SingleAsync();
@@ -155,13 +162,24 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
         await DbContext.ResourceGroups.ReplaceOneAsync(
             group => group.Id == resourceGroup.Id,
             resourceGroup.RequestDeletion(resourceGroup.UpdatedAtUtc.AddMinutes(1)));
-        var lookup = new ResourceGroupLookup(DbContext);
+        var lookup = Services.GetRequiredService<GetResourceGroupOwnership>();
 
-        var result = await lookup.GetPlacementAsync(
+        var result = await lookup(
             resourceGroup.TenantId,
             resourceGroup.Id);
 
-        var failure = result.AssertFailure();
-        Assert.IsType<ConflictFailure>(failure);
+        var failure = result switch
+        {
+            Err<ResourceGroupOwnershipError> error => error.Value,
+            _ => throw new Xunit.Sdk.XunitException("Expected resource-group ownership failure.")
+        };
+        Assert.True(failure is ResourceGroupOwnershipDeleting);
     }
+
+    private static ResourceGroupDto AssertCreated(CreateResourceGroupOutcome outcome) => outcome switch
+    {
+        ResourceGroupDto success => success,
+        CreateResourceGroupError error => throw new Xunit.Sdk.XunitException(
+            $"Expected resource-group creation success, got {error.GetType().Name}.")
+    };
 }

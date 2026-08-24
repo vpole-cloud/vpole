@@ -1,4 +1,5 @@
 using k8s;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
 using Pole.Database;
@@ -8,7 +9,7 @@ using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.ResourceGroups.Application.Services;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -20,6 +21,8 @@ public sealed class ResourceDeploymentTargetRoutingTests(
     MongoReplicaSetFixture fixture)
     : IAsyncLifetime
 {
+    private ServiceProvider? serviceProvider;
+    private IServiceScope? serviceScope;
     private const string TenantId = "507f1f77bcf86cd799439061";
     private const string ResourceId = "507f1f77bcf86cd799439062";
     private const string ResourceGroupId = "507f1f77bcf86cd799439063";
@@ -31,9 +34,19 @@ public sealed class ResourceDeploymentTargetRoutingTests(
     private const string TargetBId = "507f1f77bcf86cd799439067";
     private const string DeploymentId = "507f1f77bcf86cd799439068";
 
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
+    public async Task InitializeAsync()
+    {
+        await fixture.ResetDatabaseAsync();
+        serviceProvider = TestServiceProviderFactory.Create(fixture);
+        serviceScope = serviceProvider.CreateScope();
+    }
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public Task DisposeAsync()
+    {
+        serviceScope?.Dispose();
+        serviceProvider?.Dispose();
+        return Task.CompletedTask;
+    }
 
     [Fact]
     public async Task ReconciliationOnTargetB_UsesOnlyTargetBClient_AndNeverDefault()
@@ -94,7 +107,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             persistence.Claim,
             persistence.PersistSuccess,
             persistence.PersistFailure,
-            new ResourcePlacementLookup(fixture.DbContext),
+            Services.GetRequiredService<LoadResourcePlacement>(),
             _ => (adapter, ResourcePlacementCapability.SingleTarget),
             metrics,
             NullLogger<ResourceDeploymentReconciler>.Instance);
@@ -174,7 +187,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             persistence.Claim,
             persistence.PersistSuccess,
             persistence.PersistFailure,
-            new ResourcePlacementLookup(fixture.DbContext),
+            Services.GetRequiredService<LoadResourcePlacement>(),
             _ => (adapter, ResourcePlacementCapability.SingleTarget),
             metrics,
             NullLogger<ResourceDeploymentReconciler>.Instance);
@@ -234,6 +247,9 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         ClaimResourceDeployment Claim,
         PersistResourceDeploymentSuccess PersistSuccess,
         PersistResourceDeploymentFailure PersistFailure);
+
+    private IServiceProvider Services => serviceScope?.ServiceProvider ??
+        throw new InvalidOperationException("The test service scope was not initialized.");
 
     private static Kubernetes CreateKubernetes(string host) =>
         new(new KubernetesClientConfiguration
