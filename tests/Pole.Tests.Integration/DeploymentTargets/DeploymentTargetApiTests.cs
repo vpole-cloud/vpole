@@ -29,6 +29,28 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task ListEndpoints_ReturnEligibleCreatedTarget()
+    {
+        SetPlatformAdmin();
+        var created = await CreateTargetAsync();
+
+        var platformResponse = await Client.GetAsync("/api/v1/platform/deployment-targets/");
+        var availableResponse = await Client.GetAsync(
+            "/api/v1/deployment-targets/available?resourceType=pole/web-service&requiresPublicIngress=false");
+
+        Assert.Equal(HttpStatusCode.OK, platformResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, availableResponse.StatusCode);
+        var targets = await platformResponse.Content
+            .ReadFromJsonAsync<IReadOnlyCollection<DeploymentTargetDto>>();
+        var availableTargets = await availableResponse.Content
+            .ReadFromJsonAsync<IReadOnlyCollection<AvailableDeploymentTargetDto>>();
+        Assert.NotNull(targets);
+        Assert.NotNull(availableTargets);
+        Assert.Contains(targets, target => target.Id == created.Id);
+        Assert.Contains(availableTargets, target => target.Id == created.Id);
+    }
+
+    [Fact]
     public async Task RequestValidation_RejectsInvalidRouteAndBodyBeforeHandlers()
     {
         SetPlatformAdmin();
