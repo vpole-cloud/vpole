@@ -6,12 +6,13 @@ open System.Threading.Tasks
 open MassTransit
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.ResourceDeployments.Events
-open Pole.Features.Search.Application.Services
+open Pole.Features.Search.Application.Common
+open Pole.Features.Search.Application.Persistence
 open Pole.Features.Search.Domain
 open Pole.Workloads
 
 type ResourceDeploymentSearchProjectionConsumer(
-    searchService : ISearchService,
+    persistSearchOperationalStatus : PersistSearchOperationalStatus,
     loadResourceDeploymentSet : LoadResourceDeploymentSet) =
 
     let trySourceType (resourceType : string) =
@@ -71,13 +72,13 @@ type ResourceDeploymentSearchProjectionConsumer(
                             deployments
                             |> Array.tryPick (fun item -> Option.ofObj item.FailureCode) }
                     do!
-                        searchService.UpdateOperationalStatus(
+                        persistSearchOperationalStatus.Invoke(
                             sourceType,
                             tenantId,
                             resourceId,
                             status,
-                            eventOccurredAtUtc)
-                            cancellationToken
+                            eventOccurredAtUtc,
+                            cancellationToken)
                 | None when allowMissingDeployment && deployments.Length > 0 ->
                     let status =
                         { DesiredGeneration = deployments |> Array.maxBy _.ResourceRevision |> _.ResourceRevision
@@ -87,21 +88,21 @@ type ResourceDeploymentSearchProjectionConsumer(
                             deployments
                             |> Array.tryPick (fun item -> Option.ofObj item.FailureCode) }
                     do!
-                        searchService.UpdateOperationalStatus(
+                        persistSearchOperationalStatus.Invoke(
                             sourceType,
                             tenantId,
                             resourceId,
                             status,
-                            eventOccurredAtUtc)
-                            cancellationToken
+                            eventOccurredAtUtc,
+                            cancellationToken)
                 | _ -> ()
         }
 
 type UpdateResourceDeploymentInSearchOnAppliedConsumer(
-    searchService : ISearchService,
+    persistSearchOperationalStatus : PersistSearchOperationalStatus,
     loadResourceDeploymentSet : LoadResourceDeploymentSet) =
     inherit ResourceDeploymentSearchProjectionConsumer(
-        searchService,
+        persistSearchOperationalStatus,
         loadResourceDeploymentSet)
 
     interface IConsumer<ResourceDeploymentAppliedEvent> with
@@ -117,10 +118,10 @@ type UpdateResourceDeploymentInSearchOnAppliedConsumer(
                 context.CancellationToken)
 
 type UpdateResourceDeploymentInSearchOnFailedConsumer(
-    searchService : ISearchService,
+    persistSearchOperationalStatus : PersistSearchOperationalStatus,
     loadResourceDeploymentSet : LoadResourceDeploymentSet) =
     inherit ResourceDeploymentSearchProjectionConsumer(
-        searchService,
+        persistSearchOperationalStatus,
         loadResourceDeploymentSet)
 
     interface IConsumer<ResourceDeploymentFailedEvent> with
@@ -136,10 +137,10 @@ type UpdateResourceDeploymentInSearchOnFailedConsumer(
                 context.CancellationToken)
 
 type UpdateResourceDeploymentInSearchOnDeletedConsumer(
-    searchService : ISearchService,
+    persistSearchOperationalStatus : PersistSearchOperationalStatus,
     loadResourceDeploymentSet : LoadResourceDeploymentSet) =
     inherit ResourceDeploymentSearchProjectionConsumer(
-        searchService,
+        persistSearchOperationalStatus,
         loadResourceDeploymentSet)
 
     interface IConsumer<ResourceDeploymentDeletedEvent> with

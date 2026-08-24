@@ -13,10 +13,15 @@
 
     <ItemGroup>
         <Compile Include="Common\SearchDto.fs" />
-        <Compile Include="Common\ISearchDbContext.fs" />
+        <Compile Include="Common\SearchOperationalStatus.fs" />
         <Compile Include="Migrations\SearchDocumentIndexesMigration.fs" />
         <Compile Include="Projection\SearchDocumentFactory.fs" />
-        <Compile Include="Services\SearchService.fs" />
+        <Compile Include="Persistence\SearchProjectionFilters.fs" />
+        <Compile Include="Persistence\SearchProjectionStore.fs" />
+        <Compile Include="Persistence\PersistSearchDocumentSet.fs" />
+        <Compile Include="Persistence\RemoveSearchDocumentSet.fs" />
+        <Compile Include="Persistence\PersistSearchOperationalStatus.fs" />
+        <Compile Include="Persistence\SearchIndexedDocuments.fs" />
         <Compile Include="DependencyInjection.fs" />
         <Compile Include="Consumers\ResourceGroupConsumers.fs" />
         <Compile Include="Consumers\WebServiceConsumers.fs" />
@@ -52,6 +57,4 @@
       <ProjectReference Include="..\Search.Domain\Search.Domain.fsproj" />
     </ItemGroup>
 </Project>
-
-
 

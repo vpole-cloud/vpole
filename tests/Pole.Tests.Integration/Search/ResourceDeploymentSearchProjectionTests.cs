@@ -7,7 +7,7 @@ using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application.Consumers;
-using Pole.Features.Search.Application.Services;
+using Pole.Features.Search.Application.Persistence;
 using Pole.Features.Search.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -20,8 +20,14 @@ public sealed class ResourceDeploymentSearchProjectionTests(
 {
     private const string WebServiceResourceType = "pole/web-service";
 
-    private ISearchService SearchService =>
-        Services.GetRequiredService<ISearchService>();
+    private PersistSearchDocumentSet PersistSearchDocumentSet =>
+        Services.GetRequiredService<PersistSearchDocumentSet>();
+
+    private PersistSearchOperationalStatus PersistSearchOperationalStatus =>
+        Services.GetRequiredService<PersistSearchOperationalStatus>();
+
+    private SearchIndexedDocuments SearchIndexedDocuments =>
+        Services.GetRequiredService<SearchIndexedDocuments>();
 
     private IMongoCollection<SearchSourceDocument> SourceDocuments =>
         Fixture.Database.GetCollection<SearchSourceDocument>(
@@ -73,7 +79,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         Assert.DoesNotContain("RuntimeCellId", persistedStatus.Names);
         Assert.DoesNotContain("Endpoints", persistedStatus.Names);
 
-        var result = await SearchService.Get(
+        var result = await SearchIndexedDocuments.Invoke(
             SearchQueryModule.FromRequest(new GetSearchRequest
             {
                 TenantId = tenantId,
@@ -114,7 +120,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
                 failureCode: "ProviderUnavailable")
         };
         var consumer = new ResourceDeploymentSearchProjectionConsumer(
-            SearchService,
+            PersistSearchOperationalStatus,
             new StubResourceDeploymentQueryService(deployments).LoadAsync);
 
         await consumer.Handle(
@@ -161,7 +167,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             failureCode: null);
         var stub = new StubResourceDeploymentQueryService([current]);
         var consumer = new ResourceDeploymentSearchProjectionConsumer(
-            SearchService,
+            PersistSearchOperationalStatus,
             stub.LoadAsync);
         var currentEventTime = DateTime.UtcNow;
 
@@ -360,7 +366,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             resourceId,
             ListModule.OfSeq([replacementRow]));
 
-        await SearchService.Update(replacement, CancellationToken.None);
+        await PersistSearchDocumentSet.Invoke(replacement, CancellationToken.None);
 
         var projected = await SourceDocuments
             .Find(document =>
@@ -408,7 +414,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             "eventually-created",
             FSharpOption<string>.Some(resourceGroupId),
             FSharpOption<string>.None);
-        await SearchService.Create(
+        await PersistSearchDocumentSet.Invoke(
             new SearchDocumentSet(
                 SearchDocumentType.WebService,
                 tenantId,
@@ -432,7 +438,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
     private ResourceDeploymentSearchProjectionConsumer CreateConsumer(
         PlacementSummaryDto placement) =>
         new(
-            SearchService,
+            PersistSearchOperationalStatus,
             new StubResourceDeploymentQueryService([placement]).LoadAsync);
 
     private async Task InsertSourceAsync(

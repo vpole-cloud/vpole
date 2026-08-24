@@ -33,7 +33,6 @@ using Pole.Features.ResourceDeployments.Application.Placement;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Application.Jobs;
-using Pole.Features.Search.Application.Common;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
@@ -156,7 +155,6 @@ public static class DependencyInjection
                 serviceProvider
                     .GetRequiredService<MongoRunTransaction>()
                     .InvokeAsync);
-            services.TryAddSingleton<ISearchDbContext>(sp => sp.GetRequiredService<MongoDbContext>());
             return services;
         }
 

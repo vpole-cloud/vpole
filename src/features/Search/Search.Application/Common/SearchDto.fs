@@ -3,6 +3,7 @@ namespace Pole.Features.Search.Application.Common
 open System
 open FluentValidation
 open Microsoft.AspNetCore.Mvc
+open Pole.Features.Request
 open Pole.Features.Search.Domain
 open Pole.Mediator
 
@@ -35,8 +36,11 @@ type SearchDocumentSet =
       SourceId : string
       Documents : SearchDocument list }
 
+type GetSearchOutcome =
+    | SearchPage of PaginatedResponse<SearchHitDto>
+
 type GetSearchRequest() =
-    interface IMediatorRequest<Pole.Features.Request.PaginatedResponse<SearchHitDto>>
+    interface IMediatorRequest<GetSearchOutcome>
     interface Pole.Features.Core.Multitenancy.ITenantReadOperation with
         member this.TenantId = this.TenantId
     [<FromHeader(Name = Pole.Features.Core.Multitenancy.TenantHeaders.TenantId)>]
