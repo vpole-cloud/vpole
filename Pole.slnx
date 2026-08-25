@@ -15,6 +15,7 @@
     <Project Path="src/shared/Mediator.Multitenancy/Mediator.Multitenancy.csproj" />
     <Project Path="src/shared/Failures/Failures.csproj" />
     <Project Path="src/shared/ResultType/ResultType.csproj" />
+    <Project Path="src/shared/ArchitectureAnalyzers/Pole.ArchitectureAnalyzers.csproj" />
     <Project Path="src/shared/Database/Database.csproj" />
     <Project Path="src/shared/Dns/Dns.csproj" />
     <Project Path="src/shared/Multitenancy/Multitenancy.csproj" />
@@ -136,6 +137,7 @@
     <Project Path="src/shared/helpers/ASP/ASP.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Pole.Tests.Architecture/Pole.Tests.Architecture.csproj" />
     <Project Path="tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj" />
     <Project Path="tests/Pole.Tests.E2E.GitHubStub/Pole.Tests.E2E.GitHubStub.csproj" />
     <Project Path="tests/Pole.Tests.E2E/Pole.Tests.E2E.csproj" />
