@@ -112,6 +112,7 @@
   </Folder>
   <Folder Name="/features/Outbox/">
     <Project Path="src/features/Outbox/Outbox.Application/Outbox.Application.csproj" />
+    <Project Path="src/features/Outbox/Outbox.Contracts/Outbox.Contracts.csproj" />
   </Folder>
   <Folder Name="/features/Tenants/">
     <Project Path="src/features/Tenants/Tenants.Application/Tenants.Application.csproj" />
