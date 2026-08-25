@@ -594,6 +594,15 @@ Migrated application handlers and orchestration services must not depend on:
 - legacy shared `Failure` contracts;
 - a broad feature interface when only one independent operation is required.
 
+The initial fast suite lives in `tests/Pole.Tests.Architecture`. It protects the
+removal of the legacy Mongo contexts across production C# source, requires
+named runtime C# filter helpers, and verifies that `Pole.Server` composes
+features through their registration entry points. `POLE001` is a Roslyn analyzer
+that rejects raw Mongo query types during the build of explicitly migrated C#
+application projects. Extend that explicit project scope when a feature
+completes this migration; do not add broad permanent exceptions for unfinished
+features.
+
 Additional checks should verify:
 
 - cross-feature contracts do not reference provider domain assemblies;
@@ -625,7 +634,9 @@ and handler together.
 ### Mongo filter rule
 
 Runtime Mongo filters belong only to an internal, aggregate-owned
-`<Aggregate>Filters` file. Each filter method must have a semantic name that
+`<Aggregate>Filters` helper. It may share the capability file when it supports
+only that capability, but it must remain a named helper rather than an inline
+predicate. Each filter method must have a semantic name that
 states the identity, tenant fence, revision fence, lifecycle state, or recovery
 condition it enforces. Persistence capabilities call those named methods; they
 do not construct inline `Builders<T>.Filter` expressions or pass arbitrary

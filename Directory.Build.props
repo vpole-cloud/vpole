@@ -4,4 +4,24 @@
     <Nullable>enable</Nullable>
     <WarningsAsErrors>$(WarningsAsErrors);nullable</WarningsAsErrors>
   </PropertyGroup>
+
+  <PropertyGroup>
+    <PoleMongoBoundaryAnalyzerEnabled
+      Condition="'$(MSBuildProjectName)' == 'ContainerRegistries.Application' Or
+                 '$(MSBuildProjectName)' == 'Domains.Application' Or
+                 '$(MSBuildProjectName)' == 'GitProviders.Application' Or
+                 '$(MSBuildProjectName)' == 'Outbox.Application' Or
+                 '$(MSBuildProjectName)' == 'Quotas.Application' Or
+                 '$(MSBuildProjectName)' == 'RedisServices.Application' Or
+                 '$(MSBuildProjectName)' == 'ResourceGroups.Application' Or
+                 '$(MSBuildProjectName)' == 'StorageProfiles.Application' Or
+                 '$(MSBuildProjectName)' == 'Users.Application' Or
+                 '$(MSBuildProjectName)' == 'WebServices.Application'">true</PoleMongoBoundaryAnalyzerEnabled>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(PoleMongoBoundaryAnalyzerEnabled)' == 'true'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)src/shared/ArchitectureAnalyzers/Pole.ArchitectureAnalyzers.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
 </Project>
