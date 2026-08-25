@@ -1,0 +1,203 @@
+using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.ComputeProfiles.Contracts;
+using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceGroups.Contracts;
+using Pole.ResultType;
+
+namespace Pole.Features.ResourceDeployments.Application.Persistence;
+
+internal sealed class MongoRequestResourceDeploymentSetApply(
+    IMongoCollection<ResourceDeployment> resourceDeployments,
+    StoreOutboxWrites storeOutboxWrites,
+    LoadResourcePlacementsInTransaction loadResourcePlacements,
+    FenceResolvedComputeProfiles fenceResolvedComputeProfiles,
+    TimeProvider timeProvider)
+{
+    public async Task<Result<
+        IReadOnlyList<PlacementSummaryDto>,
+        ResourceDeploymentMutationError>> InvokeAsync(
+        ResourceDeploymentSetApplyRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default)
+    {
+        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(
+            session,
+            "Resource deployment mutations");
+        ArgumentNullException.ThrowIfNull(request);
+        ResourceDeploymentMutationSupport.EnsureSetIsNonEmptyAndUnique(
+            request.Deployments,
+            deployment => deployment.ResourceDeploymentId,
+            nameof(request));
+
+        var deploymentIds = request.Deployments
+            .Select(item => item.ResourceDeploymentId)
+            .ToArray();
+        var current = await resourceDeployments
+            .Find(
+                session,
+                ResourceDeploymentFilters.ForResourceDeploymentIds(
+                    request.TenantId,
+                    request.ResourceType,
+                    request.ResourceId,
+                    deploymentIds))
+            .ToListAsync(cancellationToken);
+        if (current.Count != request.Deployments.Count)
+        {
+            return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                new ResourceDeploymentMutationNotFound(request.ResourceId));
+        }
+
+        var byId = current.ToDictionary(deployment => deployment.Id, StringComparer.Ordinal);
+        foreach (var item in request.Deployments)
+        {
+            var deployment = byId[item.ResourceDeploymentId];
+            if (deployment.Revision != item.ExpectedDeploymentRevision)
+            {
+                return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                    new ResourceDeploymentChanged(request.ResourceId, item.ResourceDeploymentId));
+            }
+
+            var computeExpectation = ResourceDeploymentMutationSupport.EnsureExpectedCompute(
+                request.ResourceId,
+                item.ExpectedCompute,
+                deployment);
+            if (computeExpectation is not null)
+                return new Err<ResourceDeploymentMutationError>(computeExpectation.Value);
+            if (deployment.DesiredOperation == ResourceDeploymentOperation.Delete ||
+                deployment.State is DeletedResourceDeploymentState)
+            {
+                return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                    new ResourceDeploymentPendingDeletion(request.ResourceId, item.ResourceDeploymentId));
+            }
+            if (item.ReplacementCompute is not null &&
+                !string.Equals(
+                    item.ReplacementCompute.DeploymentTargetId,
+                    deployment.ResolvedPlacement.DeploymentTargetId,
+                    StringComparison.Ordinal))
+            {
+                return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                    new ResourceDeploymentReplacementTargetMismatch(
+                        request.ResourceId,
+                        item.ResourceDeploymentId));
+            }
+            if (item.ReplacementIngress is not null &&
+                !ResourceDeploymentMutationSupport.HasSameIngressIdentity(
+                    deployment.ResolvedPlacement.Ingress,
+                    item.ReplacementIngress))
+            {
+                return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                    new ResourceDeploymentIngressConfigurationChanged(
+                        request.ResourceId,
+                        item.ResourceDeploymentId));
+            }
+        }
+
+        var runtimeCells = await loadResourcePlacements(
+            request.TenantId,
+            current.Select(deployment => deployment.RuntimeCellId).ToArray(),
+            session,
+            cancellationToken);
+        var runtimeCellsById = runtimeCells.ToDictionary(
+            placement => placement.RuntimeCellId,
+            StringComparer.Ordinal);
+        if (runtimeCellsById.Count != current
+                .Select(deployment => deployment.RuntimeCellId)
+                .Distinct(StringComparer.Ordinal)
+                .Count())
+        {
+            return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                new ResourceDeploymentPlacementUnavailable(request.ResourceId));
+        }
+
+        foreach (var deployment in current)
+        {
+            var runtimeCell = runtimeCellsById[deployment.RuntimeCellId];
+            if (!string.Equals(
+                    runtimeCell.DeploymentTargetId,
+                    deployment.ResolvedPlacement.DeploymentTargetId,
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    runtimeCell.KubernetesNamespace,
+                    deployment.ResolvedPlacement.KubernetesNamespace,
+                    StringComparison.Ordinal))
+            {
+                return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                    new ResourceDeploymentPlacementUnavailable(request.ResourceId, deployment.Id));
+            }
+        }
+
+        var computeFenceRequests = request.Deployments
+            .Where(item => item.ReplacementCompute is not null)
+            .Select(item => item.ReplacementCompute!)
+            .Select(compute => new ComputeProfileResolutionFenceRequest(
+                compute.ComputeProfileId,
+                compute.ComputeProfileRevision,
+                compute.DeploymentTargetId,
+                request.TenantId,
+                request.ResourceType))
+            .Distinct()
+            .ToArray();
+        if (computeFenceRequests.Length > 0)
+        {
+            var computeFence = await fenceResolvedComputeProfiles(
+                computeFenceRequests,
+                session,
+                cancellationToken);
+            if (computeFence is Err<ComputeProfileResolutionFenceRejected>)
+            {
+                return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                    new ResourceDeploymentComputeConfigurationChanged(
+                        computeFenceRequests
+                            .Select(fence => fence.ComputeProfileId)
+                            .ToArray()));
+            }
+        }
+
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var updated = new List<ResourceDeployment>(request.Deployments.Count);
+        foreach (var item in request.Deployments)
+        {
+            var deployment = byId[item.ResourceDeploymentId];
+            var placement = deployment.ResolvedPlacement;
+            if (item.ReplacementCompute is not null)
+                placement = placement with { Compute = item.ReplacementCompute.ToDomain() };
+            if (item.ReplacementIngress is not null)
+                placement = placement with { Ingress = item.ReplacementIngress.ToDomain() };
+
+            updated.Add(deployment.RequestReconciliation(
+                placement,
+                runtimeCellsById[deployment.RuntimeCellId].State == ResourcePlacementState.Ready,
+                now,
+                request.ResourceRevision,
+                item.FixedReplicas));
+        }
+
+        foreach (var deployment in updated)
+        {
+            var original = byId[deployment.Id];
+            var replacement = await resourceDeployments.ReplaceOneAsync(
+                session,
+                ResourceDeploymentFilters.AtRevision(original),
+                deployment,
+                cancellationToken: cancellationToken);
+            if (replacement.ModifiedCount != 1)
+            {
+                return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                    new ResourceDeploymentChanged(request.ResourceId, original.Id));
+            }
+        }
+
+        await storeOutboxWrites(
+            session,
+            updated
+                .Where(deployment => deployment.State is PendingResourceDeploymentState)
+                .Select(deployment => deployment.ToCurrentRequestWrite())
+                .ToArray(),
+            cancellationToken);
+        return new Ok<IReadOnlyList<PlacementSummaryDto>>(
+            updated.Select(deployment => deployment.ToPlacementSummaryDto()).ToArray());
+    }
+}

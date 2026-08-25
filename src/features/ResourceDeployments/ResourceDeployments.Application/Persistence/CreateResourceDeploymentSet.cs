@@ -9,9 +9,9 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.ResultType;
 
-namespace Pole.Features.ResourceDeployments.Application.Placement;
+namespace Pole.Features.ResourceDeployments.Application.Persistence;
 
-internal sealed class ResourceDeploymentWriter(
+internal sealed class MongoCreateResourceDeploymentSet(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     StoreOutboxWrites storeOutboxWrites,
     ResolveResourceGroupPlacements resolveResourceGroupPlacements,
@@ -20,29 +20,16 @@ internal sealed class ResourceDeploymentWriter(
     FenceStorageProfileResolution fenceStorageProfileResolution,
     TimeProvider timeProvider)
 {
-    public async Task<Result<PlacementSummaryDto, CreateResourceDeploymentError>> InvokeAsync(
-        CreateResourceDeploymentRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        var result = await InvokeSetAsync(
-            new CreateResourceDeploymentSetRequest([request]),
-            session,
-            cancellationToken);
-        return result.TryGetValue(out var deployments, out var error)
-            ? new Ok<PlacementSummaryDto>(deployments.Single())
-            : new Err<CreateResourceDeploymentError>(error);
-    }
-
     public async Task<Result<
         IReadOnlyList<PlacementSummaryDto>,
-        CreateResourceDeploymentError>> InvokeSetAsync(
+        CreateResourceDeploymentError>> InvokeAsync(
         CreateResourceDeploymentSetRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        EnsureTransaction(session);
+        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(
+            session,
+            "Resource deployment creation");
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.Deployments);
         if (request.Deployments.Any(static deployment => deployment is null))
@@ -273,13 +260,4 @@ internal sealed class ResourceDeploymentWriter(
             or ResourceGroupPlacementChanged => new(new ResourcePlacementUnavailable(resourceGroupId))
         };
 
-    private static void EnsureTransaction(IClientSessionHandle session)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        if (!session.IsInTransaction)
-        {
-            throw new InvalidOperationException(
-                "Resource deployment creation must run inside the logical resource transaction.");
-        }
-    }
 }

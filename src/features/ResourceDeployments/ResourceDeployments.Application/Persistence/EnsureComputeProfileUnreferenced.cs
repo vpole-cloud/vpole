@@ -1,27 +1,22 @@
 using MongoDB.Driver;
-using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.ResourceDeployments.Application.Common;
+namespace Pole.Features.ResourceDeployments.Application.Persistence;
 
-internal sealed class ResourceDeploymentComputeProfileReferenceGuard(
+internal sealed class MongoEnsureComputeProfileUnreferenced(
     IMongoCollection<ResourceDeployment> resourceDeployments)
 {
-    public async Task<Result<Unit, ComputeProfileReferencedByResourceDeployment>>
-        EnsureUnreferencedAsync(
+    public async Task<Result<Unit, ComputeProfileReferencedByResourceDeployment>> InvokeAsync(
         string computeProfileId,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(computeProfileId);
-        ArgumentNullException.ThrowIfNull(session);
-        if (!session.IsInTransaction)
-        {
-            throw new InvalidOperationException(
-                "Resource deployment reference checks must run inside the logical resource transaction.");
-        }
+        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(
+            session,
+            "Resource deployment reference checks");
 
         var referenced = await resourceDeployments
             .Find(

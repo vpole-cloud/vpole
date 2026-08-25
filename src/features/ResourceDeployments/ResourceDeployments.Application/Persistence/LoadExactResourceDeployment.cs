@@ -1,0 +1,27 @@
+using MongoDB.Driver;
+using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Domain;
+
+namespace Pole.Features.ResourceDeployments.Application.Persistence;
+
+internal sealed class MongoLoadExactResourceDeployment(
+    IMongoCollection<ResourceDeployment> resourceDeployments)
+{
+    public async Task<PlacementSummaryDto?> InvokeAsync(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId,
+        string deploymentId,
+        CancellationToken cancellationToken = default)
+    {
+        var deployment = await resourceDeployments
+            .Find(ResourceDeploymentFilters.ForExactDeployment(
+                tenantId,
+                resourceType,
+                resourceId,
+                deploymentId))
+            .FirstOrDefaultAsync(cancellationToken);
+        return deployment?.ToPlacementSummaryDto();
+    }
+}

@@ -9,7 +9,7 @@ using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.ResultType;
 using Pole.Tests.Integration.DeploymentTargets;
@@ -102,11 +102,11 @@ internal sealed class ComputeProfilePersistenceTestHost : IDisposable
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
         services.AddSingleton(fixture.DbContext.ResourceDeployments);
-        services.AddSingleton<ResourceDeploymentComputeProfileReferenceGuard>();
+        services.AddSingleton<MongoEnsureComputeProfileUnreferenced>();
         services.AddSingleton<EnsureComputeProfileUnreferenced>(provider =>
             provider
-                .GetRequiredService<ResourceDeploymentComputeProfileReferenceGuard>()
-                .EnsureUnreferencedAsync);
+                .GetRequiredService<MongoEnsureComputeProfileUnreferenced>()
+                .InvokeAsync);
         services.AddSingleton<MongoRunTransaction>();
         services.AddSingleton<RunMongoOutcomeTransaction<DeleteComputeProfileOutcome>>(
             provider => provider
