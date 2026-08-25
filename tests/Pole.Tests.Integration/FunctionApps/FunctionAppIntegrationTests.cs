@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Persistence.Lifecycle;
 using Pole.Features.Functions.Application.Persistence.Runtime.Gateway;
 using Pole.Features.Functions.Application.Endpoints;
 using Pole.Features.Functions.Domain;
@@ -42,19 +43,21 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
-        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
+        var markReady = Services.GetRequiredService<MarkFunctionRevisionReady>();
+        var promote = Services.GetRequiredService<PromoteFunctionRevision>();
+        var retire = Services.GetRequiredService<RetireFunctionRevision>();
 
-        Assert.IsType<FunctionRevisionNotReady>((await lifecycle.PromoteAsync(
+        Assert.IsType<FunctionRevisionNotReady>((await promote(
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).LifecycleValue());
-        Assert.IsType<FunctionRevisionNotDraining>((await lifecycle.RetireAsync(
+        Assert.IsType<FunctionRevisionNotDraining>((await retire(
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).LifecycleValue());
         var readiness = await Task.WhenAll(
-            lifecycle.MarkReadyAsync(TestData.TenantId, created.FunctionAppId, created.RevisionId),
-            lifecycle.MarkReadyAsync(TestData.TenantId, created.FunctionAppId, created.RevisionId));
+            markReady(TestData.TenantId, created.FunctionAppId, created.RevisionId),
+            markReady(TestData.TenantId, created.FunctionAppId, created.RevisionId));
         Assert.All(readiness, result => result.RequireLifecycleSuccess());
 
         var ready = await DbContext.FunctionRevisions
@@ -63,8 +66,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.IsType<ReadyFunctionRevisionStatus>(ready.Status);
 
         var promotions = await Task.WhenAll(
-            lifecycle.PromoteAsync(TestData.TenantId, created.FunctionAppId, created.RevisionId),
-            lifecycle.PromoteAsync(TestData.TenantId, created.FunctionAppId, created.RevisionId));
+            promote(TestData.TenantId, created.FunctionAppId, created.RevisionId),
+            promote(TestData.TenantId, created.FunctionAppId, created.RevisionId));
         Assert.All(promotions, result => result.RequireLifecycleSuccess());
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("function-revision-promoted"));
     }
@@ -74,10 +77,12 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
-        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
+        var markReady = Services.GetRequiredService<MarkFunctionRevisionReady>();
+        var promote = Services.GetRequiredService<PromoteFunctionRevision>();
 
         var promotion = await MarkReadyAndPromoteAsync(
-            lifecycle,
+            markReady,
+            promote,
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId);
@@ -115,9 +120,11 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
-        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
+        var markReady = Services.GetRequiredService<MarkFunctionRevisionReady>();
+        var promote = Services.GetRequiredService<PromoteFunctionRevision>();
         (await MarkReadyAndPromoteAsync(
-            lifecycle,
+            markReady,
+            promote,
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();
@@ -158,12 +165,13 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(2L, await DbContext.CountOutboxMessagesAsync("function-revision-created"));
 
         var promotion = await MarkReadyAndPromoteAsync(
-            lifecycle,
+            markReady,
+            promote,
             TestData.TenantId,
             created.FunctionAppId,
             response.RevisionId);
         promotion.RequireLifecycleSuccess();
-        (await lifecycle.PromoteAsync(
+        (await promote(
             TestData.TenantId,
             created.FunctionAppId,
             response.RevisionId)).RequireLifecycleSuccess();
@@ -187,9 +195,11 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
-        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
+        var markReady = Services.GetRequiredService<MarkFunctionRevisionReady>();
+        var promote = Services.GetRequiredService<PromoteFunctionRevision>();
         (await MarkReadyAndPromoteAsync(
-            lifecycle,
+            markReady,
+            promote,
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();
@@ -202,7 +212,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             new UpdateFunctionAppRequestBody(RevisionRequest("*/5 * * * *", "v2"), []),
             TestData.TenantId))).RequireSuccess();
         (await MarkReadyAndPromoteAsync(
-            lifecycle,
+            markReady,
+            promote,
             TestData.TenantId,
             created.FunctionAppId,
             candidate.RevisionId)).RequireLifecycleSuccess();
@@ -220,9 +231,12 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
-        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
+        var markReady = Services.GetRequiredService<MarkFunctionRevisionReady>();
+        var promote = Services.GetRequiredService<PromoteFunctionRevision>();
+        var retire = Services.GetRequiredService<RetireFunctionRevision>();
         (await MarkReadyAndPromoteAsync(
-            lifecycle,
+            markReady,
+            promote,
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();
@@ -232,16 +246,17 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             new UpdateFunctionAppRequestBody(RevisionRequest("*/10 * * * *", "v2"), []),
             TestData.TenantId))).RequireSuccess();
         (await MarkReadyAndPromoteAsync(
-            lifecycle,
+            markReady,
+            promote,
             TestData.TenantId,
             created.FunctionAppId,
             candidate.RevisionId)).RequireLifecycleSuccess();
 
-        (await lifecycle.RetireAsync(
+        (await retire(
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();
-        (await lifecycle.RetireAsync(
+        (await retire(
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();
@@ -258,9 +273,12 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
-        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
+        var markReady = Services.GetRequiredService<MarkFunctionRevisionReady>();
+        var promote = Services.GetRequiredService<PromoteFunctionRevision>();
+        var retire = Services.GetRequiredService<RetireFunctionRevision>();
         (await MarkReadyAndPromoteAsync(
-            lifecycle,
+            markReady,
+            promote,
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();
@@ -273,7 +291,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             new UpdateFunctionAppRequestBody(RevisionRequest("*/10 * * * *", "v2"), []),
             TestData.TenantId))).RequireSuccess();
         (await MarkReadyAndPromoteAsync(
-            lifecycle,
+            markReady,
+            promote,
             TestData.TenantId,
             created.FunctionAppId,
             candidate.RevisionId)).RequireLifecycleSuccess();
@@ -289,7 +308,7 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             oldTimer.UpdatedAtUtc);
         await DbContext.FunctionInvocations.InsertOneAsync(pending);
 
-        var result = await lifecycle.RetireAsync(
+        var result = await retire(
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId);
@@ -307,9 +326,11 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
-        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
+        var markReady = Services.GetRequiredService<MarkFunctionRevisionReady>();
+        var promote = Services.GetRequiredService<PromoteFunctionRevision>();
         (await MarkReadyAndPromoteAsync(
-            lifecycle,
+            markReady,
+            promote,
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();
@@ -341,9 +362,12 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
-        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
+        var markReady = Services.GetRequiredService<MarkFunctionRevisionReady>();
+        var promote = Services.GetRequiredService<PromoteFunctionRevision>();
+        var fail = Services.GetRequiredService<FailFunctionRevision>();
         (await MarkReadyAndPromoteAsync(
-            lifecycle,
+            markReady,
+            promote,
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();
@@ -356,12 +380,12 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             }, []),
             TestData.TenantId))).RequireSuccess();
 
-        (await lifecycle.MarkReadyAsync(
+        (await markReady(
             TestData.TenantId,
             created.FunctionAppId,
             candidate.RevisionId)).RequireLifecycleSuccess();
 
-        var failed = await lifecycle.FailAsync(
+        var failed = await fail(
             TestData.TenantId,
             created.FunctionAppId,
             candidate.RevisionId,
@@ -376,7 +400,7 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         var revision = await DbContext.FunctionRevisions.Find(value => value.Id == candidate.RevisionId).SingleAsync();
         var failedStatus = Assert.IsType<FailedFunctionRevisionStatus>(revision.Status);
         Assert.Equal("image-pull", failedStatus.Failure.Code);
-        (await lifecycle.FailAsync(
+        (await fail(
             TestData.TenantId,
             created.FunctionAppId,
             candidate.RevisionId,
@@ -419,9 +443,11 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = await CreateAsync(group.Id);
-        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
+        var markReady = Services.GetRequiredService<MarkFunctionRevisionReady>();
+        var promote = Services.GetRequiredService<PromoteFunctionRevision>();
         (await MarkReadyAndPromoteAsync(
-            lifecycle,
+            markReady,
+            promote,
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();
@@ -446,15 +472,16 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
     }
 
     private static async Task<FunctionRevisionLifecycleOutcome> MarkReadyAndPromoteAsync(
-        IFunctionRevisionLifecycleService lifecycle,
+        MarkFunctionRevisionReady markReady,
+        PromoteFunctionRevision promote,
         string tenantId,
         string functionAppId,
         string revisionId)
     {
-        var ready = await lifecycle.MarkReadyAsync(tenantId, functionAppId, revisionId);
+        var ready = await markReady(tenantId, functionAppId, revisionId);
         return ready is not FunctionRevisionLifecycleCompleted
             ? ready
-            : await lifecycle.PromoteAsync(tenantId, functionAppId, revisionId);
+            : await promote(tenantId, functionAppId, revisionId);
     }
 
     private async Task<CreateFunctionAppResponse> CreateAsync(string resourceGroupId)

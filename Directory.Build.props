@@ -9,6 +9,7 @@
     <PoleMongoBoundaryAnalyzerEnabled
       Condition="'$(MSBuildProjectName)' == 'ContainerRegistries.Application' Or
                  '$(MSBuildProjectName)' == 'Domains.Application' Or
+                 '$(MSBuildProjectName)' == 'Functions.Application' Or
                  '$(MSBuildProjectName)' == 'GitProviders.Application' Or
                  '$(MSBuildProjectName)' == 'Outbox.Application' Or
                  '$(MSBuildProjectName)' == 'Quotas.Application' Or

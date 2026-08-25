@@ -27,7 +27,8 @@ public sealed class FunctionRevisionProvisionerTests
             new ReadyActivator(endpoint, subject),
             new MetadataClient(Metadata(subject, "pod-1")),
             manager,
-            lifecycle,
+            lifecycle.MarkReadyAsync,
+            lifecycle.PromoteAsync,
             NullLogger<FunctionRevisionProvisioner>.Instance);
 
         var outcome = await provisioner.ProvisionAsync(subject.App, subject.Revision, CancellationToken.None);
@@ -53,7 +54,8 @@ public sealed class FunctionRevisionProvisionerTests
             new ReadyActivator(endpoint, subject),
             new MetadataClient(Metadata(subject, "pod-1")),
             manager,
-            lifecycle,
+            lifecycle.MarkReadyAsync,
+            lifecycle.PromoteAsync,
             NullLogger<FunctionRevisionProvisioner>.Instance);
 
         var outcome = await provisioner.ProvisionAsync(subject.App, subject.Revision, CancellationToken.None);
@@ -82,7 +84,8 @@ public sealed class FunctionRevisionProvisionerTests
             new ReadyActivator(endpoint, subject),
             new MetadataClient(Metadata(subject, "pod-1")),
             manager,
-            lifecycle,
+            lifecycle.MarkReadyAsync,
+            lifecycle.PromoteAsync,
             NullLogger<FunctionRevisionProvisioner>.Instance);
 
         var outcome = await provisioner.ProvisionAsync(subject.App, subject.Revision, CancellationToken.None);
@@ -104,7 +107,8 @@ public sealed class FunctionRevisionProvisionerTests
             new ReadyActivator(endpoint, subject),
             new MetadataClient(Metadata(subject, "another-pod")),
             manager,
-            lifecycle,
+            lifecycle.MarkReadyAsync,
+            lifecycle.PromoteAsync,
             NullLogger<FunctionRevisionProvisioner>.Instance);
 
         var outcome = await provisioner.ProvisionAsync(subject.App, subject.Revision, CancellationToken.None);
@@ -258,7 +262,7 @@ public sealed class FunctionRevisionProvisionerTests
             Task.FromResult<Result<FunctionReplicaState>>(new FunctionReplicaState(0, 0, 0, 0));
     }
 
-    private sealed class RecordingLifecycle : IFunctionRevisionLifecycleService
+    private sealed class RecordingLifecycle
     {
         public string? MarkedReadyRevisionId { get; private set; }
         public string? PromotedRevisionId { get; private set; }
@@ -285,22 +289,5 @@ public sealed class FunctionRevisionProvisionerTests
             PromotedRevisionId = revisionId;
             return Task.FromResult(PromoteOutcome);
         }
-
-        public Task<FunctionRevisionLifecycleOutcome> FailAsync(
-            string tenantId,
-            string functionAppId,
-            string revisionId,
-            FunctionRevisionFailure failure,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<FunctionRevisionLifecycleOutcome>(
-                new FunctionRevisionLifecycleCompleted());
-
-        public Task<FunctionRevisionLifecycleOutcome> RetireAsync(
-            string tenantId,
-            string functionAppId,
-            string revisionId,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<FunctionRevisionLifecycleOutcome>(
-                new FunctionRevisionLifecycleCompleted());
     }
 }

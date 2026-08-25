@@ -47,7 +47,9 @@ public sealed class FunctionAppPersistenceRegistrationTests(MongoReplicaSetFixtu
         Assert.NotNull(Services.GetRequiredService<LoadFunctionRevisionProvisioningSubject>());
         Assert.NotNull(Services.GetRequiredService<RunMongoOutcomeTransaction<
             FunctionRevisionLifecycleOutcome>>());
-        Assert.IsType<FunctionRevisionLifecycleService>(
-            Services.GetRequiredService<IFunctionRevisionLifecycleService>());
+        Assert.NotNull(Services.GetRequiredService<MarkFunctionRevisionReady>());
+        Assert.NotNull(Services.GetRequiredService<PromoteFunctionRevision>());
+        Assert.NotNull(Services.GetRequiredService<FailFunctionRevision>());
+        Assert.NotNull(Services.GetRequiredService<RetireFunctionRevision>());
     }
 }

@@ -1,6 +1,7 @@
 using MassTransit;
 using Microsoft.Extensions.Logging;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Persistence.Lifecycle;
 using Pole.Features.Functions.Application.Persistence.Runtime.Provisioning;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Events;
@@ -13,7 +14,7 @@ namespace Pole.Features.Functions.Runtime.Consumers;
 public sealed class FunctionRevisionCreatedConsumer(
     LoadFunctionRevisionProvisioningSubject loadProvisioningSubject,
     IFunctionRevisionKubernetesManager kubernetesManager,
-    IFunctionRevisionLifecycleService lifecycleService,
+    FailFunctionRevision failFunctionRevision,
     IEnumerable<IFunctionRevisionProvisioner> provisioners,
     ILogger<FunctionRevisionCreatedConsumer> logger)
     : IConsumer<FunctionRevisionCreatedEvent>
@@ -109,7 +110,7 @@ public sealed class FunctionRevisionCreatedConsumer(
         string message,
         CancellationToken cancellationToken)
     {
-        var failed = await lifecycleService.FailAsync(
+        var failed = await failFunctionRevision(
             tenantId,
             app.Id,
             revision.Id,
