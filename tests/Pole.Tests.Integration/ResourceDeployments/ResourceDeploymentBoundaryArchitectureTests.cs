@@ -1,11 +1,8 @@
 using MongoDB.Driver;
-using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Consumers;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Application.Jobs;
-using Pole.Features.ResourceDeployments.Application.Mutations;
 using Pole.Features.ResourceDeployments.Application.Persistence;
-using Pole.Features.ResourceDeployments.Application.Placement;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Xunit;
@@ -49,13 +46,29 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
     {
         Type[] implementationTypes =
         [
-            typeof(ResourceDeploymentWriter),
-            typeof(ResourceDeploymentMutationWriter),
-            typeof(ResourceDeploymentQueryService),
-            typeof(ResourceDeploymentReferenceLookup),
-            typeof(ResourceDeploymentComputeLookup),
-            typeof(ResourceDeploymentComputeProfileReferenceGuard),
-            typeof(ResourceDeploymentFinalizationService),
+            typeof(MongoCreateResourceDeployment),
+            typeof(MongoCreateResourceDeploymentSet),
+            typeof(MongoRequestResourceDeploymentApply),
+            typeof(MongoRequestResourceDeploymentDeletion),
+            typeof(MongoRequestExactResourceDeploymentApply),
+            typeof(MongoRequestExactResourceDeploymentDeletion),
+            typeof(MongoRequestResourceDeploymentSetApply),
+            typeof(MongoRequestResourceDeploymentSetDeletion),
+            typeof(MongoAdvanceResourceDeploymentRevision),
+            typeof(MongoRetryExactResourceDeployment),
+            typeof(MongoLoadResourceDeployment),
+            typeof(MongoLoadResourceDeployments),
+            typeof(MongoLoadResourceDeploymentSet),
+            typeof(MongoLoadExactResourceDeployment),
+            typeof(MongoLoadResourceDeploymentSets),
+            typeof(MongoLoadCurrentResourceDeploymentCompute),
+            typeof(MongoEnsureComputeProfileUnreferenced),
+            typeof(MongoEnsureNoUnfinishedResourceGroupDeployments),
+            typeof(MongoEnsureNoUnfinishedIsolationScopeDeployments),
+            typeof(MongoGetResourceDeploymentFinalizationReadiness),
+            typeof(MongoPurgeDeletedResourceDeployments),
+            typeof(MongoGetExactResourceDeploymentFinalizationReadiness),
+            typeof(MongoPurgeExactDeletedResourceDeployment),
             typeof(ResourceDeploymentRetryPersistence),
             typeof(ClaimResourceDeploymentOperation),
             typeof(ResourceDeploymentCompletionPersistence),

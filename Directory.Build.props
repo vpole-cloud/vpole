@@ -15,6 +15,7 @@
                  '$(MSBuildProjectName)' == 'Outbox.Application' Or
                  '$(MSBuildProjectName)' == 'Quotas.Application' Or
                  '$(MSBuildProjectName)' == 'RedisServices.Application' Or
+                 '$(MSBuildProjectName)' == 'ResourceDeployments.Application' Or
                  '$(MSBuildProjectName)' == 'ResourceGroups.Application' Or
                  '$(MSBuildProjectName)' == 'StorageProfiles.Application' Or
                  '$(MSBuildProjectName)' == 'Tenants.Application' Or

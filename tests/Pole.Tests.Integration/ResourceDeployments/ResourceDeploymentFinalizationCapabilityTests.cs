@@ -1,6 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.ResultType;
@@ -10,7 +10,7 @@ using Xunit;
 namespace Pole.Tests.Integration.ResourceDeployments;
 
 [Collection(IntegrationTestCollection.Name)]
-public sealed class ResourceDeploymentFinalizationServiceTests(
+public sealed class ResourceDeploymentFinalizationCapabilityTests(
     MongoReplicaSetFixture fixture)
     : IAsyncLifetime
 {
@@ -44,20 +44,19 @@ public sealed class ResourceDeploymentFinalizationServiceTests(
                 TenantId,
                 deleted: false)
         ]);
-        var subject = new ResourceDeploymentFinalizationService(
-            fixture.DbContext.ResourceDeployments);
+        var operations = CreateOperations();
 
         var result = await RunTypedTransactionAsync(
             async (session, cancellationToken) =>
             {
-                var readiness = await subject.GetReadinessAsync(
+                var readiness = await operations.GetReadiness(
                     TenantId,
                     ResourceType,
                     ResourceId,
                     session,
                     cancellationToken);
                 Assert.Equal(ResourceDeploymentFinalizationReadiness.Waiting, readiness);
-                return await subject.PurgeDeletedAsync(
+                return await operations.PurgeDeleted(
                     TenantId,
                     ResourceType,
                     ResourceId,
@@ -87,20 +86,19 @@ public sealed class ResourceDeploymentFinalizationServiceTests(
                 OtherTenantId,
                 deleted: true)
         ]);
-        var subject = new ResourceDeploymentFinalizationService(
-            fixture.DbContext.ResourceDeployments);
+        var operations = CreateOperations();
 
         var result = await RunTypedTransactionAsync(
             async (session, cancellationToken) =>
             {
-                var readiness = await subject.GetReadinessAsync(
+                var readiness = await operations.GetReadiness(
                     TenantId,
                     ResourceType,
                     ResourceId,
                     session,
                     cancellationToken);
                 Assert.Equal(ResourceDeploymentFinalizationReadiness.Ready, readiness);
-                return await subject.PurgeDeletedAsync(
+                return await operations.PurgeDeleted(
                     TenantId,
                     ResourceType,
                     ResourceId,
@@ -129,13 +127,12 @@ public sealed class ResourceDeploymentFinalizationServiceTests(
             CreateDeployment(deletedDeploymentId, TenantId, deleted: true),
             CreateDeployment(siblingDeploymentId, TenantId, deleted: false)
         ]);
-        var subject = new ResourceDeploymentFinalizationService(
-            fixture.DbContext.ResourceDeployments);
+        var operations = CreateOperations();
 
         var result = await RunTypedTransactionAsync(
             async (session, cancellationToken) =>
             {
-                var readiness = await subject.GetExactReadinessAsync(
+                var readiness = await operations.GetExactReadiness(
                     TenantId,
                     ResourceType,
                     ResourceId,
@@ -143,7 +140,7 @@ public sealed class ResourceDeploymentFinalizationServiceTests(
                     session,
                     cancellationToken);
                 Assert.Equal(ResourceDeploymentFinalizationReadiness.Ready, readiness);
-                return await subject.PurgeExactDeletedAsync(
+                return await operations.PurgeExactDeleted(
                     TenantId,
                     ResourceType,
                     ResourceId,
@@ -173,6 +170,22 @@ public sealed class ResourceDeploymentFinalizationServiceTests(
         using var session = await fixture.DbContext.Client.StartSessionAsync();
         return await session.WithTransactionAsync(operation);
     }
+
+    private FinalizationOperations CreateOperations() => new(
+        new MongoGetResourceDeploymentFinalizationReadiness(
+            fixture.DbContext.ResourceDeployments).InvokeAsync,
+        new MongoPurgeDeletedResourceDeployments(
+            fixture.DbContext.ResourceDeployments).InvokeAsync,
+        new MongoGetExactResourceDeploymentFinalizationReadiness(
+            fixture.DbContext.ResourceDeployments).InvokeAsync,
+        new MongoPurgeExactDeletedResourceDeployment(
+            fixture.DbContext.ResourceDeployments).InvokeAsync);
+
+    private sealed record FinalizationOperations(
+        GetResourceDeploymentFinalizationReadiness GetReadiness,
+        PurgeDeletedResourceDeployments PurgeDeleted,
+        GetExactResourceDeploymentFinalizationReadiness GetExactReadiness,
+        PurgeExactDeletedResourceDeployment PurgeExactDeleted);
 
     private static ResourceDeployment CreateDeployment(
         string deploymentId,

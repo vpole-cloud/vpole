@@ -1,27 +1,24 @@
 using MongoDB.Driver;
-using Pole.Features.ResourceDeployments.Application.Persistence;
+using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.ResourceDeployments.Application.Common;
+namespace Pole.Features.ResourceDeployments.Application.Persistence;
 
-internal sealed class ResourceDeploymentComputeLookup(
+internal sealed class MongoLoadCurrentResourceDeploymentCompute(
     IMongoCollection<ResourceDeployment> resourceDeployments)
 {
     public async Task<Result<
         CurrentResourceDeploymentComputeDto,
-        LoadCurrentResourceDeploymentComputeError>> GetCurrentAsync(
+        LoadCurrentResourceDeploymentComputeError>> InvokeAsync(
         string tenantId,
         ResourceTypeId resourceType,
         string resourceId,
         CancellationToken cancellationToken = default)
     {
         var deployments = await resourceDeployments
-            .Find(ResourceDeploymentFilters.ForResource(
-                tenantId,
-                resourceType,
-                resourceId))
+            .Find(ResourceDeploymentFilters.ForResource(tenantId, resourceType, resourceId))
             .SortBy(deployment => deployment.Id)
             .Limit(2)
             .ToListAsync(cancellationToken);
