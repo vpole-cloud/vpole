@@ -15,6 +15,7 @@
                  '$(MSBuildProjectName)' == 'RedisServices.Application' Or
                  '$(MSBuildProjectName)' == 'ResourceGroups.Application' Or
                  '$(MSBuildProjectName)' == 'StorageProfiles.Application' Or
+                 '$(MSBuildProjectName)' == 'Tenants.Application' Or
                  '$(MSBuildProjectName)' == 'Users.Application' Or
                  '$(MSBuildProjectName)' == 'WebServices.Application'">true</PoleMongoBoundaryAnalyzerEnabled>
   </PropertyGroup>

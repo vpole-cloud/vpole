@@ -3,7 +3,7 @@ using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Domain;
 
-namespace Pole.Features.Tenants.Application.Common;
+namespace Pole.Features.Tenants.Application.Persistence;
 
 internal static class TenantFilters
 {
