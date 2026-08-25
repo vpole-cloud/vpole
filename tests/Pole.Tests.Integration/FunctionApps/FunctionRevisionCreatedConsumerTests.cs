@@ -5,6 +5,7 @@ using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Endpoints;
+using Pole.Features.Functions.Application.Persistence.Lifecycle;
 using Pole.Features.Functions.Application.Persistence.Runtime.Provisioning;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Events;
@@ -42,7 +43,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                 DbContext.FunctionApps,
                 DbContext.FunctionRevisions).InvokeAsync,
             manager,
-            Services.GetRequiredService<IFunctionRevisionLifecycleService>(),
+            Services.GetRequiredService<FailFunctionRevision>(),
             [],
             NullLogger<FunctionRevisionCreatedConsumer>.Instance);
         var message = new FunctionRevisionCreatedEvent(
@@ -88,7 +89,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                 DbContext.FunctionApps,
                 DbContext.FunctionRevisions).InvokeAsync,
             manager,
-            Services.GetRequiredService<IFunctionRevisionLifecycleService>(),
+            Services.GetRequiredService<FailFunctionRevision>(),
             [],
             NullLogger<FunctionRevisionCreatedConsumer>.Instance);
         var message = new FunctionRevisionCreatedEvent(
@@ -122,8 +123,9 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                 RevisionRequest(),
                 []),
             TestData.TenantId))).RequireSuccess();
-        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
-        (await lifecycle.MarkReadyAsync(
+        var markReady = Services.GetRequiredService<MarkFunctionRevisionReady>();
+        var fail = Services.GetRequiredService<FailFunctionRevision>();
+        (await markReady(
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();
@@ -134,7 +136,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                 DbContext.FunctionApps,
                 DbContext.FunctionRevisions).InvokeAsync,
             manager,
-            lifecycle,
+            fail,
             [provisioner],
             NullLogger<FunctionRevisionCreatedConsumer>.Instance);
         var message = new FunctionRevisionCreatedEvent(
@@ -164,8 +166,9 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                 RevisionRequest(),
                 []),
             TestData.TenantId))).RequireSuccess();
-        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
-        (await lifecycle.MarkReadyAsync(
+        var markReady = Services.GetRequiredService<MarkFunctionRevisionReady>();
+        var fail = Services.GetRequiredService<FailFunctionRevision>();
+        (await markReady(
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();
@@ -175,7 +178,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                 DbContext.FunctionApps,
                 DbContext.FunctionRevisions).InvokeAsync,
             manager,
-            lifecycle,
+            fail,
             [],
             NullLogger<FunctionRevisionCreatedConsumer>.Instance);
         var message = new FunctionRevisionCreatedEvent(

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Persistence.Lifecycle;
 using Pole.Features.Functions.Application.Persistence.Runtime.Scaling;
 using Pole.Features.Functions.Domain;
 
@@ -42,8 +43,8 @@ public sealed class MongoFunctionScaleTargetSource(
         CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
-        var lifecycleService = scope.ServiceProvider.GetRequiredService<IFunctionRevisionLifecycleService>();
-        return await lifecycleService.RetireAsync(
+        var retireFunctionRevision = scope.ServiceProvider.GetRequiredService<RetireFunctionRevision>();
+        return await retireFunctionRevision(
             target.Revision.TenantId,
             target.Revision.FunctionAppId,
             target.Revision.Id,

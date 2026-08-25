@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Endpoints;
+using Pole.Features.Functions.Application.Persistence.Lifecycle;
 using Pole.Features.Functions.Application.Persistence.Mutations;
 using Pole.Features.Functions.Domain;
 using Pole.ResultType;
@@ -184,12 +185,13 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
                 RevisionRequest(),
                 []),
             TestData.TenantId))).RequireSuccess();
-        var lifecycle = Services.GetRequiredService<IFunctionRevisionLifecycleService>();
-        (await lifecycle.MarkReadyAsync(
+        var markReady = Services.GetRequiredService<MarkFunctionRevisionReady>();
+        var promote = Services.GetRequiredService<PromoteFunctionRevision>();
+        (await markReady(
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();
-        (await lifecycle.PromoteAsync(
+        (await promote(
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Persistence.Lifecycle;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Activation;
 using Pole.Features.Functions.Runtime.Agent;
@@ -32,7 +33,8 @@ public sealed class FunctionRevisionProvisioner(
     IFunctionRevisionActivator activator,
     IFunctionAgentClient agentClient,
     IFunctionRevisionKubernetesManager kubernetesManager,
-    IFunctionRevisionLifecycleService lifecycleService,
+    MarkFunctionRevisionReady markFunctionRevisionReady,
+    PromoteFunctionRevision promoteFunctionRevision,
     ILogger<FunctionRevisionProvisioner> logger) : IFunctionRevisionProvisioner
 {
     private static readonly TimeSpan MetadataTimeout = TimeSpan.FromSeconds(10);
@@ -85,7 +87,7 @@ public sealed class FunctionRevisionProvisioner(
                     if (scaled is IFailure scaleFailure)
                         return await FailAndStopAsync(subject, "minimum-scale", scaleFailure.Message, cancellationToken);
 
-                    var ready = await lifecycleService.MarkReadyAsync(
+                    var ready = await markFunctionRevisionReady(
                         app.TenantId,
                         app.Id,
                         revision.Id,
@@ -131,7 +133,7 @@ public sealed class FunctionRevisionProvisioner(
         FunctionRevision revision,
         CancellationToken cancellationToken)
     {
-        var promoted = await lifecycleService.PromoteAsync(
+        var promoted = await promoteFunctionRevision(
             app.TenantId,
             app.Id,
             revision.Id,
