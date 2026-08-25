@@ -6,6 +6,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
+using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
@@ -135,10 +136,9 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
         Assert.False(updated.AcceptsWorkloads);
         Assert.Equal(created.Revision + 1, updated.Revision);
 
-        var lookup = new DeploymentTargetAdmissionQueries(
-            Fixture.DbContext.DeploymentTargets,
-            Fixture.DbContext.DeploymentTargetSettings);
-        var admission = await lookup.AdmitForWorkloadAsync(updated.Id);
+        var admission = await new MongoAdmitDeploymentTargetForWorkload(
+            new MongoLoadDeploymentTargetById(Fixture.DbContext.DeploymentTargets).InvokeAsync)
+            .InvokeAsync(updated.Id);
         var failure = admission switch
         {
             Err<DeploymentTargetWorkloadAdmissionError> error => error.Value,

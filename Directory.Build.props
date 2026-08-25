@@ -8,6 +8,7 @@
   <PropertyGroup>
     <PoleMongoBoundaryAnalyzerEnabled
       Condition="'$(MSBuildProjectName)' == 'ContainerRegistries.Application' Or
+                 '$(MSBuildProjectName)' == 'DeploymentTargets.Application' Or
                  '$(MSBuildProjectName)' == 'Domains.Application' Or
                  '$(MSBuildProjectName)' == 'Functions.Application' Or
                  '$(MSBuildProjectName)' == 'GitProviders.Application' Or

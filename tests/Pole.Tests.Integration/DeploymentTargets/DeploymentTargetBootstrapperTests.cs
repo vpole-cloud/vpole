@@ -315,11 +315,11 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         SuccessfulProbe? probe = null)
     {
         var timeProvider = new FixedTimeProvider(Now);
-        var domainAdmission = new DeploymentTargetDomainAdmission(
+        EnsureNoOverlappingDeploymentTargetPublicBaseDomain ensureNoOverlappingPublicBaseDomain =
+            new MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain(
             fixture.DbContext.DeploymentTargets,
-            fixture.DbContext.DeploymentTargetReferences,
             fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
-                DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName));
+                DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName)).InvokeAsync;
         return new DeploymentTargetBootstrapper(
             new MongoLoadDeploymentTargetBootstrapState(
                 fixture.DbContext.DeploymentTargets,
@@ -327,7 +327,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
             new MongoEnsureBootstrapDefaultDeploymentTarget(
                 fixture.DbContext.DeploymentTargets,
                 fixture.DbContext.DeploymentTargetSettings,
-                domainAdmission,
+                ensureNoOverlappingPublicBaseDomain,
                 new MongoRunTransaction(fixture.Client)
                     .InvokeOutcomeAsync<EnsureBootstrapDefaultDeploymentTargetOutcome>,
                 timeProvider).InvokeAsync,

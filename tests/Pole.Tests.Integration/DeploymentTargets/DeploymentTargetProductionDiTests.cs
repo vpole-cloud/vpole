@@ -11,7 +11,6 @@ using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Persistence;
-using Pole.Features.DeploymentTargets.Application.Security;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Runtime.Kubernetes;
@@ -70,6 +69,17 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
             descriptor.Lifetime == ServiceLifetime.Scoped);
         Assert.Contains(services, descriptor =>
             descriptor.ServiceType == typeof(LoadDeploymentTargetById) &&
+            descriptor.Lifetime == ServiceLifetime.Singleton);
+        Assert.Contains(services, descriptor =>
+            descriptor.ServiceType == typeof(LoadDefaultDeploymentTargetId) &&
+            descriptor.Lifetime == ServiceLifetime.Singleton);
+        Assert.Contains(services, descriptor =>
+            descriptor.ServiceType ==
+                typeof(EnsureNoOverlappingDeploymentTargetPublicBaseDomain) &&
+            descriptor.Lifetime == ServiceLifetime.Singleton);
+        Assert.Contains(services, descriptor =>
+            descriptor.ServiceType ==
+                typeof(EnsureNoDeploymentTargetPublicBaseDomainReferences) &&
             descriptor.Lifetime == ServiceLifetime.Scoped);
         Assert.Contains(services, descriptor =>
             descriptor.ServiceType == typeof(LookupDeploymentTarget) &&
@@ -184,6 +194,8 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
 
         AssertResolved<LoadDeploymentTargetById>(scope.ServiceProvider);
         AssertResolved<LoadDefaultDeploymentTargetId>(scope.ServiceProvider);
+        AssertResolved<EnsureNoOverlappingDeploymentTargetPublicBaseDomain>(scope.ServiceProvider);
+        AssertResolved<EnsureNoDeploymentTargetPublicBaseDomainReferences>(scope.ServiceProvider);
         AssertResolved<LoadDeploymentTargets>(scope.ServiceProvider);
         AssertResolved<LoadEligibleDeploymentTargets>(scope.ServiceProvider);
         AssertResolved<PersistCreatedDeploymentTarget>(scope.ServiceProvider);

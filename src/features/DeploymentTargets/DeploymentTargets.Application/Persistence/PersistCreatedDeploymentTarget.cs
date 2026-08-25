@@ -17,7 +17,7 @@ public delegate Task<Result<DeploymentTarget, PersistCreatedDeploymentTargetErro
 
 internal sealed class MongoPersistCreatedDeploymentTarget(
     IMongoCollection<DeploymentTarget> deploymentTargets,
-    DeploymentTargetDomainAdmission domainAdmission,
+    EnsureNoOverlappingDeploymentTargetPublicBaseDomain ensureNoOverlappingPublicBaseDomain,
     RunMongoOutcomeTransaction<Result<
         DeploymentTarget,
         PersistCreatedDeploymentTargetError>> runMongoTransaction)
@@ -31,7 +31,7 @@ internal sealed class MongoPersistCreatedDeploymentTarget(
         {
             return await runMongoTransaction(async (transaction, ct) =>
             {
-                var admitted = await domainAdmission.EnsureNoOverlappingPublicBaseDomainAsync(
+                var admitted = await ensureNoOverlappingPublicBaseDomain(
                     deploymentTarget.Id,
                     deploymentTarget.WorkloadConfiguration.Ingress?.PublicBaseDomain,
                     transaction.Session,

@@ -31,7 +31,7 @@ internal delegate Task<EnsureBootstrapDefaultDeploymentTargetOutcome>
 internal sealed class MongoEnsureBootstrapDefaultDeploymentTarget(
     IMongoCollection<DeploymentTarget> deploymentTargets,
     IMongoCollection<DeploymentTargetSettings> settings,
-    DeploymentTargetDomainAdmission domainAdmission,
+    EnsureNoOverlappingDeploymentTargetPublicBaseDomain ensureNoOverlappingPublicBaseDomain,
     RunMongoOutcomeTransaction<EnsureBootstrapDefaultDeploymentTargetOutcome> runMongoTransaction,
     TimeProvider timeProvider)
 {
@@ -87,7 +87,7 @@ internal sealed class MongoEnsureBootstrapDefaultDeploymentTarget(
         if (existing is not null)
             return await BindDefaultSettingsAsync(transaction, existing, cancellationToken);
 
-        var admission = await domainAdmission.EnsureNoOverlappingPublicBaseDomainAsync(
+        var admission = await ensureNoOverlappingPublicBaseDomain(
             deploymentTarget.Id,
             deploymentTarget.WorkloadConfiguration.Ingress?.PublicBaseDomain,
             transaction.Session,

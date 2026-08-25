@@ -11,7 +11,6 @@ using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Application.Persistence;
-using Pole.Features.DeploymentTargets.Application.Security;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
@@ -146,7 +145,8 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
             LoadDefaultId,
             new MongoPersistUpdatedDeploymentTarget(
                 fixture.DbContext.DeploymentTargets,
-                CreateDomainAdmission(),
+                CreateNoPublicBaseDomainReferences(),
+                CreateNoOverlappingPublicBaseDomain(),
                 new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<Result<
                     DeploymentTarget,
                     PersistUpdatedDeploymentTargetError>>).InvokeAsync,
@@ -284,12 +284,17 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(certificate.ExportCertificatePem()));
     }
 
-    private DeploymentTargetDomainAdmission CreateDomainAdmission() =>
-        new(
+    private EnsureNoOverlappingDeploymentTargetPublicBaseDomain
+        CreateNoOverlappingPublicBaseDomain() =>
+        new MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain(
             fixture.DbContext.DeploymentTargets,
-            fixture.DbContext.DeploymentTargetReferences,
             fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
-                DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName));
+                DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName)).InvokeAsync;
+
+    private EnsureNoDeploymentTargetPublicBaseDomainReferences
+        CreateNoPublicBaseDomainReferences() =>
+        new MongoEnsureNoDeploymentTargetPublicBaseDomainReferences(
+            fixture.DbContext.DeploymentTargetReferences).InvokeAsync;
 
     private Task<DeploymentTarget?> LoadById(
         string id,

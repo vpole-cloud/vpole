@@ -6,6 +6,7 @@ using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Application.Common;
+using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.ResourceDeployments.Application.Common;
@@ -113,13 +114,13 @@ internal sealed class ComputeProfilePersistenceTestHost : IDisposable
                 .InvokeOutcomeAsync<DeleteComputeProfileOutcome>);
         if (applyTargetReferenceChanges is null)
         {
-            services.AddSingleton(new DeploymentTargetReferenceAdmission(
+            services.AddSingleton(new MongoApplyDeploymentTargetReferenceChanges(
                 fixture.DbContext.DeploymentTargets,
                 fixture.DbContext.DeploymentTargetReferences,
                 TimeProvider.System));
             services.AddSingleton<ApplyDeploymentTargetReferenceChanges>(provider => provider
-                .GetRequiredService<DeploymentTargetReferenceAdmission>()
-                .ApplyChangesOutcomeAsync);
+                .GetRequiredService<MongoApplyDeploymentTargetReferenceChanges>()
+                .InvokeAsync);
         }
         else
         {

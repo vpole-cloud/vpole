@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Application.Common;
-using Pole.Features.DeploymentTargets.Application.Security;
+using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Mediator;
 using Pole.ResultType;
 

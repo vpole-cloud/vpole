@@ -91,7 +91,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
             .InvokeOutcomeAsync<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
             async (transaction, ct) =>
         {
-            var registered = await admission.ApplyChangesOutcomeAsync(
+            var registered = await admission(
                 owner,
                 [target.Id],
                 [],
@@ -143,7 +143,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
         using var session = await fixture.DbContext.Client.StartSessionAsync();
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => admission.ApplyChangesOutcomeAsync(
+            () => admission(
                 CreateOwner(),
                 [target.Id],
                 [],
@@ -163,7 +163,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
         using var session = await fixture.DbContext.Client.StartSessionAsync();
 
         var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
-            admission.ApplyChangesOutcomeAsync(
+            admission(
                 CreateOwner(),
                 ["not-a-mongo-object-id"],
                 [],
@@ -295,11 +295,11 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
                 timeProvider ?? TimeProvider.System).InvokeAsync,
             new NoOpClientCache().Invalidate);
 
-    private DeploymentTargetReferenceAdmission CreateAdmission() =>
-        new(
+    private ApplyDeploymentTargetReferenceChanges CreateAdmission() =>
+        new MongoApplyDeploymentTargetReferenceChanges(
             fixture.DbContext.DeploymentTargets,
             fixture.DbContext.DeploymentTargetReferences,
-            TimeProvider.System);
+            TimeProvider.System).InvokeAsync;
 
     private Task<Result<Unit, DeploymentTargetHasDurableReferences>> EnsureNoReferences(
         string deploymentTargetId,
@@ -310,7 +310,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
 
     private async Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
         ApplyReferencesAsync(
-            DeploymentTargetReferenceAdmission admission,
+            ApplyDeploymentTargetReferenceChanges admission,
             DeploymentTargetReferenceOwner owner,
             IReadOnlyCollection<string> addedDeploymentTargetIds,
             IReadOnlyCollection<string> removedDeploymentTargetIds)
@@ -319,7 +319,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
             .InvokeOutcomeAsync<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
                 async (transaction, cancellationToken) =>
                 {
-                    var result = await admission.ApplyChangesOutcomeAsync(
+                    var result = await admission(
                         owner,
                         addedDeploymentTargetIds,
                         removedDeploymentTargetIds,
