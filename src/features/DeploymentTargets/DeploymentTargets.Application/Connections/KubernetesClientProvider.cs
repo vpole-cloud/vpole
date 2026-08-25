@@ -1,8 +1,7 @@
 using System.Collections.Concurrent;
 using k8s;
 using MongoDB.Bson;
-using MongoDB.Driver;
-using Pole.Features.DeploymentTargets.Application.Common;
+using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
@@ -12,8 +11,8 @@ namespace Pole.Features.DeploymentTargets.Application.Connections;
 public delegate void InvalidateDeploymentTargetKubernetesClient(string deploymentTargetId);
 
 public sealed class KubernetesClientProvider(
-    IMongoCollection<DeploymentTarget> deploymentTargets,
-    IMongoCollection<DeploymentTargetSettings> settings,
+    LoadDeploymentTargetById loadDeploymentTargetById,
+    LoadDefaultDeploymentTargetId loadDefaultDeploymentTargetId,
     CreateDeploymentTargetKubernetesClient createDeploymentTargetKubernetesClient) :
     IKubernetesClientProvider,
     IDisposable
@@ -82,10 +81,7 @@ public sealed class KubernetesClientProvider(
     public async Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        var targetId = await settings
-            .Find(DeploymentTargetSettingsFilters.Singleton())
-            .Project(settings => settings.DefaultDeploymentTargetId)
-            .FirstOrDefaultAsync(cancellationToken);
+        var targetId = await loadDefaultDeploymentTargetId(cancellationToken);
         if (string.IsNullOrWhiteSpace(targetId))
         {
             throw new DeploymentTargetUnavailableException(
@@ -123,9 +119,7 @@ public sealed class KubernetesClientProvider(
     private async Task<DeploymentTarget?> LoadTargetAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken) =>
-        await deploymentTargets
-            .Find(DeploymentTargetFilters.ById(deploymentTargetId))
-            .FirstOrDefaultAsync(cancellationToken);
+        await loadDeploymentTargetById(deploymentTargetId, cancellationToken);
 
     private bool TryGetCurrent(DeploymentTarget target, out IKubernetes client)
     {

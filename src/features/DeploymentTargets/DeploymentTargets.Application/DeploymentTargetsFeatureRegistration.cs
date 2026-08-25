@@ -7,7 +7,6 @@ using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Persistence;
-using Pole.Features.DeploymentTargets.Application.Security;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
 
@@ -49,9 +48,8 @@ public static class DeploymentTargetsFeatureRegistration
             .InvokeAsync);
         services.TryAddScoped<DeploymentTargetValidationService>();
 
-        // Stateless admission depends only on the singleton Mongo context and
-        // is also used by the singleton startup bootstrapper.
-        services.TryAddSingleton<DeploymentTargetDomainAdmission>();
+        // This is a genuine runtime protocol: consumers select it as a Kubernetes client
+        // provider and it owns the lifecycle of cached, disposable clients.
         services.TryAddSingleton<KubernetesClientProvider>();
         services.TryAddSingleton<IKubernetesClientProvider>(provider =>
             provider.GetRequiredService<KubernetesClientProvider>());
@@ -62,57 +60,6 @@ public static class DeploymentTargetsFeatureRegistration
             .GetRequiredService<DeploymentTargetBootstrapper>()
             .InvokeAsync);
 
-        services.TryAddScoped<DeploymentTargetAdmissionQueries>();
-        services.TryAddScoped<LookupDeploymentTarget>(
-            provider => provider
-                .GetRequiredService<DeploymentTargetAdmissionQueries>()
-                .LookupAsync);
-        services.TryAddScoped<LookupDefaultDeploymentTarget>(
-            provider => provider
-                .GetRequiredService<DeploymentTargetAdmissionQueries>()
-                .LookupDefaultAsync);
-        services.TryAddScoped<ListEligibleDeploymentTargetsForNewWorkload>(
-            provider => provider
-                .GetRequiredService<DeploymentTargetAdmissionQueries>()
-                .ListEligibleAsync);
-        services.TryAddScoped<AdmitDeploymentTargetForWorkload>(
-            provider => provider
-                .GetRequiredService<DeploymentTargetAdmissionQueries>()
-                .AdmitForWorkloadAsync);
-        services.TryAddScoped<AdmitDefaultDeploymentTargetForNewWorkload>(
-            provider => provider
-                .GetRequiredService<DeploymentTargetAdmissionQueries>()
-                .AdmitDefaultForNewWorkloadAsync);
-        services.TryAddScoped<AdmitDeploymentTargetForNewWorkload>(
-            provider => provider
-                .GetRequiredService<DeploymentTargetAdmissionQueries>()
-                .AdmitForWorkloadPlacementAsync);
-        services.TryAddScoped<AdmitDeploymentTargetPublicIngressForNewWorkload>(
-            provider => provider
-                .GetRequiredService<DeploymentTargetAdmissionQueries>()
-                .AdmitForNewWorkloadAsync);
-        services.TryAddScoped<ListEligiblePublicIngressDeploymentTargetsForNewWorkload>(
-            provider => provider
-                .GetRequiredService<DeploymentTargetAdmissionQueries>()
-                .ListEligiblePublicIngressForNewWorkloadAsync);
-        services.TryAddScoped<
-            AdmitDeploymentTargetPublicIngressForDomainReservation>(
-            provider => provider
-                .GetRequiredService<DeploymentTargetAdmissionQueries>()
-                .AdmitForDomainReservationAsync);
-        services.TryAddScoped<DeploymentTargetReferenceAdmission>();
-        services.TryAddScoped<ApplyDeploymentTargetReferenceChanges>(
-            provider => provider
-                .GetRequiredService<DeploymentTargetReferenceAdmission>()
-                .ApplyChangesOutcomeAsync);
-        services.TryAddScoped<FenceDeploymentTargetWorkloadConfigurations>(
-            provider => provider
-                .GetRequiredService<DeploymentTargetReferenceAdmission>()
-                .FenceManyOutcomeAsync);
-        services.TryAddScoped<MongoRewrapDeploymentTargetCredentials>();
-        services.TryAddScoped<RewrapDeploymentTargetCredentials>(provider => provider
-            .GetRequiredService<MongoRewrapDeploymentTargetCredentials>()
-            .InvokeAsync);
         return services;
     }
 }

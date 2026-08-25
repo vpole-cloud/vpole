@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.DeploymentTargets.Domain;
 
-namespace Pole.Features.DeploymentTargets.Application.Common;
+namespace Pole.Features.DeploymentTargets.Application.Persistence;
 
 internal static class DeploymentTargetSettingsFilters
 {

@@ -3,7 +3,7 @@ using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 
-namespace Pole.Features.DeploymentTargets.Application.Common;
+namespace Pole.Features.DeploymentTargets.Application.Persistence;
 
 internal static class DeploymentTargetFilters
 {

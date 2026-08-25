@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.DeploymentTargets.Application.Common;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
 
@@ -27,10 +28,10 @@ public static class DeploymentTargetPersistenceRegistration
             .GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
                 DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName));
 
-        AddCapability<MongoLoadDeploymentTargetById, LoadDeploymentTargetById>(
+        AddSingletonCapability<MongoLoadDeploymentTargetById, LoadDeploymentTargetById>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoLoadDefaultDeploymentTargetId, LoadDefaultDeploymentTargetId>(
+        AddSingletonCapability<MongoLoadDefaultDeploymentTargetId, LoadDefaultDeploymentTargetId>(
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoLoadDeploymentTargets, LoadDeploymentTargets>(
@@ -58,6 +59,58 @@ public static class DeploymentTargetPersistenceRegistration
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoDeleteDeploymentTarget, DeleteDeploymentTarget>(
+            services,
+            implementation => implementation.InvokeAsync);
+        AddCapability<MongoLookupDeploymentTarget, LookupDeploymentTarget>(
+            services,
+            implementation => implementation.InvokeAsync);
+        AddCapability<MongoLookupDefaultDeploymentTarget, LookupDefaultDeploymentTarget>(
+            services,
+            implementation => implementation.InvokeAsync);
+        AddCapability<MongoListEligibleDeploymentTargetsForNewWorkload,
+            ListEligibleDeploymentTargetsForNewWorkload>(
+            services,
+            implementation => implementation.InvokeAsync);
+        AddCapability<MongoAdmitDeploymentTargetForWorkload, AdmitDeploymentTargetForWorkload>(
+            services,
+            implementation => implementation.InvokeAsync);
+        AddCapability<MongoAdmitDefaultDeploymentTargetForNewWorkload,
+            AdmitDefaultDeploymentTargetForNewWorkload>(
+            services,
+            implementation => implementation.InvokeAsync);
+        AddCapability<MongoAdmitDeploymentTargetForNewWorkload,
+            AdmitDeploymentTargetForNewWorkload>(
+            services,
+            implementation => implementation.InvokeAsync);
+        AddCapability<MongoAdmitDeploymentTargetPublicIngressForNewWorkload,
+            AdmitDeploymentTargetPublicIngressForNewWorkload>(
+            services,
+            implementation => implementation.InvokeAsync);
+        AddCapability<MongoListEligiblePublicIngressDeploymentTargetsForNewWorkload,
+            ListEligiblePublicIngressDeploymentTargetsForNewWorkload>(
+            services,
+            implementation => implementation.InvokeAsync);
+        AddCapability<MongoAdmitDeploymentTargetPublicIngressForDomainReservation,
+            AdmitDeploymentTargetPublicIngressForDomainReservation>(
+            services,
+            implementation => implementation.InvokeAsync);
+        AddSingletonCapability<MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain,
+            EnsureNoOverlappingDeploymentTargetPublicBaseDomain>(
+            services,
+            implementation => implementation.InvokeAsync);
+        AddCapability<MongoEnsureNoDeploymentTargetPublicBaseDomainReferences,
+            EnsureNoDeploymentTargetPublicBaseDomainReferences>(
+            services,
+            implementation => implementation.InvokeAsync);
+        AddCapability<MongoApplyDeploymentTargetReferenceChanges,
+            ApplyDeploymentTargetReferenceChanges>(
+            services,
+            implementation => implementation.InvokeAsync);
+        AddCapability<MongoFenceDeploymentTargetWorkloadConfigurations,
+            FenceDeploymentTargetWorkloadConfigurations>(
+            services,
+            implementation => implementation.InvokeAsync);
+        AddCapability<MongoRewrapDeploymentTargetCredentials, RewrapDeploymentTargetCredentials>(
             services,
             implementation => implementation.InvokeAsync);
 
@@ -105,6 +158,17 @@ public static class DeploymentTargetPersistenceRegistration
     {
         services.AddScoped<TImplementation>();
         services.AddScoped(serviceProvider =>
+            bind(serviceProvider.GetRequiredService<TImplementation>()));
+    }
+
+    private static void AddSingletonCapability<TImplementation, TDelegate>(
+        IServiceCollection services,
+        Func<TImplementation, TDelegate> bind)
+        where TImplementation : class
+        where TDelegate : Delegate
+    {
+        services.TryAddSingleton<TImplementation>();
+        services.TryAddSingleton(serviceProvider =>
             bind(serviceProvider.GetRequiredService<TImplementation>()));
     }
 }

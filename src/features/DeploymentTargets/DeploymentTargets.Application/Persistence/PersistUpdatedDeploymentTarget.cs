@@ -19,7 +19,8 @@ public delegate Task<Result<DeploymentTarget, PersistUpdatedDeploymentTargetErro
 
 internal sealed class MongoPersistUpdatedDeploymentTarget(
     IMongoCollection<DeploymentTarget> deploymentTargets,
-    DeploymentTargetDomainAdmission domainAdmission,
+    EnsureNoDeploymentTargetPublicBaseDomainReferences ensureNoPublicBaseDomainReferences,
+    EnsureNoOverlappingDeploymentTargetPublicBaseDomain ensureNoOverlappingPublicBaseDomain,
     RunMongoOutcomeTransaction<Result<
         DeploymentTarget,
         PersistUpdatedDeploymentTargetError>> runMongoTransaction)
@@ -61,7 +62,7 @@ internal sealed class MongoPersistUpdatedDeploymentTarget(
 
         return await runMongoTransaction(async (transaction, ct) =>
         {
-            var references = await domainAdmission.EnsureNoPublicDomainReferencesAsync(
+            var references = await ensureNoPublicBaseDomainReferences(
                 current.Id,
                 transaction.Session,
                 ct);
@@ -71,7 +72,7 @@ internal sealed class MongoPersistUpdatedDeploymentTarget(
                     new PersistUpdatedDeploymentTargetError(referenceError));
             }
 
-            var overlap = await domainAdmission.EnsureNoOverlappingPublicBaseDomainAsync(
+            var overlap = await ensureNoOverlappingPublicBaseDomain(
                 current.Id,
                 replacement.WorkloadConfiguration.Ingress?.PublicBaseDomain,
                 transaction.Session,
