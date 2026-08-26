@@ -8,8 +8,4 @@
         <RootNamespace>Pole.Mediator</RootNamespace>
     </PropertyGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\ResultType\ResultType.csproj" />
-    </ItemGroup>
-
 </Project>

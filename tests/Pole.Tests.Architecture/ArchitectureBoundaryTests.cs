@@ -18,6 +18,15 @@ public sealed class ArchitectureBoundaryTests
         "ClientSessionHandleExtensions"
     ];
 
+    private static readonly string[] LegacyResultCompatibilitySymbols =
+    [
+        "IMediatorHandler",
+        "LegacyResultRejected",
+        "RunMongoTransaction",
+        "ISuccess",
+        "IFailure"
+    ];
+
     private static readonly string[] FeatureRegistrationMethods =
     [
         "AddOutboxFeature",
@@ -55,6 +64,33 @@ public sealed class ArchitectureBoundaryTests
             .ToArray();
 
         AssertNoViolations(violations);
+    }
+
+    [Fact]
+    public void RepositorySources_DoNotReferenceRemovedResultCompatibilityApis()
+    {
+        var symbolViolations = ArchitectureSources.RepositoryCSharp()
+            .SelectMany(source => source.Root.DescendantNodes()
+                .OfType<SimpleNameSyntax>()
+                .Where(name => LegacyResultCompatibilitySymbols.Contains(
+                    name.Identifier.ValueText))
+                .Select(name => ArchitectureSources.Describe(
+                    source,
+                    name,
+                    $"removed Result compatibility symbol '{name.Identifier.ValueText}' is forbidden")));
+        var singleGenericResultViolations = ArchitectureSources.RepositoryCSharp()
+            .SelectMany(source => source.Root.DescendantNodes()
+                .OfType<GenericNameSyntax>()
+                .Where(name => name.Identifier.ValueText == "Result" &&
+                               name.TypeArgumentList.Arguments.Count == 1)
+                .Select(name => ArchitectureSources.Describe(
+                    source,
+                    name,
+                    "legacy Result<T> is forbidden; use Result<T, TError> or a closed outcome union")));
+
+        AssertNoViolations(symbolViolations
+            .Concat(singleGenericResultViolations)
+            .ToArray());
     }
 
     [Fact]

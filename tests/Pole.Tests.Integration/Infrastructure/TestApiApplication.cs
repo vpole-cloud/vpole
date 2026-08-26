@@ -174,10 +174,6 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton(fixture.Database);
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<MongoRunTransaction>();
-        builder.Services.AddSingleton<RunMongoTransaction>(serviceProvider =>
-            serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeAsync);
         var storageDiscovery = new TestStorageDiscoveryService("standard", "fast", "bulk");
         builder.Services.AddSingleton(storageDiscovery);
         builder.Services.AddSingleton<DiscoverKubernetesStorageClasses>(

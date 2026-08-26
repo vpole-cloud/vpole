@@ -325,18 +325,20 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         var mutations = CreateMutations();
 
         var result = await fixture.DbContext
-            .RunInTransactionAsync<PlacementSummaryDto>(
-                async (session, cancellationToken) =>
+            .RunOutcomeInTransactionAsync<PlacementMutationRejected>(
+                async (transaction, cancellationToken) =>
                 {
                     var mutation = await mutations.Apply(
                         CreateCommand(),
-                        session,
+                        transaction.Session,
                         cancellationToken);
                     _ = mutation.AssertSuccess();
-                    return Failures.Conflict("The logical resource write failed.");
+                    return transaction.Abort(
+                        new PlacementMutationRejected(
+                            "The logical resource write failed."));
                 });
 
-        Assert.IsType<ConflictFailure>(result.AssertFailure());
+        Assert.Equal("The logical resource write failed.", result.Message);
         var saved = await fixture.DbContext.ResourceDeployments
             .Find(item => item.Id == DeploymentId)
             .SingleAsync();
@@ -699,6 +701,8 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
     }
+
+    private sealed record PlacementMutationRejected(string Message);
 
     private sealed class RecordingComputeProfileFence
     {

@@ -13,7 +13,6 @@
     <Project Path="src/shared/Mediator.Logging/Mediator.Logging.csproj" />
     <Project Path="src/shared/Mediator.Validation/Mediator.Validation.csproj" />
     <Project Path="src/shared/Mediator.Multitenancy/Mediator.Multitenancy.csproj" />
-    <Project Path="src/shared/Failures/Failures.csproj" />
     <Project Path="src/shared/ResultType/ResultType.csproj" />
     <Project Path="src/shared/ArchitectureAnalyzers/Pole.ArchitectureAnalyzers.csproj" />
     <Project Path="src/shared/Database/Database.csproj" />

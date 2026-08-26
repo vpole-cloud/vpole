@@ -12,9 +12,7 @@
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
     </ItemGroup>
     <ItemGroup>
-      <ProjectReference Include="..\..\Failures\Failures.csproj" />
       <ProjectReference Include="..\..\Mediator\Mediator.csproj" />
-      <ProjectReference Include="..\..\ResultType\ResultType.csproj" />
     </ItemGroup>
 
 </Project>

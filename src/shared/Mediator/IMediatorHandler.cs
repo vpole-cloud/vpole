@@ -1,19 +1,10 @@
-﻿using Pole.ResultType;
-
 namespace Pole.Mediator;
 
 public interface IMediatorRequest<TResponse> where TResponse : notnull { }
 
-public interface IMediatorHandler<in TRequest, TResponse>
-    where TRequest : IMediatorRequest<TResponse>
-    where TResponse : notnull
-{
-    Task<Result<TResponse>> HandleAsync(TRequest request, CancellationToken cancellationToken = default);
-}
-
 /// <summary>
-/// Handles a request whose application outcome is already represented by its own closed type.
-/// The mediator passes that outcome through its pipeline envelope without requiring a legacy result.
+/// Handles a request whose application outcome is represented by its own closed type.
+/// The mediator passes that outcome through its pipeline envelope.
 /// </summary>
 public interface IMediatorOutcomeHandler<in TRequest, TOutcome>
     where TRequest : IMediatorRequest<TOutcome>

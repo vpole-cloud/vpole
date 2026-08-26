@@ -99,22 +99,20 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                     TestData.DefaultDeploymentTargetId,
                     "fast")
             ])));
-        var duplicateValidation = Assert.IsType<ValidationFailure>(
-            duplicateResult.AssertFailure());
+        var duplicateValidation = duplicateResult.AssertValidationRejected();
         Assert.Contains(
             "Body.TargetMappings",
-            duplicateValidation.ValidationErrors.Keys);
+            duplicateValidation.Errors.Keys);
 
         var tenantResult = await Mediator.Send(new CreateStorageProfileRequest(
             ValidCreateBody(tenantAccess:
                 new StorageProfileTenantAccessDto(
                     "SelectedTenants",
                     ["   "]))));
-        var tenantValidation = Assert.IsType<ValidationFailure>(
-            tenantResult.AssertFailure());
+        var tenantValidation = tenantResult.AssertValidationRejected();
         Assert.Contains(
             "Body.TenantAccess.TenantIds[0]",
-            tenantValidation.ValidationErrors.Keys);
+            tenantValidation.Errors.Keys);
     }
 
     [Fact]
@@ -367,8 +365,8 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
         var result = await Mediator.Send(
             new GetKubernetesStorageClassesRequest("not-an-object-id"));
 
-        var validation = Assert.IsType<ValidationFailure>(result.AssertFailure());
-        Assert.Contains("DeploymentTargetId", validation.ValidationErrors.Keys);
+        var validation = result.AssertValidationRejected();
+        Assert.Contains("DeploymentTargetId", validation.Errors.Keys);
     }
 
     [Fact]

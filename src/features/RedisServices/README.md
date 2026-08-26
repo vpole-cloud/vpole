@@ -68,9 +68,10 @@ hierarchy once rather than finding every handler query.
   use the same session.
 - Deletion finalization is a self-contained cross-collection operation, so it owns the transaction
   around Redis deletion, deployment cleanup, and the deleted event.
-- `StoreOutboxWrites` and `RunMongoTransaction` are the shared narrow transaction and outbox
-  capabilities used by the persistence operations.
-- Expected revision and duplicate-key conflicts map to `Result` failures. Mongo availability,
+- `StoreOutboxWrites` and `MongoRunTransaction` are the shared narrow transaction and outbox
+  capabilities used by the persistence operations. Callers return an explicit transaction
+  decision to commit or abort their closed outcome.
+- Expected revision and duplicate-key conflicts map to typed `Result<T, TError>` errors. Mongo availability,
   timeout, and unexpected driver exceptions remain exceptions and reach the standard 5xx path.
 
 ## DI and raw Mongo access

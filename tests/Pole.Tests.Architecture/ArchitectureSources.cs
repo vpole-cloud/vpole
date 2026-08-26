@@ -17,6 +17,9 @@ internal static class ArchitectureSources
     public static IEnumerable<ArchitectureSource> ProductionCSharp() =>
         LoadSources(Path.Combine(RepositoryRoot, "src"));
 
+    public static IEnumerable<ArchitectureSource> RepositoryCSharp() =>
+        LoadSources(RepositoryRoot);
+
     public static IEnumerable<ArchitectureSource> RuntimeMongoPersistenceCSharp() =>
         ProductionCSharp().Where(source =>
             source.RelativePath.Contains(".Application/Persistence/", StringComparison.Ordinal) &&

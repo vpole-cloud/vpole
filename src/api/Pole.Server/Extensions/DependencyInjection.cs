@@ -78,8 +78,7 @@ public static class DependencyInjection
             static bool IsMediatorHandler(Type interfaceType) =>
                 interfaceType.IsGenericType &&
                 interfaceType.GetGenericTypeDefinition() is var definition &&
-                (definition == typeof(IMediatorHandler<,>) ||
-                 definition == typeof(IMediatorOutcomeHandler<,>));
+                definition == typeof(IMediatorOutcomeHandler<,>);
         }
         
         public IServiceCollection AddValidatorsFromAssemblies(params Assembly[] assemblies)

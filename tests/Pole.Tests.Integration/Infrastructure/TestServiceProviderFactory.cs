@@ -78,10 +78,6 @@ public static class TestServiceProviderFactory
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
         services.AddSingleton<MongoRunTransaction>();
-        services.AddSingleton<RunMongoTransaction>(serviceProvider =>
-            serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeAsync);
         var storageDiscovery = new TestStorageDiscoveryService("standard", "fast", "bulk");
         services.AddSingleton(storageDiscovery);
         services.AddSingleton<DiscoverKubernetesStorageClasses>(
