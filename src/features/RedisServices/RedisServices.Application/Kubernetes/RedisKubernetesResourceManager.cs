@@ -6,6 +6,8 @@ using Pole.ResultType;
 
 namespace Pole.Features.RedisServices.Application.Kubernetes;
 
+public sealed record RedisKubernetesApplyFailed(string Message);
+
 public static class RedisKubernetesResourceManager
 {
     public static async Task CreateAsync(
@@ -50,7 +52,7 @@ public static class RedisKubernetesResourceManager
             cancellationToken: cancellationToken);
     }
 
-    public static async Task<Result> ApplyAsync(
+    public static async Task<Result<Unit, RedisKubernetesApplyFailed>> ApplyAsync(
         IKubernetes kubernetes,
         RedisInKubernetes redis,
         RedisResourceDeploymentMetadata deploymentMetadata,
@@ -106,18 +108,17 @@ public static class RedisKubernetesResourceManager
                         cancellationToken: cancellationToken);
                 });
 
-            return Result.Success();
+            return new Ok<Unit>(Unit.Value);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            return Failures.ExternalService(
-                $"Unable to apply Redis in Kubernetes while {stage}.",
-                "Kubernetes",
-                ex.Message);
+            return new Err<RedisKubernetesApplyFailed>(
+                new RedisKubernetesApplyFailed(
+                    $"Unable to apply Redis in Kubernetes while {stage}."));
         }
     }
 
