@@ -173,14 +173,14 @@ public sealed class EnvelopeEncryptionSettingsTests
             "test-wrap",
             1);
 
-        public ValueTask<Result<WrappedDataEncryptionKey>> WrapKeyAsync(
+        public ValueTask<Result<WrappedDataEncryptionKey, DataEncryptionKeyWrappingFailed>> WrapKeyAsync(
             KeyEncryptionKeyDescriptor key,
             ReadOnlyMemory<byte> dataEncryptionKey,
             ReadOnlyMemory<byte> associatedData,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public ValueTask<Result<byte[]>> UnwrapKeyAsync(
+        public ValueTask<Result<byte[], DataEncryptionKeyUnwrappingFailed>> UnwrapKeyAsync(
             KeyEncryptionKeyIdentity key,
             string algorithm,
             int algorithmVersion,

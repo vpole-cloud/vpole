@@ -26,8 +26,8 @@ public sealed class EnvelopeEncryptionDiagnosticsTests
         var result = await encryption.Service.DecryptStringAsync(tampered, context);
 
         Assert.False(result.TryGetValue(out _, out var failure));
-        var internalFailure = Assert.IsType<InternalFailure>(failure);
-        var diagnostic = internalFailure.Message + " " + internalFailure.Details;
+        var decryptionFailure = Assert.IsType<EnvelopeDecryptionFailed>(failure);
+        var diagnostic = decryptionFailure.Message;
         Assert.DoesNotContain(plaintext, diagnostic, StringComparison.Ordinal);
         Assert.DoesNotContain(tenantId, diagnostic, StringComparison.Ordinal);
         Assert.DoesNotContain(objectId, diagnostic, StringComparison.Ordinal);

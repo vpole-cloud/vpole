@@ -48,7 +48,7 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
     public string ProviderId => StableProviderId;
     public KeyEncryptionKeyDescriptor ActiveKey { get; }
 
-    public ValueTask<Result<WrappedDataEncryptionKey>> WrapKeyAsync(
+    public ValueTask<Result<WrappedDataEncryptionKey, DataEncryptionKeyWrappingFailed>> WrapKeyAsync(
         KeyEncryptionKeyDescriptor keyDescriptor,
         ReadOnlyMemory<byte> dataEncryptionKey,
         ReadOnlyMemory<byte> associatedData,
@@ -62,7 +62,8 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
                 dataEncryptionKey.Length != DataEncryptionKeySizeBytes ||
                 !_keys.TryGetValue(keyDescriptor.Identity, out var key))
             {
-                return ValueTask.FromResult<Result<WrappedDataEncryptionKey>>(KeyWrapFailure());
+                return ValueTask.FromResult<Result<WrappedDataEncryptionKey, DataEncryptionKeyWrappingFailed>>(
+                    new Err<DataEncryptionKeyWrappingFailed>(KeyWrapFailure()));
             }
 
             try
@@ -72,17 +73,18 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
                 var tag = new byte[TagSizeBytes];
                 using var aes = new AesGcm(key, TagSizeBytes);
                 aes.Encrypt(nonce, dataEncryptionKey.Span, ciphertext, tag, associatedData.Span);
-                return ValueTask.FromResult<Result<WrappedDataEncryptionKey>>(
-                    new WrappedDataEncryptionKey(ciphertext, nonce, tag));
+                return ValueTask.FromResult<Result<WrappedDataEncryptionKey, DataEncryptionKeyWrappingFailed>>(
+                    new Ok<WrappedDataEncryptionKey>(new WrappedDataEncryptionKey(ciphertext, nonce, tag)));
             }
             catch (CryptographicException)
             {
-                return ValueTask.FromResult<Result<WrappedDataEncryptionKey>>(KeyWrapFailure());
+                return ValueTask.FromResult<Result<WrappedDataEncryptionKey, DataEncryptionKeyWrappingFailed>>(
+                    new Err<DataEncryptionKeyWrappingFailed>(KeyWrapFailure()));
             }
         }
     }
 
-    public ValueTask<Result<byte[]>> UnwrapKeyAsync(
+    public ValueTask<Result<byte[], DataEncryptionKeyUnwrappingFailed>> UnwrapKeyAsync(
         KeyEncryptionKeyIdentity keyIdentity,
         string algorithm,
         int algorithmVersion,
@@ -103,7 +105,8 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
                 authenticationTag.Length != TagSizeBytes ||
                 !_keys.TryGetValue(keyIdentity, out var key))
             {
-                return ValueTask.FromResult<Result<byte[]>>(KeyUnwrapFailure());
+                return ValueTask.FromResult<Result<byte[], DataEncryptionKeyUnwrappingFailed>>(
+                    new Err<DataEncryptionKeyUnwrappingFailed>(KeyUnwrapFailure()));
             }
 
             var dataEncryptionKey = new byte[DataEncryptionKeySizeBytes];
@@ -116,12 +119,14 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
                     authenticationTag.Span,
                     dataEncryptionKey,
                     associatedData.Span);
-                return ValueTask.FromResult<Result<byte[]>>(dataEncryptionKey);
+                return ValueTask.FromResult<Result<byte[], DataEncryptionKeyUnwrappingFailed>>(
+                    new Ok<byte[]>(dataEncryptionKey));
             }
             catch (CryptographicException)
             {
                 CryptographicOperations.ZeroMemory(dataEncryptionKey);
-                return ValueTask.FromResult<Result<byte[]>>(KeyUnwrapFailure());
+                return ValueTask.FromResult<Result<byte[], DataEncryptionKeyUnwrappingFailed>>(
+                    new Err<DataEncryptionKeyUnwrappingFailed>(KeyUnwrapFailure()));
             }
         }
     }
@@ -138,11 +143,9 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
         }
     }
 
-    private static InternalFailure KeyWrapFailure() => Failures.Internal(
-        "The data-encryption key could not be wrapped.",
-        "The configured key-encryption provider is unavailable or invalid.");
+    private static DataEncryptionKeyWrappingFailed KeyWrapFailure() => new(
+        "The data-encryption key could not be wrapped.");
 
-    private static InternalFailure KeyUnwrapFailure() => Failures.Internal(
-        "The data-encryption key could not be unwrapped.",
-        "The configured key is unavailable, invalid, or did not authenticate the protected value.");
+    private static DataEncryptionKeyUnwrappingFailed KeyUnwrapFailure() => new(
+        "The data-encryption key could not be unwrapped.");
 }

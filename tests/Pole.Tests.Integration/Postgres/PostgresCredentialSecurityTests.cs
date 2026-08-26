@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using Pole.Encryption;
 using Pole.Features.Postgres.Domain;
+using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

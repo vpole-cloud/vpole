@@ -1,3 +1,5 @@
+using Pole.ResultType;
+
 namespace Pole.Encryption.Tests;
 
 public sealed class EnvelopeEncryptionRotationTests
