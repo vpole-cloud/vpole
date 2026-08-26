@@ -30,6 +30,8 @@ public sealed class DomainsFeatureRegistrationTests
         AssertScoped<CreateGeneratedHostnameBindingsOutcome>(services);
         AssertScoped<CreateCustomHostnameBindingOutcome>(services);
         AssertScoped<DeleteCustomHostnameBindingOutcome>(services);
+        AssertScoped<DeleteHostnameBindingsForDeployment>(services);
+        AssertScoped<DeleteHostnameBindingsForResource>(services);
         AssertHttpMapping<DomainZoneNotFound>(services);
         AssertHttpMapping<CreateManagedDomainZoneError>(services);
         AssertHttpMapping<DeleteManagedDomainZoneError>(services);
