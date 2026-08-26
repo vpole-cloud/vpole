@@ -112,7 +112,7 @@ public sealed class ResourceDeploymentRecoveryJobTests(
         var recover = new RecoverResourceDeploymentOperation(
             fixture.DbContext.ResourceDeployments,
             (operation, cancellationToken) => fixture.DbContext
-                .RunInTransactionAsync<long>(
+                .RunOutcomeInTransactionAsync(
                     operation,
                     cancellationToken: cancellationToken),
             (session, writes, cancellationToken) => fixture.StoreOutboxWrites(

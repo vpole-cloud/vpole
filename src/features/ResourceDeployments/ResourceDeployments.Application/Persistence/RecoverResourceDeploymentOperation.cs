@@ -3,87 +3,86 @@ using Pole.Database;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence;
 
-public delegate Task<Result<long>> RecoverResourceDeployment(
+public delegate Task<long> RecoverResourceDeployment(
     string deploymentId,
     DateTime now,
     CancellationToken cancellationToken = default);
 
 internal sealed class RecoverResourceDeploymentOperation(
     IMongoCollection<ResourceDeployment> resourceDeployments,
-    RunMongoTransaction<long> runMongoTransaction,
+    RunMongoOutcomeTransaction<long> runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites,
     LoadResourcePlacementInTransaction loadResourcePlacement)
 {
-    public Task<Result<long>> InvokeAsync(
+    public Task<long> InvokeAsync(
         string deploymentId,
         DateTime now,
         CancellationToken cancellationToken = default) =>
-        runMongoTransaction(async (session, ct) =>
+        runMongoTransaction(async (transaction, ct) =>
         {
             var current = await resourceDeployments
                 .Find(
-                    session,
+                    transaction.Session,
                     ResourceDeploymentFilters.ByDeploymentId(deploymentId))
                 .FirstOrDefaultAsync(ct);
             if (current is null)
-                return 0L;
+                return transaction.Commit(0L);
 
             switch (current.State)
             {
                 case PendingResourceDeploymentState:
                     await storeOutboxWrites(
-                        session,
+                        transaction.Session,
                         [current.ToCurrentRequestWrite()],
                         ct);
-                    return 0L;
+                    return transaction.Commit(0L);
 
                 case ReconcilingResourceDeploymentState
                     {
                         LeaseExpiresAtUtc: var leaseExpiresAtUtc
                     } when leaseExpiresAtUtc <= now:
-                    return await PersistRecoveryAsync(
+                    return transaction.Commit(await PersistRecoveryAsync(
                         current,
                         current.RecoverStaleClaim(now),
-                        session,
+                        transaction.Session,
                         ct,
-                        staleClaimRecoveryCount: 1);
+                        staleClaimRecoveryCount: 1));
 
                 case FailedResourceDeploymentState
                     {
                         Retryable: true,
                         RetryNotBeforeUtc: var retryAtUtc
                     } when retryAtUtc <= now:
-                    return await PersistRecoveryAsync(
+                    return transaction.Commit(await PersistRecoveryAsync(
                         current,
                         current.Retry(now),
-                        session,
-                        ct);
+                        transaction.Session,
+                        ct));
 
                 case WaitingForRuntimeCellResourceDeploymentState:
                     var runtimeCell = await loadResourcePlacement(
                         current.TenantId,
                         current.RuntimeCellId,
-                        session,
+                        transaction.Session,
                         ct);
                     if (runtimeCell?.State != ResourcePlacementState.Ready)
-                        return 0L;
+                        return transaction.Commit(0L);
 
-                    return await PersistRecoveryAsync(
+                    return transaction.Commit(await PersistRecoveryAsync(
                         current,
                         current.MarkRuntimeCellReady(now),
-                        session,
-                        ct);
+                        transaction.Session,
+                        ct));
 
                 default:
-                    return 0L;
+                    return transaction.Commit(0L);
             }
         }, cancellationToken);
 
-    private async Task<Result<long>> PersistRecoveryAsync(
+    private async Task<long> PersistRecoveryAsync(
         ResourceDeployment current,
         ResourceDeployment recovered,
         IClientSessionHandle session,

@@ -1,9 +1,8 @@
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence;
 
-public delegate Task<Result> PersistResourceDeploymentSuccess(
+public delegate Task PersistResourceDeploymentSuccess(
     ResourceDeployment claimed,
     long generation,
     ResourceDeploymentOperation operation,
@@ -14,7 +13,7 @@ internal sealed class PersistResourceDeploymentSuccessOperation(
     ResourceDeploymentCompletionPersistence completionPersistence,
     TimeProvider timeProvider)
 {
-    public Task<Result> InvokeAsync(
+    public Task InvokeAsync(
         ResourceDeployment claimed,
         long generation,
         ResourceDeploymentOperation operation,

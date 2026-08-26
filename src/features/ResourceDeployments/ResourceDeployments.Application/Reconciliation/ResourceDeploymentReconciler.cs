@@ -6,7 +6,6 @@ using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Reconciliation;
 
@@ -213,13 +212,12 @@ public sealed class ResourceDeploymentReconciler(
         IEnumerable<ResourceDeploymentEndpoint> endpoints,
         CancellationToken cancellationToken)
     {
-        var result = await persistResourceDeploymentSuccess(
+        await persistResourceDeploymentSuccess(
             claimed,
             generation,
             operation,
             endpoints.ToArray(),
             cancellationToken);
-        LogPersistenceFailure(result, claimed.Id);
     }
 
     private async Task PersistFailureAsync(
@@ -231,7 +229,7 @@ public sealed class ResourceDeploymentReconciler(
         bool retryable,
         CancellationToken cancellationToken)
     {
-        var result = await persistResourceDeploymentFailure(
+        await persistResourceDeploymentFailure(
             claimed,
             generation,
             operation,
@@ -239,18 +237,5 @@ public sealed class ResourceDeploymentReconciler(
             failureMessage,
             retryable,
             cancellationToken);
-        LogPersistenceFailure(result, claimed.Id);
-    }
-
-    private void LogPersistenceFailure(
-        Result result,
-        string deploymentId)
-    {
-        if (result is not ISuccess)
-        {
-            logger.LogWarning(
-                "Resource deployment {ResourceDeploymentId} completion was not persisted",
-                deploymentId);
-        }
     }
 }

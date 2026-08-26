@@ -8,18 +8,18 @@ namespace Pole.Features.ResourceDeployments.Application.Persistence;
 
 internal sealed class ResourceDeploymentCompletionPersistence(
     IMongoCollection<ResourceDeployment> resourceDeployments,
-    RunMongoTransaction runMongoTransaction,
+    RunMongoOutcomeTransaction<Unit> runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites)
 {
-    public Task<Result> PersistAsync(
+    public Task PersistAsync(
         ResourceDeployment claimed,
         Func<ResourceDeployment, ResourceDeployment> transition,
         CancellationToken cancellationToken) =>
-        runMongoTransaction(async (session, ct) =>
+        runMongoTransaction(async (transaction, ct) =>
         {
             var current = await resourceDeployments
                 .Find(
-                    session,
+                    transaction.Session,
                     ResourceDeploymentFilters.ForTenantDeployment(
                         claimed.TenantId,
                         claimed.Id))
@@ -32,25 +32,25 @@ internal sealed class ResourceDeploymentCompletionPersistence(
                     expectedClaim.ClaimId,
                     StringComparison.Ordinal))
             {
-                return Result.Success();
+                return transaction.Commit(Unit.Value);
             }
 
             var completed = transition(current);
             var replacement = await resourceDeployments.ReplaceOneAsync(
-                session,
+                transaction.Session,
                 ResourceDeploymentFilters.ForActiveClaimAtRevision(
                     current,
                     activeClaim.ClaimId),
                 completed,
                 cancellationToken: ct);
             if (replacement.ModifiedCount != 1)
-                return Result.Success();
+                return transaction.Commit(Unit.Value);
 
             await storeOutboxWrites(
-                session,
+                transaction.Session,
                 [ToCompletionWrite(completed)],
                 ct);
-            return Result.Success();
+            return transaction.Commit(Unit.Value);
         }, cancellationToken);
 
     public static ReconcilingResourceDeploymentState GetActiveClaim(
