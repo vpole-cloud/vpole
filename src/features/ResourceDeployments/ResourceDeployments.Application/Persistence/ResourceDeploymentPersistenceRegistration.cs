@@ -5,6 +5,7 @@ using Pole.Database;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
+using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence;
 
@@ -16,8 +17,10 @@ internal static class ResourceDeploymentPersistenceRegistration
         services.TryAddSingleton(serviceProvider => serviceProvider
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<ResourceDeployment>("ResourceDeployments"));
-        services.TryAddSingleton<RunMongoTransaction<long>>(serviceProvider =>
-            serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeAsync<long>);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<long>>(serviceProvider =>
+            serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync<long>);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<Unit>>(serviceProvider =>
+            serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync<Unit>);
         services.TryAddSingleton<RunMongoOutcomeTransaction<RetryResourceDeploymentOutcome>>(
             serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()

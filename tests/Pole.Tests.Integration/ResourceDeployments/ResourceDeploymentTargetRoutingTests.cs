@@ -218,7 +218,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         var completion = new ResourceDeploymentCompletionPersistence(
             fixture.DbContext.ResourceDeployments,
             (operation, cancellationToken) => fixture.DbContext
-                .RunInTransactionAsync(
+                .RunOutcomeInTransactionAsync(
                     operation,
                     cancellationToken: cancellationToken),
             (session, writes, cancellationToken) => fixture.StoreOutboxWrites(

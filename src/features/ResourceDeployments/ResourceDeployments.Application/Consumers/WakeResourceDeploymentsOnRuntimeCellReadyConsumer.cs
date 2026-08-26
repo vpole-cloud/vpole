@@ -19,13 +19,12 @@ public sealed class WakeResourceDeploymentsOnRuntimeCellReadyConsumer(
         RuntimeCellReadyEvent message,
         CancellationToken cancellationToken = default)
     {
-        var result = await wakeResourceDeployments(
+        var woken = await wakeResourceDeployments(
             message.EventCore.TenantId,
             message.RuntimeCellId,
             settings.RecoveryBatchSize,
             timeProvider.GetUtcNow().UtcDateTime,
             cancellationToken);
-        if (result.TryGetValue(out var woken, out _))
-            metrics.RecordRuntimeCellWakeups(woken);
+        metrics.RecordRuntimeCellWakeups(woken);
     }
 }
