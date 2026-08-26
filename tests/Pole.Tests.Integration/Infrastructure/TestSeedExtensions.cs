@@ -17,20 +17,19 @@ public static class TestSeedExtensions
                 resourceGroup.DefaultIsolationScopeId,
                 resourceGroup.CreatedAtUtc));
 
-        var result = await dbContext.RunInTransactionAsync(async (session, cancellationToken) =>
+        _ = await dbContext.RunOutcomeInTransactionAsync<Pole.ResultType.Unit>(
+            async (transaction, cancellationToken) =>
         {
             await dbContext.ResourceGroups.InsertOneAsync(
-                session,
+                transaction.Session,
                 resourceGroup,
                 cancellationToken: cancellationToken);
             await dbContext.IsolationScopes.InsertOneAsync(
-                session,
+                transaction.Session,
                 defaultScope,
                 cancellationToken: cancellationToken);
-            return Pole.ResultType.Result.Success();
+            return transaction.Commit(Pole.ResultType.Unit.Value);
         });
-        if (result is not Pole.ResultType.ISuccess)
-            throw new InvalidOperationException("Failed to seed a resource group with its default isolation scope.");
 
         return resourceGroup;
     }

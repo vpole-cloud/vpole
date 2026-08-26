@@ -44,7 +44,7 @@ public sealed class HarborContractTests
         {
             var cleanup = await client.DeleteProjectAsync(
                 provisioned?.ExternalProjectId ?? projectName);
-            Assert.IsAssignableFrom<ISuccess>(cleanup);
+            Assert.True(TypedResultExtensions.TryGetValue(cleanup).Succeeded);
         }
     }
 
@@ -108,7 +108,7 @@ public sealed class HarborContractTests
             var cleanup = await registryClient.DeleteProjectAsync(
                 provisioned?.ExternalProjectId ?? projectName);
             if (completed)
-                Assert.IsAssignableFrom<ISuccess>(cleanup);
+                Assert.True(TypedResultExtensions.TryGetValue(cleanup).Succeeded);
         }
     }
 

@@ -48,13 +48,12 @@ Create/update operations join caller-owned quota/deployment transactions through
 session. An unconditional aggregate mutation and its outbox event are one persistence operation.
 Release insertion supersedes older pending generations in that same transaction. Self-contained
 completion and deletion-finalization operations own their transaction and keep resource, release,
-deployment cleanup, and outbox changes atomic. Revision and duplicate-key conflicts are expected
-`Result` failures; Mongo availability and driver failures continue as exceptions.
+deployment cleanup, and outbox changes atomic. Revision and duplicate-key conflicts are typed
+`Result<T, TError>` errors; Mongo availability and driver failures continue as exceptions.
 
-Flows that return a value use `RunMongoTransaction<T>` directly. This preserves the callback's
-`Result<T>` without mutable captured response variables. Because the built-in DI container cannot
-construct arbitrary closed generic delegates from an open generic factory, the WebServices
-registration explicitly binds the three result types it consumes.
+Transaction-owning flows use closed `RunMongoOutcomeTransaction<TOutcome>` delegates and return
+an explicit commit or abort decision. The WebServices registration binds the closed outcome types
+it owns; no generic legacy transaction delegate is registered.
 
 Resource-deployment reads and mutations use provider-owned contracts from ResourceDeployments.
 Exact and set capabilities preserve the `TenantId + ResourceType + ResourceId` ownership fence,

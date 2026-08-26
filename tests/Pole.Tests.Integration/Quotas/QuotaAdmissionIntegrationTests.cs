@@ -214,8 +214,8 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         var first = await Mediator.Send(TestData.CreateRedisServiceRequest(firstGroup.Id, "redis-a"));
         var second = await Mediator.Send(TestData.CreateRedisServiceRequest(secondGroup.Id, "redis-b", otherTenantId));
 
-        Assert.True(first.TryGetValue(out _, out _));
-        Assert.True(second.TryGetValue(out _, out _));
+        _ = first.AssertSuccess();
+        _ = second.AssertSuccess();
         Assert.Equal(1, QuotaValues.GetValue((await GetUsageAsync(TestData.TenantId)).Values, RedisServiceCountQuota.QuotaKey));
         Assert.Equal(1, QuotaValues.GetValue((await GetUsageAsync(otherTenantId)).Values, RedisServiceCountQuota.QuotaKey));
     }

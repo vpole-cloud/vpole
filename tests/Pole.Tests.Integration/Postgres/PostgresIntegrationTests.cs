@@ -520,10 +520,9 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(request);
 
-        var validation = Assert.IsType<ValidationFailure>(
-            result.AssertFailure());
+        var validation = result.AssertValidationRejected();
         Assert.Contains(
-            validation.ValidationErrors.Keys,
+            validation.Errors.Keys,
             key => key.StartsWith("Body.ComputeProfileId", StringComparison.Ordinal));
         Assert.Equal(0, await Credentials.CountDocumentsAsync(_ => true));
         Assert.Equal(

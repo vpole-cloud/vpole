@@ -208,8 +208,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
                 Tags: ["team-blue", "prod"]),
             TestData.TenantId));
 
-        Assert.True(updateResult.TryGetValue(out _, out var error));
-        Assert.Null(error);
+        _ = updateResult.AssertHandlerOutcome();
 
         await IndexResourceGroupUpdatedAsync(created.Id);
 
@@ -244,8 +243,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         await IndexWebServiceCreatedAsync(created.WebServiceId);
 
         var deleteResult = await Mediator.Send(new DeleteWebServiceRequest(created.WebServiceId, TestData.TenantId));
-        Assert.True(deleteResult.TryGetValue(out _, out var deleteError));
-        Assert.Null(deleteError);
+        _ = deleteResult.AssertHandlerOutcome();
 
         var deletedConsumer = new RemoveWebServiceFromSearchOnWebServiceDeletedConsumer(RemoveSearchDocumentSet);
         await deletedConsumer.Handle(TestData.TenantId, created.WebServiceId, CancellationToken.None);

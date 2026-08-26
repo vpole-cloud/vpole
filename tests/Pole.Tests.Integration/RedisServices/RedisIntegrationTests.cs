@@ -59,14 +59,14 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
         var persistUpdatedRedis = Services.GetRequiredService<PersistUpdatedRedis>();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            DbContext.RunInTransactionAsync(async (session, cancellationToken) =>
+            DbContext.RunOutcomeInTransactionAsync<Unit>(async (transaction, cancellationToken) =>
             {
                 await persistUpdatedRedis(
-                    session,
+                    transaction.Session,
                     current,
                     replacement,
                     cancellationToken);
-                return Result.Success();
+                return transaction.Commit(Unit.Value);
             }));
     }
 
@@ -109,9 +109,8 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(request);
 
-        var validation = Assert.IsType<ValidationFailure>(
-            result.AssertFailure());
-        Assert.Contains("Body.Name", validation.ValidationErrors.Keys);
+        var validation = result.AssertValidationRejected();
+        Assert.Contains("Body.Name", validation.Errors.Keys);
     }
 
     [Fact]
@@ -130,11 +129,10 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(request);
 
-        var validation = Assert.IsType<ValidationFailure>(
-            result.AssertFailure());
+        var validation = result.AssertValidationRejected();
         Assert.Contains(
             "Body.ComputeProfileId",
-            validation.ValidationErrors.Keys);
+            validation.Errors.Keys);
     }
 
     [Fact]
@@ -143,15 +141,15 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
         var redis = SeedRedis(TestData.TenantId, "aborted-create");
         var persistCreatedRedis = Services.GetRequiredService<PersistCreatedRedis>();
 
-        var result = await DbContext.RunInTransactionAsync(async (
-            session,
+        var result = await DbContext.RunOutcomeInTransactionAsync<TransactionAborted>(async (
+            transaction,
             cancellationToken) =>
         {
-            await persistCreatedRedis(session, redis, cancellationToken);
-            return (Result)Failures.Conflict("Abort the containing workflow.");
+            await persistCreatedRedis(transaction.Session, redis, cancellationToken);
+            return transaction.Abort(new TransactionAborted("Abort the containing workflow."));
         });
 
-        Assert.IsType<ConflictFailure>(result);
+        Assert.Equal("Abort the containing workflow.", result.Message);
         Assert.Equal(0L, await DbContext.Database.RedisServices().CountDocumentsAsync(
             candidate => candidate.Id == redis.Id));
         Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
@@ -682,6 +680,8 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             ObjectId.GenerateNewId().ToString(),
             TestData.ValidRedisSpec().ToDomain(),
             RedisFactory.DefaultCreateOptions);
+
+    private sealed record TransactionAborted(string Message);
 
     private static UpdateRedisServiceRequest UpdateRequest(
         string redisId,

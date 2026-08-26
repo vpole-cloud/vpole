@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Server.Extensions;
 using Xunit;
 
@@ -45,13 +44,6 @@ public sealed class MediatorOutcomeHandlerTests
     {
         Assert.Throws<ArgumentNullException>(() =>
             new PipelineRejected(null!));
-    }
-
-    [Fact]
-    public void LegacyResultRejectionRequiresAFailure()
-    {
-        Assert.Throws<ArgumentNullException>(() =>
-            new LegacyResultRejected(null!));
     }
 
     [Fact]
@@ -146,29 +138,6 @@ public sealed class MediatorOutcomeHandlerTests
     }
 
     [Fact]
-    public async Task LegacyResultHandlerFailureBecomesATypedMediatorRejection()
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton<IMediator, Pole.Mediator.Mediator>();
-        services.AddSingleton<IMediatorHandler<LegacyRequest, string>, LegacyResultHandler>();
-        await using var provider = services.BuildServiceProvider();
-        var mediator = provider.GetRequiredService<IMediator>();
-
-        var result = await mediator.Send(new LegacyRequest());
-
-        var failure = result switch
-        {
-            string => throw new Xunit.Sdk.XunitException(
-                "Expected a legacy handler rejection."),
-            PipelineRejected { Reason: LegacyResultRejected legacy } => legacy.Failure,
-            PipelineRejected rejected => throw new Xunit.Sdk.XunitException(
-                $"Expected a legacy rejection, but received '{rejected.Reason.GetType().FullName}'.")
-        };
-
-        Assert.IsType<ForbiddenFailure>(failure);
-    }
-
-    [Fact]
     public async Task PipelineBehaviors_PreserveRegistrationOrder()
     {
         var trace = new List<string>();
@@ -208,8 +177,6 @@ public sealed class MediatorOutcomeHandlerTests
 
     public sealed record OutcomeRequest(string Outcome) : IMediatorRequest<string>;
 
-    public sealed record LegacyRequest : IMediatorRequest<string>;
-
     private sealed record PluginPolicyRejected(string Code)
         : IMediatorRejection;
 
@@ -226,15 +193,6 @@ public sealed class MediatorOutcomeHandlerTests
             trace?.Add("handler");
             return Task.FromResult(request.Outcome);
         }
-    }
-
-    public sealed class LegacyResultHandler : IMediatorHandler<LegacyRequest, string>
-    {
-        public Task<Result<string>> HandleAsync(
-            LegacyRequest request,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<string>>(
-                Failures.Forbidden("Blocked by the legacy handler.", "Test"));
     }
 
     public sealed class ShortCircuitBehavior(bool shortCircuit)

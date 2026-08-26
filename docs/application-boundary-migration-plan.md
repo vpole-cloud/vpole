@@ -235,8 +235,7 @@ Keep an interface when at least one of the following is true:
 
 Likely retained examples include resource deployment adapters and polymorphic
 quota profiles. `IQuotaAdmissionExecutor` may remain an interface while it owns a
-generic transaction protocol, but its legacy overloads must still be removed after
-migration.
+generic transaction protocol, exposed through closed outcome transaction delegates.
 
 One-method bootstrapper interfaces do not automatically become delegates. If no
 runtime abstraction is needed, depending on the concrete implementation may be
@@ -765,16 +764,16 @@ The umbrella migration is complete when:
 
 This migration wave is complete. The final repository audit confirmed that:
 
-- no feature handler implements `IMediatorHandler<Result<T>>`; mediator requests
-  return feature-owned outcomes while pipeline rejections remain
+- no feature handler returns a shared result wrapper; mediator requests return
+  feature-owned outcomes while pipeline rejections remain
   `MediatorResult<TOutcome>` cases;
 - synchronous cross-feature failures use provider-owned typed contracts;
 - `IMongoDbContext`, `MongoDbContext`, and `IEventDbContext` no longer have
   production application consumers;
 - raw Mongo access is internal to persistence implementations and protected by
   the architecture checks;
-- each feature owns its DI composition; the production host no longer registers
-  the legacy `RunMongoTransaction` delegate;
+- each feature owns its DI composition; the production host exposes only the
+  explicit `MongoRunTransaction` outcome protocol;
 - the last application/persistence legacy results were removed from Domains
   hostname cleanup, WebServices deployment finalization, and ResourceDeployments
   completion, recovery, and runtime-cell wakeup paths.
@@ -782,27 +781,19 @@ This migration wave is complete. The final repository audit confirmed that:
 The focused migration gates passed for Domains (7 tests), WebServices (21 tests),
 and ResourceDeployments (74 tests). A full build is part of the final handoff.
 
-### Intentionally retained legacy runtime and infrastructure protocols
+### Legacy Result cleanup — 2026-08-27
 
-The legacy shared `Result`/`Failure` model remains only where this migration does
-not own the protocol:
+The temporary shared `Result`, `Result<T>`, `Success`, `Failure`, and `Failures`
+hierarchy has been removed rather than retained for compatibility. The only shared
+result representation is `Result<T, TError>`, whose cases are `Ok<T>` and
+`Err<TError>`.
 
-- `Mediator` retains `LegacyResultRejected` and the legacy handler adapter so a
-  pipeline implementation remains compatible with externally supplied behaviors;
-- `Functions.Runtime` retains `IFunctionRevisionKubernetesManager` as a genuine
-  runtime strategy. Its scale operations use `ValidationFailure` for generated
-  runtime-command preconditions (replica bounds and coordination generation),
-  not HTTP request validation;
-- Redis and WebServices Kubernetes resource-manager helpers use legacy results
-  only inside an adapter implementation, immediately translating them to the
-  typed `ResourceDeploymentAdapterResult` runtime protocol;
-- the shared legacy Mongo transaction overloads and envelope-encryption results
-  remain compatibility/infrastructure surfaces, not application handler or
-  cross-feature contracts.
-
-The `ValidationFailure` classification satisfies the remaining repository work
-for issue #64. Updating or closing the GitHub issue is a separate external
-action.
+`Mediator` resolves only `IMediatorOutcomeHandler<TRequest, TOutcome>` and keeps
+its open `IMediatorRejection` extension point for host and plugin pipeline
+behaviors. `MongoRunTransaction` exposes only the explicit outcome decision
+protocol. Encryption and Kubernetes adapters use their own typed errors. The
+architecture test rejects removed compatibility symbols and a reintroduced
+single-error `Result<T>`.
 
 ## Deferred Decisions
 

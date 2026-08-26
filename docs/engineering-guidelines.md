@@ -43,13 +43,11 @@ exceptions. Choose the result shape at the boundary that owns the decision:
 - A pipeline behavior stops request execution with `PipelineRejected` and a typed
   `IMediatorRejection`; request validation uses `RequestValidationRejected`.
 
-Legacy `Result<T>` handlers remain supported while feature slices migrate to closed outcomes.
-
 - Define failures at the boundary that understands their meaning and map them when crossing abstraction layers.
 - Do not require every caller to catch the same exception and repeat the same mapping logic.
 - Reserve exceptions for unexpected failures, broken invariants, cancellation, and infrastructure conditions that cannot be handled meaningfully at the current boundary. In particular, do not convert MongoDB availability or driver failures into `Result`; let them reach the global exception handler and produce the standard 5xx response.
 - Do not catch an exception only to convert every failure into an indistinguishable generic result.
-- Use `Result<bool>` only when both `true` and `false` are meaningful successful answers and a caller must separately handle an expected failure. For a command precondition, prefer an intention-revealing `Task<Result>` method such as `EnsureNoConfigurationAsync`: return success when the condition holds and `Conflict` when it does not.
+- Use `Result<bool, TError>` only when both `true` and `false` are meaningful successful answers and a caller must separately handle an expected failure. For a command precondition, prefer an intention-revealing `Task<Result<Unit, TError>>` method such as `EnsureNoConfigurationAsync`: return `Ok<Unit>` when the condition holds and a typed conflict error when it does not.
 
 ## Endpoint file structure
 

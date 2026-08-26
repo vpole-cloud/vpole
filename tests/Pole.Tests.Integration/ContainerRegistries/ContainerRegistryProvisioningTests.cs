@@ -536,7 +536,8 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         var failedWorker = await cleanupService.CleanupAsync(project.Id, cleanup);
         var staleWorkerAfterLeaseRelease = await cleanupService.CleanupAsync(project.Id, cleanup);
 
-        Assert.IsType<ExternalServiceFailure>(failedWorker);
+        Assert.True(TypedResultExtensions.TryGetValue(failedWorker).Error is
+            ContainerRegistryProviderUnavailable);
         Assert.True(TypedResultExtensions.TryGetValue(staleWorkerAfterLeaseRelease).Succeeded);
         Assert.Equal(1, registryClient.RobotCleanupCalls);
         var stored = await Fixture.DbContext.RegistryProjects.Find(item => item.Id == project.Id).SingleAsync();
@@ -698,7 +699,7 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
                 robotNames.Pull,
                 buildRobotId,
                 pullRobotId,
-                nameof(InternalFailure),
+                nameof(ContainerRegistryProviderUnavailable),
                 "Provisioning failed.",
                 null,
                 null,

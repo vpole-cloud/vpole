@@ -85,11 +85,11 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         var writes = Enumerable.Range(0, ConcurrentWriterCount)
-            .Select(_writerIndex => fixture.DbContext.RunInTransactionAsync(
-                async (session, cancellationToken) =>
+            .Select(_writerIndex => fixture.DbContext.RunOutcomeInTransactionAsync<Unit>(
+                async (transaction, cancellationToken) =>
                 {
                     _ = await fixture.DbContext.OutboxMessages
-                        .Find(session, Builders<OutboxMessage>.Filter.Empty)
+                        .Find(transaction.Session, Builders<OutboxMessage>.Filter.Empty)
                         .Limit(1)
                         .FirstOrDefaultAsync(cancellationToken);
                     if (Interlocked.Increment(ref callbacksReady) ==
@@ -100,17 +100,16 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
 
                     await releaseCallbacks.Task.WaitAsync(cancellationToken);
                     await fixture.StoreOutboxWrites(
-                        session,
+                        transaction.Session,
                         [CreateWrite(runtimeCellId, pendingKey)],
                         cancellationToken);
-                    return Result.Success();
+                    return transaction.Commit(Unit.Value);
                 }))
             .ToArray();
 
         var results = await Task.WhenAll(writes);
 
-        foreach (var result in results)
-            result.AssertSuccess();
+        Assert.All(results, result => Assert.Equal(Unit.Value, result));
         Assert.Equal(
             1L,
             await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
@@ -167,16 +166,16 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
         string runtimeCellId,
         string pendingKey)
     {
-        var result = await fixture.DbContext.RunInTransactionAsync(
-            async (session, cancellationToken) =>
+        var result = await fixture.DbContext.RunOutcomeInTransactionAsync<Unit>(
+            async (transaction, cancellationToken) =>
             {
                 await fixture.StoreOutboxWrites(
-                    session,
+                    transaction.Session,
                     [CreateWrite(runtimeCellId, pendingKey)],
                     cancellationToken);
-                return Result.Success();
+                return transaction.Commit(Unit.Value);
             });
-        result.AssertSuccess();
+        Assert.Equal(Unit.Value, result);
     }
 
     private static OutboxWrite CreateWrite(

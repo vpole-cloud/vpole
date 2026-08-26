@@ -174,10 +174,6 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
         services.AddSingleton<IHostEnvironment>(new FakeHostEnvironment());
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<MongoRunTransaction>();
-        services.AddSingleton<RunMongoTransaction>(serviceProvider =>
-            serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeAsync);
         services.AddKubernetes(configuration)
             .AddDeploymentTargetsFeature(configuration);
 

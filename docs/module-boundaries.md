@@ -82,10 +82,8 @@ marker is intentionally open so a host or plugin can add a rejecting behavior wi
 core union. Pipeline behavior delegates also return `MediatorResult<TOutcome>`, so a plugin behavior
 can stop execution with its own rejection type without changing a request handler contract.
 
-Existing `Result<TResponse>` handlers remain an internal compatibility path until they migrate. The
-runtime translates their failures into `LegacyResultRejected`. Request validation stops the
-pipeline with `RequestValidationRejected`, which retains structured field errors without depending
-on the legacy failure hierarchy. Base tenant authorization emits `TenantPlatformAdminRequired` or
+Request validation stops the pipeline with `RequestValidationRejected`, which retains structured
+field errors without depending on a generic failure hierarchy. Base tenant authorization emits `TenantPlatformAdminRequired` or
 `TenantRoleRequired`; its missing-tenant case reuses `RequestValidationRejected`. The feature-owned
 tenant-member authorization behavior emits feature-owned authentication, identity, tenant,
 membership, and member-not-found rejections, and reuses `TenantRoleRequired` for its Viewer, Admin,
