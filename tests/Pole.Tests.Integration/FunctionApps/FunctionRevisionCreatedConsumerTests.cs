@@ -34,10 +34,8 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                 []),
             TestData.TenantId))).RequireSuccess();
         var manager = new RecordingKubernetesManager(
-            Failures.ExternalService(
-                "Kubernetes rejected the manifest.",
-                "Kubernetes",
-                "invalid manifest"));
+            new Err<FunctionRevisionKubernetesOperationError>(
+                new FunctionRevisionKubernetesUnavailable("Kubernetes rejected the manifest.")));
         var consumer = new FunctionRevisionCreatedConsumer(
             new MongoLoadFunctionRevisionProvisioningSubject(
                 DbContext.FunctionApps,
@@ -83,7 +81,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                 RevisionRequest(),
                 []),
             TestData.TenantId))).RequireSuccess();
-        var manager = new RecordingKubernetesManager(Result.Success());
+        var manager = new RecordingKubernetesManager(new Ok<Unit>(Unit.Value));
         var consumer = new FunctionRevisionCreatedConsumer(
             new MongoLoadFunctionRevisionProvisioningSubject(
                 DbContext.FunctionApps,
@@ -129,7 +127,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();
-        var manager = new RecordingKubernetesManager(Result.Success());
+        var manager = new RecordingKubernetesManager(new Ok<Unit>(Unit.Value));
         var provisioner = new RecordingProvisioner();
         var consumer = new FunctionRevisionCreatedConsumer(
             new MongoLoadFunctionRevisionProvisioningSubject(
@@ -172,7 +170,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             TestData.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();
-        var manager = new RecordingKubernetesManager(Result.Success());
+        var manager = new RecordingKubernetesManager(new Ok<Unit>(Unit.Value));
         var consumer = new FunctionRevisionCreatedConsumer(
             new MongoLoadFunctionRevisionProvisioningSubject(
                 DbContext.FunctionApps,
@@ -216,13 +214,14 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                     new HttpFunctionTriggerRequest("orders", ["POST"], FunctionExposure.Internal))
             ]);
 
-    private sealed class RecordingKubernetesManager(Result applyResult)
+    private sealed class RecordingKubernetesManager(
+        Result<Unit, FunctionRevisionKubernetesOperationError> applyResult)
         : IFunctionRevisionKubernetesManager
     {
         public int ApplyCalls { get; private set; }
         public List<int> BootstrapScaleRequests { get; } = [];
 
-        public Task<Result> ApplyAsync(
+        public Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ApplyAsync(
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default)
         {
@@ -230,31 +229,34 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             return Task.FromResult(applyResult);
         }
 
-        public Task<Result> DeleteAsync(
+        public Task<Result<Unit, FunctionRevisionKubernetesOperationError>> DeleteAsync(
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result>(Result.Success());
+            Task.FromResult<Result<Unit, FunctionRevisionKubernetesOperationError>>(
+                new Ok<Unit>(Unit.Value));
 
-        public Task<Result> ScaleProvisioningAsync(
+        public Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ScaleProvisioningAsync(
             FunctionRevisionInKubernetes revision,
             int replicas,
             CancellationToken cancellationToken = default)
         {
             BootstrapScaleRequests.Add(replicas);
-            return Task.FromResult<Result>(Result.Success());
+            return Task.FromResult<Result<Unit, FunctionRevisionKubernetesOperationError>>(
+                new Ok<Unit>(Unit.Value));
         }
 
-        public Task<Result> ScaleAsync(
+        public Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ScaleAsync(
             FunctionRevisionInKubernetes revision,
             int replicas,
             long coordinationGeneration,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<Result<FunctionReplicaState>> ReadReplicaStateAsync(
+        public Task<Result<FunctionReplicaState, FunctionRevisionKubernetesOperationError>> ReadReplicaStateAsync(
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<FunctionReplicaState>>(new FunctionReplicaState(0, 0, 0, 0));
+            Task.FromResult<Result<FunctionReplicaState, FunctionRevisionKubernetesOperationError>>(
+                new Ok<FunctionReplicaState>(new FunctionReplicaState(0, 0, 0, 0)));
     }
 
     private sealed class RecordingProvisioner : IFunctionRevisionProvisioner

@@ -109,8 +109,12 @@ public sealed class FunctionActivationTests
 
         var result = await activator.EnsureActiveAsync(subject.App, subject.Revision);
 
-        var success = Assert.IsType<Success<FunctionEndpointSnapshot>>(result);
-        Assert.Equal("10.0.0.1", Assert.Single(success.Value.Endpoints).Address);
+        var snapshot = result switch
+        {
+            Ok<FunctionEndpointSnapshot> success => success.Value,
+            Err<FunctionRevisionActivationError> error => throw new Xunit.Sdk.XunitException(error.Value.Message())
+        };
+        Assert.Equal("10.0.0.1", Assert.Single(snapshot.Endpoints).Address);
         Assert.Equal(0, coordinator.BeginCalls);
         Assert.Equal(0, manager.ScaleCalls);
     }
@@ -136,7 +140,7 @@ public sealed class FunctionActivationTests
         manager.CompleteScale();
         var result = await activation;
 
-        Assert.IsType<Success<FunctionEndpointSnapshot>>(result);
+        Assert.True(TypedResultExtensions.TryGetValue(result).Succeeded);
         Assert.Equal(1, coordinator.BeginCalls);
         Assert.Equal(1, coordinator.CompleteCalls);
         Assert.Equal(1, manager.ScaleCalls);
@@ -167,8 +171,12 @@ public sealed class FunctionActivationTests
 
         Assert.All(results, result =>
         {
-            var success = Assert.IsType<Success<FunctionEndpointSnapshot>>(result);
-            Assert.Equal("10.0.0.8", Assert.Single(success.Value.Endpoints).Address);
+            var snapshot = result switch
+            {
+                Ok<FunctionEndpointSnapshot> success => success.Value,
+                Err<FunctionRevisionActivationError> error => throw new Xunit.Sdk.XunitException(error.Value.Message())
+            };
+            Assert.Equal("10.0.0.8", Assert.Single(snapshot.Endpoints).Address);
         });
         Assert.Equal(1, manager.ScaleCalls);
         Assert.Equal(42, manager.LastGeneration);
@@ -188,10 +196,17 @@ public sealed class FunctionActivationTests
 
         var result = await activator.EnsureActiveAsync(subject.App, subject.Revision);
 
-        var failure = Assert.IsType<Failure<FunctionEndpointSnapshot>>(result);
-        var external = Assert.IsType<ExternalServiceFailure>(failure.Error);
-        Assert.Equal("FunctionRuntime", external.ServiceName);
-        Assert.Contains("coordination is unavailable", external.Message, StringComparison.OrdinalIgnoreCase);
+        var failure = result switch
+        {
+            Err<FunctionRevisionActivationError> error => error.Value,
+            Ok<FunctionEndpointSnapshot> => throw new Xunit.Sdk.XunitException("Expected activation failure.")
+        };
+        var unavailable = failure switch
+        {
+            FunctionActivationCoordinatorUnavailable error => error,
+            var error => throw new Xunit.Sdk.XunitException($"Expected coordinator failure, got {error.GetType().Name}.")
+        };
+        Assert.Contains("coordination is unavailable", unavailable.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(0, manager.ScaleCalls);
         Assert.Equal(1, coordinator.BeginCalls);
         Assert.Equal(0, coordinator.CompleteCalls);
@@ -208,12 +223,23 @@ public sealed class FunctionActivationTests
 
         var activation = activator.EnsureActiveAsync(subject.App, subject.Revision);
         await manager.ScaleStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
-        manager.CompleteScale(Failures.Conflict("The shared generation was already applied."));
+        manager.CompleteScale(new Err<FunctionRevisionKubernetesOperationError>(
+            new FunctionRevisionKubernetesOperationRejected(
+                "The shared generation was already applied.")));
 
         var result = await activation;
 
-        var failure = Assert.IsType<Failure<FunctionEndpointSnapshot>>(result);
-        Assert.IsType<ConflictFailure>(failure.Error);
+        var failure = result switch
+        {
+            Err<FunctionRevisionActivationError> error => error.Value,
+            Ok<FunctionEndpointSnapshot> => throw new Xunit.Sdk.XunitException("Expected activation failure.")
+        };
+        var scaleFailure = failure switch
+        {
+            FunctionActivationScaleRejected error => error,
+            var error => throw new Xunit.Sdk.XunitException($"Expected scale failure, got {error.GetType().Name}.")
+        };
+        Assert.True(scaleFailure.Error is FunctionRevisionKubernetesOperationRejected);
         Assert.Equal(17, manager.LastGeneration);
         Assert.Equal(1, coordinator.BeginCalls);
         Assert.Equal(0, coordinator.CompleteCalls);
@@ -288,7 +314,7 @@ public sealed class FunctionActivationTests
 
     private sealed class ControlledKubernetesManager : IFunctionRevisionKubernetesManager
     {
-        private readonly TaskCompletionSource<Result> scaleCompletion =
+        private readonly TaskCompletionSource<Result<Unit, FunctionRevisionKubernetesOperationError>> scaleCompletion =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public TaskCompletionSource ScaleStarted { get; } =
@@ -298,23 +324,25 @@ public sealed class FunctionActivationTests
 
         public long? LastGeneration { get; private set; }
 
-        public Task<Result> ApplyAsync(
+        public Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ApplyAsync(
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result>(Result.Success());
+            Task.FromResult<Result<Unit, FunctionRevisionKubernetesOperationError>>(
+                new Ok<Unit>(Unit.Value));
 
-        public Task<Result> DeleteAsync(
+        public Task<Result<Unit, FunctionRevisionKubernetesOperationError>> DeleteAsync(
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result>(Result.Success());
+            Task.FromResult<Result<Unit, FunctionRevisionKubernetesOperationError>>(
+                new Ok<Unit>(Unit.Value));
 
-        public Task<Result> ScaleProvisioningAsync(
+        public Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ScaleProvisioningAsync(
             FunctionRevisionInKubernetes revision,
             int replicas,
             CancellationToken cancellationToken = default) =>
             ScaleAsync(revision, replicas, 0, cancellationToken);
 
-        public Task<Result> ScaleAsync(
+        public Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ScaleAsync(
             FunctionRevisionInKubernetes revision,
             int replicas,
             long coordinationGeneration,
@@ -326,13 +354,14 @@ public sealed class FunctionActivationTests
             return scaleCompletion.Task;
         }
 
-        public Task<Result<FunctionReplicaState>> ReadReplicaStateAsync(
+        public Task<Result<FunctionReplicaState, FunctionRevisionKubernetesOperationError>> ReadReplicaStateAsync(
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<FunctionReplicaState>>(new FunctionReplicaState(0, 0, 0, 0));
+            Task.FromResult<Result<FunctionReplicaState, FunctionRevisionKubernetesOperationError>>(
+                new Ok<FunctionReplicaState>(new FunctionReplicaState(0, 0, 0, 0)));
 
-        public void CompleteScale(Result? result = null) =>
-            scaleCompletion.TrySetResult(result ?? Result.Success());
+        public void CompleteScale(Result<Unit, FunctionRevisionKubernetesOperationError>? result = null) =>
+            scaleCompletion.TrySetResult(result ?? new Ok<Unit>(Unit.Value));
     }
 
     private sealed class FakeActivationCoordinator(

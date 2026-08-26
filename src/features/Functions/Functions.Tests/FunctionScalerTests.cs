@@ -380,8 +380,8 @@ public sealed class FunctionScalerTests
             scaling: new FunctionScalingPolicy(0, 5, 4, 8, 0, 30),
             replicaState: new FunctionReplicaState(1, 1, 1, 1),
             endpoints: [Endpoint("pod-1")]);
-        harness.Kubernetes.ScaleResult = Failures.ValidationFailure(
-            new Dictionary<string, string[]> { ["replicas"] = ["Invalid replicas."] });
+        harness.Kubernetes.ScaleResult = new Err<FunctionRevisionKubernetesOperationError>(
+            new FunctionRevisionKubernetesOperationInvalid("Invalid replicas."));
 
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
 
@@ -403,10 +403,8 @@ public sealed class FunctionScalerTests
             scaling: new FunctionScalingPolicy(0, 5, 4, 8, 0, 30),
             replicaState: new FunctionReplicaState(1, 1, 1, 1),
             endpoints: [Endpoint("pod-1")]);
-        harness.Kubernetes.ScaleResult = Failures.ExternalService(
-            "Unable to scale.",
-            "Kubernetes",
-            "test failure");
+        harness.Kubernetes.ScaleResult = new Err<FunctionRevisionKubernetesOperationError>(
+            new FunctionRevisionKubernetesUnavailable("Unable to scale."));
 
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
 
@@ -433,10 +431,8 @@ public sealed class FunctionScalerTests
             scaling: new FunctionScalingPolicy(0, 5, 4, 8, 30, 30),
             replicaState: new FunctionReplicaState(0, 0, 0, 0));
         harness.Coordinator.AdmissionRequests = 1;
-        harness.Kubernetes.ScaleResult = Failures.ExternalService(
-            "Unable to scale.",
-            "Kubernetes",
-            "response lost after apply");
+        harness.Kubernetes.ScaleResult = new Err<FunctionRevisionKubernetesOperationError>(
+            new FunctionRevisionKubernetesUnavailable("Unable to scale."));
         harness.Kubernetes.ApplyScaleBeforeFailure = true;
 
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
@@ -950,24 +946,25 @@ public sealed class FunctionScalerTests
         public FunctionReplicaState ReplicaState { get; set; } = new(0, 0, 0, 0);
         public List<int> ScaleRequests { get; } = [];
         public List<long> ScaleGenerations { get; } = [];
-        public Result ScaleResult { get; set; } = Result.Success();
+        public Result<Unit, FunctionRevisionKubernetesOperationError> ScaleResult { get; set; } =
+            new Ok<Unit>(Unit.Value);
         public bool ApplyScaleBeforeFailure { get; set; }
 
-        public Task<Result> ApplyAsync(
+        public Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ApplyAsync(
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task<Result> DeleteAsync(
+        public Task<Result<Unit, FunctionRevisionKubernetesOperationError>> DeleteAsync(
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task<Result> ScaleProvisioningAsync(
+        public Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ScaleProvisioningAsync(
             FunctionRevisionInKubernetes revision,
             int replicas,
             CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("The scaler must use a fenced coordination generation.");
 
-        public Task<Result> ScaleAsync(
+        public Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ScaleAsync(
             FunctionRevisionInKubernetes revision,
             int replicas,
             long coordinationGeneration,
@@ -975,7 +972,7 @@ public sealed class FunctionScalerTests
         {
             ScaleRequests.Add(replicas);
             ScaleGenerations.Add(coordinationGeneration);
-            if (ScaleResult is not IFailure || ApplyScaleBeforeFailure)
+            if (ScaleResult is Ok<Unit> || ApplyScaleBeforeFailure)
             {
                 ReplicaState = ReplicaState with
                 {
@@ -987,10 +984,11 @@ public sealed class FunctionScalerTests
             return Task.FromResult(ScaleResult);
         }
 
-        public Task<Result<FunctionReplicaState>> ReadReplicaStateAsync(
+        public Task<Result<FunctionReplicaState, FunctionRevisionKubernetesOperationError>> ReadReplicaStateAsync(
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<FunctionReplicaState>>(ReplicaState);
+            Task.FromResult<Result<FunctionReplicaState, FunctionRevisionKubernetesOperationError>>(
+                new Ok<FunctionReplicaState>(ReplicaState));
     }
 
     private sealed class FakeAgentClient : IFunctionAgentClient

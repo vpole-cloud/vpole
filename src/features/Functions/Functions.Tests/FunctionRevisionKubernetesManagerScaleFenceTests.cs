@@ -27,7 +27,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
 
         var result = await manager.ScaleAsync(subject, replicas: 3, coordinationGeneration: 5);
 
-        Assert.True(result is ISuccess, result.ToString());
+        Assert.True(TypedResultExtensions.TryGetValue(result).Succeeded);
         var request = Assert.Single(handler.PutRequests);
         Assert.EndsWith(
             $"/apis/apps/v1/namespaces/{subject.Namespace}/deployments/{subject.DeploymentName}",
@@ -53,7 +53,12 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
 
         var result = await manager.ScaleAsync(subject, replicas: 2, coordinationGeneration: 5);
 
-        Assert.True(result is ConflictFailure, result.ToString());
+        var failure = result switch
+        {
+            Err<FunctionRevisionKubernetesOperationError> error => error.Value,
+            Ok<Unit> => throw new Xunit.Sdk.XunitException("Expected a scale rejection.")
+        };
+        Assert.True(failure is FunctionRevisionKubernetesOperationRejected);
         Assert.Empty(handler.PutRequests);
     }
 
@@ -67,7 +72,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
 
         var result = await manager.ScaleAsync(subject, replicas: 3, coordinationGeneration: 5);
 
-        Assert.True(result is ISuccess, result.ToString());
+        Assert.True(TypedResultExtensions.TryGetValue(result).Succeeded);
         Assert.Empty(handler.PutRequests);
     }
 
@@ -85,7 +90,12 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
 
         var result = await manager.ScaleProvisioningAsync(subject, replicas: 0);
 
-        Assert.IsType<ConflictFailure>(result);
+        var failure = result switch
+        {
+            Err<FunctionRevisionKubernetesOperationError> error => error.Value,
+            Ok<Unit> => throw new Xunit.Sdk.XunitException("Expected a scale rejection.")
+        };
+        Assert.True(failure is FunctionRevisionKubernetesOperationRejected);
         Assert.Empty(handler.PutRequests);
     }
 

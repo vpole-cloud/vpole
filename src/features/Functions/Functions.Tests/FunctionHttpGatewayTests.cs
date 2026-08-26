@@ -737,7 +737,7 @@ public sealed class FunctionHttpGatewayTests
         public int Calls { get; private set; }
         public bool LastForceScaleFence { get; private set; }
 
-        public Task<Result<FunctionEndpointSnapshot>> EnsureActiveAsync(
+        public Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>> EnsureActiveAsync(
             FunctionApp app,
             FunctionRevision revision,
             CancellationToken cancellationToken = default,
@@ -745,7 +745,8 @@ public sealed class FunctionHttpGatewayTests
         {
             Calls++;
             LastForceScaleFence = forceScaleFence;
-            return Task.FromResult<Result<FunctionEndpointSnapshot>>(snapshot);
+            return Task.FromResult<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>>(
+                new Ok<FunctionEndpointSnapshot>(snapshot));
         }
     }
 

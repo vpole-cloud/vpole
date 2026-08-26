@@ -44,19 +44,19 @@ public sealed class FunctionRevisionCreatedConsumer(
             var applied = await kubernetesManager.ApplyAsync(
                 new FunctionRevisionInKubernetes(app, revision),
                 cancellationToken);
-            if (applied is IFailure applyFailure)
+            if (applied is Err<FunctionRevisionKubernetesOperationError> applyFailure)
             {
                 logger.LogError(
                     "[function-revision-provisioning-failed] Kubernetes could not apply revision {RevisionId} for Function App {FunctionAppId}: {Reason}",
                     revision.Id,
                     app.Id,
-                    applyFailure.Message);
+                    applyFailure.Value.Message());
                 await FailAsync(
                     tenantId,
                     app,
                     revision,
                     "kubernetes-apply",
-                    applyFailure.Message,
+                    applyFailure.Value.Message(),
                     cancellationToken);
                 return;
             }
@@ -71,12 +71,12 @@ public sealed class FunctionRevisionCreatedConsumer(
                     new FunctionRevisionInKubernetes(app, revision),
                     0,
                     cancellationToken);
-                if (stopped is IFailure stopFailure)
+                if (stopped is Err<FunctionRevisionKubernetesOperationError> stopFailure)
                 {
                     logger.LogWarning(
                         "[function-revision-stop-failed] Could not return unconfigured ready revision {RevisionId} to zero replicas: {Reason}",
                         revision.Id,
-                        stopFailure.Message);
+                        stopFailure.Value.Message());
                 }
             }
 

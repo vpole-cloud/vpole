@@ -175,15 +175,16 @@ public sealed class FunctionRevisionProvisionerTests
         FunctionEndpoint endpoint,
         FunctionRevisionInKubernetes subject) : IFunctionRevisionActivator
     {
-        public Task<Result<FunctionEndpointSnapshot>> EnsureActiveAsync(
+        public Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>> EnsureActiveAsync(
             FunctionApp app,
             FunctionRevision revision,
             CancellationToken cancellationToken = default,
             bool forceScaleFence = false) =>
-            Task.FromResult<Result<FunctionEndpointSnapshot>>(new FunctionEndpointSnapshot(
+            Task.FromResult<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>>(
+                new Ok<FunctionEndpointSnapshot>(new FunctionEndpointSnapshot(
                 new FunctionServiceKey(subject.Namespace, subject.ServiceName),
                 [endpoint],
-                DateTimeOffset.UtcNow));
+                DateTimeOffset.UtcNow)));
     }
 
     private sealed class MetadataClient(FunctionAgentMetadataResponse metadata) : IFunctionAgentClient
@@ -232,34 +233,38 @@ public sealed class FunctionRevisionProvisionerTests
     {
         public List<int> ScaleRequests { get; } = [];
 
-        public Task<Result> ApplyAsync(
+        public Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ApplyAsync(
             FunctionRevisionInKubernetes revision,
-            CancellationToken cancellationToken = default) => Task.FromResult<Result>(Result.Success());
+            CancellationToken cancellationToken = default) => Task.FromResult<Result<Unit, FunctionRevisionKubernetesOperationError>>(
+                new Ok<Unit>(Unit.Value));
 
-        public Task<Result> DeleteAsync(
+        public Task<Result<Unit, FunctionRevisionKubernetesOperationError>> DeleteAsync(
             FunctionRevisionInKubernetes revision,
-            CancellationToken cancellationToken = default) => Task.FromResult<Result>(Result.Success());
+            CancellationToken cancellationToken = default) => Task.FromResult<Result<Unit, FunctionRevisionKubernetesOperationError>>(
+                new Ok<Unit>(Unit.Value));
 
-        public Task<Result> ScaleProvisioningAsync(
+        public Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ScaleProvisioningAsync(
             FunctionRevisionInKubernetes revision,
             int replicas,
             CancellationToken cancellationToken = default)
         {
             ScaleRequests.Add(replicas);
-            return Task.FromResult<Result>(Result.Success());
+            return Task.FromResult<Result<Unit, FunctionRevisionKubernetesOperationError>>(
+                new Ok<Unit>(Unit.Value));
         }
 
-        public Task<Result> ScaleAsync(
+        public Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ScaleAsync(
             FunctionRevisionInKubernetes revision,
             int replicas,
             long coordinationGeneration,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<Result<FunctionReplicaState>> ReadReplicaStateAsync(
+        public Task<Result<FunctionReplicaState, FunctionRevisionKubernetesOperationError>> ReadReplicaStateAsync(
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<FunctionReplicaState>>(new FunctionReplicaState(0, 0, 0, 0));
+            Task.FromResult<Result<FunctionReplicaState, FunctionRevisionKubernetesOperationError>>(
+                new Ok<FunctionReplicaState>(new FunctionReplicaState(0, 0, 0, 0)));
     }
 
     private sealed class RecordingLifecycle
