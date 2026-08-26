@@ -57,7 +57,7 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
                 cancellationToken.ThrowIfCancellationRequested();
                 cursor = target.Id;
 
-                Result<EncryptedValue> rewrapResult;
+                Result<EncryptedValue, EnvelopeRewrapFailed> rewrapResult;
                 string encryptedField;
                 EncryptedValue currentEnvelope;
                 FilterDefinition<DeploymentTarget> casFilter;

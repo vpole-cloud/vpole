@@ -33,16 +33,16 @@ type PostgresCredentialCreator(
             let version = 1L
             let! protectedUsername =
                 encrypt tenantId clusterId PostgresCredential.UsernameField version username cancellationToken
-            match protectedUsername.TryGetValue() with
-            | struct (false, _, _) ->
+            match TypedResultInterop.toResult protectedUsername with
+            | Error _ ->
                 return PostgresError(PostgresCredentialProtectionUnavailable clusterId)
-            | struct (true, encryptedUsername, _) ->
+            | Ok encryptedUsername ->
                 let! protectedPassword =
                     encrypt tenantId clusterId PostgresCredential.PasswordField version password cancellationToken
-                match protectedPassword.TryGetValue() with
-                | struct (false, _, _) ->
+                match TypedResultInterop.toResult protectedPassword with
+                | Error _ ->
                     return PostgresError(PostgresCredentialProtectionUnavailable clusterId)
-                | struct (true, encryptedPassword, _) ->
+                | Ok encryptedPassword ->
                     let credential =
                         PostgresCredential.Create(
                             tenantId,

@@ -37,15 +37,15 @@ type MongoResolvePostgresClusterCredentials(
             else
                 let! plaintextUsername =
                     decrypt credential PostgresCredential.UsernameField credential.EncryptedUsername cancellationToken
-                match plaintextUsername.TryGetValue() with
-                | struct (false, _, _) ->
+                match TypedResultInterop.toResult plaintextUsername with
+                | Error _ ->
                     return PostgresError(PostgresCredentialProtectionUnavailable clusterId)
-                | struct (true, username, _) ->
+                | Ok username ->
                     let! plaintextPassword =
                         decrypt credential PostgresCredential.PasswordField credential.EncryptedPassword cancellationToken
-                    match plaintextPassword.TryGetValue() with
-                    | struct (false, _, _) ->
+                    match TypedResultInterop.toResult plaintextPassword with
+                    | Error _ ->
                         return PostgresError(PostgresCredentialProtectionUnavailable clusterId)
-                    | struct (true, password, _) ->
+                    | Ok password ->
                         return PostgresSuccess { Username = username; Password = password }
         }

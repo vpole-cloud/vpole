@@ -39,10 +39,10 @@ type PostgresCredentialRotator(
 
             let! plaintextUsername =
                 decrypt credential PostgresCredential.UsernameField credential.EncryptedUsername cancellationToken
-            match plaintextUsername.TryGetValue() with
-            | struct (false, _, _) ->
+            match TypedResultInterop.toResult plaintextUsername with
+            | Error _ ->
                 return PostgresError(PostgresCredentialProtectionUnavailable credential.PostgresClusterId)
-            | struct (true, username, _) ->
+            | Ok username ->
                 let nextVersion =
                     if credential.Version = Int64.MaxValue then
                         raise (OverflowException("PostgreSQL credential version overflowed."))
@@ -56,10 +56,10 @@ type PostgresCredentialRotator(
                         nextVersion
                         username
                         cancellationToken
-                match protectedUsername.TryGetValue() with
-                | struct (false, _, _) ->
+                match TypedResultInterop.toResult protectedUsername with
+                | Error _ ->
                     return PostgresError(PostgresCredentialProtectionUnavailable credential.PostgresClusterId)
-                | struct (true, encryptedUsername, _) ->
+                | Ok encryptedUsername ->
                     let! protectedPassword =
                         encrypt
                             credential.TenantId
@@ -68,10 +68,10 @@ type PostgresCredentialRotator(
                             nextVersion
                             password
                             cancellationToken
-                    match protectedPassword.TryGetValue() with
-                    | struct (false, _, _) ->
+                    match TypedResultInterop.toResult protectedPassword with
+                    | Error _ ->
                         return PostgresError(PostgresCredentialProtectionUnavailable credential.PostgresClusterId)
-                    | struct (true, encryptedPassword, _) ->
+                    | Ok encryptedPassword ->
                         return
                             credential.Rotate(
                                 encryptedUsername,

@@ -13,27 +13,27 @@ public interface IEnvelopeEncryptionService
 {
     EnvelopeEncryptionKeyReference ActiveKey { get; }
 
-    ValueTask<Result<EncryptedValue>> EncryptAsync(
+    ValueTask<Result<EncryptedValue, EnvelopeEncryptionFailed>> EncryptAsync(
         ReadOnlyMemory<byte> plaintext,
         EnvelopeEncryptionContext context,
         CancellationToken cancellationToken = default);
 
-    ValueTask<Result<byte[]>> DecryptAsync(
+    ValueTask<Result<byte[], EnvelopeDecryptionFailed>> DecryptAsync(
         EncryptedValue encryptedValue,
         EnvelopeEncryptionContext context,
         CancellationToken cancellationToken = default);
 
-    ValueTask<Result<EncryptedValue>> EncryptStringAsync(
+    ValueTask<Result<EncryptedValue, EnvelopeEncryptionFailed>> EncryptStringAsync(
         string plaintext,
         EnvelopeEncryptionContext context,
         CancellationToken cancellationToken = default);
 
-    ValueTask<Result<string>> DecryptStringAsync(
+    ValueTask<Result<string, EnvelopeDecryptionFailed>> DecryptStringAsync(
         EncryptedValue encryptedValue,
         EnvelopeEncryptionContext context,
         CancellationToken cancellationToken = default);
 
-    ValueTask<Result<EncryptedValue>> RewrapAsync(
+    ValueTask<Result<EncryptedValue, EnvelopeRewrapFailed>> RewrapAsync(
         EncryptedValue encryptedValue,
         EnvelopeEncryptionContext context,
         CancellationToken cancellationToken = default);

@@ -22,13 +22,13 @@ public interface IKeyEncryptionProvider
     string ProviderId { get; }
     KeyEncryptionKeyDescriptor ActiveKey { get; }
 
-    ValueTask<Result<WrappedDataEncryptionKey>> WrapKeyAsync(
+    ValueTask<Result<WrappedDataEncryptionKey, DataEncryptionKeyWrappingFailed>> WrapKeyAsync(
         KeyEncryptionKeyDescriptor key,
         ReadOnlyMemory<byte> dataEncryptionKey,
         ReadOnlyMemory<byte> associatedData,
         CancellationToken cancellationToken = default);
 
-    ValueTask<Result<byte[]>> UnwrapKeyAsync(
+    ValueTask<Result<byte[], DataEncryptionKeyUnwrappingFailed>> UnwrapKeyAsync(
         KeyEncryptionKeyIdentity key,
         string algorithm,
         int algorithmVersion,

@@ -34,11 +34,9 @@ internal sealed class DeploymentTargetConnectionProtector(
             var encrypted = await encryption.EncryptAsync(canonicalKubeconfig, context, cancellationToken);
             return encrypted switch
             {
-                Success<EncryptedValue> success => new Ok<EncryptedValue>(success.Value),
-                Failure<EncryptedValue> failure => throw new InvalidOperationException(
-                    $"The deployment-target connection-protection service rejected encryption: {failure.Error.Message}"),
-                _ => throw new InvalidOperationException(
-                    "The connection-protection service returned an unsupported result case.")
+                Ok<EncryptedValue> success => success,
+                Err<EnvelopeEncryptionFailed> failure => throw new InvalidOperationException(
+                    $"The deployment-target connection-protection service rejected encryption: {failure.Value.Message}")
             };
         }
         catch (OperationCanceledException)
@@ -74,10 +72,8 @@ internal sealed class DeploymentTargetConnectionProtector(
             var decrypted = await encryption.DecryptAsync(encryptedKubeconfig, context, cancellationToken);
             return decrypted switch
             {
-                Success<byte[]> success => new Ok<byte[]>(success.Value),
-                Failure<byte[]> => new Err<StoredDeploymentTargetConnectionUnavailable>(new()),
-                _ => throw new InvalidOperationException(
-                    "The connection-protection service returned an unsupported result case.")
+                Ok<byte[]> success => success,
+                Err<EnvelopeDecryptionFailed> => new Err<StoredDeploymentTargetConnectionUnavailable>(new())
             };
         }
         catch (OperationCanceledException)
@@ -119,11 +115,9 @@ internal sealed class DeploymentTargetConnectionProtector(
                 cancellationToken);
             return encrypted switch
             {
-                Success<EncryptedValue> success => new Ok<EncryptedValue>(success.Value),
-                Failure<EncryptedValue> failure => throw new InvalidOperationException(
-                    $"The deployment-target connection-protection service rejected encryption: {failure.Error.Message}"),
-                _ => throw new InvalidOperationException(
-                    "The connection-protection service returned an unsupported result case.")
+                Ok<EncryptedValue> success => success,
+                Err<EnvelopeEncryptionFailed> failure => throw new InvalidOperationException(
+                    $"The deployment-target connection-protection service rejected encryption: {failure.Value.Message}")
             };
         }
         catch (OperationCanceledException)
@@ -161,10 +155,8 @@ internal sealed class DeploymentTargetConnectionProtector(
             var decrypted = await encryption.DecryptAsync(encryptedCredential, context, cancellationToken);
             return decrypted switch
             {
-                Success<byte[]> success => new Ok<byte[]>(success.Value),
-                Failure<byte[]> => new Err<StoredDeploymentTargetConnectionUnavailable>(new()),
-                _ => throw new InvalidOperationException(
-                    "The connection-protection service returned an unsupported result case.")
+                Ok<byte[]> success => success,
+                Err<EnvelopeDecryptionFailed> => new Err<StoredDeploymentTargetConnectionUnavailable>(new())
             };
         }
         catch (OperationCanceledException)

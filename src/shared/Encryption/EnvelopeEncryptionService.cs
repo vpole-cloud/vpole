@@ -49,7 +49,7 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
             throw new InvalidOperationException("The active key-encryption provider is not registered.");
     }
 
-    public async ValueTask<Result<EncryptedValue>> EncryptAsync(
+    public async ValueTask<Result<EncryptedValue, EnvelopeEncryptionFailed>> EncryptAsync(
         ReadOnlyMemory<byte> plaintext,
         EnvelopeEncryptionContext context,
         CancellationToken cancellationToken = default)
@@ -76,7 +76,7 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
             }
             catch (CryptographicException)
             {
-                return EncryptFailure();
+                return new Err<EnvelopeEncryptionFailed>(EncryptFailure());
             }
 
             var wrappedKeyAssociatedData = AssociatedDataEncoder.ForWrappedKey(
@@ -94,9 +94,9 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
                 wrappedKeyAssociatedData,
                 cancellationToken);
             if (!wrappedResult.TryGetValue(out var wrappedKey, out _) || !HasValidWrappedKey(wrappedKey))
-                return EncryptFailure();
+                return new Err<EnvelopeEncryptionFailed>(EncryptFailure());
 
-            return new EncryptedValue(
+            return new Ok<EncryptedValue>(new EncryptedValue(
                 CurrentFormatVersion,
                 _activeProvider.ProviderId,
                 activeKey.Identity.Id,
@@ -110,7 +110,7 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
                 ContentAlgorithmVersion,
                 ciphertext,
                 nonce,
-                authenticationTag);
+                authenticationTag));
         }
         finally
         {
@@ -118,7 +118,7 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
         }
     }
 
-    public async ValueTask<Result<byte[]>> DecryptAsync(
+    public async ValueTask<Result<byte[], EnvelopeDecryptionFailed>> DecryptAsync(
         EncryptedValue encryptedValue,
         EnvelopeEncryptionContext context,
         CancellationToken cancellationToken = default)
@@ -127,11 +127,11 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
         ArgumentNullException.ThrowIfNull(encryptedValue);
         ArgumentNullException.ThrowIfNull(context);
         if (!HasValidMetadata(encryptedValue))
-            return DecryptFailure();
+            return new Err<EnvelopeDecryptionFailed>(DecryptFailure());
 
         var keyResult = await UnwrapDataEncryptionKeyAsync(encryptedValue, context, cancellationToken);
         if (!keyResult.TryGetValue(out var dataEncryptionKey, out _))
-            return DecryptFailure();
+            return new Err<EnvelopeDecryptionFailed>(DecryptFailure());
 
         try
         {
@@ -143,7 +143,7 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
         }
     }
 
-    public async ValueTask<Result<EncryptedValue>> EncryptStringAsync(
+    public async ValueTask<Result<EncryptedValue, EnvelopeEncryptionFailed>> EncryptStringAsync(
         string plaintext,
         EnvelopeEncryptionContext context,
         CancellationToken cancellationToken = default)
@@ -160,17 +160,17 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
         }
     }
 
-    public async ValueTask<Result<string>> DecryptStringAsync(
+    public async ValueTask<Result<string, EnvelopeDecryptionFailed>> DecryptStringAsync(
         EncryptedValue encryptedValue,
         EnvelopeEncryptionContext context,
         CancellationToken cancellationToken = default)
     {
         var result = await DecryptAsync(encryptedValue, context, cancellationToken);
         if (!result.TryGetValue(out var plaintext, out var failure))
-            return failure;
+            return new Err<EnvelopeDecryptionFailed>(failure);
         try
         {
-            return Encoding.UTF8.GetString(plaintext);
+            return new Ok<string>(Encoding.UTF8.GetString(plaintext));
         }
         finally
         {
@@ -178,7 +178,7 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
         }
     }
 
-    public async ValueTask<Result<EncryptedValue>> RewrapAsync(
+    public async ValueTask<Result<EncryptedValue, EnvelopeRewrapFailed>> RewrapAsync(
         EncryptedValue encryptedValue,
         EnvelopeEncryptionContext context,
         CancellationToken cancellationToken = default)
@@ -187,11 +187,11 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
         ArgumentNullException.ThrowIfNull(encryptedValue);
         ArgumentNullException.ThrowIfNull(context);
         if (!HasValidMetadata(encryptedValue))
-            return RewrapFailure();
+            return new Err<EnvelopeRewrapFailed>(RewrapFailure());
 
         var keyResult = await UnwrapDataEncryptionKeyAsync(encryptedValue, context, cancellationToken);
         if (!keyResult.TryGetValue(out var dataEncryptionKey, out _))
-            return RewrapFailure();
+            return new Err<EnvelopeRewrapFailed>(RewrapFailure());
 
         try
         {
@@ -202,7 +202,7 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
                 string.Equals(encryptedValue.KeyWrapAlgorithm, activeKey.Algorithm, StringComparison.Ordinal) &&
                 encryptedValue.KeyWrapAlgorithmVersion == activeKey.AlgorithmVersion)
             {
-                return encryptedValue;
+                return new Ok<EncryptedValue>(encryptedValue);
             }
 
             var wrappedKeyAssociatedData = AssociatedDataEncoder.ForWrappedKey(
@@ -220,9 +220,9 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
                 wrappedKeyAssociatedData,
                 cancellationToken);
             if (!wrappedResult.TryGetValue(out var wrappedKey, out _) || !HasValidWrappedKey(wrappedKey))
-                return RewrapFailure();
+                return new Err<EnvelopeRewrapFailed>(RewrapFailure());
 
-            return encryptedValue with
+            return new Ok<EncryptedValue>(encryptedValue with
             {
                 KeyProviderId = _activeProvider.ProviderId,
                 KeyEncryptionKeyId = activeKey.Identity.Id,
@@ -235,7 +235,7 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
                 Ciphertext = encryptedValue.Ciphertext.ToArray(),
                 Nonce = encryptedValue.Nonce.ToArray(),
                 AuthenticationTag = encryptedValue.AuthenticationTag.ToArray()
-            };
+            });
         }
         finally
         {
@@ -243,13 +243,13 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
         }
     }
 
-    private async ValueTask<Result<byte[]>> UnwrapDataEncryptionKeyAsync(
+    private async ValueTask<Result<byte[], EnvelopeDecryptionFailed>> UnwrapDataEncryptionKeyAsync(
         EncryptedValue encryptedValue,
         EnvelopeEncryptionContext context,
         CancellationToken cancellationToken)
     {
         if (!_providers.TryGetValue(encryptedValue.KeyProviderId, out var provider))
-            return DecryptFailure();
+            return new Err<EnvelopeDecryptionFailed>(DecryptFailure());
 
         var keyIdentity = new KeyEncryptionKeyIdentity(
             encryptedValue.KeyEncryptionKeyId,
@@ -276,13 +276,13 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
         {
             if (dataEncryptionKey is not null)
                 CryptographicOperations.ZeroMemory(dataEncryptionKey);
-            return DecryptFailure();
+            return new Err<EnvelopeDecryptionFailed>(DecryptFailure());
         }
 
-        return dataEncryptionKey;
+        return new Ok<byte[]>(dataEncryptionKey);
     }
 
-    private static Result<byte[]> DecryptPayload(
+    private static Result<byte[], EnvelopeDecryptionFailed> DecryptPayload(
         EncryptedValue encryptedValue,
         EnvelopeEncryptionContext context,
         byte[] dataEncryptionKey)
@@ -302,12 +302,12 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
                 encryptedValue.AuthenticationTag,
                 plaintext,
                 payloadAssociatedData);
-            return plaintext;
+            return new Ok<byte[]>(plaintext);
         }
         catch (CryptographicException)
         {
             CryptographicOperations.ZeroMemory(plaintext);
-            return DecryptFailure();
+            return new Err<EnvelopeDecryptionFailed>(DecryptFailure());
         }
     }
 
@@ -359,15 +359,12 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
     private static bool HasValidWrappedKeyComponent(byte[]? value) =>
         value is { Length: > 0 and <= MaximumWrappedKeyComponentSizeBytes };
 
-    private static InternalFailure EncryptFailure() => Failures.Internal(
-        "The protected value could not be encrypted.",
-        "The configured key-encryption provider is unavailable or invalid.");
+    private static EnvelopeEncryptionFailed EncryptFailure() => new(
+        "The protected value could not be encrypted.");
 
-    private static InternalFailure DecryptFailure() => Failures.Internal(
-        "The protected value could not be decrypted.",
-        "The key, envelope metadata, or authenticated identity is unavailable, invalid, or unsupported.");
+    private static EnvelopeDecryptionFailed DecryptFailure() => new(
+        "The protected value could not be decrypted.");
 
-    private static InternalFailure RewrapFailure() => Failures.Internal(
-        "The protected value data-encryption key could not be rewrapped.",
-        "The old or active key, envelope metadata, or authenticated identity is unavailable, invalid, or unsupported.");
+    private static EnvelopeRewrapFailed RewrapFailure() => new(
+        "The protected value data-encryption key could not be rewrapped.");
 }
