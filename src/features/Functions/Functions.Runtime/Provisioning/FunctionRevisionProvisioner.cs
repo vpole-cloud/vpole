@@ -56,7 +56,7 @@ public sealed class FunctionRevisionProvisioner(
 
         var activation = await activator.EnsureActiveAsync(app, revision, cancellationToken);
         if (!activation.TryGetValue(out var snapshot, out var activationFailure))
-            return await FailAndStopAsync(subject, "activation", activationFailure.Message, cancellationToken);
+            return await FailAndStopAsync(subject, "activation", activationFailure.Message(), cancellationToken);
 
         var metadataFailure = "No ready Function Agent returned valid metadata.";
         foreach (var endpoint in snapshot.Endpoints)
@@ -84,8 +84,14 @@ public sealed class FunctionRevisionProvisioner(
                         subject,
                         revision.Spec.Scaling.MinInstances,
                         cancellationToken);
-                    if (scaled is IFailure scaleFailure)
-                        return await FailAndStopAsync(subject, "minimum-scale", scaleFailure.Message, cancellationToken);
+                    if (scaled is Err<FunctionRevisionKubernetesOperationError> scaleFailure)
+                    {
+                        return await FailAndStopAsync(
+                            subject,
+                            "minimum-scale",
+                            scaleFailure.Value.Message(),
+                            cancellationToken);
+                    }
 
                     var ready = await markFunctionRevisionReady(
                         app.TenantId,
@@ -154,12 +160,12 @@ public sealed class FunctionRevisionProvisioner(
         CancellationToken cancellationToken)
     {
         var stopped = await kubernetesManager.ScaleProvisioningAsync(subject, 0, cancellationToken);
-        if (stopped is IFailure stopFailure)
+        if (stopped is Err<FunctionRevisionKubernetesOperationError> stopFailure)
         {
             logger.LogWarning(
                 "[function-revision-stop-failed] Could not return failed revision {RevisionId} to zero replicas: {Reason}",
                 subject.Revision.Id,
-                stopFailure.Message);
+                stopFailure.Value.Message());
         }
 
         return FunctionRevisionProvisioningOutcome.Failure(code, message);

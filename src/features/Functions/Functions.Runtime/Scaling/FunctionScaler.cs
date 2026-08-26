@@ -753,15 +753,15 @@ public sealed class FunctionScaler(
             lease.DesiredReplicas,
             lease.Generation,
             cancellationToken);
-        if (result is IFailure failure)
+        if (result is Err<FunctionRevisionKubernetesOperationError> failure)
         {
             logger.LogWarning(
                 "[function-scaler-scale-failed] Failed to scale Function revision {RevisionId} to {Replicas}: {Message}",
                 target.Revision.Id,
                 lease.DesiredReplicas,
-                failure.Message);
+                failure.Value.Message());
 
-            if (failure is not ValidationFailure)
+            if (failure.Value is not FunctionRevisionKubernetesOperationInvalid)
             {
                 // Kubernetes may have accepted the write even when the client observed a
                 // timeout or conflict. Only the fenced generation plus desired replicas can

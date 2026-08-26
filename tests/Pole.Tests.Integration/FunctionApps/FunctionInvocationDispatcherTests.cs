@@ -625,7 +625,7 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
 
     private sealed class UnexpectedActivator : IFunctionRevisionActivator
     {
-        public Task<Result<FunctionEndpointSnapshot>> EnsureActiveAsync(
+        public Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>> EnsureActiveAsync(
             FunctionApp app,
             FunctionRevision revision,
             CancellationToken cancellationToken = default,
@@ -635,16 +635,15 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
 
     private sealed class FailingActivator : IFunctionRevisionActivator
     {
-        public Task<Result<FunctionEndpointSnapshot>> EnsureActiveAsync(
+        public Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>> EnsureActiveAsync(
             FunctionApp app,
             FunctionRevision revision,
             CancellationToken cancellationToken = default,
             bool forceScaleFence = false) =>
-            Task.FromResult<Result<FunctionEndpointSnapshot>>(
-                Failures.ExternalService(
-                    "Function activation is temporarily unavailable.",
-                    "FunctionRuntime",
-                    string.Empty));
+            Task.FromResult<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>>(
+                new Err<FunctionRevisionActivationError>(
+                    new FunctionActivationCoordinatorUnavailable(
+                        "Function activation is temporarily unavailable.")));
     }
 
     private sealed class RecordingAdmissionCoordinator : IFunctionAdmissionCoordinator

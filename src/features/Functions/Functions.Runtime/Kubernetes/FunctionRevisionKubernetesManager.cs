@@ -12,20 +12,24 @@ namespace Pole.Features.Functions.Runtime.Kubernetes;
 
 public interface IFunctionRevisionKubernetesManager
 {
-    Task<Result> ApplyAsync(FunctionRevisionInKubernetes revision, CancellationToken cancellationToken = default);
-    Task<Result> DeleteAsync(FunctionRevisionInKubernetes revision, CancellationToken cancellationToken = default);
+    Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ApplyAsync(
+        FunctionRevisionInKubernetes revision,
+        CancellationToken cancellationToken = default);
+    Task<Result<Unit, FunctionRevisionKubernetesOperationError>> DeleteAsync(
+        FunctionRevisionInKubernetes revision,
+        CancellationToken cancellationToken = default);
     // Only non-serving bootstrap statuses may bypass the runtime coordination generation.
     // Provisioning and ready revisions are not routable or owned by the scaler.
-    Task<Result> ScaleProvisioningAsync(
+    Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ScaleProvisioningAsync(
         FunctionRevisionInKubernetes revision,
         int replicas,
         CancellationToken cancellationToken = default);
-    Task<Result> ScaleAsync(
+    Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ScaleAsync(
         FunctionRevisionInKubernetes revision,
         int replicas,
         long coordinationGeneration,
         CancellationToken cancellationToken = default);
-    Task<Result<FunctionReplicaState>> ReadReplicaStateAsync(
+    Task<Result<FunctionReplicaState, FunctionRevisionKubernetesOperationError>> ReadReplicaStateAsync(
         FunctionRevisionInKubernetes revision,
         CancellationToken cancellationToken = default);
 }
@@ -46,13 +50,13 @@ public sealed class FunctionRevisionKubernetesManager(
     private readonly FunctionAgentTrustBundle? trustBundle =
         trustBundleProviders.SingleOrDefault()?.GetTrustBundle();
 
-    public async Task<Result> ApplyAsync(
+    public async Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ApplyAsync(
         FunctionRevisionInKubernetes revision,
         CancellationToken cancellationToken = default)
     {
         var clientResult = await ResolveKubernetesAsync(cancellationToken);
         if (!clientResult.TryGetValue(out var kubernetes, out var clientFailure))
-            return clientFailure;
+            return new Err<FunctionRevisionKubernetesOperationError>(clientFailure);
 
         try
         {
@@ -96,28 +100,25 @@ public sealed class FunctionRevisionKubernetesManager(
                         revision.Namespace,
                         cancellationToken: cancellationToken);
                 });
-            return Result.Success();
+            return new Ok<Unit>(Unit.Value);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            return Failures.ExternalService(
-                "Unable to apply Function revision in Kubernetes.",
-                "Kubernetes",
-                exception.Message);
+            return Unavailable("Unable to apply Function revision in Kubernetes.");
         }
     }
 
-    public async Task<Result> DeleteAsync(
+    public async Task<Result<Unit, FunctionRevisionKubernetesOperationError>> DeleteAsync(
         FunctionRevisionInKubernetes revision,
         CancellationToken cancellationToken = default)
     {
         var clientResult = await ResolveKubernetesAsync(cancellationToken);
         if (!clientResult.TryGetValue(out var kubernetes, out var clientFailure))
-            return clientFailure;
+            return new Err<FunctionRevisionKubernetesOperationError>(clientFailure);
 
         try
         {
@@ -131,42 +132,36 @@ public sealed class FunctionRevisionKubernetesManager(
                     revision.DeploymentName,
                     revision.Namespace,
                     cancellationToken: cancellationToken));
-            return Result.Success();
+            return new Ok<Unit>(Unit.Value);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            return Failures.ExternalService(
-                "Unable to delete Function revision from Kubernetes.",
-                "Kubernetes",
-                exception.Message);
+            return Unavailable("Unable to delete Function revision from Kubernetes.");
         }
     }
 
-    public async Task<Result> ScaleProvisioningAsync(
+    public async Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ScaleProvisioningAsync(
         FunctionRevisionInKubernetes revision,
         int replicas,
         CancellationToken cancellationToken = default)
     {
         if (revision.Revision.Status is not (ProvisioningFunctionRevisionStatus or ReadyFunctionRevisionStatus))
         {
-            return Failures.Conflict(
+            return Rejected(
                 "Only a provisioning or ready Function revision may use the unfenced bootstrap scale operation.");
         }
         if (replicas < 0 || replicas > revision.Revision.Spec.Scaling.MaxInstances)
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                [nameof(replicas)] = ["Replica count is outside the Function revision scaling bounds."]
-            });
+            return Invalid("Replica count is outside the Function revision scaling bounds.");
         }
 
         var clientResult = await ResolveKubernetesAsync(cancellationToken);
         if (!clientResult.TryGetValue(out var kubernetes, out var clientFailure))
-            return clientFailure;
+            return new Err<FunctionRevisionKubernetesOperationError>(clientFailure);
 
         try
         {
@@ -180,22 +175,19 @@ public sealed class FunctionRevisionKubernetesManager(
                 revision.DeploymentName,
                 revision.Namespace,
                 cancellationToken: cancellationToken);
-            return Result.Success();
+            return new Ok<Unit>(Unit.Value);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            return Failures.ExternalService(
-                "Unable to scale Function revision in Kubernetes.",
-                "Kubernetes",
-                exception.Message);
+            return Unavailable("Unable to scale Function revision in Kubernetes.");
         }
     }
 
-    public async Task<Result> ScaleAsync(
+    public async Task<Result<Unit, FunctionRevisionKubernetesOperationError>> ScaleAsync(
         FunctionRevisionInKubernetes revision,
         int replicas,
         long coordinationGeneration,
@@ -203,22 +195,16 @@ public sealed class FunctionRevisionKubernetesManager(
     {
         if (replicas < 0 || replicas > revision.Revision.Spec.Scaling.MaxInstances)
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                [nameof(replicas)] = ["Replica count is outside the Function revision scaling bounds."]
-            });
+            return Invalid("Replica count is outside the Function revision scaling bounds.");
         }
         if (coordinationGeneration <= 0)
         {
-            return Failures.ValidationFailure(new Dictionary<string, string[]>
-            {
-                [nameof(coordinationGeneration)] = ["Scale coordination generation must be positive."]
-            });
+            return Invalid("Scale coordination generation must be positive.");
         }
 
         var clientResult = await ResolveKubernetesAsync(cancellationToken);
         if (!clientResult.TryGetValue(out var kubernetes, out var clientFailure))
-            return clientFailure;
+            return new Err<FunctionRevisionKubernetesOperationError>(clientFailure);
 
         try
         {
@@ -230,19 +216,19 @@ public sealed class FunctionRevisionKubernetesManager(
                     cancellationToken: cancellationToken);
                 if (!TryReadScaleGeneration(deployment, out var currentGeneration))
                 {
-                    return Failures.Conflict(
+                    return Rejected(
                         "The Function revision has an invalid Kubernetes scale generation annotation.");
                 }
                 if (currentGeneration > coordinationGeneration)
                 {
-                    return Failures.Conflict(
+                    return Rejected(
                         "A newer Function revision scale decision has already been applied.");
                 }
                 if (currentGeneration == coordinationGeneration)
                 {
                     return deployment.Spec.Replicas == replicas
-                        ? Result.Success()
-                        : Failures.Conflict(
+                        ? new Ok<Unit>(Unit.Value)
+                        : Rejected(
                             "The Function revision scale generation is already associated with another replica count.");
                 }
 
@@ -257,7 +243,7 @@ public sealed class FunctionRevisionKubernetesManager(
                         deployment.Metadata.Name,
                         revision.Namespace,
                         cancellationToken: cancellationToken);
-                    return Result.Success();
+                    return new Ok<Unit>(Unit.Value);
                 }
                 catch (HttpOperationException exception) when (
                     exception.Response?.StatusCode == HttpStatusCode.Conflict)
@@ -267,29 +253,26 @@ public sealed class FunctionRevisionKubernetesManager(
                 }
             }
 
-            return Failures.Conflict(
+            return Rejected(
                 "The Function revision changed repeatedly while applying its scale decision.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            return Failures.ExternalService(
-                "Unable to scale Function revision in Kubernetes.",
-                "Kubernetes",
-                exception.Message);
+            return Unavailable("Unable to scale Function revision in Kubernetes.");
         }
     }
 
-    public async Task<Result<FunctionReplicaState>> ReadReplicaStateAsync(
+    public async Task<Result<FunctionReplicaState, FunctionRevisionKubernetesOperationError>> ReadReplicaStateAsync(
         FunctionRevisionInKubernetes revision,
         CancellationToken cancellationToken = default)
     {
         var clientResult = await ResolveKubernetesAsync(cancellationToken);
         if (!clientResult.TryGetValue(out var kubernetes, out var clientFailure))
-            return clientFailure;
+            return new Err<FunctionRevisionKubernetesOperationError>(clientFailure);
 
         try
         {
@@ -297,7 +280,7 @@ public sealed class FunctionRevisionKubernetesManager(
                 revision.DeploymentName,
                 revision.Namespace,
                 cancellationToken: cancellationToken);
-            return new FunctionReplicaState(
+            return new Ok<FunctionReplicaState>(new FunctionReplicaState(
                 deployment.Spec.Replicas ?? 0,
                 deployment.Status?.Replicas ?? 0,
                 deployment.Status?.ReadyReplicas ?? 0,
@@ -305,36 +288,41 @@ public sealed class FunctionRevisionKubernetesManager(
                 deployment.Status?.ObservedGeneration >= deployment.Metadata.Generation,
                 TryReadScaleGeneration(deployment, out var coordinationGeneration)
                     ? coordinationGeneration
-                    : 0);
+                    : 0));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            return Failures.ExternalService(
-                "Unable to read Function revision replica state from Kubernetes.",
-                "Kubernetes",
-                exception.Message);
+            return Unavailable("Unable to read Function revision replica state from Kubernetes.");
         }
     }
 
-    private async Task<Result<IKubernetes>> ResolveKubernetesAsync(CancellationToken cancellationToken)
+    private async Task<Result<IKubernetes, FunctionRevisionKubernetesOperationError>> ResolveKubernetesAsync(
+        CancellationToken cancellationToken)
     {
         try
         {
             var kubernetes = await kubernetesClientProvider.GetDefaultAsync(cancellationToken);
-            return new Success<IKubernetes>(kubernetes);
+            return new Ok<IKubernetes>(kubernetes);
         }
         catch (DeploymentTargetUnavailableException exception)
         {
-            return Failures.ExternalService(
-                "The default Kubernetes deployment target is unavailable.",
-                "Kubernetes",
-                $"Deployment target unavailable ({exception.Reason}).");
+            return Unavailable(
+                $"The default Kubernetes deployment target is unavailable ({exception.Reason}).");
         }
     }
+
+    private static Err<FunctionRevisionKubernetesOperationError> Unavailable(string message) =>
+        new(new FunctionRevisionKubernetesUnavailable(message));
+
+    private static Err<FunctionRevisionKubernetesOperationError> Rejected(string message) =>
+        new(new FunctionRevisionKubernetesOperationRejected(message));
+
+    private static Err<FunctionRevisionKubernetesOperationError> Invalid(string message) =>
+        new(new FunctionRevisionKubernetesOperationInvalid(message));
 
     private static async Task CreateOrReplaceAsync(Func<Task> create, Func<Task> replace)
     {

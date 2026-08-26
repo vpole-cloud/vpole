@@ -12,6 +12,7 @@ using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Metering;
 using Pole.Functions.Protocol;
 using Pole.Observability;
+using Pole.ResultType;
 
 namespace Pole.Features.Functions.Runtime.Gateway;
 

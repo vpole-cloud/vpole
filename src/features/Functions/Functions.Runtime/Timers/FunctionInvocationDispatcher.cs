@@ -12,6 +12,7 @@ using Pole.Features.Functions.Runtime.Coordination;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Functions.Protocol;
+using Pole.ResultType;
 
 namespace Pole.Features.Functions.Runtime.Timers;
 
@@ -193,7 +194,7 @@ public sealed class FunctionInvocationDispatcher(
                             invocation,
                             FunctionInvocationError.Create(
                                 "activation_failed",
-                                activationFailure.Message,
+                                activationFailure.Message(),
                                 retryable: true),
                             TimeSpan.FromSeconds(RetryDelaySeconds(invocation)),
                             cancellationToken);
