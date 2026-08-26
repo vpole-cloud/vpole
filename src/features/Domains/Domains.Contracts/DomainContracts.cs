@@ -139,6 +139,29 @@ public union GeneratedHostnameBindingError(
     GeneratedHostnameBindingZoneChanged,
     GeneratedHostnameBindingConflict);
 
+/// <summary>
+/// Expected provider states while removing generated or custom hostname bindings as part of a
+/// resource-deployment finalization. Consumers use this contract inside their own transaction;
+/// it deliberately has no HTTP meaning.
+/// </summary>
+public sealed record HostnameBindingCleanupZoneUnavailable(
+    IReadOnlyList<string> TenantDomainZoneIds);
+
+public sealed record HostnameBindingCleanupZoneChanged(
+    IReadOnlyList<string> TenantDomainZoneIds);
+
+public sealed record HostnameBindingCleanupBindingsChanged;
+
+public sealed record HostnameBindingCleanupReferenceRemovalRejected(
+    string TenantDomainZoneId,
+    string DeploymentTargetId);
+
+public union HostnameBindingCleanupError(
+    HostnameBindingCleanupZoneUnavailable,
+    HostnameBindingCleanupZoneChanged,
+    HostnameBindingCleanupBindingsChanged,
+    HostnameBindingCleanupReferenceRemovalRejected);
+
 public delegate Task<Result<TenantDomainZoneSnapshot, GeneratedDomainZoneError>>
     GetOrCreateGeneratedDomainZoneOutcome(
         GetOrCreateGeneratedZoneRequest request,
@@ -194,7 +217,8 @@ public delegate Task<Result<Unit, CustomHostnameBindingError>>
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result> DeleteHostnameBindingsForDeployment(
+public delegate Task<Result<Unit, HostnameBindingCleanupError>>
+    DeleteHostnameBindingsForDeployment(
     string tenantId,
     ResourceTypeId resourceType,
     string resourceId,
@@ -202,7 +226,8 @@ public delegate Task<Result> DeleteHostnameBindingsForDeployment(
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
-public delegate Task<Result> DeleteHostnameBindingsForResource(
+public delegate Task<Result<Unit, HostnameBindingCleanupError>>
+    DeleteHostnameBindingsForResource(
     string tenantId,
     ResourceTypeId resourceType,
     string resourceId,

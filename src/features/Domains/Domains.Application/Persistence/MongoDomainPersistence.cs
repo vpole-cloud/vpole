@@ -24,7 +24,8 @@ internal sealed partial class MongoDomainPersistence(
     private readonly IMongoCollection<HostnameBinding> _bindings =
         database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
 
-    private async Task<Result> DeleteBindingsAndReleaseGeneratedZonesAsync(
+    private async Task<Result<Unit, HostnameBindingCleanupError>>
+        DeleteBindingsAndReleaseGeneratedZonesAsync(
         string tenantId,
         FilterDefinition<HostnameBinding> bindingFilter,
         IClientSessionHandle session,
@@ -33,7 +34,7 @@ internal sealed partial class MongoDomainPersistence(
         var bindings = await _bindings.Find(session, bindingFilter)
             .ToListAsync(cancellationToken);
         if (bindings.Count == 0)
-            return Result.Success();
+            return new Ok<Unit>(Unit.Value);
 
         var zoneIds = bindings
             .Select(binding => binding.TenantDomainZoneId)
@@ -45,23 +46,31 @@ internal sealed partial class MongoDomainPersistence(
             .ToListAsync(cancellationToken);
         if (zones.Count != zoneIds.Length)
         {
-            return Failures.Conflict(
-                "One or more hostname bindings refer to an unavailable domain zone.");
+            return new Err<HostnameBindingCleanupError>(
+                new HostnameBindingCleanupError(
+                    new HostnameBindingCleanupZoneUnavailable(zoneIds)));
         }
 
-        var advancedZones = await AdvanceZoneRevisionsAsync(
+        if (!await TryAdvanceZoneRevisionsAsync(
             zones,
             session,
-            cancellationToken);
-        if (advancedZones is not ISuccess)
-            return (Failure)advancedZones;
+            cancellationToken))
+        {
+            return new Err<HostnameBindingCleanupError>(
+                new HostnameBindingCleanupError(
+                    new HostnameBindingCleanupZoneChanged(zoneIds)));
+        }
 
         var deleted = await _bindings.DeleteManyAsync(
             session,
             bindingFilter,
             cancellationToken: cancellationToken);
         if (!deleted.IsAcknowledged || deleted.DeletedCount != bindings.Count)
-            return Failures.Conflict("Hostname bindings changed while deletion was being accepted.");
+        {
+            return new Err<HostnameBindingCleanupError>(
+                new HostnameBindingCleanupError(
+                    new HostnameBindingCleanupBindingsChanged()));
+        }
 
         return await ReleaseGeneratedZonesWithoutBindingsAsync(
             zones.Select(zone => zone with
@@ -73,7 +82,7 @@ internal sealed partial class MongoDomainPersistence(
             cancellationToken);
     }
 
-    private async Task<Result> AdvanceZoneRevisionsAsync(
+    private async Task<bool> TryAdvanceZoneRevisionsAsync(
         IReadOnlyCollection<TenantDomainZone> zones,
         IClientSessionHandle session,
         CancellationToken cancellationToken)
@@ -82,9 +91,12 @@ internal sealed partial class MongoDomainPersistence(
             .DistinctBy(zone => zone.Id, StringComparer.Ordinal)
             .ToArray();
         if (distinctZones.Length == 0)
-            return Result.Success();
+            return true;
         if (distinctZones.Any(zone => zone.Revision == long.MaxValue))
-            return Failures.Conflict("A domain zone revision cannot be advanced further.");
+        {
+            throw new InvalidOperationException(
+                "A domain zone revision cannot be advanced further.");
+        }
 
         var update = await _zones.UpdateManyAsync(
             session,
@@ -95,12 +107,11 @@ internal sealed partial class MongoDomainPersistence(
                     item => item.UpdatedAtUtc,
                     timeProvider.GetUtcNow().UtcDateTime)),
             cancellationToken: cancellationToken);
-        return update.ModifiedCount == distinctZones.Length
-            ? Result.Success()
-            : Failures.Conflict("A domain zone changed while hostname ownership was being updated.");
+        return update.ModifiedCount == distinctZones.Length;
     }
 
-    private async Task<Result> ReleaseGeneratedZonesWithoutBindingsAsync(
+    private async Task<Result<Unit, HostnameBindingCleanupError>>
+        ReleaseGeneratedZonesWithoutBindingsAsync(
         IReadOnlyCollection<TenantDomainZone> candidateZones,
         IClientSessionHandle session,
         CancellationToken cancellationToken)
@@ -110,7 +121,7 @@ internal sealed partial class MongoDomainPersistence(
             .DistinctBy(zone => zone.Id, StringComparer.Ordinal)
             .ToArray();
         if (generatedZones.Length == 0)
-            return Result.Success();
+            return new Ok<Unit>(Unit.Value);
 
         var generatedZoneIds = generatedZones.Select(zone => zone.Id).ToArray();
         var referencedZoneIds = await _bindings.Find(
@@ -123,14 +134,19 @@ internal sealed partial class MongoDomainPersistence(
             .Where(zone => !referenced.Contains(zone.Id))
             .ToArray();
         if (releasable.Length == 0)
-            return Result.Success();
+            return new Ok<Unit>(Unit.Value);
 
         var deletion = await _zones.DeleteManyAsync(
             session,
             DomainFilters.GeneratedAtRevisions(releasable),
             cancellationToken: cancellationToken);
         if (deletion.DeletedCount != releasable.Length)
-            return Failures.Conflict("A generated domain zone changed while it was being released.");
+        {
+            return new Err<HostnameBindingCleanupError>(
+                new HostnameBindingCleanupError(
+                    new HostnameBindingCleanupZoneChanged(
+                        releasable.Select(zone => zone.Id).ToArray())));
+        }
 
         foreach (var zone in releasable)
         {
@@ -144,12 +160,15 @@ internal sealed partial class MongoDomainPersistence(
                 cancellationToken);
             if (unregistered is Err<DeploymentTargetReferenceChangeRejected>)
             {
-                return Failures.Conflict(
-                    "The deployment-target reference could not be removed while releasing a generated domain zone.");
+                return new Err<HostnameBindingCleanupError>(
+                    new HostnameBindingCleanupError(
+                        new HostnameBindingCleanupReferenceRemovalRejected(
+                            zone.Id,
+                            zone.DeploymentTargetId)));
             }
         }
 
-        return Result.Success();
+        return new Ok<Unit>(Unit.Value);
     }
 
     private TenantDomainZone CreateGeneratedZone(

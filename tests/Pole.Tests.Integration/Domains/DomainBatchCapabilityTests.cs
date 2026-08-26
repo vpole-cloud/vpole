@@ -216,14 +216,16 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
                 transactionContext.Session,
                 cancellationToken)))).AssertSuccess();
 
-        (await transaction.InvokeAsync(
-            (session, cancellationToken) => capabilities.DeleteAllForDeploymentAsync(
+        (await transaction.InvokeOutcomeAsync<Result<Unit, HostnameBindingCleanupError>>(
+            (transactionContext, cancellationToken) => CompleteAsync(
+                transactionContext,
+                capabilities.DeleteAllForDeploymentAsync(
                 tenantId,
                 WebServiceType,
                 resourceId,
                 deploymentId,
-                session,
-                cancellationToken))).AssertSuccess();
+                transactionContext.Session,
+                cancellationToken)))).AssertSuccess();
 
         Assert.Equal(0, await fixture.Database
             .GetCollection<HostnameBinding>("HostnameBindings")
@@ -234,6 +236,62 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
         var unregistration = Assert.Single(coordinator.Unregistrations);
         Assert.Equal(targetId, unregistration.TargetId);
         Assert.Equal(zone.Id, unregistration.Owner.Id);
+    }
+
+    [Fact]
+    public async Task Finalizing_last_binding_aborts_when_target_rejects_zone_reference_removal()
+    {
+        await PrepareDatabaseAsync();
+        var tenantId = ObjectId.GenerateNewId().ToString();
+        var targetId = ObjectId.GenerateNewId().ToString();
+        var coordinator = new RecordingTargetCoordinator();
+        var capabilities = CreateCapabilities(tenantId, coordinator);
+        var transaction = new MongoRunTransaction(fixture.Client);
+        var zone = Assert.Single((await transaction.InvokeOutcomeAsync<Result<
+            IReadOnlyList<TenantDomainZoneSnapshot>, GeneratedDomainZoneError>>(
+            (transactionContext, cancellationToken) => CompleteAsync(
+                transactionContext,
+                capabilities.GetOrCreateGeneratedSetOutcomeAsync(
+                    [new GetOrCreateGeneratedZoneRequest(
+                        tenantId,
+                        targetId,
+                        "example.com",
+                        ExpectedWorkloadConfigurationRevision: 1)],
+                    transactionContext.Session,
+                    cancellationToken)))).AssertSuccess());
+        var resourceId = ObjectId.GenerateNewId().ToString();
+        var deploymentId = ObjectId.GenerateNewId().ToString();
+        (await transaction.InvokeOutcomeAsync<Result<
+            IReadOnlyList<HostnameBindingSnapshot>, GeneratedHostnameBindingError>>(
+            (transactionContext, cancellationToken) => CompleteAsync(
+                transactionContext,
+                capabilities.CreateGeneratedSetOutcomeAsync(
+                    [CreateBindingRequest(zone, deploymentId, resourceId)],
+                    transactionContext.Session,
+                    cancellationToken)))).AssertSuccess();
+        coordinator.RejectReferenceRemoval = true;
+
+        var cleanup = await transaction.InvokeOutcomeAsync<Result<
+            Unit,
+            HostnameBindingCleanupError>>(
+            (transactionContext, cancellationToken) => CompleteAsync(
+                transactionContext,
+                capabilities.DeleteAllForDeploymentAsync(
+                    tenantId,
+                    WebServiceType,
+                    resourceId,
+                    deploymentId,
+                    transactionContext.Session,
+                    cancellationToken)));
+
+        var error = cleanup.AssertFailure().Value;
+        Assert.IsType<HostnameBindingCleanupReferenceRemovalRejected>(error);
+        Assert.Equal(1, await fixture.Database
+            .GetCollection<HostnameBinding>("HostnameBindings")
+            .CountDocumentsAsync(Builders<HostnameBinding>.Filter.Empty));
+        Assert.Equal(1, await fixture.Database
+            .GetCollection<TenantDomainZone>("TenantDomainZones")
+            .CountDocumentsAsync(Builders<TenantDomainZone>.Filter.Empty));
     }
 
     [Fact]
@@ -274,14 +332,16 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
                 transactionContext.Session,
                 cancellationToken)))).AssertSuccess();
 
-        (await transaction.InvokeAsync(
-            (session, cancellationToken) => capabilities.DeleteAllForDeploymentAsync(
+        (await transaction.InvokeOutcomeAsync<Result<Unit, HostnameBindingCleanupError>>(
+            (transactionContext, cancellationToken) => CompleteAsync(
+                transactionContext,
+                capabilities.DeleteAllForDeploymentAsync(
                 tenantId,
                 WebServiceType,
                 firstResourceId,
                 firstDeploymentId,
-                session,
-                cancellationToken))).AssertSuccess();
+                transactionContext.Session,
+                cancellationToken)))).AssertSuccess();
 
         Assert.Equal(1, await fixture.Database
             .GetCollection<HostnameBinding>("HostnameBindings")
@@ -353,6 +413,7 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
     private sealed class RecordingTargetCoordinator
     {
         public int FenceBatchCalls { get; private set; }
+        public bool RejectReferenceRemoval { get; set; }
         public List<DeploymentTargetWorkloadConfigurationFenceRequest> Fences { get; } = [];
         public List<(string TargetId, DeploymentTargetReferenceOwner Owner)> Registrations { get; } = [];
         public List<(string TargetId, DeploymentTargetReferenceOwner Owner)> Unregistrations { get; } = [];
@@ -383,6 +444,14 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
             Assert.True(session.IsInTransaction);
             Registrations.AddRange(addedDeploymentTargetIds.Select(id => (id, owner)));
             Unregistrations.AddRange(removedDeploymentTargetIds.Select(id => (id, owner)));
+            if (RejectReferenceRemoval && removedDeploymentTargetIds.Count > 0)
+            {
+                return Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
+                    new Err<DeploymentTargetReferenceChangeRejected>(
+                        new DeploymentTargetReferenceChangeRejected(
+                            owner,
+                            removedDeploymentTargetIds.ToArray())));
+            }
             return Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
                 new Ok<Unit>(Unit.Value));
         }

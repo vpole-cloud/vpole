@@ -142,11 +142,10 @@ internal sealed partial class MongoDomainPersistence
             return GeneratedBindingConflict(bindings);
         }
 
-        var advancedZones = await AdvanceZoneRevisionsAsync(
+        if (!await TryAdvanceZoneRevisionsAsync(
             zones,
             session,
-            cancellationToken);
-        if (advancedZones is not ISuccess)
+            cancellationToken))
         {
             return new Err<GeneratedHostnameBindingError>(
                 new GeneratedHostnameBindingError(
@@ -227,11 +226,10 @@ internal sealed partial class MongoDomainPersistence
             DnsName.Create(zone.Domain),
             BindingCreateOptions());
 
-        var advancedZone = await AdvanceZoneRevisionsAsync(
+        if (!await TryAdvanceZoneRevisionsAsync(
             [zone],
             session,
-            cancellationToken);
-        if (advancedZone is not ISuccess)
+            cancellationToken))
         {
             return new Err<CustomHostnameBindingError>(
                 new CustomHostnameBindingError(
@@ -286,11 +284,10 @@ internal sealed partial class MongoDomainPersistence
                     new CustomHostnameBindingZoneUnavailable(
                         binding.TenantDomainZoneId)));
         }
-        var advancedZone = await AdvanceZoneRevisionsAsync(
+        if (!await TryAdvanceZoneRevisionsAsync(
             [zone],
             session,
-            cancellationToken);
-        if (advancedZone is not ISuccess)
+            cancellationToken))
         {
             return new Err<CustomHostnameBindingError>(
                 new CustomHostnameBindingError(
@@ -309,14 +306,12 @@ internal sealed partial class MongoDomainPersistence
             [zone with { Revision = checked(zone.Revision + 1) }],
             session,
             cancellationToken);
-        return released is ISuccess
-            ? new Ok<Unit>(Unit.Value)
-            : new Err<CustomHostnameBindingError>(
-                new CustomHostnameBindingError(
-                    new CustomHostnameBindingZoneChanged([zone.Id])));
+        return released.MapError(_ => new CustomHostnameBindingError(
+            new CustomHostnameBindingZoneChanged([zone.Id])));
     }
 
-    public async Task<Result> DeleteAllForDeploymentAsync(
+    public async Task<Result<Unit, HostnameBindingCleanupError>>
+        DeleteAllForDeploymentAsync(
         string tenantId,
         ResourceTypeId resourceType,
         string resourceId,
@@ -336,7 +331,8 @@ internal sealed partial class MongoDomainPersistence
             cancellationToken);
     }
 
-    public async Task<Result> DeleteAllForResourceAsync(
+    public async Task<Result<Unit, HostnameBindingCleanupError>>
+        DeleteAllForResourceAsync(
         string tenantId,
         ResourceTypeId resourceType,
         string resourceId,
