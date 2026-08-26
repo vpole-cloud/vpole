@@ -51,7 +51,7 @@ public sealed class RedisResourceDeploymentAdapter(
             inKubernetes,
             metadata,
             cancellationToken);
-        if (applyResult is Failure)
+        if (applyResult is Err<RedisKubernetesApplyFailed>)
         {
             return ResourceDeploymentAdapterResult.Failed.Create(
                 "KubernetesApplyFailed",
