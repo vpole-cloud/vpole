@@ -1,6 +1,6 @@
 # Application Boundary Migration Plan
 
-Status: Draft
+Status: Completed — 2026-08-26
 
 This document records the agreed plan for migrating Pole feature boundaries to
 typed unions, typed results, named capability delegates, feature-owned dependency
@@ -760,6 +760,49 @@ The umbrella migration is complete when:
 - engineering guidelines describe the final conventions;
 - the full build and appropriate integration suites pass, with infrastructure
   limitations reported separately.
+
+## Completion Audit — 2026-08-26
+
+This migration wave is complete. The final repository audit confirmed that:
+
+- no feature handler implements `IMediatorHandler<Result<T>>`; mediator requests
+  return feature-owned outcomes while pipeline rejections remain
+  `MediatorResult<TOutcome>` cases;
+- synchronous cross-feature failures use provider-owned typed contracts;
+- `IMongoDbContext`, `MongoDbContext`, and `IEventDbContext` no longer have
+  production application consumers;
+- raw Mongo access is internal to persistence implementations and protected by
+  the architecture checks;
+- each feature owns its DI composition; the production host no longer registers
+  the legacy `RunMongoTransaction` delegate;
+- the last application/persistence legacy results were removed from Domains
+  hostname cleanup, WebServices deployment finalization, and ResourceDeployments
+  completion, recovery, and runtime-cell wakeup paths.
+
+The focused migration gates passed for Domains (7 tests), WebServices (21 tests),
+and ResourceDeployments (74 tests). A full build is part of the final handoff.
+
+### Intentionally retained legacy runtime and infrastructure protocols
+
+The legacy shared `Result`/`Failure` model remains only where this migration does
+not own the protocol:
+
+- `Mediator` retains `LegacyResultRejected` and the legacy handler adapter so a
+  pipeline implementation remains compatible with externally supplied behaviors;
+- `Functions.Runtime` retains `IFunctionRevisionKubernetesManager` as a genuine
+  runtime strategy. Its scale operations use `ValidationFailure` for generated
+  runtime-command preconditions (replica bounds and coordination generation),
+  not HTTP request validation;
+- Redis and WebServices Kubernetes resource-manager helpers use legacy results
+  only inside an adapter implementation, immediately translating them to the
+  typed `ResourceDeploymentAdapterResult` runtime protocol;
+- the shared legacy Mongo transaction overloads and envelope-encryption results
+  remain compatibility/infrastructure surfaces, not application handler or
+  cross-feature contracts.
+
+The `ValidationFailure` classification satisfies the remaining repository work
+for issue #64. Updating or closing the GitHub issue is a separate external
+action.
 
 ## Deferred Decisions
 

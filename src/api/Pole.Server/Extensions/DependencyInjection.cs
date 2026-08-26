@@ -134,10 +134,6 @@ public static class DependencyInjection
                 sp.GetRequiredService<IMongoClient>().GetDatabase("pole-database"));
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<MongoRunTransaction>();
-            services.TryAddSingleton<RunMongoTransaction>(serviceProvider =>
-                serviceProvider
-                    .GetRequiredService<MongoRunTransaction>()
-                    .InvokeAsync);
             services.AddSingleton<MigrationRunner>();
             return services;
         }
