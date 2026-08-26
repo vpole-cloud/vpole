@@ -1,9 +1,8 @@
 using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
 
-namespace Pole.Features.RedisServices.Application.Persistence;
+namespace Pole.Features.RedisServices.Application.Persistence.Mutations;
 
 public delegate Task PersistCreatedRedis(
     IClientSessionHandle session,

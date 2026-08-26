@@ -1,17 +1,16 @@
 using FluentValidation;
-using Pole.Validation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Mediator;
 using Pole.ResultType;
+using Pole.Validation;
 
-namespace Pole.Features.StorageProfiles.Application.Endpoints;
+namespace Pole.Features.StorageProfiles.Application.Endpoints.KubernetesInventory;
 
 public sealed record GetKubernetesPersistentVolumeClaimsRequest(
     [FromQuery] string DeploymentTargetId)

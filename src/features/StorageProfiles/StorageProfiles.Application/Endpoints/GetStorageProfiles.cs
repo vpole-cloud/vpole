@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Persistence;
+using Pole.Features.StorageProfiles.Application.Persistence.Reads;
 using Pole.Mediator;
 
 namespace Pole.Features.StorageProfiles.Application.Endpoints;

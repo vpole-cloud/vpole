@@ -2,13 +2,14 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
+using Pole.Features.ComputeProfiles.Application.Persistence.References;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.ResultType;
 
-namespace Pole.Features.ComputeProfiles.Application.Persistence;
+namespace Pole.Features.ComputeProfiles.Application.Persistence.Mutations;
 
 public sealed record DefaultComputeProfileCannotBeDeleted(string ComputeProfileId);
 

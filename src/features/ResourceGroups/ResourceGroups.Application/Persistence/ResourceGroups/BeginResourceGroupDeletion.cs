@@ -2,10 +2,12 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
+using Pole.Features.ResourceGroups.Application.Persistence.RuntimeCells;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.ResourceGroups.Application.Persistence;
+namespace Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 
 public sealed record ResourceGroupDeletionCompleted;
 

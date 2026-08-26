@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Domain;
 
-namespace Pole.Features.ResourceGroups.Application.Persistence;
+namespace Pole.Features.ResourceGroups.Application.Persistence.RuntimeCells;
 
 public delegate Task<RuntimeCell?> LoadRuntimeCell(
     string tenantId,

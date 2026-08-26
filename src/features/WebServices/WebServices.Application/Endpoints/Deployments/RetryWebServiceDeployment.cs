@@ -1,22 +1,24 @@
-using FluentValidation;
 using System.Collections.Immutable;
+using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Persistence;
+using Pole.Features.WebServices.Application.Persistence.Mutations;
+using Pole.Features.WebServices.Application.Persistence.Reads;
+using Pole.Features.WebServices.Application.Persistence.Releases;
 using Pole.Features.WebServices.Domain;
-using MongoDB.Bson;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
-namespace Pole.Features.WebServices.Application.Endpoints;
+namespace Pole.Features.WebServices.Application.Endpoints.Deployments;
 
 public static class RetryWebServiceDeployment
 {

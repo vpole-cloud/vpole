@@ -3,7 +3,7 @@ using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.SourceBuilds.Application.Persistence;
+namespace Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 
 internal sealed class MongoEnsureNoWebServiceSourceBuildConfiguration(
     IMongoCollection<SourceBuildConfiguration> configurations)

@@ -1,16 +1,16 @@
 using FluentValidation;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Application.Persistence;
+using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
 using Pole.Mediator;
 using Pole.Validation;
 
-namespace Pole.Features.SourceBuilds.Application.Endpoints;
+namespace Pole.Features.SourceBuilds.Application.Endpoints.Jobs;
 
 public sealed record GetSourceBuildJobRequest(
     [FromRoute] string BuildJobId,

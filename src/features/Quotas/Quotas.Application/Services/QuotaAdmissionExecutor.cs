@@ -3,6 +3,8 @@ using Pole.Database;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Application.Persistence;
+using Pole.Features.Quotas.Application.Persistence.Reservations;
+using Pole.Features.Quotas.Application.Persistence.Usage;
 using Pole.ResultType;
 
 namespace Pole.Features.Quotas.Application.Services;

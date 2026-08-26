@@ -7,11 +7,10 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Request;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Persistence;
+using Pole.Features.WebServices.Application.Persistence.Releases;
 using Pole.Mediator;
-using Pole.ResultType;
 
-namespace Pole.Features.WebServices.Application.Endpoints;
+namespace Pole.Features.WebServices.Application.Endpoints.Releases;
 
 public static class GetWebServiceReleases
 {

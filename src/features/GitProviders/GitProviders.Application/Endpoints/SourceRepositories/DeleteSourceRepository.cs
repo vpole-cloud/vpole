@@ -6,13 +6,13 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Application.Persistence;
+using Pole.Features.GitProviders.Application.Persistence.Repositories;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
-namespace Pole.Features.GitProviders.Application.Endpoints;
+namespace Pole.Features.GitProviders.Application.Endpoints.SourceRepositories;
 
 public sealed record DeleteSourceRepositoryRequest(
     [FromRoute] string Id,

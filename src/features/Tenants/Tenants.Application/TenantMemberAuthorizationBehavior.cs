@@ -2,10 +2,10 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Tenants.Application.Persistence;
+using Pole.Features.Tenants.Application.Persistence.Tenants;
 using Pole.Mediator;
 
-namespace Pole.Features.Tenants;
+namespace Pole.Features.Tenants.Application;
 
 public sealed class TenantMemberAuthorizationBehavior<TRequest, TResponse>(
     LoadTenant loadTenant,

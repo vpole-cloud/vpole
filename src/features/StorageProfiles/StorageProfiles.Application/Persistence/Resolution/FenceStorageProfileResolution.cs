@@ -4,7 +4,7 @@ using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.StorageProfiles.Application.Persistence;
+namespace Pole.Features.StorageProfiles.Application.Persistence.Resolution;
 
 internal sealed class MongoFenceStorageProfileResolution(
     IMongoCollection<StorageProfile> storageProfiles)

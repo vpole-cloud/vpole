@@ -1,11 +1,11 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.ResultType;
 
-namespace Pole.Features.RedisServices.Application.Persistence;
+namespace Pole.Features.RedisServices.Application.Persistence.Lifecycle;
 
 public sealed record RedisDeletionFinalizationConflict(string RedisId);
 

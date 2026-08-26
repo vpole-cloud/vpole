@@ -3,7 +3,7 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.ResourceGroups.Application.Persistence;
+namespace Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 
 internal sealed class MongoGetResourceGroupOwnership(
     IMongoCollection<ResourceGroup> resourceGroups)

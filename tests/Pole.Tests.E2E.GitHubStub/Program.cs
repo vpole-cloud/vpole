@@ -180,4 +180,7 @@ static bool IsAuthorized(HttpRequest request, IConfiguration configuration) =>
 
 static string BaseUrl(HttpRequest request) => $"{request.Scheme}://{request.Host}";
 
-public sealed record RevisionRequest(string Revision);
+namespace Pole.Tests.E2E.GitHubStub
+{
+    public sealed record RevisionRequest(string Revision);
+}

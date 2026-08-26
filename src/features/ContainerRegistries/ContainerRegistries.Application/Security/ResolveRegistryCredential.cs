@@ -1,4 +1,5 @@
 using Pole.Features.ContainerRegistries.Application.Persistence;
+using Pole.Features.ContainerRegistries.Application.Persistence.Credentials;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
 using Pole.ResultType;

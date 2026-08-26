@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
+using Pole.Features.Outbox.Application.Persistence.Delivery;
+using Pole.Features.Outbox.Application.Persistence.Writes;
 using Pole.Features.Outbox.Contracts;
 
 namespace Pole.Features.Outbox.Application.Persistence;

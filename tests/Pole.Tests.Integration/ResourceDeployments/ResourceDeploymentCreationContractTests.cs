@@ -3,6 +3,8 @@ using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Application.Jobs;
 using Pole.Features.ResourceDeployments.Application.Persistence;
+using Pole.Features.ResourceDeployments.Application.Persistence.Reads;
+using Pole.Features.ResourceDeployments.Application.Persistence.Reconciliation;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Tests.Integration.Infrastructure;

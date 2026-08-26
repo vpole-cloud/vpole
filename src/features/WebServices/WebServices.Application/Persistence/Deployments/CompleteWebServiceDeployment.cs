@@ -1,14 +1,14 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Events.Abstractions;
 using Pole.Features.Domains.Contracts;
+using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 using Pole.ResultType;
 
-namespace Pole.Features.WebServices.Application.Persistence;
+namespace Pole.Features.WebServices.Application.Persistence.Deployments;
 
 public sealed record WebServiceDeploymentCompletion(
     string ResourceDeploymentId,

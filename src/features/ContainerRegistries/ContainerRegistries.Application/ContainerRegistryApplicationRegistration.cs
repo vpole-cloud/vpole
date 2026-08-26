@@ -6,6 +6,8 @@ using Pole.ASP.Helpers;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ContainerRegistries.Application.Harbor;
 using Pole.Features.ContainerRegistries.Application.Persistence;
+using Pole.Features.ContainerRegistries.Application.Persistence.Credentials;
+using Pole.Features.ContainerRegistries.Application.Persistence.Projects;
 using Pole.Features.ContainerRegistries.Application.Provisioning;
 using Pole.Features.ContainerRegistries.Application.Security;
 using Pole.Features.ContainerRegistries.Contracts;

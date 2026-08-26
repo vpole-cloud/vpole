@@ -8,6 +8,7 @@ using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Outbox.Application.Migrations;
 using Pole.Features.Outbox.Application.Persistence;
+using Pole.Features.Outbox.Application.Persistence.Delivery;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;

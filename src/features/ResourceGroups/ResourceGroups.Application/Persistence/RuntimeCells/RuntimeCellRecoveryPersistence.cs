@@ -1,10 +1,11 @@
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.ResourceGroups.Application.Persistence;
+namespace Pole.Features.ResourceGroups.Application.Persistence.RuntimeCells;
 
 public sealed class RuntimeCellRecoveryPersistence(
     IMongoCollection<IsolationScope> isolationScopes,

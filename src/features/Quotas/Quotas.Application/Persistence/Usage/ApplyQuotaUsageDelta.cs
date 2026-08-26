@@ -1,8 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.Quotas.Domain;
-using Pole.Features.Quotas.Primitives;
 
-namespace Pole.Features.Quotas.Application.Persistence;
+namespace Pole.Features.Quotas.Application.Persistence.Usage;
 
 public delegate Task ApplyQuotaUsageDelta(
     string tenantId,

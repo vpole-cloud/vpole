@@ -3,7 +3,7 @@ using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.SourceBuilds.Application.Persistence;
+namespace Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 
 public delegate Task<Result<SourceBuildConfiguration, SourceBuildConfigurationAlreadyExists>>
     CreateSourceBuildConfiguration(

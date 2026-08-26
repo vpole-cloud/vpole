@@ -11,7 +11,7 @@ using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
-namespace Pole.Features.GitProviders.Application.Endpoints;
+namespace Pole.Features.GitProviders.Application.Endpoints.Repositories;
 
 public sealed record AnalyzeProviderRepositoryRequest(
     [FromRoute] string ConnectionId,

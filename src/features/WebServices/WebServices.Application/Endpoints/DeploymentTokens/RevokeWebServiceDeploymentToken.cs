@@ -5,12 +5,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.WebServices.Application.Persistence;
-using Pole.Features.WebServices.Domain;
+using Pole.Features.WebServices.Application.Persistence.Tokens;
 using Pole.Mediator;
 using Pole.ResultType;
 
-namespace Pole.Features.WebServices.Application.Endpoints;
+namespace Pole.Features.WebServices.Application.Endpoints.DeploymentTokens;
 
 public sealed record RevokeWebServiceDeploymentTokenRequest(
     [FromRoute] string Id,
@@ -26,8 +25,7 @@ public union RevokeWebServiceDeploymentTokenOutcome(
 public sealed record RevokeWebServiceDeploymentTokenResponse(string Id);
 
 public sealed class RevokeWebServiceDeploymentTokenHandler(
-    Pole.Features.WebServices.Application.Persistence.
-        RevokeWebServiceDeploymentTokenOutcome revokeToken)
+    Persistence.Tokens.RevokeWebServiceDeploymentTokenOutcome revokeToken)
     : IMediatorOutcomeHandler<
         RevokeWebServiceDeploymentTokenRequest,
         RevokeWebServiceDeploymentTokenOutcome>

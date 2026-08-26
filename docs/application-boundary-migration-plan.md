@@ -141,9 +141,11 @@ A configured batch limit requires explicit classification. If a normal valid use
 workflow can exceed it, it is a named expected limit outcome. If it is purely an
 internal capability precondition, exceeding it is an argument error.
 
-This work is a concrete implementation of the validation-boundary audit tracked
-by [issue #64](https://github.com/lsbV/Pole/issues/64), but the issue remains open
-until all production `ValidationFailure` usages have been classified.
+This work completes the validation-boundary audit tracked by
+[issue #64](https://github.com/lsbV/Pole/issues/64). The remaining production
+`ValidationFailure` use is FluentValidation's internal request-validation value
+inside the mediator pipeline; application and capability outcomes use typed
+rejections instead.
 
 ### 4. Provider features own cross-feature errors
 

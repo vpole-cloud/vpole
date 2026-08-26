@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.RedisServices.Domain;
 
-namespace Pole.Features.RedisServices.Application.Persistence;
+namespace Pole.Features.RedisServices.Application.Persistence.Reads;
 
 public sealed record RedisListQuery(
     string TenantId,

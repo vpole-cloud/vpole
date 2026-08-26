@@ -6,13 +6,12 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Persistence;
+using Pole.Features.WebServices.Application.Persistence.Tokens;
 using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
 
-namespace Pole.Features.WebServices.Application.Endpoints;
+namespace Pole.Features.WebServices.Application.Endpoints.DeploymentTokens;
 
 public sealed record CreateWebServiceDeploymentTokenRequest(
     [FromRoute] string Id,

@@ -2,7 +2,7 @@ using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.ResultType;
 
-namespace Pole.Features.ResourceDeployments.Application.Persistence;
+namespace Pole.Features.ResourceDeployments.Application.Persistence.Creation;
 
 internal sealed class MongoCreateResourceDeployment(
     CreateResourceDeploymentSet createResourceDeploymentSet)

@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.Tenants.Domain;
 
-namespace Pole.Features.Tenants.Application.Persistence;
+namespace Pole.Features.Tenants.Application.Persistence.Tenants;
 
 public delegate Task PersistCreatedTenant(
     Tenant tenant,

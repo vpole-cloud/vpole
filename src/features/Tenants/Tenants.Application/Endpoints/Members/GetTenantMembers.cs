@@ -4,12 +4,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Tenants;
 using Pole.Features.Tenants.Application.Common;
-using Pole.Features.Tenants.Application.Persistence;
+using Pole.Features.Tenants.Application.Persistence.Tenants;
 using Pole.Mediator;
 
-namespace Pole.Features.Tenants.Application.Endpoints;
+namespace Pole.Features.Tenants.Application.Endpoints.Members;
 
 public sealed record GetTenantMembersRequest(
     [FromRoute] string TenantId

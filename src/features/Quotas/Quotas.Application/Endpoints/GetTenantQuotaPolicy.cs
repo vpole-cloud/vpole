@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Application.Persistence;
+using Pole.Features.Quotas.Application.Persistence.Policies;
 using Pole.Mediator;
 
 namespace Pole.Features.Quotas.Application.Endpoints;

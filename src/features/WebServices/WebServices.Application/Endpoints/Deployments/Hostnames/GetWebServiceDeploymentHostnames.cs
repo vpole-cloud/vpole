@@ -8,12 +8,11 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Persistence;
+using Pole.Features.WebServices.Application.Persistence.Reads;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 
-namespace Pole.Features.WebServices.Application.Endpoints;
+namespace Pole.Features.WebServices.Application.Endpoints.Deployments.Hostnames;
 
 public static class GetWebServiceDeploymentHostnames
 {

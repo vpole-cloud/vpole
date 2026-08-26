@@ -1,8 +1,9 @@
 using MongoDB.Driver;
+using Pole.Features.WebServices.Application.Persistence.Mutations;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.WebServices.Application.Persistence;
+namespace Pole.Features.WebServices.Application.Persistence.Lifecycle;
 
 public sealed record WebServiceDeletionAccepted;
 

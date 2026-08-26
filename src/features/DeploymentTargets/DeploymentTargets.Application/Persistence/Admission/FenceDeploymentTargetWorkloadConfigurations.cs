@@ -4,7 +4,7 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.DeploymentTargets.Application.Persistence;
+namespace Pole.Features.DeploymentTargets.Application.Persistence.Admission;
 
 internal sealed class MongoFenceDeploymentTargetWorkloadConfigurations(
     IMongoCollection<DeploymentTarget> deploymentTargets)

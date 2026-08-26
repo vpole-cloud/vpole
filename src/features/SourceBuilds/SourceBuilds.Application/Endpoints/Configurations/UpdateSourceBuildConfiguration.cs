@@ -6,13 +6,13 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Application.Persistence;
+using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
-namespace Pole.Features.SourceBuilds.Application.Endpoints;
+namespace Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
 
 public sealed record UpdateSourceBuildConfigurationRequest(
     [FromRoute] string ConfigurationId,

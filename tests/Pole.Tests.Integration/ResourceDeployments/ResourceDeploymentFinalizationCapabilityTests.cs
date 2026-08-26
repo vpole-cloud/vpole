@@ -1,6 +1,7 @@
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceDeployments.Application.Persistence;
+using Pole.Features.ResourceDeployments.Application.Persistence.Finalization;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.ResultType;

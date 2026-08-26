@@ -6,6 +6,7 @@ using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.SourceBuilds.Application.Persistence;
+using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Events;

@@ -1,6 +1,8 @@
 using Hangfire;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Persistence;
+using Pole.Features.ResourceDeployments.Application.Persistence.Reads;
+using Pole.Features.ResourceDeployments.Application.Persistence.Reconciliation;
 
 namespace Pole.Features.ResourceDeployments.Application.Jobs;
 

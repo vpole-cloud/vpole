@@ -1,11 +1,7 @@
-using System.Collections.Immutable;
-using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
-using Pole.Features.ComputeProfiles.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.ComputeProfiles.Application.Persistence;
+namespace Pole.Features.ComputeProfiles.Application.Persistence.Resolution;
 
 internal sealed class MongoResolveComputeProfile(
     MongoResolveComputeProfiles batchResolver)

@@ -1,5 +1,6 @@
 using MongoDB.Driver;
-namespace Pole.Features.Outbox.Application.Persistence;
+
+namespace Pole.Features.Outbox.Application.Persistence.Delivery;
 
 public sealed record OutboxQueueSnapshot(
     long PendingCount,

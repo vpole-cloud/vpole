@@ -6,7 +6,7 @@ using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.ResultType;
 
-namespace Pole.Features.ResourceGroups.Application.Persistence;
+namespace Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 
 public delegate Task<Result<ResourceGroup, ResourceGroupRevisionConflict>>
     PersistUpdatedResourceGroup(

@@ -3,7 +3,7 @@ using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.DeploymentTargets.Application.Persistence;
+namespace Pole.Features.DeploymentTargets.Application.Persistence.Mutations;
 
 public delegate Task<Result<DeploymentTarget, DeploymentTargetRevisionConflict>>
     PersistDeploymentTargetValidation(

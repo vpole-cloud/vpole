@@ -1,5 +1,6 @@
 using MassTransit;
 using Pole.Features.SourceBuilds.Application.Persistence;
+using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
 using Pole.Features.WebServices.Events;
 
 namespace Pole.Features.SourceBuilds.Application.Jobs;

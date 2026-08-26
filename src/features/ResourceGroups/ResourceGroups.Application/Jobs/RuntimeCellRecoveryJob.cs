@@ -1,5 +1,7 @@
 using Hangfire;
 using Pole.Features.ResourceGroups.Application.Persistence;
+using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
+using Pole.Features.ResourceGroups.Application.Persistence.RuntimeCells;
 
 namespace Pole.Features.ResourceGroups.Application.Jobs;
 

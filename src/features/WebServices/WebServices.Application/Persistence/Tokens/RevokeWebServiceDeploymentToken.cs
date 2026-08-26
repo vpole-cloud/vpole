@@ -2,7 +2,7 @@ using MongoDB.Driver;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.WebServices.Application.Persistence;
+namespace Pole.Features.WebServices.Application.Persistence.Tokens;
 
 public sealed record WebServiceDeploymentTokenNotFound(string TokenId);
 

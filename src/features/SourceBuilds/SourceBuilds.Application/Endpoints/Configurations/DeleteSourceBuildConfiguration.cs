@@ -1,16 +1,16 @@
 using FluentValidation;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.SourceBuilds.Application.Persistence;
+using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
-namespace Pole.Features.SourceBuilds.Application.Endpoints;
+namespace Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
 
 public sealed record DeleteSourceBuildConfigurationRequest(
     [FromRoute] string ConfigurationId,

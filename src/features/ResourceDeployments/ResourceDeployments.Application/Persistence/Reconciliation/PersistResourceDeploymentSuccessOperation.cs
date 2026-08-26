@@ -1,6 +1,6 @@
 using Pole.Features.ResourceDeployments.Domain;
 
-namespace Pole.Features.ResourceDeployments.Application.Persistence;
+namespace Pole.Features.ResourceDeployments.Application.Persistence.Reconciliation;
 
 public delegate Task PersistResourceDeploymentSuccess(
     ResourceDeployment claimed,

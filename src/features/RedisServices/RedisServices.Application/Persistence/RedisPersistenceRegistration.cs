@@ -2,6 +2,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.RedisServices.Application.Persistence.Lifecycle;
+using Pole.Features.RedisServices.Application.Persistence.Mutations;
+using Pole.Features.RedisServices.Application.Persistence.Reads;
 using Pole.Features.RedisServices.Domain;
 
 namespace Pole.Features.RedisServices.Application.Persistence;

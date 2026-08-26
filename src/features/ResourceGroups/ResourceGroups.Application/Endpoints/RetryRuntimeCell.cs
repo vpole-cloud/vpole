@@ -10,6 +10,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Application.Persistence;
+using Pole.Features.ResourceGroups.Application.Persistence.RuntimeCells;
 using Pole.Mediator;
 using Pole.ResultType;
 

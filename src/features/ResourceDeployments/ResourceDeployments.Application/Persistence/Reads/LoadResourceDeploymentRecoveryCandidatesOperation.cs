@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Domain;
 
-namespace Pole.Features.ResourceDeployments.Application.Persistence;
+namespace Pole.Features.ResourceDeployments.Application.Persistence.Reads;
 
 public delegate Task<IReadOnlyList<string>> LoadResourceDeploymentRecoveryCandidates(
     DateTime now,

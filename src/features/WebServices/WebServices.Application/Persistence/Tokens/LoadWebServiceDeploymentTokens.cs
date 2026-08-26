@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.WebServices.Domain;
 
-namespace Pole.Features.WebServices.Application.Persistence;
+namespace Pole.Features.WebServices.Application.Persistence.Tokens;
 
 public delegate Task<IReadOnlyList<WebServiceDeploymentToken>> LoadWebServiceDeploymentTokens(
     string tenantId,

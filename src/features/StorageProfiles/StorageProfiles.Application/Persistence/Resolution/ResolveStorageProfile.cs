@@ -1,12 +1,12 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Application.Discovery;
+using Pole.Features.StorageProfiles.Application.Persistence.Reads;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.StorageProfiles.Application.Persistence;
+namespace Pole.Features.StorageProfiles.Application.Persistence.Resolution;
 
 internal sealed class MongoResolveStorageProfile(
     IMongoCollection<StorageProfile> storageProfiles,

@@ -1,6 +1,7 @@
 using MongoDB.Driver;
 using MongoDB.Bson;
 using Pole.Database;
+using Pole.Features.RedisServices.Application.Persistence.Reads;
 using Pole.Features.RedisServices.Domain;
 
 namespace Pole.Features.RedisServices.Application.Persistence;

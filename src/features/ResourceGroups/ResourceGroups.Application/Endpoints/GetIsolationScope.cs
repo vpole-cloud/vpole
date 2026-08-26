@@ -9,6 +9,8 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Persistence;
+using Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
+using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 using Pole.Mediator;
 using Pole.ResultType;
 

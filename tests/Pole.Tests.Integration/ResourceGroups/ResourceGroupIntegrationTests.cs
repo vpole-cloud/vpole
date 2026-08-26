@@ -7,6 +7,7 @@ using Pole.Features.ResourceGroups.Application.Persistence;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Request;
+using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 using Pole.Features.Shared.Models;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;

@@ -2,6 +2,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Dns;
 using Pole.Features.Domains.Application.Persistence;
+using Pole.Features.Domains.Application.Persistence.DomainZones;
 using Pole.Features.Domains.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;

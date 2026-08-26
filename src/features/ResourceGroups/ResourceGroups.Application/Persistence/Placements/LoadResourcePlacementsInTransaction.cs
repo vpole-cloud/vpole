@@ -1,9 +1,10 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Application.Persistence.RuntimeCells;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 
-namespace Pole.Features.ResourceGroups.Application.Persistence;
+namespace Pole.Features.ResourceGroups.Application.Persistence.Placements;
 
 internal sealed class MongoLoadResourcePlacementsInTransaction(
     IMongoCollection<RuntimeCell> runtimeCells)

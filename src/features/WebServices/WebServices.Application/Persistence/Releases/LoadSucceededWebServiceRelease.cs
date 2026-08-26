@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.WebServices.Domain;
 
-namespace Pole.Features.WebServices.Application.Persistence;
+namespace Pole.Features.WebServices.Application.Persistence.Releases;
 
 public delegate Task<WebServiceRelease?> LoadSucceededWebServiceRelease(
     string tenantId,

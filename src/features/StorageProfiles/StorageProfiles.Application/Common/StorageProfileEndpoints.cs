@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Pole.Features.StorageProfiles.Application.Endpoints;
+using Pole.Features.StorageProfiles.Application.Endpoints.KubernetesInventory;
 
 namespace Pole.Features.StorageProfiles.Application.Common;
 

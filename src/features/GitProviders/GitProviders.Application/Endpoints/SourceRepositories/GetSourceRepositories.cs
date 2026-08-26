@@ -5,10 +5,10 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Application.Persistence;
+using Pole.Features.GitProviders.Application.Persistence.Repositories;
 using Pole.Mediator;
 
-namespace Pole.Features.GitProviders.Application.Endpoints;
+namespace Pole.Features.GitProviders.Application.Endpoints.SourceRepositories;
 
 public sealed record GetSourceRepositoriesRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)

@@ -5,12 +5,11 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Common;
-using Pole.Features.Tenants.Application.Persistence;
-using Pole.Features.Tenants.Domain;
+using Pole.Features.Tenants.Application.Persistence.Members;
 using Pole.Mediator;
 using Pole.ResultType;
 
-namespace Pole.Features.Tenants.Application.Endpoints;
+namespace Pole.Features.Tenants.Application.Endpoints.Members;
 
 public sealed record UpdateTenantMemberRequest(
     [FromRoute] string TenantId,

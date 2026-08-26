@@ -2,6 +2,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Pole.Features.WebServices.Application.Endpoints;
+using Pole.Features.WebServices.Application.Endpoints.Deployments;
+using Pole.Features.WebServices.Application.Endpoints.Deployments.Hostnames;
+using Pole.Features.WebServices.Application.Endpoints.DeploymentTokens;
+using Pole.Features.WebServices.Application.Endpoints.Releases;
 
 namespace Pole.Features.WebServices.Application.Common;
 
@@ -35,9 +39,8 @@ public static class WebServiceEndpoints
                 .MapRedeployWebServiceEndpoint()
                 .MapRollbackWebServiceEndpoint()
                 .MapUpdateWebServiceImageTagEndpoint();
-                
+
             return app;
         }
     }
-    
 }

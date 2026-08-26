@@ -1,12 +1,11 @@
 using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.ResourceDeployments.Application.Persistence;
+namespace Pole.Features.ResourceDeployments.Application.Persistence.Reconciliation;
 
 internal sealed class ResourceDeploymentRetryPersistence(
     IMongoCollection<ResourceDeployment> resourceDeployments,

@@ -7,6 +7,7 @@ using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Persistence;
+using Pole.Features.StorageProfiles.Application.Persistence.Mutations;
 using Pole.Features.StorageProfiles.Application.Validation;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Mediator;

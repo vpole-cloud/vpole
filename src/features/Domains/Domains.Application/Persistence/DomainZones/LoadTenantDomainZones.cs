@@ -3,7 +3,7 @@ using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 
-namespace Pole.Features.Domains.Application.Persistence;
+namespace Pole.Features.Domains.Application.Persistence.DomainZones;
 
 public delegate Task<IReadOnlyList<TenantDomainZoneSnapshot>> LoadTenantDomainZones(
     string tenantId,

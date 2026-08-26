@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Application.Persistence;
+using Pole.Features.Outbox.Application.Persistence.Delivery;
 using Pole.Observability;
 using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
 

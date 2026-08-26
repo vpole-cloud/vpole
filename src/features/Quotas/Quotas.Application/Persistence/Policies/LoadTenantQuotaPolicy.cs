@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.Quotas.Domain;
 
-namespace Pole.Features.Quotas.Application.Persistence;
+namespace Pole.Features.Quotas.Application.Persistence.Policies;
 
 public delegate Task<TenantQuotaPolicy?> LoadTenantQuotaPolicy(
     string tenantId,

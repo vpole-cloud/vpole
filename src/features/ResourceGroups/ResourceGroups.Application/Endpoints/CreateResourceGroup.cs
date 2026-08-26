@@ -10,6 +10,7 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.ResourceGroups.Application.Persistence;
+using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Mediator;
 using Pole.ResultType;

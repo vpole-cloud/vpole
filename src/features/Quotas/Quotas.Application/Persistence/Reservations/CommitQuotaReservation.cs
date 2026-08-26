@@ -1,9 +1,10 @@
 using MongoDB.Driver;
+using Pole.Features.Quotas.Application.Persistence.Usage;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.Quotas.Application.Persistence;
+namespace Pole.Features.Quotas.Application.Persistence.Reservations;
 
 public delegate Task<Result<QuotaReservationCommitted, QuotaReservationCommitError>>
     CommitQuotaReservation(

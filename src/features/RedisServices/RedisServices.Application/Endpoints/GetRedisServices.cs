@@ -8,6 +8,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Persistence;
+using Pole.Features.RedisServices.Application.Persistence.Reads;
 using Pole.Features.Request;
 using Pole.Mediator;
 using Pole.Validation;

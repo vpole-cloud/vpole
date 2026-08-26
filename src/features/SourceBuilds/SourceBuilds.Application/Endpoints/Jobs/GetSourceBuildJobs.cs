@@ -8,10 +8,11 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.Request;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Persistence;
+using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
 using Pole.Mediator;
 using Pole.Validation;
 
-namespace Pole.Features.SourceBuilds.Application.Endpoints;
+namespace Pole.Features.SourceBuilds.Application.Endpoints.Jobs;
 
 public sealed record GetSourceBuildJobsRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,

@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.ContainerRegistries.Domain;
 
-namespace Pole.Features.ContainerRegistries.Application.Persistence;
+namespace Pole.Features.ContainerRegistries.Application.Persistence.Credentials;
 
 public delegate Task<RegistryCredential?> LoadRegistryCredential(
     string tenantId,

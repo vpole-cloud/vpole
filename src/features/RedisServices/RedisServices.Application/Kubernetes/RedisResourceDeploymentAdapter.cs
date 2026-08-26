@@ -2,6 +2,7 @@ using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.RedisServices.Application.Persistence.Reads;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.ResultType;
 

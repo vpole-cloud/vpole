@@ -1,8 +1,7 @@
 using MongoDB.Driver;
-using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Domain;
 
-namespace Pole.Features.Tenants.Application.Persistence;
+namespace Pole.Features.Tenants.Application.Persistence.Members;
 
 public delegate Task<IReadOnlyList<Tenant>> LoadTenantsForUser(
     string userId,

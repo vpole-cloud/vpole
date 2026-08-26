@@ -10,6 +10,7 @@ using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Domain;
 using Pole.Features.Users.Application.Identity;
 using Pole.Features.Users.Application.Persistence;
+using Pole.Features.Users.Application.Persistence.Users;
 using Pole.Mediator;
 using Pole.ResultType;
 

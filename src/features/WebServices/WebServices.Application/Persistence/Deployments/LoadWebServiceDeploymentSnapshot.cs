@@ -1,8 +1,7 @@
 using MongoDB.Driver;
-using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 
-namespace Pole.Features.WebServices.Application.Persistence;
+namespace Pole.Features.WebServices.Application.Persistence.Deployments;
 
 public sealed record WebServiceDeploymentPersistenceSnapshot(
     WebService WebService,

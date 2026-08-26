@@ -5,7 +5,7 @@ using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.DeploymentTargets.Application.Persistence;
+namespace Pole.Features.DeploymentTargets.Application.Persistence.Credentials;
 
 public sealed record DeploymentTargetCredentialRewrapSummary(
     long Examined,

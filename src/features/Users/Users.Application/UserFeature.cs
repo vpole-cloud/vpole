@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.ASP.Helpers;
 using Pole.Features.Users.Application.Identity;
 using Pole.Features.Users.Application.Persistence;
+using Pole.Features.Users.Application.Persistence.Users;
 
 namespace Pole.Features.Users.Application;
 

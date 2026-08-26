@@ -1,10 +1,9 @@
 using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.RedisServices.Application.Persistence;
+namespace Pole.Features.RedisServices.Application.Persistence.Mutations;
 
 public sealed record RedisUpdateConflict(string RedisId);
 
