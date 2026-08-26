@@ -1,8 +1,8 @@
 using System.Net;
 using Pole.ASP.Helpers;
-using Pole.Features.Tenants.Application.Persistence;
+using Pole.Features.Tenants.Application.Persistence.Members;
 
-namespace Pole.Features.Tenants;
+namespace Pole.Features.Tenants.Application;
 
 public static class TenantMemberAuthorizationHttpProblemMappings
 {

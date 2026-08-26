@@ -10,6 +10,8 @@ using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Jobs;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.ResourceGroups.Application.Persistence;
+using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
+using Pole.Features.ResourceGroups.Application.Persistence.RuntimeCells;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Features.Shared.Models;

@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Application.Common;
@@ -9,7 +8,7 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.ResultType;
 
-namespace Pole.Features.ResourceDeployments.Application.Persistence;
+namespace Pole.Features.ResourceDeployments.Application.Persistence.Creation;
 
 internal sealed class MongoCreateResourceDeploymentSet(
     IMongoCollection<ResourceDeployment> resourceDeployments,

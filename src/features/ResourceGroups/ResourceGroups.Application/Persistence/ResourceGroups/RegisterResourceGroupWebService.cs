@@ -2,7 +2,7 @@ using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Shared.Models;
 
-namespace Pole.Features.ResourceGroups.Application.Persistence;
+namespace Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 
 public delegate Task RegisterResourceGroupWebService(
     string tenantId,

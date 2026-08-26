@@ -1,8 +1,7 @@
 using MongoDB.Driver;
-using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Domain;
 
-namespace Pole.Features.DeploymentTargets.Application.Persistence;
+namespace Pole.Features.DeploymentTargets.Application.Persistence.Bootstrap;
 
 internal sealed record DeploymentTargetBootstrapState(
     DeploymentTargetSettings? Settings,

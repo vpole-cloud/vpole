@@ -4,6 +4,8 @@ using Pole.Database;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Domains.Application.Migrations;
 using Pole.Features.Domains.Application.Persistence;
+using Pole.Features.Domains.Application.Persistence.DomainZones;
+using Pole.Features.Domains.Application.Persistence.HostnameBindings;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 using Pole.Features.Tenants.Contracts;
@@ -357,15 +359,35 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
         Assert.Empty(coordinator.Unregistrations);
     }
 
-    private MongoDomainPersistence CreateCapabilities(
+    private DomainCapabilities CreateCapabilities(
         string tenantId,
-        RecordingTargetCoordinator coordinator) =>
-        new(
+        RecordingTargetCoordinator coordinator)
+    {
+        var cleanup = new MongoHostnameBindingCleanup(
+            fixture.Database,
+            coordinator.ApplyChangesOutcomeAsync,
+            TimeProvider.System);
+        var zones = new MongoGetOrCreateGeneratedDomainZones(
             fixture.Database,
             coordinator.ApplyChangesOutcomeAsync,
             coordinator.FenceManyOutcomeAsync,
             FixedTenantIdentityLookup(tenantId),
             TimeProvider.System);
+        var bindings = new MongoCreateGeneratedHostnameBindings(
+            fixture.Database,
+            cleanup,
+            TimeProvider.System);
+        var deleteBindings = new MongoDeleteHostnameBindingsForDeployment(cleanup);
+        return new DomainCapabilities(
+            zones.InvokeAsync,
+            bindings.InvokeAsync,
+            deleteBindings.InvokeAsync);
+    }
+
+    private sealed record DomainCapabilities(
+        GetOrCreateGeneratedDomainZonesOutcome GetOrCreateGeneratedSetOutcomeAsync,
+        CreateGeneratedHostnameBindingsOutcome CreateGeneratedSetOutcomeAsync,
+        DeleteHostnameBindingsForDeployment DeleteAllForDeploymentAsync);
 
     private static async Task<MongoTransactionDecision<Result<T, TError>>>
         CompleteAsync<T, TError>(

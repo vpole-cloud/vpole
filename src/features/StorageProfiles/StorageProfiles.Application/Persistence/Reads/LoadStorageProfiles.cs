@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.StorageProfiles.Domain;
 
-namespace Pole.Features.StorageProfiles.Application.Persistence;
+namespace Pole.Features.StorageProfiles.Application.Persistence.Reads;
 
 public delegate Task<IReadOnlyCollection<StorageProfile>> LoadStorageProfiles(
     CancellationToken cancellationToken = default);

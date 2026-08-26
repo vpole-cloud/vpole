@@ -7,7 +7,7 @@ using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.ContainerRegistries.Application.Persistence;
+namespace Pole.Features.ContainerRegistries.Application.Persistence.Projects;
 
 /// <summary>
 /// Owns the durable state transitions of the Harbor-project provisioning state machine.

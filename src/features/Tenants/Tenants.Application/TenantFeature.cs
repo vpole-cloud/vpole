@@ -5,6 +5,9 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Persistence;
+using Pole.Features.Tenants.Application.Persistence.Identity;
+using Pole.Features.Tenants.Application.Persistence.Members;
+using Pole.Features.Tenants.Application.Persistence.Tenants;
 using Pole.Features.Tenants.Contracts;
 using Pole.Mediator;
 

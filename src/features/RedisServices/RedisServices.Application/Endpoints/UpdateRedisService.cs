@@ -12,6 +12,8 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Persistence;
+using Pole.Features.RedisServices.Application.Persistence.Mutations;
+using Pole.Features.RedisServices.Application.Persistence.Reads;
 using Pole.Features.RedisServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;

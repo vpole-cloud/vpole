@@ -3,7 +3,7 @@ using Pole.Database;
 using Pole.Features.Request;
 using Pole.Features.SourceBuilds.Domain;
 
-namespace Pole.Features.SourceBuilds.Application.Persistence;
+namespace Pole.Features.SourceBuilds.Application.Persistence.Jobs;
 
 public sealed record SourceBuildJobPage(
     IReadOnlyList<SourceBuildJob> Items,

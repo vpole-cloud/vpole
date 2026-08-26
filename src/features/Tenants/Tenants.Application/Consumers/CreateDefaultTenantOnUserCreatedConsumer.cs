@@ -1,6 +1,7 @@
 using MassTransit;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Persistence;
+using Pole.Features.Tenants.Application.Persistence.Tenants;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.Users.Events;
 

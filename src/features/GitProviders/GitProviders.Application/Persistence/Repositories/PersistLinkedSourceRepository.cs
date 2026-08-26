@@ -3,7 +3,7 @@ using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.GitProviders.Application.Persistence;
+namespace Pole.Features.GitProviders.Application.Persistence.Repositories;
 
 public delegate Task<Result<SourceRepository, SourceRepositoryAlreadyLinked>> PersistLinkedSourceRepository(
     SourceRepository repository,

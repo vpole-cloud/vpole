@@ -7,6 +7,7 @@ using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Persistence;
+using Pole.Features.ComputeProfiles.Application.Persistence.Mutations;
 using Pole.Features.ComputeProfiles.Application.Validation;
 using Pole.Mediator;
 using Pole.ResultType;

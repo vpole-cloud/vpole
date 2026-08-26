@@ -4,6 +4,8 @@ using Pole.Database;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Application.Persistence;
+using Pole.Features.WebServices.Application.Persistence.Deployments;
+using Pole.Features.WebServices.Application.Persistence.Lifecycle;
 using Pole.Features.WebServices.Contracts;
 using Pole.ResultType;
 

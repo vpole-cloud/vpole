@@ -9,6 +9,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Application.Persistence;
+using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Mediator;

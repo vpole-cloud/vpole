@@ -6,6 +6,7 @@ using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Quotas.Application.Persistence;
+using Pole.Features.Quotas.Application.Persistence.Reservations;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Domain;
 using Pole.Features.RedisServices.Application.Common;

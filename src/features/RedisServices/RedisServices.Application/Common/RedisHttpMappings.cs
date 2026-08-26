@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
 using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.RedisServices.Application.Persistence;
+using Pole.Features.RedisServices.Application.Persistence.Lifecycle;
+using Pole.Features.RedisServices.Application.Persistence.Mutations;
 
 namespace Pole.Features.RedisServices.Application.Common;
 

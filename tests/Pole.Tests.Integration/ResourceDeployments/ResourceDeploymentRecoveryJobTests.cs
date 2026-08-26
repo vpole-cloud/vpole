@@ -5,6 +5,8 @@ using Pole.Database;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Jobs;
 using Pole.Features.ResourceDeployments.Application.Persistence;
+using Pole.Features.ResourceDeployments.Application.Persistence.Reads;
+using Pole.Features.ResourceDeployments.Application.Persistence.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;

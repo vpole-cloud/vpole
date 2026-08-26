@@ -4,6 +4,7 @@ using Pole.Database;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.RedisServices.Application.Persistence;
+using Pole.Features.RedisServices.Application.Persistence.Lifecycle;
 using Pole.ResultType;
 
 namespace Pole.Features.RedisServices.Application;

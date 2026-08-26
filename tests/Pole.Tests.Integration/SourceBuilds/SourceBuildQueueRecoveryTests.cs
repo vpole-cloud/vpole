@@ -2,6 +2,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.SourceBuilds.Application.Persistence;
+using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;

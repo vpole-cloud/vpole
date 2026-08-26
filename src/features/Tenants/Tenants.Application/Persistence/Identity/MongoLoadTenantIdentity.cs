@@ -1,10 +1,9 @@
 using MongoDB.Driver;
-using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Contracts;
 using Pole.Features.Tenants.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.Tenants.Application.Persistence;
+namespace Pole.Features.Tenants.Application.Persistence.Identity;
 
 internal sealed class MongoLoadTenantIdentity(IMongoDatabase database)
 {

@@ -5,7 +5,7 @@ using Pole.Features.Outbox.Contracts;
 using Pole.Observability;
 using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
 
-namespace Pole.Features.Outbox.Application.Persistence;
+namespace Pole.Features.Outbox.Application.Persistence.Writes;
 
 internal sealed class MongoStoreOutboxWrites(IMongoDatabase database)
 {

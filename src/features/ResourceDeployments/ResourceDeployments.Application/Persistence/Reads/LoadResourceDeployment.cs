@@ -3,7 +3,7 @@ using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 
-namespace Pole.Features.ResourceDeployments.Application.Persistence;
+namespace Pole.Features.ResourceDeployments.Application.Persistence.Reads;
 
 internal sealed class MongoLoadResourceDeployment(
     IMongoCollection<ResourceDeployment> resourceDeployments)

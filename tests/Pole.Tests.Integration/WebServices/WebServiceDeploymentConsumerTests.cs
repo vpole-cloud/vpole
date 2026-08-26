@@ -6,6 +6,7 @@ using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Consumers;
 using Pole.Features.WebServices.Application.Persistence;
+using Pole.Features.WebServices.Application.Persistence.Deployments;
 using Pole.Features.WebServices.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;

@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.SourceBuilds.Domain;
 
-namespace Pole.Features.SourceBuilds.Application.Persistence;
+namespace Pole.Features.SourceBuilds.Application.Persistence.Jobs;
 
 public sealed record SourceBuildDeploymentCompletion(
     string TenantId,

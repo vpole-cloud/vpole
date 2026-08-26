@@ -1,5 +1,6 @@
 using Pole.Features.Domains.Application.Endpoints;
 using Pole.Features.Domains.Application.Persistence;
+using Pole.Features.Domains.Application.Persistence.DomainZones;
 using Pole.Features.Domains.Contracts;
 using Xunit;
 

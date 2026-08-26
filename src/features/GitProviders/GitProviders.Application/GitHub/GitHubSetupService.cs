@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.DataProtection;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.Persistence;
+using Pole.Features.GitProviders.Application.Persistence.Setup;
 using Pole.Features.GitProviders.Domain;
 
 namespace Pole.Features.GitProviders.Application.GitHub;

@@ -1,8 +1,7 @@
 using MongoDB.Driver;
-using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Domain;
 
-namespace Pole.Features.WebServices.Application.Persistence;
+namespace Pole.Features.WebServices.Application.Persistence.Reads;
 
 internal sealed class MongoWebServiceExists(IMongoCollection<WebService> webServices)
 {

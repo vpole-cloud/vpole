@@ -7,6 +7,7 @@ using Pole.Features.GitProviders.Domain;
 using Pole.Features.Request;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Endpoints;
+using Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;

@@ -10,6 +10,8 @@ using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Application.Migrations;
 using Pole.Features.ContainerRegistries.Application.Endpoints;
 using Pole.Features.ContainerRegistries.Application.Persistence;
+using Pole.Features.ContainerRegistries.Application.Persistence.Credentials;
+using Pole.Features.ContainerRegistries.Application.Persistence.Projects;
 using Pole.Features.ContainerRegistries.Application.Provisioning;
 using Pole.Features.ContainerRegistries.Application.Security;
 using Pole.Features.ContainerRegistries.Contracts;

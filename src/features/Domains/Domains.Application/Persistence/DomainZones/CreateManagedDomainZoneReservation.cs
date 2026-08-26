@@ -7,7 +7,7 @@ using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.Domains.Application.Persistence;
+namespace Pole.Features.Domains.Application.Persistence.DomainZones;
 
 public sealed record ManagedDomainZoneAlreadyReserved(string Domain);
 

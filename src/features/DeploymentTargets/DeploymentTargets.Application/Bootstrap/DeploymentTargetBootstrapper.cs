@@ -4,6 +4,7 @@ using MongoDB.Bson;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Persistence;
+using Pole.Features.DeploymentTargets.Application.Persistence.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;

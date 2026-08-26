@@ -5,6 +5,8 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Persistence;
+using Pole.Features.StorageProfiles.Application.Persistence.Mutations;
+using Pole.Features.StorageProfiles.Application.Persistence.Reads;
 using Pole.Features.StorageProfiles.Application.Validation;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Tests.Integration.Infrastructure;

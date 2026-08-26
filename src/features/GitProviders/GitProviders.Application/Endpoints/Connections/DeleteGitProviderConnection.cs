@@ -5,13 +5,12 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Application.Persistence;
+using Pole.Features.GitProviders.Application.Persistence.Connections;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
-namespace Pole.Features.GitProviders.Application.Endpoints;
+namespace Pole.Features.GitProviders.Application.Endpoints.Connections;
 
 public sealed record DeleteGitProviderConnectionRequest(
     [FromRoute] string ConnectionId,

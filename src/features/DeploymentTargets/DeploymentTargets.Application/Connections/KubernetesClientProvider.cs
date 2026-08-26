@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using k8s;
 using MongoDB.Bson;
 using Pole.Features.DeploymentTargets.Application.Persistence;
+using Pole.Features.DeploymentTargets.Application.Persistence.Reads;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;

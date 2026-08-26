@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Pole.Features.SourceBuilds.Application.Endpoints;
+using Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
+using Pole.Features.SourceBuilds.Application.Endpoints.Jobs;
 
 namespace Pole.Features.SourceBuilds.Application.Common;
 

@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Persistence;
+using Pole.Features.ComputeProfiles.Application.Persistence.Mutations;
+using Pole.Features.ComputeProfiles.Application.Persistence.Reads;
 using Pole.Features.ComputeProfiles.Application.Validation;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Mediator;

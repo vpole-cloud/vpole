@@ -1,11 +1,13 @@
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ComputeProfiles.Application.Common;
+using Pole.Features.ComputeProfiles.Application.Persistence.Defaults;
+using Pole.Features.ComputeProfiles.Application.Persistence.References;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.ResultType;
 
-namespace Pole.Features.ComputeProfiles.Application.Persistence;
+namespace Pole.Features.ComputeProfiles.Application.Persistence.Mutations;
 
 public union PersistUpdatedComputeProfileError(
     ComputeProfileRevisionConflict,

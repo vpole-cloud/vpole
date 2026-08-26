@@ -4,7 +4,7 @@ using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.ResourceGroups.Application.Persistence;
+namespace Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
 
 public union PersistCreatedIsolationScopeError(
     ResourceGroupRevisionConflict,

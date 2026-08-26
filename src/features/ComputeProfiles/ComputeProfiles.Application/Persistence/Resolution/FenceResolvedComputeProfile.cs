@@ -4,7 +4,7 @@ using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.ComputeProfiles.Application.Persistence;
+namespace Pole.Features.ComputeProfiles.Application.Persistence.Resolution;
 
 internal sealed class MongoFenceResolvedComputeProfile(
     IMongoCollection<ComputeProfile> computeProfiles)

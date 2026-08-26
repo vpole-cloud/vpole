@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Persistence;
+using Pole.Features.Tenants.Application.Persistence.Members;
 using Pole.Mediator;
 
 namespace Pole.Features.Tenants.Application.Endpoints;

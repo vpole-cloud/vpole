@@ -1,11 +1,12 @@
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.DeploymentTargets.Application.Common;
+using Pole.Features.DeploymentTargets.Application.Persistence.References;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.DeploymentTargets.Application.Persistence;
+namespace Pole.Features.DeploymentTargets.Application.Persistence.Mutations;
 
 public sealed record DeploymentTargetDeleted(string DeploymentTargetId);
 

@@ -2,7 +2,7 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceGroups.Domain;
 
-namespace Pole.Features.ResourceGroups.Application.Persistence;
+namespace Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
 
 internal static class IsolationScopeFilters
 {

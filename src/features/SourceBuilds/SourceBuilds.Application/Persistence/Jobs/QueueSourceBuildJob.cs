@@ -1,10 +1,9 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Events.Abstractions;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.SourceBuilds.Events;
 
-namespace Pole.Features.SourceBuilds.Application.Persistence;
+namespace Pole.Features.SourceBuilds.Application.Persistence.Jobs;
 
 public delegate Task<SourceBuildJob> QueueSourceBuildJob(
     SourceBuildJob job,

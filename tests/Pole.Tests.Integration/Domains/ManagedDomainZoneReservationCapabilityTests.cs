@@ -4,6 +4,7 @@ using Pole.Database;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Domains.Application.Migrations;
 using Pole.Features.Domains.Application.Persistence;
+using Pole.Features.Domains.Application.Persistence.DomainZones;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 using Pole.ResultType;

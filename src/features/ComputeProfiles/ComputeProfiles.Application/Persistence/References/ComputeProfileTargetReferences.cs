@@ -3,7 +3,7 @@ using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.ResultType;
 
-namespace Pole.Features.ComputeProfiles.Application.Persistence;
+namespace Pole.Features.ComputeProfiles.Application.Persistence.References;
 
 internal static class ComputeProfileTargetReferences
 {

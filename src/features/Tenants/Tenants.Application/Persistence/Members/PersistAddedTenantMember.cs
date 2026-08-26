@@ -1,10 +1,8 @@
 using MongoDB.Driver;
-using Pole.Features.Tenants;
-using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.Tenants.Application.Persistence;
+namespace Pole.Features.Tenants.Application.Persistence.Members;
 
 public delegate Task<Result<TenantMember, TenantMemberAdditionError>> PersistAddedTenantMember(
     TenantMember member,

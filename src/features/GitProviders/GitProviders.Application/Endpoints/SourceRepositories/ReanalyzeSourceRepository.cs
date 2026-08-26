@@ -6,14 +6,14 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Application.Persistence;
+using Pole.Features.GitProviders.Application.Persistence.Repositories;
 using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
-namespace Pole.Features.GitProviders.Application.Endpoints;
+namespace Pole.Features.GitProviders.Application.Endpoints.SourceRepositories;
 
 public sealed record ReanalyzeSourceRepositoryRequest(
     [FromRoute] string Id,

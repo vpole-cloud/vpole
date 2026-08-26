@@ -1,5 +1,6 @@
 using MassTransit;
 using Pole.Features.ResourceGroups.Application.Persistence;
+using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 using Pole.Features.WebServices.Events;
 
 namespace Pole.Features.ResourceGroups.Application.Consumers;

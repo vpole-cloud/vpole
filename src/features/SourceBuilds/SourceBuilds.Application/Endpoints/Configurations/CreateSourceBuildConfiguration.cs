@@ -7,14 +7,14 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Application.Persistence;
+using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.WebServices.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
-namespace Pole.Features.SourceBuilds.Application.Endpoints;
+namespace Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
 
 public sealed record CreateSourceBuildConfigurationRequest(
     [FromBody] CreateSourceBuildConfigurationBody Body,

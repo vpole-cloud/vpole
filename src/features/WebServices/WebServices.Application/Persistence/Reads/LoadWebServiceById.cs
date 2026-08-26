@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.WebServices.Domain;
 
-namespace Pole.Features.WebServices.Application.Persistence;
+namespace Pole.Features.WebServices.Application.Persistence.Reads;
 
 public delegate Task<WebService?> LoadWebServiceById(
     string tenantId,

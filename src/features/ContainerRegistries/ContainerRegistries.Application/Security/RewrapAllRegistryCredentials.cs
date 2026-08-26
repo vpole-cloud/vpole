@@ -1,5 +1,6 @@
 using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Application.Persistence;
+using Pole.Features.ContainerRegistries.Application.Persistence.Credentials;
 using Pole.ResultType;
 
 namespace Pole.Features.ContainerRegistries.Application.Security;

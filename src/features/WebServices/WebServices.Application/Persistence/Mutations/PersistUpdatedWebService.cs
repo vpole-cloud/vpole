@@ -1,10 +1,9 @@
 using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 using Pole.ResultType;
 
-namespace Pole.Features.WebServices.Application.Persistence;
+namespace Pole.Features.WebServices.Application.Persistence.Mutations;
 
 public sealed record WebServiceUpdateAccepted;
 

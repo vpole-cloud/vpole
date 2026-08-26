@@ -3,6 +3,7 @@ using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.ResourceGroups.Application.Migrations;
 using Pole.Features.ResourceGroups.Application.Persistence;
+using Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Shared.Models;
 using Pole.ResultType;

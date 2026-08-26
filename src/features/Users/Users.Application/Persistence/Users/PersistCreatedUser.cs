@@ -5,7 +5,7 @@ using Pole.Features.Users.Domain;
 using Pole.Features.Users.Events;
 using Pole.ResultType;
 
-namespace Pole.Features.Users.Application.Persistence;
+namespace Pole.Features.Users.Application.Persistence.Users;
 
 public sealed record PersistCreatedUserRequest(
     PoleUser User,

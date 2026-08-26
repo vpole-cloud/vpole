@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.GitProviders.Domain;
 
-namespace Pole.Features.GitProviders.Application.Persistence;
+namespace Pole.Features.GitProviders.Application.Persistence.Setup;
 
 /// <summary>
 /// Mongo protocol for one-time GitHub setup attempts. Its operations share the

@@ -1,8 +1,7 @@
 using MongoDB.Driver;
-using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 
-namespace Pole.Features.ComputeProfiles.Application.Persistence;
+namespace Pole.Features.ComputeProfiles.Application.Persistence.Reads;
 
 public sealed record ComputeProfileAvailabilityQuery(
     string TenantId,

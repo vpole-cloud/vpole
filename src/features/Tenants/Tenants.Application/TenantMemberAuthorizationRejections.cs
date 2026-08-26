@@ -1,6 +1,6 @@
 using Pole.Mediator;
 
-namespace Pole.Features.Tenants;
+namespace Pole.Features.Tenants.Application;
 
 public sealed record TenantAuthenticationRequired
     : IMediatorRejection;

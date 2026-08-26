@@ -2,7 +2,7 @@ using MongoDB.Driver;
 using Pole.Features.Users.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.Users.Application.Persistence;
+namespace Pole.Features.Users.Application.Persistence.Users;
 
 public delegate Task<Result<Unit, CreateUserPersistenceError>> EnsureUserEmailAvailable(
     string email,

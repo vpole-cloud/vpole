@@ -1,4 +1,6 @@
 using Pole.Features.GitProviders.Application.Persistence;
+using Pole.Features.GitProviders.Application.Persistence.Connections;
+using Pole.Features.GitProviders.Application.Persistence.Repositories;
 using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Contracts;
 using Pole.ResultType;

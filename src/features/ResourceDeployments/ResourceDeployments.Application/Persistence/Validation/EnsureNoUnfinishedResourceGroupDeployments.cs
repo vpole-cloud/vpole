@@ -3,7 +3,7 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.ResourceDeployments.Application.Persistence;
+namespace Pole.Features.ResourceDeployments.Application.Persistence.Validation;
 
 internal sealed class MongoEnsureNoUnfinishedResourceGroupDeployments(
     IMongoCollection<ResourceDeployment> resourceDeployments)

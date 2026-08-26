@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Domain;
 
-namespace Pole.Features.ResourceGroups.Application.Persistence;
+namespace Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 
 public delegate Task<ResourceGroup?> LoadResourceGroup(
     string tenantId,

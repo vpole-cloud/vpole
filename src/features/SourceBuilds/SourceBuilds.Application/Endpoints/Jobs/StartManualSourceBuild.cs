@@ -8,14 +8,15 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Application.Persistence;
+using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
+using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.SourceBuilds.Events;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
-namespace Pole.Features.SourceBuilds.Application.Endpoints;
+namespace Pole.Features.SourceBuilds.Application.Endpoints.Jobs;
 
 public sealed record StartManualSourceBuildRequest(
     [FromRoute] string ConfigurationId,
