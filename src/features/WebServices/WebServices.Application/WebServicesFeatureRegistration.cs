@@ -19,6 +19,8 @@ public static class WebServicesFeatureRegistration
         services.AddOutcomeTransaction<RedeployWebServiceOutcome>();
         services.AddOutcomeTransaction<UpdateWebServiceImageTagOutcome>();
         services.AddOutcomeTransaction<RetryWebServiceDeploymentOutcome>();
+        services.AddOutcomeTransaction<FinalizeWebServiceDeletionOutcome>();
+        services.AddOutcomeTransaction<CompleteWebServiceDeploymentOutcome>();
         services.TryAddScoped<WebServiceSourceBuildDeploymentService>();
         services.TryAddScoped<DeploySourceBuildWebService>(serviceProvider =>
             serviceProvider

@@ -22,7 +22,13 @@ public sealed record WebServiceDeploymentCompletion(
     string? FailureMessage,
     EventCore EventCore);
 
-public delegate Task<Result> CompleteWebServiceDeployment(
+public sealed record WebServiceDeploymentCompletionRecorded;
+
+public union CompleteWebServiceDeploymentOutcome(
+    WebServiceDeploymentCompletionRecorded,
+    WebServiceFinalizationError);
+
+public delegate Task<CompleteWebServiceDeploymentOutcome> CompleteWebServiceDeployment(
     string tenantId,
     string webServiceId,
     WebServiceDeploymentCompletion completion,
@@ -30,13 +36,13 @@ public delegate Task<Result> CompleteWebServiceDeployment(
 
 internal sealed class MongoCompleteWebServiceDeployment(
     IMongoCollection<WebServiceRelease> releases,
-    RunMongoTransaction runMongoTransaction,
+    RunMongoOutcomeTransaction<CompleteWebServiceDeploymentOutcome> runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites,
     DeleteHostnameBindingsForDeployment deleteHostnameBindingsForDeployment,
     GetExactResourceDeploymentFinalizationReadiness getExactResourceDeploymentFinalizationReadiness,
     PurgeExactDeletedResourceDeployment purgeExactDeletedResourceDeployment)
 {
-    public Task<Result> InvokeAsync(
+    public Task<CompleteWebServiceDeploymentOutcome> InvokeAsync(
         string tenantId,
         string webServiceId,
         WebServiceDeploymentCompletion completion,
@@ -51,10 +57,10 @@ internal sealed class MongoCompleteWebServiceDeployment(
                 "A web service deployment completion must preserve tenant identity.");
         }
 
-        return runMongoTransaction(async (session, ct) =>
+        return runMongoTransaction(async (transaction, ct) =>
         {
             var release = await releases.Find(
-                session,
+                transaction.Session,
                 WebServiceReleaseFilters.PendingDeployment(
                     tenantId,
                     webServiceId,
@@ -64,7 +70,7 @@ internal sealed class MongoCompleteWebServiceDeployment(
                     completion.Operation))
                 .FirstOrDefaultAsync(ct);
             if (release is null || completion.Retryable)
-                return Result.Success();
+                return transaction.Commit(new WebServiceDeploymentCompletionRecorded());
 
             var replacement = WebServiceReleaseFactory.ApplyCompletion(
                 release, completion.ResourceDeploymentId, completion.ResourceRevision,
@@ -72,40 +78,42 @@ internal sealed class MongoCompleteWebServiceDeployment(
                 completion.Retryable, completion.FailureCode, completion.FailureMessage,
                 completion.CompletedAtUtc);
             if (Equals(release, replacement))
-                return Result.Success();
+                return transaction.Commit(new WebServiceDeploymentCompletionRecorded());
             var updated = await releases.ReplaceOneAsync(
-                session,
+                transaction.Session,
                 WebServiceReleaseFilters.CompletionCas(release.Id, release.Outcome),
                 replacement,
                 cancellationToken: ct);
             if (updated.ModifiedCount != 1)
-                return Result.Success();
+                return transaction.Commit(new WebServiceDeploymentCompletionRecorded());
 
             if (completion.Operation == WebServiceReleaseDeploymentOperation.Delete &&
                 completion.Succeeded)
             {
                 var readiness = await getExactResourceDeploymentFinalizationReadiness(
                     tenantId, WebServiceResourceDeployment.ResourceType, webServiceId,
-                    completion.ResourceDeploymentId, session, ct);
+                    completion.ResourceDeploymentId, transaction.Session, ct);
                 if (readiness == ResourceDeploymentFinalizationReadiness.Ready)
                 {
                     var bindings = await deleteHostnameBindingsForDeployment(
                         tenantId, WebServiceResourceDeployment.ResourceType, webServiceId,
-                        completion.ResourceDeploymentId, session, ct);
-                    if (bindings is not ISuccess)
-                        return (Failure)bindings;
+                        completion.ResourceDeploymentId, transaction.Session, ct);
+                    if (!bindings.TryGetValue(out _, out var bindingCleanupError))
+                    {
+                        return transaction.Abort(new WebServiceFinalizationError(bindingCleanupError));
+                    }
                     var purge = await purgeExactDeletedResourceDeployment(
                         tenantId, WebServiceResourceDeployment.ResourceType, webServiceId,
-                        completion.ResourceDeploymentId, session, ct);
+                        completion.ResourceDeploymentId, transaction.Session, ct);
                     if (purge is Err<ResourceDeploymentFinalizationConflict> conflict)
-                        return Failures.Conflict(
-                            "A resource deployment changed while web service deployment completion was being finalized.",
-                            conflict.Value.ResourceDeploymentId ?? conflict.Value.ResourceId);
+                    {
+                        return transaction.Abort(new WebServiceFinalizationError(conflict.Value));
+                    }
                 }
             }
 
             await storeOutboxWrites(
-                session,
+                transaction.Session,
                 [OutboxWrite.Create(new WebServiceDeploymentCompletedEvent(
                     release.Id,
                     release.WebServiceId,
@@ -123,7 +131,7 @@ internal sealed class MongoCompleteWebServiceDeployment(
                     EventCore = completion.EventCore
                 })],
                 ct);
-            return Result.Success();
+            return transaction.Commit(new WebServiceDeploymentCompletionRecorded());
         }, cancellationToken);
     }
 }

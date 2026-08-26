@@ -545,7 +545,8 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             item => item.Id == deploymentId, deleted);
 
         (await Services.GetRequiredService<FinalizeWebServiceDeletion>()(
-            TestData.TenantId, created.WebServiceId)).AssertSuccess();
+                TestData.TenantId,
+                created.WebServiceId)).AssertSuccess();
 
         Assert.Equal(0, await Fixture.Database.WebServices()
             .CountDocumentsAsync(service => service.Id == created.WebServiceId));
