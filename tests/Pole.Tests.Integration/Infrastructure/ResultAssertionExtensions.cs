@@ -8,6 +8,7 @@ using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Endpoints;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
+using Pole.Features.WebServices.Application.Persistence;
 using Pole.Mediator;
 using Pole.ResultType;
 using Xunit.Sdk;
@@ -16,6 +17,22 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 public static class ResultAssertionExtensions
 {
+    public static WebServiceDeploymentCompletionRecorded AssertSuccess(
+        this CompleteWebServiceDeploymentOutcome outcome) => outcome switch
+    {
+        WebServiceDeploymentCompletionRecorded success => success,
+        WebServiceFinalizationError error =>
+            UnexpectedError<WebServiceDeploymentCompletionRecorded>(error)
+    };
+
+    public static WebServiceDeletionFinalized AssertSuccess(
+        this FinalizeWebServiceDeletionOutcome outcome) => outcome switch
+    {
+        WebServiceDeletionFinalized success => success,
+        WebServiceFinalizationError error =>
+            UnexpectedError<WebServiceDeletionFinalized>(error)
+    };
+
     public static CreateRedisServiceResponse AssertSuccess(
         this MediatorResult<CreateRedisServiceOutcome> result) =>
         ResultAssertionExtensions.AssertSuccess<CreateRedisServiceOutcome>(result).AssertSuccess();
