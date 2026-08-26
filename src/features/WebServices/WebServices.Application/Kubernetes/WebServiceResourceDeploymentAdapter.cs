@@ -75,7 +75,7 @@ public sealed class WebServiceResourceDeploymentAdapter(
             inKubernetes,
             metadata,
             cancellationToken);
-        if (applyResult is Failure)
+        if (applyResult is Err<WebServiceKubernetesApplyFailed>)
         {
             return ResourceDeploymentAdapterResult.Failed.Create(
                 "KubernetesApplyFailed",
@@ -194,18 +194,13 @@ public sealed class WebServiceResourceDeploymentAdapter(
                 retryable: false);
         }
 
-        var secretResult = await WebServiceKubernetesResourceManager.ApplyImagePullSecretAsync(
+        await WebServiceKubernetesResourceManager.ApplyImagePullSecretAsync(
             kubernetes,
             inKubernetes,
             registryAccess.Username,
             registryAccess.Secret,
             cancellationToken);
-        return secretResult is Failure
-            ? ResourceDeploymentAdapterResult.Failed.Create(
-                "RegistrySecretApplyFailed",
-                "Kubernetes could not apply the web service registry credential.",
-                retryable: true)
-            : null;
+        return null;
     }
 
 }
