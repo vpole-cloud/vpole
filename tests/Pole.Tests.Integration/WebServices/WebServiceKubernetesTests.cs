@@ -61,15 +61,12 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
             options: WebServiceFactory.DefaultOptions with { Id = SourceBuildWebServiceId });
     }
 
-    private static void AssertResultSucceeded(Result result)
+    private static void AssertResultSucceeded(Result<Unit, WebServiceKubernetesApplyFailed> result)
     {
-        if (result is not Failure failure)
-            return;
-
-        var details = failure is ExternalServiceFailure externalFailure
-            ? externalFailure.Details
-            : failure.Message;
-        throw new Xunit.Sdk.XunitException($"Kubernetes deployment apply failed: {details}");
+        var extracted = TypedResultExtensions.TryGetValue(result);
+        if (!extracted.Succeeded)
+            throw new Xunit.Sdk.XunitException(
+                $"Kubernetes deployment apply failed: {extracted.Error!.Message}");
     }
 
     [KubernetesFact]
