@@ -1,4 +1,3 @@
-using Pole.Database;
 using Pole.Features.Quotas.Primitives;
 
 namespace Pole.Features.Quotas.Contracts;
@@ -134,9 +133,9 @@ public interface IQuotaAdmissionExecutor
         QuotaMutation<TSpec> mutation,
         Func<QuotaExecutionError, TOutcome> quotaError,
         Func<
-            MongoTransactionContext<TOutcome>,
+            QuotaAdmissionTransactionContext<TOutcome>,
             CancellationToken,
-            Task<MongoTransactionDecision<TOutcome>>> mutationCallback,
+            Task<QuotaAdmissionTransactionDecision<TOutcome>>> mutationCallback,
         CancellationToken cancellationToken = default)
         where TOutcome : notnull;
 }

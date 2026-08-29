@@ -42,6 +42,9 @@ types remain with their endpoints unless they are genuinely used as an inter-fea
 Contracts may depend on the BCL, `ResultType`, and small thematic primitives. A narrow operation
 that must join a caller-owned Mongo transaction may accept `IClientSessionHandle`; this is an
 explicit in-process transaction exception, not a claim that the contract is transport-portable.
+`Outbox.Contracts` may also depend on the shared event abstraction because its provider-owned
+write contract accepts `IPoleEvent` instances for durable storage. This is an exact infrastructure
+boundary, not permission for other Contracts projects to depend on feature Events.
 
 A Contracts project must not reference Domain, Events, Application, or another feature's
 Contracts. When two contracts appear to need the same type, either give each boundary its own
@@ -54,19 +57,22 @@ Contract operations return contract representations, not domain aggregates.
 
 `Feature.Contracts.HttpMapping` is an optional companion for the default HTTP representation of
 provider-owned synchronous contract errors. It depends on `Feature.Contracts` and the shared HTTP
-mapping abstraction; the Contracts project never depends on it. A consuming Application continues
-to reference only the provider Contracts, while `Pole.Server` composes the mapping companion.
+mapping abstraction; the Contracts project never depends on it. The provider Application may
+reference its own companion so `Add<Feature>Feature` can register a complete set of defaults. A
+consuming Application continues to reference only the provider Contracts and never references a
+foreign HTTP-mapping companion.
 
 Contract HTTP mappings define provider-owned defaults. A consuming HTTP boundary may supply an
-explicit local override when its endpoint gives a contract error different HTTP semantics. Global
-duplicate registrations and order-dependent "last registration wins" behavior are not allowed.
-Map a closed contract error union with an exhaustive switch and treat non-exhaustive switch
-diagnostics as build errors in the companion project.
+explicit local `HttpProblemMappingSet` override when its endpoint gives a contract error different
+HTTP semantics; the mapper checks that set before the provider default. Overrides are not global
+registrations. Global duplicate registrations and order-dependent "last registration wins"
+behavior are not allowed. Map a closed contract error union with an exhaustive switch and treat
+non-exhaustive switch diagnostics as build errors in the companion project.
 
 HTTP mappings for feature-local Application errors stay in that feature's Application project.
 They are not cross-feature contracts, so they do not justify another companion project. Keep the
-mapping separate from endpoint methods, register it at the server composition root, and apply the
-same exhaustive-switch rule to closed local error unions.
+mapping separate from endpoint methods, register it from the feature's `Add<Feature>Feature`
+composition method, and apply the same exhaustive-switch rule to closed local error unions.
 
 Core Pole problem types use stable, non-dereferenceable identifiers derived from their codes:
 `tag:pole.dev,2026:problem:<code>`. The tag authority is part of the public contract and never
@@ -153,7 +159,7 @@ Consumer.Application -> Provider.Events -> consumer
 | Contracts | Own Primitives | Domain, Events, Application, another feature's Contracts/Primitives |
 | Contracts.HttpMapping | Own Contracts; shared HTTP mapping abstraction | Domain, Events, Application, another feature project |
 | Events | Own Primitives | Domain, Contracts, Application, another feature |
-| Application | Own Primitives/Domain/Contracts/Events; foreign Contracts/Events; contract-exposed foreign Primitives | Foreign Domain/Application |
+| Application | Own Primitives/Domain/Contracts/Contracts.HttpMapping/Events; foreign Contracts/Events; contract-exposed foreign Primitives | Foreign Domain/Application/Contracts.HttpMapping |
 | Pole.Server | Application projects required for composition | None imposed by this policy |
 | Tests | Projects required by the test boundary | None imposed by this policy |
 

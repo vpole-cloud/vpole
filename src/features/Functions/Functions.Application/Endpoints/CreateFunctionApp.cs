@@ -196,8 +196,8 @@ public sealed class CreateFunctionAppHandler(
             cancellationToken);
     }
 
-    private static async Task<MongoTransactionDecision<CreateFunctionAppOutcome>> PersistAsync(
-        MongoTransactionContext<CreateFunctionAppOutcome> transaction,
+    private static async Task<QuotaAdmissionTransactionDecision<CreateFunctionAppOutcome>> PersistAsync(
+        QuotaAdmissionTransactionContext<CreateFunctionAppOutcome> transaction,
         FunctionAppFactory.CreateResult created,
         PersistCreatedFunctionApp persistCreatedFunctionApp,
         CancellationToken cancellationToken)

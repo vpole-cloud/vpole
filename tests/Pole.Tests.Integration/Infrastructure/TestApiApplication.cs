@@ -27,7 +27,6 @@ using Pole.Features.DeploymentTargets.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Application.Migrations;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 using Pole.Features.GitProviders.Application;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
@@ -42,13 +41,11 @@ using Pole.Features.Outbox.Application.Migrations;
 using Pole.Features.Outbox.Application.Persistence;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
-using Pole.Features.Quotas.Contracts.HttpMapping;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Migrations;
-using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Migrations;
@@ -188,16 +185,11 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddFunctionAppsFeature();
         builder.Services.AddResourceDeploymentsFeature(builder.Configuration);
         builder.Services.AddResourceGroupsFeature(builder.Configuration);
-        builder.Services.AddHttpProblemMappings(
-            ResourceDeploymentContractHttpMappings.All);
-        builder.Services.AddHttpProblemMappings(
-            DeploymentTargetContractHttpMappings.All);
         builder.Services.AddTenantsFeature();
         builder.Services.AddUsersFeature(builder.Configuration);
         builder.Services.RemoveAll<IIdentityProvider>();
         builder.Services.AddSingleton<IIdentityProvider, TestIdentityProvider>();
         builder.Services.AddDomainsFeature();
-        builder.Services.AddHttpProblemMappings(QuotaContractHttpMappings.All);
         builder.Services.AddComputeProfilesFeature();
         builder.Services.AddStorageProfilesFeature();
         builder.Services.AddRedisServicesFeature();

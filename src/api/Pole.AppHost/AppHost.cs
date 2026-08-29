@@ -5,12 +5,16 @@ var builder = DistributedApplication.CreateBuilder(args);
 var e2eEnabled = builder.Configuration.GetValue("E2E:Enabled", false);
 var e2eBuildKitPort = e2eEnabled ? builder.Configuration.GetValue<int?>("E2E:BuildKitPort") : null;
 var e2eKeycloakPort = e2eEnabled ? builder.Configuration.GetValue<int?>("E2E:KeycloakPort") : null;
+var mongoEntrypointPath = Path.Combine(builder.AppHostDirectory, "MongoDb", "mongo-entrypoint.sh");
+var mongoEntrypointScript = File.ReadAllText(mongoEntrypointPath);
 
 var mongoUsername = builder.AddParameter("mongo-username");
 var mongoPassword = builder.AddParameter("mongo-password", secret: true);
 var mongoServer = builder.AddMongoDB("pole-mongo", userName: mongoUsername, password: mongoPassword)
-    .WithBindMount("MongoDb/mongo-entrypoint.sh", "/usr/local/bin/mongo-entrypoint.sh", isReadOnly: true)
-    .WithEntrypoint("/usr/local/bin/mongo-entrypoint.sh")
+    .WithImageTag("7.0")
+    // Avoid executing a host bind mount, which rootless SELinux runtimes can deny.
+    .WithEntrypoint("/bin/bash")
+    .WithArgs("-c", mongoEntrypointScript, "mongo-entrypoint")
     .WithMongoExpress(options =>
     {
         if (!e2eEnabled)
@@ -122,6 +126,9 @@ if (retainedEnvelopeKeyParametersPresent == retainedEnvelopeKeyParameterNames.Le
 if (e2eEnabled)
 {
     api
+        .WithEndpoint("http", endpoint => endpoint.Port = null)
+        .WithEndpoint("functions-public", endpoint => endpoint.Port = null)
+        .WithEndpoint("functions-internal", endpoint => endpoint.Port = null)
         .WaitFor(mongoReplicaSet)
         .WaitFor(rabbitMq);
 }

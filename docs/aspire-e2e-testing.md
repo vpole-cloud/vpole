@@ -14,9 +14,13 @@ The GitHub stub serves deterministic `v1` and `v2` source archives and exposes p
 
 ## Prerequisites
 
-- Docker Desktop or a Docker Engine that Aspire/DCP can use.
-- .NET SDK 10 and Node dependencies for `src/api/frontend`.
-- A local Kubernetes context and `kubectl` if exercising the resource-group reconciliation side effect.
+- A Docker-compatible container runtime that Aspire/DCP can use.
+- The repository's .NET 11 SDK, Node.js, and dependencies for `src/api/frontend`.
+- On Linux, a kernel supported by the selected MongoDB image. MongoDB 8.x currently rejects
+  kernels 6.19 and later; follow [SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912)
+  rather than applying an unsupported production workaround.
+- A ready local Kubernetes context and `kubectl`. The core browser flow creates a resource group
+  and verifies its namespace reconciliation; optional platform CRDs are not required for this lane.
 - Playwright Chromium installed for the browser test.
 
 Install frontend and browser dependencies once:

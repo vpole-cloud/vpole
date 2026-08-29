@@ -6,12 +6,17 @@ Use the Aspire AppHost when a change must be verified against Pole's real local 
 
 - Docker is running.
 - The repository's .NET SDK and Node.js dependencies are available.
+- On Linux, the selected MongoDB image supports the host kernel. MongoDB 8.x currently rejects
+  kernels 6.19 and later; track [SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912).
 - The Aspire CLI and Aspire MCP server are installed.
 - A LocalKeyFile KEK has been bootstrapped and configured through AppHost user secrets; see
   [Envelope encryption operations](envelope-encryption.md#aspire-local-development).
-- A Kubernetes context is configured only when the workflow exercises reconciliation.
+- A Kubernetes context is configured when the workflow exercises reconciliation. The default
+  deployment-target bootstrap and the core Aspire E2E resource-group flow both require one.
 
-The AppHost is `src/api/Pole.AppHost/Pole.AppHost.csproj`. It starts MongoDB, Keycloak, RabbitMQ, the Pole API, and the Vite frontend. The sample `blog` project requires an explicit start.
+The AppHost is `src/api/Pole.AppHost/Pole.AppHost.csproj`. It starts MongoDB 7.0 (pinned to match
+the integration-test fixture), Keycloak, RabbitMQ, the Pole API, and the Vite frontend. The sample
+`blog` project requires an explicit start.
 
 Pole validates and loads the complete envelope-encryption key ring before migrations or background
 jobs start. A missing or invalid key is an intentional fail-closed startup error; AppHost never

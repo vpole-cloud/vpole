@@ -1,7 +1,7 @@
 using System.Xml.Linq;
 using Xunit;
 
-namespace Pole.Tests.Integration.Architecture;
+namespace Pole.Tests.Architecture;
 
 public sealed class ModuleBoundaryArchitectureTests
 {
@@ -69,7 +69,7 @@ public sealed class ModuleBoundaryArchitectureTests
                 ProjectRole.ContractHttpMapping or
                 ProjectRole.Events)
             .SelectMany(project => LoadSharedReferences(project, sharedRoot))
-            .Where(edge => !IsAllowedSharedReference(edge.Source.Role, edge.TargetIdentity))
+            .Where(edge => !IsAllowedSharedReference(edge.Source, edge.TargetIdentity))
             .Select(edge => new ProjectEdge(edge.Source.Identity, edge.TargetIdentity))
             .ToHashSet();
         var allowlistedEdges = TemporarySharedProjectReferenceAllowlist
@@ -177,15 +177,23 @@ public sealed class ModuleBoundaryArchitectureTests
     }
 
     private static bool IsAllowedSharedReference(
-        ProjectRole sourceRole,
-        string targetIdentity) =>
-        sourceRole switch
+        ProjectNode source,
+        string targetIdentity)
+    {
+        if (source is { Role: ProjectRole.Contracts, Identity: "Outbox.Contracts" } &&
+            targetIdentity == "Events")
+        {
+            return true;
+        }
+
+        return source.Role switch
         {
             ProjectRole.Contracts => targetIdentity is "ResultType" or "Workloads",
             ProjectRole.ContractHttpMapping => targetIdentity is "ASP",
             ProjectRole.Events => targetIdentity is "Events" or "Workloads",
             _ => true
         };
+    }
 
     private static bool IsAllowed(ProjectNode source, ProjectNode target) =>
         source.Role switch
@@ -202,6 +210,7 @@ public sealed class ModuleBoundaryArchitectureTests
                 target.Role is ProjectRole.Primitives or
                     ProjectRole.Domain or
                     ProjectRole.Contracts or
+                    ProjectRole.ContractHttpMapping or
                     ProjectRole.Events,
             ProjectRole.Application =>
                 target.Role is ProjectRole.Contracts or

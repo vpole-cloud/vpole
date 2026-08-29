@@ -128,16 +128,18 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         await _application.ResourceNotifications.WaitForResourceHealthyAsync("frontend", _shutdown.Token);
         await _application.ResourceNotifications.WaitForResourceHealthyAsync("github-stub", _shutdown.Token);
 
-        Api = _application.CreateHttpClient("pole-server");
-        Stub = _application.CreateHttpClient("github-stub");
+        Api = _application.CreateHttpClient("pole-server", "http");
+        Stub = _application.CreateHttpClient("github-stub", "http");
         Stub.DefaultRequestHeaders.Add("X-Pole-E2E-Stub-Key", _stubControlKey);
-        FrontendBaseAddress = _application.CreateHttpClient("frontend").BaseAddress
+        FrontendBaseAddress = _application.CreateHttpClient("frontend", "http").BaseAddress
                               ?? throw new InvalidOperationException("Aspire did not resolve the frontend endpoint.");
         _keycloak = new KeycloakAdminClient(
-            _application.CreateHttpClient("pole-keycloak"),
+            _application.CreateHttpClient("pole-keycloak", "http"),
             KeycloakAdminUsername,
             _keycloakAdminPassword);
-        await WaitForKeycloakDiscoveryAsync(_application.CreateHttpClient("pole-keycloak"), _shutdown.Token);
+        await WaitForKeycloakDiscoveryAsync(
+            _application.CreateHttpClient("pole-keycloak", "http"),
+            _shutdown.Token);
 
         await ConfigureInteractiveClientAsync(_shutdown.Token);
         var directGrantClient = await _keycloak.CreateDirectGrantClientAsync(

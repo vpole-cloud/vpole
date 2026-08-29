@@ -255,12 +255,12 @@ public sealed class AddWebServiceDeploymentHandler(
             cancellationToken);
     }
 
-    private async Task<MongoTransactionDecision<AddWebServiceDeploymentOutcome>>
+    private async Task<QuotaAdmissionTransactionDecision<AddWebServiceDeploymentOutcome>>
         PersistAsync(
         AddWebServiceDeploymentRequest request,
         CurrentState state,
         ResolvedAddition placement,
-        MongoTransactionContext<AddWebServiceDeploymentOutcome> transaction,
+        QuotaAdmissionTransactionContext<AddWebServiceDeploymentOutcome> transaction,
         CancellationToken cancellationToken)
     {
         var current = state.WebService;
@@ -336,9 +336,9 @@ public sealed class AddWebServiceDeploymentHandler(
         AddWebServiceDeploymentError error) =>
         new(error);
 
-    private static MongoTransactionDecision<AddWebServiceDeploymentOutcome>
+    private static QuotaAdmissionTransactionDecision<AddWebServiceDeploymentOutcome>
         Abort(
-            MongoTransactionContext<AddWebServiceDeploymentOutcome> transaction,
+            QuotaAdmissionTransactionContext<AddWebServiceDeploymentOutcome> transaction,
             AddWebServiceDeploymentError error) =>
         transaction.Abort(Error(error));
 

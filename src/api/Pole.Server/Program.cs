@@ -25,9 +25,6 @@ using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
-using Pole.Features.Quotas.Contracts.HttpMapping;
-using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
-using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.ResourceDeployments.Application;
@@ -88,10 +85,6 @@ builder.AddServiceDefaults();
 builder.AddMongoDBClient("pole-database");
 builder.AddFunctionOrleansHosting();
 builder.AddSecurity();
-
-builder.Services.AddHttpProblemMappings(QuotaContractHttpMappings.All);
-builder.Services.AddHttpProblemMappings(ResourceDeploymentContractHttpMappings.All);
-builder.Services.AddHttpProblemMappings(DeploymentTargetContractHttpMappings.All);
 
 builder.Services.AddKubernetes(configuration)
     .AddEventBus(configuration, assemblies)

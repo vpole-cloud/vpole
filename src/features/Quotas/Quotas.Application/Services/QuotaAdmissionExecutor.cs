@@ -24,9 +24,9 @@ internal sealed class QuotaAdmissionExecutor(
         QuotaMutation<TSpec> mutation,
         Func<QuotaExecutionError, TOutcome> quotaError,
         Func<
-            MongoTransactionContext<TOutcome>,
+            QuotaAdmissionTransactionContext<TOutcome>,
             CancellationToken,
-            Task<MongoTransactionDecision<TOutcome>>> mutationCallback,
+            Task<QuotaAdmissionTransactionDecision<TOutcome>>> mutationCallback,
         CancellationToken cancellationToken = default)
         where TOutcome : notnull
     {
@@ -81,10 +81,16 @@ internal sealed class QuotaAdmissionExecutor(
                     }
 
                     var decision = await mutationCallback(
-                        transaction,
+                        new QuotaAdmissionTransactionContext<TOutcome>(transaction.Session),
                         transactionCancellationToken);
-                    committed = decision is MongoTransactionCommit<TOutcome>;
-                    return decision;
+                    committed = decision is QuotaAdmissionTransactionCommit<TOutcome>;
+                    return decision switch
+                    {
+                        QuotaAdmissionTransactionCommit<TOutcome> commit =>
+                            transaction.Commit(commit.Outcome),
+                        QuotaAdmissionTransactionAbort<TOutcome> abort =>
+                            transaction.Abort(abort.Outcome)
+                    };
                 },
                 cancellationToken: cancellationToken);
 
