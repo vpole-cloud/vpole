@@ -2,10 +2,12 @@ using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Pole.ASP.Helpers;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Application.Persistence;
 using Pole.Features.Quotas.Application.Services;
 using Pole.Features.Quotas.Contracts;
+using Pole.Features.Quotas.Contracts.HttpMapping;
 
 namespace Pole.Features.Quotas.Application;
 
@@ -15,6 +17,8 @@ public static class QuotaServiceCollectionExtensions
         this IServiceCollection services,
         params Assembly[] featureAssemblies)
     {
+        services.AddHttpProblemMappings(QuotaContractHttpMappings.All);
+
         var assemblies = featureAssemblies
             .Append(typeof(CpuQuota).Assembly)
             .Distinct()

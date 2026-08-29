@@ -204,17 +204,19 @@ export function useWebServicesManager({
     }
   }
 
-  const create = (input: WebServiceInput) =>
-    submit(
+  const create = async (input: WebServiceInput) => {
+    await submit(
       () => createWebService(apiBaseUrl, input, token, tenantId),
       'Unable to create the web service.',
     )
+  }
 
-  const update = (id: string, input: WebServiceInput) =>
-    submit(
+  const update = async (id: string, input: WebServiceInput) => {
+    await submit(
       () => updateWebService(apiBaseUrl, id, input, token, tenantId),
       'Unable to update the web service.',
     )
+  }
 
   const addDeployment = (id: string, input: WebServiceDeploymentInput) =>
     submit(

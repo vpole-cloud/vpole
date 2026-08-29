@@ -158,8 +158,8 @@ public sealed class UpdateFunctionAppHandler(
             cancellationToken);
     }
 
-    private static async Task<MongoTransactionDecision<UpdateFunctionAppOutcome>> PersistAsync(
-        MongoTransactionContext<UpdateFunctionAppOutcome> transaction,
+    private static async Task<QuotaAdmissionTransactionDecision<UpdateFunctionAppOutcome>> PersistAsync(
+        QuotaAdmissionTransactionContext<UpdateFunctionAppOutcome> transaction,
         FunctionApp current,
         FunctionRevision candidate,
         FunctionQuotaAllocation admittedQuota,

@@ -294,14 +294,14 @@ public sealed class CreateWebServiceHandler(
         return new Ok<IReadOnlyList<CreateResourceDeploymentRequest>>(requests);
     }
 
-    private async Task<MongoTransactionDecision<CreateWebServiceOutcome>> PersistAsync(
+    private async Task<QuotaAdmissionTransactionDecision<CreateWebServiceOutcome>> PersistAsync(
         CreateWebServiceRequest request,
         string isolationScopeId,
         WebServiceSpec spec,
         WebServiceFactory.CreateOptions options,
         IReadOnlyList<ResolvedTargetRequest> targets,
         IReadOnlyDictionary<string, ResolvedComputeProfile> computeByTarget,
-        MongoTransactionContext<CreateWebServiceOutcome> transaction,
+        QuotaAdmissionTransactionContext<CreateWebServiceOutcome> transaction,
         CancellationToken cancellationToken)
     {
         var webService = WebServiceFactory.Create(
@@ -357,8 +357,8 @@ public sealed class CreateWebServiceHandler(
     private static CreateWebServiceOutcome Error(CreateWebServiceError error) =>
         new(error);
 
-    private static MongoTransactionDecision<CreateWebServiceOutcome> Abort(
-        MongoTransactionContext<CreateWebServiceOutcome> transaction,
+    private static QuotaAdmissionTransactionDecision<CreateWebServiceOutcome> Abort(
+        QuotaAdmissionTransactionContext<CreateWebServiceOutcome> transaction,
         CreateWebServiceError error) =>
         transaction.Abort(Error(error));
 

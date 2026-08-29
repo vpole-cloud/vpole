@@ -47,7 +47,6 @@ public static class FunctionRuntimeRegistration
         services.TryAddSingleton<IFunctionRevisionKubernetesManager, FunctionRevisionKubernetesManager>();
         services.TryAddSingleton<IFunctionEndpointSliceSource, KubernetesFunctionEndpointSliceSource>();
         services.TryAddSingleton<IFunctionEndpointRegistry, FunctionEndpointRegistry>();
-        services.TryAddSingleton<IFunctionRevisionActivator, FunctionRevisionActivator>();
         services.TryAddSingleton<IFunctionRuntimeRouteResolver, FunctionRuntimeRouteResolver>();
         services.AddHostedService<FunctionEndpointSliceWatcher>();
         return services;
@@ -99,6 +98,7 @@ public static class FunctionRuntimeRegistration
             provider.GetRequiredService<FunctionCoordinationClient>());
         services.TryAddSingleton<IFunctionScalingCoordinator>(provider =>
             provider.GetRequiredService<FunctionCoordinationClient>());
+        services.TryAddSingleton<IFunctionRevisionActivator, FunctionRevisionActivator>();
         services.TryAddSingleton<IFunctionPendingAdmissionLimiter, FunctionPendingAdmissionLimiter>();
         services.TryAddSingleton<IFunctionPublicRateLimiter, FunctionPublicRateLimiter>();
         services.TryAddSingleton<IFunctionMeterWriter, FunctionMeterWriter>();

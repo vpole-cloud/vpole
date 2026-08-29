@@ -126,8 +126,9 @@ dotnet test tests/Pole.Tests.Architecture/Pole.Tests.Architecture.csproj
 
 This fast suite parses production C# source without starting infrastructure. It protects the
 removed Mongo contexts, requires named `*Filters` helpers for runtime Mongo filters, and verifies
-feature-owned DI composition. The `POLE001` analyzer enforces the raw Mongo query API boundary
-during builds of the explicitly migrated C# application projects.
+feature-owned DI composition and feature project-reference boundaries. The `POLE001` analyzer
+enforces the raw Mongo query API boundary during builds of the explicitly migrated C# application
+projects.
 
 Run the integration suite from the repository root with:
 

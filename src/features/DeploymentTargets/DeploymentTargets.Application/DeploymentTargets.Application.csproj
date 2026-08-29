@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
+    <ProjectReference Include="..\DeploymentTargets.Contracts.HttpMapping\DeploymentTargets.Contracts.HttpMapping.csproj" />
     <ProjectReference Include="..\DeploymentTargets.Domain\DeploymentTargets.Domain.csproj" />
     <ProjectReference Include="..\..\..\shared\Encryption\Encryption.csproj" />
     <ProjectReference Include="..\..\..\shared\Dns\Dns.csproj" />

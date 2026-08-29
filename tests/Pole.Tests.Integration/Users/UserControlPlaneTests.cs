@@ -36,6 +36,7 @@ public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsy
         var services = new ServiceCollection();
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
+        services.AddSingleton<MongoRunTransaction>();
         services.AddOutboxPersistence();
         services.AddTenantsFeature();
         services.AddUsersFeature(CreateConfiguration());
@@ -54,6 +55,7 @@ public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsy
         var services = new ServiceCollection();
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
+        services.AddSingleton<MongoRunTransaction>();
         services.AddOutboxPersistence();
         services.AddUsersFeature(CreateConfiguration());
 

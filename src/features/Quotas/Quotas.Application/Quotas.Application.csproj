@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Quotas.Contracts\Quotas.Contracts.csproj" />
+    <ProjectReference Include="..\Quotas.Contracts.HttpMapping\Quotas.Contracts.HttpMapping.csproj" />
     <ProjectReference Include="..\Quotas.Domain\Quotas.Domain.csproj" />
     <ProjectReference Include="..\Quotas.Primitives\Quotas.Primitives.csproj" />
     <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />

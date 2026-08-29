@@ -9,6 +9,7 @@ using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 
 namespace Pole.Features.DeploymentTargets.Application;
 
@@ -18,8 +19,7 @@ public static class DeploymentTargetsFeatureRegistration
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // Application owns mappings for feature-local mutation outcomes;
-        // stable contract mappings remain owned by their contract packages.
+        services.AddHttpProblemMappings(DeploymentTargetContractHttpMappings.All);
         services.TryAddSingleton(TimeProvider.System);
         services.AddHttpProblemMappings(DeploymentTargetHttpMappings.All);
         services.AddDeploymentTargetPersistence();

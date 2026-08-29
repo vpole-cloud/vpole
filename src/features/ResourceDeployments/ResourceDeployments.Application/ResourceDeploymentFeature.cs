@@ -8,6 +8,7 @@ using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Application.Jobs;
 using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
+using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 
 namespace Pole.Features.ResourceDeployments.Application;
 
@@ -17,9 +18,7 @@ public static class ResourceDeploymentFeature
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // Contract mappings are composed by the host from the sibling
-        // Contracts.HttpMapping adapter project. Application intentionally does
-        // not reference that project; see the module dependency policy.
+        services.AddHttpProblemMappings(ResourceDeploymentContractHttpMappings.All);
         services.AddHttpProblemMappings(ResourceDeploymentHttpMappings.All);
 
         services.TryAddEnumerable(
