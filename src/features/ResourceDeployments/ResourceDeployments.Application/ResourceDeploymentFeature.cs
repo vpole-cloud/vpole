@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using Hangfire;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -46,6 +47,16 @@ public static class ResourceDeploymentFeature
         services.TryAddScoped<ResourceDeploymentReconciler>();
         services.TryAddScoped<ResourceDeploymentRecoveryJob>();
 
+        return services;
+    }
+
+    public static IServiceProvider ScheduleResourceDeploymentRecurringJobs(
+        this IServiceProvider services)
+    {
+        RecurringJob.AddOrUpdate<ResourceDeploymentRecoveryJob>(
+            "recover-resource-deployments",
+            job => job.RecoverAsync(CancellationToken.None),
+            Cron.Minutely);
         return services;
     }
 

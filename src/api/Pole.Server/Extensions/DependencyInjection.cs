@@ -5,37 +5,12 @@ using Hangfire.Mongo;
 using Hangfire.Mongo.Migration.Strategies;
 using Hangfire.Mongo.Migration.Strategies.Backup;
 using MassTransit;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Features.ContainerRegistries.Application.Provisioning;
-using Pole.Features.DeploymentTargets.Application.Common;
-using Pole.Features.GitProviders.Application.Analysis;
-using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Application.GitHub;
-using Pole.Features.Outbox.Application;
-using Pole.Features.Postgres.Application.Common;
-using Pole.Features.Postgres.Application.Kubernetes;
-using Pole.Features.Quotas.Application;
-using Pole.Features.Quotas.Application.Common;
-using Pole.Features.Quotas.Application.Services;
-using Pole.Features.Quotas.Contracts;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Common;
-using Pole.Features.ResourceDeployments.Application.Endpoints;
-using Pole.Features.ResourceDeployments.Application.Jobs;
-using Pole.Features.ResourceDeployments.Application.Reconciliation;
-using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceGroups.Application.Jobs;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.StorageProfiles.Application.Common;
-using Pole.Features.StorageProfiles.Application.Discovery;
-using Pole.Features.StorageProfiles.Contracts;
-using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.Tenants.Application;
 using Pole.Mediator;
 using Pole.Observability;
@@ -137,24 +112,6 @@ public static class DependencyInjection
             return services;
         }
 
-        public IServiceCollection AddSettings(IConfiguration configuration)
-        {
-            services.AddSettingsSection<PostgresSettings>(PostgresSettings.SectionName, configuration);
-            services.AddOptions<QuotaSettings>()
-                .Bind(configuration.GetSection(QuotaSettings.SectionName))
-                .ValidateDataAnnotations()
-                .ValidateOnStart();
-            services.AddSingleton(sp => sp.GetRequiredService<IOptions<QuotaSettings>>().Value);
-            return services;
-        }
-
-        private void AddSettingsSection<TSettings>(string sectionName, IConfiguration configuration)
-            where TSettings : class
-        {
-            services.Configure<TSettings>(configuration.GetSection(sectionName));
-            services.AddSingleton<TSettings>(sp => sp.GetRequiredService<IOptions<TSettings>>().Value);
-        }
-
         public IServiceCollection AddHangfireWithMongo(IConfiguration configuration)
         {
             services.TryAddSingleton(TimeProvider.System);
@@ -235,40 +192,8 @@ public static class DependencyInjection
     {
         public WebApplication UseHangfire()
         {
-            var outboxSettings = app.Services.GetRequiredService<IOptions<OutboxSettings>>().Value;
             if (app.Environment.IsDevelopment())
                 app.UseHangfireDashboard();
-
-            RecurringJob.AddOrUpdate<OutboxProcessorJob>(
-                "process-outbox-messages",
-                job => job.ProcessOutboxMessagesAsync(CancellationToken.None),
-                outboxSettings.ProcessingCronExpression);
-
-            RecurringJob.AddOrUpdate<OutboxProcessorJob>(
-                "cleanup-outbox-messages",
-                job => job.CleanupMessagesAsync(CancellationToken.None),
-                Cron.Daily(3));
-
-            RecurringJob.AddOrUpdate<SourceBuildQueueRecoveryJob>(
-                "recover-source-build-queue",
-                job => job.RecoverAsync(),
-                Cron.Minutely);
-
-            RecurringJob.AddOrUpdate<RuntimeCellRecoveryJob>(
-                "recover-runtime-cells",
-                job => job.RecoverAsync(CancellationToken.None),
-                Cron.Minutely);
-
-            RecurringJob.AddOrUpdate<ResourceDeploymentRecoveryJob>(
-                "recover-resource-deployments",
-                job => job.RecoverAsync(CancellationToken.None),
-                Cron.Minutely);
-
-            RecurringJob.AddOrUpdate<RegistryProvisioningCleanupService>(
-                "cleanup-container-registry-provisioning",
-                job => job.ReconcileAsync(CancellationToken.None),
-                Cron.Minutely);
-
             return app;
         }
     }

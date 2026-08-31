@@ -10,12 +10,11 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Persistence.Contracts;
 using Pole.Features.Functions.Application.Persistence.Mutations;
 using Pole.Features.Functions.Application.Persistence.Reads;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
-using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
@@ -58,15 +57,18 @@ public sealed record UpdateFunctionAppRequestBody(
 public sealed record UpdateFunctionAppResponse(
     string FunctionAppId,
     string RevisionId,
-    int RevisionNumber);
+    int RevisionNumber,
+    PlacementSummaryDto Placement);
+
+public sealed record FunctionAppResourceDeploymentMissing(string FunctionAppId);
 
 public union UpdateFunctionAppError(
     FunctionAppNotFound,
-    FunctionAppResourceGroupNotFound,
-    FunctionAppResourceGroupDeleting,
+    FunctionAppResourceDeploymentMissing,
     FunctionAppHasPendingRevision,
     FunctionAppIsNotEnabled,
     PersistFunctionAppRevisionError,
+    ResourceDeploymentMutationError,
     QuotaExecutionError);
 
 public union UpdateFunctionAppOutcome(
@@ -77,7 +79,8 @@ public sealed class UpdateFunctionAppHandler(
     LoadFunctionAppById loadFunctionAppById,
     LoadFunctionAppRevisionReferences loadFunctionAppRevisionReferences,
     PersistFunctionAppRevision persistFunctionAppRevision,
-    ResolveFunctionAppResourceGroupPlacement resolveResourceGroupPlacement,
+    LoadExactResourceDeploymentRuntimePlacement loadDeploymentPlacement,
+    RequestExactResourceDeploymentApply requestDeploymentApply,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     TimeProvider timeProvider)
     : IMediatorOutcomeHandler<UpdateFunctionAppRequest, UpdateFunctionAppOutcome>
@@ -97,23 +100,24 @@ public sealed class UpdateFunctionAppHandler(
         if (app.DesiredState != FunctionAppDesiredState.Enabled)
             return new UpdateFunctionAppError(new FunctionAppIsNotEnabled(app.Id));
 
-        var placementResolution = await resolveResourceGroupPlacement(
+        var deployment = await loadDeploymentPlacement(
             app.TenantId,
-            app.ResourceGroupId,
+            FunctionResourceDeployment.ResourceType,
+            app.Id,
+            app.Placement.ResourceDeploymentId,
             cancellationToken);
-        ResourceGroupPlacement placement;
-        switch (placementResolution)
+        if (deployment is null ||
+            !string.Equals(
+                deployment.RuntimeCellId,
+                app.Placement.RuntimeCellId,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                deployment.DeploymentTargetId,
+                app.Placement.DeploymentTargetId,
+                StringComparison.Ordinal))
         {
-            case ResourceGroupPlacement value:
-                placement = value;
-                break;
-            case FunctionAppResourceGroupNotFound notFound:
-                return new UpdateFunctionAppError(notFound);
-            case FunctionAppResourceGroupDeleting deleting:
-                return new UpdateFunctionAppError(deleting);
-            default:
-                throw new InvalidOperationException(
-                    "Resource group placement resolution returned an unsupported outcome.");
+            return new UpdateFunctionAppError(
+                new FunctionAppResourceDeploymentMissing(app.Id));
         }
 
         var references = await loadFunctionAppRevisionReferences(app, cancellationToken);
@@ -123,7 +127,7 @@ public sealed class UpdateFunctionAppHandler(
                 "Function App references an active revision that does not exist.");
         }
 
-        var requestedSpec = request.Body.Spec.ToDomain().ToRevisionSpec(placement.KubernetesNamespace);
+        var requestedSpec = request.Body.Spec.ToDomain().ToRevisionSpec();
         var handlers = FunctionTriggerReconciler.Reconcile(
             references.ActiveRevision?.Spec.Handlers ?? [],
             requestedSpec.Handlers);
@@ -153,6 +157,8 @@ public sealed class UpdateFunctionAppHandler(
                 admittedQuota,
                 request.Body.Tags,
                 persistFunctionAppRevision,
+                requestDeploymentApply,
+                deployment,
                 timeProvider.GetUtcNow(),
                 ct),
             cancellationToken);
@@ -165,6 +171,8 @@ public sealed class UpdateFunctionAppHandler(
         FunctionQuotaAllocation admittedQuota,
         ImmutableHashSet<string> tags,
         PersistFunctionAppRevision persistFunctionAppRevision,
+        RequestExactResourceDeploymentApply requestDeploymentApply,
+        ResourceDeploymentRuntimePlacementDto deployment,
         DateTimeOffset updatedAtUtc,
         CancellationToken cancellationToken)
     {
@@ -176,12 +184,39 @@ public sealed class UpdateFunctionAppHandler(
             tags,
             updatedAtUtc,
             cancellationToken);
-        return persisted.Match(
-            revision => transaction.Commit(new UpdateFunctionAppResponse(
+        if (!persisted.TryGetValue(out var revision, out var persistenceError))
+            return transaction.Abort(new UpdateFunctionAppError(persistenceError));
+
+        var deploymentResult = await requestDeploymentApply(
+            new ResourceDeploymentExactMutationRequest(
+                current.TenantId,
+                FunctionResourceDeployment.ResourceType,
                 current.Id,
-                revision.Id,
-                revision.RevisionNumber)),
-            error => transaction.Abort(new UpdateFunctionAppError(error)));
+                current.Placement.ResourceDeploymentId,
+                deployment.DeploymentRevision,
+                new ComputeProfileReference(
+                    deployment.Compute.ComputeProfileId,
+                    deployment.Compute.ComputeProfileRevision),
+                deployment.Compute with
+                {
+                    Requests = new ResourceDeploymentComputeResourceValues(
+                        candidate.Spec.Resources.Requests.CpuMillis,
+                        candidate.Spec.Resources.Requests.MemoryMi),
+                    Limits = new ResourceDeploymentComputeResourceValues(
+                        candidate.Spec.Resources.Limits.CpuMillis,
+                        candidate.Spec.Resources.Limits.MemoryMi)
+                },
+                ResourceRevision: candidate.RevisionNumber),
+            transaction.Session,
+            cancellationToken);
+        if (!deploymentResult.TryGetValue(out var placement, out var deploymentError))
+            return transaction.Abort(new UpdateFunctionAppError(deploymentError));
+
+        return transaction.Commit(new UpdateFunctionAppResponse(
+            current.Id,
+            revision.Id,
+            revision.RevisionNumber,
+            placement));
     }
 }
 

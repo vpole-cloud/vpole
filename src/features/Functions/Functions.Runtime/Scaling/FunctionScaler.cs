@@ -43,6 +43,7 @@ public sealed class FunctionScaler(
     IFunctionEndpointRegistry endpointRegistry,
     IFunctionAgentClient agentClient,
     IFunctionScalingCoordinator scalingCoordinator,
+    IFunctionResourcePlacementResolver placementResolver,
     IFunctionRevisionKubernetesManager kubernetesManager,
     FunctionScalerOptions options,
     TimeProvider timeProvider,
@@ -199,8 +200,15 @@ public sealed class FunctionScaler(
             return;
         }
 
-        var subject = new FunctionRevisionInKubernetes(target.App, target.Revision);
-        var service = new FunctionServiceKey(subject.Namespace, subject.ServiceName);
+        var resolvedPlacement = await placementResolver.ResolveAsync(target.App, cancellationToken: cancellationToken);
+        if (!resolvedPlacement.TryGetValue(out var placement, out _))
+            return;
+
+        var subject = new FunctionRevisionInKubernetes(target.App, target.Revision, placement!);
+        var service = new FunctionServiceKey(
+            placement!.DeploymentTargetId,
+            subject.Namespace,
+            subject.ServiceName);
         var snapshot = endpointRegistry.GetSnapshot(service);
         var replicasResult = await kubernetesManager.ReadReplicaStateAsync(subject, cancellationToken);
         if (!replicasResult.TryGetValue(out var replicas, out _))

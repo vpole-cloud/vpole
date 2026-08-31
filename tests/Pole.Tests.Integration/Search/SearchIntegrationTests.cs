@@ -192,12 +192,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     public async Task ResourceGroupUpdate_RebuildsProjection_WithoutDescriptionRows()
     {
         var createResult = await Mediator.Send(TestData.CreateResourceGroupRequest("ops"));
-        var created = createResult.AssertHandlerOutcome() switch
-        {
-            ResourceGroupDto success => success,
-            CreateResourceGroupError creationError => throw new Xunit.Sdk.XunitException(
-                $"Expected resource-group creation success, got {creationError.GetType().Name}.")
-        };
+        var created = createResult.AssertSuccess();
 
         await IndexResourceGroupCreatedAsync(created.Id);
 
@@ -263,7 +258,6 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             resourceGroup.Id,
             resourceGroup.Name,
             resourceGroup.Description,
-            resourceGroup.KubernetesNamespace,
             resourceGroup.Resources,
             resourceGroup.Tags)
         {
@@ -279,11 +273,10 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             resourceGroup.Id,
             resourceGroup.Name,
             resourceGroup.Description,
-            resourceGroup.KubernetesNamespace,
-                resourceGroup.Resources,
-                new ResourceGroupUpdateEventChanges(
-                    UpdateLog<string>.Of("", resourceGroup.Description),
-                    UpdateLog<ImmutableHashSet<string>>.Of([], resourceGroup.Tags)))
+            resourceGroup.Resources,
+            new ResourceGroupUpdateEventChanges(
+                UpdateLog<string>.Of("", resourceGroup.Description),
+                UpdateLog<ImmutableHashSet<string>>.Of([], resourceGroup.Tags)))
         {
             EventCore = EventCore.Create(resourceGroup.TenantId)
         }, CancellationToken.None);

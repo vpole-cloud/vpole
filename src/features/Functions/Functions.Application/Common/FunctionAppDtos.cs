@@ -7,6 +7,7 @@ public sealed record FunctionAppDto(
     string Id,
     string TenantId,
     string ResourceGroupId,
+    FunctionPlacementDto Placement,
     string Name,
     string FunctionRoute,
     string? ActiveRevisionId,
@@ -18,6 +19,11 @@ public sealed record FunctionAppDto(
     ImmutableHashSet<string> Tags,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset UpdatedAtUtc);
+
+public sealed record FunctionPlacementDto(
+    string ResourceDeploymentId,
+    string RuntimeCellId,
+    string DeploymentTargetId);
 
 public sealed record FunctionRevisionDto(
     string Id,
@@ -39,6 +45,10 @@ public static class FunctionAppDtoExtensions
             app.Id,
             app.TenantId,
             app.ResourceGroupId,
+            new FunctionPlacementDto(
+                app.Placement.ResourceDeploymentId,
+                app.Placement.RuntimeCellId,
+                app.Placement.DeploymentTargetId),
             app.Name,
             app.FunctionRoute,
             app.ActiveRevisionId,

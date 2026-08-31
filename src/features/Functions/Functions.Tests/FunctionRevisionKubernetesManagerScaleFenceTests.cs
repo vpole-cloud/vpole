@@ -145,7 +145,10 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         var created = FunctionAppFactory.Create(
             "tenant-1",
             "resource-group-1",
-            "pole-tenant-rg",
+            new FunctionPlacementIdentity(
+                "507f1f77bcf86cd799439091",
+                "507f1f77bcf86cd799439092",
+                "507f1f77bcf86cd799439093"),
             "order-functions",
             "orders",
             spec,
@@ -158,7 +161,14 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
             FunctionAppId = app.Id,
             RevisionNumber = 3
         };
-        return new FunctionRevisionInKubernetes(app, revision);
+        return new FunctionRevisionInKubernetes(
+            app,
+            revision,
+            new FunctionResourcePlacement(
+                app.Placement.ResourceDeploymentId,
+                app.Placement.RuntimeCellId,
+                app.Placement.DeploymentTargetId,
+                "pole-tenant-rg"));
     }
 
     private sealed record RecordedPut(string Path, string Body);

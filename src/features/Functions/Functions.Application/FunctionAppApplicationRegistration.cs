@@ -4,6 +4,7 @@ using Pole.ASP.Helpers;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence;
 using Pole.Features.Functions.Application.Persistence.Lifecycle;
+using Pole.Features.Quotas.Contracts;
 
 namespace Pole.Features.Functions.Application;
 
@@ -14,6 +15,11 @@ public static class FunctionAppApplicationRegistration
     {
         services.AddHttpProblemMappings(FunctionAppHttpMappings.All);
         services.AddFunctionAppPersistence();
+        services.TryAddSingleton<FunctionAppCountQuota>();
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<Quota, FunctionAppCountQuota>());
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IQuotaProfile, FunctionAppQuotaProfile>());
         services.TryAddScoped<MongoFunctionRevisionLifecycleStore>();
         services.TryAddScoped<MongoMarkFunctionRevisionReady>();
         services.TryAddScoped<MarkFunctionRevisionReady>(serviceProvider => serviceProvider

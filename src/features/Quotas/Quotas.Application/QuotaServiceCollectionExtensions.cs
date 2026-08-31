@@ -1,7 +1,9 @@
 using System.Reflection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Pole.ASP.Helpers;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Application.Persistence;
@@ -15,16 +17,19 @@ public static class QuotaServiceCollectionExtensions
 {
     public static IServiceCollection AddQuotasFeature(
         this IServiceCollection services,
-        params Assembly[] featureAssemblies)
+        IConfiguration configuration)
     {
+        ArgumentNullException.ThrowIfNull(configuration);
         services.AddHttpProblemMappings(QuotaContractHttpMappings.All);
+        services.AddOptions<QuotaSettings>()
+            .Bind(configuration.GetSection(QuotaSettings.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.TryAddSingleton(serviceProvider => serviceProvider
+            .GetRequiredService<IOptions<QuotaSettings>>()
+            .Value);
 
-        var assemblies = featureAssemblies
-            .Append(typeof(CpuQuota).Assembly)
-            .Distinct()
-            .ToArray();
-
-        foreach (var type in assemblies.SelectMany(GetLoadableTypes))
+        foreach (var type in GetLoadableTypes(typeof(CpuQuota).Assembly))
         {
             if (type is not { IsClass: true, IsAbstract: false })
                 continue;

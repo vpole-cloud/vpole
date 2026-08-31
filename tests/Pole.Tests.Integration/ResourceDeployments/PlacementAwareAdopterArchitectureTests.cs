@@ -8,6 +8,7 @@ public sealed class PlacementAwareAdopterArchitectureTests
     [InlineData("WebServices")]
     [InlineData("RedisServices")]
     [InlineData("Postgres")]
+    [InlineData("Functions")]
     public void PlacementAwareAdopter_DoesNotUseTransitionalDefaultTargetOrGroupLookup(
         string featureName)
     {
@@ -21,6 +22,7 @@ public sealed class PlacementAwareAdopterArchitectureTests
             .Where(path =>
                 path.EndsWith(".cs", StringComparison.Ordinal) ||
                 path.EndsWith(".fs", StringComparison.Ordinal))
+            .Where(path => !path.Contains(".Tests", StringComparison.Ordinal))
             .Select(path => new
             {
                 Path = path,
@@ -49,6 +51,7 @@ public sealed class PlacementAwareAdopterArchitectureTests
     [InlineData("WebServices", "WebServices.Domain")]
     [InlineData("RedisServices", "RedisServices.Domain")]
     [InlineData("Postgres", "Postgres.Domain")]
+    [InlineData("Functions", "Functions.Domain")]
     public void LogicalResourceDomain_DoesNotOwnKubernetesNamespace(
         string featureName,
         string domainProject)
@@ -76,6 +79,7 @@ public sealed class PlacementAwareAdopterArchitectureTests
     [InlineData("WebServices", "WebServices.Application", "WebServices.Application.csproj")]
     [InlineData("RedisServices", "RedisServices.Application", "RedisServices.Application.csproj")]
     [InlineData("Postgres", "Postgres.Application", "Postgres.Application.fsproj")]
+    [InlineData("Functions", "Functions.Application", "Functions.Application.csproj")]
     public void PlacementAwareAdopter_ReferencesComputeProfileContractsNotApplication(
         string featureName,
         string applicationProject,

@@ -1,8 +1,15 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Contracts;
+using Pole.Features.Functions.Application;
+using Pole.Features.Functions.Application.Common;
+using Pole.Features.Postgres.Application;
+using Pole.Features.Postgres.Application.Common;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application;
+using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -64,10 +71,11 @@ public sealed class QuotaCatalogTests
     }
 
     [Fact]
-    public void ReflectionRegistrationIsLimitedToExplicitFeatureAssemblies()
+    public void FeatureRegistrationOwnsItsQuotaProfile()
     {
         var services = new ServiceCollection();
-        services.AddQuotasFeature(typeof(RedisQuotaProfile).Assembly);
+        services.AddRedisServicesFeature();
+        services.AddQuotasFeature(new ConfigurationBuilder().Build());
         using var provider = services.BuildServiceProvider();
 
         var catalog = provider.GetRequiredService<QuotaCatalog>();
@@ -76,6 +84,27 @@ public sealed class QuotaCatalogTests
         Assert.True(catalog.Contains(RedisServiceCountQuota.QuotaKey));
         Assert.False(catalog.Contains(WebServiceCountQuota.QuotaKey));
         Assert.IsType<RedisQuotaProfile>(catalog.GetProfile<RedisQuotaInput>());
+    }
+
+    [Fact]
+    public void WorkloadFeatureRegistrationsContributeTheirOwnQuotaProfiles()
+    {
+        var configuration = new ConfigurationBuilder().Build();
+        var services = new ServiceCollection();
+        services.AddFunctionAppsFeature();
+        services.AddPostgresFeature(configuration);
+        services.AddRedisServicesFeature();
+        services.AddWebServicesFeature();
+        services.AddQuotasFeature(configuration);
+        using var provider = services.BuildServiceProvider();
+
+        var profiles = provider.GetServices<IQuotaProfile>().ToArray();
+
+        Assert.Contains(profiles, profile => profile is FunctionAppQuotaProfile);
+        Assert.Contains(profiles, profile => profile is PostgresQuotaProfile);
+        Assert.Contains(profiles, profile => profile is RedisQuotaProfile);
+        Assert.Contains(profiles, profile => profile is WebServiceQuotaProfile);
+        _ = provider.GetRequiredService<QuotaCatalog>().Definitions;
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using System.Reflection;
+using Hangfire;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -33,6 +34,21 @@ public static class OutboxFeatureRegistration
         services.TryAddScoped<IOutboxPublisher, MassTransitOutboxPublisher>();
         services.TryAddSingleton<OutboxMetrics>();
         services.TryAddSingleton<OutboxRetryDelayPolicy>();
+        return services;
+    }
+
+    public static IServiceProvider ScheduleOutboxRecurringJobs(
+        this IServiceProvider services)
+    {
+        var settings = services.GetRequiredService<OutboxSettings>();
+        RecurringJob.AddOrUpdate<OutboxProcessorJob>(
+            "process-outbox-messages",
+            job => job.ProcessOutboxMessagesAsync(CancellationToken.None),
+            settings.ProcessingCronExpression);
+        RecurringJob.AddOrUpdate<OutboxProcessorJob>(
+            "cleanup-outbox-messages",
+            job => job.CleanupMessagesAsync(CancellationToken.None),
+            Cron.Daily(3));
         return services;
     }
 }

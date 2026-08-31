@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
-using Pole.Server.Extensions;
+using Pole.Features.Quotas.Application;
 using Xunit;
 
 namespace Pole.Tests.Integration.Quotas;
@@ -20,7 +20,7 @@ public sealed class QuotaSettingsTests
             })
             .Build();
         using var host = new HostBuilder()
-            .ConfigureServices(services => services.AddSettings(configuration))
+            .ConfigureServices(services => services.AddQuotasFeature(configuration))
             .Build();
 
         await Assert.ThrowsAsync<OptionsValidationException>(() => host.StartAsync());

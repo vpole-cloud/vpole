@@ -33,7 +33,6 @@ internal sealed class MongoGetResourceGroupOwnership(
                     resourceGroup.Id,
                     resourceGroup.TenantId,
                     resourceGroup.DefaultIsolationScopeId,
-                    resourceGroup.KubernetesNamespace,
                     ResourceGroupOwnershipLifecycle.Active)),
             _ => throw new InvalidOperationException(
                 $"Resource group '{resourceGroup.Id}' has an unsupported lifecycle state.")

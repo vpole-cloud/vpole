@@ -13,7 +13,6 @@ internal static class ResourceGroupEventExtensions
                 resourceGroup.Id,
                 resourceGroup.Name,
                 resourceGroup.Description,
-                resourceGroup.KubernetesNamespace,
                 resourceGroup.Resources,
                 resourceGroup.Tags)
             {
@@ -25,7 +24,6 @@ internal static class ResourceGroupEventExtensions
                 resourceGroup.Id,
                 resourceGroup.Name,
                 resourceGroup.Description,
-                resourceGroup.KubernetesNamespace,
                 resourceGroup.Resources,
                 resourceGroup.Tags)
             {
@@ -33,4 +31,3 @@ internal static class ResourceGroupEventExtensions
             };
     }
 }
-

@@ -1,6 +1,7 @@
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Events;
@@ -15,6 +16,7 @@ public union BeginFunctionAppDeletionError(
 
 public delegate Task<Result<FunctionApp, BeginFunctionAppDeletionError>>
     BeginFunctionAppDeletion(
+        IClientSessionHandle session,
         FunctionApp current,
         DateTimeOffset nowUtc,
         CancellationToken cancellationToken = default);
@@ -23,26 +25,18 @@ internal sealed class MongoBeginFunctionAppDeletion(
     IMongoCollection<FunctionApp> functionApps,
     IMongoCollection<FunctionRouteBinding> functionRouteBindings,
     IMongoCollection<FunctionTimerState> functionTimerStates,
-    StoreOutboxWrites storeOutboxWrites,
-    RunMongoOutcomeTransaction<Result<FunctionApp, BeginFunctionAppDeletionError>> runTransaction)
+    StoreOutboxWrites storeOutboxWrites)
 {
-    public Task<Result<FunctionApp, BeginFunctionAppDeletionError>> InvokeAsync(
+    public async Task<Result<FunctionApp, BeginFunctionAppDeletionError>> InvokeAsync(
+        IClientSessionHandle session,
         FunctionApp current,
         DateTimeOffset nowUtc,
-        CancellationToken cancellationToken = default) =>
-        runTransaction(
-            (transaction, ct) => BeginAsync(transaction, current, nowUtc, ct),
-            cancellationToken);
-
-    private async Task<MongoTransactionDecision<Result<FunctionApp, BeginFunctionAppDeletionError>>>
-        BeginAsync(
-            MongoTransactionContext<Result<FunctionApp, BeginFunctionAppDeletionError>> transaction,
-            FunctionApp current,
-            DateTimeOffset nowUtc,
-            CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
+        if (!session.IsInTransaction)
+            throw new InvalidOperationException("Function App deletion requires an active transaction.");
         var appResult = await functionApps.UpdateOneAsync(
-            transaction.Session,
+            session,
             FunctionAppFilters.ForDeletion(current),
             Builders<FunctionApp>.Update
                 .Set(app => app.DesiredState, FunctionAppDesiredState.Deleting)
@@ -51,19 +45,19 @@ internal sealed class MongoBeginFunctionAppDeletion(
             cancellationToken: cancellationToken);
         if (appResult.MatchedCount != 1)
         {
-            return transaction.Abort(new Err<BeginFunctionAppDeletionError>(
-                new FunctionAppDeletionChanged(current.Id)));
+            return new Err<BeginFunctionAppDeletionError>(
+                new FunctionAppDeletionChanged(current.Id));
         }
 
         await functionRouteBindings.UpdateOneAsync(
-            transaction.Session,
+            session,
             FunctionRouteBindingFilters.ByFunctionApp(current),
             Builders<FunctionRouteBinding>.Update
                 .Set(route => route.State, FunctionRouteBindingState.Disabled)
                 .Set(route => route.UpdatedAtUtc, nowUtc),
             cancellationToken: cancellationToken);
         await functionTimerStates.UpdateManyAsync(
-            transaction.Session,
+            session,
             FunctionTimerFilters.EnabledByFunctionApp(current),
             Builders<FunctionTimerState>.Update
                 .Set(timer => timer.Enabled, false)
@@ -71,13 +65,16 @@ internal sealed class MongoBeginFunctionAppDeletion(
                 .Set(timer => timer.UpdatedAtUtc, nowUtc),
             cancellationToken: cancellationToken);
         await storeOutboxWrites(
-            transaction.Session,
+            session,
             [OutboxWrite.Create(
-                new FunctionAppDeleteRequestedEvent(current.Id, current.ActiveRevisionId)
+                new FunctionAppDeleteRequestedEvent(
+                    current.Id,
+                    current.Placement.ToSnapshot(),
+                    current.ActiveRevisionId)
                 {
                     EventCore = EventCore.Create(current.TenantId)
                 })],
             cancellationToken);
-        return transaction.Commit(new Ok<FunctionApp>(current));
+        return new Ok<FunctionApp>(current);
     }
 }

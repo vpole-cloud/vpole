@@ -114,6 +114,49 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
     }
 
     [Fact]
+    public async Task FunctionRuntimeConnectivity_AdmitsOnlyInClusterTargets()
+    {
+        var inCluster = CreateTarget(publicBaseDomain: null);
+        var remote = CreateTarget(publicBaseDomain: null) with
+        {
+            Connection = new KubeconfigDeploymentTargetConnection(
+                1,
+                "remote",
+                "https://remote.example.test",
+                null!)
+        };
+        var remoteServiceAccount = CreateTarget(publicBaseDomain: null) with
+        {
+            Connection = new ServiceAccountDeploymentTargetConnection(
+                1,
+                "https://service-account.example.test",
+                "certificate-authority",
+                null!)
+        };
+        await fixture.DbContext.DeploymentTargets.InsertManyAsync(
+            [inCluster, remote, remoteServiceAccount]);
+        var admission = CreateWorkloadPlacementAdmission();
+        var request = new DeploymentTargetAdmissionRequest(
+            ObjectId.GenerateNewId().ToString(),
+            ResourceTypeId.Create("pole/function-app"),
+            IsolationScopeId: null,
+            inCluster.Id,
+            DeploymentTargetRequiredCapabilities.FunctionRuntimeConnectivity);
+
+        var admitted = AssertSuccess(await admission(request));
+        Assert.Equal(inCluster.Id, admitted.Id);
+
+        var rejected = await admission(request with { ExplicitDeploymentTargetId = remote.Id });
+        Assert.True(
+            AssertFailure(rejected) is DeploymentTargetRequiredCapabilitiesUnavailable);
+
+        var serviceAccountRejected = await admission(
+            request with { ExplicitDeploymentTargetId = remoteServiceAccount.Id });
+        Assert.True(
+            AssertFailure(serviceAccountRejected) is DeploymentTargetRequiredCapabilitiesUnavailable);
+    }
+
+    [Fact]
     public async Task PublicIngressAdmission_ReturnsTypedUnavailableCase()
     {
         var privateTarget = CreateTarget(publicBaseDomain: null);

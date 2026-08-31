@@ -63,7 +63,6 @@ internal sealed class MongoPersistUpdatedResourceGroup(
                     replacement.Id,
                     replacement.Name,
                     replacement.Description,
-                    replacement.KubernetesNamespace,
                     replacement.Resources,
                     changes)
                 {

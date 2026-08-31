@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Pole.Database;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Lifecycle;
-using Pole.Features.Functions.Application.Persistence.Contracts;
 using Pole.Features.Functions.Application.Persistence.Mutations;
 using Pole.Features.Functions.Application.Persistence.Reads;
 using Pole.Features.Functions.Application.Persistence.Runtime.Gateway;
@@ -31,7 +30,6 @@ public sealed class FunctionAppPersistenceRegistrationTests(MongoReplicaSetFixtu
         Assert.NotNull(Services.GetRequiredService<PersistFunctionAppRevision>());
         Assert.NotNull(Services.GetRequiredService<BeginFunctionAppDeletion>());
         Assert.NotNull(Services.GetRequiredService<RetryFunctionInvocation>());
-        Assert.NotNull(Services.GetRequiredService<ResolveFunctionAppResourceGroupPlacement>());
         Assert.NotNull(Services.GetRequiredService<ClaimNextFunctionTimer>());
         Assert.NotNull(Services.GetRequiredService<MaterializeFunctionTimerOccurrence>());
         Assert.NotNull(Services.GetRequiredService<ReleaseFunctionTimerLease>());

@@ -50,7 +50,8 @@ public sealed class ComputeProfileBootstrapper(
             [
                 ResourceTypeId.Create("pole/web-service"),
                 ResourceTypeId.Create("pole/redis"),
-                ResourceTypeId.Create("pole/postgresql")
+                ResourceTypeId.Create("pole/postgresql"),
+                ResourceTypeId.Create("pole/function-app")
             ],
             AllTenantsComputeProfileAccess.Create(),
             [ComputeProfileTargetMapping.Create(target.Value.Id)],

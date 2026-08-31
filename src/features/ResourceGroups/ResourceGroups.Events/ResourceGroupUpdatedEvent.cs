@@ -10,7 +10,6 @@ public sealed record ResourceGroupUpdatedEvent(
     string ResourceGroupId,
     string Name,
     string Description,
-    string KubernetesNamespace,
     ImmutableList<ShortResourceInfo> Resources,
     ResourceGroupUpdatedEventChanges Changes
 ) : IPoleEvent

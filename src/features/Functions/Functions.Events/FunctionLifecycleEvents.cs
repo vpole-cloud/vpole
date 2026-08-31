@@ -9,6 +9,7 @@ public sealed record FunctionAppCreatedEvent(
     string RevisionId,
     int RevisionNumber,
     string ResourceGroupId,
+    FunctionPlacementSnapshot Placement,
     string Name,
     string FunctionRoute,
     FunctionRevisionSpecSnapshot Spec) : IPoleEvent
@@ -21,6 +22,7 @@ public sealed record FunctionRevisionCreatedEvent(
     string FunctionAppId,
     string RevisionId,
     int RevisionNumber,
+    FunctionPlacementSnapshot Placement,
     FunctionRevisionSpecSnapshot Spec) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
@@ -31,6 +33,7 @@ public sealed record FunctionRevisionPromotedEvent(
     string FunctionAppId,
     string RevisionId,
     int RevisionNumber,
+    FunctionPlacementSnapshot Placement,
     string? PreviousRevisionId) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
@@ -41,6 +44,7 @@ public sealed record FunctionRevisionFailedEvent(
     string FunctionAppId,
     string RevisionId,
     int RevisionNumber,
+    FunctionPlacementSnapshot Placement,
     string Code,
     string Message) : IPoleEvent
 {
@@ -51,7 +55,8 @@ public sealed record FunctionRevisionFailedEvent(
 public sealed record FunctionRevisionRetiredEvent(
     string FunctionAppId,
     string RevisionId,
-    int RevisionNumber) : IPoleEvent
+    int RevisionNumber,
+    FunctionPlacementSnapshot Placement) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
@@ -59,7 +64,13 @@ public sealed record FunctionRevisionRetiredEvent(
 [EntityName("function-app-delete-requested")]
 public sealed record FunctionAppDeleteRequestedEvent(
     string FunctionAppId,
+    FunctionPlacementSnapshot Placement,
     string? ActiveRevisionId) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
+
+public sealed record FunctionPlacementSnapshot(
+    string ResourceDeploymentId,
+    string RuntimeCellId,
+    string DeploymentTargetId);

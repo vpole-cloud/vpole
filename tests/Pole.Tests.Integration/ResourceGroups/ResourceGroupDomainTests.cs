@@ -45,13 +45,12 @@ public sealed class ResourceGroupDomainTests
     }
 
     [Fact]
-    public void ResourceGroupMetadataUpdate_IncrementsRevisionAndPreservesPlacementIdentity()
+    public void ResourceGroupMetadataUpdate_IncrementsRevisionAndPreservesOwnershipIdentity()
     {
         var resourceGroup = ResourceGroupFactory.Create(
             TenantId,
             "apps",
             "before",
-            "pole-apps",
             ResourceGroupFactory.DefaultCreateOptions with
             {
                 Id = ResourceGroupId,
@@ -66,7 +65,6 @@ public sealed class ResourceGroupDomainTests
 
         Assert.Equal(resourceGroup.Revision + 1, updated.Revision);
         Assert.Equal(resourceGroup.DefaultIsolationScopeId, updated.DefaultIsolationScopeId);
-        Assert.Equal(resourceGroup.KubernetesNamespace, updated.KubernetesNamespace);
         Assert.Equal("after", updated.Description);
         Assert.Contains("production", updated.Tags);
     }

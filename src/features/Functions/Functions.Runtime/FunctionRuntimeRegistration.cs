@@ -45,6 +45,9 @@ public static class FunctionRuntimeRegistration
             services.AddConfiguredFunctionAgentRuntime(functionAgentTokenSection);
 
         services.TryAddSingleton<IFunctionRevisionKubernetesManager, FunctionRevisionKubernetesManager>();
+        services.TryAddSingleton<IFunctionResourcePlacementResolver, FunctionResourcePlacementResolver>();
+        services.TryAddScoped<FunctionResourceDeploymentAdapter>();
+        services.TryAddSingleton(FunctionResourceDeploymentAdapterRegistration.Descriptor);
         services.TryAddSingleton<IFunctionEndpointSliceSource, KubernetesFunctionEndpointSliceSource>();
         services.TryAddSingleton<IFunctionEndpointRegistry, FunctionEndpointRegistry>();
         services.TryAddSingleton<IFunctionRuntimeRouteResolver, FunctionRuntimeRouteResolver>();

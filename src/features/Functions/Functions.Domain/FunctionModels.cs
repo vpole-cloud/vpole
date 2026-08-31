@@ -11,6 +11,7 @@ public sealed record FunctionApp(
     string Id,
     string TenantId,
     string ResourceGroupId,
+    FunctionPlacementIdentity Placement,
     string Name,
     string NormalizedName,
     string FunctionRoute,
@@ -23,6 +24,11 @@ public sealed record FunctionApp(
     ImmutableHashSet<string> Tags,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset UpdatedAtUtc);
+
+public sealed record FunctionPlacementIdentity(
+    string ResourceDeploymentId,
+    string RuntimeCellId,
+    string DeploymentTargetId);
 
 public enum FunctionAppDesiredState
 {
@@ -140,7 +146,6 @@ public sealed record RetiredFunctionRevisionStatus(DateTimeOffset ReadyAtUtc) : 
 public sealed record FailedFunctionRevisionStatus(FunctionRevisionFailure Failure) : FunctionRevisionStatus;
 
 public sealed record FunctionRevisionSpec(
-    string KubernetesNamespace,
     FunctionImage Image,
     string RuntimeProtocolVersion,
     FunctionConfiguration Configuration,
@@ -289,6 +294,15 @@ public sealed record FunctionQuotaAllocation(
 
 public static class FunctionAppFactory
 {
+    public sealed record CreateOptions(
+        string FunctionAppId,
+        string RevisionId);
+
+    public static CreateOptions DefaultCreateOptions =>
+        new(
+            ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString());
+
     public sealed record CreateResult(
         FunctionApp FunctionApp,
         FunctionRevision Revision,
@@ -297,17 +311,20 @@ public static class FunctionAppFactory
     public static CreateResult Create(
         string tenantId,
         string resourceGroupId,
-        string kubernetesNamespace,
+        FunctionPlacementIdentity placement,
         string name,
         string functionRoute,
         FunctionRevisionSpecInput spec,
         ImmutableHashSet<string> tags,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        CreateOptions? options = null)
     {
-        var functionAppId = ObjectId.GenerateNewId().ToString();
-        var revisionId = ObjectId.GenerateNewId().ToString();
+        ArgumentNullException.ThrowIfNull(placement);
+        options ??= DefaultCreateOptions;
+        var functionAppId = options.FunctionAppId;
+        var revisionId = options.RevisionId;
         var normalizedRoute = NormalizeRoute(functionRoute);
-        var revisionSpec = spec.ToRevisionSpec(kubernetesNamespace) with
+        var revisionSpec = spec.ToRevisionSpec() with
         {
             Handlers = spec.Handlers
                 .Select(handler => handler with
@@ -332,6 +349,7 @@ public static class FunctionAppFactory
             functionAppId,
             tenantId,
             resourceGroupId,
+            placement,
             name,
             name.Trim().ToLowerInvariant(),
             normalizedRoute,
@@ -376,9 +394,8 @@ public sealed record FunctionRevisionSpecInput(
     FunctionScalingPolicy Scaling,
     ImmutableList<FunctionHandlerSpec> Handlers)
 {
-    public FunctionRevisionSpec ToRevisionSpec(string kubernetesNamespace) =>
+    public FunctionRevisionSpec ToRevisionSpec() =>
         new(
-            kubernetesNamespace,
             Image,
             RuntimeProtocolVersion,
             Configuration,

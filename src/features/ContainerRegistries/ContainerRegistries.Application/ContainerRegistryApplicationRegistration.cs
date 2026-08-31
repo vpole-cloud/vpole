@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using Hangfire;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -69,6 +70,16 @@ public static class ContainerRegistryApplicationRegistration
                 // its corresponding CSRF context makes subsequent mutating requests fail with 403.
                 UseCookies = false
             });
+        return services;
+    }
+
+    public static IServiceProvider ScheduleContainerRegistryRecurringJobs(
+        this IServiceProvider services)
+    {
+        RecurringJob.AddOrUpdate<RegistryProvisioningCleanupService>(
+            "cleanup-container-registry-provisioning",
+            job => job.ReconcileAsync(CancellationToken.None),
+            Cron.Minutely);
         return services;
     }
 }

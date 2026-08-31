@@ -37,7 +37,7 @@ public static class UpdateResourceGroup
             })
             .WithName("UpdateResourceGroup")
             .WithSummary("Updates a resource group by its ID.")
-            .WithDescription("Updates the resource group's metadata while preserving its Kubernetes namespace.")
+            .WithDescription("Updates the resource group's metadata while preserving its ownership identity.")
             .Produces<ResourceGroupDto>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);

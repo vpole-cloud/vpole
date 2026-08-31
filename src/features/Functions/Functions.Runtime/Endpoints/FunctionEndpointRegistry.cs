@@ -4,7 +4,10 @@ using k8s.Models;
 
 namespace Pole.Features.Functions.Runtime.Endpoints;
 
-public readonly record struct FunctionServiceKey(string Namespace, string ServiceName);
+public readonly record struct FunctionServiceKey(
+    string DeploymentTargetId,
+    string Namespace,
+    string ServiceName);
 
 public sealed record FunctionEndpoint(string Address, int Port, string? TargetUid);
 
@@ -19,9 +22,10 @@ public sealed record FunctionEndpointSnapshot(
 public interface IFunctionEndpointRegistry
 {
     FunctionEndpointSnapshot GetSnapshot(FunctionServiceKey service);
-    void ReplaceAll(IEnumerable<V1EndpointSlice> slices);
-    void ApplySlice(V1EndpointSlice slice);
-    void DeleteSlice(string @namespace, string sliceName);
+    void ReplaceTarget(string deploymentTargetId, IEnumerable<V1EndpointSlice> slices);
+    void ApplySlice(string deploymentTargetId, V1EndpointSlice slice);
+    void DeleteSlice(string deploymentTargetId, string @namespace, string sliceName);
+    void RemoveTarget(string deploymentTargetId);
 }
 
 public sealed class FunctionEndpointRegistry(TimeProvider timeProvider) : IFunctionEndpointRegistry
@@ -44,28 +48,35 @@ public sealed class FunctionEndpointRegistry(TimeProvider timeProvider) : IFunct
             ? snapshot
             : Empty(service);
 
-    public void ReplaceAll(IEnumerable<V1EndpointSlice> endpointSlices)
+    public void ReplaceTarget(
+        string deploymentTargetId,
+        IEnumerable<V1EndpointSlice> endpointSlices)
     {
         ArgumentNullException.ThrowIfNull(endpointSlices);
         var slices = endpointSlices
-            .Select(TryProjectSlice)
+            .Select(slice => TryProjectSlice(deploymentTargetId, slice))
             .Where(projected => projected is not null)
             .ToImmutableDictionary(
                 projected => projected!.Value.Key,
                 projected => projected!.Value.State,
                 StringComparer.Ordinal);
         lock (writeLock)
-            Volatile.Write(ref state, BuildState(slices));
+        {
+            var current = Volatile.Read(ref state);
+            var retained = current.Slices.RemoveRange(current.Slices.Keys.Where(
+                key => key.StartsWith($"{deploymentTargetId}/", StringComparison.Ordinal)));
+            Volatile.Write(ref state, BuildState(retained.SetItems(slices)));
+        }
     }
 
-    public void ApplySlice(V1EndpointSlice slice)
+    public void ApplySlice(string deploymentTargetId, V1EndpointSlice slice)
     {
         ArgumentNullException.ThrowIfNull(slice);
-        var projected = TryProjectSlice(slice);
+        var projected = TryProjectSlice(deploymentTargetId, slice);
         if (projected is null)
         {
             if (slice.Metadata is { NamespaceProperty: { Length: > 0 } @namespace, Name: { Length: > 0 } name })
-                DeleteSlice(@namespace, name);
+                DeleteSlice(deploymentTargetId, @namespace, name);
             return;
         }
         lock (writeLock)
@@ -75,12 +86,30 @@ public sealed class FunctionEndpointRegistry(TimeProvider timeProvider) : IFunct
         }
     }
 
-    public void DeleteSlice(string @namespace, string sliceName)
+    public void DeleteSlice(
+        string deploymentTargetId,
+        string @namespace,
+        string sliceName)
     {
         lock (writeLock)
         {
             var current = Volatile.Read(ref state);
-            var updated = current.Slices.Remove(SliceKey(@namespace, sliceName));
+            var updated = current.Slices.Remove(SliceKey(
+                deploymentTargetId,
+                @namespace,
+                sliceName));
+            if (updated != current.Slices)
+                Volatile.Write(ref state, BuildState(updated));
+        }
+    }
+
+    public void RemoveTarget(string deploymentTargetId)
+    {
+        lock (writeLock)
+        {
+            var current = Volatile.Read(ref state);
+            var updated = current.Slices.RemoveRange(current.Slices.Keys.Where(
+                key => key.StartsWith($"{deploymentTargetId}/", StringComparison.Ordinal)));
             if (updated != current.Slices)
                 Volatile.Write(ref state, BuildState(updated));
         }
@@ -104,7 +133,9 @@ public sealed class FunctionEndpointRegistry(TimeProvider timeProvider) : IFunct
         return new RegistryState(slices, snapshots);
     }
 
-    private static (string Key, SliceState State)? TryProjectSlice(V1EndpointSlice slice)
+    private static (string Key, SliceState State)? TryProjectSlice(
+        string deploymentTargetId,
+        V1EndpointSlice slice)
     {
         var @namespace = slice.Metadata?.NamespaceProperty;
         var sliceName = slice.Metadata?.Name;
@@ -115,8 +146,10 @@ public sealed class FunctionEndpointRegistry(TimeProvider timeProvider) : IFunct
             string.IsNullOrWhiteSpace(serviceName))
             return null;
 
-        var service = new FunctionServiceKey(@namespace, serviceName);
-        return (SliceKey(@namespace, sliceName), new SliceState(service, Project(slice, @namespace)));
+        var service = new FunctionServiceKey(deploymentTargetId, @namespace, serviceName);
+        return (
+            SliceKey(deploymentTargetId, @namespace, sliceName),
+            new SliceState(service, Project(slice, @namespace)));
     }
 
     private static ImmutableArray<FunctionEndpoint> Project(V1EndpointSlice slice, string sliceNamespace)
@@ -166,5 +199,9 @@ public sealed class FunctionEndpointRegistry(TimeProvider timeProvider) : IFunct
     private FunctionEndpointSnapshot Empty(FunctionServiceKey service) =>
         new(service, [], timeProvider.GetUtcNow());
 
-    private static string SliceKey(string @namespace, string sliceName) => $"{@namespace}/{sliceName}";
+    private static string SliceKey(
+        string deploymentTargetId,
+        string @namespace,
+        string sliceName) =>
+        $"{deploymentTargetId}/{@namespace}/{sliceName}";
 }

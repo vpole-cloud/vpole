@@ -11,8 +11,6 @@ public static class FunctionAppHttpMappings
         Array.AsReadOnly<HttpProblemMapping>(
         [
             HttpProblemMapping.For<FunctionAppNotFound>(MapNotFound),
-            HttpProblemMapping.For<FunctionAppResourceGroupNotFound>(MapResourceGroupNotFound),
-            HttpProblemMapping.For<FunctionAppResourceGroupDeleting>(MapResourceGroupDeleting),
             HttpProblemMapping.For<FunctionAppDefaultDeploymentTargetUnavailable>(
                 MapDefaultDeploymentTargetUnavailable),
             HttpProblemMapping.For<FunctionAppHasPendingRevision>(MapPendingRevision),
@@ -31,30 +29,6 @@ public static class FunctionAppHttpMappings
             extensions: new Dictionary<string, object>
             {
                 ["functionAppId"] = error.FunctionAppId
-            });
-
-    private static HttpProblem MapResourceGroupNotFound(
-        FunctionAppResourceGroupNotFound error) =>
-        new(
-            (int)HttpStatusCode.NotFound,
-            PoleProblemTypeId.FromCode("function-apps.resource-group.not-found"),
-            "Resource group not found",
-            "function-apps.resource-group.not-found",
-            extensions: new Dictionary<string, object>
-            {
-                ["resourceGroupId"] = error.ResourceGroupId
-            });
-
-    private static HttpProblem MapResourceGroupDeleting(
-        FunctionAppResourceGroupDeleting error) =>
-        new(
-            (int)HttpStatusCode.Conflict,
-            PoleProblemTypeId.FromCode("function-apps.resource-group.deleting"),
-            "Resource group is being deleted",
-            "function-apps.resource-group.deleting",
-            extensions: new Dictionary<string, object>
-            {
-                ["resourceGroupId"] = error.ResourceGroupId
             });
 
     private static HttpProblem MapDefaultDeploymentTargetUnavailable(

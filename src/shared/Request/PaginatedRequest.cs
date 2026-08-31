@@ -1,15 +1,12 @@
 ﻿using System.ComponentModel;
 using Microsoft.AspNetCore.Mvc;
-using Pole.Mediator;
-
 namespace Pole.Features.Request;
 
 /// <summary>
 /// Should be inherited by records without primary constructor
 /// because value binding does not work with them in inherited records.
 /// </summary>
-/// <typeparam name="T"></typeparam>
-public abstract record PaginatedRequest<T> : IMediatorRequest<PaginatedResponse<T>>
+public abstract record PaginatedRequest
 {
     [FromQuery, DefaultValue(1), Description("The page number to retrieve (1-based).")]
     public int PageNumber { get; init; } = 1;

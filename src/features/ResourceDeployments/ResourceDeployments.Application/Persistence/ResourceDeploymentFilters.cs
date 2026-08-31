@@ -7,6 +7,15 @@ namespace Pole.Features.ResourceDeployments.Application.Persistence;
 
 internal static class ResourceDeploymentFilters
 {
+    public static FilterDefinition<ResourceDeployment> ForResourceType(
+        ResourceTypeId resourceType)
+    {
+        EnsureResourceType(resourceType);
+        return Builders<ResourceDeployment>.Filter.Eq(
+            deployment => deployment.ResourceType,
+            resourceType.Value);
+    }
+
     public static FilterDefinition<ResourceDeployment> VisibleToTenant(
         string tenantId)
     {

@@ -8,12 +8,13 @@ namespace Pole.Features.Functions.Runtime.Kubernetes;
 
 public readonly record struct FunctionRevisionInKubernetes(
     FunctionApp App,
-    FunctionRevision Revision)
+    FunctionRevision Revision,
+    FunctionResourcePlacement Placement)
 {
     public const int AgentPort = 8080;
     public const string ScaleGenerationAnnotation = "pole.io/function-scale-generation";
 
-    public string Namespace => Revision.Spec.KubernetesNamespace;
+    public string Namespace => Placement.KubernetesNamespace;
     public string ResourceName => BuildResourceName(App.Id, Revision.RevisionNumber);
     public string DeploymentName => ResourceName;
     public string ServiceName => $"{ResourceName}-agent";
@@ -228,6 +229,9 @@ public readonly record struct FunctionRevisionInKubernetes(
         ["pole.io/resource-group-id"] = App.ResourceGroupId,
         ["pole.io/resource-type"] = "function-app",
         ["pole.io/resource-id"] = App.Id,
+        ["pole.io/resource-deployment-id"] = Placement.ResourceDeploymentId,
+        ["pole.io/runtime-cell-id"] = Placement.RuntimeCellId,
+        ["pole.io/deployment-target-id"] = Placement.DeploymentTargetId,
         ["pole.io/function-app-id"] = App.Id,
         ["pole.io/function-revision"] = Revision.RevisionNumber.ToString(CultureInfo.InvariantCulture),
         ["pole.io/function-revision-id"] = Revision.Id

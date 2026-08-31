@@ -11,6 +11,7 @@ using Pole.Features.Functions.Runtime.Activation;
 using Pole.Features.Functions.Runtime.Agent;
 using Pole.Features.Functions.Runtime.Coordination;
 using Pole.Features.Functions.Runtime.Endpoints;
+using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Timers;
 using Pole.Functions.Protocol;
 using Pole.ResultType;
@@ -470,7 +471,10 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         IFunctionRevisionActivator? activator = null)
     {
         var snapshot = new FunctionEndpointSnapshot(
-            new FunctionServiceKey("pole-tenant-rg", "function-cleanup-agent"),
+            new FunctionServiceKey(
+                "507f1f77bcf86cd799439093",
+                "pole-tenant-rg",
+                "function-cleanup-agent"),
             (endpoints ?? [FirstEndpoint]).ToImmutableArray(),
             Now);
         var time = timeProvider ?? new FixedTimeProvider(Now);
@@ -486,6 +490,7 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
                 DbContext.FunctionMeterEvents).InvokeAsync,
             new StubEndpointRegistry(snapshot),
             new SnapshotOrderEndpointSelector(),
+            new FixedPlacementResolver(),
             activator ?? new UnexpectedActivator(),
             agent,
             admission ?? new RecordingAdmissionCoordinator(),
@@ -551,7 +556,10 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         var created = FunctionAppFactory.Create(
             "tenant-1",
             "group-1",
-            "pole-tenant-rg",
+            new FunctionPlacementIdentity(
+                "507f1f77bcf86cd799439091",
+                "507f1f77bcf86cd799439092",
+                "507f1f77bcf86cd799439093"),
             "cleanup",
             "cleanup",
             spec,
@@ -613,9 +621,24 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
     private sealed class StubEndpointRegistry(FunctionEndpointSnapshot snapshot) : IFunctionEndpointRegistry
     {
         public FunctionEndpointSnapshot GetSnapshot(FunctionServiceKey service) => snapshot;
-        public void ReplaceAll(IEnumerable<V1EndpointSlice> slices) => throw new NotSupportedException();
-        public void ApplySlice(V1EndpointSlice slice) => throw new NotSupportedException();
-        public void DeleteSlice(string @namespace, string sliceName) => throw new NotSupportedException();
+        public void ReplaceTarget(string deploymentTargetId, IEnumerable<V1EndpointSlice> slices) => throw new NotSupportedException();
+        public void ApplySlice(string deploymentTargetId, V1EndpointSlice slice) => throw new NotSupportedException();
+        public void DeleteSlice(string deploymentTargetId, string @namespace, string sliceName) => throw new NotSupportedException();
+        public void RemoveTarget(string deploymentTargetId) => throw new NotSupportedException();
+    }
+
+    private sealed class FixedPlacementResolver : IFunctionResourcePlacementResolver
+    {
+        public Task<Result<FunctionResourcePlacement, FunctionResourcePlacementUnavailable>> ResolveAsync(
+            FunctionApp app,
+            bool requireReady = true,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result<FunctionResourcePlacement, FunctionResourcePlacementUnavailable>>(
+                new Ok<FunctionResourcePlacement>(new FunctionResourcePlacement(
+                    app.Placement.ResourceDeploymentId,
+                    app.Placement.RuntimeCellId,
+                    app.Placement.DeploymentTargetId,
+                    "pole-tenant-rg")));
     }
 
     private sealed class SnapshotOrderEndpointSelector : IFunctionEndpointSelector
@@ -626,8 +649,7 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
     private sealed class UnexpectedActivator : IFunctionRevisionActivator
     {
         public Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>> EnsureActiveAsync(
-            FunctionApp app,
-            FunctionRevision revision,
+            FunctionRevisionInKubernetes subject,
             CancellationToken cancellationToken = default,
             bool forceScaleFence = false) =>
             throw new InvalidOperationException("A ready endpoint snapshot should not activate the revision.");
@@ -636,8 +658,7 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
     private sealed class FailingActivator : IFunctionRevisionActivator
     {
         public Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>> EnsureActiveAsync(
-            FunctionApp app,
-            FunctionRevision revision,
+            FunctionRevisionInKubernetes subject,
             CancellationToken cancellationToken = default,
             bool forceScaleFence = false) =>
             Task.FromResult<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>>(

@@ -138,9 +138,9 @@ Runtime-cell namespaces are labeled with:
 All scope and runtime-cell queries combine tenant, resource-group, and object identity.
 Events carry `EventCore.TenantId`; consumers never depend on ambient HTTP tenant context.
 
-WebService, Redis, and PostgreSQL persist their workload placement in `ResourceDeployment`.
-Functions remains the next adopter. New placement code must use `IResourcePlacementService`; see
-[workload placement](workload-placement.md).
+WebService, Redis, PostgreSQL, and Functions persist their workload placement in
+`ResourceDeployment`. New placement code must use the ResourceDeployment placement capabilities;
+see [workload placement](workload-placement.md).
 
 ## API Surface
 

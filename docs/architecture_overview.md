@@ -44,11 +44,10 @@ owns one default `IsolationScope`; a `RuntimeCell` materializes a scope in one
 `DeploymentTarget` and owns that cluster's Kubernetes namespace. Runtime cells are created
 lazily through a caller-owned Mongo transaction, then reconciled through the durable outbox.
 
-WebService, Redis, and PostgreSQL persist their logical-to-physical binding in
+WebService, Redis, PostgreSQL, and Functions persist their logical-to-physical binding in
 `ResourceDeployment`, including the target, runtime cell, namespace, resolved storage/ingress,
-and an immutable compute snapshot. Functions remains the next adopter. See [workload
-placement](workload-placement.md) for ownership, lifecycle, deletion, and reconciliation
-boundaries.
+and an immutable compute snapshot. See [workload placement](workload-placement.md) for ownership,
+lifecycle, deletion, and reconciliation boundaries.
 
 Platform-managed [ComputeProfiles](../src/features/ComputeProfiles/README.md) separate portable
 CPU, memory, extended-resource, and scheduling policy from logical resource specifications. A

@@ -491,6 +491,7 @@ public sealed class FunctionScalerTests
             endpointRegistry,
             agent,
             coordinator,
+            new FixedPlacementResolver(),
             kubernetes,
             new FunctionScalerOptions { AgentStatusTimeoutSeconds = 1 },
             time,
@@ -536,7 +537,10 @@ public sealed class FunctionScalerTests
         var created = FunctionAppFactory.Create(
             "tenant-1",
             "resource-group-1",
-            "pole-tenant-rg",
+            new FunctionPlacementIdentity(
+                "507f1f77bcf86cd799439091",
+                "507f1f77bcf86cd799439092",
+                "507f1f77bcf86cd799439093"),
             "order-functions",
             "orders",
             spec,
@@ -622,12 +626,28 @@ public sealed class FunctionScalerTests
         public FunctionEndpointSnapshot GetSnapshot(FunctionServiceKey service) =>
             new(service, Endpoints, Now);
 
-        public void ReplaceAll(IEnumerable<k8s.Models.V1EndpointSlice> slices) =>
+        public void ReplaceTarget(string deploymentTargetId, IEnumerable<k8s.Models.V1EndpointSlice> slices) =>
             throw new NotSupportedException();
 
-        public void ApplySlice(k8s.Models.V1EndpointSlice slice) => throw new NotSupportedException();
+        public void ApplySlice(string deploymentTargetId, k8s.Models.V1EndpointSlice slice) => throw new NotSupportedException();
 
-        public void DeleteSlice(string @namespace, string sliceName) => throw new NotSupportedException();
+        public void DeleteSlice(string deploymentTargetId, string @namespace, string sliceName) => throw new NotSupportedException();
+
+        public void RemoveTarget(string deploymentTargetId) => throw new NotSupportedException();
+    }
+
+    private sealed class FixedPlacementResolver : IFunctionResourcePlacementResolver
+    {
+        public Task<Result<FunctionResourcePlacement, FunctionResourcePlacementUnavailable>> ResolveAsync(
+            FunctionApp app,
+            bool requireReady = true,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result<FunctionResourcePlacement, FunctionResourcePlacementUnavailable>>(
+                new Ok<FunctionResourcePlacement>(new FunctionResourcePlacement(
+                    app.Placement.ResourceDeploymentId,
+                    app.Placement.RuntimeCellId,
+                    app.Placement.DeploymentTargetId,
+                    "pole-tenant-rg")));
     }
 
     private sealed class FakeScalingCoordinator(MutableTimeProvider time) : IFunctionScalingCoordinator

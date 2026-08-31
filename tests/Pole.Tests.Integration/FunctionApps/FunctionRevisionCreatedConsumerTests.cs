@@ -40,6 +40,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             new MongoLoadFunctionRevisionProvisioningSubject(
                 DbContext.FunctionApps,
                 DbContext.FunctionRevisions).InvokeAsync,
+            new FixedPlacementResolver(),
             manager,
             Services.GetRequiredService<FailFunctionRevision>(),
             [],
@@ -48,6 +49,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             created.FunctionAppId,
             created.RevisionId,
             created.RevisionNumber,
+            Placement(created),
             null!)
         {
             EventCore = EventCore.Create(TestData.TenantId)
@@ -86,6 +88,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             new MongoLoadFunctionRevisionProvisioningSubject(
                 DbContext.FunctionApps,
                 DbContext.FunctionRevisions).InvokeAsync,
+            new FixedPlacementResolver(),
             manager,
             Services.GetRequiredService<FailFunctionRevision>(),
             [],
@@ -94,6 +97,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             created.FunctionAppId,
             created.RevisionId,
             created.RevisionNumber,
+            Placement(created),
             null!)
         {
             EventCore = EventCore.Create(TestData.TenantId)
@@ -133,6 +137,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             new MongoLoadFunctionRevisionProvisioningSubject(
                 DbContext.FunctionApps,
                 DbContext.FunctionRevisions).InvokeAsync,
+            new FixedPlacementResolver(),
             manager,
             fail,
             [provisioner],
@@ -141,6 +146,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             created.FunctionAppId,
             created.RevisionId,
             created.RevisionNumber,
+            Placement(created),
             null!)
         {
             EventCore = EventCore.Create(TestData.TenantId)
@@ -175,6 +181,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             new MongoLoadFunctionRevisionProvisioningSubject(
                 DbContext.FunctionApps,
                 DbContext.FunctionRevisions).InvokeAsync,
+            new FixedPlacementResolver(),
             manager,
             fail,
             [],
@@ -183,6 +190,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             created.FunctionAppId,
             created.RevisionId,
             created.RevisionNumber,
+            Placement(created),
             null!)
         {
             EventCore = EventCore.Create(TestData.TenantId)
@@ -213,6 +221,26 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                     4,
                     new HttpFunctionTriggerRequest("orders", ["POST"], FunctionExposure.Internal))
             ]);
+
+    private static FunctionPlacementSnapshot Placement(CreateFunctionAppResponse created) =>
+        new(
+            created.Placement.DeploymentId,
+            created.Placement.RuntimeCellId,
+            created.Placement.DeploymentTargetId);
+
+    private sealed class FixedPlacementResolver : IFunctionResourcePlacementResolver
+    {
+        public Task<Result<FunctionResourcePlacement, FunctionResourcePlacementUnavailable>> ResolveAsync(
+            FunctionApp app,
+            bool requireReady = true,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result<FunctionResourcePlacement, FunctionResourcePlacementUnavailable>>(
+                new Ok<FunctionResourcePlacement>(new FunctionResourcePlacement(
+                    app.Placement.ResourceDeploymentId,
+                    app.Placement.RuntimeCellId,
+                    app.Placement.DeploymentTargetId,
+                    "functions")));
+    }
 
     private sealed class RecordingKubernetesManager(
         Result<Unit, FunctionRevisionKubernetesOperationError> applyResult)
@@ -264,11 +292,10 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
         public FunctionRevision? Revision { get; private set; }
 
         public Task<FunctionRevisionProvisioningOutcome> ProvisionAsync(
-            FunctionApp app,
-            FunctionRevision revision,
+            FunctionRevisionInKubernetes subject,
             CancellationToken cancellationToken)
         {
-            Revision = revision;
+            Revision = subject.Revision;
             return Task.FromResult(FunctionRevisionProvisioningOutcome.Success());
         }
     }

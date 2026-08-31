@@ -14,7 +14,7 @@ public sealed class DeploymentTargetAdmissionGateTests(MongoReplicaSetFixture fi
     : ApiIntegrationTestBase(fixture)
 {
     [Fact]
-    public async Task RejectingDefaultTarget_BlocksEveryWorkloadCreateBeforeDurableMutation()
+    public async Task RejectingDefaultTarget_BlocksWorkloadsButNotLogicalResourceGroups()
     {
         var groupResponse = await Client.PostAsJsonAsync(
             "/api/v1/resource-groups/",
@@ -23,12 +23,14 @@ public sealed class DeploymentTargetAdmissionGateTests(MongoReplicaSetFixture fi
         var group = await groupResponse.Content.ReadFromJsonAsync<ResourceGroupResponse>();
         Assert.NotNull(group);
 
-        var baseline = await CaptureDurableCountsAsync();
         RejectNewDeploymentTargetWorkloads();
 
-        await AssertRejectedAsync(
+        var logicalGroupResponse = await Client.PostAsJsonAsync(
             "/api/v1/resource-groups/",
             TestData.CreateResourceGroupRequest("admission-rejected").Body);
+        Assert.Equal(HttpStatusCode.Created, logicalGroupResponse.StatusCode);
+        var baseline = await CaptureDurableCountsAsync();
+
         await AssertRejectedAsync(
             "/api/v1/redis-services/",
             TestData.CreateRedisServiceRequest(group.Id, "admission-redis").Body);

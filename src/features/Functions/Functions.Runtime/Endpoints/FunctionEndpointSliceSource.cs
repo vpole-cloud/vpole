@@ -13,10 +13,12 @@ public sealed record FunctionEndpointSlicePage(
 public interface IFunctionEndpointSliceSource
 {
     Task<FunctionEndpointSlicePage> ListPageAsync(
+        string deploymentTargetId,
         string? continuationToken,
         CancellationToken cancellationToken);
 
     IAsyncEnumerable<(WatchEventType Type, V1EndpointSlice Slice)> WatchAsync(
+        string deploymentTargetId,
         string resourceVersion,
         CancellationToken cancellationToken);
 }
@@ -27,10 +29,13 @@ public sealed class KubernetesFunctionEndpointSliceSource(IKubernetesClientProvi
     private const string ServiceNameLabel = "kubernetes.io/service-name";
 
     public async Task<FunctionEndpointSlicePage> ListPageAsync(
+        string deploymentTargetId,
         string? continuationToken,
         CancellationToken cancellationToken)
     {
-        var kubernetes = await kubernetesClientProvider.GetDefaultAsync(cancellationToken);
+        var kubernetes = await kubernetesClientProvider.GetAsync(
+            deploymentTargetId,
+            cancellationToken);
         var response = await kubernetes.DiscoveryV1.ListEndpointSliceForAllNamespacesAsync(
             allowWatchBookmarks: false,
             continueParameter: continuationToken,
@@ -44,10 +49,13 @@ public sealed class KubernetesFunctionEndpointSliceSource(IKubernetesClientProvi
     }
 
     public async IAsyncEnumerable<(WatchEventType Type, V1EndpointSlice Slice)> WatchAsync(
+        string deploymentTargetId,
         string resourceVersion,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var kubernetes = await kubernetesClientProvider.GetDefaultAsync(cancellationToken);
+        var kubernetes = await kubernetesClientProvider.GetAsync(
+            deploymentTargetId,
+            cancellationToken);
         Exception? watchError = null;
         var events = kubernetes.DiscoveryV1.WatchListEndpointSliceForAllNamespacesAsync(
             allowWatchBookmarks: true,

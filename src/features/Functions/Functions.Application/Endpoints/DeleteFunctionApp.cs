@@ -4,11 +4,14 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
+using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Lifecycle;
 using Pole.Features.Functions.Application.Persistence.Reads;
 using Pole.Features.Functions.Domain;
+using Pole.Features.Quotas.Contracts;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
@@ -47,7 +50,10 @@ public sealed record DeleteFunctionAppResponse(string FunctionAppId);
 
 public union DeleteFunctionAppError(
     FunctionAppNotFound,
-    BeginFunctionAppDeletionError);
+    FunctionAppResourceDeploymentMissing,
+    BeginFunctionAppDeletionError,
+    ResourceDeploymentMutationError,
+    QuotaExecutionError);
 
 public union DeleteFunctionAppOutcome(
     DeleteFunctionAppResponse,
@@ -56,6 +62,9 @@ public union DeleteFunctionAppOutcome(
 public sealed class DeleteFunctionAppHandler(
     LoadFunctionAppById loadFunctionAppById,
     BeginFunctionAppDeletion beginFunctionAppDeletion,
+    LoadExactResourceDeploymentRuntimePlacement loadDeploymentPlacement,
+    RequestExactResourceDeploymentDeletion requestDeploymentDeletion,
+    IQuotaAdmissionExecutor quotaAdmissionExecutor,
     TimeProvider timeProvider)
     : IMediatorOutcomeHandler<DeleteFunctionAppRequest, DeleteFunctionAppOutcome>
 {
@@ -72,13 +81,65 @@ public sealed class DeleteFunctionAppHandler(
         if (app.DesiredState == FunctionAppDesiredState.Deleting)
             return new DeleteFunctionAppResponse(app.Id);
 
-        var deleted = await beginFunctionAppDeletion(
-            app,
-            timeProvider.GetUtcNow(),
+        var deployment = await loadDeploymentPlacement(
+            app.TenantId,
+            FunctionResourceDeployment.ResourceType,
+            app.Id,
+            app.Placement.ResourceDeploymentId,
             cancellationToken);
-        return deleted.Match<FunctionApp, BeginFunctionAppDeletionError, DeleteFunctionAppOutcome>(
-            value => new DeleteFunctionAppResponse(value.Id),
-            error => new DeleteFunctionAppError(error));
+        if (deployment is null ||
+            !string.Equals(
+                deployment.RuntimeCellId,
+                app.Placement.RuntimeCellId,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                deployment.DeploymentTargetId,
+                app.Placement.DeploymentTargetId,
+                StringComparison.Ordinal))
+        {
+            return new DeleteFunctionAppError(
+                new FunctionAppResourceDeploymentMissing(app.Id));
+        }
+
+        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
+            FunctionQuotaAllocation,
+            DeleteFunctionAppOutcome>(
+            app.TenantId,
+            FunctionAppQuotaResourceKey.Create(app.Id),
+            new DeleteQuotaMutation<FunctionQuotaAllocation>(app.AdmittedQuota),
+            quotaError => new DeleteFunctionAppError(quotaError),
+            async (transaction, ct) =>
+            {
+                var deleted = await beginFunctionAppDeletion(
+                    transaction.Session,
+                    app,
+                    timeProvider.GetUtcNow(),
+                    ct);
+                if (!deleted.TryGetValue(out _, out var deletionError))
+                    return transaction.Abort(new DeleteFunctionAppError(deletionError));
+
+                var deploymentResult = await requestDeploymentDeletion(
+                    new ResourceDeploymentExactMutationRequest(
+                        app.TenantId,
+                        FunctionResourceDeployment.ResourceType,
+                        app.Id,
+                        app.Placement.ResourceDeploymentId,
+                        deployment.DeploymentRevision,
+                        new ComputeProfileReference(
+                            deployment.Compute.ComputeProfileId,
+                            deployment.Compute.ComputeProfileRevision),
+                        ResourceRevision: app.NextRevisionNumber),
+                    transaction.Session,
+                    ct);
+                if (!deploymentResult.TryGetValue(out _, out var deploymentError))
+                {
+                    return transaction.Abort(
+                        new DeleteFunctionAppError(deploymentError));
+                }
+
+                return transaction.Commit(new DeleteFunctionAppResponse(app.Id));
+            },
+            cancellationToken);
     }
 }
 

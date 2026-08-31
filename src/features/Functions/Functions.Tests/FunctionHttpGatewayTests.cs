@@ -10,6 +10,7 @@ using Pole.Features.Functions.Runtime.Agent;
 using Pole.Features.Functions.Runtime.Coordination;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Gateway;
+using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Metering;
 using Pole.Functions.Protocol;
 using Pole.ResultType;
@@ -597,6 +598,7 @@ public sealed class FunctionHttpGatewayTests
                 Resolver,
                 Registry,
                 new SnapshotOrderEndpointSelector(),
+                new FixedPlacementResolver(),
                 Activator,
                 Agent,
                 admission ?? new FunctionPendingAdmissionLimiter(Options),
@@ -642,7 +644,10 @@ public sealed class FunctionHttpGatewayTests
         };
 
         public static FunctionEndpointSnapshot Snapshot(IEnumerable<FunctionEndpoint> endpoints) => new(
-            new FunctionServiceKey("pole-tenant-rg", "function-orders-agent"),
+            new FunctionServiceKey(
+                "507f1f77bcf86cd799439093",
+                "pole-tenant-rg",
+                "function-orders-agent"),
             endpoints.ToImmutableArray(),
             Now);
 
@@ -671,7 +676,10 @@ public sealed class FunctionHttpGatewayTests
             var created = FunctionAppFactory.Create(
                 "tenant-1",
                 "group-1",
-                "pole-tenant-rg",
+                new FunctionPlacementIdentity(
+                    "507f1f77bcf86cd799439091",
+                    "507f1f77bcf86cd799439092",
+                    "507f1f77bcf86cd799439093"),
                 "orders",
                 "orders",
                 spec,
@@ -722,9 +730,24 @@ public sealed class FunctionHttpGatewayTests
     private sealed class StubEndpointRegistry(FunctionEndpointSnapshot snapshot) : IFunctionEndpointRegistry
     {
         public FunctionEndpointSnapshot GetSnapshot(FunctionServiceKey service) => snapshot;
-        public void ReplaceAll(IEnumerable<V1EndpointSlice> slices) => throw new NotSupportedException();
-        public void ApplySlice(V1EndpointSlice slice) => throw new NotSupportedException();
-        public void DeleteSlice(string @namespace, string sliceName) => throw new NotSupportedException();
+        public void ReplaceTarget(string deploymentTargetId, IEnumerable<V1EndpointSlice> slices) => throw new NotSupportedException();
+        public void ApplySlice(string deploymentTargetId, V1EndpointSlice slice) => throw new NotSupportedException();
+        public void DeleteSlice(string deploymentTargetId, string @namespace, string sliceName) => throw new NotSupportedException();
+        public void RemoveTarget(string deploymentTargetId) => throw new NotSupportedException();
+    }
+
+    private sealed class FixedPlacementResolver : IFunctionResourcePlacementResolver
+    {
+        public Task<Result<FunctionResourcePlacement, FunctionResourcePlacementUnavailable>> ResolveAsync(
+            FunctionApp app,
+            bool requireReady = true,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Result<FunctionResourcePlacement, FunctionResourcePlacementUnavailable>>(
+                new Ok<FunctionResourcePlacement>(new FunctionResourcePlacement(
+                    app.Placement.ResourceDeploymentId,
+                    app.Placement.RuntimeCellId,
+                    app.Placement.DeploymentTargetId,
+                    "pole-tenant-rg")));
     }
 
     private sealed class SnapshotOrderEndpointSelector : IFunctionEndpointSelector
@@ -738,8 +761,7 @@ public sealed class FunctionHttpGatewayTests
         public bool LastForceScaleFence { get; private set; }
 
         public Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>> EnsureActiveAsync(
-            FunctionApp app,
-            FunctionRevision revision,
+            FunctionRevisionInKubernetes subject,
             CancellationToken cancellationToken = default,
             bool forceScaleFence = false)
         {

@@ -5,7 +5,6 @@ using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Lifecycle;
 using Pole.Features.Functions.Application.Persistence.Mutations;
 using Pole.Features.Functions.Application.Persistence.Reads;
-using Pole.Features.Functions.Application.Persistence.Contracts;
 using Pole.Features.Functions.Application.Persistence.Runtime.Gateway;
 using Pole.Features.Functions.Application.Persistence.Runtime.Metering;
 using Pole.Features.Functions.Application.Persistence.Runtime.Provisioning;
@@ -48,11 +47,10 @@ public static class FunctionAppPersistenceRegistration
             implementation => implementation.InvokeAsync);
         services.AddCapability<MongoBeginFunctionAppDeletion, BeginFunctionAppDeletion>(
             implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoFinalizeFunctionAppDeletion, FinalizeFunctionAppDeletion>(
+            implementation => implementation.InvokeAsync);
         services.AddCapability<MongoRetryFunctionInvocation, RetryFunctionInvocation>(
             implementation => implementation.InvokeAsync);
-        services.AddCapability<
-            ResourceGroupPlacementResolutionAdapter,
-            ResolveFunctionAppResourceGroupPlacement>(implementation => implementation.InvokeAsync);
         services.AddSingletonCapability<MongoClaimNextFunctionTimer, ClaimNextFunctionTimer>(
             implementation => implementation.InvokeAsync);
         services.AddSingletonCapability<
@@ -91,11 +89,6 @@ public static class FunctionAppPersistenceRegistration
             MongoLoadFunctionRevisionProvisioningSubject,
             LoadFunctionRevisionProvisioningSubject>(implementation => implementation.InvokeAsync);
         services.AddSingleton<RunMongoOutcomeTransaction<Result<
-            FunctionApp,
-            BeginFunctionAppDeletionError>>>(serviceProvider => serviceProvider
-            .GetRequiredService<MongoRunTransaction>()
-            .InvokeOutcomeAsync<Result<FunctionApp, BeginFunctionAppDeletionError>>);
-        services.AddSingleton<RunMongoOutcomeTransaction<Result<
             FunctionInvocationManualRetry,
             RetryFunctionInvocationError>>>(serviceProvider => serviceProvider
             .GetRequiredService<MongoRunTransaction>()
@@ -106,6 +99,11 @@ public static class FunctionAppPersistenceRegistration
             serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<FunctionRevisionLifecycleOutcome>);
+        services.AddSingleton<RunMongoOutcomeTransaction<Result<
+            Unit,
+            FunctionAppDeletionFinalizationConflict>>>(serviceProvider => serviceProvider
+            .GetRequiredService<MongoRunTransaction>()
+            .InvokeOutcomeAsync<Result<Unit, FunctionAppDeletionFinalizationConflict>>);
         return services;
     }
 

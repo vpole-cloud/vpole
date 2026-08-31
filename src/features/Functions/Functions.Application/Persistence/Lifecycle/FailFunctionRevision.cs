@@ -108,7 +108,7 @@ internal sealed class MongoFailFunctionRevision(
 
                 await storeOutboxWrites(
                     transaction.Session,
-                    [OutboxWrite.Create(state.Revision.ToFailedEvent(failure))],
+                    [OutboxWrite.Create(state.Revision.ToFailedEvent(state.App, failure))],
                     transactionCancellationToken);
                 return transaction.Commit(new FunctionRevisionLifecycleCompleted());
             },

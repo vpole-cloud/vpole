@@ -5,20 +5,71 @@ using k8s.Autorest;
 using k8s.Models;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Pole.Features.Functions.Application.Common;
+using Pole.Features.ResourceDeployments.Contracts;
 
 namespace Pole.Features.Functions.Runtime.Endpoints;
 
 public sealed partial class FunctionEndpointSliceWatcher(
     IFunctionEndpointSliceSource source,
     IFunctionEndpointRegistry registry,
+    LoadResourceDeploymentTargetIds loadDeploymentTargetIds,
     TimeProvider timeProvider,
     ILogger<FunctionEndpointSliceWatcher> logger) : BackgroundService
 {
     private static readonly TimeSpan InitialRetryDelay = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan CleanReconnectDelay = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan TargetRefreshDelay = TimeSpan.FromSeconds(5);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var watchers = new Dictionary<string, (CancellationTokenSource Cancellation, Task Task)>(
+            StringComparer.Ordinal);
+        try
+        {
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                var targetIds = await loadDeploymentTargetIds(
+                    FunctionResourceDeployment.ResourceType,
+                    stoppingToken);
+                var desired = targetIds.ToHashSet(StringComparer.Ordinal);
+                foreach (var removed in watchers.Keys.Where(id => !desired.Contains(id)).ToArray())
+                {
+                    var watcher = watchers[removed];
+                    watcher.Cancellation.Cancel();
+                    await watcher.Task;
+                    watcher.Cancellation.Dispose();
+                    registry.RemoveTarget(removed);
+                    watchers.Remove(removed);
+                }
+                foreach (var targetId in desired.Where(id => !watchers.ContainsKey(id)))
+                {
+                    var cancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                    watchers[targetId] = (
+                        cancellation,
+                        WatchTargetAsync(targetId, cancellation.Token));
+                }
+
+                await Task.Delay(TargetRefreshDelay, timeProvider, stoppingToken);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            foreach (var watcher in watchers.Values)
+                watcher.Cancellation.Cancel();
+            await Task.WhenAll(watchers.Values.Select(watcher => watcher.Task));
+            foreach (var watcher in watchers.Values)
+                watcher.Cancellation.Dispose();
+        }
+    }
+
+    private async Task WatchTargetAsync(
+        string deploymentTargetId,
+        CancellationToken stoppingToken)
     {
         string? resourceVersion = null;
         var retryDelay = InitialRetryDelay;
@@ -28,16 +79,19 @@ public sealed partial class FunctionEndpointSliceWatcher(
             try
             {
                 if (resourceVersion is null)
-                    resourceVersion = await RelistAsync(stoppingToken);
+                    resourceVersion = await RelistAsync(deploymentTargetId, stoppingToken);
 
                 var observedEvent = false;
-                await foreach (var (type, slice) in source.WatchAsync(resourceVersion, stoppingToken)
+                await foreach (var (type, slice) in source.WatchAsync(
+                                   deploymentTargetId,
+                                   resourceVersion,
+                                   stoppingToken)
                                    .WithCancellation(stoppingToken))
                 {
                     observedEvent = true;
                     if (!string.IsNullOrWhiteSpace(slice.Metadata?.ResourceVersion))
                         resourceVersion = slice.Metadata.ResourceVersion;
-                    Apply(type, slice);
+                    Apply(deploymentTargetId, type, slice);
                 }
 
                 if (observedEvent)
@@ -51,7 +105,8 @@ public sealed partial class FunctionEndpointSliceWatcher(
             catch (Exception exception) when (IsExpiredResourceVersion(exception))
             {
                 logger.LogInformation(
-                    "[function-endpoint-watch-relist] EndpointSlice resource version expired; performing a full relist.");
+                    "[function-endpoint-watch-relist] EndpointSlice resource version expired for target {DeploymentTargetId}; performing a full relist.",
+                    deploymentTargetId);
                 resourceVersion = null;
                 retryDelay = InitialRetryDelay;
             }
@@ -59,7 +114,8 @@ public sealed partial class FunctionEndpointSliceWatcher(
             {
                 logger.LogWarning(
                     exception,
-                    "[function-endpoint-watch-retry] EndpointSlice watch failed; retrying after {RetryDelayMs}ms.",
+                    "[function-endpoint-watch-retry] EndpointSlice watch failed for target {DeploymentTargetId}; retrying after {RetryDelayMs}ms.",
+                    deploymentTargetId,
                     retryDelay.TotalMilliseconds);
                 await Task.Delay(retryDelay, timeProvider, stoppingToken);
                 retryDelay = TimeSpan.FromMilliseconds(Math.Min(
@@ -69,14 +125,19 @@ public sealed partial class FunctionEndpointSliceWatcher(
         }
     }
 
-    private async Task<string> RelistAsync(CancellationToken cancellationToken)
+    private async Task<string> RelistAsync(
+        string deploymentTargetId,
+        CancellationToken cancellationToken)
     {
         var slices = new List<V1EndpointSlice>();
         string? continuationToken = null;
         string? resourceVersion = null;
         do
         {
-            var page = await source.ListPageAsync(continuationToken, cancellationToken);
+            var page = await source.ListPageAsync(
+                deploymentTargetId,
+                continuationToken,
+                cancellationToken);
             slices.AddRange(page.Items.Where(IsFunctionSlice));
             resourceVersion = page.ResourceVersion ?? resourceVersion;
             continuationToken = page.ContinuationToken;
@@ -85,11 +146,14 @@ public sealed partial class FunctionEndpointSliceWatcher(
         if (string.IsNullOrWhiteSpace(resourceVersion))
             throw new InvalidOperationException("Kubernetes EndpointSlice list did not return a resource version.");
 
-        registry.ReplaceAll(slices);
+        registry.ReplaceTarget(deploymentTargetId, slices);
         return resourceVersion;
     }
 
-    private void Apply(WatchEventType type, V1EndpointSlice slice)
+    private void Apply(
+        string deploymentTargetId,
+        WatchEventType type,
+        V1EndpointSlice slice)
     {
         var @namespace = slice.Metadata?.NamespaceProperty;
         var name = slice.Metadata?.Name;
@@ -101,12 +165,12 @@ public sealed partial class FunctionEndpointSliceWatcher(
             case WatchEventType.Added:
             case WatchEventType.Modified:
                 if (IsFunctionSlice(slice))
-                    registry.ApplySlice(slice);
+                    registry.ApplySlice(deploymentTargetId, slice);
                 else
-                    registry.DeleteSlice(@namespace, name);
+                    registry.DeleteSlice(deploymentTargetId, @namespace, name);
                 break;
             case WatchEventType.Deleted:
-                registry.DeleteSlice(@namespace, name);
+                registry.DeleteSlice(deploymentTargetId, @namespace, name);
                 break;
         }
     }

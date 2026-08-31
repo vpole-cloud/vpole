@@ -40,7 +40,7 @@ internal sealed class MongoPersistCreatedFunctionApp(
             session,
             [
                 OutboxWrite.Create(created.FunctionApp.ToCreatedEvent(created.Revision)),
-                OutboxWrite.Create(created.Revision.ToRevisionCreatedEvent())
+                OutboxWrite.Create(created.Revision.ToRevisionCreatedEvent(created.FunctionApp))
             ],
             cancellationToken);
     }

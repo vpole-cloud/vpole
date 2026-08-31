@@ -79,6 +79,13 @@ internal static class ResourceDeploymentPersistenceRegistration
         AddCapability<MongoLoadExactResourceDeployment, LoadExactResourceDeployment>(
             services,
             implementation => implementation.InvokeAsync);
+        services.TryAddSingleton<MongoLoadResourceDeploymentRuntimePlacement>();
+        services.TryAddSingleton<LoadExactResourceDeploymentRuntimePlacement>(serviceProvider =>
+            serviceProvider.GetRequiredService<MongoLoadResourceDeploymentRuntimePlacement>()
+                .LoadExactAsync);
+        services.TryAddSingleton<LoadResourceDeploymentTargetIds>(serviceProvider =>
+            serviceProvider.GetRequiredService<MongoLoadResourceDeploymentRuntimePlacement>()
+                .LoadTargetIdsAsync);
         AddCapability<MongoLoadResourceDeploymentSets, LoadResourceDeploymentSets>(
             services,
             implementation => implementation.InvokeAsync);
