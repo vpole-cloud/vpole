@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using Hangfire;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -91,6 +92,17 @@ public static class SourceBuildApplicationRegistration
         services.TryAddScoped<CreateSourceBuildWorkspace>(provider =>
             provider.GetRequiredService<SourceBuildWorkspaceService>().InvokeAsync);
         services.TryAddScoped<SourceBuildJobExecutor>();
+        services.TryAddScoped<SourceBuildQueueRecoveryJob>();
+        return services;
+    }
+
+    public static IServiceProvider ScheduleSourceBuildRecurringJobs(
+        this IServiceProvider services)
+    {
+        RecurringJob.AddOrUpdate<SourceBuildQueueRecoveryJob>(
+            "recover-source-build-queue",
+            job => job.RecoverAsync(),
+            Cron.Minutely);
         return services;
     }
 

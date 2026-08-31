@@ -596,13 +596,14 @@ Migrated application handlers and orchestration services must not depend on:
 - a broad feature interface when only one independent operation is required.
 
 The initial fast suite lives in `tests/Pole.Tests.Architecture`. It protects the
-removal of the legacy Mongo contexts across production C# source, requires
-named runtime C# filter helpers, and verifies that `Pole.Server` composes
-features through their registration entry points. `POLE001` is a Roslyn analyzer
-that rejects raw Mongo query types during the build of explicitly migrated C#
-application projects. Extend that explicit project scope when a feature
-completes this migration; do not add broad permanent exceptions for unfinished
-features.
+removal of legacy Mongo and Result APIs across production C# and F# source,
+requires named runtime filter helpers, and verifies that `Pole.Server` composes
+features through their registration entry points without owning their settings,
+quota profiles, or recurring jobs. `POLE001` is a Roslyn analyzer that rejects raw
+Mongo query types during the build of explicitly migrated C# application projects;
+the fast architecture suite applies the equivalent boundary to F# application
+sources. Extend the enforced scope when a feature completes this migration; do not
+add broad permanent exceptions for unfinished features.
 
 Additional checks should verify:
 

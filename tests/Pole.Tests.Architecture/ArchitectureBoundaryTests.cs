@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using System.Text.RegularExpressions;
 using Pole.ArchitectureAnalyzers;
 using Xunit;
 
@@ -25,6 +26,31 @@ public sealed class ArchitectureBoundaryTests
         "RunMongoTransaction",
         "ISuccess",
         "IFailure"
+    ];
+
+    private static readonly string[] RawMongoQuerySymbols =
+    [
+        "IMongoCollection",
+        "IAsyncCursor",
+        "IFindFluent",
+        "FilterDefinition",
+        "UpdateDefinition",
+        "Builders"
+    ];
+
+    private static readonly string[] ServerFeatureImplementationSymbols =
+    [
+        "PostgresSettings",
+        "QuotaSettings",
+        "OutboxProcessorJob",
+        "SourceBuildQueueRecoveryJob",
+        "RuntimeCellRecoveryJob",
+        "ResourceDeploymentRecoveryJob",
+        "RegistryProvisioningCleanupService",
+        "RedisQuotaProfile",
+        "FunctionAppQuotaProfile",
+        "WebServiceQuotaProfile",
+        "PostgresQuotaProfile"
     ];
 
     private static readonly string[] FeatureRegistrationMethods =
@@ -53,7 +79,7 @@ public sealed class ArchitectureBoundaryTests
     [Fact]
     public void ProductionSources_DoNotReferenceRemovedMongoContexts()
     {
-        var violations = ArchitectureSources.ProductionCSharp()
+        var csharpViolations = ArchitectureSources.ProductionCSharp()
             .SelectMany(source => source.Root.DescendantNodes()
                 .OfType<SimpleNameSyntax>()
                 .Where(name => LegacyMongoContextSymbols.Contains(name.Identifier.ValueText))
@@ -62,8 +88,12 @@ public sealed class ArchitectureBoundaryTests
                     name,
                     $"removed persistence symbol '{name.Identifier.ValueText}' is forbidden")))
             .ToArray();
+        var fsharpViolations = FindFSharpSymbols(
+            ArchitectureSources.ProductionFSharp(),
+            LegacyMongoContextSymbols,
+            symbol => $"removed persistence symbol '{symbol}' is forbidden");
 
-        AssertNoViolations(violations);
+        AssertNoViolations(csharpViolations.Concat(fsharpViolations).ToArray());
     }
 
     [Fact]
@@ -88,9 +118,46 @@ public sealed class ArchitectureBoundaryTests
                     name,
                     "legacy Result<T> is forbidden; use Result<T, TError> or a closed outcome union")));
 
+        var fsharpSymbolViolations = FindFSharpSymbols(
+            ArchitectureSources.RepositoryFSharp(),
+            LegacyResultCompatibilitySymbols,
+            symbol => $"removed Result compatibility symbol '{symbol}' is forbidden");
+        var fsharpSingleGenericResultViolations = ArchitectureSources.RepositoryFSharp()
+            .SelectMany(source => source.Lines
+                .Where(line => Regex.IsMatch(
+                    line.Text,
+                    @"\bResult\s*<\s*[^,>\r\n]+\s*>",
+                    RegexOptions.CultureInvariant))
+                .Select(line => ArchitectureSources.Describe(
+                    source,
+                    line.Number,
+                    "legacy Result<T> is forbidden; use Result<T, TError> or a closed outcome union")));
+
         AssertNoViolations(symbolViolations
             .Concat(singleGenericResultViolations)
+            .Concat(fsharpSymbolViolations)
+            .Concat(fsharpSingleGenericResultViolations)
             .ToArray());
+    }
+
+    [Fact]
+    public void FSharpApplicationSources_KeepRawMongoQueriesInsidePersistenceOrMigrations()
+    {
+        var applicationSources = ArchitectureSources.ProductionFSharp()
+            .Where(source => source.RelativePath.Contains(
+                ".Application/",
+                StringComparison.Ordinal));
+        var violations = applicationSources
+            .Where(source =>
+                !source.RelativePath.Contains("/Persistence/", StringComparison.Ordinal) &&
+                !source.RelativePath.Contains("/Migrations/", StringComparison.Ordinal))
+            .SelectMany(source => FindFSharpSymbols(
+                [source],
+                RawMongoQuerySymbols,
+                symbol => $"raw Mongo query symbol '{symbol}' must only be used by a persistence capability"))
+            .ToArray();
+
+        AssertNoViolations(violations);
     }
 
     [Fact]
@@ -109,6 +176,47 @@ public sealed class ArchitectureBoundaryTests
 
         Assert.Equal(3, diagnostics.Count(diagnostic =>
             diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId));
+    }
+
+    [Fact]
+    public void MediatorEndpointHandlers_UseClosedOutcomeTypes()
+    {
+        var csharpViolations = ArchitectureSources.ProductionCSharp()
+            .Where(source => source.RelativePath.Contains(
+                ".Application/Endpoints/",
+                StringComparison.Ordinal))
+            .SelectMany(source => source.Root.DescendantNodes()
+                .OfType<GenericNameSyntax>()
+                .Where(name => name.Identifier.ValueText == "IMediatorOutcomeHandler")
+                .Select(name => (Handler: name, Outcome: name.TypeArgumentList.Arguments.Last()))
+                .Where(item => !GetTypeName(item.Outcome).EndsWith(
+                    "Outcome",
+                    StringComparison.Ordinal))
+                .Select(name => ArchitectureSources.Describe(
+                    source,
+                    name.Handler,
+                    $"mediator endpoint handler outcome '{GetTypeName(name.Outcome)}' must be a closed *Outcome type")));
+        var fsharpViolations = ArchitectureSources.ProductionFSharp()
+            .Where(source => source.RelativePath.Contains(
+                ".Application/Endpoints/",
+                StringComparison.Ordinal))
+            .SelectMany(source => source.Lines
+                .Select(line => (
+                    Line: line,
+                    Match: Regex.Match(
+                        line.Text,
+                        @"\bIMediatorOutcomeHandler\s*<[^,]+,\s*([A-Za-z0-9_.']+)\s*>",
+                        RegexOptions.CultureInvariant)))
+                .Where(item => item.Match.Success &&
+                               !item.Match.Groups[1].Value.EndsWith(
+                                   "Outcome",
+                                   StringComparison.Ordinal))
+                .Select(item => ArchitectureSources.Describe(
+                    source,
+                    item.Line.Number,
+                    $"mediator endpoint handler outcome '{item.Match.Groups[1].Value}' must be a closed *Outcome type")));
+
+        AssertNoViolations(csharpViolations.Concat(fsharpViolations).ToArray());
     }
 
     [Fact]
@@ -147,7 +255,20 @@ public sealed class ArchitectureBoundaryTests
                     "Mongo filter must be defined in a named *Filters helper")))
             .ToArray();
 
-        AssertNoViolations(violations);
+        var fsharpViolations = ArchitectureSources.RuntimeMongoPersistenceFSharp()
+            .Where(source => !Path.GetFileNameWithoutExtension(source.RelativePath)
+                .EndsWith("Filters", StringComparison.Ordinal))
+            .SelectMany(source => source.Lines
+                .Where(line => Regex.IsMatch(
+                    line.Text,
+                    @"\bBuilders\s*<[^>]+>\s*\.\s*Filter\b",
+                    RegexOptions.CultureInvariant))
+                .Select(line => ArchitectureSources.Describe(
+                    source,
+                    line.Number,
+                    "Mongo filter must be defined in a named *Filters helper")));
+
+        AssertNoViolations(violations.Concat(fsharpViolations).ToArray());
     }
 
     [Fact]
@@ -181,6 +302,32 @@ public sealed class ArchitectureBoundaryTests
         AssertNoViolations(mongoImplementationReferences);
     }
 
+    [Fact]
+    public void ServerComposition_DoesNotOwnFeatureImplementationDetails()
+    {
+        var sources = ArchitectureSources.ServerCSharp().ToArray();
+        var symbolViolations = sources
+            .SelectMany(source => source.Root.DescendantNodes()
+                .OfType<SimpleNameSyntax>()
+                .Where(name => ServerFeatureImplementationSymbols.Contains(
+                    name.Identifier.ValueText,
+                    StringComparer.Ordinal))
+                .Select(name => ArchitectureSources.Describe(
+                    source,
+                    name,
+                    $"feature implementation symbol '{name.Identifier.ValueText}' belongs in its feature registration")));
+        var recurringJobViolations = sources
+            .SelectMany(source => source.Root.DescendantNodes()
+                .OfType<SimpleNameSyntax>()
+                .Where(name => name.Identifier.ValueText == "RecurringJob")
+                .Select(name => ArchitectureSources.Describe(
+                    source,
+                    name,
+                    "feature recurring jobs must be scheduled by their owning feature")));
+
+        AssertNoViolations(symbolViolations.Concat(recurringJobViolations).ToArray());
+    }
+
     private static bool IsMongoFilterBuilder(MemberAccessExpressionSyntax memberAccess) =>
         memberAccess.Name.Identifier.ValueText == "Filter" &&
         memberAccess.Expression.DescendantNodesAndSelf()
@@ -195,6 +342,14 @@ public sealed class ArchitectureBoundaryTests
             _ => null
         };
 
+    private static string GetTypeName(TypeSyntax type) => type switch
+    {
+        SimpleNameSyntax name => name.Identifier.ValueText,
+        QualifiedNameSyntax qualified => GetTypeName(qualified.Right),
+        AliasQualifiedNameSyntax alias => alias.Name.Identifier.ValueText,
+        _ => type.ToString()
+    };
+
     private static async Task<IReadOnlyCollection<Diagnostic>> AnalyzeAsync(
         string source,
         string filePath)
@@ -207,6 +362,28 @@ public sealed class ArchitectureBoundaryTests
             [new MongoApplicationBoundaryAnalyzer()]);
 
         return await compilationWithAnalyzers.GetAnalyzerDiagnosticsAsync();
+    }
+
+    private static IEnumerable<string> FindFSharpSymbols(
+        IEnumerable<ArchitectureTextSource> sources,
+        IEnumerable<string> symbols,
+        Func<string, string> message)
+    {
+        var symbolPatterns = symbols
+            .Select(symbol => (
+                Symbol: symbol,
+                Pattern: new Regex(
+                    $@"\b{Regex.Escape(symbol)}\b",
+                    RegexOptions.CultureInvariant)))
+            .ToArray();
+
+        return sources.SelectMany(source => source.Lines.SelectMany(line =>
+            symbolPatterns
+                .Where(item => item.Pattern.IsMatch(line.Text))
+                .Select(item => ArchitectureSources.Describe(
+                    source,
+                    line.Number,
+                    message(item.Symbol)))));
     }
 
     private static void AssertNoViolations(IReadOnlyCollection<string> violations) =>

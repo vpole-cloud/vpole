@@ -159,7 +159,10 @@ public sealed class FunctionRevisionManifestTests
         var created = FunctionAppFactory.Create(
             "507f1f77bcf86cd799439011",
             "resource-group-1",
-            "pole-tenant-rg",
+            new FunctionPlacementIdentity(
+                "507f1f77bcf86cd799439091",
+                "507f1f77bcf86cd799439092",
+                "507f1f77bcf86cd799439093"),
             "order-functions",
             "orders",
             spec,
@@ -175,6 +178,13 @@ public sealed class FunctionRevisionManifestTests
             FunctionAppId = app.Id,
             RevisionNumber = 3
         };
-        return new FunctionRevisionInKubernetes(app, revision);
+        return new FunctionRevisionInKubernetes(
+            app,
+            revision,
+            new FunctionResourcePlacement(
+                app.Placement.ResourceDeploymentId,
+                app.Placement.RuntimeCellId,
+                app.Placement.DeploymentTargetId,
+                "pole-tenant-rg"));
     }
 }

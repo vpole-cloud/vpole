@@ -29,7 +29,10 @@ public sealed class FunctionAppDomainTests
         var result = FunctionAppFactory.Create(
             "tenant-1",
             "group-1",
-            "pole-tenant-group",
+            new FunctionPlacementIdentity(
+                "507f1f77bcf86cd799439091",
+                "507f1f77bcf86cd799439092",
+                "507f1f77bcf86cd799439093"),
             "order-functions",
             "orders",
             request.ToDomain(),
@@ -55,7 +58,7 @@ public sealed class FunctionAppDomainTests
         var spec = CreateRevisionRequest(
                 new HttpFunctionTriggerRequest("hello", ["get"], FunctionExposure.Internal))
             .ToDomain()
-            .ToRevisionSpec("namespace");
+            .ToRevisionSpec();
         var allocation = FunctionQuotaAllocation.FromRevision(spec);
         var profile = new FunctionAppQuotaProfile(new FunctionAppCountQuota());
 
@@ -73,7 +76,10 @@ public sealed class FunctionAppDomainTests
         var created = FunctionAppFactory.Create(
             "tenant-1",
             "group-1",
-            "namespace",
+            new FunctionPlacementIdentity(
+                "507f1f77bcf86cd799439091",
+                "507f1f77bcf86cd799439092",
+                "507f1f77bcf86cd799439093"),
             "order-functions",
             "orders",
             CreateRevisionRequest(
@@ -106,7 +112,10 @@ public sealed class FunctionAppDomainTests
         var created = FunctionAppFactory.Create(
             "tenant-1",
             "group-1",
-            "namespace",
+            new FunctionPlacementIdentity(
+                "507f1f77bcf86cd799439091",
+                "507f1f77bcf86cd799439092",
+                "507f1f77bcf86cd799439093"),
             "order-functions",
             "orders",
             CreateRevisionRequest(new HttpFunctionTriggerRequest("orders", ["POST"], FunctionExposure.Public))
@@ -141,7 +150,10 @@ public sealed class FunctionAppDomainTests
         var created = FunctionAppFactory.Create(
             "tenant-1",
             "group-1",
-            "namespace",
+            new FunctionPlacementIdentity(
+                "507f1f77bcf86cd799439091",
+                "507f1f77bcf86cd799439092",
+                "507f1f77bcf86cd799439093"),
             "order-functions",
             "orders",
             CreateRevisionRequest(

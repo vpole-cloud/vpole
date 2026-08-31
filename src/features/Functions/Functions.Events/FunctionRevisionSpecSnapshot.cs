@@ -4,7 +4,6 @@ using System.Text.Json.Serialization;
 namespace Pole.Features.Functions.Events;
 
 public sealed record FunctionRevisionSpecSnapshot(
-    string KubernetesNamespace,
     FunctionImageSnapshot Image,
     string RuntimeProtocolVersion,
     FunctionConfigurationSnapshot Configuration,

@@ -87,6 +87,21 @@ public sealed record ResourceDeploymentDto(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
 
+/// <summary>
+/// Internal workload-runtime projection for resolving a persisted physical placement.
+/// Kubernetes namespaces are deliberately kept out of tenant-facing placement summaries.
+/// </summary>
+public sealed record ResourceDeploymentRuntimePlacementDto(
+    string DeploymentId,
+    string ResourceId,
+    string RuntimeCellId,
+    string DeploymentTargetId,
+    string KubernetesNamespace,
+    long DeploymentRevision,
+    ResourceDeploymentComputeConfiguration Compute,
+    string Status,
+    string DesiredOperation);
+
 public sealed record ResourceGroupHasUnfinishedDeployments(string ResourceGroupId);
 
 public sealed record IsolationScopeHasUnfinishedDeployments(
@@ -159,6 +174,18 @@ public delegate Task<PlacementSummaryDto?> LoadExactResourceDeployment(
     ResourceTypeId resourceType,
     string resourceId,
     string deploymentId,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<ResourceDeploymentRuntimePlacementDto?>
+    LoadExactResourceDeploymentRuntimePlacement(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId,
+        string deploymentId,
+        CancellationToken cancellationToken = default);
+
+public delegate Task<IReadOnlyList<string>> LoadResourceDeploymentTargetIds(
+    ResourceTypeId resourceType,
     CancellationToken cancellationToken = default);
 
 public delegate Task<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>>

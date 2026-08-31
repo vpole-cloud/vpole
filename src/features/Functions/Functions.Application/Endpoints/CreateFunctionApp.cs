@@ -3,23 +3,25 @@ using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using MongoDB.Bson;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Persistence.Contracts;
 using Pole.Features.Functions.Application.Persistence.Mutations;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
-using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Functions.Protocol;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
+using Pole.Workloads;
 
 namespace Pole.Features.Functions.Application.Endpoints;
 
@@ -56,7 +58,8 @@ public sealed record CreateFunctionAppRequestBody(
     string FunctionRoute,
     string ResourceGroupId,
     FunctionRevisionRequest Spec,
-    ImmutableHashSet<string> Tags);
+    ImmutableHashSet<string> Tags,
+    string? ComputeProfileId = null);
 
 public sealed record FunctionRevisionRequest(
     FunctionImageRequest Image,
@@ -121,12 +124,14 @@ public sealed record TimerFunctionTriggerRequest(
 public sealed record CreateFunctionAppResponse(
     string FunctionAppId,
     string RevisionId,
-    int RevisionNumber);
+    int RevisionNumber,
+    PlacementSummaryDto Placement);
 
 public union CreateFunctionAppError(
-    FunctionAppResourceGroupNotFound,
-    FunctionAppResourceGroupDeleting,
     FunctionAppDefaultDeploymentTargetUnavailable,
+    DeploymentTargetNewWorkloadAdmissionError,
+    ComputeProfileResolutionError,
+    CreateResourceDeploymentError,
     QuotaExecutionError);
 
 public union CreateFunctionAppOutcome(
@@ -134,10 +139,12 @@ public union CreateFunctionAppOutcome(
     CreateFunctionAppError);
 
 public sealed class CreateFunctionAppHandler(
-    ResolveFunctionAppResourceGroupPlacement resolveResourceGroupPlacement,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     TimeProvider timeProvider,
-    AdmitDefaultDeploymentTargetForNewWorkload admitDefaultDeploymentTarget,
+    LookupDefaultDeploymentTarget lookupDefaultDeploymentTarget,
+    AdmitDeploymentTargetForNewWorkload admitDeploymentTarget,
+    ResolveComputeProfile resolveComputeProfile,
+    CreateResourceDeployment createResourceDeployment,
     PersistCreatedFunctionApp persistCreatedFunctionApp)
     : IMediatorOutcomeHandler<CreateFunctionAppRequest, CreateFunctionAppOutcome>
 {
@@ -145,72 +152,109 @@ public sealed class CreateFunctionAppHandler(
         CreateFunctionAppRequest request,
         CancellationToken cancellationToken = default)
     {
-        var targetAdmission = await admitDefaultDeploymentTarget(cancellationToken);
-        if (targetAdmission is not Ok<DeploymentTargetLookupDto>)
+        var defaultTarget = await lookupDefaultDeploymentTarget(cancellationToken);
+        if (!defaultTarget.TryGetValue(out var configuredTarget, out _))
         {
             return new CreateFunctionAppError(
                 new FunctionAppDefaultDeploymentTargetUnavailable());
         }
 
-        var placementResolution = await resolveResourceGroupPlacement(
-            request.TenantId,
-            request.Body.ResourceGroupId,
+        var targetResult = await admitDeploymentTarget(
+            new DeploymentTargetAdmissionRequest(
+                request.TenantId,
+                FunctionResourceDeployment.ResourceType,
+                IsolationScopeId: null,
+                configuredTarget.Id,
+                DeploymentTargetRequiredCapabilities.FunctionRuntimeConnectivity),
             cancellationToken);
-        ResourceGroupPlacement placement;
-        switch (placementResolution)
+        if (!targetResult.TryGetValue(out var target, out var targetError))
         {
-            case ResourceGroupPlacement value:
-                placement = value;
-                break;
-            case FunctionAppResourceGroupNotFound notFound:
-                return new CreateFunctionAppError(notFound);
-            case FunctionAppResourceGroupDeleting deleting:
-                return new CreateFunctionAppError(deleting);
-            default:
-                throw new InvalidOperationException(
-                    "Resource group placement resolution returned an unsupported outcome.");
+            return new CreateFunctionAppError(targetError);
         }
 
-        var created = FunctionAppFactory.Create(
-            request.TenantId,
-            request.Body.ResourceGroupId,
-            placement.KubernetesNamespace,
-            request.Body.Name,
-            request.Body.FunctionRoute,
-            request.Body.Spec.ToDomain(),
-            request.Body.Tags,
-            timeProvider.GetUtcNow());
+        var spec = request.Body.Spec.ToDomain();
+        var computeResult = await resolveComputeProfile(
+            new ComputeProfileResolutionRequest(
+                request.Body.ComputeProfileId,
+                target.Id,
+                request.TenantId,
+                FunctionResourceDeployment.ResourceType),
+            cancellationToken);
+        if (!computeResult.TryGetValue(out var compute, out var computeError))
+            return new CreateFunctionAppError(computeError);
+
+        var createOptions = FunctionAppFactory.DefaultCreateOptions;
+        var deploymentId = ObjectId.GenerateNewId().ToString();
+        var admittedQuota = FunctionQuotaAllocation.FromRevision(spec.ToRevisionSpec());
 
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             FunctionQuotaAllocation,
             CreateFunctionAppOutcome>(
             request.TenantId,
-            FunctionAppQuotaResourceKey.Create(created.FunctionApp.Id),
-            new CreateQuotaMutation<FunctionQuotaAllocation>(created.FunctionApp.AdmittedQuota),
+            FunctionAppQuotaResourceKey.Create(createOptions.FunctionAppId),
+            new CreateQuotaMutation<FunctionQuotaAllocation>(admittedQuota),
             quotaError => new CreateFunctionAppError(quotaError),
-            (transaction, ct) => PersistAsync(
-                transaction,
-                created,
-                persistCreatedFunctionApp,
-                ct),
+            async (transaction, ct) =>
+            {
+                var deploymentResult = await createResourceDeployment(
+                    new CreateResourceDeploymentRequest(
+                        deploymentId,
+                        request.TenantId,
+                        FunctionResourceDeployment.ResourceType,
+                        createOptions.FunctionAppId,
+                        request.Body.ResourceGroupId,
+                        IsolationScopeId: null,
+                        ToResolvedResourceDeploymentTarget(target),
+                        compute.ToFunctionResourceDeploymentConfiguration(spec.Resources),
+                        Storage: null,
+                        ResourcePlacementCapability.SingleTarget),
+                    transaction.Session,
+                    ct);
+                if (!deploymentResult.TryGetValue(
+                        out var placement,
+                        out var deploymentError))
+                {
+                    return transaction.Abort(new CreateFunctionAppError(deploymentError));
+                }
+
+                var created = FunctionAppFactory.Create(
+                    request.TenantId,
+                    request.Body.ResourceGroupId,
+                    new FunctionPlacementIdentity(
+                        placement.DeploymentId,
+                        placement.RuntimeCellId,
+                        placement.DeploymentTargetId),
+                    request.Body.Name,
+                    request.Body.FunctionRoute,
+                    spec,
+                    request.Body.Tags,
+                    timeProvider.GetUtcNow(),
+                    createOptions);
+                await persistCreatedFunctionApp(
+                    transaction.Session,
+                    created,
+                    ct);
+                return transaction.Commit(new CreateFunctionAppResponse(
+                    created.FunctionApp.Id,
+                    created.Revision.Id,
+                    created.Revision.RevisionNumber,
+                    placement));
+            },
             cancellationToken);
     }
 
-    private static async Task<QuotaAdmissionTransactionDecision<CreateFunctionAppOutcome>> PersistAsync(
-        QuotaAdmissionTransactionContext<CreateFunctionAppOutcome> transaction,
-        FunctionAppFactory.CreateResult created,
-        PersistCreatedFunctionApp persistCreatedFunctionApp,
-        CancellationToken cancellationToken)
-    {
-        await persistCreatedFunctionApp(
-            transaction.Session,
-            created,
-            cancellationToken);
-        return transaction.Commit(new CreateFunctionAppResponse(
-            created.FunctionApp.Id,
-            created.Revision.Id,
-            created.Revision.RevisionNumber));
-    }
+    private static ResolvedResourceDeploymentTarget ToResolvedResourceDeploymentTarget(
+        DeploymentTargetLookupDto target) =>
+        new(
+            target.Id,
+            target.WorkloadConfiguration.Revision,
+            target.WorkloadConfiguration.Ingress is { } ingress
+                ? ResourceDeploymentIngressConfiguration.Create(
+                    ingress.IngressClassName,
+                    ingress.ClusterIssuerName,
+                    ingress.PublicBaseDomain,
+                    [])
+                : null);
 }
 
 public sealed class CreateFunctionAppRequestValidator : AbstractValidator<CreateFunctionAppRequest>
@@ -238,6 +282,8 @@ public sealed class CreateFunctionAppRequestBodyValidator : AbstractValidator<Cr
         RuleFor(body => body.ResourceGroupId).NotEmpty().MongoObjectId("Resource group ID");
         RuleFor(body => body.Spec).NotNull().SetValidator(new FunctionRevisionSpecInputValidator());
         RuleFor(body => body.Tags).NotNull();
+        RuleFor(body => body.ComputeProfileId)
+            .OptionalMongoObjectId("Compute profile ID");
     }
 }
 

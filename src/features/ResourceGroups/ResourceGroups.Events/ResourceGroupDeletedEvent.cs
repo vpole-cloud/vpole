@@ -10,7 +10,6 @@ public record ResourceGroupDeletedEvent(
     string ResourceGroupId,
     string Name,
     string Description,
-    string KubernetesNamespace,
     ImmutableList<ShortResourceInfo> Resources,
     ImmutableHashSet<string> Tags
 ) : IPoleEvent

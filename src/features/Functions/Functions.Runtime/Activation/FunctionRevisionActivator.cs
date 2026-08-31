@@ -10,8 +10,7 @@ namespace Pole.Features.Functions.Runtime.Activation;
 public interface IFunctionRevisionActivator
 {
     Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>> EnsureActiveAsync(
-        FunctionApp app,
-        FunctionRevision revision,
+        FunctionRevisionInKubernetes subject,
         CancellationToken cancellationToken = default,
         bool forceScaleFence = false);
 }
@@ -26,13 +25,16 @@ public sealed class FunctionRevisionActivator(
         new(StringComparer.Ordinal);
 
     public async Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>> EnsureActiveAsync(
-        FunctionApp app,
-        FunctionRevision revision,
+        FunctionRevisionInKubernetes subject,
         CancellationToken cancellationToken = default,
         bool forceScaleFence = false)
     {
-        var subject = new FunctionRevisionInKubernetes(app, revision);
-        var service = new FunctionServiceKey(subject.Namespace, subject.ServiceName);
+        var app = subject.App;
+        var revision = subject.Revision;
+        var service = new FunctionServiceKey(
+            subject.Placement.DeploymentTargetId,
+            subject.Namespace,
+            subject.ServiceName);
         var current = endpointRegistry.GetSnapshot(service);
         if (current.HasReadyEndpoints && !forceScaleFence)
             return new Ok<FunctionEndpointSnapshot>(current);

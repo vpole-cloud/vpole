@@ -13,6 +13,7 @@ namespace Pole.Features.Functions.Runtime.Consumers;
 
 public sealed class FunctionRevisionCreatedConsumer(
     LoadFunctionRevisionProvisioningSubject loadProvisioningSubject,
+    IFunctionResourcePlacementResolver placementResolver,
     IFunctionRevisionKubernetesManager kubernetesManager,
     FailFunctionRevision failFunctionRevision,
     IEnumerable<IFunctionRevisionProvisioner> provisioners,
@@ -39,10 +40,17 @@ public sealed class FunctionRevisionCreatedConsumer(
         if (revision.Status is not (ProvisioningFunctionRevisionStatus or ReadyFunctionRevisionStatus))
             return;
 
+        if (!Matches(message.Placement, app.Placement))
+            throw new InvalidOperationException("Function revision event placement does not match the Function App.");
+        var placementResult = await placementResolver.ResolveAsync(app, cancellationToken: cancellationToken);
+        if (!placementResult.TryGetValue(out var placement, out _))
+            throw new InvalidOperationException("Function resource deployment placement is not ready.");
+        var kubernetesRevision = new FunctionRevisionInKubernetes(app, revision, placement);
+
         if (revision.Status is ProvisioningFunctionRevisionStatus)
         {
             var applied = await kubernetesManager.ApplyAsync(
-                new FunctionRevisionInKubernetes(app, revision),
+                kubernetesRevision,
                 cancellationToken);
             if (applied is Err<FunctionRevisionKubernetesOperationError> applyFailure)
             {
@@ -68,7 +76,7 @@ public sealed class FunctionRevisionCreatedConsumer(
             if (revision.Status is ReadyFunctionRevisionStatus)
             {
                 var stopped = await kubernetesManager.ScaleProvisioningAsync(
-                    new FunctionRevisionInKubernetes(app, revision),
+                    kubernetesRevision,
                     0,
                     cancellationToken);
                 if (stopped is Err<FunctionRevisionKubernetesOperationError> stopFailure)
@@ -90,7 +98,7 @@ public sealed class FunctionRevisionCreatedConsumer(
             return;
         }
 
-        var outcome = await provisioner.ProvisionAsync(app, revision, cancellationToken);
+        var outcome = await provisioner.ProvisionAsync(kubernetesRevision, cancellationToken);
         if (outcome.Succeeded)
             return;
         await FailAsync(
@@ -101,6 +109,22 @@ public sealed class FunctionRevisionCreatedConsumer(
             outcome.FailureMessage ?? "Function revision provisioning failed.",
             cancellationToken);
     }
+
+    private static bool Matches(
+        FunctionPlacementSnapshot snapshot,
+        FunctionPlacementIdentity placement) =>
+        string.Equals(
+            snapshot.ResourceDeploymentId,
+            placement.ResourceDeploymentId,
+            StringComparison.Ordinal) &&
+        string.Equals(
+            snapshot.RuntimeCellId,
+            placement.RuntimeCellId,
+            StringComparison.Ordinal) &&
+        string.Equals(
+            snapshot.DeploymentTargetId,
+            placement.DeploymentTargetId,
+            StringComparison.Ordinal);
 
     private async Task FailAsync(
         string tenantId,

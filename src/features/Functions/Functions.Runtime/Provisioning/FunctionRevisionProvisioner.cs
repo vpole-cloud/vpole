@@ -24,8 +24,7 @@ public sealed record FunctionRevisionProvisioningOutcome(
 public interface IFunctionRevisionProvisioner
 {
     Task<FunctionRevisionProvisioningOutcome> ProvisionAsync(
-        FunctionApp app,
-        FunctionRevision revision,
+        FunctionRevisionInKubernetes subject,
         CancellationToken cancellationToken);
 }
 
@@ -40,11 +39,11 @@ public sealed class FunctionRevisionProvisioner(
     private static readonly TimeSpan MetadataTimeout = TimeSpan.FromSeconds(10);
 
     public async Task<FunctionRevisionProvisioningOutcome> ProvisionAsync(
-        FunctionApp app,
-        FunctionRevision revision,
+        FunctionRevisionInKubernetes subject,
         CancellationToken cancellationToken)
     {
-        var subject = new FunctionRevisionInKubernetes(app, revision);
+        var app = subject.App;
+        var revision = subject.Revision;
         if (revision.Status is ReadyFunctionRevisionStatus)
             return await PromoteAsync(subject, app, revision, cancellationToken);
         if (revision.Status is not ProvisioningFunctionRevisionStatus)
@@ -54,7 +53,7 @@ public sealed class FunctionRevisionProvisioner(
                 "Only a provisioning or ready Function revision can be provisioned.");
         }
 
-        var activation = await activator.EnsureActiveAsync(app, revision, cancellationToken);
+        var activation = await activator.EnsureActiveAsync(subject, cancellationToken);
         if (!activation.TryGetValue(out var snapshot, out var activationFailure))
             return await FailAndStopAsync(subject, "activation", activationFailure.Message(), cancellationToken);
 

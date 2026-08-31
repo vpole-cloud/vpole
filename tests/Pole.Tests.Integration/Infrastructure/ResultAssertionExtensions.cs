@@ -2,6 +2,10 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.Request;
+using Pole.Features.Functions.Application.Endpoints;
+using Pole.Features.Functions.Application.Common;
+using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Endpoints;
@@ -20,6 +24,27 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 public static class ResultAssertionExtensions
 {
+    public static ResourceGroupDto AssertSuccess(
+        this MediatorResult<CreateResourceGroupOutcome> result) =>
+        AssertSuccess<CreateResourceGroupOutcome>(result) switch
+        {
+            ResourceGroupDto success => success
+        };
+
+    public static PaginatedResponse<WebServiceDto> AssertSuccess(
+        this MediatorResult<GetWebServicesOutcome> result) =>
+        AssertSuccess<GetWebServicesOutcome>(result) switch
+        {
+            PaginatedResponse<WebServiceDto> success => success
+        };
+
+    public static PaginatedResponse<FunctionAppDto> AssertSuccess(
+        this MediatorResult<GetFunctionAppsOutcome> result) =>
+        AssertSuccess<GetFunctionAppsOutcome>(result) switch
+        {
+            PaginatedResponse<FunctionAppDto> success => success
+        };
+
     public static WebServiceDeploymentCompletionRecorded AssertSuccess(
         this CompleteWebServiceDeploymentOutcome outcome) => outcome switch
     {

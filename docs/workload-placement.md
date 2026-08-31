@@ -19,11 +19,8 @@ deployment target and is the authoritative owner of that cluster's namespace.
 ## Isolation scopes
 
 Resource-group creation inserts the group and its default scope in one Mongo transaction.
-It does not create a runtime cell. During the current transition, however, the existing
-handler still admits against the default target and the existing
-`ResourceGroupCreatedEvent` consumer provisions the legacy resource-group namespace. Those
-compatibility side effects remain until WebService, Redis, PostgreSQL, and Functions stop
-using that namespace in #37/#55.
+It does not admit a deployment target, create a namespace, or create a runtime cell.
+Runtime cells and their namespaces are created lazily when a workload resolves placement.
 
 The default scope ID is immutable and stored by the resource group. Additional scope names
 are required, normalized for uniqueness within a resource group, and immutable. The default
@@ -154,9 +151,8 @@ production-safe.
 For an otherwise empty group, deletion completes synchronously. If runtime cells need
 cleanup, the group and all scopes/cells transition to deleting and the API returns `202`.
 RuntimeCell placement, including reuse of an existing cell, performs a parent write fence
-and cannot commit against that transition. The transitional legacy lookup rejects a group
-already observed in `Deleting`, but it does not provide the caller-owned transaction fence
-that ResourceDeployment adoption will provide.
+and cannot commit against that transition. ResourceDeployment creation and mutation use that
+caller-owned transaction fence rather than a resource-group namespace lookup.
 
 Each deletion consumer:
 
@@ -184,10 +180,9 @@ OwnerId   = <runtime-cell-id>
 The reference blocks deployment-target deletion from cell creation until namespace cleanup
 succeeds. It is not the placement source of truth; the RuntimeCell is.
 
-## Transition boundary
+## Placement boundary
 
-WebService, Redis, and PostgreSQL now reconcile through `ResourceDeployment`. Functions adoption
-remains separate. New resource features must use `GetOwnershipAsync`,
-`IResourcePlacementService`, and the ResourceDeployment mutation/fence capabilities; they must not
-add dependencies on the legacy resource-group namespace field. No production-data migration or
-backward-compatibility path is included because Pole has not yet deployed the old model.
+WebService, Redis, PostgreSQL, and Functions reconcile through `ResourceDeployment`. New resource
+features must use the ResourceDeployment placement, mutation, and fence capabilities; they must
+not add Kubernetes placement fields to logical resource aggregates. No production-data migration
+or backward-compatibility path is included because Pole has not yet deployed the old model.

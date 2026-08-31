@@ -10,6 +10,14 @@ internal sealed record ArchitectureSource(
     public SyntaxNode Root => SyntaxTree.GetRoot();
 }
 
+internal sealed record ArchitectureTextSource(
+    string RelativePath,
+    string Text)
+{
+    public IEnumerable<(int Number, string Text)> Lines =>
+        Text.Split('\n').Select((line, index) => (index + 1, line.TrimEnd('\r')));
+}
+
 internal static class ArchitectureSources
 {
     public static string RepositoryRoot { get; } = FindRepositoryRoot();
@@ -20,10 +28,24 @@ internal static class ArchitectureSources
     public static IEnumerable<ArchitectureSource> RepositoryCSharp() =>
         LoadSources(RepositoryRoot);
 
+    public static IEnumerable<ArchitectureTextSource> ProductionFSharp() =>
+        LoadTextSources(Path.Combine(RepositoryRoot, "src"), "*.fs");
+
+    public static IEnumerable<ArchitectureTextSource> RepositoryFSharp() =>
+        LoadTextSources(RepositoryRoot, "*.fs");
+
+    public static IEnumerable<ArchitectureSource> ServerCSharp() =>
+        LoadSources(Path.Combine(RepositoryRoot, "src/api/Pole.Server"));
+
     public static IEnumerable<ArchitectureSource> RuntimeMongoPersistenceCSharp() =>
         ProductionCSharp().Where(source =>
             source.RelativePath.Contains(".Application/Persistence/", StringComparison.Ordinal) &&
             !IsInDirectory(source, "Migrations"));
+
+    public static IEnumerable<ArchitectureTextSource> RuntimeMongoPersistenceFSharp() =>
+        ProductionFSharp().Where(source =>
+            source.RelativePath.Contains(".Application/Persistence/", StringComparison.Ordinal) &&
+            !source.RelativePath.Contains("/Migrations/", StringComparison.Ordinal));
 
     public static ArchitectureSource ServerProgram() =>
         LoadSource(Path.Combine(RepositoryRoot, "src/api/Pole.Server/Program.cs"));
@@ -33,6 +55,12 @@ internal static class ArchitectureSources
         var position = node.GetLocation().GetLineSpan().StartLinePosition;
         return $"{source.RelativePath}:{position.Line + 1}:{position.Character + 1}: {message}";
     }
+
+    public static string Describe(
+        ArchitectureTextSource source,
+        int lineNumber,
+        string message) =>
+        $"{source.RelativePath}:{lineNumber}: {message}";
 
     private static IEnumerable<ArchitectureSource> LoadSources(string directory) =>
         Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories)
@@ -44,6 +72,17 @@ internal static class ArchitectureSources
         new(
             Path.GetRelativePath(RepositoryRoot, path).Replace(Path.DirectorySeparatorChar, '/'),
             CSharpSyntaxTree.ParseText(File.ReadAllText(path), path: path));
+
+    private static IEnumerable<ArchitectureTextSource> LoadTextSources(
+        string directory,
+        string searchPattern) =>
+        Directory.EnumerateFiles(directory, searchPattern, SearchOption.AllDirectories)
+            .Where(path => !IsBuildOutput(path))
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .Select(path => new ArchitectureTextSource(
+                Path.GetRelativePath(RepositoryRoot, path)
+                    .Replace(Path.DirectorySeparatorChar, '/'),
+                File.ReadAllText(path)));
 
     private static bool IsInDirectory(ArchitectureSource source, string directory) =>
         source.RelativePath.Contains($"/{directory}/", StringComparison.Ordinal);

@@ -104,7 +104,10 @@ public sealed class FunctionRevisionStatusMigrationTests(MongoReplicaSetFixture 
         var created = FunctionAppFactory.Create(
             "tenant-1",
             "group-1",
-            "functions",
+            new FunctionPlacementIdentity(
+                "507f1f77bcf86cd799439091",
+                "507f1f77bcf86cd799439092",
+                "507f1f77bcf86cd799439093"),
             "orders",
             "orders",
             new FunctionRevisionSpecInput(

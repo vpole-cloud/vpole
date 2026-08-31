@@ -80,7 +80,8 @@ public sealed record DeploymentTargetIngressConfigurationLookupDto(
 public enum DeploymentTargetRequiredCapabilities
 {
     None = 0,
-    PublicIngress = 1
+    PublicIngress = 1,
+    FunctionRuntimeConnectivity = 2
 }
 
 /// <summary>

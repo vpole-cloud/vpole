@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Lifecycle;
@@ -7,6 +8,9 @@ using Pole.Features.Functions.Application.Persistence.Runtime.Gateway;
 using Pole.Features.Functions.Application.Endpoints;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Gateway;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Domain;
+using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -16,7 +20,7 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
     [Fact]
-    public async Task Create_maps_resource_group_contract_not_found_to_function_outcome()
+    public async Task Create_maps_resource_group_not_found_from_placement_to_function_outcome()
     {
         var result = await Mediator.Send(new CreateFunctionAppRequest(
             new CreateFunctionAppRequestBody(
@@ -27,11 +31,15 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
                 []),
             TestData.TenantId));
 
-        Assert.IsType<FunctionAppResourceGroupNotFound>(result.HandlerOutcome() switch
+        Assert.IsType<ResourcePlacementResourceGroupNotFound>(result.HandlerOutcome() switch
         {
             CreateFunctionAppError error => error switch
             {
-                FunctionAppResourceGroupNotFound notFound => notFound,
+                CreateResourceDeploymentError deploymentError => deploymentError switch
+                {
+                    ResourcePlacementResourceGroupNotFound notFound => notFound,
+                    _ => throw new InvalidOperationException("Expected a Resource Group not-found placement outcome.")
+                },
                 _ => throw new InvalidOperationException("Expected a Resource Group not-found outcome.")
             },
             _ => throw new InvalidOperationException("Expected a Function App creation failure outcome.")
@@ -469,6 +477,65 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             .SingleAsync();
         Assert.False(timer.Enabled);
         Assert.Null(timer.Lease);
+    }
+
+    [Fact]
+    public async Task FinalizeDeletion_IsTenantScopedAndIdempotentlyPurgesOwnedState()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = await CreateAsync(group.Id);
+        (await Mediator.Send(new DeleteFunctionAppRequest(
+            created.FunctionAppId,
+            TestData.TenantId))).RequireSuccess();
+        var deployment = await DbContext.ResourceDeployments
+            .Find(item => item.Id == created.Placement.DeploymentId)
+            .SingleAsync();
+        var startedAtUtc = deployment.UpdatedAtUtc.AddSeconds(1);
+        var claimId = ObjectId.GenerateNewId().ToString();
+        var deleted = deployment
+            .Start(
+                deployment.DesiredGeneration,
+                ResourceDeploymentOperation.Delete,
+                claimId,
+                startedAtUtc,
+                startedAtUtc.AddMinutes(1))
+            .Complete(
+                deployment.DesiredGeneration,
+                ResourceDeploymentOperation.Delete,
+                claimId,
+                [],
+                startedAtUtc.AddSeconds(1));
+        await DbContext.ResourceDeployments.ReplaceOneAsync(
+            item => item.Id == deployment.Id,
+            deleted);
+        var finalize = Services.GetRequiredService<FinalizeFunctionAppDeletion>();
+
+        Assert.True((await finalize(
+            "507f1f77bcf86cd799439099",
+            created.FunctionAppId,
+            deployment.Id)).TryGetValue(out _, out _));
+        Assert.Equal(1L, await DbContext.FunctionApps.CountDocumentsAsync(
+            item => item.Id == created.FunctionAppId));
+
+        Assert.True((await finalize(
+            TestData.TenantId,
+            created.FunctionAppId,
+            deployment.Id)).TryGetValue(out _, out _));
+        Assert.True((await finalize(
+            TestData.TenantId,
+            created.FunctionAppId,
+            deployment.Id)).TryGetValue(out _, out _));
+
+        Assert.Equal(0L, await DbContext.FunctionApps.CountDocumentsAsync(
+            item => item.Id == created.FunctionAppId));
+        Assert.Equal(0L, await DbContext.FunctionRevisions.CountDocumentsAsync(
+            item => item.FunctionAppId == created.FunctionAppId));
+        Assert.Equal(0L, await DbContext.FunctionRouteBindings.CountDocumentsAsync(
+            item => item.FunctionAppId == created.FunctionAppId));
+        Assert.Equal(0L, await DbContext.FunctionTimerStates.CountDocumentsAsync(
+            item => item.FunctionAppId == created.FunctionAppId));
+        Assert.Equal(0L, await DbContext.ResourceDeployments.CountDocumentsAsync(
+            item => item.Id == deployment.Id));
     }
 
     private static async Task<FunctionRevisionLifecycleOutcome> MarkReadyAndPromoteAsync(

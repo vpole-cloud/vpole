@@ -7,6 +7,7 @@ using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Application.Persistence.Deployments;
 using Pole.Features.WebServices.Application.Persistence.Lifecycle;
 using Pole.Features.WebServices.Contracts;
+using Pole.Features.Quotas.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.WebServices.Application;
@@ -17,6 +18,11 @@ public static class WebServicesFeatureRegistration
         this IServiceCollection services)
     {
         services.AddWebServicePersistence();
+        services.TryAddSingleton<WebServiceCountQuota>();
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<Quota, WebServiceCountQuota>());
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IQuotaProfile, WebServiceQuotaProfile>());
         services.AddOutcomeTransaction<WebServiceDeploymentHostnameOutcome>();
         services.AddOutcomeTransaction<RedeployWebServiceOutcome>();
         services.AddOutcomeTransaction<UpdateWebServiceImageTagOutcome>();

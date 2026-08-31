@@ -31,7 +31,7 @@ public sealed class FunctionRevisionProvisionerTests
             lifecycle.PromoteAsync,
             NullLogger<FunctionRevisionProvisioner>.Instance);
 
-        var outcome = await provisioner.ProvisionAsync(subject.App, subject.Revision, CancellationToken.None);
+        var outcome = await provisioner.ProvisionAsync(subject, CancellationToken.None);
 
         Assert.True(outcome.Succeeded);
         Assert.Equal([0], manager.ScaleRequests);
@@ -58,7 +58,7 @@ public sealed class FunctionRevisionProvisionerTests
             lifecycle.PromoteAsync,
             NullLogger<FunctionRevisionProvisioner>.Instance);
 
-        var outcome = await provisioner.ProvisionAsync(subject.App, subject.Revision, CancellationToken.None);
+        var outcome = await provisioner.ProvisionAsync(subject, CancellationToken.None);
 
         Assert.True(outcome.Succeeded);
         Assert.Empty(manager.ScaleRequests);
@@ -88,7 +88,7 @@ public sealed class FunctionRevisionProvisionerTests
             lifecycle.PromoteAsync,
             NullLogger<FunctionRevisionProvisioner>.Instance);
 
-        var outcome = await provisioner.ProvisionAsync(subject.App, subject.Revision, CancellationToken.None);
+        var outcome = await provisioner.ProvisionAsync(subject, CancellationToken.None);
 
         Assert.False(outcome.Succeeded);
         Assert.Equal("promotion", outcome.FailureCode);
@@ -111,7 +111,7 @@ public sealed class FunctionRevisionProvisionerTests
             lifecycle.PromoteAsync,
             NullLogger<FunctionRevisionProvisioner>.Instance);
 
-        var outcome = await provisioner.ProvisionAsync(subject.App, subject.Revision, CancellationToken.None);
+        var outcome = await provisioner.ProvisionAsync(subject, CancellationToken.None);
 
         Assert.False(outcome.Succeeded);
         Assert.Equal("agent-metadata", outcome.FailureCode);
@@ -156,7 +156,10 @@ public sealed class FunctionRevisionProvisionerTests
         var created = FunctionAppFactory.Create(
             "tenant-1",
             "group-1",
-            "functions",
+            new FunctionPlacementIdentity(
+                "507f1f77bcf86cd799439091",
+                "507f1f77bcf86cd799439092",
+                "507f1f77bcf86cd799439093"),
             "orders",
             "orders",
             spec,
@@ -168,7 +171,14 @@ public sealed class FunctionRevisionProvisionerTests
             Id = "507f1f77bcf86cd799439012",
             FunctionAppId = app.Id
         };
-        return new FunctionRevisionInKubernetes(app, revision);
+        return new FunctionRevisionInKubernetes(
+            app,
+            revision,
+            new FunctionResourcePlacement(
+                app.Placement.ResourceDeploymentId,
+                app.Placement.RuntimeCellId,
+                app.Placement.DeploymentTargetId,
+                "functions"));
     }
 
     private sealed class ReadyActivator(
@@ -176,13 +186,15 @@ public sealed class FunctionRevisionProvisionerTests
         FunctionRevisionInKubernetes subject) : IFunctionRevisionActivator
     {
         public Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>> EnsureActiveAsync(
-            FunctionApp app,
-            FunctionRevision revision,
+            FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default,
             bool forceScaleFence = false) =>
             Task.FromResult<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>>(
                 new Ok<FunctionEndpointSnapshot>(new FunctionEndpointSnapshot(
-                new FunctionServiceKey(subject.Namespace, subject.ServiceName),
+                new FunctionServiceKey(
+                    subject.Placement.DeploymentTargetId,
+                    subject.Namespace,
+                    subject.ServiceName),
                 [endpoint],
                 DateTimeOffset.UtcNow)));
     }

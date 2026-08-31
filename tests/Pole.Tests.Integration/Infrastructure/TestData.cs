@@ -9,7 +9,6 @@ using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Application.Endpoints;
-using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
@@ -28,9 +27,6 @@ public static class TestData
     public const string DefaultComputeProfileId = "507f1f77bcf86cd799439097";
     public const string UserId = "test-user";
     public const string UserEmail = "test-user@example.test";
-
-    private static readonly KubernetesResourceGroupNamespaceNameGenerator NamespaceGenerator =
-        new(new KubernetesOptions { NamespaceNamePrefix = "test" });
 
     public static CreateResourceGroupRequest CreateResourceGroupRequest(
         string name = "alpha",
@@ -170,7 +166,8 @@ public static class TestData
             [
                 ResourceTypeId.Create("pole/web-service"),
                 ResourceTypeId.Create("pole/redis"),
-                ResourceTypeId.Create("pole/postgresql")
+                ResourceTypeId.Create("pole/postgresql"),
+                ResourceTypeId.Create("pole/function-app")
             ],
             AllTenantsComputeProfileAccess.Create(),
             (deploymentTargetIds ?? [DefaultDeploymentTargetId])
@@ -190,7 +187,7 @@ public static class TestData
         FailureThreshold: 3,
         SuccessThreshold: 1);
 
-    public static ResourceGroup SeedResourceGroup(string name = "alpha", string? kubernetesNamespace = null, string tenantId = TenantId)
+    public static ResourceGroup SeedResourceGroup(string name = "alpha", string tenantId = TenantId)
     {
         var options = ResourceGroupFactory.DefaultCreateOptions with
         {
@@ -201,7 +198,6 @@ public static class TestData
             name: name,
             tenantId: tenantId,
             description: $"{name} description",
-            kubernetesNamespace: kubernetesNamespace ?? NamespaceGenerator.Invoke(tenantId, options.Id),
             options: options);
     }
 

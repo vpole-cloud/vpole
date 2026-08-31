@@ -16,11 +16,10 @@
         <Compile Include="Common\PostgresQuotaProfile.fs" />
         <Compile Include="Common\PostgresClusterDto.fs" />
         <Compile Include="Common\PostgresClusterCredentials.fs" />
-        <Compile Include="Common\MongoExtensions.fs" />
         <Compile Include="Common\ResourceDeploymentQueryExtensions.fs" />
         <Compile Include="Common\TypedResultInterop.fs" />
         <Compile Include="Common\PostgresResourceDeployment.fs" />
-        <Compile Include="Common\PostgresCredentialMigration.fs" />
+        <Compile Include="Migrations\PostgresCredentialMigration.fs" />
         <Compile Include="Common\PostgresClusterEventExtensions.fs" />
         <Compile Include="Persistence\PostgresOutcome.fs" />
         <Compile Include="Persistence\PostgresFilters.fs" />

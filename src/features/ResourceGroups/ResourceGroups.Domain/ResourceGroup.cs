@@ -13,8 +13,6 @@ public sealed record ResourceGroup(
     string TenantId,
     string Name,
     string Description,
-    // Transitional until existing resource reconciliation moves to RuntimeCell in #37 and #55.
-    string KubernetesNamespace,
     [property: BsonRepresentation(BsonType.ObjectId)]
     string DefaultIsolationScopeId,
     ResourceGroupLifecycleState Lifecycle,
@@ -112,7 +110,6 @@ public static class ResourceGroupFactory
         string tenantId,
         string name,
         string description,
-        string kubernetesNamespace,
         ResourceGroupCreateOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -140,9 +137,6 @@ public static class ResourceGroupFactory
                 description,
                 nameof(description),
                 ResourceGroupValueGuard.MaximumResourceGroupDescriptionLength),
-            ResourceGroupValueGuard.KubernetesNamespace(
-                kubernetesNamespace,
-                nameof(kubernetesNamespace)),
             ResourceGroupValueGuard.ObjectId(
                 options.DefaultIsolationScopeId,
                 nameof(options.DefaultIsolationScopeId)),

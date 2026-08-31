@@ -20,8 +20,8 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.RedisServices.Application.Endpoints;
+using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Endpoints;
-using Pole.Features.ResourceGroups.Application.Consumers;
 using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.WebServices.Application.Kubernetes;
@@ -117,7 +117,7 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
 
         var consumerAssemblies = new[]
         {
-            typeof(ProvisionResourceGroupOnResourceGroupCreatedConsumer).Assembly,
+            typeof(ResourceGroupApplicationRegistration).Assembly,
             typeof(CreateRedisServiceHandler).Assembly,
             typeof(WebServiceResourceDeploymentAdapter).Assembly,
             typeof(PostgresResourceDeploymentAdapter).Assembly,
@@ -154,10 +154,18 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
             () => discoverStorageClasses(
                 DeploymentTargetId));
         var functionFailure = await Assert.ThrowsAsync<TestProviderInfrastructureException>(
-            () => new FunctionRevisionKubernetesManager(provider, []).ApplyAsync(default));
+            () => new FunctionRevisionKubernetesManager(provider, []).ApplyAsync(
+                new FunctionRevisionInKubernetes(
+                    null!,
+                    null!,
+                    new FunctionResourcePlacement(
+                        "507f1f77bcf86cd799439091",
+                        "507f1f77bcf86cd799439092",
+                        DeploymentTargetId,
+                        "functions"))));
 
         Assert.Same(expected, storageFailure);
-        Assert.Equal([DeploymentTargetId], provider.RequestedTargetIds);
+        Assert.Equal([DeploymentTargetId, DeploymentTargetId], provider.RequestedTargetIds);
         Assert.Same(expected, functionFailure);
     }
 

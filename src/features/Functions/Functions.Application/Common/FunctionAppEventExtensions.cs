@@ -15,6 +15,7 @@ internal static class FunctionAppEventExtensions
             revision.Id,
             revision.RevisionNumber,
             app.ResourceGroupId,
+            app.Placement.ToSnapshot(),
             app.Name,
             app.FunctionRoute,
             revision.Spec.ToSnapshot())
@@ -23,11 +24,13 @@ internal static class FunctionAppEventExtensions
         };
 
     public static FunctionRevisionCreatedEvent ToRevisionCreatedEvent(
-        this FunctionRevision revision) =>
+        this FunctionRevision revision,
+        FunctionApp app) =>
         new(
             revision.FunctionAppId,
             revision.Id,
             revision.RevisionNumber,
+            app.Placement.ToSnapshot(),
             revision.Spec.ToSnapshot())
         {
             EventCore = EventCore.Create(revision.TenantId)
@@ -35,11 +38,13 @@ internal static class FunctionAppEventExtensions
 
     public static FunctionRevisionPromotedEvent ToPromotedEvent(
         this FunctionRevision revision,
+        FunctionApp app,
         string? previousRevisionId) =>
         new(
             revision.FunctionAppId,
             revision.Id,
             revision.RevisionNumber,
+            app.Placement.ToSnapshot(),
             previousRevisionId)
         {
             EventCore = EventCore.Create(revision.TenantId)
@@ -47,26 +52,33 @@ internal static class FunctionAppEventExtensions
 
     public static FunctionRevisionFailedEvent ToFailedEvent(
         this FunctionRevision revision,
+        FunctionApp app,
         FunctionRevisionFailure failure) =>
         new(
             revision.FunctionAppId,
             revision.Id,
             revision.RevisionNumber,
+            app.Placement.ToSnapshot(),
             failure.Code,
             failure.Message)
         {
             EventCore = EventCore.Create(revision.TenantId)
         };
 
-    public static FunctionRevisionRetiredEvent ToRetiredEvent(this FunctionRevision revision) =>
-        new(revision.FunctionAppId, revision.Id, revision.RevisionNumber)
+    public static FunctionRevisionRetiredEvent ToRetiredEvent(
+        this FunctionRevision revision,
+        FunctionApp app) =>
+        new(
+            revision.FunctionAppId,
+            revision.Id,
+            revision.RevisionNumber,
+            app.Placement.ToSnapshot())
         {
             EventCore = EventCore.Create(revision.TenantId)
         };
 
     public static FunctionRevisionSpecSnapshot ToSnapshot(this FunctionRevisionSpec spec) =>
         new(
-            spec.KubernetesNamespace,
             new FunctionImageSnapshot(
                 spec.Image.Server,
                 spec.Image.Name,
@@ -114,4 +126,11 @@ internal static class FunctionAppEventExtensions
                         _ => throw new InvalidOperationException("Unknown Function trigger spec.")
                     }))
                 .ToImmutableList());
+
+    public static FunctionPlacementSnapshot ToSnapshot(
+        this FunctionPlacementIdentity placement) =>
+        new(
+            placement.ResourceDeploymentId,
+            placement.RuntimeCellId,
+            placement.DeploymentTargetId);
 }

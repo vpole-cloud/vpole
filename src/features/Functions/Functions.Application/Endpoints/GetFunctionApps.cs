@@ -21,7 +21,10 @@ public static class GetFunctionApps
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    PaginatedResponse<FunctionAppDto> page => Results.Ok(page)
+                });
             })
             .WithName("GetFunctionApps")
             .Produces<PaginatedResponse<FunctionAppDto>>();
@@ -29,7 +32,8 @@ public static class GetFunctionApps
     }
 }
 
-public sealed record GetFunctionAppsRequest : PaginatedRequest<FunctionAppDto>, ITenantReadOperation
+public sealed record GetFunctionAppsRequest
+    : PaginatedRequest, IMediatorRequest<GetFunctionAppsOutcome>, ITenantReadOperation
 {
     [FromHeader(Name = TenantHeaders.TenantId)] public string TenantId { get; init; } = string.Empty;
     [FromQuery] public string? Search { get; init; }
@@ -37,9 +41,9 @@ public sealed record GetFunctionAppsRequest : PaginatedRequest<FunctionAppDto>, 
 }
 
 public sealed class GetFunctionAppsHandler(LoadFunctionAppPage loadFunctionAppPage)
-    : IMediatorOutcomeHandler<GetFunctionAppsRequest, PaginatedResponse<FunctionAppDto>>
+    : IMediatorOutcomeHandler<GetFunctionAppsRequest, GetFunctionAppsOutcome>
 {
-    public async Task<PaginatedResponse<FunctionAppDto>> HandleAsync(
+    public async Task<GetFunctionAppsOutcome> HandleAsync(
         GetFunctionAppsRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -58,3 +62,5 @@ public sealed class GetFunctionAppsHandler(LoadFunctionAppPage loadFunctionAppPa
             request.PageSize);
     }
 }
+
+public union GetFunctionAppsOutcome(PaginatedResponse<FunctionAppDto>);

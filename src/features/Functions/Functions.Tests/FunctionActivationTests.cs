@@ -13,18 +13,20 @@ namespace Pole.Features.Functions.Tests;
 
 public sealed class FunctionActivationTests
 {
+    private const string TargetId = "507f1f77bcf86cd799439093";
+
     [Fact]
     public void Endpoint_registry_projects_ready_agent_endpoints_across_slices()
     {
         var registry = new FunctionEndpointRegistry(TimeProvider.System);
-        var service = new FunctionServiceKey("functions", "orders-agent");
+        var service = new FunctionServiceKey(TargetId, "functions", "orders-agent");
 
-        registry.ApplySlice(Slice(
+        registry.ApplySlice(TargetId, Slice(
             "slice-a",
             service,
             Endpoint("10.0.0.1", ready: true),
             Endpoint("10.0.0.2", ready: false)));
-        registry.ApplySlice(Slice(
+        registry.ApplySlice(TargetId, Slice(
             "slice-b",
             service,
             Endpoint("10.0.0.1", ready: true),
@@ -36,12 +38,12 @@ public sealed class FunctionActivationTests
         Assert.Equal(["10.0.0.1", "10.0.0.4"], snapshot.Endpoints.Select(endpoint => endpoint.Address));
         Assert.All(snapshot.Endpoints, endpoint => Assert.Equal(8080, endpoint.Port));
 
-        registry.DeleteSlice("functions", "slice-a");
+        registry.DeleteSlice(TargetId, "functions", "slice-a");
 
         Assert.Equal(
             ["10.0.0.1", "10.0.0.4"],
             registry.GetSnapshot(service).Endpoints.Select(endpoint => endpoint.Address));
-        registry.DeleteSlice("functions", "slice-b");
+        registry.DeleteSlice(TargetId, "functions", "slice-b");
         Assert.False(registry.GetSnapshot(service).HasReadyEndpoints);
     }
 
@@ -49,13 +51,13 @@ public sealed class FunctionActivationTests
     public void Endpoint_registry_rejects_non_pod_and_non_unicast_targets()
     {
         var registry = new FunctionEndpointRegistry(TimeProvider.System);
-        var service = new FunctionServiceKey("functions", "orders-agent");
+        var service = new FunctionServiceKey(TargetId, "functions", "orders-agent");
         var nonPod = Endpoint("10.0.0.1", ready: true) with
         {
             TargetRef = new V1ObjectReference { Kind = "Service", Uid = "service-1" }
         };
 
-        registry.ApplySlice(Slice(
+        registry.ApplySlice(TargetId, Slice(
             "slice-untrusted",
             service,
             nonPod,
@@ -70,11 +72,11 @@ public sealed class FunctionActivationTests
     public void Endpoint_registry_rebuilds_old_service_when_a_slice_changes_ownership()
     {
         var registry = new FunctionEndpointRegistry(TimeProvider.System);
-        var oldService = new FunctionServiceKey("functions", "old-agent");
-        var newService = new FunctionServiceKey("functions", "new-agent");
-        registry.ApplySlice(Slice("slice", oldService, Endpoint("10.0.0.1", ready: true)));
+        var oldService = new FunctionServiceKey(TargetId, "functions", "old-agent");
+        var newService = new FunctionServiceKey(TargetId, "functions", "new-agent");
+        registry.ApplySlice(TargetId, Slice("slice", oldService, Endpoint("10.0.0.1", ready: true)));
 
-        registry.ApplySlice(Slice("slice", newService, Endpoint("10.0.0.2", ready: true)));
+        registry.ApplySlice(TargetId, Slice("slice", newService, Endpoint("10.0.0.2", ready: true)));
 
         Assert.False(registry.GetSnapshot(oldService).HasReadyEndpoints);
         Assert.Equal("10.0.0.2", Assert.Single(registry.GetSnapshot(newService).Endpoints).Address);
@@ -84,14 +86,37 @@ public sealed class FunctionActivationTests
     public void Endpoint_registry_relist_removes_slices_missing_from_the_latest_list()
     {
         var registry = new FunctionEndpointRegistry(TimeProvider.System);
-        var service = new FunctionServiceKey("functions", "orders-agent");
-        registry.ApplySlice(Slice("stale", service, Endpoint("10.0.0.1", ready: true)));
+        var service = new FunctionServiceKey(TargetId, "functions", "orders-agent");
+        registry.ApplySlice(TargetId, Slice("stale", service, Endpoint("10.0.0.1", ready: true)));
 
-        registry.ReplaceAll([Slice("current", service, Endpoint("10.0.0.2", ready: true))]);
+        registry.ReplaceTarget(TargetId, [Slice("current", service, Endpoint("10.0.0.2", ready: true))]);
 
         Assert.Equal("10.0.0.2", Assert.Single(registry.GetSnapshot(service).Endpoints).Address);
-        registry.DeleteSlice("functions", "current");
+        registry.DeleteSlice(TargetId, "functions", "current");
         Assert.False(registry.GetSnapshot(service).HasReadyEndpoints);
+    }
+
+    [Fact]
+    public void Endpoint_registry_isolates_identical_service_identity_across_targets()
+    {
+        const string secondTargetId = "507f1f77bcf86cd799439094";
+        var registry = new FunctionEndpointRegistry(TimeProvider.System);
+        var first = new FunctionServiceKey(TargetId, "functions", "orders-agent");
+        var second = new FunctionServiceKey(secondTargetId, "functions", "orders-agent");
+
+        registry.ApplySlice(
+            TargetId,
+            Slice("orders", first, Endpoint("10.0.0.1", ready: true)));
+        registry.ApplySlice(
+            secondTargetId,
+            Slice("orders", second, Endpoint("10.1.0.1", ready: true)));
+
+        Assert.Equal("10.0.0.1", Assert.Single(registry.GetSnapshot(first).Endpoints).Address);
+        Assert.Equal("10.1.0.1", Assert.Single(registry.GetSnapshot(second).Endpoints).Address);
+
+        registry.RemoveTarget(TargetId);
+        Assert.False(registry.GetSnapshot(first).HasReadyEndpoints);
+        Assert.True(registry.GetSnapshot(second).HasReadyEndpoints);
     }
 
     [Fact]
@@ -99,15 +124,15 @@ public sealed class FunctionActivationTests
     {
         var subject = CreateSubject();
         var registry = new FunctionEndpointRegistry(TimeProvider.System);
-        registry.ApplySlice(Slice(
+        registry.ApplySlice(TargetId, Slice(
             "ready",
-            new FunctionServiceKey(subject.Namespace, subject.ServiceName),
+            Service(subject),
             Endpoint("10.0.0.1", ready: true)));
         var coordinator = new FakeActivationCoordinator();
         var manager = new ControlledKubernetesManager();
         var activator = new FunctionRevisionActivator(registry, coordinator, manager, TimeProvider.System);
 
-        var result = await activator.EnsureActiveAsync(subject.App, subject.Revision);
+        var result = await activator.EnsureActiveAsync(subject);
 
         var snapshot = result switch
         {
@@ -124,17 +149,16 @@ public sealed class FunctionActivationTests
     {
         var subject = CreateSubject();
         var registry = new FunctionEndpointRegistry(TimeProvider.System);
-        registry.ApplySlice(Slice(
+        registry.ApplySlice(TargetId, Slice(
             "ready",
-            new FunctionServiceKey(subject.Namespace, subject.ServiceName),
+            Service(subject),
             Endpoint("10.0.0.1", ready: true)));
         var coordinator = new FakeActivationCoordinator(generation: 43);
         var manager = new ControlledKubernetesManager();
         var activator = new FunctionRevisionActivator(registry, coordinator, manager, TimeProvider.System);
 
         var activation = activator.EnsureActiveAsync(
-            subject.App,
-            subject.Revision,
+            subject,
             forceScaleFence: true);
         await manager.ScaleStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         manager.CompleteScale();
@@ -156,14 +180,14 @@ public sealed class FunctionActivationTests
         var manager = new ControlledKubernetesManager();
         var activator = new FunctionRevisionActivator(registry, coordinator, manager, TimeProvider.System);
 
-        var first = activator.EnsureActiveAsync(subject.App, subject.Revision);
+        var first = activator.EnsureActiveAsync(subject);
         await manager.ScaleStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
-        var second = activator.EnsureActiveAsync(subject.App, subject.Revision);
+        var second = activator.EnsureActiveAsync(subject);
 
         Assert.Equal(1, manager.ScaleCalls);
-        registry.ApplySlice(Slice(
+        registry.ApplySlice(TargetId, Slice(
             "ready",
-            new FunctionServiceKey(subject.Namespace, subject.ServiceName),
+            Service(subject),
             Endpoint("10.0.0.8", ready: true)));
         manager.CompleteScale();
 
@@ -194,7 +218,7 @@ public sealed class FunctionActivationTests
         var manager = new ControlledKubernetesManager();
         var activator = new FunctionRevisionActivator(registry, coordinator, manager, TimeProvider.System);
 
-        var result = await activator.EnsureActiveAsync(subject.App, subject.Revision);
+        var result = await activator.EnsureActiveAsync(subject);
 
         var failure = result switch
         {
@@ -221,7 +245,7 @@ public sealed class FunctionActivationTests
         var manager = new ControlledKubernetesManager();
         var activator = new FunctionRevisionActivator(registry, coordinator, manager, TimeProvider.System);
 
-        var activation = activator.EnsureActiveAsync(subject.App, subject.Revision);
+        var activation = activator.EnsureActiveAsync(subject);
         await manager.ScaleStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         manager.CompleteScale(new Err<FunctionRevisionKubernetesOperationError>(
             new FunctionRevisionKubernetesOperationRejected(
@@ -244,6 +268,12 @@ public sealed class FunctionActivationTests
         Assert.Equal(1, coordinator.BeginCalls);
         Assert.Equal(0, coordinator.CompleteCalls);
     }
+
+    private static FunctionServiceKey Service(FunctionRevisionInKubernetes subject) =>
+        new(
+            subject.Placement.DeploymentTargetId,
+            subject.Namespace,
+            subject.ServiceName);
 
     private static FunctionRevisionInKubernetes CreateSubject()
     {
@@ -270,7 +300,10 @@ public sealed class FunctionActivationTests
         var created = FunctionAppFactory.Create(
             "tenant-1",
             "resource-group-1",
-            "pole-tenant-rg",
+            new FunctionPlacementIdentity(
+                "507f1f77bcf86cd799439091",
+                "507f1f77bcf86cd799439092",
+                "507f1f77bcf86cd799439093"),
             "order-functions",
             "orders",
             spec,
@@ -283,7 +316,14 @@ public sealed class FunctionActivationTests
             FunctionAppId = app.Id,
             RevisionNumber = 3
         };
-        return new FunctionRevisionInKubernetes(app, revision);
+        return new FunctionRevisionInKubernetes(
+            app,
+            revision,
+            new FunctionResourcePlacement(
+                app.Placement.ResourceDeploymentId,
+                app.Placement.RuntimeCellId,
+                app.Placement.DeploymentTargetId,
+                "pole-tenant-rg"));
     }
 
     private static V1EndpointSlice Slice(

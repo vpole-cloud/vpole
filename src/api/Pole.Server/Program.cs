@@ -21,7 +21,6 @@ using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Postgres.Application.Endpoints;
-using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
@@ -61,7 +60,7 @@ Assembly[] assemblies = [
     typeof(ComputeProfileApplicationRegistration).Assembly,
     typeof(DeploymentTargetFeature).Assembly,
     typeof(SourceBuildFeature).Assembly,
-    typeof(OutboxProcessorJob).Assembly,
+    typeof(OutboxFeatureRegistration).Assembly,
     typeof(ResourceGroupEndpoints).Assembly,
     typeof(RedisServiceEndpoints).Assembly,
     typeof(ResourceDeploymentFeature).Assembly,
@@ -99,13 +98,9 @@ builder.Services.AddKubernetes(configuration)
     .AddComputeProfilesFeature()
     .AddStorageProfilesFeature()
     .AddRedisServicesFeature()
-    .AddPostgresFeature()
+    .AddPostgresFeature(configuration)
     .AddWebServicesFeature()
-    .AddQuotasFeature(
-        typeof(RedisQuotaProfile).Assembly,
-        typeof(FunctionAppQuotaProfile).Assembly,
-        typeof(WebServiceQuotaProfile).Assembly,
-        typeof(PostgresQuotaProfile).Assembly)
+    .AddQuotasFeature(configuration)
     .AddMigrations(assemblies)
     .AddEnvelopeEncryption(configuration)
     .AddDeploymentTargetsFeature(configuration)
@@ -114,7 +109,6 @@ builder.Services.AddKubernetes(configuration)
     .AddContainerRegistriesFeature(configuration)
     .AddSourceBuildsFeature(configuration)
     .AddUsersFeature(configuration)
-    .AddSettings(configuration)
     .AddHangfireWithMongo(configuration)
     .AddValidatorsFromAssemblies(assemblies)
     .AddOpenApi()
@@ -163,6 +157,12 @@ app.UseAuthorization();
 app.UseMiddleware<TenantContextMiddleware>();
 
 app.UseHangfire();
+app.Services
+    .ScheduleOutboxRecurringJobs()
+    .ScheduleSourceBuildRecurringJobs()
+    .ScheduleResourceGroupRecurringJobs()
+    .ScheduleResourceDeploymentRecurringJobs()
+    .ScheduleContainerRegistryRecurringJobs();
 
 app.MapGitHubCallbackEndpoints();
 

@@ -81,8 +81,14 @@ internal static class DeploymentTargetAdmissionSupport
     public static bool HasRequiredCapabilities(
         DeploymentTargetLookupDto target,
         DeploymentTargetRequiredCapabilities requiredCapabilities) =>
-        !requiredCapabilities.HasFlag(DeploymentTargetRequiredCapabilities.PublicIngress) ||
-        target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null;
+        (!requiredCapabilities.HasFlag(DeploymentTargetRequiredCapabilities.PublicIngress) ||
+         target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null) &&
+        (!requiredCapabilities.HasFlag(
+             DeploymentTargetRequiredCapabilities.FunctionRuntimeConnectivity) ||
+         string.Equals(
+             target.ConnectionKind,
+             "InCluster",
+             StringComparison.Ordinal));
 
     public static DeploymentTargetPublicIngressDto ToPublicIngressDto(
         DeploymentTargetLookupDto target)

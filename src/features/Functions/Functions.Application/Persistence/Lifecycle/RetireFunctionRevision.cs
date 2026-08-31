@@ -12,6 +12,7 @@ public delegate Task<FunctionRevisionLifecycleOutcome> RetireFunctionRevision(
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoRetireFunctionRevision(
+    IMongoCollection<FunctionApp> functionApps,
     IMongoCollection<FunctionRevision> functionRevisions,
     IMongoCollection<FunctionInvocation> functionInvocations,
     StoreOutboxWrites storeOutboxWrites,
@@ -25,6 +26,13 @@ internal sealed class MongoRetireFunctionRevision(
     {
         return await runMongoTransaction(async (transaction, transactionCancellationToken) =>
         {
+            var app = await functionApps.Find(
+                    transaction.Session,
+                    FunctionAppFilters.ByTenantAndId(tenantId, functionAppId))
+                .FirstOrDefaultAsync(transactionCancellationToken);
+            if (app is null)
+                return transaction.Abort(new FunctionAppNotFound(functionAppId));
+
             var revision = await functionRevisions.Find(
                     transaction.Session,
                     FunctionRevisionLifecycleFilters.RevisionByOwner(
@@ -74,7 +82,7 @@ internal sealed class MongoRetireFunctionRevision(
 
             await storeOutboxWrites(
                 transaction.Session,
-                [OutboxWrite.Create(revision.ToRetiredEvent())],
+                [OutboxWrite.Create(revision.ToRetiredEvent(app))],
                 transactionCancellationToken);
             return transaction.Commit(new FunctionRevisionLifecycleCompleted());
         }, cancellationToken);

@@ -148,7 +148,9 @@ internal sealed class MongoPromoteFunctionRevision(
                 await storeOutboxWrites(
                     transaction.Session,
                     [OutboxWrite.Create(
-                        state.Revision.ToPromotedEvent(state.App.ActiveRevisionId))],
+                        state.Revision.ToPromotedEvent(
+                            state.App,
+                            state.App.ActiveRevisionId))],
                     transactionCancellationToken);
                 return transaction.Commit(new FunctionRevisionLifecycleCompleted());
             },

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using Hangfire;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -6,6 +7,7 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
+using Pole.Features.ResourceGroups.Application.Jobs;
 using Pole.Features.ResourceGroups.Application.Persistence;
 using Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
 using Pole.Features.ResourceGroups.Application.Persistence.Placements;
@@ -35,8 +37,6 @@ public static class ResourceGroupApplicationRegistration
             .Value);
 
         services.AddResourceGroupPersistence();
-        services.AddCapability<KubernetesResourceGroupNamespaceNameGenerator,
-            GenerateResourceGroupNamespaceName>(implementation => implementation.Invoke);
         services.AddCapability<RuntimeCellNamespaceNameGenerator,
             GenerateRuntimeCellNamespaceName>(implementation => implementation.Invoke);
         services.TryAddScoped<KubernetesRuntimeCellNamespaceManager>();
@@ -48,6 +48,17 @@ public static class ResourceGroupApplicationRegistration
             .DeleteAsync);
         services.TryAddScoped<RuntimeCellLifecyclePersistence>();
         services.TryAddScoped<RuntimeCellRecoveryPersistence>();
+        services.TryAddScoped<RuntimeCellRecoveryJob>();
+        return services;
+    }
+
+    public static IServiceProvider ScheduleResourceGroupRecurringJobs(
+        this IServiceProvider services)
+    {
+        RecurringJob.AddOrUpdate<RuntimeCellRecoveryJob>(
+            "recover-runtime-cells",
+            job => job.RecoverAsync(CancellationToken.None),
+            Cron.Minutely);
         return services;
     }
 

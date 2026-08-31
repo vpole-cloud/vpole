@@ -29,6 +29,7 @@ public sealed class FunctionHttpGateway(
     IFunctionRuntimeRouteResolver routeResolver,
     IFunctionEndpointRegistry endpointRegistry,
     IFunctionEndpointSelector endpointSelector,
+    IFunctionResourcePlacementResolver placementResolver,
     IFunctionRevisionActivator activator,
     IFunctionAgentClient agentClient,
     IFunctionPendingAdmissionLimiter pendingAdmission,
@@ -518,10 +519,28 @@ public sealed class FunctionHttpGateway(
         CancellationToken admissionLifetime,
         CancellationToken cancellationToken)
     {
+        var resolvedPlacement = await placementResolver.ResolveAsync(
+            invocation.Resolved.App,
+            cancellationToken: admissionLifetime);
+        if (!resolvedPlacement.TryGetValue(out var placement, out _))
+        {
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status503ServiceUnavailable,
+                "function_placement_unavailable",
+                "The Function placement is temporarily unavailable.",
+                cancellationToken);
+            return null;
+        }
+
         var subject = new FunctionRevisionInKubernetes(
             invocation.Resolved.App,
-            invocation.Resolved.Revision);
-        var service = new FunctionServiceKey(subject.Namespace, subject.ServiceName);
+            invocation.Resolved.Revision,
+            placement!);
+        var service = new FunctionServiceKey(
+            placement!.DeploymentTargetId,
+            subject.Namespace,
+            subject.ServiceName);
         var snapshot = endpointRegistry.GetSnapshot(service);
         if (snapshot.HasReadyEndpoints && !requiresActivationFence)
             return snapshot;
@@ -529,8 +548,7 @@ public sealed class FunctionHttpGateway(
         try
         {
             var activation = await activator.EnsureActiveAsync(
-                invocation.Resolved.App,
-                invocation.Resolved.Revision,
+                subject,
                 admissionLifetime,
                 forceScaleFence: requiresActivationFence);
             if (activation.TryGetValue(out snapshot, out _))

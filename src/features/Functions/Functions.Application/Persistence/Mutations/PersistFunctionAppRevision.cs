@@ -65,7 +65,7 @@ internal sealed class MongoPersistFunctionAppRevision(
             cancellationToken: cancellationToken);
         await storeOutboxWrites(
             session,
-            [OutboxWrite.Create(candidate.ToRevisionCreatedEvent())],
+            [OutboxWrite.Create(candidate.ToRevisionCreatedEvent(current))],
             cancellationToken);
         return new Ok<FunctionRevision>(candidate);
     }

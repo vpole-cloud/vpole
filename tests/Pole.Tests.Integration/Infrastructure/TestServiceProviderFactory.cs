@@ -101,19 +101,14 @@ public static class TestServiceProviderFactory
         services.AddComputeProfilesFeature();
         services.AddStorageProfilesFeature();
         services.AddRedisServicesFeature();
-        services.AddPostgresFeature();
+        services.AddPostgresFeature(configuration);
         services.AddWebServicesFeature();
         services.AddSingleton(new PostgresSettings
         {
             DefaultDeploymentMode = PostgresDeploymentMode.Operator,
             SupportedVersions = new PostgresSupportedVersionsSettings { From = 16, To = 17 }
         });
-        services.AddSingleton(new QuotaSettings());
-        services.AddQuotasFeature(
-            typeof(RedisQuotaProfile).Assembly,
-            typeof(FunctionAppQuotaProfile).Assembly,
-            typeof(WebServiceQuotaProfile).Assembly,
-            typeof(PostgresQuotaProfile).Assembly);
+        services.AddQuotasFeature(configuration);
         var deploymentTargetLookup = new TestDeploymentTargetLookup();
         services.AddSingleton(deploymentTargetLookup);
         services.AddSingleton<LookupDeploymentTarget>(

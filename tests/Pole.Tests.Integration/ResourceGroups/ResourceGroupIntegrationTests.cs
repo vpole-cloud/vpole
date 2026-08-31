@@ -25,12 +25,11 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
 
         var result = await Mediator.Send(request);
 
-        var created = AssertCreated(result.AssertHandlerOutcome());
+        var created = result.AssertSuccess();
 
         var saved = await DbContext.ResourceGroups.Find(group => group.Id == created.Id).FirstOrDefaultAsync();
         Assert.NotNull(saved);
         Assert.Equal(request.Body.Name, saved.Name);
-        Assert.StartsWith("test-", saved.KubernetesNamespace);
         Assert.Equal(created.DefaultIsolationScopeId, saved.DefaultIsolationScopeId);
         Assert.Equal("active", created.Lifecycle);
         Assert.Equal(saved.Revision, created.Revision);
@@ -46,6 +45,19 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
         var outboxCount = await DbContext.CountOutboxMessagesAsync("resource-group-created");
         Assert.Equal(1L, outboxCount);
         Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync("isolation-scope-created"));
+    }
+
+    [Fact]
+    public async Task Create_DoesNotRequireADeploymentTargetThatAcceptsWorkloads()
+    {
+        Services.GetRequiredService<TestDeploymentTargetLookup>().RejectNewWorkloads = true;
+
+        var created = (await Mediator.Send(TestData.CreateResourceGroupRequest("logical-only")))
+            .AssertSuccess();
+
+        Assert.Equal("logical-only", created.Name);
+        Assert.Equal(0L, await DbContext.RuntimeCells.CountDocumentsAsync(
+            Builders<RuntimeCell>.Filter.Empty));
     }
 
     [Fact]
@@ -157,7 +169,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
     }
 
     [Fact]
-    public async Task TransitionalPlacement_RejectsDeletingResourceGroup()
+    public async Task OwnershipLookup_RejectsDeletingResourceGroup()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         await DbContext.ResourceGroups.ReplaceOneAsync(
@@ -176,11 +188,4 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
         };
         Assert.True(failure is ResourceGroupOwnershipDeleting);
     }
-
-    private static ResourceGroupDto AssertCreated(CreateResourceGroupOutcome outcome) => outcome switch
-    {
-        ResourceGroupDto success => success,
-        CreateResourceGroupError error => throw new Xunit.Sdk.XunitException(
-            $"Expected resource-group creation success, got {error.GetType().Name}.")
-    };
 }

@@ -24,12 +24,15 @@ public static class GetWebServices
             app.MapGet("/", async (IMediator mediator, [AsParameters] GetWebServicesRequest request) =>
             {
                 var result = await mediator.Send(request);
-                return result.ToHttpResult(Results.Ok);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    PaginatedResponse<WebServiceDto> page => Results.Ok(page)
+                });
             })
             .WithName("GetWebServices")
             .WithSummary("Retrieves all web services.")
             .WithDescription("Fetches a list of all web services available in the system.")
-            .Produces<List<WebServiceDto>>();
+            .Produces<PaginatedResponse<WebServiceDto>>();
 
             return app;
         }
@@ -39,9 +42,9 @@ public static class GetWebServices
 public sealed class GetWebServicesHandler(
     LoadWebServicePage loadWebServicePage,
     LoadResourceDeploymentSets loadResourceDeploymentSets)
-    : IMediatorOutcomeHandler<GetWebServicesRequest, PaginatedResponse<WebServiceDto>>
+    : IMediatorOutcomeHandler<GetWebServicesRequest, GetWebServicesOutcome>
 {
-    public async Task<PaginatedResponse<WebServiceDto>> HandleAsync(
+    public async Task<GetWebServicesOutcome> HandleAsync(
         GetWebServicesRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -68,7 +71,10 @@ public sealed class GetWebServicesHandler(
     }
 }
 
-public record GetWebServicesRequest : PaginatedRequest<WebServiceDto>, ITenantReadOperation
+public union GetWebServicesOutcome(PaginatedResponse<WebServiceDto>);
+
+public record GetWebServicesRequest
+    : PaginatedRequest, IMediatorRequest<GetWebServicesOutcome>, ITenantReadOperation
 {
     [FromHeader(Name = TenantHeaders.TenantId)] public string TenantId { get; init; } = string.Empty;
     [FromQuery] public string? ResourceGroupId { get; init; }

@@ -20,16 +20,7 @@ public sealed record ResourceGroupOwnership(
     string ResourceGroupId,
     string TenantId,
     string DefaultIsolationScopeId,
-    string KubernetesNamespace,
     ResourceGroupOwnershipLifecycle Lifecycle);
-
-/// <summary>
-/// Transitional namespace projection for consumers that do not yet adopt RuntimeCell placement.
-/// </summary>
-public sealed record ResourceGroupPlacement(
-    string ResourceGroupId,
-    string TenantId,
-    string KubernetesNamespace);
 
 public enum ResourceGroupOwnershipLifecycle
 {

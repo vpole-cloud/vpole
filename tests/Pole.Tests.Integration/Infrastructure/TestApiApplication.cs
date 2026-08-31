@@ -193,19 +193,14 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddComputeProfilesFeature();
         builder.Services.AddStorageProfilesFeature();
         builder.Services.AddRedisServicesFeature();
-        builder.Services.AddPostgresFeature();
+        builder.Services.AddPostgresFeature(builder.Configuration);
         builder.Services.AddWebServicesFeature();
         builder.Services.AddSingleton(new PostgresSettings
         {
             DefaultDeploymentMode = Pole.Features.Postgres.Domain.PostgresDeploymentMode.Operator,
             SupportedVersions = new PostgresSupportedVersionsSettings { From = 16, To = 17 }
         });
-        builder.Services.AddSingleton(new QuotaSettings());
-        builder.Services.AddQuotasFeature(
-            typeof(RedisQuotaProfile).Assembly,
-            typeof(FunctionAppQuotaProfile).Assembly,
-            typeof(WebServiceQuotaProfile).Assembly,
-            typeof(PostgresQuotaProfile).Assembly);
+        builder.Services.AddQuotasFeature(builder.Configuration);
         builder.Services.AddMigrations(Assemblies);
         builder.Services.AddSearchFeature();
         builder.Services.AddGitProvidersFeature(builder.Configuration);

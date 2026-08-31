@@ -28,6 +28,7 @@ public sealed class FunctionInvocationDispatcher(
     PersistFunctionInvocationTransition persistTransition,
     IFunctionEndpointRegistry endpointRegistry,
     IFunctionEndpointSelector endpointSelector,
+    IFunctionResourcePlacementResolver placementResolver,
     IFunctionRevisionActivator activator,
     IFunctionAgentClient agentClient,
     IFunctionAdmissionCoordinator admissionCoordinator,
@@ -178,14 +179,32 @@ public sealed class FunctionInvocationDispatcher(
                     return;
                 invocation = renewedForActivation;
 
-                var subject = new FunctionRevisionInKubernetes(app, revision);
-                var service = new FunctionServiceKey(subject.Namespace, subject.ServiceName);
+                var resolvedPlacement = await placementResolver.ResolveAsync(
+                    app,
+                    cancellationToken: admissionOwnership.Token);
+                if (!resolvedPlacement.TryGetValue(out var placement, out _))
+                {
+                    await DeferDispatchAsync(
+                        invocation,
+                        FunctionInvocationError.Create(
+                            "function_placement_unavailable",
+                            "The Function placement is temporarily unavailable.",
+                            retryable: true),
+                        TimeSpan.FromSeconds(RetryDelaySeconds(invocation)),
+                        cancellationToken);
+                    return;
+                }
+
+                var subject = new FunctionRevisionInKubernetes(app, revision, placement!);
+                var service = new FunctionServiceKey(
+                    placement!.DeploymentTargetId,
+                    subject.Namespace,
+                    subject.ServiceName);
                 snapshot = endpointRegistry.GetSnapshot(service);
                 if (!snapshot.HasReadyEndpoints || admission.RequiresActivationFence)
                 {
                     var activation = await activator.EnsureActiveAsync(
-                        app,
-                        revision,
+                        subject,
                         admissionOwnership.Token,
                         forceScaleFence: admission.RequiresActivationFence);
                     if (!activation.TryGetValue(out var activatedSnapshot, out var activationFailure))
