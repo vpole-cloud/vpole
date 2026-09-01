@@ -36,11 +36,21 @@ type SearchSourceKey =
       Weight : int }
 
 type SearchOperationalStatus =
-    { DesiredGeneration : int64
+    { ResourceRevision : int64
       ObservedGeneration : int64
       Status : string
       FailureCode : string option
       EventOccurredAtUtc : System.DateTime }
+
+type SearchProjectionVersionDocument =
+    { [<BsonId>]
+      [<BsonRepresentation(BsonType.ObjectId)>]
+      Id : string
+      ResourceTypeId : string
+      TenantId : string
+      SourceId : string
+      ResourceRevision : int64
+      IsDeleted : bool }
 
 [<BsonIgnoreExtraElements>]
 type SearchSourceDocument =
@@ -65,5 +75,10 @@ module SearchDocument =
 
 [<RequireQualifiedAccess>]
 module SearchSourceDocument =
+    let createId () =
+        ObjectId.GenerateNewId().ToString()
+
+[<RequireQualifiedAccess>]
+module SearchProjectionVersionDocument =
     let createId () =
         ObjectId.GenerateNewId().ToString()

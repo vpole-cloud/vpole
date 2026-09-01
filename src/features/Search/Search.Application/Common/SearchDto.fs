@@ -38,6 +38,7 @@ type SearchDocumentSet =
       Title : string
       ResourceGroupId : string option
       ResourceGroupName : string option
+      ResourceRevision : int64
       Documents : SearchDocument list }
 
 type GetSearchOutcome =

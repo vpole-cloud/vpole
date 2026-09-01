@@ -64,7 +64,8 @@ internal sealed class MongoPersistUpdatedResourceGroup(
                     replacement.Name,
                     replacement.Description,
                     replacement.Resources,
-                    changes)
+                    changes,
+                    replacement.Revision)
                 {
                     EventCore = EventCore.Create(replacement.TenantId)
                 })],

@@ -15,6 +15,7 @@ type SearchDocumentIndexesMigration() =
             task {
                 let collectionName = "SearchDocuments"
                 let sourceCollectionName = "SearchSourceDocuments"
+                let versionCollectionName = "SearchProjectionVersions"
                 let! existingCollections = database.ListCollectionNames().ToListAsync(cancellationToken)
 
                 if existingCollections |> Seq.contains collectionName then
@@ -23,8 +24,12 @@ type SearchDocumentIndexesMigration() =
                 if existingCollections |> Seq.contains sourceCollectionName then
                     do! database.DropCollectionAsync(sourceCollectionName, cancellationToken)
 
+                if existingCollections |> Seq.contains versionCollectionName then
+                    do! database.DropCollectionAsync(versionCollectionName, cancellationToken)
+
                 let collection = database.GetCollection<BsonDocument>(collectionName)
                 let sourceCollection = database.GetCollection<BsonDocument>(sourceCollectionName)
+                let versionCollection = database.GetCollection<BsonDocument>(versionCollectionName)
                 let indexModels =
                     [|
                         CreateIndexModel<BsonDocument>(
@@ -76,5 +81,15 @@ type SearchDocumentIndexesMigration() =
                     |]
 
                 let! _ = sourceCollection.Indexes.CreateManyAsync(sourceIndexModels, cancellationToken)
+
+                let versionIndex =
+                    CreateIndexModel<BsonDocument>(
+                        Builders<BsonDocument>.IndexKeys
+                            .Ascending("TenantId")
+                            .Ascending("ResourceTypeId")
+                            .Ascending("SourceId"),
+                        CreateIndexOptions(Unique = true, Name = "IX_SearchProjectionVersions_Source")
+                    )
+                let! _ = versionCollection.Indexes.CreateOneAsync(versionIndex, cancellationToken = cancellationToken)
                 return ()
             }

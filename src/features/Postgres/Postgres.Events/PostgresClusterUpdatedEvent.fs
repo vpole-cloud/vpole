@@ -12,6 +12,7 @@ type PostgresClusterUpdatedEvent =
       ClusterId : string
       Name : string
       GroupId : string
+      ResourceRevision : int64
       Changes : PostgresClusterUpdatedEventChanges }
     interface IPoleEvent with
         member this.EventCore = this.EventCore

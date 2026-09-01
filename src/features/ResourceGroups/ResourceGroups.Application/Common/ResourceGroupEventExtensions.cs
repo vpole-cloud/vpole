@@ -14,7 +14,8 @@ internal static class ResourceGroupEventExtensions
                 resourceGroup.Name,
                 resourceGroup.Description,
                 resourceGroup.Resources,
-                resourceGroup.Tags)
+                resourceGroup.Tags,
+                resourceGroup.Revision)
             {
                 EventCore = EventCore.Create(resourceGroup.TenantId)
             };
@@ -25,7 +26,8 @@ internal static class ResourceGroupEventExtensions
                 resourceGroup.Name,
                 resourceGroup.Description,
                 resourceGroup.Resources,
-                resourceGroup.Tags)
+                resourceGroup.Tags,
+                resourceGroup.Revision)
             {
                 EventCore = EventCore.Create(resourceGroup.TenantId)
             };

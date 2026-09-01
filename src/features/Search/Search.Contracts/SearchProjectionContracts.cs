@@ -35,10 +35,11 @@ public sealed record SearchProjectionSnapshot(
     string Title,
     string? ResourceGroupId,
     string? ResourceGroupName,
-    IReadOnlyCollection<SearchProjectionField> Fields);
+    IReadOnlyCollection<SearchProjectionField> Fields,
+    long ResourceRevision);
 
 public sealed record SearchOperationalStatusSnapshot(
-    long DesiredGeneration,
+    long ResourceRevision,
     long ObservedGeneration,
     string Status,
     string? FailureCode,
@@ -54,6 +55,7 @@ public delegate Task UpdateSearchProjection(
 
 public delegate Task DeleteSearchProjection(
     SearchProjectionIdentity identity,
+    long resourceRevision,
     CancellationToken cancellationToken = default);
 
 public delegate Task UpdateSearchOperationalStatus(

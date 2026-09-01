@@ -16,7 +16,8 @@ public static class RedisServiceSearchProjection
         string tenantId,
         string redisId,
         string name,
-        string resourceGroupId) =>
+        string resourceGroupId,
+        long resourceRevision) =>
         new(
             new SearchProjectionIdentity(tenantId, SourceType.ResourceTypeId, redisId),
             name,
@@ -25,7 +26,8 @@ public static class RedisServiceSearchProjection
             [
                 new SearchProjectionField(SearchProjectionFieldType.SourceId, redisId),
                 new SearchProjectionField(SearchProjectionFieldType.Name, name)
-            ]);
+            ],
+            resourceRevision);
 }
 
 public sealed class AddRedisServiceToSearchOnRedisServiceCreatedConsumer(
@@ -38,7 +40,8 @@ public sealed class AddRedisServiceToSearchOnRedisServiceCreatedConsumer(
                 message.EventCore.TenantId,
                 message.RedisId,
                 message.Name,
-                message.ResourceGroupId),
+                message.ResourceGroupId,
+                message.ResourceRevision),
             cancellationToken);
 
     public Task Consume(ConsumeContext<RedisServiceCreatedEvent> context) =>
@@ -55,7 +58,8 @@ public sealed class UpdateRedisServiceInSearchOnRedisServiceUpdatedConsumer(
                 message.EventCore.TenantId,
                 message.RedisId,
                 message.Name,
-                message.ResourceGroupId),
+                message.ResourceGroupId,
+                message.ResourceRevision),
             cancellationToken);
 
     public Task Consume(ConsumeContext<RedisServiceUpdatedEvent> context) =>
@@ -66,17 +70,23 @@ public sealed class RemoveRedisServiceFromSearchOnRedisServiceDeletedConsumer(
     DeleteSearchProjection deleteSearchProjection)
     : IConsumer<RedisServiceDeletedEvent>
 {
-    public Task Handle(string tenantId, string redisId, CancellationToken cancellationToken) =>
+    public Task Handle(
+        string tenantId,
+        string redisId,
+        long resourceRevision,
+        CancellationToken cancellationToken) =>
         deleteSearchProjection(
             new SearchProjectionIdentity(
                 tenantId,
                 RedisServiceSearchProjection.SourceType.ResourceTypeId,
                 redisId),
+            resourceRevision,
             cancellationToken);
 
     public Task Consume(ConsumeContext<RedisServiceDeletedEvent> context) =>
         Handle(
             context.Message.EventCore.TenantId,
             context.Message.RedisId,
+            context.Message.ResourceRevision,
             context.CancellationToken);
 }

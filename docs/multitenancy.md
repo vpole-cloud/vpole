@@ -88,6 +88,7 @@ Tenant-owned domain documents include `TenantId`:
 * `HostnameBinding`
 * `SearchDocument`
 * `SearchSourceDocument`
+* `SearchProjectionVersionDocument`
 * `OutboxMessage`
 
 Handlers mark tenant-scoped requests with one of:

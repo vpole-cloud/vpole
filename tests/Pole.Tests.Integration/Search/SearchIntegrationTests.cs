@@ -36,10 +36,14 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         Services.GetRequiredService<UpdateSearchProjection>();
     private DeleteSearchProjection DeleteProjection =>
         Services.GetRequiredService<DeleteSearchProjection>();
+    private UpdateSearchOperationalStatus UpdateStatus =>
+        Services.GetRequiredService<UpdateSearchOperationalStatus>();
     private IMongoCollection<SearchDocument> SearchDocuments =>
         Fixture.Database.GetCollection<SearchDocument>("SearchDocuments");
     private IMongoCollection<SearchSourceDocument> SearchSources =>
         Fixture.Database.GetCollection<SearchSourceDocument>("SearchSourceDocuments");
+    private IMongoCollection<SearchProjectionVersionDocument> SearchProjectionVersions =>
+        Fixture.Database.GetCollection<SearchProjectionVersionDocument>("SearchProjectionVersions");
 
     [Fact]
     public async Task ProviderOwnedConsumers_ProjectAllRegisteredSourceTypes()
@@ -55,7 +59,8 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
                 "platform",
                 "description",
                 ImmutableList<ShortResourceInfo>.Empty,
-                ImmutableHashSet.Create("production"))
+                ImmutableHashSet.Create("production"),
+                1)
             {
                 EventCore = EventCore.Create(TestData.TenantId)
             }, CancellationToken.None);
@@ -71,7 +76,8 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
                 resourceGroupId,
                 new RedisServiceSpecSnapshot(
                     new RedisServiceStorageSnapshot(5, TestData.DefaultStorageProfileId)),
-                ImmutableHashSet<string>.Empty)
+                ImmutableHashSet<string>.Empty,
+                1)
             {
                 EventCore = EventCore.Create(TestData.TenantId)
             }, CancellationToken.None);
@@ -82,6 +88,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
                 postgresId,
                 "database",
                 resourceGroupId,
+                1,
                 new PostgresClusterSpecSnapshot(
                     1,
                     10,
@@ -145,7 +152,8 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             "metadata-only",
             resourceGroupId,
             null,
-            []));
+            [],
+            3));
         source = await SearchSources.Find(document =>
             document.TenantId == TestData.TenantId &&
             document.ResourceTypeId == "pole/web-service" &&
@@ -155,13 +163,106 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(0, await SearchDocuments.CountDocumentsAsync(document =>
             document.TenantId == TestData.TenantId && document.SourceId == webServiceId));
 
-        await deleteConsumer.Handle(TestData.TenantId, webServiceId, CancellationToken.None);
-        await deleteConsumer.Handle(TestData.TenantId, webServiceId, CancellationToken.None);
+        await deleteConsumer.Handle(TestData.TenantId, webServiceId, 4, CancellationToken.None);
+        await deleteConsumer.Handle(TestData.TenantId, webServiceId, 4, CancellationToken.None);
 
         Assert.Equal(0, await SearchDocuments.CountDocumentsAsync(document =>
             document.TenantId == TestData.TenantId && document.SourceId == webServiceId));
         Assert.Equal(0, await SearchSources.CountDocumentsAsync(document =>
             document.TenantId == TestData.TenantId && document.SourceId == webServiceId));
+        var tombstone = await SearchProjectionVersions.Find(version =>
+            version.TenantId == TestData.TenantId &&
+            version.SourceId == webServiceId).SingleAsync();
+        Assert.Equal(4, tombstone.ResourceRevision);
+        Assert.True(tombstone.IsDeleted);
+    }
+
+    [Fact]
+    public async Task OutOfOrderLifecycleEvents_CannotOverwriteOrResurrectNewerProjection()
+    {
+        var sourceId = ObjectId.GenerateNewId().ToString();
+        var identity = new SearchProjectionIdentity(
+            TestData.TenantId,
+            WebServiceSearchProjection.SourceType.ResourceTypeId,
+            sourceId);
+
+        await CreateProjection(CreateSnapshot(
+            TestData.TenantId,
+            identity.ResourceTypeId,
+            sourceId,
+            "created",
+            1));
+        await UpdateProjection(CreateSnapshot(
+            TestData.TenantId,
+            identity.ResourceTypeId,
+            sourceId,
+            "newest",
+            3));
+        await UpdateProjection(CreateSnapshot(
+            TestData.TenantId,
+            identity.ResourceTypeId,
+            sourceId,
+            "stale-update",
+            2));
+
+        var projected = await SearchSources.Find(source =>
+            source.TenantId == TestData.TenantId &&
+            source.ResourceTypeId == identity.ResourceTypeId.Value &&
+            source.SourceId == sourceId).SingleAsync();
+        Assert.Equal("newest", projected.Title);
+
+        await DeleteProjection(identity, 5);
+        await UpdateProjection(CreateSnapshot(
+            TestData.TenantId,
+            identity.ResourceTypeId,
+            sourceId,
+            "late-after-delete",
+            4));
+        await UpdateStatus(
+            identity,
+            new SearchOperationalStatusSnapshot(
+                4,
+                4,
+                "Applied",
+                null,
+                DateTime.UtcNow));
+
+        Assert.Equal(0, await SearchDocuments.CountDocumentsAsync(document =>
+            document.TenantId == TestData.TenantId && document.SourceId == sourceId));
+        Assert.Equal(0, await SearchSources.CountDocumentsAsync(source =>
+            source.TenantId == TestData.TenantId && source.SourceId == sourceId));
+        var tombstone = await SearchProjectionVersions.Find(version =>
+            version.TenantId == TestData.TenantId && version.SourceId == sourceId).SingleAsync();
+        Assert.Equal(5, tombstone.ResourceRevision);
+        Assert.True(tombstone.IsDeleted);
+    }
+
+    [Fact]
+    public async Task ConcurrentLifecycleEvents_ConvergeOnHighestResourceRevision()
+    {
+        var sourceId = ObjectId.GenerateNewId().ToString();
+        var resourceTypeId = WebServiceSearchProjection.SourceType.ResourceTypeId;
+
+        await Task.WhenAll(Enumerable.Range(1, 8).Select(resourceRevision =>
+            UpdateProjection(CreateSnapshot(
+                TestData.TenantId,
+                resourceTypeId,
+                sourceId,
+                $"revision-{resourceRevision}",
+                resourceRevision))));
+
+        var projected = await SearchSources.Find(source =>
+            source.TenantId == TestData.TenantId &&
+            source.ResourceTypeId == resourceTypeId.Value &&
+            source.SourceId == sourceId).SingleAsync();
+        var version = await SearchProjectionVersions.Find(candidate =>
+            candidate.TenantId == TestData.TenantId &&
+            candidate.ResourceTypeId == resourceTypeId.Value &&
+            candidate.SourceId == sourceId).SingleAsync();
+
+        Assert.Equal("revision-8", projected.Title);
+        Assert.Equal(8, version.ResourceRevision);
+        Assert.False(version.IsDeleted);
     }
 
     [Fact]
@@ -236,6 +337,9 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         var sourceIndexes = await Fixture.Database
             .GetCollection<BsonDocument>("SearchSourceDocuments")
             .Indexes.List().ToListAsync();
+        var versionIndexes = await Fixture.Database
+            .GetCollection<BsonDocument>("SearchProjectionVersions")
+            .Indexes.List().ToListAsync();
 
         Assert.Contains(rowIndexes, index =>
             index["name"] == "IX_SearchDocuments_Source_Key" &&
@@ -245,6 +349,9 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             index["key"].AsBsonDocument.Contains("ResourceTypeId"));
         Assert.Contains(sourceIndexes, index =>
             index["name"] == "IX_SearchSourceDocuments_SourceApiName_SearchKeys_Value");
+        Assert.Contains(versionIndexes, index =>
+            index["name"] == "IX_SearchProjectionVersions_Source" &&
+            index["unique"].AsBoolean);
     }
 
     private async Task<PaginatedResponse<SearchHitDto>> SearchAsync(
@@ -277,13 +384,15 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         string tenantId,
         ResourceTypeId resourceTypeId,
         string sourceId,
-        string title) =>
+        string title,
+        long resourceRevision = 1) =>
         new(
             new SearchProjectionIdentity(tenantId, resourceTypeId, sourceId),
             title,
             null,
             null,
-            [new SearchProjectionField(SearchProjectionFieldType.Name, title)]);
+            [new SearchProjectionField(SearchProjectionFieldType.Name, title)],
+            resourceRevision);
 
     private static WebServiceCreatedEvent CreateWebServiceEvent(
         string webServiceId,

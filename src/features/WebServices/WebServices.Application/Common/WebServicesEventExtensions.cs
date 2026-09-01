@@ -13,18 +13,18 @@ internal static class WebServicesEventExtensions
         internal WebServiceCreatedEvent ToCreateEvent(
             ImmutableList<WebServiceDesiredDeploymentSnapshot> deployments) =>
             new(webService.Id, webService.Name, webService.ResourceGroupId, webService.IsolationScopeId,
-                webService.ActiveRevision, webService.Spec.ToSnapshot(), webService.Exposure.ToSnapshot(),
+                webService.Revision, webService.Spec.ToSnapshot(), webService.Exposure.ToSnapshot(),
                 webService.Tags, deployments) { EventCore = EventCore.Create(webService.TenantId) };
 
         internal WebServiceDeletedEvent ToDeleteEvent() =>
             new(webService.Id, webService.Name, webService.ResourceGroupId, webService.IsolationScopeId,
-                webService.ActiveRevision, webService.Spec.ToSnapshot(), webService.Tags)
+                webService.Revision, webService.Spec.ToSnapshot(), webService.Tags)
             { EventCore = EventCore.Create(webService.TenantId) };
 
         internal WebServiceUpdatedEvent ToUpdatedEvent(
             ImmutableList<WebServiceDesiredDeploymentSnapshot> deployments) =>
             new(webService.Id, webService.Name, webService.ResourceGroupId, webService.IsolationScopeId,
-                webService.ActiveRevision, webService.Spec.ToSnapshot(), webService.Exposure.ToSnapshot(),
+                webService.Revision, webService.Spec.ToSnapshot(), webService.Exposure.ToSnapshot(),
                 webService.Tags, deployments) { EventCore = EventCore.Create(webService.TenantId) };
     }
 

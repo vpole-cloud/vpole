@@ -18,7 +18,8 @@ public static class WebServiceSearchProjection
         string name,
         string resourceGroupId,
         IEnumerable<string> hostnames,
-        string image) =>
+        string image,
+        long resourceRevision) =>
         new(
             new SearchProjectionIdentity(tenantId, SourceType.ResourceTypeId, webServiceId),
             name,
@@ -32,7 +33,8 @@ public static class WebServiceSearchProjection
                 }
                 .Concat(hostnames.Distinct().Select(hostname =>
                     new SearchProjectionField(SearchProjectionFieldType.Domain, hostname)))
-                .ToArray());
+                .ToArray(),
+            resourceRevision);
 }
 
 public sealed class AddWebServiceToSearchOnWebServiceCreatedConsumer(
@@ -52,7 +54,8 @@ public sealed class AddWebServiceToSearchOnWebServiceCreatedConsumer(
             message.Name,
             message.ResourceGroupId,
             message.Deployments.SelectMany(deployment => deployment.Hostnames),
-            message.Spec.Image.FullImageName);
+            message.Spec.Image.FullImageName,
+            message.ResourceRevision);
 }
 
 public sealed class UpdateWebServiceInSearchOnWebServiceUpdatedConsumer(
@@ -67,7 +70,8 @@ public sealed class UpdateWebServiceInSearchOnWebServiceUpdatedConsumer(
                 message.Name,
                 message.ResourceGroupId,
                 message.Deployments.SelectMany(deployment => deployment.Hostnames),
-                message.Spec.Image.FullImageName),
+                message.Spec.Image.FullImageName,
+                message.ResourceRevision),
             cancellationToken);
 
     public Task Consume(ConsumeContext<WebServiceUpdatedEvent> context) =>
@@ -78,17 +82,23 @@ public sealed class RemoveWebServiceFromSearchOnWebServiceDeletedConsumer(
     DeleteSearchProjection deleteSearchProjection)
     : IConsumer<WebServiceDeletedEvent>
 {
-    public Task Handle(string tenantId, string webServiceId, CancellationToken cancellationToken) =>
+    public Task Handle(
+        string tenantId,
+        string webServiceId,
+        long resourceRevision,
+        CancellationToken cancellationToken) =>
         deleteSearchProjection(
             new SearchProjectionIdentity(
                 tenantId,
                 WebServiceSearchProjection.SourceType.ResourceTypeId,
                 webServiceId),
+            resourceRevision,
             cancellationToken);
 
     public Task Consume(ConsumeContext<WebServiceDeletedEvent> context) =>
         Handle(
             context.Message.EventCore.TenantId,
             context.Message.WebServiceId,
+            context.Message.ResourceRevision,
             context.CancellationToken);
 }

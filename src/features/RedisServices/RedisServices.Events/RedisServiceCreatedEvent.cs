@@ -10,7 +10,8 @@ public record RedisServiceCreatedEvent(
     string Name,
     string ResourceGroupId,
     RedisServiceSpecSnapshot Spec,
-    ImmutableHashSet<string> Tags
+    ImmutableHashSet<string> Tags,
+    long ResourceRevision
 ) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
