@@ -2,6 +2,7 @@ namespace Pole.Features.Search.Application.Projection
 
 open System.Text.RegularExpressions
 open Pole.Features.Search.Application.Common
+open Pole.Features.Search.Contracts
 open Pole.Features.Search.Domain
 
 [<RequireQualifiedAccess>]
@@ -48,10 +49,8 @@ module SearchDocumentFactory =
           TokenWeight : int option }
 
     let normalize (value : string) =
-        if System.String.IsNullOrWhiteSpace(value) then
-            ""
-        else
-            value.Trim().ToLowerInvariant()
+        if System.String.IsNullOrWhiteSpace(value) then ""
+        else value.Trim().ToLowerInvariant()
 
     let tokenize (value : string) =
         normalize value
@@ -61,9 +60,25 @@ module SearchDocumentFactory =
         |> Array.distinct
         |> Array.toList
 
-    let private createDocument sourceType tenantId sourceId title resourceGroupId resourceGroupName keyType weight searchValue =
+    let private weights fieldType =
+        match fieldType with
+        | SearchProjectionFieldType.SourceId -> SearchKeyType.SourceId, IdWeight, None
+        | SearchProjectionFieldType.Name -> SearchKeyType.Name, NameWeight, Some NameTokenWeight
+        | SearchProjectionFieldType.Tag -> SearchKeyType.Tag, TagWeight, Some TagTokenWeight
+        | SearchProjectionFieldType.Domain -> SearchKeyType.Domain, DomainWeight, Some DomainTokenWeight
+        | SearchProjectionFieldType.Image -> SearchKeyType.Image, ImageWeight, Some ImageTokenWeight
+        | SearchProjectionFieldType.ResourceGroupName -> SearchKeyType.ResourceGroupName, ResourceGroupNameWeight, Some ResourceGroupNameTokenWeight
+        | SearchProjectionFieldType.StorageClassName -> SearchKeyType.StorageClassName, StorageClassNameWeight, Some StorageClassNameTokenWeight
+        | SearchProjectionFieldType.ResourceName -> SearchKeyType.ResourceName, ResourceNameWeight, Some ResourceNameTokenWeight
+        | SearchProjectionFieldType.Username -> SearchKeyType.Username, NameWeight, Some NameTokenWeight
+        | SearchProjectionFieldType.GroupId -> SearchKeyType.GroupId, GroupIdWeight, Some GroupIdTokenWeight
+        | value -> invalidArg (nameof fieldType) $"Unsupported search projection field type '{value}'."
+
+    let private createDocument (sourceType : SearchSourceType) tenantId sourceId title resourceGroupId resourceGroupName keyType weight searchValue =
         { Id = SearchDocument.createId()
-          SourceType = sourceType
+          ResourceTypeId = sourceType.ResourceTypeId.Value
+          SourceApiName = sourceType.ApiName
+          SourceSortOrder = sourceType.SortOrder
           TenantId = tenantId
           SourceId = sourceId
           KeyType = keyType
@@ -73,17 +88,14 @@ module SearchDocumentFactory =
           ResourceGroupId = resourceGroupId
           ResourceGroupName = resourceGroupName }
 
-    let private toDocuments sourceType tenantId sourceId title resourceGroupId resourceGroupName specs =
+    let private toDocuments (sourceType : SearchSourceType) tenantId sourceId title resourceGroupId resourceGroupName specs =
         specs
         |> List.collect (fun spec ->
             let normalizedValue = normalize spec.Value
-
-            if System.String.IsNullOrWhiteSpace(normalizedValue) then
-                []
+            if System.String.IsNullOrWhiteSpace(normalizedValue) then []
             else
                 let fullDocument =
                     createDocument sourceType tenantId sourceId title resourceGroupId resourceGroupName spec.KeyType spec.FullWeight normalizedValue
-
                 let tokenDocuments =
                     match spec.TokenWeight with
                     | None -> []
@@ -91,143 +103,48 @@ module SearchDocumentFactory =
                         tokenize spec.Value
                         |> List.filter ((<>) normalizedValue)
                         |> List.map (createDocument sourceType tenantId sourceId title resourceGroupId resourceGroupName spec.KeyType tokenWeight)
-
                 fullDocument :: tokenDocuments)
-        |> List.groupBy (fun doc -> doc.KeyType, doc.SearchValue)
+        |> List.groupBy (fun document -> document.KeyType, document.SearchValue)
         |> List.map (fun (_, documents) -> documents |> List.maxBy _.Weight)
 
-    let fromResourceGroupFields tenantId resourceGroupId name tags =
-        { SourceType = SearchDocumentType.ResourceGroup
-          TenantId = tenantId
-          SourceId = resourceGroupId
-          Documents =
-            toDocuments
-                SearchDocumentType.ResourceGroup
-                tenantId
-                resourceGroupId
-                name
-                (Some resourceGroupId)
-                (Some name)
-                ({ KeyType = SearchKeyType.Name
-                   Value = name
-                   FullWeight = NameWeight
-                   TokenWeight = Some NameTokenWeight }
-                 :: (tags
-                     |> Seq.map (fun tag ->
-                         { KeyType = SearchKeyType.Tag
-                           Value = tag
-                           FullWeight = TagWeight
-                           TokenWeight = Some TagTokenWeight })
-                     |> Seq.toList)) }
-
-    let fromWebServiceFields tenantId resourceGroupName webServiceId name resourceGroupId domains image =
-        let domainFields =
-            domains
-            |> Seq.distinct
-            |> Seq.map (fun domain ->
-                { KeyType = SearchKeyType.Domain
-                  Value = domain
-                  FullWeight = DomainWeight
-                  TokenWeight = Some DomainTokenWeight })
+    let fromSnapshot (sourceType : SearchSourceType) (snapshot : SearchProjectionSnapshot) =
+        let specs =
+            snapshot.Fields
+            |> Seq.map (fun field ->
+                let keyType, fullWeight, tokenWeight = weights field.Type
+                { KeyType = keyType
+                  Value = field.Value
+                  FullWeight = fullWeight
+                  TokenWeight = tokenWeight })
             |> Seq.toList
-        let baseFields =
-            [ { KeyType = SearchKeyType.SourceId
-                Value = webServiceId
-                FullWeight = IdWeight
-                TokenWeight = None }
-              { KeyType = SearchKeyType.Name
-                Value = name
-                FullWeight = NameWeight
-                TokenWeight = Some NameTokenWeight }
-              { KeyType = SearchKeyType.Image
-                Value = image
-                FullWeight = ImageWeight
-                TokenWeight = Some ImageTokenWeight } ]
 
-        { SourceType = SearchDocumentType.WebService
-          TenantId = tenantId
-          SourceId = webServiceId
+        { SourceType = sourceType
+          TenantId = snapshot.Identity.TenantId
+          SourceId = snapshot.Identity.SourceId
+          Title = snapshot.Title
+          ResourceGroupId = Option.ofObj snapshot.ResourceGroupId
+          ResourceGroupName = Option.ofObj snapshot.ResourceGroupName
           Documents =
-            toDocuments
-                SearchDocumentType.WebService
-                tenantId
-                webServiceId
-                name
-                (Some resourceGroupId)
-                resourceGroupName
-                (baseFields @ domainFields) }
-
-    let fromRedisFields tenantId resourceGroupName redisId name resourceGroupId =
-        { SourceType = SearchDocumentType.RedisService
-          TenantId = tenantId
-          SourceId = redisId
-          Documents =
-            toDocuments
-                SearchDocumentType.RedisService
-                tenantId
-                redisId
-                name
-                (Some resourceGroupId)
-                resourceGroupName
-                [ { KeyType = SearchKeyType.SourceId
-                    Value = redisId
-                    FullWeight = IdWeight
-                    TokenWeight = None }
-                  { KeyType = SearchKeyType.Name
-                    Value = name
-                    FullWeight = NameWeight
-                    TokenWeight = Some NameTokenWeight } ] }
-
-    let fromPostgresClusterFields tenantId resourceGroupName clusterId name groupId =
-        { SourceType = SearchDocumentType.PostgresCluster
-          TenantId = tenantId
-          SourceId = clusterId
-          Documents =
-            toDocuments
-                SearchDocumentType.PostgresCluster
-                tenantId
-                clusterId
-                name
-                (Some groupId)
-                resourceGroupName
-                [ { KeyType = SearchKeyType.SourceId
-                    Value = clusterId
-                    FullWeight = IdWeight
-                    TokenWeight = None }
-                  { KeyType = SearchKeyType.Name
-                    Value = name
-                    FullWeight = NameWeight
-                    TokenWeight = Some NameTokenWeight } ] }
+            toDocuments sourceType snapshot.Identity.TenantId snapshot.Identity.SourceId snapshot.Title
+                (Option.ofObj snapshot.ResourceGroupId) (Option.ofObj snapshot.ResourceGroupName) specs }
 
     let toSourceDocument (documentSet : SearchDocumentSet) =
-        let title =
-            documentSet.Documents
-            |> List.tryHead
-            |> Option.map _.Title
-            |> Option.defaultValue documentSet.SourceId
-
-        let resourceGroupId =
-            documentSet.Documents
-            |> List.tryPick _.ResourceGroupId
-
-        let resourceGroupName =
-            documentSet.Documents
-            |> List.tryPick _.ResourceGroupName
-
         let searchKeys =
             documentSet.Documents
             |> List.groupBy _.SearchValue
             |> List.map (fun (value, documents) ->
                 { Value = value
-                  Weight = documents |> List.maxBy _.Weight |> fun document -> document.Weight })
+                  Weight = documents |> List.maxBy _.Weight |> _.Weight })
             |> List.toArray
 
         { Id = SearchSourceDocument.createId()
-          SourceType = documentSet.SourceType
+          ResourceTypeId = documentSet.SourceType.ResourceTypeId.Value
+          SourceApiName = documentSet.SourceType.ApiName
+          SourceSortOrder = documentSet.SourceType.SortOrder
           TenantId = documentSet.TenantId
           SourceId = documentSet.SourceId
-          Title = title
-          ResourceGroupId = resourceGroupId
-          ResourceGroupName = resourceGroupName
+          Title = documentSet.Title
+          ResourceGroupId = documentSet.ResourceGroupId
+          ResourceGroupName = documentSet.ResourceGroupName
           SearchKeys = searchKeys
           OperationalStatus = None }

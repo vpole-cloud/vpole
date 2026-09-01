@@ -15,6 +15,8 @@ using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 using Pole.Features.ResourceGroups.Application.Persistence.RuntimeCells;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceGroups.Application.Search;
+using Pole.Features.Search.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.ResourceGroups.Application;
@@ -26,6 +28,7 @@ public static class ResourceGroupApplicationRegistration
         IConfiguration configuration)
     {
         services.AddResourceGroupHttpMappings();
+        services.AddSingleton<SearchSourceType>(ResourceGroupSearchProjection.SourceType);
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IValidateOptions<KubernetesOptions>,
                 RuntimeCellNamespaceOptionsValidator>());

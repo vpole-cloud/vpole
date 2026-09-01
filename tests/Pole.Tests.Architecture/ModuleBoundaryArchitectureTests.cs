@@ -27,6 +27,74 @@ public sealed class ModuleBoundaryArchitectureTests
         TemporaryIntegrationEventPlacementAllowlist = [];
 
     [Fact]
+    public void SearchApplication_DoesNotReferenceConcreteResourceFeatures()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var projectPath = Path.Combine(
+            repositoryRoot,
+            "src",
+            "features",
+            "Search",
+            "Search.Application",
+            "Search.Application.fsproj");
+        var references = XDocument.Load(projectPath)
+            .Descendants("ProjectReference")
+            .Select(element => element.Attribute("Include")?.Value)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => Path.GetFileNameWithoutExtension(
+                value!.Replace('\\', Path.DirectorySeparatorChar)))
+            .ToArray();
+
+        Assert.DoesNotContain(references, reference =>
+            reference.EndsWith(".Events", StringComparison.Ordinal) ||
+            reference.StartsWith("ResourceDeployments.", StringComparison.Ordinal));
+
+        var sourceText = Directory
+            .EnumerateFiles(Path.GetDirectoryName(projectPath)!, "*.fs", SearchOption.AllDirectories)
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+            .Select(File.ReadAllText);
+        Assert.DoesNotContain(sourceText, source =>
+            source.Contains("Pole.Features.ResourceGroups", StringComparison.Ordinal) ||
+            source.Contains("Pole.Features.WebServices", StringComparison.Ordinal) ||
+            source.Contains("Pole.Features.RedisServices", StringComparison.Ordinal) ||
+            source.Contains("Pole.Features.Postgres", StringComparison.Ordinal) ||
+            source.Contains("Pole.Features.ResourceDeployments", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SearchProjectionProviders_ReferenceOnlySearchContracts()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        string[] applicationProjects =
+        [
+            "ResourceGroups/ResourceGroups.Application/ResourceGroups.Application.csproj",
+            "WebServices/WebServices.Application/WebServices.Application.csproj",
+            "RedisServices/RedisServices.Application/RedisServices.Application.csproj",
+            "Postgres/Postgres.Application/Postgres.Application.fsproj",
+            "ResourceDeployments/ResourceDeployments.Application/ResourceDeployments.Application.csproj"
+        ];
+
+        foreach (var relativePath in applicationProjects)
+        {
+            var projectPath = Path.Combine(
+                repositoryRoot,
+                "src",
+                "features",
+                relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var searchReferences = XDocument.Load(projectPath)
+                .Descendants("ProjectReference")
+                .Select(element => element.Attribute("Include")?.Value)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => Path.GetFileNameWithoutExtension(
+                    value!.Replace('\\', Path.DirectorySeparatorChar)))
+                .Where(identity => identity.StartsWith("Search.", StringComparison.Ordinal))
+                .ToArray();
+
+            Assert.Equal(["Search.Contracts"], searchReferences);
+        }
+    }
+
+    [Fact]
     public void ProductionFeatureProjectReferences_FollowTheModuleDependencyPolicy()
     {
         var repositoryRoot = FindRepositoryRoot();

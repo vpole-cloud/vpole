@@ -1,12 +1,20 @@
 namespace Pole.Features.Search.Application.Persistence
 
 open System.Threading
-open System.Threading.Tasks
 open Pole.Features.Search.Application.Common
+open Pole.Features.Search.Application.Projection
+open Pole.Features.Search.Contracts
 
-type PersistSearchDocumentSet =
-    delegate of documentSet : SearchDocumentSet * cancellationToken : CancellationToken -> Task
+type internal SearchProjectionWriter(
+    sourceTypes : SearchSourceTypeRegistry,
+    store : SearchProjectionStore) =
 
-type internal MongoPersistSearchDocumentSet(store : SearchProjectionStore) =
-    member _.InvokeAsync(documentSet : SearchDocumentSet, cancellationToken : CancellationToken) =
-        store.PersistDocumentSetAsync(documentSet, cancellationToken)
+    member _.UpsertAsync(
+        snapshot : SearchProjectionSnapshot,
+        cancellationToken : CancellationToken) =
+        match sourceTypes.Resolve(snapshot.Identity.ResourceTypeId) with
+        | Some sourceType ->
+            SearchDocumentFactory.fromSnapshot sourceType snapshot
+            |> fun documentSet -> store.PersistDocumentSetAsync(documentSet, cancellationToken)
+        | None ->
+            invalidOp $"Search resource type '{snapshot.Identity.ResourceTypeId}' is not registered."

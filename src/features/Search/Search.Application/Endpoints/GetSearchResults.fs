@@ -11,13 +11,15 @@ open Pole.Features.Search.Application.Common
 open Pole.Features.Search.Application.Persistence
 open Pole.Mediator
 
-type GetSearchHandler(searchIndexedDocuments : SearchIndexedDocuments) =
+type GetSearchHandler(
+    sourceTypes : SearchSourceTypeRegistry,
+    searchIndexedDocuments : SearchIndexedDocuments) =
     interface IMediatorOutcomeHandler<GetSearchRequest, GetSearchOutcome> with
         member _.HandleAsync(request, cancellationToken) =
             task {
                 let! response =
                     searchIndexedDocuments.Invoke(
-                        SearchQuery.ofRequest request,
+                        SearchQuery.ofRequest sourceTypes request,
                         cancellationToken)
                 return SearchPage response
             }

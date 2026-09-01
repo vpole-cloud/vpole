@@ -21,6 +21,7 @@
         <Compile Include="Common\PostgresResourceDeployment.fs" />
         <Compile Include="Migrations\PostgresCredentialMigration.fs" />
         <Compile Include="Common\PostgresClusterEventExtensions.fs" />
+        <Compile Include="Search\PostgresSearchProjectionConsumers.fs" />
         <Compile Include="Persistence\PostgresOutcome.fs" />
         <Compile Include="Persistence\PostgresFilters.fs" />
         <Compile Include="Persistence\PostgresPersistenceGuards.fs" />
@@ -71,6 +72,7 @@
       <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj" />
       <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
       <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />
+      <ProjectReference Include="..\..\Search\Search.Contracts\Search.Contracts.csproj" />
       <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
       <ProjectReference Include="..\..\Quotas\Quotas.Primitives\Quotas.Primitives.csproj" />
       <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />

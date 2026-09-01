@@ -11,7 +11,9 @@ open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Endpoints
 open Pole.Features.Postgres.Application.Kubernetes
 open Pole.Features.Postgres.Application.Persistence
+open Pole.Features.Postgres.Application.Search
 open Pole.Features.Quotas.Contracts
+open Pole.Features.Search.Contracts
 
 [<AbstractClass; Sealed>]
 type PostgresFeatureRegistration =
@@ -19,6 +21,8 @@ type PostgresFeatureRegistration =
     static member AddPostgresFeature(
         services : IServiceCollection,
         configuration : IConfiguration) =
+        services.AddSingleton<SearchSourceType>(PostgresSearchProjection.SourceType)
+        |> ignore
         services
             .AddOptions<PostgresSettings>()
             .Bind(configuration.GetSection(PostgresSettings.SectionName))

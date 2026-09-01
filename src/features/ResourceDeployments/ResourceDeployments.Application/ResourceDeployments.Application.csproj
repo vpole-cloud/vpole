@@ -23,6 +23,7 @@
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Events\ResourceGroups.Events.csproj" />
       <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
       <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
+      <ProjectReference Include="..\..\Search\Search.Contracts\Search.Contracts.csproj" />
       <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
       <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />

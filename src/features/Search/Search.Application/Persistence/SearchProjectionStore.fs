@@ -10,6 +10,7 @@ open MongoDB.Driver
 open Pole.Features.Request
 open Pole.Features.Search.Application.Common
 open Pole.Features.Search.Application.Projection
+open Pole.Features.Search.Contracts
 open Pole.Features.Search.Domain
 
 type internal SearchProjectionStore(database : IMongoDatabase) =
@@ -26,48 +27,43 @@ type internal SearchProjectionStore(database : IMongoDatabase) =
                 { Status = value.Status
                   FailureCode = value.FailureCode })
 
-        { SourceType = document.SourceType.ToString()
+        { SourceType = document.SourceApiName
           SourceId = document.SourceId
           Title = document.Title
           ResourceGroupId = document.ResourceGroupId
           ResourceGroupName = document.ResourceGroupName
           OperationalStatus = operationalStatus }
 
-    let toOperationalStatus (status : SearchOperationalStatusUpdate) eventOccurredAtUtc =
+    let toOperationalStatus (status : SearchOperationalStatusSnapshot) =
         { DesiredGeneration = status.DesiredGeneration
           ObservedGeneration = status.ObservedGeneration
           Status = status.Status
-          FailureCode = status.FailureCode
-          EventOccurredAtUtc = eventOccurredAtUtc }
+          FailureCode = Option.ofObj status.FailureCode
+          EventOccurredAtUtc = status.EventOccurredAtUtc }
 
     let rec persistOperationalStatus
-        sourceType
-        tenantId
-        sourceId
-        (status : SearchOperationalStatusUpdate)
-        eventOccurredAtUtc
+        (sourceType : SearchSourceType)
+        (identity : SearchProjectionIdentity)
+        (status : SearchOperationalStatusSnapshot)
         (cancellationToken : CancellationToken) =
         task {
-            let identity = SearchProjectionFilters.sourceByIdentity sourceType tenantId sourceId
+            let identityFilter = SearchProjectionFilters.sourceByIdentity identity
             let filter =
-                SearchProjectionFilters.sourceAcceptingOperationalStatus
-                    sourceType
-                    tenantId
-                    sourceId
-                    status
-                    eventOccurredAtUtc
-            let operationalStatus = Some(toOperationalStatus status eventOccurredAtUtc)
+                SearchProjectionFilters.sourceAcceptingOperationalStatus identity status
+            let operationalStatus = Some(toOperationalStatus status)
             let update = Builders<SearchSourceDocument>.Update.Set(_.OperationalStatus, operationalStatus)
             let! updated = sources.UpdateOneAsync(filter, update, cancellationToken = cancellationToken)
 
             if updated.MatchedCount = 0L then
-                let! exists = sources.Find(identity).Limit(1).AnyAsync(cancellationToken)
+                let! exists = sources.Find(identityFilter).Limit(1).AnyAsync(cancellationToken)
                 if not exists then
                     let pendingSource =
                         { Id = SearchSourceDocument.createId()
-                          SourceType = sourceType
-                          TenantId = tenantId
-                          SourceId = sourceId
+                          ResourceTypeId = sourceType.ResourceTypeId.Value
+                          SourceApiName = sourceType.ApiName
+                          SourceSortOrder = sourceType.SortOrder
+                          TenantId = identity.TenantId
+                          SourceId = identity.SourceId
                           Title = ""
                           ResourceGroupId = None
                           ResourceGroupName = None
@@ -81,75 +77,69 @@ type internal SearchProjectionStore(database : IMongoDatabase) =
                         return!
                             persistOperationalStatus
                                 sourceType
-                                tenantId
-                                sourceId
+                                identity
                                 status
-                                eventOccurredAtUtc
                                 cancellationToken
         }
 
     member _.PersistDocumentSetAsync(documentSet : SearchDocumentSet, cancellationToken : CancellationToken) =
         task {
-            let documentFilter =
-                SearchProjectionFilters.documentsBySource
-                    documentSet.SourceType
-                    documentSet.TenantId
-                    documentSet.SourceId
+            let identity =
+                SearchProjectionIdentity(
+                    documentSet.TenantId,
+                    documentSet.SourceType.ResourceTypeId,
+                    documentSet.SourceId)
+            let documentFilter = SearchProjectionFilters.documentsBySource identity
             do! documents.DeleteManyAsync(documentFilter, cancellationToken = cancellationToken) :> Task
 
             if not (List.isEmpty documentSet.Documents) then
                 do! documents.InsertManyAsync(documentSet.Documents, cancellationToken = cancellationToken)
 
-                let candidate = SearchDocumentFactory.toSourceDocument documentSet
-                let update =
-                    Builders<SearchSourceDocument>.Update
-                        .Set(_.Title, candidate.Title)
-                        .Set(_.ResourceGroupId, candidate.ResourceGroupId)
-                        .Set(_.ResourceGroupName, candidate.ResourceGroupName)
-                        .Set(_.SearchKeys, candidate.SearchKeys)
-                        .SetOnInsert(_.Id, candidate.Id)
-                        .SetOnInsert(_.SourceType, candidate.SourceType)
-                        .SetOnInsert(_.TenantId, candidate.TenantId)
-                        .SetOnInsert(_.SourceId, candidate.SourceId)
-                        .SetOnInsert(_.OperationalStatus, None)
-                let! _ =
-                    sources.UpdateOneAsync(
-                        SearchProjectionFilters.sourceByIdentity
-                            documentSet.SourceType
-                            documentSet.TenantId
-                            documentSet.SourceId,
-                        update,
-                        UpdateOptions(IsUpsert = true),
-                        cancellationToken)
-                return ()
+            let candidate = SearchDocumentFactory.toSourceDocument documentSet
+            let update =
+                Builders<SearchSourceDocument>.Update
+                    .Set(_.SourceApiName, candidate.SourceApiName)
+                    .Set(_.SourceSortOrder, candidate.SourceSortOrder)
+                    .Set(_.Title, candidate.Title)
+                    .Set(_.ResourceGroupId, candidate.ResourceGroupId)
+                    .Set(_.ResourceGroupName, candidate.ResourceGroupName)
+                    .Set(_.SearchKeys, candidate.SearchKeys)
+                    .SetOnInsert(_.Id, candidate.Id)
+                    .SetOnInsert(_.ResourceTypeId, candidate.ResourceTypeId)
+                    .SetOnInsert(_.TenantId, candidate.TenantId)
+                    .SetOnInsert(_.SourceId, candidate.SourceId)
+                    .SetOnInsert(_.OperationalStatus, None)
+            let! _ =
+                sources.UpdateOneAsync(
+                    SearchProjectionFilters.sourceByIdentity identity,
+                    update,
+                    UpdateOptions(IsUpsert = true),
+                    cancellationToken)
+            return ()
         }
 
     member _.RemoveDocumentSetAsync(
-        sourceType : SearchDocumentType,
-        tenantId : string,
-        sourceId : string,
+        identity : SearchProjectionIdentity,
         cancellationToken : CancellationToken) =
         task {
             do!
                 documents.DeleteManyAsync(
-                    SearchProjectionFilters.documentsBySource sourceType tenantId sourceId,
+                    SearchProjectionFilters.documentsBySource identity,
                     cancellationToken = cancellationToken)
                 :> Task
             do!
                 sources.DeleteManyAsync(
-                    SearchProjectionFilters.sourceByIdentity sourceType tenantId sourceId,
+                    SearchProjectionFilters.sourceByIdentity identity,
                     cancellationToken = cancellationToken)
                 :> Task
         }
 
     member _.PersistOperationalStatusAsync(
-        sourceType : SearchDocumentType,
-        tenantId : string,
-        sourceId : string,
-        status : SearchOperationalStatusUpdate,
-        eventOccurredAtUtc : DateTime,
+        sourceType : SearchSourceType,
+        identity : SearchProjectionIdentity,
+        status : SearchOperationalStatusSnapshot,
         cancellationToken : CancellationToken) =
-        persistOperationalStatus sourceType tenantId sourceId status eventOccurredAtUtc cancellationToken
+        persistOperationalStatus sourceType identity status cancellationToken
 
     member _.SearchAsync(query : SearchQuery, cancellationToken : CancellationToken) =
         task {
@@ -192,7 +182,7 @@ type internal SearchProjectionStore(database : IMongoDatabase) =
                             bsonDocument [
                                 BsonElement("BestWeight", -1)
                                 BsonElement("Title", -1)
-                                BsonElement("SourceType", 1)
+                                BsonElement("SourceSortOrder", 1)
                                 BsonElement("SourceId", 1) ]) ]
                     bsonDocument [
                         BsonElement(

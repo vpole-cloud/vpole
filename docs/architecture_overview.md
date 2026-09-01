@@ -67,6 +67,15 @@ backup/restore, multi-replica, and rotation procedures.
 
 Tenant quota admission uses feature-owned typed profiles with shared CPU, RAM, and workload definitions, then commits quota usage together with the resource mutation and outbox records. See [tenant quotas](quotas.md) for the model and extension workflow.
 
+### Search contributions
+
+Search persistence is a platform capability behind `Search.Contracts`. Searchable resource
+features register a resource type and own the consumers that map their integration events into
+generic projection snapshots. Search core owns normalization, relevance, Mongo persistence, and
+the unchanged `/api/v1/search` response contract without referencing concrete resource features.
+See [search](search.md) and [module boundaries](module-boundaries.md) for the provider-owned adapter
+flow.
+
 ### Observability
 
 Pole carries `TraceId` and `CorrelationId` through HTTP, logs, outbox records, RabbitMQ headers, and consumers. See [observability](observability.md) for the full flow.

@@ -5,23 +5,24 @@ open MongoDB.Bson
 open MongoDB.Driver
 open Pole.Features.Search.Application.Common
 open Pole.Features.Search.Application.Projection
+open Pole.Features.Search.Contracts
 open Pole.Features.Search.Domain
 
 [<RequireQualifiedAccess>]
 module internal SearchProjectionFilters =
-    let sourceByIdentity (sourceType : SearchDocumentType) (tenantId : string) (sourceId : string) =
+    let sourceByIdentity (identity : SearchProjectionIdentity) =
         Builders<SearchSourceDocument>.Filter.And(
-            Builders<SearchSourceDocument>.Filter.Eq(_.TenantId, tenantId),
-            Builders<SearchSourceDocument>.Filter.Eq(_.SourceType, sourceType),
-            Builders<SearchSourceDocument>.Filter.Eq(_.SourceId, sourceId))
+            Builders<SearchSourceDocument>.Filter.Eq(_.TenantId, identity.TenantId),
+            Builders<SearchSourceDocument>.Filter.Eq(_.ResourceTypeId, identity.ResourceTypeId.Value),
+            Builders<SearchSourceDocument>.Filter.Eq(_.SourceId, identity.SourceId))
 
-    let documentsBySource (sourceType : SearchDocumentType) (tenantId : string) (sourceId : string) =
+    let documentsBySource (identity : SearchProjectionIdentity) =
         Builders<SearchDocument>.Filter.And(
-            Builders<SearchDocument>.Filter.Eq(_.TenantId, tenantId),
-            Builders<SearchDocument>.Filter.Eq(_.SourceType, sourceType),
-            Builders<SearchDocument>.Filter.Eq(_.SourceId, sourceId))
+            Builders<SearchDocument>.Filter.Eq(_.TenantId, identity.TenantId),
+            Builders<SearchDocument>.Filter.Eq(_.ResourceTypeId, identity.ResourceTypeId.Value),
+            Builders<SearchDocument>.Filter.Eq(_.SourceId, identity.SourceId))
 
-    let acceptsOperationalStatus (status : SearchOperationalStatusUpdate) (eventOccurredAtUtc : System.DateTime) =
+    let acceptsOperationalStatus (status : SearchOperationalStatusSnapshot) =
         let filter = Builders<SearchSourceDocument>.Filter
         filter.Or(
             filter.Exists("OperationalStatus", false),
@@ -33,17 +34,14 @@ module internal SearchProjectionFilters =
             filter.And(
                 filter.Eq("OperationalStatus.DesiredGeneration", status.DesiredGeneration),
                 filter.Eq("OperationalStatus.ObservedGeneration", status.ObservedGeneration),
-                filter.Lte("OperationalStatus.EventOccurredAtUtc", eventOccurredAtUtc)))
+                filter.Lte("OperationalStatus.EventOccurredAtUtc", status.EventOccurredAtUtc)))
 
     let sourceAcceptingOperationalStatus
-        (sourceType : SearchDocumentType)
-        (tenantId : string)
-        (sourceId : string)
-        (status : SearchOperationalStatusUpdate)
-        (eventOccurredAtUtc : System.DateTime) =
+        (identity : SearchProjectionIdentity)
+        (status : SearchOperationalStatusSnapshot) =
         Builders<SearchSourceDocument>.Filter.And(
-            sourceByIdentity sourceType tenantId sourceId,
-            acceptsOperationalStatus status eventOccurredAtUtc)
+            sourceByIdentity identity,
+            acceptsOperationalStatus status)
 
     let getSourceMatchStage (query : SearchQuery) =
         let bsonDocument (elements : BsonElement list) = BsonDocument(elements)
@@ -64,13 +62,13 @@ module internal SearchProjectionFilters =
         | Some types when not (List.isEmpty types) ->
             let typeValues =
                 types
-                |> List.map (fun value -> BsonInt32(int value) :> BsonValue)
+                |> List.map (fun value -> BsonString(value.ApiName) :> BsonValue)
                 |> bsonArray
             conditions <-
                 conditions @
                 [ bsonDocument [
                     BsonElement(
-                        "SourceType",
+                        "SourceApiName",
                         bsonDocument [ BsonElement("$in", typeValues) ])
                   ] :> BsonValue ]
         | _ -> ()

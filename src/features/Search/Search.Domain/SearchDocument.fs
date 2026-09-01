@@ -3,12 +3,6 @@ namespace Pole.Features.Search.Domain
 open MongoDB.Bson
 open MongoDB.Bson.Serialization.Attributes
 
-type SearchDocumentType =
-    | ResourceGroup = 0
-    | WebService = 1
-    | RedisService = 2
-    | PostgresCluster = 4
-
 type SearchKeyType =
     | SourceId = 0
     | Name = 1
@@ -25,7 +19,9 @@ type SearchDocument =
     { [<BsonId>]
       [<BsonRepresentation(BsonType.ObjectId)>]
       Id : string
-      SourceType : SearchDocumentType
+      ResourceTypeId : string
+      SourceApiName : string
+      SourceSortOrder : int
       TenantId : string
       SourceId : string
       KeyType : SearchKeyType
@@ -51,7 +47,9 @@ type SearchSourceDocument =
     { [<BsonId>]
       [<BsonRepresentation(BsonType.ObjectId)>]
       Id : string
-      SourceType : SearchDocumentType
+      ResourceTypeId : string
+      SourceApiName : string
+      SourceSortOrder : int
       TenantId : string
       SourceId : string
       Title : string
