@@ -11,7 +11,8 @@ public record ResourceGroupCreatedEvent(
     string Name,
     string Description,
     ImmutableList<ShortResourceInfo> Resources,
-    ImmutableHashSet<string> Tags
+    ImmutableHashSet<string> Tags,
+    long ResourceRevision
 ) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();

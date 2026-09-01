@@ -24,6 +24,7 @@ module PostgresClusterEvents =
           ClusterId = cluster.Id
           Name = cluster.Name
           GroupId = cluster.GroupId
+          ResourceRevision = cluster.Revision
           Spec = toSnapshotSpec cluster.Spec }
 
     let deleted (cluster : PostgresCluster) : PostgresClusterDeletedEvent =
@@ -31,6 +32,7 @@ module PostgresClusterEvents =
           ClusterId = cluster.Id
           Name = cluster.Name
           GroupId = cluster.GroupId
+          ResourceRevision = cluster.Revision
           Spec = toSnapshotSpec cluster.Spec }
 
     let updated (previous : PostgresCluster) (next : PostgresCluster) : PostgresClusterUpdatedEvent =
@@ -38,6 +40,7 @@ module PostgresClusterEvents =
           ClusterId = next.Id
           Name = next.Name
           GroupId = next.GroupId
+          ResourceRevision = next.Revision
           Changes =
             { Spec =
                 UpdateLog<PostgresClusterSpecSnapshot>.Of(

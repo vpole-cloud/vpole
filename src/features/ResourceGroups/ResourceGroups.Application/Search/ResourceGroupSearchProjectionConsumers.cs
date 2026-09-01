@@ -16,7 +16,8 @@ public static class ResourceGroupSearchProjection
         string tenantId,
         string resourceGroupId,
         string name,
-        IEnumerable<string> tags) =>
+        IEnumerable<string> tags,
+        long resourceRevision) =>
         new(
             new SearchProjectionIdentity(
                 tenantId,
@@ -28,7 +29,8 @@ public static class ResourceGroupSearchProjection
             new[] { new SearchProjectionField(SearchProjectionFieldType.Name, name) }
                 .Concat(tags.Select(tag =>
                     new SearchProjectionField(SearchProjectionFieldType.Tag, tag)))
-                .ToArray());
+                .ToArray(),
+            resourceRevision);
 }
 
 public sealed class AddResourceGroupToSearchOnResourceGroupCreatedConsumer(
@@ -43,7 +45,8 @@ public sealed class AddResourceGroupToSearchOnResourceGroupCreatedConsumer(
                 message.EventCore.TenantId,
                 message.ResourceGroupId,
                 message.Name,
-                message.Tags),
+                message.Tags,
+                message.ResourceRevision),
             cancellationToken);
 
     public Task Consume(ConsumeContext<ResourceGroupCreatedEvent> context) =>
@@ -62,7 +65,8 @@ public sealed class UpdateResourceGroupInSearchOnResourceGroupUpdatedConsumer(
                 message.EventCore.TenantId,
                 message.ResourceGroupId,
                 message.Name,
-                message.Changes.Tags.New),
+                message.Changes.Tags.New,
+                message.ResourceRevision),
             cancellationToken);
 
     public Task Consume(ConsumeContext<ResourceGroupUpdatedEvent> context) =>
@@ -76,17 +80,20 @@ public sealed class RemoveResourceGroupFromSearchOnResourceGroupDeletedConsumer(
     public Task Handle(
         string tenantId,
         string resourceGroupId,
+        long resourceRevision,
         CancellationToken cancellationToken) =>
         deleteSearchProjection(
             new SearchProjectionIdentity(
                 tenantId,
                 ResourceGroupSearchProjection.SourceType.ResourceTypeId,
                 resourceGroupId),
+            resourceRevision,
             cancellationToken);
 
     public Task Consume(ConsumeContext<ResourceGroupDeletedEvent> context) =>
         Handle(
             context.Message.EventCore.TenantId,
             context.Message.ResourceGroupId,
+            context.Message.ResourceRevision,
             context.CancellationToken);
 }

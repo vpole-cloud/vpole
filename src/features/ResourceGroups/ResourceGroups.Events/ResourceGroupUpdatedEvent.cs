@@ -11,7 +11,8 @@ public sealed record ResourceGroupUpdatedEvent(
     string Name,
     string Description,
     ImmutableList<ShortResourceInfo> Resources,
-    ResourceGroupUpdatedEventChanges Changes
+    ResourceGroupUpdatedEventChanges Changes,
+    long ResourceRevision
 ) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();

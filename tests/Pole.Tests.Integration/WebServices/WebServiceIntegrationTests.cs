@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -16,6 +17,7 @@ using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Application.Persistence.Deployments;
 using Pole.Features.WebServices.Application.Persistence.Lifecycle;
 using Pole.Features.WebServices.Domain;
+using Pole.Features.WebServices.Events;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Pole.Workloads;
@@ -561,5 +563,13 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             .CountDocumentsAsync(binding => binding.ResourceId == created.WebServiceId));
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
             "web-service-deleted"));
+        var deletionMessage = await DbContext.OutboxMessages
+            .Find(message => message.EventType == "web-service-deleted")
+            .SingleAsync();
+        var deletionEvent = JsonSerializer.Deserialize<WebServiceDeletedEvent>(
+            deletionMessage.PayloadJson,
+            Pole.Features.Events.Abstractions.EventExtensions.SerializerOptions);
+        Assert.NotNull(deletionEvent);
+        Assert.Equal(2, deletionEvent.ResourceRevision);
     }
 }

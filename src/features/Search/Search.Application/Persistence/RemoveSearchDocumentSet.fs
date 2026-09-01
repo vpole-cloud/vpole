@@ -6,5 +6,6 @@ open Pole.Features.Search.Contracts
 type internal MongoDeleteSearchProjection(store : SearchProjectionStore) =
     member _.InvokeAsync(
         identity : SearchProjectionIdentity,
+        resourceRevision : int64,
         cancellationToken : CancellationToken) =
-        store.RemoveDocumentSetAsync(identity, cancellationToken)
+        store.RemoveDocumentSetAsync(identity, resourceRevision, cancellationToken)

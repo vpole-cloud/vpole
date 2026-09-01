@@ -22,17 +22,23 @@ module internal SearchProjectionFilters =
             Builders<SearchDocument>.Filter.Eq(_.ResourceTypeId, identity.ResourceTypeId.Value),
             Builders<SearchDocument>.Filter.Eq(_.SourceId, identity.SourceId))
 
+    let versionByIdentity (identity : SearchProjectionIdentity) =
+        Builders<SearchProjectionVersionDocument>.Filter.And(
+            Builders<SearchProjectionVersionDocument>.Filter.Eq(_.TenantId, identity.TenantId),
+            Builders<SearchProjectionVersionDocument>.Filter.Eq(_.ResourceTypeId, identity.ResourceTypeId.Value),
+            Builders<SearchProjectionVersionDocument>.Filter.Eq(_.SourceId, identity.SourceId))
+
     let acceptsOperationalStatus (status : SearchOperationalStatusSnapshot) =
         let filter = Builders<SearchSourceDocument>.Filter
         filter.Or(
             filter.Exists("OperationalStatus", false),
             filter.Eq("OperationalStatus", BsonNull.Value),
-            filter.Lt("OperationalStatus.DesiredGeneration", status.DesiredGeneration),
+            filter.Lt("OperationalStatus.ResourceRevision", status.ResourceRevision),
             filter.And(
-                filter.Eq("OperationalStatus.DesiredGeneration", status.DesiredGeneration),
+                filter.Eq("OperationalStatus.ResourceRevision", status.ResourceRevision),
                 filter.Lt("OperationalStatus.ObservedGeneration", status.ObservedGeneration)),
             filter.And(
-                filter.Eq("OperationalStatus.DesiredGeneration", status.DesiredGeneration),
+                filter.Eq("OperationalStatus.ResourceRevision", status.ResourceRevision),
                 filter.Eq("OperationalStatus.ObservedGeneration", status.ObservedGeneration),
                 filter.Lte("OperationalStatus.EventOccurredAtUtc", status.EventOccurredAtUtc)))
 

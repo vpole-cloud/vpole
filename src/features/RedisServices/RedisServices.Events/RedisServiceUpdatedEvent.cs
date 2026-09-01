@@ -9,7 +9,8 @@ public sealed record RedisServiceUpdatedEvent(
     string RedisId,
     string Name,
     string ResourceGroupId,
-    RedisServiceUpdatedEventChanges Changes
+    RedisServiceUpdatedEventChanges Changes,
+    long ResourceRevision
 ) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();

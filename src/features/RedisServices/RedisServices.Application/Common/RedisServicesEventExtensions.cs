@@ -15,7 +15,8 @@ internal static class RedisServicesEventExtensions
                 redis.Name,
                 redis.ResourceGroupId,
                 redis.Spec.ToSnapshot(),
-                redis.Tags)
+                redis.Tags,
+                redis.Revision)
             {
             EventCore = EventCore.Create(redis.TenantId)
             };
@@ -26,7 +27,8 @@ internal static class RedisServicesEventExtensions
                 redis.Name,
                 redis.ResourceGroupId,
                 redis.Spec.ToSnapshot(),
-                redis.Tags)
+                redis.Tags,
+                redis.Revision)
             {
                 EventCore = EventCore.Create(redis.TenantId)
             };
@@ -44,7 +46,8 @@ internal static class RedisServicesEventExtensions
                         replacement.Spec.ToSnapshot()),
                     UpdateLog<ImmutableHashSet<string>>.Of(
                         redis.Tags,
-                        replacement.Tags)))
+                        replacement.Tags)),
+                replacement.Revision)
             {
                 EventCore = EventCore.Create(redis.TenantId)
             };
@@ -62,7 +65,8 @@ internal static class RedisServicesEventExtensions
                 RedisFactory.DefaultCreateOptions with
                 {
                     Id = createEvent.RedisId,
-                    Tags = createEvent.Tags
+                    Tags = createEvent.Tags,
+                    Revision = createEvent.ResourceRevision
                 });
     }
 

@@ -124,6 +124,7 @@ module SearchDocumentFactory =
           Title = snapshot.Title
           ResourceGroupId = Option.ofObj snapshot.ResourceGroupId
           ResourceGroupName = Option.ofObj snapshot.ResourceGroupName
+          ResourceRevision = snapshot.ResourceRevision
           Documents =
             toDocuments sourceType snapshot.Identity.TenantId snapshot.Identity.SourceId snapshot.Title
                 (Option.ofObj snapshot.ResourceGroupId) (Option.ofObj snapshot.ResourceGroupName) specs }

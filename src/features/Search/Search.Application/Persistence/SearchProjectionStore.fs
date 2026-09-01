@@ -16,6 +16,7 @@ open Pole.Features.Search.Domain
 type internal SearchProjectionStore(database : IMongoDatabase) =
     let documents = database.GetCollection<SearchDocument>("SearchDocuments")
     let sources = database.GetCollection<SearchSourceDocument>("SearchSourceDocuments")
+    let versions = database.GetCollection<SearchProjectionVersionDocument>("SearchProjectionVersions")
 
     let bsonDocument (elements : BsonElement list) = BsonDocument(elements)
     let bsonArray (values : BsonValue list) = BsonArray(values)
@@ -35,13 +36,14 @@ type internal SearchProjectionStore(database : IMongoDatabase) =
           OperationalStatus = operationalStatus }
 
     let toOperationalStatus (status : SearchOperationalStatusSnapshot) =
-        { DesiredGeneration = status.DesiredGeneration
+        { ResourceRevision = status.ResourceRevision
           ObservedGeneration = status.ObservedGeneration
           Status = status.Status
           FailureCode = Option.ofObj status.FailureCode
           EventOccurredAtUtc = status.EventOccurredAtUtc }
 
-    let rec persistOperationalStatus
+    let persistOperationalStatus
+        (session : IClientSessionHandle)
         (sourceType : SearchSourceType)
         (identity : SearchProjectionIdentity)
         (status : SearchOperationalStatusSnapshot)
@@ -52,10 +54,16 @@ type internal SearchProjectionStore(database : IMongoDatabase) =
                 SearchProjectionFilters.sourceAcceptingOperationalStatus identity status
             let operationalStatus = Some(toOperationalStatus status)
             let update = Builders<SearchSourceDocument>.Update.Set(_.OperationalStatus, operationalStatus)
-            let! updated = sources.UpdateOneAsync(filter, update, cancellationToken = cancellationToken)
+            let! updated =
+                sources.UpdateOneAsync(
+                    session,
+                    filter,
+                    update,
+                    cancellationToken = cancellationToken)
 
             if updated.MatchedCount = 0L then
-                let! exists = sources.Find(identityFilter).Limit(1).AnyAsync(cancellationToken)
+                let! exists =
+                    sources.Find(session, identityFilter).Limit(1).AnyAsync(cancellationToken)
                 if not exists then
                     let pendingSource =
                         { Id = SearchSourceDocument.createId()
@@ -69,17 +77,11 @@ type internal SearchProjectionStore(database : IMongoDatabase) =
                           ResourceGroupName = None
                           SearchKeys = [||]
                           OperationalStatus = operationalStatus }
-                    try
-                        do! sources.InsertOneAsync(pendingSource, cancellationToken = cancellationToken)
-                    with
-                    | :? MongoWriteException as mongoException
-                        when mongoException.WriteError.Category = ServerErrorCategory.DuplicateKey ->
-                        return!
-                            persistOperationalStatus
-                                sourceType
-                                identity
-                                status
-                                cancellationToken
+                    do!
+                        sources.InsertOneAsync(
+                            session,
+                            pendingSource,
+                            cancellationToken = cancellationToken)
         }
 
     member _.PersistDocumentSetAsync(documentSet : SearchDocumentSet, cancellationToken : CancellationToken) =
@@ -89,49 +91,145 @@ type internal SearchProjectionStore(database : IMongoDatabase) =
                     documentSet.TenantId,
                     documentSet.SourceType.ResourceTypeId,
                     documentSet.SourceId)
-            let documentFilter = SearchProjectionFilters.documentsBySource identity
-            do! documents.DeleteManyAsync(documentFilter, cancellationToken = cancellationToken) :> Task
+            let resourceRevision = documentSet.ResourceRevision
+            if resourceRevision < 1L then
+                invalidArg (nameof documentSet) "Search projection resource revision must be positive."
 
-            if not (List.isEmpty documentSet.Documents) then
-                do! documents.InsertManyAsync(documentSet.Documents, cancellationToken = cancellationToken)
-
-            let candidate = SearchDocumentFactory.toSourceDocument documentSet
-            let update =
-                Builders<SearchSourceDocument>.Update
-                    .Set(_.SourceApiName, candidate.SourceApiName)
-                    .Set(_.SourceSortOrder, candidate.SourceSortOrder)
-                    .Set(_.Title, candidate.Title)
-                    .Set(_.ResourceGroupId, candidate.ResourceGroupId)
-                    .Set(_.ResourceGroupName, candidate.ResourceGroupName)
-                    .Set(_.SearchKeys, candidate.SearchKeys)
-                    .SetOnInsert(_.Id, candidate.Id)
-                    .SetOnInsert(_.ResourceTypeId, candidate.ResourceTypeId)
-                    .SetOnInsert(_.TenantId, candidate.TenantId)
-                    .SetOnInsert(_.SourceId, candidate.SourceId)
-                    .SetOnInsert(_.OperationalStatus, None)
+            use! session = database.Client.StartSessionAsync(cancellationToken = cancellationToken)
             let! _ =
-                sources.UpdateOneAsync(
-                    SearchProjectionFilters.sourceByIdentity identity,
-                    update,
-                    UpdateOptions(IsUpsert = true),
-                    cancellationToken)
+                session.WithTransactionAsync(
+                    (fun transaction transactionCancellationToken ->
+                        task {
+                            let versionFilter = SearchProjectionFilters.versionByIdentity identity
+                            let! currentVersions =
+                                versions
+                                    .Find(transaction, versionFilter)
+                                    .Limit(1)
+                                    .ToListAsync(transactionCancellationToken)
+                            let currentVersion = currentVersions |> Seq.tryHead
+
+                            match currentVersion with
+                            | Some current when current.ResourceRevision >= resourceRevision ->
+                                return false
+                            | _ ->
+                                let nextVersion =
+                                    { Id =
+                                        currentVersion
+                                        |> Option.map _.Id
+                                        |> Option.defaultWith SearchProjectionVersionDocument.createId
+                                      ResourceTypeId = identity.ResourceTypeId.Value
+                                      TenantId = identity.TenantId
+                                      SourceId = identity.SourceId
+                                      ResourceRevision = resourceRevision
+                                      IsDeleted = false }
+                                let! _ =
+                                    versions.ReplaceOneAsync(
+                                        transaction,
+                                        versionFilter,
+                                        nextVersion,
+                                        ReplaceOptions(IsUpsert = true),
+                                        transactionCancellationToken)
+
+                                let documentFilter = SearchProjectionFilters.documentsBySource identity
+                                do!
+                                    documents.DeleteManyAsync(
+                                        transaction,
+                                        documentFilter,
+                                        cancellationToken = transactionCancellationToken)
+                                    :> Task
+
+                                if not (List.isEmpty documentSet.Documents) then
+                                    do!
+                                        documents.InsertManyAsync(
+                                            transaction,
+                                            documentSet.Documents,
+                                            cancellationToken = transactionCancellationToken)
+
+                                let candidate = SearchDocumentFactory.toSourceDocument documentSet
+                                let update =
+                                    Builders<SearchSourceDocument>.Update
+                                        .Set(_.SourceApiName, candidate.SourceApiName)
+                                        .Set(_.SourceSortOrder, candidate.SourceSortOrder)
+                                        .Set(_.Title, candidate.Title)
+                                        .Set(_.ResourceGroupId, candidate.ResourceGroupId)
+                                        .Set(_.ResourceGroupName, candidate.ResourceGroupName)
+                                        .Set(_.SearchKeys, candidate.SearchKeys)
+                                        .SetOnInsert(_.Id, candidate.Id)
+                                        .SetOnInsert(_.ResourceTypeId, candidate.ResourceTypeId)
+                                        .SetOnInsert(_.TenantId, candidate.TenantId)
+                                        .SetOnInsert(_.SourceId, candidate.SourceId)
+                                        .SetOnInsert(_.OperationalStatus, None)
+                                let! _ =
+                                    sources.UpdateOneAsync(
+                                        transaction,
+                                        SearchProjectionFilters.sourceByIdentity identity,
+                                        update,
+                                        UpdateOptions(IsUpsert = true),
+                                        transactionCancellationToken)
+                                return true
+                        }),
+                    cancellationToken = cancellationToken)
             return ()
         }
 
     member _.RemoveDocumentSetAsync(
         identity : SearchProjectionIdentity,
+        resourceRevision : int64,
         cancellationToken : CancellationToken) =
         task {
-            do!
-                documents.DeleteManyAsync(
-                    SearchProjectionFilters.documentsBySource identity,
+            if resourceRevision < 1L then
+                invalidArg (nameof resourceRevision) "Search projection resource revision must be positive."
+
+            use! session = database.Client.StartSessionAsync(cancellationToken = cancellationToken)
+            let! _ =
+                session.WithTransactionAsync(
+                    (fun transaction transactionCancellationToken ->
+                        task {
+                            let versionFilter = SearchProjectionFilters.versionByIdentity identity
+                            let! currentVersions =
+                                versions
+                                    .Find(transaction, versionFilter)
+                                    .Limit(1)
+                                    .ToListAsync(transactionCancellationToken)
+                            let currentVersion = currentVersions |> Seq.tryHead
+
+                            match currentVersion with
+                            | Some current when current.ResourceRevision >= resourceRevision ->
+                                return false
+                            | _ ->
+                                let tombstone =
+                                    { Id =
+                                        currentVersion
+                                        |> Option.map _.Id
+                                        |> Option.defaultWith SearchProjectionVersionDocument.createId
+                                      ResourceTypeId = identity.ResourceTypeId.Value
+                                      TenantId = identity.TenantId
+                                      SourceId = identity.SourceId
+                                      ResourceRevision = resourceRevision
+                                      IsDeleted = true }
+                                let! _ =
+                                    versions.ReplaceOneAsync(
+                                        transaction,
+                                        versionFilter,
+                                        tombstone,
+                                        ReplaceOptions(IsUpsert = true),
+                                        transactionCancellationToken)
+                                do!
+                                    documents.DeleteManyAsync(
+                                        transaction,
+                                        SearchProjectionFilters.documentsBySource identity,
+                                        cancellationToken = transactionCancellationToken)
+                                    :> Task
+                                do!
+                                    sources.DeleteManyAsync(
+                                        transaction,
+                                        SearchProjectionFilters.sourceByIdentity identity,
+                                        cancellationToken = transactionCancellationToken)
+                                    :> Task
+                                return true
+                        }),
                     cancellationToken = cancellationToken)
-                :> Task
-            do!
-                sources.DeleteManyAsync(
-                    SearchProjectionFilters.sourceByIdentity identity,
-                    cancellationToken = cancellationToken)
-                :> Task
+            return ()
         }
 
     member _.PersistOperationalStatusAsync(
@@ -139,7 +237,40 @@ type internal SearchProjectionStore(database : IMongoDatabase) =
         identity : SearchProjectionIdentity,
         status : SearchOperationalStatusSnapshot,
         cancellationToken : CancellationToken) =
-        persistOperationalStatus sourceType identity status cancellationToken
+        task {
+            use! session = database.Client.StartSessionAsync(cancellationToken = cancellationToken)
+            let! _ =
+                session.WithTransactionAsync(
+                    (fun transaction transactionCancellationToken ->
+                        task {
+                            let! currentVersions =
+                                versions
+                                    .Find(
+                                        transaction,
+                                        SearchProjectionFilters.versionByIdentity identity)
+                                    .Limit(1)
+                                    .ToListAsync(transactionCancellationToken)
+                            let deletedAtSameOrNewerRevision =
+                                currentVersions
+                                |> Seq.tryHead
+                                |> Option.exists (fun version ->
+                                    version.IsDeleted &&
+                                    version.ResourceRevision >= status.ResourceRevision)
+                            if deletedAtSameOrNewerRevision then
+                                return false
+                            else
+                                do!
+                                    persistOperationalStatus
+                                        transaction
+                                        sourceType
+                                        identity
+                                        status
+                                        transactionCancellationToken
+                                return true
+                        }),
+                    cancellationToken = cancellationToken)
+            return ()
+        }
 
     member _.SearchAsync(query : SearchQuery, cancellationToken : CancellationToken) =
         task {

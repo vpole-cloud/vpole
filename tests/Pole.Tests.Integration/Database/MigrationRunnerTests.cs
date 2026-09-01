@@ -98,8 +98,8 @@ public sealed class MigrationRunnerTests(MongoReplicaSetFixture fixture)
         var indexNames = indexDocuments.Select(index => index["name"].AsString).ToList();
 
         Assert.Contains("IX_SearchDocuments_Source_Key", indexNames);
-        Assert.Contains("IX_SearchDocuments_SearchValue_SourceType", indexNames);
-        Assert.Contains("IX_SearchDocuments_SourceType_SearchValue_Weight", indexNames);
+        Assert.Contains("IX_SearchDocuments_SearchValue_SourceApiName", indexNames);
+        Assert.Contains("IX_SearchDocuments_SourceSortOrder_SearchValue_Weight", indexNames);
 
         var sourceIndexes = await Fixture.Database
             .GetCollection<BsonDocument>("SearchSourceDocuments")
@@ -111,7 +111,17 @@ public sealed class MigrationRunnerTests(MongoReplicaSetFixture fixture)
 
         Assert.Contains("IX_SearchSourceDocuments_Source", sourceIndexNames);
         Assert.Contains("IX_SearchSourceDocuments_SearchKeys_Value", sourceIndexNames);
-        Assert.Contains("IX_SearchSourceDocuments_SourceType_SearchKeys_Value", sourceIndexNames);
+        Assert.Contains("IX_SearchSourceDocuments_SourceApiName_SearchKeys_Value", sourceIndexNames);
+
+        var versionIndexes = await Fixture.Database
+            .GetCollection<BsonDocument>("SearchProjectionVersions")
+            .Indexes
+            .ListAsync();
+        var versionIndexNames = (await versionIndexes.ToListAsync())
+            .Select(index => index["name"].AsString)
+            .ToList();
+
+        Assert.Contains("IX_SearchProjectionVersions_Source", versionIndexNames);
     }
 
     private MigrationRunner CreateRunner(params IMigration[] migrations)
@@ -151,4 +161,3 @@ public sealed class MigrationRunnerTests(MongoReplicaSetFixture fixture)
         }
     }
 }
-

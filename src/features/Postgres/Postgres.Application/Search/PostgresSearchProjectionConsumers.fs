@@ -14,14 +14,15 @@ module PostgresSearchProjection =
             "PostgresCluster",
             4)
 
-    let snapshot tenantId clusterId name groupId =
+    let snapshot tenantId clusterId name groupId resourceRevision =
         SearchProjectionSnapshot(
             SearchProjectionIdentity(tenantId, SourceType.ResourceTypeId, clusterId),
             name,
             groupId,
             null,
             [| SearchProjectionField(SearchProjectionFieldType.SourceId, clusterId)
-               SearchProjectionField(SearchProjectionFieldType.Name, name) |])
+               SearchProjectionField(SearchProjectionFieldType.Name, name) |],
+            resourceRevision)
 
 type AddPostgresClusterToSearchOnPostgresClusterCreatedConsumer(
     createSearchProjection : CreateSearchProjection) =
@@ -32,7 +33,8 @@ type AddPostgresClusterToSearchOnPostgresClusterCreatedConsumer(
                 event.EventCore.TenantId
                 event.ClusterId
                 event.Name
-                event.GroupId,
+                event.GroupId
+                event.ResourceRevision,
             cancellationToken)
 
     interface IConsumer<PostgresClusterCreatedEvent> with
@@ -48,7 +50,8 @@ type UpdatePostgresClusterInSearchOnPostgresClusterUpdatedConsumer(
                 event.EventCore.TenantId
                 event.ClusterId
                 event.Name
-                event.GroupId,
+                event.GroupId
+                event.ResourceRevision,
             cancellationToken)
 
     interface IConsumer<PostgresClusterUpdatedEvent> with
@@ -58,12 +61,13 @@ type UpdatePostgresClusterInSearchOnPostgresClusterUpdatedConsumer(
 type RemovePostgresClusterFromSearchOnPostgresClusterDeletedConsumer(
     deleteSearchProjection : DeleteSearchProjection) =
 
-    member _.Handle(tenantId : string, clusterId : string, cancellationToken : CancellationToken) =
+    member _.Handle(tenantId : string, clusterId : string, resourceRevision : int64, cancellationToken : CancellationToken) =
         deleteSearchProjection.Invoke(
             SearchProjectionIdentity(
                 tenantId,
                 PostgresSearchProjection.SourceType.ResourceTypeId,
                 clusterId),
+            resourceRevision,
             cancellationToken)
 
     interface IConsumer<PostgresClusterDeletedEvent> with
@@ -71,4 +75,5 @@ type RemovePostgresClusterFromSearchOnPostgresClusterDeletedConsumer(
             this.Handle(
                 context.Message.EventCore.TenantId,
                 context.Message.ClusterId,
+                context.Message.ResourceRevision,
                 context.CancellationToken)

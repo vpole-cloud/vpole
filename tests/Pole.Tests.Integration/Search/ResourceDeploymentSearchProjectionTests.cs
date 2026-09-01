@@ -55,7 +55,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         Assert.Contains(projected.SearchKeys, key => key.Value == "eventually-created");
         Assert.NotNull(projected.OperationalStatus);
         Assert.Equal("Applied", projected.OperationalStatus.Value.Status);
-        Assert.Equal(2, projected.OperationalStatus.Value.DesiredGeneration);
+        Assert.Equal(2, projected.OperationalStatus.Value.ResourceRevision);
         Assert.Equal(2, projected.OperationalStatus.Value.ObservedGeneration);
     }
 
@@ -106,7 +106,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
 
         var projected = await LoadAsync(tenantId, resourceId);
         Assert.Equal("Applied", projected.OperationalStatus.Value.Status);
-        Assert.Equal(3, projected.OperationalStatus.Value.DesiredGeneration);
+        Assert.Equal(3, projected.OperationalStatus.Value.ResourceRevision);
 
         var otherTenantProjection = await LoadAsync(otherTenantId, resourceId);
         Assert.Null(otherTenantProjection.OperationalStatus);
@@ -137,7 +137,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
 
         var projected = await LoadAsync(tenantId, resourceId);
         Assert.Equal("PartiallyFailed", projected.OperationalStatus.Value.Status);
-        Assert.Equal(5, projected.OperationalStatus.Value.DesiredGeneration);
+        Assert.Equal(5, projected.OperationalStatus.Value.ResourceRevision);
         Assert.Equal(3, projected.OperationalStatus.Value.ObservedGeneration);
         Assert.Equal("ProviderUnavailable", projected.OperationalStatus.Value.FailureCode.Value);
         var status = projected.OperationalStatus.Value.ToBsonDocument();
@@ -197,7 +197,8 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             [
                 new SearchProjectionField(SearchProjectionFieldType.SourceId, resourceId),
                 new SearchProjectionField(SearchProjectionFieldType.Name, title)
-            ]);
+            ],
+            1);
 
     private static PlacementSummaryDto CreatePlacement(
         string deploymentId,

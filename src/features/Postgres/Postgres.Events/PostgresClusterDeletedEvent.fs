@@ -9,6 +9,7 @@ type PostgresClusterDeletedEvent =
       ClusterId : string
       Name : string
       GroupId : string
+      ResourceRevision : int64
       Spec : PostgresClusterSpecSnapshot }
     interface IPoleEvent with
         member this.EventCore = this.EventCore

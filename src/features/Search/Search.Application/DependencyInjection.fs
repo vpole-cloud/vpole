@@ -37,9 +37,9 @@ type SearchFeatureRegistration =
         services.AddScoped<MongoDeleteSearchProjection>() |> ignore
         services.AddScoped<DeleteSearchProjection>(
             Func<IServiceProvider, DeleteSearchProjection>(fun serviceProvider ->
-                DeleteSearchProjection(fun identity cancellationToken ->
+                DeleteSearchProjection(fun identity resourceRevision cancellationToken ->
                     serviceProvider.GetRequiredService<MongoDeleteSearchProjection>()
-                        .InvokeAsync(identity, cancellationToken))))
+                        .InvokeAsync(identity, resourceRevision, cancellationToken))))
         |> ignore
 
         services.AddScoped<MongoUpdateSearchOperationalStatus>() |> ignore
