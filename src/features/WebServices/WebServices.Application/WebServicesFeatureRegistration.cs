@@ -6,7 +6,9 @@ using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Application.Persistence.Deployments;
 using Pole.Features.WebServices.Application.Persistence.Lifecycle;
+using Pole.Features.WebServices.Application.Search;
 using Pole.Features.WebServices.Contracts;
+using Pole.Features.Search.Contracts;
 using Pole.Features.Quotas.Contracts;
 using Pole.ResultType;
 
@@ -17,6 +19,7 @@ public static class WebServicesFeatureRegistration
     public static IServiceCollection AddWebServicesFeature(
         this IServiceCollection services)
     {
+        services.AddSingleton<SearchSourceType>(WebServiceSearchProjection.SourceType);
         services.AddWebServicePersistence();
         services.TryAddSingleton<WebServiceCountQuota>();
         services.TryAddEnumerable(

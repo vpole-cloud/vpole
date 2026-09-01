@@ -9,7 +9,7 @@ type SearchDocumentIndexesMigration() =
     interface IMigration with
         member _.Id = ObjectId("69ce0000b213917a38c379ea")
         member _.Name = "Weighted search indexes"
-        member _.Description = "Rebuilds SearchDocuments for the weighted-key search model and creates its indexes."
+        member _.Description = "Creates Search projection collections and indexes for extensible source types."
 
         member _.Up(database : IMongoDatabase, cancellationToken : CancellationToken) =
             task {
@@ -30,7 +30,7 @@ type SearchDocumentIndexesMigration() =
                         CreateIndexModel<BsonDocument>(
                             Builders<BsonDocument>.IndexKeys
                                 .Ascending("TenantId")
-                                .Ascending("SourceType")
+                                .Ascending("ResourceTypeId")
                                 .Ascending("SourceId")
                                 .Ascending("KeyType")
                                 .Ascending("SearchValue"),
@@ -39,15 +39,15 @@ type SearchDocumentIndexesMigration() =
                         CreateIndexModel<BsonDocument>(
                             Builders<BsonDocument>.IndexKeys
                                 .Ascending("SearchValue")
-                                .Ascending("SourceType"),
-                            CreateIndexOptions(Name = "IX_SearchDocuments_SearchValue_SourceType")
+                                .Ascending("SourceApiName"),
+                            CreateIndexOptions(Name = "IX_SearchDocuments_SearchValue_SourceApiName")
                         )
                         CreateIndexModel<BsonDocument>(
                             Builders<BsonDocument>.IndexKeys
-                                .Ascending("SourceType")
+                                .Ascending("SourceSortOrder")
                                 .Ascending("SearchValue")
                                 .Descending("Weight"),
-                            CreateIndexOptions(Name = "IX_SearchDocuments_SourceType_SearchValue_Weight")
+                            CreateIndexOptions(Name = "IX_SearchDocuments_SourceSortOrder_SearchValue_Weight")
                         )
                     |]
 
@@ -58,7 +58,7 @@ type SearchDocumentIndexesMigration() =
                         CreateIndexModel<BsonDocument>(
                             Builders<BsonDocument>.IndexKeys
                                 .Ascending("TenantId")
-                                .Ascending("SourceType")
+                                .Ascending("ResourceTypeId")
                                 .Ascending("SourceId"),
                             CreateIndexOptions(Unique = true, Name = "IX_SearchSourceDocuments_Source")
                         )
@@ -69,9 +69,9 @@ type SearchDocumentIndexesMigration() =
                         )
                         CreateIndexModel<BsonDocument>(
                             Builders<BsonDocument>.IndexKeys
-                                .Ascending("SourceType")
+                                .Ascending("SourceApiName")
                                 .Ascending("SearchKeys.Value"),
-                            CreateIndexOptions(Name = "IX_SearchSourceDocuments_SourceType_SearchKeys_Value")
+                            CreateIndexOptions(Name = "IX_SearchSourceDocuments_SourceApiName_SearchKeys_Value")
                         )
                     |]
 

@@ -2,49 +2,59 @@ namespace Pole.Features.Search.Application
 
 open System
 open Microsoft.Extensions.DependencyInjection
+open Pole.Features.Search.Application.Common
 open Pole.Features.Search.Application.Persistence
+open Pole.Features.Search.Contracts
 
 [<AbstractClass; Sealed>]
 type SearchFeatureRegistration =
     [<System.Runtime.CompilerServices.Extension>]
     static member AddSearchFeature(services : IServiceCollection) =
+        services.AddSingleton<SearchSourceTypeRegistry>() |> ignore
+        services.AddSingleton<ResolveSearchSourceType>(
+            Func<IServiceProvider, ResolveSearchSourceType>(fun serviceProvider ->
+                ResolveSearchSourceType(fun resourceTypeId ->
+                    serviceProvider.GetRequiredService<SearchSourceTypeRegistry>()
+                        .Resolve(resourceTypeId)
+                    |> Option.toObj)))
+        |> ignore
+
         services.AddScoped<SearchProjectionStore>() |> ignore
-        services.AddScoped<MongoPersistSearchDocumentSet>() |> ignore
-        services.AddScoped<PersistSearchDocumentSet>(
-            Func<IServiceProvider, PersistSearchDocumentSet>(fun serviceProvider ->
-                PersistSearchDocumentSet(
-                    fun documentSet cancellationToken ->
-                        serviceProvider.GetRequiredService<MongoPersistSearchDocumentSet>()
-                            .InvokeAsync(documentSet, cancellationToken))))
+        services.AddScoped<SearchProjectionWriter>() |> ignore
+        services.AddScoped<CreateSearchProjection>(
+            Func<IServiceProvider, CreateSearchProjection>(fun serviceProvider ->
+                CreateSearchProjection(fun snapshot cancellationToken ->
+                    serviceProvider.GetRequiredService<SearchProjectionWriter>()
+                        .UpsertAsync(snapshot, cancellationToken))))
         |> ignore
-        services.AddScoped<MongoRemoveSearchDocumentSet>() |> ignore
-        services.AddScoped<RemoveSearchDocumentSet>(
-            Func<IServiceProvider, RemoveSearchDocumentSet>(fun serviceProvider ->
-                RemoveSearchDocumentSet(
-                    fun sourceType tenantId sourceId cancellationToken ->
-                        serviceProvider.GetRequiredService<MongoRemoveSearchDocumentSet>()
-                            .InvokeAsync(sourceType, tenantId, sourceId, cancellationToken))))
+        services.AddScoped<UpdateSearchProjection>(
+            Func<IServiceProvider, UpdateSearchProjection>(fun serviceProvider ->
+                UpdateSearchProjection(fun snapshot cancellationToken ->
+                    serviceProvider.GetRequiredService<SearchProjectionWriter>()
+                        .UpsertAsync(snapshot, cancellationToken))))
         |> ignore
-        services.AddScoped<MongoPersistSearchOperationalStatus>() |> ignore
-        services.AddScoped<PersistSearchOperationalStatus>(
-            Func<IServiceProvider, PersistSearchOperationalStatus>(fun serviceProvider ->
-                PersistSearchOperationalStatus(
-                    fun sourceType tenantId sourceId status eventOccurredAtUtc cancellationToken ->
-                        serviceProvider.GetRequiredService<MongoPersistSearchOperationalStatus>()
-                            .InvokeAsync(
-                                sourceType,
-                                tenantId,
-                                sourceId,
-                                status,
-                                eventOccurredAtUtc,
-                                cancellationToken))))
+
+        services.AddScoped<MongoDeleteSearchProjection>() |> ignore
+        services.AddScoped<DeleteSearchProjection>(
+            Func<IServiceProvider, DeleteSearchProjection>(fun serviceProvider ->
+                DeleteSearchProjection(fun identity cancellationToken ->
+                    serviceProvider.GetRequiredService<MongoDeleteSearchProjection>()
+                        .InvokeAsync(identity, cancellationToken))))
         |> ignore
+
+        services.AddScoped<MongoUpdateSearchOperationalStatus>() |> ignore
+        services.AddScoped<UpdateSearchOperationalStatus>(
+            Func<IServiceProvider, UpdateSearchOperationalStatus>(fun serviceProvider ->
+                UpdateSearchOperationalStatus(fun identity status cancellationToken ->
+                    serviceProvider.GetRequiredService<MongoUpdateSearchOperationalStatus>()
+                        .InvokeAsync(identity, status, cancellationToken))))
+        |> ignore
+
         services.AddScoped<MongoSearchIndexedDocuments>() |> ignore
         services.AddScoped<SearchIndexedDocuments>(
             Func<IServiceProvider, SearchIndexedDocuments>(fun serviceProvider ->
-                SearchIndexedDocuments(
-                    fun query cancellationToken ->
-                        serviceProvider.GetRequiredService<MongoSearchIndexedDocuments>()
-                            .InvokeAsync(query, cancellationToken))))
+                SearchIndexedDocuments(fun query cancellationToken ->
+                    serviceProvider.GetRequiredService<MongoSearchIndexedDocuments>()
+                        .InvokeAsync(query, cancellationToken))))
         |> ignore
         services

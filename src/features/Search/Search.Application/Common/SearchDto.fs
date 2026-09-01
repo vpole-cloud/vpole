@@ -4,6 +4,7 @@ open System
 open FluentValidation
 open Microsoft.AspNetCore.Mvc
 open Pole.Features.Request
+open Pole.Features.Search.Contracts
 open Pole.Features.Search.Domain
 open Pole.Mediator
 
@@ -24,16 +25,19 @@ type SearchQuery =
       TenantId : string
       PageNumber : int
       PageSize : int
-      Types : SearchDocumentType list option }
+      Types : SearchSourceType list option }
 
 type SearchAggregateResult =
     { Items : SearchDocument array
       TotalCount : int64 }
 
 type SearchDocumentSet =
-    { SourceType : SearchDocumentType
+    { SourceType : SearchSourceType
       TenantId : string
       SourceId : string
+      Title : string
+      ResourceGroupId : string option
+      ResourceGroupName : string option
       Documents : SearchDocument list }
 
 type GetSearchOutcome =
@@ -54,7 +58,7 @@ type GetSearchRequest() =
     [<FromQuery>]
     member val PageSize = 10 with get, set
 
-type GetSearchRequestValidator() =
+type GetSearchRequestValidator(sourceTypes : SearchSourceTypeRegistry) =
     inherit AbstractValidator<GetSearchRequest>()
     do
         base.RuleFor(_.Query)
@@ -68,24 +72,19 @@ type GetSearchRequestValidator() =
                 isNull values
                 || values
                    |> Array.forall (fun value ->
-                       let mutable parsed = Unchecked.defaultof<SearchDocumentType>
-                       Enum.TryParse<SearchDocumentType>(value, true, &parsed)))
+                       sourceTypes.ResolveApiName(value).IsSome))
             .WithMessage("Types contains an invalid value.")
         |> ignore
 
 [<RequireQualifiedAccess>]
 module SearchQuery =
     [<CompiledName("FromRequest")>]
-    let ofRequest (request : GetSearchRequest) =
+    let ofRequest (sourceTypes : SearchSourceTypeRegistry) (request : GetSearchRequest) =
         let parsedTypes =
             request.Types
             |> Array.toList
             |> List.choose (fun value ->
-                let mutable parsed = Unchecked.defaultof<SearchDocumentType>
-                if Enum.TryParse<SearchDocumentType>(value, true, &parsed) then
-                    Some parsed
-                else
-                    None)
+                sourceTypes.ResolveApiName(value))
 
         { Query = request.Query
           TenantId = request.TenantId

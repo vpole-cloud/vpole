@@ -5,6 +5,8 @@ using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Application.Persistence.Lifecycle;
+using Pole.Features.RedisServices.Application.Search;
+using Pole.Features.Search.Contracts;
 using Pole.Features.Quotas.Contracts;
 using Pole.ResultType;
 
@@ -15,6 +17,7 @@ public static class RedisServicesFeatureRegistration
     public static IServiceCollection AddRedisServicesFeature(
         this IServiceCollection services)
     {
+        services.AddSingleton<SearchSourceType>(RedisServiceSearchProjection.SourceType);
         services.AddRedisPersistence();
         services.AddRedisHttpMappings();
         services.TryAddSingleton<RedisServiceCountQuota>();

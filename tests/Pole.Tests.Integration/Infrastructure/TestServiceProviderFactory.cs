@@ -27,6 +27,7 @@ using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application;
+using Pole.Features.Search.Contracts;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;
@@ -40,6 +41,7 @@ using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Mediator;
 using Pole.Server.Extensions;
+using Pole.Workloads;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
@@ -136,6 +138,10 @@ public static class TestServiceProviderFactory
         services.AddSingleton<IEnvelopeEncryptionService>(
             TestPostgresEnvelopeEncryption.Create());
         services.AddMigrations(Assemblies);
+        services.AddSingleton(new SearchSourceType(
+            ResourceTypeId.Create("third-party/widget"),
+            "Widget",
+            3));
         services.AddSearchFeature();
         services.AddSingleton<TestSourceBuildJobDispatcher>();
         services.AddSingleton<DispatchSourceBuildJob>(provider =>

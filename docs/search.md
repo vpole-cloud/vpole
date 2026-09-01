@@ -19,7 +19,9 @@ Example:
 
 ```json
 {
-  "SourceType": "WebService",
+  "ResourceTypeId": "pole/web-service",
+  "SourceApiName": "WebService",
+  "SourceSortOrder": 1,
   "SourceId": "ws-1",
   "KeyType": "Name",
   "SearchValue": "blog-microservice",
@@ -38,7 +40,9 @@ Example:
 
 ```json
 {
-  "SourceType": "WebService",
+  "ResourceTypeId": "pole/web-service",
+  "SourceApiName": "WebService",
+  "SourceSortOrder": 1,
   "SourceId": "ws-1",
   "Title": "blog-microservice",
   "ResourceGroupId": "rg-1",
@@ -66,7 +70,7 @@ The search service:
 4. Sorts by:
    - `BestWeight desc`
    - `Title desc`
-   - `SourceType asc`
+   - `SourceSortOrder asc`
    - `SourceId asc`
 5. Applies pagination with `$facet`.
 
@@ -79,12 +83,33 @@ This avoids the old row-level read pattern:
 
 ## Projection Maintenance
 
-Search remains event-driven.
+Search remains event-driven through a provider-owned adapter flow.
 
-- Consumers rebuild weighted key rows from the latest source snapshot.
-- The same `SearchDocumentSet` is converted into one `SearchSourceDocument`.
-- Create/update replaces both projections.
-- Delete removes both projections.
+- `Search.Contracts` publishes dependency-light source registration, projection snapshot,
+  identity, field, operational-status, and mutation delegate types.
+- ResourceGroups, WebServices, RedisServices, and Postgres register their own
+  `SearchSourceType` and consume their own integration events in their Application project.
+- Those adapters map provider events to generic Search contract snapshots. They never reference
+  Search domain or persistence types and never call Search synchronously from a resource mutation.
+- `Search.Application` resolves the registered resource type, normalizes and tokenizes fields,
+  applies relevance weights, maps the contract to private Mongo documents, and persists it.
+- ResourceDeployments owns operational-status event consumption. It resolves the event's
+  `ResourceTypeId` through the Search registry and ignores resource types that are not registered.
+- Create/update replaces both projections without erasing a newer operational status. Delete
+  removes both projections idempotently. Every identity and Mongo mutation includes `TenantId`.
+
+The built-in registrations preserve the HTTP labels and ordering used by the existing endpoint:
+
+| Resource type ID | API type | Sort order |
+| --- | --- | ---: |
+| `pole/resource-group` | `ResourceGroup` | 0 |
+| `pole/web-service` | `WebService` | 1 |
+| `pole/redis` | `RedisService` | 2 |
+| `pole/postgresql` | `PostgresCluster` | 4 |
+
+A new provider contributes a `SearchSourceType`, uses the public projection capabilities from
+`Search.Contracts`, and owns its event adapter. Search core does not gain a provider event
+reference or a new source-type enum member.
 
 ## Current Constraints
 

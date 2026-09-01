@@ -125,6 +125,7 @@
   </Folder>
   <Folder Name="/features/Search/">
     <Project Path="src/features/Search/Search.Application/Search.Application.fsproj" />
+    <Project Path="src/features/Search/Search.Contracts/Search.Contracts.csproj" />
     <Project Path="src/features/Search/Search.Domain/Search.Domain.fsproj" />
   </Folder>
   <Folder Name="/features/StorageProfiles/">

@@ -150,6 +150,22 @@ Provider.Application -> Provider.Events -> outbox
 Consumer.Application -> Provider.Events -> consumer
 ```
 
+When a platform capability exposes a contribution API, the feature that owns the source data also
+owns the integration-event adapter. Search is the canonical example:
+
+```text
+Resource.Application -> Resource.Events -> provider-owned consumer
+Provider-owned consumer -> Search.Contracts
+Search.Application -> Search.Contracts
+```
+
+`Search.Application` owns normalization, weighting, querying, and persistence and must not
+reference concrete resource Events or Contracts. Each searchable resource Application registers
+its `SearchSourceType` and maps its own events into generic Search projection snapshots. The
+ResourceDeployments Application similarly maps deployment events into Search operational-status
+updates after resolving the registered resource type. This keeps provider knowledge at the
+provider edge and leaves the platform persistence implementation extensible.
+
 ## Dependency matrix
 
 | Source project | Allowed feature dependencies | Forbidden feature dependencies |
