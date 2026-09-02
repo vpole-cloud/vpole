@@ -25,7 +25,7 @@ internal sealed class MongoFinalizeWebServiceDeletion(
     GetResourceDeploymentFinalizationReadiness getResourceDeploymentFinalizationReadiness,
     PurgeDeletedResourceDeployments purgeDeletedResourceDeployments,
     DeleteHostnameBindingsForResource deleteHostnameBindingsForResource,
-    UnregisterResource unregisterResource,
+    IResourceRegistrar resourceRegistrar,
     RunMongoOutcomeTransaction<FinalizeWebServiceDeletionOutcome> runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites)
 {
@@ -61,7 +61,7 @@ internal sealed class MongoFinalizeWebServiceDeletion(
             if (deleted.DeletedCount != 1)
                 return transaction.Commit(new WebServiceDeletionFinalized());
 
-            var registration = await unregisterResource(
+            var registration = await resourceRegistrar.UnregisterAsync(
                 tenantId,
                 webService.ResourceGroupId,
                 WebServiceResourceDeployment.ResourceType,

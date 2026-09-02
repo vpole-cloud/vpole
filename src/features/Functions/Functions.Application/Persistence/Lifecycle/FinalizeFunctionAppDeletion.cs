@@ -27,7 +27,7 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
     IMongoCollection<FunctionUsageBucket> functionUsageBuckets,
     GetExactResourceDeploymentFinalizationReadiness getDeploymentReadiness,
     PurgeExactDeletedResourceDeployment purgeDeployment,
-    UnregisterResource unregisterResource,
+    IResourceRegistrar resourceRegistrar,
     RunMongoOutcomeTransaction<Result<Unit, FunctionAppDeletionFinalizationConflict>>
         runMongoTransaction)
 {
@@ -70,7 +70,7 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
             if (deleted.DeletedCount != 1)
                 return transaction.Abort(Conflict(functionAppId));
 
-            var registration = await unregisterResource(
+            var registration = await resourceRegistrar.UnregisterAsync(
                 tenantId,
                 app.ResourceGroupId,
                 FunctionResourceDeployment.ResourceType,

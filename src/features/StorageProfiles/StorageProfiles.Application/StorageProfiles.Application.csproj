@@ -10,6 +10,10 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <InternalsVisibleTo Include="Pole.Tests.Integration" />
+    </ItemGroup>
+
+    <ItemGroup>
       <ProjectReference Include="..\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
       <ProjectReference Include="..\StorageProfiles.Domain\StorageProfiles.Domain.csproj" />
       <ProjectReference Include="..\StorageProfiles.Primitives\StorageProfiles.Primitives.csproj" />

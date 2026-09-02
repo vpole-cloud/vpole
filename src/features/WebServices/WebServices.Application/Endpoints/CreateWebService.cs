@@ -81,7 +81,7 @@ public sealed class CreateWebServiceHandler(
     GetOrCreateGeneratedDomainZonesOutcome getOrCreateGeneratedDomainZones,
     CreateGeneratedHostnameBindingsOutcome createGeneratedHostnameBindings,
     CreateResourceDeploymentSet createResourceDeploymentSet,
-    RegisterResource registerResource,
+    IResourceRegistrar resourceRegistrar,
     PersistCreatedWebService persistCreatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     TimeProvider timeProvider)
@@ -335,7 +335,7 @@ public sealed class CreateWebServiceHandler(
         var createdEvent = webService.ToCreateEvent(
             WebServiceDeploymentWorkflow.ToEventDeployments(deployments));
         await persistCreatedWebService(transaction.Session, webService, createdEvent, cancellationToken);
-        var registration = await registerResource(
+        var registration = await resourceRegistrar.RegisterAsync(
             webService.TenantId,
             webService.ResourceGroupId,
             new ResourceRegistrationDescriptor(

@@ -227,7 +227,7 @@ module private CreatePostgresClusterWorkflow =
     let execute
         (quotaAdmissionExecutor : IQuotaAdmissionExecutor)
         (persistCreatedCluster : PersistCreatedPostgresCluster)
-        (registerResource : RegisterResource)
+        (resourceRegistrar : IResourceRegistrar)
         (createResourceDeployment : CreateResourceDeployment)
         (plan : CreatePostgresClusterPlan)
         cancellationToken =
@@ -249,7 +249,7 @@ module private CreatePostgresClusterWorkflow =
                             ct)
 
                     let! registrationResult =
-                        registerResource.Invoke(
+                        resourceRegistrar.RegisterAsync(
                             plan.Cluster.TenantId,
                             plan.Cluster.GroupId,
                             ResourceRegistrationDescriptor(
@@ -296,7 +296,7 @@ module private CreatePostgresClusterWorkflow =
 
 type CreatePostgresClusterHandler(
     persistCreatedCluster : PersistCreatedPostgresCluster,
-    registerResource : RegisterResource,
+    resourceRegistrar : IResourceRegistrar,
     resolveStorageProfile : ResolveStorageProfile,
     createCredential : CreatePostgresCredential,
     settings : PostgresSettings,
@@ -325,7 +325,7 @@ type CreatePostgresClusterHandler(
                         CreatePostgresClusterWorkflow.execute
                             quotaAdmissionExecutor
                             persistCreatedCluster
-                            registerResource
+                            resourceRegistrar
                             createResourceDeployment
                             plan
                             cancellationToken

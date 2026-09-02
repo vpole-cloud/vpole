@@ -7,8 +7,7 @@ namespace Pole.Features.ResourceGroups.Contracts;
 public sealed record ResourceRegistrationDescriptor(
     ResourceTypeId ResourceTypeId,
     string ResourceId,
-    string DisplayName,
-    string? OwningPluginId = null);
+    string DisplayName);
 
 public sealed record RegisteredResource(
     string RegistrationId,
@@ -39,27 +38,27 @@ public union ResourceRegistrationMutationError(
     ResourceRegistrationIdentityConflict,
     ResourceRegistrationNotFound);
 
-public delegate Task<Result<RegisteredResource, ResourceRegistrationMutationError>>
-    RegisterResource(
+public interface IResourceRegistrar
+{
+    Task<Result<RegisteredResource, ResourceRegistrationMutationError>> RegisterAsync(
         string tenantId,
         string resourceGroupId,
         ResourceRegistrationDescriptor resource,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<RegisteredResource, ResourceRegistrationMutationError>>
-    UpdateResourceRegistration(
+    Task<Result<RegisteredResource, ResourceRegistrationMutationError>> UpdateAsync(
         string tenantId,
         string resourceGroupId,
         ResourceRegistrationDescriptor resource,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<Unit, ResourceRegistrationMutationError>>
-    UnregisterResource(
+    Task<Result<Unit, ResourceRegistrationMutationError>> UnregisterAsync(
         string tenantId,
         string resourceGroupId,
         ResourceTypeId resourceTypeId,
         string resourceId,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
+}

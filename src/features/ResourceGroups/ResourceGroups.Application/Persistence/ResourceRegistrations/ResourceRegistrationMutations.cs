@@ -13,6 +13,7 @@ internal sealed class MongoResourceRegistrationMutations(
     TimeProvider timeProvider)
 {
     public async Task<Result<RegisteredResource, ResourceRegistrationMutationError>> RegisterAsync(
+        string? owningPluginId,
         string tenantId,
         string resourceGroupId,
         ResourceRegistrationDescriptor resource,
@@ -27,7 +28,7 @@ internal sealed class MongoResourceRegistrationMutations(
             resource.ResourceTypeId,
             resource.ResourceId,
             resource.DisplayName,
-            resource.OwningPluginId,
+            owningPluginId,
             new ResourceRegistrationFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 timeProvider.GetUtcNow().UtcDateTime));
@@ -71,6 +72,7 @@ internal sealed class MongoResourceRegistrationMutations(
     }
 
     public async Task<Result<RegisteredResource, ResourceRegistrationMutationError>> UpdateAsync(
+        string? owningPluginId,
         string tenantId,
         string resourceGroupId,
         ResourceRegistrationDescriptor resource,
@@ -96,7 +98,7 @@ internal sealed class MongoResourceRegistrationMutations(
                         resource.ResourceId)));
         }
         if (!string.Equals(current.ResourceGroupId, resourceGroupId, StringComparison.Ordinal) ||
-            !string.Equals(current.OwningPluginId, resource.OwningPluginId, StringComparison.Ordinal))
+            !string.Equals(current.OwningPluginId, owningPluginId, StringComparison.Ordinal))
         {
             return Conflict(resource);
         }
@@ -131,6 +133,7 @@ internal sealed class MongoResourceRegistrationMutations(
     }
 
     public async Task<Result<Unit, ResourceRegistrationMutationError>> UnregisterAsync(
+        string? owningPluginId,
         string tenantId,
         string resourceGroupId,
         ResourceTypeId resourceTypeId,
@@ -146,7 +149,8 @@ internal sealed class MongoResourceRegistrationMutations(
             .FirstOrDefaultAsync(cancellationToken);
         if (current is null)
             return new Ok<Unit>(Unit.Value);
-        if (!string.Equals(current.ResourceGroupId, resourceGroupId, StringComparison.Ordinal))
+        if (!string.Equals(current.ResourceGroupId, resourceGroupId, StringComparison.Ordinal) ||
+            !string.Equals(current.OwningPluginId, owningPluginId, StringComparison.Ordinal))
         {
             return new Err<ResourceRegistrationMutationError>(
                 new ResourceRegistrationMutationError(

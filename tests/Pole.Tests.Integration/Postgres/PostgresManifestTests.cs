@@ -30,6 +30,7 @@ public sealed class PostgresManifestTests
                 settings))!.AsObject();
         var metadata = clusterManifest["metadata"]!.AsObject();
         var spec = clusterManifest["spec"]!.AsObject();
+        var inheritedMetadata = spec["inheritedMetadata"]!.AsObject();
         var storage = spec["storage"]!.AsObject();
         var resources = spec["resources"]!.AsObject();
         var requests = resources["requests"]!.AsObject();
@@ -39,6 +40,18 @@ public sealed class PostgresManifestTests
         Assert.Equal("Cluster", clusterManifest["kind"]!.GetValue<string>());
         Assert.Equal(cluster.Id, metadata["name"]!.GetValue<string>());
         Assert.Equal("pole-data", metadata["namespace"]!.GetValue<string>());
+        Assert.Equal(
+            "Postgres",
+            metadata["labels"]!["pole.io/resource-type"]!.GetValue<string>());
+        Assert.Equal(
+            "pole/postgresql",
+            metadata["annotations"]!["pole.io/resource-type"]!.GetValue<string>());
+        Assert.Equal(
+            "Postgres",
+            inheritedMetadata["labels"]!["pole.io/resource-type"]!.GetValue<string>());
+        Assert.Equal(
+            "pole/postgresql",
+            inheritedMetadata["annotations"]!["pole.io/resource-type"]!.GetValue<string>());
         Assert.Equal(2, spec["instances"]!.GetValue<int>());
         var bootstrap = spec["bootstrap"]!.AsObject()["initdb"]!.AsObject();
         var bootstrapSecret = bootstrap["secret"]!.AsObject();
@@ -88,6 +101,10 @@ public sealed class PostgresManifestTests
         Assert.Equal("kubernetes.io/basic-auth", secret.Type);
         Assert.Equal("app_user", secret.StringData["username"]);
         Assert.Equal("super-secret", secret.StringData["password"]);
+        Assert.Equal("Postgres", secret.Metadata.Labels["pole.io/resource-type"]);
+        Assert.Equal(
+            "pole/postgresql",
+            secret.Metadata.Annotations["pole.io/resource-type"]);
     }
 
     [Fact]
@@ -125,6 +142,13 @@ public sealed class PostgresManifestTests
         Assert.Equal("StatefulSet", statefulSet.Kind);
         Assert.Equal(cluster.Id, statefulSet.Metadata.Name);
         Assert.Equal("pole-data", statefulSet.Metadata.NamespaceProperty);
+        Assert.Equal("Postgres", statefulSet.Metadata.Labels["pole.io/resource-type"]);
+        Assert.Equal(
+            "pole/postgresql",
+            statefulSet.Metadata.Annotations["pole.io/resource-type"]);
+        Assert.Equal(
+            "pole/postgresql",
+            statefulSet.Spec.Template.Metadata.Annotations["pole.io/resource-type"]);
         Assert.Equal("docker.io/postgres:17", statefulSet.Spec.Template.Spec.Containers.Single().Image);
         Assert.Equal($"{cluster.Id}-headless", statefulSet.Spec.ServiceName);
 
@@ -149,6 +173,10 @@ public sealed class PostgresManifestTests
         Assert.Equal("20Gi", volumeClaim.Spec.Resources.Requests["storage"].ToString());
         Assert.Equal("fast-db", volumeClaim.Spec.StorageClassName);
         Assert.Equal(TestData.TenantId, volumeClaim.Metadata.Labels["pole.io/tenant-id"]);
+        Assert.Equal("Postgres", volumeClaim.Metadata.Labels["pole.io/resource-type"]);
+        Assert.Equal(
+            "pole/postgresql",
+            volumeClaim.Metadata.Annotations["pole.io/resource-type"]);
     }
 
     [Fact]
@@ -169,6 +197,14 @@ public sealed class PostgresManifestTests
         Assert.Equal($"{cluster.Id}-rw", readWrite.Metadata.Name);
         Assert.Equal("None", headless.Spec.ClusterIP);
         Assert.Null(readWrite.Spec.ClusterIP);
+        Assert.Equal("Postgres", headless.Metadata.Labels["pole.io/resource-type"]);
+        Assert.Equal(
+            "pole/postgresql",
+            headless.Metadata.Annotations["pole.io/resource-type"]);
+        Assert.Equal("Postgres", readWrite.Metadata.Labels["pole.io/resource-type"]);
+        Assert.Equal(
+            "pole/postgresql",
+            readWrite.Metadata.Annotations["pole.io/resource-type"]);
     }
 
     private static (PostgresCluster cluster, PostgresSettings settings) CreateOperatorSubject()

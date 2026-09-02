@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.ResourceGroups.Application.Migrations;
 using Pole.Features.ResourceGroups.Contracts;
@@ -26,28 +27,28 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
             TestData.SeedResourceGroup("first"));
         var secondGroup = await DbContext.InsertResourceGroupAsync(
             TestData.SeedResourceGroup("second"));
-        var register = Services.GetRequiredService<RegisterResource>();
+        var registrar = Services.GetRequiredService<IResourceRegistrar>();
         var descriptor = new ResourceRegistrationDescriptor(
             WebServiceType,
             "resource-1",
             "Web API");
 
         var first = await InTransactionAsync((session, cancellationToken) =>
-            register(
+            registrar.RegisterAsync(
                 firstGroup.TenantId,
                 firstGroup.Id,
                 descriptor,
                 session,
                 cancellationToken));
         var repeated = await InTransactionAsync((session, cancellationToken) =>
-            register(
+            registrar.RegisterAsync(
                 firstGroup.TenantId,
                 firstGroup.Id,
                 descriptor,
                 session,
                 cancellationToken));
         var conflict = await InTransactionAsync((session, cancellationToken) =>
-            register(
+            registrar.RegisterAsync(
                 secondGroup.TenantId,
                 secondGroup.Id,
                 descriptor,
@@ -67,11 +68,11 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
     public async Task Register_RollsBackWithOwningTransaction_AndIsTenantScoped()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var register = Services.GetRequiredService<RegisterResource>();
+        var registrar = Services.GetRequiredService<IResourceRegistrar>();
         using (var session = await DbContext.Client.StartSessionAsync())
         {
             session.StartTransaction();
-            (await register(
+            (await registrar.RegisterAsync(
                 group.TenantId,
                 group.Id,
                 new ResourceRegistrationDescriptor(
@@ -91,14 +92,14 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
         Assert.Equal(group.RegistrationFence, unchangedGroup.RegistrationFence);
 
         using var inactiveSession = await DbContext.Client.StartSessionAsync();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => register(
+        await Assert.ThrowsAsync<InvalidOperationException>(() => registrar.RegisterAsync(
             group.TenantId,
             group.Id,
             new ResourceRegistrationDescriptor(WebServiceType, "invalid", "Invalid"),
             inactiveSession));
 
         var crossTenant = await InTransactionAsync((session, cancellationToken) =>
-            register(
+            registrar.RegisterAsync(
                 ObjectId.GenerateNewId().ToString(),
                 group.Id,
                 new ResourceRegistrationDescriptor(WebServiceType, "cross-tenant", "Invalid"),
@@ -109,40 +110,196 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
     }
 
     [Fact]
+    public async Task Register_AllowsTheSameStableIdentityInDifferentTenants()
+    {
+        var otherTenantId = ObjectId.GenerateNewId().ToString();
+        var firstGroup = await DbContext.InsertResourceGroupAsync(
+            TestData.SeedResourceGroup("first-tenant"));
+        var secondGroup = await DbContext.InsertResourceGroupAsync(
+            TestData.SeedResourceGroup("second-tenant", otherTenantId));
+        var registrar = Services.GetRequiredService<IResourceRegistrar>();
+        var descriptor = new ResourceRegistrationDescriptor(
+            WebServiceType,
+            "shared-resource-id",
+            "Shared identity");
+
+        var first = await InTransactionAsync((session, cancellationToken) =>
+            registrar.RegisterAsync(
+                firstGroup.TenantId,
+                firstGroup.Id,
+                descriptor,
+                session,
+                cancellationToken));
+        var second = await InTransactionAsync((session, cancellationToken) =>
+            registrar.RegisterAsync(
+                secondGroup.TenantId,
+                secondGroup.Id,
+                descriptor,
+                session,
+                cancellationToken));
+
+        Assert.NotEqual(
+            first.AssertSuccess().RegistrationId,
+            second.AssertSuccess().RegistrationId);
+        var registrations = await DbContext.ResourceRegistrations
+            .Find(registration => registration.ResourceId == descriptor.ResourceId)
+            .ToListAsync();
+        Assert.Equal(2, registrations.Count);
+        Assert.Equal(
+            new[] { firstGroup.TenantId, secondGroup.TenantId }.Order(),
+            registrations.Select(registration => registration.TenantId).Order());
+    }
+
+    [Fact]
+    public async Task BoundRegistrar_EnforcesPlatformAndPluginNamespacesForEveryMutation()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var platformRegistrar = Services.GetRequiredService<IResourceRegistrar>();
+        var pluginRegistrar = Services.CreatePluginResourceRegistrar(" acme ");
+        Assert.Throws<ArgumentException>(() =>
+            Services.CreatePluginResourceRegistrar("pole"));
+        var descriptor = new ResourceRegistrationDescriptor(
+            ResourceTypeId.Create("acme/cache"),
+            "plugin-resource",
+            "Plugin cache");
+
+        await Assert.ThrowsAsync<ArgumentException>(() => InTransactionAsync(
+            (session, cancellationToken) => platformRegistrar.RegisterAsync(
+                group.TenantId,
+                group.Id,
+                descriptor,
+                session,
+                cancellationToken)));
+
+        var registered = await InTransactionAsync((session, cancellationToken) =>
+            pluginRegistrar.RegisterAsync(
+                group.TenantId,
+                group.Id,
+                descriptor,
+                session,
+                cancellationToken));
+        Assert.Equal("acme", registered.AssertSuccess().OwningPluginId);
+
+        var updateConflict = await InTransactionAsync((session, cancellationToken) =>
+            platformRegistrar.UpdateAsync(
+                group.TenantId,
+                group.Id,
+                descriptor with { DisplayName = "Platform takeover" },
+                session,
+                cancellationToken),
+            commitOnError: false);
+        Assert.IsType<ResourceRegistrationIdentityConflict>(
+            updateConflict.AssertFailure().Value);
+
+        using (var session = await DbContext.Client.StartSessionAsync())
+        {
+            session.StartTransaction();
+            var unregisterConflict = await platformRegistrar.UnregisterAsync(
+                group.TenantId,
+                group.Id,
+                descriptor.ResourceTypeId,
+                descriptor.ResourceId,
+                session);
+            Assert.IsType<ResourceRegistrationIdentityConflict>(
+                unregisterConflict.AssertFailure().Value);
+            await session.AbortTransactionAsync();
+        }
+
+        await Assert.ThrowsAsync<ArgumentException>(() => InTransactionAsync(
+            (session, cancellationToken) => pluginRegistrar.RegisterAsync(
+                group.TenantId,
+                group.Id,
+                new ResourceRegistrationDescriptor(
+                    ResourceTypeId.Create("other/cache"),
+                    "other-resource",
+                    "Other cache"),
+                session,
+                cancellationToken)));
+
+        using (var session = await DbContext.Client.StartSessionAsync())
+        {
+            session.StartTransaction();
+            (await pluginRegistrar.UnregisterAsync(
+                group.TenantId,
+                group.Id,
+                descriptor.ResourceTypeId,
+                descriptor.ResourceId,
+                session)).AssertSuccess();
+            await session.CommitTransactionAsync();
+        }
+
+        Assert.False(await DbContext.ResourceRegistrations
+            .Find(registration => registration.ResourceId == descriptor.ResourceId)
+            .AnyAsync());
+    }
+
+    [Fact]
     public async Task UpdateAndUnregister_AreGenericTransactionalAndIdempotent()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var register = Services.GetRequiredService<RegisterResource>();
-        var update = Services.GetRequiredService<UpdateResourceRegistration>();
-        var unregister = Services.GetRequiredService<UnregisterResource>();
+        var registrar = Services.GetRequiredService<IResourceRegistrar>();
         var descriptor = new ResourceRegistrationDescriptor(
             WebServiceType,
             "resource-1",
             "Before");
-        await InTransactionAsync((session, cancellationToken) => register(
+        await InTransactionAsync((session, cancellationToken) => registrar.RegisterAsync(
             group.TenantId,
             group.Id,
             descriptor,
             session,
             cancellationToken));
 
+        RegisteredResource firstUpdate;
         using (var session = await DbContext.Client.StartSessionAsync())
         {
             session.StartTransaction();
-            var updated = await update(
+            var updated = await registrar.UpdateAsync(
                 group.TenantId,
                 group.Id,
                 descriptor with { DisplayName = "After" },
                 session);
-            Assert.Equal("After", updated.AssertSuccess().DisplayName);
+            firstUpdate = updated.AssertSuccess();
+            Assert.Equal("After", firstUpdate.DisplayName);
             await session.CommitTransactionAsync();
         }
+
+        var groupAfterFirstUpdate = await DbContext.ResourceGroups
+            .Find(candidate => candidate.Id == group.Id)
+            .SingleAsync();
+        var registrationAfterFirstUpdate = await DbContext.ResourceRegistrations
+            .Find(candidate => candidate.ResourceId == descriptor.ResourceId)
+            .SingleAsync();
+        using (var session = await DbContext.Client.StartSessionAsync())
+        {
+            session.StartTransaction();
+            var repeatedUpdate = await registrar.UpdateAsync(
+                group.TenantId,
+                group.Id,
+                descriptor with { DisplayName = "After" },
+                session);
+            Assert.Equal(
+                registrationAfterFirstUpdate.UpdatedAtUtc,
+                repeatedUpdate.AssertSuccess().UpdatedAtUtc);
+            await session.CommitTransactionAsync();
+        }
+        var groupAfterRepeatedUpdate = await DbContext.ResourceGroups
+            .Find(candidate => candidate.Id == group.Id)
+            .SingleAsync();
+        Assert.Equal(
+            groupAfterFirstUpdate.RegistrationFence,
+            groupAfterRepeatedUpdate.RegistrationFence);
+        var registrationAfterRepeatedUpdate = await DbContext.ResourceRegistrations
+            .Find(candidate => candidate.ResourceId == descriptor.ResourceId)
+            .SingleAsync();
+        Assert.Equal(
+            registrationAfterFirstUpdate.UpdatedAtUtc,
+            registrationAfterRepeatedUpdate.UpdatedAtUtc);
 
         foreach (var _ in Enumerable.Range(0, 2))
         {
             using var session = await DbContext.Client.StartSessionAsync();
             session.StartTransaction();
-            (await unregister(
+            (await registrar.UnregisterAsync(
                 group.TenantId,
                 group.Id,
                 WebServiceType,
@@ -160,10 +317,10 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
     public async Task ResourceGroupReads_ReturnBatchedCount_AndPaginatedRegistrations()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var register = Services.GetRequiredService<RegisterResource>();
+        var registrar = Services.GetRequiredService<IResourceRegistrar>();
         foreach (var resourceId in new[] { "resource-b", "resource-a" })
         {
-            await InTransactionAsync((session, cancellationToken) => register(
+            await InTransactionAsync((session, cancellationToken) => registrar.RegisterAsync(
                 group.TenantId,
                 group.Id,
                 new ResourceRegistrationDescriptor(WebServiceType, resourceId, resourceId),

@@ -9,10 +9,11 @@ resources with a group. It does not own resource-specific state or Kubernetes re
   concurrency fence. It does not embed resources.
 - `ResourceRegistration` stores `TenantId`, `ResourceGroupId`, stable `ResourceTypeId`, opaque
   resource ID, display name, optional plugin owner, and timestamps.
-- First-party resource types use the reserved `pole/*` namespace. A third-party type's first path
-  segment must equal its `OwningPluginId`.
+- First-party resource types use the reserved `pole/*` namespace. Third-party registrars are bound
+  by trusted application composition to one normalized plugin ID, and their resource-type namespace
+  must match that ID.
 - Resource owners depend only on `ResourceGroups.Contracts`. They register and unregister through
-  in-process capabilities that require the owner's active Mongo session.
+  an owner-bound `IResourceRegistrar` that requires the owner's active Mongo session.
 
 The unique `(TenantId, ResourceTypeId, ResourceId)` index makes a resource identity stable within
 a tenant. The `(TenantId, ResourceGroupId, ResourceTypeId, ResourceId)` index supports membership

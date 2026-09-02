@@ -25,14 +25,19 @@ module PostgresClusterKubernetesBuilder =
             "component", "postgres"
             PoleStorageLabels.TenantId, cluster.TenantId
             PoleStorageLabels.ResourceGroupId, cluster.GroupId
-            PoleStorageLabels.ResourceType,
-                PostgresResourceDeployment.ResourceType.Value.Replace('/', '.')
+            PoleStorageLabels.ResourceType, "Postgres"
             PoleStorageLabels.ResourceId, cluster.Id
             PoleStorageLabels.ResourceName, cluster.Name
             "pole.io/resource-deployment-id", metadata.DeploymentId
             "pole.io/runtime-cell-id", metadata.RuntimeCellId
             "pole.io/deployment-target-id", metadata.DeploymentTargetId
             "pole.io/deployment-generation", string metadata.Generation
+        ]
+
+    let buildAnnotations () =
+        dict [
+            PoleStorageLabels.ResourceType,
+                PostgresResourceDeployment.ResourceType.Value
         ]
 
     let private toResourceDictionary
@@ -84,6 +89,11 @@ module PostgresClusterKubernetesBuilder =
         | None -> ()
         spec["secret"] <- {| name = clusterSecretName |}
         spec["imageName"] <- image
+        spec["inheritedMetadata"] <-
+            {|
+                labels = buildLabels cluster metadata
+                annotations = buildAnnotations ()
+            |}
         spec["bootstrap"] <-
             {|
                 initdb =
@@ -102,6 +112,7 @@ module PostgresClusterKubernetesBuilder =
                     name = cluster.Id
                     ``namespace`` = namespaceName
                     labels = buildLabels cluster metadata
+                    annotations = buildAnnotations ()
                 |}
             spec = spec
         |}
@@ -118,7 +129,8 @@ module PostgresClusterKubernetesBuilder =
             V1ObjectMeta(
                 Name = buildSecretName cluster.Id,
                 NamespaceProperty = namespaceName,
-                Labels = buildLabels cluster metadata)
+                Labels = buildLabels cluster metadata,
+                Annotations = buildAnnotations ())
         secret.Type <- "kubernetes.io/basic-auth"
         secret.StringData <-
             dict [

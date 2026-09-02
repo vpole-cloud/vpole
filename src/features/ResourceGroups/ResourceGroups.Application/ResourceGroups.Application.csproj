@@ -9,6 +9,10 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <InternalsVisibleTo Include="Pole.Tests.Integration" />
+    </ItemGroup>
+
+    <ItemGroup>
       <ProjectReference Include="..\ResourceGroups.Domain\ResourceGroups.Domain.csproj" />
       <ProjectReference Include="..\ResourceGroups.Events\ResourceGroups.Events.csproj" />
       <ProjectReference Include="..\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
