@@ -24,6 +24,17 @@ namespace Pole.Features.ResourceGroups.Application;
 
 public static class ResourceGroupApplicationRegistration
 {
+    public static IResourceRegistrar CreatePluginResourceRegistrar(
+        this IServiceProvider serviceProvider,
+        string owningPluginId)
+    {
+        ArgumentNullException.ThrowIfNull(serviceProvider);
+        var normalizedPluginId = ResourceRegistrationFactory.NormalizePluginId(owningPluginId);
+        return new BoundResourceRegistrar(
+            serviceProvider.GetRequiredService<MongoResourceRegistrationMutations>(),
+            normalizedPluginId);
+    }
+
     public static IServiceCollection AddResourceGroupsFeature(
         this IServiceCollection services,
         IConfiguration configuration)
@@ -105,15 +116,10 @@ public static class ResourceGroupApplicationRegistration
             implementation => implementation.InvokeAsync);
         services.TryAddScoped<MongoResourceRegistrationMutations>();
         services.TryAddScoped<MongoResourceRegistrationReads>();
-        services.TryAddScoped<RegisterResource>(serviceProvider => serviceProvider
-            .GetRequiredService<MongoResourceRegistrationMutations>()
-            .RegisterAsync);
-        services.TryAddScoped<UpdateResourceRegistration>(serviceProvider => serviceProvider
-            .GetRequiredService<MongoResourceRegistrationMutations>()
-            .UpdateAsync);
-        services.TryAddScoped<UnregisterResource>(serviceProvider => serviceProvider
-            .GetRequiredService<MongoResourceRegistrationMutations>()
-            .UnregisterAsync);
+        services.TryAddScoped<IResourceRegistrar>(serviceProvider =>
+            new BoundResourceRegistrar(
+                serviceProvider.GetRequiredService<MongoResourceRegistrationMutations>(),
+                owningPluginId: null));
         services.TryAddScoped<LoadResourceRegistrationPage>(serviceProvider => serviceProvider
             .GetRequiredService<MongoResourceRegistrationReads>()
             .LoadPageAsync);

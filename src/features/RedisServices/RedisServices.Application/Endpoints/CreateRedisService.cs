@@ -69,7 +69,7 @@ public sealed class CreateRedisServiceHandler(
     AdmitDeploymentTargetForNewWorkload admitDeploymentTarget,
     ResolveComputeProfile resolveComputeProfile,
     CreateResourceDeployment createResourceDeployment,
-    RegisterResource registerResource)
+    IResourceRegistrar resourceRegistrar)
     : IMediatorOutcomeHandler<CreateRedisServiceRequest, CreateRedisServiceOutcome>
 {
     public async Task<CreateRedisServiceOutcome> HandleAsync(CreateRedisServiceRequest request,
@@ -144,7 +144,7 @@ public sealed class CreateRedisServiceHandler(
                     newRedis,
                     transactionCancellationToken);
 
-                var registration = await registerResource(
+                var registration = await resourceRegistrar.RegisterAsync(
                     newRedis.TenantId,
                     newRedis.ResourceGroupId,
                     new ResourceRegistrationDescriptor(

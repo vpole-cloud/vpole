@@ -147,7 +147,7 @@ public sealed class CreateFunctionAppHandler(
     AdmitDeploymentTargetForNewWorkload admitDeploymentTarget,
     ResolveComputeProfile resolveComputeProfile,
     CreateResourceDeployment createResourceDeployment,
-    RegisterResource registerResource,
+    IResourceRegistrar resourceRegistrar,
     PersistCreatedFunctionApp persistCreatedFunctionApp)
     : IMediatorOutcomeHandler<CreateFunctionAppRequest, CreateFunctionAppOutcome>
 {
@@ -237,7 +237,7 @@ public sealed class CreateFunctionAppHandler(
                     transaction.Session,
                     created,
                     ct);
-                var registration = await registerResource(
+                var registration = await resourceRegistrar.RegisterAsync(
                     created.FunctionApp.TenantId,
                     created.FunctionApp.ResourceGroupId,
                     new ResourceRegistrationDescriptor(

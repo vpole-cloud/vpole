@@ -1,6 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.Outbox.Contracts;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.ResourceGroups.Application.Persistence;
@@ -8,6 +11,7 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Request;
 using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
+using Pole.Features.ResourceGroups.Application.Persistence.ResourceRegistrations;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -18,6 +22,8 @@ namespace Pole.Tests.Integration.ResourceGroups;
 public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
+    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
+
     [Fact]
     public async Task Create_PersistsResourceGroup_AndWritesOutboxMessage()
     {
@@ -134,6 +140,64 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
     }
 
     [Fact]
+    public async Task Delete_RetriesAndReturnsConflict_WhenRegistrationCommitsAfterEmptyRead()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var guard = new OneShotPausingDeploymentGuard();
+        var beginDeletion = new MongoBeginResourceGroupDeletion(
+            DbContext.ResourceGroups,
+            DbContext.IsolationScopes,
+            DbContext.RuntimeCells,
+            DbContext.ResourceRegistrations,
+            guard.InvokeAsync,
+            Services.GetRequiredService<StoreOutboxWrites>(),
+            Services.GetRequiredService<
+                RunMongoOutcomeTransaction<BeginResourceGroupDeletionOutcome>>(),
+            TimeProvider.System);
+        var registrar = Services.GetRequiredService<IResourceRegistrar>();
+
+        var deletion = beginDeletion.InvokeAsync(
+            resourceGroup.TenantId,
+            resourceGroup.Id);
+        try
+        {
+            await guard.WaitUntilCheckedAsync().WaitAsync(TestTimeout);
+            using var session = await DbContext.Client.StartSessionAsync();
+            session.StartTransaction();
+            (await registrar.RegisterAsync(
+                resourceGroup.TenantId,
+                resourceGroup.Id,
+                new ResourceRegistrationDescriptor(
+                    ResourceTypeId.Create("pole/web-service"),
+                    "racing-resource",
+                    "Racing resource"),
+                session)).AssertSuccess();
+            await session.CommitTransactionAsync();
+        }
+        finally
+        {
+            guard.Release();
+        }
+
+        var result = await deletion.WaitAsync(TestTimeout);
+        var error = result switch
+        {
+            ResourceGroupDeletionError failure => failure,
+            _ => throw new Xunit.Sdk.XunitException(
+                "Expected resource-group deletion failure after transaction retry.")
+        };
+        Assert.True(error is ResourceGroupContainsResources);
+        Assert.True(await DbContext.ResourceGroups
+            .Find(group => group.Id == resourceGroup.Id)
+            .AnyAsync());
+        Assert.True(await DbContext.ResourceRegistrations
+            .Find(registration => registration.ResourceId == "racing-resource")
+            .AnyAsync());
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
+            "resource-group-deleted"));
+    }
+
+    [Fact]
     public async Task Delete_WithRuntimeCell_RequestsAggregateDeletion()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
@@ -189,5 +253,36 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             _ => throw new Xunit.Sdk.XunitException("Expected resource-group ownership failure.")
         };
         Assert.True(failure is ResourceGroupOwnershipDeleting);
+    }
+
+    private sealed class OneShotPausingDeploymentGuard
+    {
+        private readonly TaskCompletionSource _checked =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _release =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _invocationCount;
+
+        public Task WaitUntilCheckedAsync() => _checked.Task;
+
+        public void Release() => _release.TrySetResult();
+
+        public async Task<Result<Unit, ResourceGroupHasUnfinishedDeployments>> InvokeAsync(
+            string tenantId,
+            string resourceGroupId,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
+        {
+            _ = tenantId;
+            _ = resourceGroupId;
+            _ = session;
+            if (Interlocked.Increment(ref _invocationCount) == 1)
+            {
+                _checked.TrySetResult();
+                await _release.Task.WaitAsync(cancellationToken);
+            }
+
+            return new Ok<Unit>(Unit.Value);
+        }
     }
 }

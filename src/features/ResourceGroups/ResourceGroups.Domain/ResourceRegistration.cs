@@ -41,7 +41,9 @@ public static class ResourceRegistrationFactory
     {
         ArgumentNullException.ThrowIfNull(options);
         var normalizedResourceTypeId = ResourceTypeId.Create(resourceTypeId.Value);
-        var normalizedPluginId = NormalizePluginId(owningPluginId);
+        var normalizedPluginId = owningPluginId is null
+            ? null
+            : NormalizePluginId(owningPluginId);
         var resourceTypeNamespace = normalizedResourceTypeId.Value.Split('/', 2)[0];
         if (resourceTypeNamespace == FirstPartyNamespace && normalizedPluginId is not null)
         {
@@ -101,11 +103,8 @@ public static class ResourceRegistrationFactory
         };
     }
 
-    private static string? NormalizePluginId(string? owningPluginId)
+    public static string NormalizePluginId(string owningPluginId)
     {
-        if (owningPluginId is null)
-            return null;
-
         var normalized = ResourceGroupValueGuard.Required(
             owningPluginId,
             nameof(owningPluginId),
@@ -115,6 +114,12 @@ public static class ResourceRegistrationFactory
         {
             throw new ArgumentException(
                 "Plugin ID must be a valid lowercase resource-type namespace.",
+                nameof(owningPluginId));
+        }
+        if (string.Equals(normalized, FirstPartyNamespace, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "The platform resource-type namespace is reserved.",
                 nameof(owningPluginId));
         }
 

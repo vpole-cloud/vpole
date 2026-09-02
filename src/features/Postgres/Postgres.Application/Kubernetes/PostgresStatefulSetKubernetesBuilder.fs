@@ -26,6 +26,7 @@ module PostgresStatefulSetKubernetesBuilder =
         (metadata : PostgresResourceDeploymentMetadata)
         (settings : PostgresSettings) =
         let labels = PostgresClusterKubernetesBuilder.buildLabels cluster metadata
+        let annotations = PostgresClusterKubernetesBuilder.buildAnnotations ()
         let secretName = PostgresClusterKubernetesBuilder.buildSecretName cluster.Id
         let databaseName = PostgresClusterKubernetesBuilder.buildDatabaseName cluster.Id
         let image = PostgresSettings.buildImageReference settings.StatefulSetImage cluster.Spec.Version
@@ -49,7 +50,12 @@ module PostgresStatefulSetKubernetesBuilder =
         V1StatefulSet(
             ApiVersion = "apps/v1",
             Kind = "StatefulSet",
-            Metadata = V1ObjectMeta(Name = cluster.Id, NamespaceProperty = namespaceName, Labels = labels),
+            Metadata =
+                V1ObjectMeta(
+                    Name = cluster.Id,
+                    NamespaceProperty = namespaceName,
+                    Labels = labels,
+                    Annotations = annotations),
             Spec =
                 V1StatefulSetSpec(
                     ServiceName = buildHeadlessServiceName cluster.Id,
@@ -57,12 +63,16 @@ module PostgresStatefulSetKubernetesBuilder =
                     Selector = V1LabelSelector(MatchLabels = labels),
                     Template =
                         V1PodTemplateSpec(
-                            Metadata = V1ObjectMeta(Labels = labels),
+                            Metadata = V1ObjectMeta(Labels = labels, Annotations = annotations),
                             Spec = podSpec),
                     VolumeClaimTemplates =
                         ResizeArray(
                             [ V1PersistentVolumeClaim(
-                                  Metadata = V1ObjectMeta(Name = "postgres-data", Labels = labels),
+                                  Metadata =
+                                      V1ObjectMeta(
+                                          Name = "postgres-data",
+                                          Labels = labels,
+                                          Annotations = annotations),
                                   Spec =
                                       V1PersistentVolumeClaimSpec(
                                           AccessModes = ResizeArray([ "ReadWriteOnce" ]),
@@ -75,11 +85,17 @@ module PostgresStatefulSetKubernetesBuilder =
         (namespaceName : string)
         (metadata : PostgresResourceDeploymentMetadata) =
         let labels = PostgresClusterKubernetesBuilder.buildLabels cluster metadata
+        let annotations = PostgresClusterKubernetesBuilder.buildAnnotations ()
 
         V1Service(
             ApiVersion = "v1",
             Kind = "Service",
-            Metadata = V1ObjectMeta(Name = buildHeadlessServiceName cluster.Id, NamespaceProperty = namespaceName, Labels = labels),
+            Metadata =
+                V1ObjectMeta(
+                    Name = buildHeadlessServiceName cluster.Id,
+                    NamespaceProperty = namespaceName,
+                    Labels = labels,
+                    Annotations = annotations),
             Spec =
                 V1ServiceSpec(
                     Type = "ClusterIP",
@@ -92,6 +108,7 @@ module PostgresStatefulSetKubernetesBuilder =
         (namespaceName : string)
         (metadata : PostgresResourceDeploymentMetadata) =
         let labels = PostgresClusterKubernetesBuilder.buildLabels cluster metadata
+        let annotations = PostgresClusterKubernetesBuilder.buildAnnotations ()
 
         V1Service(
             ApiVersion = "v1",
@@ -100,7 +117,8 @@ module PostgresStatefulSetKubernetesBuilder =
                 V1ObjectMeta(
                     Name = PostgresClusterKubernetesBuilder.buildReadWriteServiceName cluster.Id,
                     NamespaceProperty = namespaceName,
-                    Labels = labels),
+                    Labels = labels,
+                    Annotations = annotations),
             Spec =
                 V1ServiceSpec(
                     Type = "ClusterIP",

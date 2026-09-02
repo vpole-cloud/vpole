@@ -79,7 +79,8 @@ public readonly record struct RedisInKubernetes(
             Name = StatefulSetName,
             NamespaceProperty = Namespace,
             Labels = new Dictionary<string, string>
-                (BuildLabels())
+                (BuildLabels()),
+            Annotations = _defaultAnnotations
         },
         Spec = new V1StatefulSetSpec
         {
@@ -109,7 +110,8 @@ public readonly record struct RedisInKubernetes(
                     Metadata = new V1ObjectMeta
                     {
                         Name = "redis-data",
-                        Labels = new Dictionary<string, string>(BuildLabels())
+                        Labels = new Dictionary<string, string>(BuildLabels()),
+                        Annotations = _defaultAnnotations
                     },
                     Spec = new V1PersistentVolumeClaimSpec
                     {
@@ -165,7 +167,8 @@ public readonly record struct RedisInKubernetes(
         new Dictionary<string, string>
         {
             { "app.kubernetes.io/managed-by", "pole-server" },
-            { "pole.server/redisId", Redis.Id }
+            { "pole.server/redisId", Redis.Id },
+            { PoleStorageLabels.ResourceType, RedisResourceDeployment.ResourceType.Value }
         }.ToImmutableDictionary();
 
     private Dictionary<string, string> BuildPodTemplateAnnotations(
@@ -197,8 +200,7 @@ public readonly record struct RedisInKubernetes(
         { "component", "redis" },
         { PoleStorageLabels.TenantId, Redis.TenantId },
         { PoleStorageLabels.ResourceGroupId, Redis.ResourceGroupId },
-        { PoleStorageLabels.ResourceType,
-            RedisResourceDeployment.ResourceType.Value.Replace('/', '.') },
+        { PoleStorageLabels.ResourceType, "Redis" },
         { PoleStorageLabels.ResourceId, Redis.Id },
         { PoleStorageLabels.ResourceName, Redis.Name }
     };

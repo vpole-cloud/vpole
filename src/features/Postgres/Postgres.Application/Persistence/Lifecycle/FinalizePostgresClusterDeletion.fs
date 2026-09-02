@@ -27,7 +27,7 @@ type MongoFinalizePostgresClusterDeletion(
     credentials : IMongoCollection<PostgresCredential>,
     getDeploymentReadiness : GetResourceDeploymentFinalizationReadiness,
     purgeDeployments : PurgeDeletedResourceDeployments,
-    unregisterResource : UnregisterResource,
+    resourceRegistrar : IResourceRegistrar,
     runMongoTransaction : RunMongoOutcomeTransaction<PostgresOutcome<unit, PostgresClusterDeletionFinalizationError>>,
     storeOutboxWrites : StoreOutboxWrites) =
 
@@ -70,7 +70,7 @@ type MongoFinalizePostgresClusterDeletion(
                                                 PostgresClusterDeletionFinalizationConflict clusterId))
                                 else
                                     let! registrationResult =
-                                        unregisterResource.Invoke(
+                                        resourceRegistrar.UnregisterAsync(
                                             tenantId,
                                             cluster.GroupId,
                                             PostgresResourceDeployment.ResourceType,

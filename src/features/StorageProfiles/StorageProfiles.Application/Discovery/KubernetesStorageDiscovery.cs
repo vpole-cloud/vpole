@@ -103,20 +103,20 @@ internal static class KubernetesStorageDiscovery
         new(
             GetMetadataValue(PoleStorageLabels.TenantId, labels, annotations),
             GetMetadataValue(PoleStorageLabels.ResourceGroupId, labels, annotations),
-            GetMetadataValue(PoleStorageLabels.ResourceType, labels, annotations),
+            GetMetadataValue(PoleStorageLabels.ResourceType, annotations, labels),
             GetMetadataValue(PoleStorageLabels.ResourceId, labels, annotations),
             GetMetadataValue(PoleStorageLabels.ResourceName, labels, annotations));
 
     private static string? GetMetadataValue(
         string key,
-        IDictionary<string, string>? labels,
-        IDictionary<string, string>? annotations)
+        IDictionary<string, string>? primary,
+        IDictionary<string, string>? fallback)
     {
-        if (labels is not null && labels.TryGetValue(key, out var labelValue))
-            return labelValue;
+        if (primary is not null && primary.TryGetValue(key, out var primaryValue))
+            return primaryValue;
 
-        return annotations is not null && annotations.TryGetValue(key, out var annotationValue)
-            ? annotationValue
+        return fallback is not null && fallback.TryGetValue(key, out var fallbackValue)
+            ? fallbackValue
             : null;
     }
 

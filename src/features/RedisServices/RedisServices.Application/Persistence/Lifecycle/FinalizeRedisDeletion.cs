@@ -19,7 +19,7 @@ internal sealed class MongoFinalizeRedisDeletion(
     IMongoCollection<Redis> redisServices,
     GetResourceDeploymentFinalizationReadiness getDeploymentReadiness,
     PurgeDeletedResourceDeployments purgeDeployments,
-    UnregisterResource unregisterResource,
+    IResourceRegistrar resourceRegistrar,
     RunMongoOutcomeTransaction<Result<Unit, RedisDeletionFinalizationConflict>>
         runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites)
@@ -61,7 +61,7 @@ internal sealed class MongoFinalizeRedisDeletion(
                     new RedisDeletionFinalizationConflict(redisId)));
             }
 
-            var registration = await unregisterResource(
+            var registration = await resourceRegistrar.UnregisterAsync(
                 tenantId,
                 redis.ResourceGroupId,
                 RedisResourceDeployment.ResourceType,

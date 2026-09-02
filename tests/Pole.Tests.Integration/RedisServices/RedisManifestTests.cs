@@ -39,7 +39,16 @@ public sealed class RedisManifestTests
         Assert.Equal("fast-cache", volumeClaim.Spec.StorageClassName);
         Assert.Equal(TestData.TenantId, volumeClaim.Metadata.Labels["pole.io/tenant-id"]);
         Assert.Equal("rg-1", volumeClaim.Metadata.Labels["pole.io/resource-group-id"]);
-        Assert.Equal("pole.redis", volumeClaim.Metadata.Labels["pole.io/resource-type"]);
+        Assert.Equal("Redis", volumeClaim.Metadata.Labels["pole.io/resource-type"]);
+        Assert.Equal(
+            "pole/redis",
+            statefulSet.Metadata.Annotations["pole.io/resource-type"]);
+        Assert.Equal(
+            "pole/redis",
+            statefulSet.Spec.Template.Metadata.Annotations["pole.io/resource-type"]);
+        Assert.Equal(
+            "pole/redis",
+            volumeClaim.Metadata.Annotations["pole.io/resource-type"]);
         Assert.Equal("12Gi", volumeClaim.Spec.Resources.Requests["storage"].ToString());
         Assert.Equal("250m", container.Resources.Requests["cpu"].ToString());
         Assert.Equal("256Mi", container.Resources.Requests["memory"].ToString());
@@ -101,6 +110,8 @@ public sealed class RedisManifestTests
         Assert.Equal("TCP", port.Protocol);
         Assert.Equal("pole-server", service.Metadata.Annotations["app.kubernetes.io/managed-by"]);
         Assert.Equal("redis-1", service.Metadata.Annotations["pole.server/redisId"]);
+        Assert.Equal("Redis", service.Metadata.Labels["pole.io/resource-type"]);
+        Assert.Equal("pole/redis", service.Metadata.Annotations["pole.io/resource-type"]);
     }
 
     private static RedisInKubernetes CreateSubject() =>
