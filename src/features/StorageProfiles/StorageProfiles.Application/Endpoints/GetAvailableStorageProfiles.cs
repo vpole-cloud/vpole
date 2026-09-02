@@ -7,13 +7,13 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Persistence;
 using Pole.Features.StorageProfiles.Application.Persistence.Reads;
 using Pole.Mediator;
 using Pole.ResultType;
+using Pole.Workloads;
 
 namespace Pole.Features.StorageProfiles.Application.Endpoints;
 
@@ -39,9 +39,7 @@ public sealed class GetAvailableStorageProfilesHandler(
         CancellationToken cancellationToken = default)
     {
         var deploymentTargetId = request.DeploymentTargetId.Trim();
-        var resourceType = Enum.Parse<ResourceType>(
-            request.ResourceType,
-            ignoreCase: true);
+        var resourceType = ResourceTypeId.Create(request.ResourceType);
         var storageClassesResult = await discoverStorageClassNames(
             deploymentTargetId,
             cancellationToken);
@@ -75,12 +73,7 @@ public sealed class GetAvailableStorageProfilesRequestValidator
     public GetAvailableStorageProfilesRequestValidator()
     {
         RuleFor(request => request.ResourceType)
-            .Must(value =>
-                Enum.TryParse<ResourceType>(
-                    value,
-                    ignoreCase: true,
-                    out var parsed) &&
-                Enum.IsDefined(parsed))
+            .Must(value => ResourceTypeId.TryCreate(value, out _))
             .WithMessage("Resource type is invalid.");
         RuleFor(request => request.DeploymentTargetId)
             .MongoObjectId("Deployment target ID");

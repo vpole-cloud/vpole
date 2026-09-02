@@ -1,9 +1,9 @@
 using System.Collections.Immutable;
 using System.Globalization;
 using k8s.Models;
+using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
 
 namespace Pole.Features.RedisServices.Application.Kubernetes;
@@ -197,7 +197,8 @@ public readonly record struct RedisInKubernetes(
         { "component", "redis" },
         { PoleStorageLabels.TenantId, Redis.TenantId },
         { PoleStorageLabels.ResourceGroupId, Redis.ResourceGroupId },
-        { PoleStorageLabels.ResourceType, ResourceType.Redis.ToString() },
+        { PoleStorageLabels.ResourceType,
+            RedisResourceDeployment.ResourceType.Value.Replace('/', '.') },
         { PoleStorageLabels.ResourceId, Redis.Id },
         { PoleStorageLabels.ResourceName, Redis.Name }
     };

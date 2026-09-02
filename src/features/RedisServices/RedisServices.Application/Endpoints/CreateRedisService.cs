@@ -11,6 +11,7 @@ using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Domain;
@@ -54,6 +55,7 @@ public union CreateRedisServiceError(
     ComputeProfileResolutionError,
     StorageProfileResolutionError,
     CreateResourceDeploymentError,
+    ResourceRegistrationMutationError,
     QuotaExecutionError);
 
 public union CreateRedisServiceOutcome(
@@ -66,7 +68,8 @@ public sealed class CreateRedisServiceHandler(
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     AdmitDeploymentTargetForNewWorkload admitDeploymentTarget,
     ResolveComputeProfile resolveComputeProfile,
-    CreateResourceDeployment createResourceDeployment)
+    CreateResourceDeployment createResourceDeployment,
+    RegisterResource registerResource)
     : IMediatorOutcomeHandler<CreateRedisServiceRequest, CreateRedisServiceOutcome>
 {
     public async Task<CreateRedisServiceOutcome> HandleAsync(CreateRedisServiceRequest request,
@@ -102,7 +105,7 @@ public sealed class CreateRedisServiceHandler(
                 request.Body.Spec.Storage.StorageProfileId,
                 target.Id,
                 request.TenantId,
-                ResourceType.Redis,
+                RedisResourceDeployment.ResourceType,
                 request.Body.Spec.Storage.SizeGb),
             cancellationToken);
         if (!storageProfileResult.TryGetValue(out var storageProfile, out var storageProfileError))
@@ -140,6 +143,21 @@ public sealed class CreateRedisServiceHandler(
                     transaction.Session,
                     newRedis,
                     transactionCancellationToken);
+
+                var registration = await registerResource(
+                    newRedis.TenantId,
+                    newRedis.ResourceGroupId,
+                    new ResourceRegistrationDescriptor(
+                        RedisResourceDeployment.ResourceType,
+                        newRedis.Id,
+                        newRedis.Name),
+                    transaction.Session,
+                    transactionCancellationToken);
+                if (!registration.TryGetValue(out _, out var registrationError))
+                {
+                    return transaction.Abort(
+                        Error(new CreateRedisServiceError(registrationError)));
+                }
 
                 var deploymentResult = await createResourceDeployment(
                     new CreateResourceDeploymentRequest(

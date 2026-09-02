@@ -4,7 +4,7 @@ namespace Pole.Features.ResourceGroups.Application.Common;
 
 public static class ResourceGroupExtensions
 {
-    public static ResourceGroupDto ToDto(this ResourceGroup rg) =>
+    public static ResourceGroupDto ToDto(this ResourceGroup rg, long resourceCount) =>
         new ResourceGroupDto(
             Id: rg.Id,
             Name: rg.Name,
@@ -20,11 +20,17 @@ public static class ResourceGroupExtensions
             Revision: rg.Revision,
             CreatedAtUtc: rg.CreatedAtUtc,
             UpdatedAtUtc: rg.UpdatedAtUtc,
-            Resources: rg.Resources.Select(r => new ShortResourceInfoDto(
-                Id: r.Id,
-                Name: r.Name,
-                Type: r.Type
-            )),
+            ResourceCount: resourceCount,
             Tags: rg.Tags
         );
+
+    public static ResourceRegistrationDto ToDto(this ResourceRegistration registration) =>
+        new(
+            registration.Id,
+            registration.ResourceId,
+            registration.ResourceTypeId,
+            registration.DisplayName,
+            registration.OwningPluginId,
+            registration.CreatedAtUtc,
+            registration.UpdatedAtUtc);
 }

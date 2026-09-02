@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceGroups.Application.Persistence.ResourceRegistrations;
 
 namespace Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 
@@ -10,15 +11,20 @@ public sealed record ResourceGroupPageQuery(
     string? Search);
 
 public sealed record ResourceGroupPage(
-    IReadOnlyList<ResourceGroup> Items,
+    IReadOnlyList<ResourceGroupPageItem> Items,
     long TotalCount);
+
+public sealed record ResourceGroupPageItem(
+    ResourceGroup ResourceGroup,
+    long ResourceCount);
 
 public delegate Task<ResourceGroupPage> LoadResourceGroupPage(
     ResourceGroupPageQuery query,
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoLoadResourceGroupPage(
-    IMongoCollection<ResourceGroup> resourceGroups)
+    IMongoCollection<ResourceGroup> resourceGroups,
+    IMongoCollection<ResourceRegistration> registrations)
 {
     public async Task<ResourceGroupPage> InvokeAsync(
         ResourceGroupPageQuery query,
@@ -34,6 +40,29 @@ internal sealed class MongoLoadResourceGroupPage(
             .Skip(checked((query.PageNumber - 1) * query.PageSize))
             .Limit(query.PageSize)
             .ToListAsync(cancellationToken);
-        return new ResourceGroupPage(items, totalCount);
+        var groupIds = items.Select(group => group.Id).ToArray();
+        var counts = groupIds.Length == 0
+            ? []
+            : await registrations.Aggregate()
+                .Match(ResourceRegistrationFilters.ByResourceGroups(
+                    query.TenantId,
+                    groupIds))
+                .Group(
+                    registration => registration.ResourceGroupId,
+                    group => new ResourceGroupRegistrationCount(group.Key, group.LongCount()))
+                .ToListAsync(cancellationToken);
+        var countByGroup = counts.ToDictionary(
+            count => count.ResourceGroupId,
+            count => count.Count,
+            StringComparer.Ordinal);
+        return new ResourceGroupPage(
+            items.Select(group => new ResourceGroupPageItem(
+                group,
+                countByGroup.GetValueOrDefault(group.Id))).ToArray(),
+            totalCount);
     }
 }
+
+internal sealed record ResourceGroupRegistrationCount(
+    string ResourceGroupId,
+    long Count);

@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
-using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
+using Pole.Workloads;
 
 namespace Pole.Features.StorageProfiles.Application.Common;
 
@@ -48,7 +48,6 @@ public static class StorageProfileDtoExtensions
                     mapping.StorageClassName))
                 .ToArray(),
             profile.AllowedResourceTypes
-                .Select(type => type.ToString())
                 .Order(StringComparer.Ordinal)
                 .ToImmutableArray(),
             profile.TenantAccess.ToDto(),
@@ -66,8 +65,7 @@ public static class StorageProfileDtoExtensions
             body.IsEnabled,
             body.IsDefault,
             body.TargetMappings.Select(mapping => mapping.ToDomain()),
-            body.AllowedResourceTypes.Select(value =>
-                Enum.Parse<ResourceType>(value, ignoreCase: true)),
+            body.AllowedResourceTypes.Select(ResourceTypeId.Create),
             body.TenantAccess.ToDomain(),
             body.SizeLimits?.ToDomain(),
             options);
@@ -84,8 +82,7 @@ public static class StorageProfileDtoExtensions
             body.IsEnabled,
             body.IsDefault,
             body.TargetMappings.Select(mapping => mapping.ToDomain()),
-            body.AllowedResourceTypes.Select(value =>
-                Enum.Parse<ResourceType>(value, ignoreCase: true)),
+            body.AllowedResourceTypes.Select(ResourceTypeId.Create),
             body.TenantAccess.ToDomain(),
             body.SizeLimits?.ToDomain(),
             updatedAtUtc);

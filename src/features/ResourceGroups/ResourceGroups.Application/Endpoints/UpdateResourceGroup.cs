@@ -10,6 +10,7 @@ using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Application.Persistence;
 using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
+using Pole.Features.ResourceGroups.Application.Persistence.ResourceRegistrations;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Mediator;
@@ -65,6 +66,7 @@ public sealed record UpdateResourceGroupRequestBody(
 
 public sealed class UpdateResourceGroupHandler(
     LoadResourceGroup loadResourceGroup,
+    LoadResourceRegistrationCount loadResourceRegistrationCount,
     PersistUpdatedResourceGroup persistUpdatedResourceGroup,
     TimeProvider timeProvider)
     : IMediatorOutcomeHandler<UpdateResourceGroupRequest, UpdateResourceGroupOutcome>
@@ -94,7 +96,10 @@ public sealed class UpdateResourceGroupHandler(
             cancellationToken);
         return persisted switch
         {
-            Ok<ResourceGroup> success => success.Value.ToDto(),
+            Ok<ResourceGroup> success => success.Value.ToDto(await loadResourceRegistrationCount(
+                request.TenantId,
+                request.Id,
+                cancellationToken)),
             Err<ResourceGroupRevisionConflict> error => new UpdateResourceGroupError(error.Value)
         };
     }

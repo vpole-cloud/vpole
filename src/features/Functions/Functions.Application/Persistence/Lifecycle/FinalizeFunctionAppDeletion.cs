@@ -3,6 +3,7 @@ using Pole.Database;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.Functions.Application.Persistence.Lifecycle;
@@ -26,6 +27,7 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
     IMongoCollection<FunctionUsageBucket> functionUsageBuckets,
     GetExactResourceDeploymentFinalizationReadiness getDeploymentReadiness,
     PurgeExactDeletedResourceDeployment purgeDeployment,
+    UnregisterResource unregisterResource,
     RunMongoOutcomeTransaction<Result<Unit, FunctionAppDeletionFinalizationConflict>>
         runMongoTransaction)
 {
@@ -66,6 +68,16 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
                 filter: appFilter,
                 cancellationToken: ct);
             if (deleted.DeletedCount != 1)
+                return transaction.Abort(Conflict(functionAppId));
+
+            var registration = await unregisterResource(
+                tenantId,
+                app.ResourceGroupId,
+                FunctionResourceDeployment.ResourceType,
+                functionAppId,
+                transaction.Session,
+                ct);
+            if (!registration.TryGetValue(out _, out _))
                 return transaction.Abort(Conflict(functionAppId));
 
             var purge = await purgeDeployment(

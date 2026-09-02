@@ -131,7 +131,11 @@ public static class TestData
                     DefaultDeploymentTargetId,
                     storageClassName)
             ],
-            allowedResourceTypes: ImmutableHashSet.Create(ResourceType.Redis, ResourceType.Postgres),
+            allowedResourceTypes:
+            [
+                ResourceTypeId.Create("pole/redis"),
+                ResourceTypeId.Create("pole/postgresql")
+            ],
             tenantAccess: tenantAccess ?? StorageProfileTenantAccess.Create(
                 StorageProfileTenantAccessMode.AllTenants,
                 []),

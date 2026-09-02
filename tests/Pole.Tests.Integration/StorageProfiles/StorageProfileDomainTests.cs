@@ -1,9 +1,9 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
-using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 using Xunit;
+using Pole.Workloads;
 
 namespace Pole.Tests.Integration.StorageProfiles;
 
@@ -73,7 +73,7 @@ public sealed class StorageProfileDomainTests
             profile.IsEnabled,
             profile.IsDefault,
             profile.TargetMappings.Reverse(),
-            profile.AllowedResourceTypes,
+            profile.AllowedResourceTypes.Select(ResourceTypeId.Create),
             profile.TenantAccess,
             profile.SizeLimits,
             CreatedAtUtc.AddMinutes(1));
@@ -92,7 +92,7 @@ public sealed class StorageProfileDomainTests
                     FirstTargetId,
                     "first-fast")
             ],
-            profile.AllowedResourceTypes,
+            profile.AllowedResourceTypes.Select(ResourceTypeId.Create),
             profile.TenantAccess,
             profile.SizeLimits,
             CreatedAtUtc.AddMinutes(1));
@@ -112,7 +112,7 @@ public sealed class StorageProfileDomainTests
             isEnabled: true,
             isDefault: false,
             targetMappings,
-            [ResourceType.Redis],
+            [ResourceTypeId.Create("pole/redis")],
             StorageProfileTenantAccess.Create(
                 StorageProfileTenantAccessMode.AllTenants,
                 []),

@@ -1,8 +1,8 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
-using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Primitives;
+using Pole.Workloads;
 
 namespace Pole.Features.StorageProfiles.Domain;
 
@@ -17,7 +17,7 @@ public sealed record StorageProfile(
     bool IsEnabled,
     bool IsDefault,
     ImmutableList<StorageProfileTargetMapping> TargetMappings,
-    ImmutableHashSet<ResourceType> AllowedResourceTypes,
+    ImmutableHashSet<string> AllowedResourceTypes,
     StorageProfileTenantAccess TenantAccess,
     StorageProfileSizeLimits? SizeLimits,
     long Revision,
@@ -33,7 +33,7 @@ public sealed record StorageProfile(
         bool isEnabled,
         bool isDefault,
         IEnumerable<StorageProfileTargetMapping> targetMappings,
-        IEnumerable<ResourceType> allowedResourceTypes,
+        IEnumerable<ResourceTypeId> allowedResourceTypes,
         StorageProfileTenantAccess tenantAccess,
         StorageProfileSizeLimits? sizeLimits,
         DateTime updatedAtUtc)
@@ -209,7 +209,7 @@ public static class StorageProfileFactory
         bool isEnabled,
         bool isDefault,
         IEnumerable<StorageProfileTargetMapping> targetMappings,
-        IEnumerable<ResourceType> allowedResourceTypes,
+        IEnumerable<ResourceTypeId> allowedResourceTypes,
         StorageProfileTenantAccess tenantAccess,
         StorageProfileSizeLimits? sizeLimits,
         CreateOptions options)
@@ -257,7 +257,7 @@ public static class StorageProfileFactory
         bool isEnabled,
         bool isDefault,
         IEnumerable<StorageProfileTargetMapping> targetMappings,
-        IEnumerable<ResourceType> allowedResourceTypes,
+        IEnumerable<ResourceTypeId> allowedResourceTypes,
         StorageProfileTenantAccess tenantAccess,
         StorageProfileSizeLimits? sizeLimits)
     {
@@ -288,20 +288,15 @@ public static class StorageProfileFactory
         if (normalizedTargetMappings.Count == 0)
             throw new ArgumentException("At least one target mapping is required.", nameof(targetMappings));
 
-        var normalizedResourceTypes = allowedResourceTypes.ToImmutableHashSet();
+        var normalizedResourceTypes = allowedResourceTypes
+            .Select(resourceType => ResourceTypeId.Create(resourceType.Value).Value)
+            .ToImmutableHashSet(StringComparer.Ordinal);
         if (normalizedResourceTypes.Count == 0)
         {
             throw new ArgumentException(
                 "At least one allowed resource type is required.",
                 nameof(allowedResourceTypes));
         }
-        if (normalizedResourceTypes.Any(type => !Enum.IsDefined(type)))
-        {
-            throw new ArgumentException(
-                "An allowed resource type is invalid.",
-                nameof(allowedResourceTypes));
-        }
-
         var normalizedTenantAccess = StorageProfileTenantAccess.Create(
             tenantAccess.Mode,
             tenantAccess.TenantIds);
@@ -359,7 +354,7 @@ internal sealed record StorageProfileValues(
     bool IsEnabled,
     bool IsDefault,
     ImmutableList<StorageProfileTargetMapping> TargetMappings,
-    ImmutableHashSet<ResourceType> AllowedResourceTypes,
+    ImmutableHashSet<string> AllowedResourceTypes,
     StorageProfileTenantAccess TenantAccess,
     StorageProfileSizeLimits? SizeLimits);
 

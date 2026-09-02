@@ -36,7 +36,7 @@ internal sealed class MongoResolveStorageProfile(
             return new Err<StorageProfileResolutionError>(
                 new StorageProfileTenantAccessDenied(profile.Id, request.TenantId));
         }
-        if (!profile.AllowedResourceTypes.Contains(request.ResourceType))
+        if (!profile.AllowedResourceTypes.Contains(request.ResourceType.Value))
         {
             return new Err<StorageProfileResolutionError>(
                 new StorageProfileResourceTypeNotAllowed(profile.Id, request.ResourceType));
@@ -112,8 +112,8 @@ internal sealed class MongoResolveStorageProfile(
                 "Tenant ID must be a MongoDB ObjectId.",
                 nameof(request));
         }
-        if (!Enum.IsDefined(request.ResourceType))
-            throw new ArgumentOutOfRangeException(nameof(request), "Resource type is invalid.");
+        if (string.IsNullOrWhiteSpace(request.ResourceType.Value))
+            throw new ArgumentException("Resource type is invalid.", nameof(request));
         if (request.SizeGb <= 0)
         {
             throw new ArgumentOutOfRangeException(

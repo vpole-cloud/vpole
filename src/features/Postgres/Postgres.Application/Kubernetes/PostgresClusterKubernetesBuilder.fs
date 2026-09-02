@@ -1,7 +1,6 @@
 namespace Pole.Features.Postgres.Application.Kubernetes
 
 open System.Collections.Generic
-open Pole.Features.Shared.Models
 open Pole.Features.Core.Kubernetes
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
@@ -26,7 +25,8 @@ module PostgresClusterKubernetesBuilder =
             "component", "postgres"
             PoleStorageLabels.TenantId, cluster.TenantId
             PoleStorageLabels.ResourceGroupId, cluster.GroupId
-            PoleStorageLabels.ResourceType, ResourceType.Postgres.ToString()
+            PoleStorageLabels.ResourceType,
+                PostgresResourceDeployment.ResourceType.Value.Replace('/', '.')
             PoleStorageLabels.ResourceId, cluster.Id
             PoleStorageLabels.ResourceName, cluster.Name
             "pole.io/resource-deployment-id", metadata.DeploymentId

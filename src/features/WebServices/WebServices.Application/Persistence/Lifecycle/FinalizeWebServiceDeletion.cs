@@ -2,6 +2,7 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
@@ -24,6 +25,7 @@ internal sealed class MongoFinalizeWebServiceDeletion(
     GetResourceDeploymentFinalizationReadiness getResourceDeploymentFinalizationReadiness,
     PurgeDeletedResourceDeployments purgeDeletedResourceDeployments,
     DeleteHostnameBindingsForResource deleteHostnameBindingsForResource,
+    UnregisterResource unregisterResource,
     RunMongoOutcomeTransaction<FinalizeWebServiceDeletionOutcome> runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites)
 {
@@ -58,6 +60,18 @@ internal sealed class MongoFinalizeWebServiceDeletion(
                 cancellationToken: ct);
             if (deleted.DeletedCount != 1)
                 return transaction.Commit(new WebServiceDeletionFinalized());
+
+            var registration = await unregisterResource(
+                tenantId,
+                webService.ResourceGroupId,
+                WebServiceResourceDeployment.ResourceType,
+                webServiceId,
+                transaction.Session,
+                ct);
+            if (!registration.TryGetValue(out _, out var registrationError))
+            {
+                return transaction.Abort(new WebServiceFinalizationError(registrationError));
+            }
 
             var bindingCleanup = await deleteHostnameBindingsForResource(
                 tenantId,

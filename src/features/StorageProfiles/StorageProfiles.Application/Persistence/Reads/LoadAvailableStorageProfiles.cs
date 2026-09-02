@@ -1,13 +1,13 @@
 using MongoDB.Driver;
-using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Domain;
+using Pole.Workloads;
 
 namespace Pole.Features.StorageProfiles.Application.Persistence.Reads;
 
 public sealed record StorageProfileAvailabilityQuery(
     string TenantId,
     string DeploymentTargetId,
-    ResourceType ResourceType);
+    ResourceTypeId ResourceType);
 
 public delegate Task<IReadOnlyCollection<StorageProfile>> LoadAvailableStorageProfiles(
     StorageProfileAvailabilityQuery query,
@@ -30,7 +30,7 @@ internal sealed class MongoLoadAvailableStorageProfiles(
 
         return profiles
             .Where(profile => AllowsTenant(profile, query.TenantId))
-            .Where(profile => profile.AllowedResourceTypes.Contains(query.ResourceType))
+            .Where(profile => profile.AllowedResourceTypes.Contains(query.ResourceType.Value))
             .ToArray();
     }
 

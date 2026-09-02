@@ -17,6 +17,7 @@ using Pole.Features.Functions.Application.Persistence.Mutations;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Functions.Protocol;
 using Pole.Mediator;
 using Pole.ResultType;
@@ -132,6 +133,7 @@ public union CreateFunctionAppError(
     DeploymentTargetNewWorkloadAdmissionError,
     ComputeProfileResolutionError,
     CreateResourceDeploymentError,
+    ResourceRegistrationMutationError,
     QuotaExecutionError);
 
 public union CreateFunctionAppOutcome(
@@ -145,6 +147,7 @@ public sealed class CreateFunctionAppHandler(
     AdmitDeploymentTargetForNewWorkload admitDeploymentTarget,
     ResolveComputeProfile resolveComputeProfile,
     CreateResourceDeployment createResourceDeployment,
+    RegisterResource registerResource,
     PersistCreatedFunctionApp persistCreatedFunctionApp)
     : IMediatorOutcomeHandler<CreateFunctionAppRequest, CreateFunctionAppOutcome>
 {
@@ -234,6 +237,19 @@ public sealed class CreateFunctionAppHandler(
                     transaction.Session,
                     created,
                     ct);
+                var registration = await registerResource(
+                    created.FunctionApp.TenantId,
+                    created.FunctionApp.ResourceGroupId,
+                    new ResourceRegistrationDescriptor(
+                        FunctionResourceDeployment.ResourceType,
+                        created.FunctionApp.Id,
+                        created.FunctionApp.Name),
+                    transaction.Session,
+                    ct);
+                if (!registration.TryGetValue(out _, out var registrationError))
+                {
+                    return transaction.Abort(new CreateFunctionAppError(registrationError));
+                }
                 return transaction.Commit(new CreateFunctionAppResponse(
                     created.FunctionApp.Id,
                     created.Revision.Id,

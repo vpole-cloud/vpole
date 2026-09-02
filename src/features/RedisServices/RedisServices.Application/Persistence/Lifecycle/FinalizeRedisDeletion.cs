@@ -3,6 +3,7 @@ using Pole.Database;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.RedisServices.Application.Persistence.Lifecycle;
@@ -18,6 +19,7 @@ internal sealed class MongoFinalizeRedisDeletion(
     IMongoCollection<Redis> redisServices,
     GetResourceDeploymentFinalizationReadiness getDeploymentReadiness,
     PurgeDeletedResourceDeployments purgeDeployments,
+    UnregisterResource unregisterResource,
     RunMongoOutcomeTransaction<Result<Unit, RedisDeletionFinalizationConflict>>
         runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites)
@@ -54,6 +56,19 @@ internal sealed class MongoFinalizeRedisDeletion(
                 filter: redisFilter,
                 cancellationToken: transactionCancellationToken);
             if (deleted.DeletedCount != 1)
+            {
+                return transaction.Abort(new Err<RedisDeletionFinalizationConflict>(
+                    new RedisDeletionFinalizationConflict(redisId)));
+            }
+
+            var registration = await unregisterResource(
+                tenantId,
+                redis.ResourceGroupId,
+                RedisResourceDeployment.ResourceType,
+                redisId,
+                transaction.Session,
+                transactionCancellationToken);
+            if (!registration.TryGetValue(out _, out _))
             {
                 return transaction.Abort(new Err<RedisDeletionFinalizationConflict>(
                     new RedisDeletionFinalizationConflict(redisId)));

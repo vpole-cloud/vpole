@@ -1,5 +1,5 @@
-using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Endpoints;
@@ -8,10 +8,10 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Request;
 using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
-using Pole.Features.Shared.Models;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
+using Pole.Workloads;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
@@ -104,17 +104,19 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
     }
 
     [Fact]
-    public async Task Delete_ReturnsConflict_WhenLegacyResourcesAreRegistered()
+    public async Task Delete_ReturnsConflict_WhenResourcesAreRegistered()
     {
-        var seeded = TestData.SeedResourceGroup();
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(seeded with
-        {
-            Resources = ImmutableList.Create(
-                new ShortResourceInfo(
-                    "507f1f77bcf86cd799439081",
-                    "legacy-resource",
-                    ResourceType.WebService))
-        });
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        await DbContext.ResourceRegistrations.InsertOneAsync(ResourceRegistrationFactory.Create(
+            resourceGroup.TenantId,
+            resourceGroup.Id,
+            ResourceTypeId.Create("pole/web-service"),
+            "507f1f77bcf86cd799439081",
+            "registered-resource",
+            owningPluginId: null,
+            new ResourceRegistrationFactory.CreateOptions(
+                ObjectId.GenerateNewId().ToString(),
+                DateTime.UtcNow)));
 
         var result = await Mediator.Send(new DeleteResourceGroupRequest(
             resourceGroup.Id,
@@ -153,7 +155,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             .Find(group => group.Id == resourceGroup.Id)
             .SingleAsync();
         Assert.IsType<DeletingResourceGroupLifecycleState>(savedGroup.Lifecycle);
-        Assert.Equal("deleting", savedGroup.ToDto().Lifecycle);
+        Assert.Equal("deleting", savedGroup.ToDto(resourceCount: 0).Lifecycle);
         var savedScope = await DbContext.IsolationScopes
             .Find(scope => scope.Id == resourceGroup.DefaultIsolationScopeId)
             .SingleAsync();

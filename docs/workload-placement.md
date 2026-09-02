@@ -142,11 +142,12 @@ Deleting an empty additional scope completes synchronously with `204 No Content`
 scope owns unfinished runtime cells, the API returns `202 Accepted`, marks the scope and
 cells as deleting, and writes deletion events in the same transaction.
 
-Resource-group deletion still uses `ResourceGroup.Resources` as a temporary compatibility guard.
-A non-empty registration list returns `409 Conflict`. That list is not yet an authoritative
-cross-feature registration source and has an asynchronous update window. A separate platform-owned
-generic registration change must replace it before this deletion path is treated as
-production-safe.
+Resource-group membership is authoritative in the ResourceGroups-owned `ResourceRegistrations`
+collection. Logical resource creation registers `(TenantId, ResourceTypeId, ResourceId)` in the
+same Mongo transaction as the resource; final deletion unregisters it in the same transaction as
+the logical delete. A non-empty group returns `409 Conflict`. The indexed membership read and a
+parent registration fence prevent both cross-feature scans and registration-versus-deletion races.
+See the [ResourceGroups feature guide](../src/features/ResourceGroups/README.md).
 
 For an otherwise empty group, deletion completes synchronously. If runtime cells need
 cleanup, the group and all scopes/cells transition to deleting and the API returns `202`.

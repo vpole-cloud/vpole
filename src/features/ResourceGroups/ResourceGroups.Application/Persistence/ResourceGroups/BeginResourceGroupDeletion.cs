@@ -4,6 +4,7 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
 using Pole.Features.ResourceGroups.Application.Persistence.RuntimeCells;
+using Pole.Features.ResourceGroups.Application.Persistence.ResourceRegistrations;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
 
@@ -33,6 +34,7 @@ internal sealed class MongoBeginResourceGroupDeletion(
     IMongoCollection<ResourceGroup> resourceGroups,
     IMongoCollection<IsolationScope> isolationScopes,
     IMongoCollection<RuntimeCell> runtimeCells,
+    IMongoCollection<ResourceRegistration> resourceRegistrations,
     EnsureNoUnfinishedResourceGroupDeployments ensureNoUnfinishedDeployments,
     StoreOutboxWrites storeOutboxWrites,
     RunMongoOutcomeTransaction<BeginResourceGroupDeletionOutcome> runMongoTransaction,
@@ -61,7 +63,11 @@ internal sealed class MongoBeginResourceGroupDeletion(
                 throw new InvalidOperationException(
                     $"Resource group '{resourceGroupId}' has an unsupported lifecycle state.");
             }
-            if (resourceGroup.Resources.Count > 0)
+            if (await resourceRegistrations
+                .Find(
+                    transaction.Session,
+                    ResourceRegistrationFilters.ByResourceGroup(tenantId, resourceGroupId))
+                .AnyAsync(ct))
             {
                 return transaction.Abort(new BeginResourceGroupDeletionOutcome(
                     new ResourceGroupDeletionError(
@@ -100,10 +106,16 @@ internal sealed class MongoBeginResourceGroupDeletion(
                     transaction.Session,
                     IsolationScopeFilters.ByTenantAndResourceGroup(tenantId, resourceGroupId),
                     cancellationToken: ct);
-                await resourceGroups.DeleteOneAsync(
+                var deletion = await resourceGroups.DeleteOneAsync(
                     transaction.Session,
-                    ResourceGroupFilters.ByTenantAndId(tenantId, resourceGroupId),
+                    ResourceGroupFilters.AtRevisionAndRegistrationFence(resourceGroup),
                     cancellationToken: ct);
+                if (deletion.DeletedCount != 1)
+                {
+                    return transaction.Abort(new BeginResourceGroupDeletionOutcome(
+                        new ResourceGroupDeletionError(
+                            new ResourceGroupRevisionConflict(resourceGroupId))));
+                }
                 await storeOutboxWrites(
                     transaction.Session,
                     [OutboxWrite.Create(resourceGroup.ToDeleteEvent())],
@@ -118,10 +130,7 @@ internal sealed class MongoBeginResourceGroupDeletion(
                 var deletingGroup = resourceGroup.RequestDeletion(requestedAtUtc);
                 var write = await resourceGroups.ReplaceOneAsync(
                     transaction.Session,
-                    ResourceGroupFilters.ActiveAtRevision(
-                        tenantId,
-                        resourceGroupId,
-                        resourceGroup.Revision),
+                    ResourceGroupFilters.ActiveAtRevisionAndRegistrationFence(resourceGroup),
                     deletingGroup,
                     cancellationToken: ct);
                 if (write.ModifiedCount != 1)

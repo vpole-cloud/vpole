@@ -22,18 +22,22 @@ export interface Tenant {
   isDefault: boolean
 }
 
-export interface ShortResourceInfo {
-  id: string
-  name: string
-  type: string
-}
-
 export interface ResourceGroup {
   id: string
   name: string
   description: string
-  resources: ShortResourceInfo[]
+  resourceCount: number
   tags: string[]
+}
+
+export interface ResourceRegistration {
+  registrationId: string
+  resourceId: string
+  resourceTypeId: string
+  displayName: string
+  owningPluginId?: string | null
+  createdAtUtc: string
+  updatedAtUtc: string
 }
 
 export interface ImageInfo {
@@ -425,7 +429,7 @@ export interface WebServiceDeploymentUpdateInput {
 export type StorageMediaType = 'Unknown' | 'HDD' | 'SSD' | 'NVMe' | 'Network'
 export type StoragePerformanceTier = 'Standard' | 'Bulk' | 'Fast' | 'Ultra'
 export type StorageProfileTenantAccessMode = 'AllTenants' | 'SelectedTenants'
-export type PoleResourceType = 'WebService' | 'Redis' | 'Postgres'
+export type PoleResourceType = string
 
 export interface StorageProfileTenantAccess {
   mode: StorageProfileTenantAccessMode

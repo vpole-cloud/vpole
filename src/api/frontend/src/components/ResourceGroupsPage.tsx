@@ -160,7 +160,7 @@ export function ResourceGroupsPage({
                       </div>
                       <div className="list-row__secondary">
                         <span className="status-pill">
-                          {item.resources.length} resources
+                          {item.resourceCount} resources
                         </span>
                         <span className="list-row__meta">
                           {item.tags.length > 0 ? item.tags.join(', ') : 'No tags'}

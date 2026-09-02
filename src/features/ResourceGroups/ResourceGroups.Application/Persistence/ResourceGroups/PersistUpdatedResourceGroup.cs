@@ -44,10 +44,7 @@ internal sealed class MongoPersistUpdatedResourceGroup(
             {
                 var write = await resourceGroups.ReplaceOneAsync(
                     transaction.Session,
-                    ResourceGroupFilters.AtRevision(
-                        current.TenantId,
-                        current.Id,
-                        current.Revision),
+                    ResourceGroupFilters.AtRevisionAndRegistrationFence(current),
                     replacement,
                     cancellationToken: ct);
                 if (write.ModifiedCount != 1)
@@ -63,7 +60,6 @@ internal sealed class MongoPersistUpdatedResourceGroup(
                     replacement.Id,
                     replacement.Name,
                     replacement.Description,
-                    replacement.Resources,
                     changes,
                     replacement.Revision)
                 {

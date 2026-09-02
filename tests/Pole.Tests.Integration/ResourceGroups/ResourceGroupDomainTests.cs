@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
@@ -67,6 +68,47 @@ public sealed class ResourceGroupDomainTests
         Assert.Equal(resourceGroup.DefaultIsolationScopeId, updated.DefaultIsolationScopeId);
         Assert.Equal("after", updated.Description);
         Assert.Contains("production", updated.Tags);
+    }
+
+    [Fact]
+    public void ResourceRegistration_ValidatesTypeOwnership_AndRoundTripsBson()
+    {
+        var registration = ResourceRegistrationFactory.Create(
+            TenantId,
+            ResourceGroupId,
+            ResourceTypeId.Create("acme/database"),
+            "external-42",
+            "Orders database",
+            "acme",
+            new ResourceRegistrationFactory.CreateOptions(
+                ObjectId.GenerateNewId().ToString(),
+                CreatedAtUtc));
+
+        var roundTripped = BsonSerializer.Deserialize<ResourceRegistration>(
+            registration.ToBson());
+
+        Assert.Equal("acme/database", roundTripped.ResourceTypeId);
+        Assert.Equal("acme", roundTripped.OwningPluginId);
+        Assert.Throws<ArgumentException>(() => ResourceRegistrationFactory.Create(
+            TenantId,
+            ResourceGroupId,
+            ResourceTypeId.Create("other/database"),
+            "external-42",
+            "Orders database",
+            "acme",
+            new ResourceRegistrationFactory.CreateOptions(
+                ObjectId.GenerateNewId().ToString(),
+                CreatedAtUtc)));
+        Assert.Throws<ArgumentException>(() => ResourceRegistrationFactory.Create(
+            TenantId,
+            ResourceGroupId,
+            ResourceTypeId.Create("pole/redis"),
+            "external-42",
+            "Redis",
+            "pole",
+            new ResourceRegistrationFactory.CreateOptions(
+                ObjectId.GenerateNewId().ToString(),
+                CreatedAtUtc)));
     }
 
     [Fact]

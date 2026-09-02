@@ -187,7 +187,7 @@ module private UpdatePostgresClusterWorkflow =
                                     cluster.Spec.StorageProfileId,
                                     currentCompute.DeploymentTargetId,
                                     cluster.TenantId,
-                                    ResourceType.Postgres,
+                                    PostgresResourceDeployment.ResourceType,
                                     updatedStorage),
                                 cancellationToken)
 

@@ -13,6 +13,13 @@ public static class ResourceGroupHttpMappings
         [
             HttpProblemMapping.For<ResourceGroupOwnershipNotFound>(MapResourceGroupOwnershipNotFound),
             HttpProblemMapping.For<ResourceGroupOwnershipDeleting>(MapResourceGroupOwnershipDeleting),
+            HttpProblemMapping.For<ResourceRegistrationResourceGroupNotFound>(
+                error => ResourceGroupNotFoundProblem(error.ResourceGroupId)),
+            HttpProblemMapping.For<ResourceRegistrationResourceGroupDeleting>(
+                error => ResourceGroupDeletingProblem(error.ResourceGroupId)),
+            HttpProblemMapping.For<ResourceRegistrationIdentityConflict>(
+                MapResourceRegistrationIdentityConflict),
+            HttpProblemMapping.For<ResourceRegistrationNotFound>(MapResourceRegistrationNotFound),
             HttpProblemMapping.For<ResourceGroupNotFound>(MapResourceGroupNotFound),
             HttpProblemMapping.For<ResourceGroupDeleting>(MapResourceGroupDeleting),
             HttpProblemMapping.For<ResourceGroupRevisionConflict>(MapResourceGroupRevisionConflict),
@@ -53,6 +60,22 @@ public static class ResourceGroupHttpMappings
         "resource-groups.revision-conflict",
         "Resource group changed",
         ("resourceGroupId", conflict.ResourceGroupId));
+
+    private static HttpProblem MapResourceRegistrationIdentityConflict(
+        ResourceRegistrationIdentityConflict conflict) => Problem(
+        HttpStatusCode.Conflict,
+        "resource-groups.resource-registration.identity-conflict",
+        "Resource identity is already registered",
+        ("resourceTypeId", conflict.ResourceTypeId.Value),
+        ("resourceId", conflict.ResourceId));
+
+    private static HttpProblem MapResourceRegistrationNotFound(
+        ResourceRegistrationNotFound notFound) => Problem(
+        HttpStatusCode.NotFound,
+        "resource-groups.resource-registration.not-found",
+        "Resource registration not found",
+        ("resourceTypeId", notFound.ResourceTypeId.Value),
+        ("resourceId", notFound.ResourceId));
 
     private static HttpProblem MapResourceGroupContainsResources(
         ResourceGroupContainsResources conflict) => Problem(

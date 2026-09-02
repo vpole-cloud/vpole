@@ -1,7 +1,6 @@
 ﻿using System.Collections.Immutable;
 using MassTransit;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Shared.Models;
 
 namespace Pole.Features.ResourceGroups.Events;
 
@@ -10,7 +9,6 @@ public record ResourceGroupCreatedEvent(
     string ResourceGroupId,
     string Name,
     string Description,
-    ImmutableList<ShortResourceInfo> Resources,
     ImmutableHashSet<string> Tags,
     long ResourceRevision
 ) : IPoleEvent

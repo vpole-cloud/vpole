@@ -47,7 +47,7 @@ export function ResourceGroupList({
                 <p>{item.description || 'No description provided yet.'}</p>
               </div>
               <div className="list-row__secondary">
-                <span className="status-pill">{item.resources.length} resources</span>
+                <span className="status-pill">{item.resourceCount} resources</span>
                 <span className="list-row__meta">
                   {item.tags.length > 0 ? item.tags.join(', ') : 'No tags'}
                 </span>

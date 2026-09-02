@@ -9,6 +9,7 @@ import type {
   KubernetesStorageClass,
   PaginatedResponse,
   ResourceGroup,
+  ResourceRegistration,
   ResourceGroupInput,
   PoleResourceType,
   StorageProfile,
@@ -192,6 +193,29 @@ export async function fetchResourceGroups(
 ) {
   return fetchJson<PaginatedResponse<ResourceGroup>>(
     `${apiBaseUrl}/api/v1/resource-groups?pageNumber=1&pageSize=6`,
+    {
+      headers: buildHeaders(token, tenantId),
+      signal,
+    },
+  )
+}
+
+export async function fetchResourceGroupResources(
+  apiBaseUrl: string,
+  resourceGroupId: string,
+  pageNumber = 1,
+  pageSize = 20,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  const query = new URLSearchParams({
+    pageNumber: pageNumber.toString(),
+    pageSize: pageSize.toString(),
+  })
+
+  return fetchJson<PaginatedResponse<ResourceRegistration>>(
+    `${apiBaseUrl}/api/v1/resource-groups/${resourceGroupId}/resources?${query.toString()}`,
     {
       headers: buildHeaders(token, tenantId),
       signal,

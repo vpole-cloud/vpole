@@ -90,6 +90,11 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(TestData.DefaultStorageProfileId,
             deployment.ResolvedPlacement.Storage.StorageProfileId);
         Assert.Equal(1, deployment.DesiredGeneration);
+        var registration = await DbContext.ResourceRegistrations
+            .Find(item => item.ResourceId == savedCluster.Id)
+            .SingleAsync();
+        Assert.Equal(PostgresResourceDeployment.ResourceType.Value, registration.ResourceTypeId);
+        Assert.Equal(resourceGroup.Id, registration.ResourceGroupId);
 
         var persistedDocuments = await DbContext.Database
             .GetCollection<BsonDocument>(PostgresCredential.CollectionName)
@@ -494,7 +499,9 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
                 candidate.TenantId == TestData.TenantId &&
                 candidate.ResourceType ==
                     PostgresResourceDeployment.ResourceType.Value &&
-                candidate.ResourceId == cluster.Id));
+                    candidate.ResourceId == cluster.Id));
+        Assert.Equal(0L, await DbContext.ResourceRegistrations.CountDocumentsAsync(
+            registration => registration.ResourceId == cluster.Id));
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
             "postgres-cluster-deleted"));
     }

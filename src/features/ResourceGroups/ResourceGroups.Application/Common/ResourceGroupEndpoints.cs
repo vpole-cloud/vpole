@@ -17,6 +17,7 @@ public static class ResourceGroupEndpoints
                 .WithTags("ResourceGroups")
                 .MapCreateResourceGroupEndpoint()
                 .MapGetResourceGroupsEndpoint()
+                .MapGetResourceGroupResourcesEndpoint()
                 .MapIsolationScopeEndpoints()
                 .MapRuntimeCellEndpoints()
                 .MapUpdateResourceGroupEndpoint()

@@ -53,7 +53,7 @@ export function OverviewPage({
 }: OverviewPageProps) {
   const health = getPlatformHealth(overview.status, authState.authenticated)
   const totalResources = overview.data.resourceGroups.reduce(
-    (total, group) => total + group.resources.length,
+    (total, group) => total + group.resourceCount,
     0,
   )
 
