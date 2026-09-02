@@ -1,69 +1,44 @@
 ---
 name: pole-test-runner
-description: Test selection and execution workflow for Pole. Use when choosing which tests to add or run, debugging integration test failures, working with Testcontainers, Mongo replica set tests, API slice tests, manifest tests, live Kubernetes tests, or validating changes to backend features, infrastructure managers, observability, search, tenancy, or the frontend build.
+description: Select the smallest evidence-bearing checks for a Pole change and decide which test commands may run safely in parallel.
 ---
 
 # Pole Test Runner
 
-Use this skill to choose the cheapest useful validation boundary and run the right commands.
+Choose the cheapest boundary that proves the changed invariant. Do not treat a passing test at the wrong boundary as evidence.
 
-## First Steps
-
-1. Inspect the relevant feature and nearby implementation before editing.
-2. Read `docs/testing.md` before changing test strategy.
-3. Inspect nearby tests in `tests/Pole.Tests.Integration` before adding new fixtures or helpers.
-4. Use `$pole-aspire-local` and read `docs/aspire-local-development.md` only when production startup or a real cross-service workflow must be verified.
+Inspect the changed files, nearest tests, and the verified commands in `AGENTS.md`. Read `docs/testing.md` before changing test strategy or entering an infrastructure-backed lane. Identify the exact invariant each command will prove.
 
 ## Test Boundary
 
-- Prefer integration tests around handlers, mediator flows, Mongo persistence, transactions, pagination, and filtering.
-- Use API slice tests when HTTP routing, binding, auth, headers, or result mapping is the behavior under test.
-- Use manifest tests for Kubernetes object shape without requiring a live cluster.
-- Use live Kubernetes tests only for behavior that cannot be proven through generated manifests or fakes.
-- Use focused browser or frontend tests sparingly for key user journeys; do not expand them just to test backend contracts.
-- Keep the Testcontainers suite disposable and isolated from the long-running Aspire stack. Do not use production Hangfire or outbox workers to drive ordinary integration tests.
+- Domain and feature-local logic: run the owning `*.Tests` project when one exists.
+- Feature references, forbidden APIs, endpoint boundaries, or module composition: run `Pole.Tests.Architecture`.
+- Handlers, Mediator pipelines, Mongo persistence, transactions, pagination, filtering, API binding, auth, or result mapping: run focused `Pole.Tests.Integration` tests.
+- Kubernetes object shape: run manifest tests; these are not evidence for live apply/replace/delete behavior.
+- Kubernetes client behavior: use a small live-cluster test only when manifests or fakes cannot prove it.
+- Production DI, Keycloak, RabbitMQ, browser flows, or cross-service behavior: use Aspire E2E.
+- Frontend logic: run Vitest. TypeScript and production bundling: run the build. React and lint rules: run lint.
+- Documentation, skills, or agent guidance alone normally need structural validation and diff review, not application tests.
 
-## Commands
+An in-memory or standalone database is not evidence for Mongo transaction, replica-set, race, or concurrency behavior. A mocked HTTP boundary is not evidence for route binding or authentication middleware. A generated manifest is not evidence that a live cluster accepts or reconciles it.
 
-Run the integration suite from the repo root:
+## Execution
 
-```powershell
-dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj -maxcpucount:1 -nodeReuse:false
-```
+- Use the restore, build, infrastructure-free project, and frontend commands maintained in `AGENTS.md`.
+- Build the solution once before project-level .NET tests, then use `--no-build --no-restore`.
+- Use a focused filter in `Pole.Tests.Integration` when it proves the changed behavior; broaden to the complete suite when shared composition or persistence behavior changed.
+- Follow `docs/aspire-e2e-testing.md` for E2E prerequisites and isolation. Use `$pole-aspire-local` only for production startup wiring or a real cross-service workflow.
+- Do not claim an infrastructure lane passed when its prerequisites were unavailable.
 
-Run targeted filters:
+## Safe Parallelism
 
-```powershell
-dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter WebServiceKubernetesTests
-dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter PostgresKubernetesTests
-dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter RedisKubernetesTests
-```
+- Parallelism does not require subagents. The primary agent can launch independent commands concurrently and summarize their outputs.
+- Restore and build once before parallel .NET tests. Then use `--no-build --no-restore` on distinct test projects.
+- Do not run concurrent builds: projects share `bin` and `obj` outputs.
+- Do not split one test project into simultaneous filtered invocations.
+- Run `Pole.Tests.Integration`, Aspire E2E, live Kubernetes tests, and other shared external-resource lanes sequentially.
+- Consider Docker, CPU, memory, ports, namespaces, and persisted identities shared even when commands come from different agents.
 
-If ingress discovery needs a base URI:
+## Report
 
-```powershell
-$env:POLE_K8S_INGRESS_BASE_URI = 'http://<reachable-ingress-address>'
-dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter WebServiceKubernetesTests
-```
-
-For the frontend:
-
-```powershell
-Set-Location src/api/frontend
-npm run build
-```
-
-## Requirements
-
-- Docker must be running for Testcontainers.
-- MongoDB tests require the existing single-node replica set fixture; do not replace it with standalone Mongo.
-- Live Kubernetes tests require the current kubeconfig to point at a ready cluster.
-- Redis Kubernetes tests may require `POLE_K8S_REDIS_STORAGE_CLASS`.
-- Optional local cluster settings can live in `tests/Pole.Tests.Integration/testsettings.local.json`, which is gitignored.
-
-## Adding Tests
-
-- Use factory methods and `TestData` helpers rather than direct object construction.
-- Keep infrastructure fakes small and feature-specific.
-- Cover cross-tenant and outbox assertions for tenant-owned resource behavior.
-- For Kubernetes features, add or update manifest tests first, then add a small live cluster test only when necessary.
+Return the commands run, pass/fail counts, the first actionable failure, skipped checks with reasons, and the next check that would add meaningful evidence. Distinguish a test failure from an environment or sandbox failure.

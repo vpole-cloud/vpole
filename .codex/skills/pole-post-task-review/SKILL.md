@@ -1,17 +1,25 @@
 ---
 name: pole-post-task-review
-description: Post-implementation review workflow for Pole changes. Use after a task is otherwise complete and before final handoff, commit, push, or PR. Reviews the actual git diff and changed files for correctness, regressions, missing tests, tenant isolation, event/outbox reliability, Kubernetes resource behavior, frontend API alignment, and verification gaps.
+description: Review a completed Pole diff for correctness and verification gaps, either as self-review or as an independent read-only pre-publish review.
 ---
 
 # Pole Post-task Review
 
 Use this skill after implementation and targeted verification, before final response or publishing changes.
 
+## Review Mode
+
+- **Self-review:** The implementing agent inspects and corrects its own completed change before handoff.
+- **Independent pre-publish review:** A fresh built-in agent reviews a non-trivial code change before an authorized push or pull request. It is read-only, makes no fixes, and must not delegate to another agent.
+- **Review-only request:** When the user asks only for review, report findings without changing files.
+
+For independent review, use the supplied request or issue, approved plan when present, base branch or commit, diff target, test results, skipped checks, and known risks. Verify claims against the shared checkout and actual diff; treat the supplied summary as context rather than proof. If essential context is missing, resolve it read-only from the repository when possible and state any remaining uncertainty.
+
 ## Review Setup
 
-1. Run `git status --short` and inspect the changed file list.
-2. Run `git diff --stat` and the relevant `git diff -- <path>` slices.
-3. Read `docs/engineering-guidelines.md` and inspect the relevant feature and nearby implementation.
+1. Run `git status --short` and identify whether the review target is the working tree or a branch/commit range.
+2. Inspect the diff stat, complete changed-file list, and relevant diff slices against the supplied base.
+3. For code changes, read `docs/engineering-guidelines.md` and inspect the relevant feature and nearby implementation. For documentation, skills, or agent guidance, inspect the governing source and affected references instead.
 4. Identify the changed areas and load the matching focused skills only when relevant:
    - `$pole-tenant-scoping` for tenant-owned resources, auth, headers, Mongo filters, search tenant data, or frontend tenant flow.
    - `$pole-events-outbox` for events, outbox, consumers, trace/correlation, DNS reservation messages, or transaction boundaries.
@@ -47,7 +55,7 @@ Use the repo's normal code-review stance:
 5. Add a short verification note covering what was run and what was not run.
 6. If there are no findings, say that clearly and mention any residual test gaps or risk.
 
-## Self-review Mode
+## Self-review
 
 When this skill is used by the same agent that implemented the task:
 
@@ -56,6 +64,6 @@ When this skill is used by the same agent that implemented the task:
 - Report only unresolved findings, verification gaps, and material follow-up risks in the final handoff.
 - Do not hide meaningful review findings just because they were found late.
 
-## Review-only Mode
+## Independent Or Review-only
 
-When the user explicitly asks for a review, do not make code changes unless asked. Provide findings first, then questions, then a brief summary.
+Do not edit files, commit, push, publish, or spawn more agents. Provide findings first, then questions or assumptions, then a brief verification summary. A clean review must say so explicitly and retain any residual risk or unavailable test lane.

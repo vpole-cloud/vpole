@@ -37,7 +37,7 @@ Keycloak's management interface uses HTTP locally for Aspire readiness checks. T
 2. Start the AppHost from the repository root:
 
    ```powershell
-   aspire run --project src/api/Pole.AppHost/Pole.AppHost.csproj
+   aspire run --apphost src/api/Pole.AppHost/Pole.AppHost.csproj
    ```
 
 3. Select this AppHost in Aspire MCP if more than one AppHost is detected.

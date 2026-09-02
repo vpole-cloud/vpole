@@ -15,3 +15,4 @@ riderModule.iml
 tests/Pole.Tests.Integration/testsettings.local.json
 tests/Pole.Tests.E2E/testsettings.local.json
 aspire.config.json
+.codex/notes/

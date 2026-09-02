@@ -1,32 +1,26 @@
 ---
 name: pole-tenant-scoping
-description: Guardrails for adding, changing, or reviewing tenant-scoped behavior in Pole. Use when editing tenant-owned resource APIs, request models, mediator handlers, Mongo filters, consumers, search projections, frontend tenant header behavior, or tests involving `X-Pole-Tenant-ID`, `TenantId`, tenant roles, or platform-admin access.
+description: Preserve Pole tenant isolation across APIs, persistence, contracts, events, projections, consumers, and frontend tenant selection.
 ---
 
 # Pole Tenant Scoping
 
 Use this skill to prevent cross-tenant data leaks and inconsistent tenant authorization in Pole.
 
-## First Steps
-
-1. Inspect the relevant feature and nearby implementation before editing.
-2. Read `docs/multitenancy.md` for the canonical model and request flow.
-3. Compare against nearby implemented features before inventing a new pattern.
+Read `docs/multitenancy.md`, the owning feature README, and the nearest tenant-scoped endpoint and persistence operation. Determine tenant ownership from the current feature contract instead of maintaining a global resource-name list in this skill.
 
 ## Core Rules
 
-- Treat these documents as tenant-owned unless the task explicitly says otherwise: `ResourceGroup`, `WebService`, `Redis`, `PostgresCluster`, `DnsRecord`, `SearchDocument`, `SearchSourceDocument`, and `OutboxMessage`.
-- Add or preserve `TenantId` on tenant-owned domain documents, snapshots, search projections, and outbox records.
+- Preserve `TenantId` on tenant-owned domain documents, contract snapshots, search projections, events, and outbox records.
 - Accept the active tenant through `[FromHeader(Name = TenantHeaders.TenantId)]` in C# or `[<FromHeader(Name = TenantHeaders.TenantId)>]` in F#.
 - Mark mediator requests with `ITenantReadOperation`, `ITenantWriteOperation`, or `ITenantCreateOperation`. Create operations require a concrete tenant id.
 - Combine resource identity filters with tenant filters. Prefer `Builders<T>.Filter.ForTenant(request.TenantId)` plus the resource-specific predicate.
-- Validate cross-resource references inside the same tenant. For resources placed into resource groups, use `IResourceGroupLookup.GetPlacementAsync(tenantId, resourceGroupId, cancellationToken)`.
+- Resolve cross-feature references through provider-owned tenant-aware Contracts; never read another feature's collection directly.
 - Preserve tenant context in events with `EventCore.Create(tenantId)`. Consumers should read `context.Message.EventCore.TenantId` instead of trusting a stale ambient request.
-- Remember the platform-admin nuance: platform admins can run some reads or updates without tenant membership, so handlers still need explicit tenant-aware filters and careful broad-scope behavior.
+- Platform-admin authorization can bypass membership checks for permitted operations; it never permits an unscoped tenant-data query. Keep tenant filters explicit unless the endpoint intentionally exposes a platform-wide view.
 
 ## API And Frontend
 
-- Resource routes under `/api/v1/resource-groups`, `/api/v1/web-services`, `/api/v1/redis-services`, `/api/v1/postgres`, `/api/v1/domain-names`, and `/api/v1/search` are tenant-scoped.
 - The SPA sends `X-Pole-Tenant-ID` from the active tenant stored under `pole.activeTenantId`.
 - Tenant listing and auth-provider calls should not require a tenant header unless the backend endpoint requires it.
 - When adding a frontend API call for a tenant-owned resource, thread `tenantId` through `api.ts`, the hook, and the page component.
@@ -41,4 +35,4 @@ Cover the cheapest boundary that proves the tenant rule:
 - Reads, updates, deletes, and consumers do not touch another tenant's documents.
 - Search and outbox projections carry the correct `TenantId`.
 
-Use `tests/Pole.Tests.Integration` patterns and run targeted filters before the full suite when possible.
+Use `$pole-test-runner` to select the smallest API, persistence, consumer, or frontend checks that prove the tenant boundary.

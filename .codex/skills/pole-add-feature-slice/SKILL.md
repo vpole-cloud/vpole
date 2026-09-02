@@ -1,55 +1,27 @@
 ---
 name: pole-add-feature-slice
-description: End-to-end workflow for adding or extending a Pole feature slice. Use when creating a new resource type or significant capability across domain models, application endpoints, events, contracts, Mongo context, dependency injection, API mapping, search projection, Kubernetes reconciliation, tests, and optional frontend integration in this modular monolith.
+description: Implement a Pole capability that spans multiple feature layers, such as domain, persistence, API, contracts or events, reconciliation, search, or frontend.
 ---
 
 # Pole Feature Slice
 
-Use this skill when a change crosses more than one layer of a Pole feature.
+Read `docs/engineering-guidelines.md`, `docs/module-boundaries.md`, and the owning feature README. Inspect the closest feature with the same architectural needs; feature folders are capability-shaped and do not all contain the same projects.
 
-## First Steps
+## Design The Boundary
 
-1. Inspect the relevant feature and nearby implementation before editing.
-2. Read `docs/engineering-guidelines.md`, `docs/architecture_overview.md`, and the relevant focused docs: `docs/multitenancy.md`, `docs/observability.md`, `docs/search.md`, or `docs/testing.md`.
-3. Inspect the closest existing feature before adding new structure.
+- Decide which feature owns the behavior and data before choosing files.
+- Add only the project roles the capability needs: Domain and Application, plus optional Primitives, Contracts, Contracts.HttpMapping, Events, Runtime, or Tests as defined in `docs/module-boundaries.md`.
+- Use provider-owned Contracts for synchronous cross-feature capabilities and provider-owned Events for asynchronous integration. Do not reference another feature's Domain or Application.
+- Keep persistence feature-owned under Application. Expose narrow operations or provider contracts and register their Mongo implementations; do not introduce a central feature context or general `MongoDbContext`.
+- Let expected business outcomes remain typed. Let unexpected infrastructure and cancellation exceptions reach the standard exception path.
 
-## Current Shape
+## Implement The Slice
 
-- Feature projects live under `src/features/<Feature>/<Feature>.(Domain|Application|Events|Contracts)`.
-- C# feature examples: `WebServices`, `RedisServices`, `ResourceGroups`, `DnsRecords`, `Users`, `Tenants`.
-- F# feature examples: `Postgres`, `Search`.
-- Shared primitives live under `src/shared`, including mediator, multitenancy, database, observability, events, result types, ASP helpers, Kubernetes helpers, and models.
-- API composition happens in `src/api/Pole.Server/Extensions/DependencyInjection.cs` and `src/api/Pole.Server/Extensions/MapApi.cs`.
+1. Model valid states and transitions in Domain, using factories or methods that preserve invariants.
+2. Add feature-owned persistence operations, migrations, indexes, and transaction boundaries. Join a caller-owned session only when a published contract requires atomic cross-feature work.
+3. Keep one Minimal API endpoint, its transport types, validator, and Mediator handler in one endpoint file.
+4. Persist integration events through `Outbox.Contracts` in the same Mongo transaction as the mutation. Run external side effects from consumers after commit.
+5. Register feature services, mappings, migrations, and consumers through the feature registration entry point; keep `Pole.Server` as composition only.
+6. Add search, Kubernetes, or frontend support only when the user workflow requires it.
 
-## Backend Workflow
-
-1. Define or update the domain model with factory methods. Prefer existing factory patterns over direct construction.
-2. Add DTOs and mapping extensions in the feature application `Common` folder.
-3. Add one Minimal API endpoint per file, keeping its route mapping, request/response types, validator, and Mediator handler together. Group endpoint files in `Endpoints` subfolders when useful. Keep command handlers transactional where they mutate state.
-4. Add events in the feature `Events` project and extension/factory methods that create `EventCore` correctly.
-5. Store events in the outbox inside the same Mongo transaction as the mutation.
-6. Add consumers for asynchronous side effects such as Kubernetes reconciliation, search indexing, or follow-up domain workflows.
-7. Update context interfaces and `MongoDbContext` only for collections the feature owns.
-8. Register services, validators, migrations, consumers, settings, and endpoint mapping in the server composition layer.
-
-## Cross-Feature Rules
-
-- Use contracts for narrow cross-feature access. Current examples include `IResourceGroupLookup` and `IDomainNameReservationService`.
-- Return `Result` for expected, meaningful business outcomes. Let MongoDB availability and driver exceptions propagate to the global exception handler; do not wrap every persistence call in a generic failure result.
-- Use `Result<bool>` only when the boolean is a meaningful successful answer. For a command guard, prefer an intention-revealing `Task<Result>` contract whose success means the guard passed and whose `Conflict` means it did not.
-- Do not expose another feature's aggregate collection through a consuming feature context just to validate placement or ownership.
-- For tenant-owned resources, load referenced resource groups through `IResourceGroupLookup.GetPlacementAsync`.
-- For DNS names, preserve the DNS-owned reservation flow and global domain uniqueness.
-- Keep tenant authorization, outbox reliability, and search projection requirements visible in the first implementation pass.
-
-## Search And Frontend
-
-- If the resource should appear in global search, update `docs/search.md` assumptions if behavior changes, add source/projection documents, and add create/update/delete consumers.
-- If the resource appears in the SPA, update `src/api/frontend/src/types.ts`, `api.ts`, hooks, pages/components, and active tenant header flow together.
-
-## Tests
-
-- Add integration tests for persistence, transaction behavior, pagination/filtering, tenant scope, and outbox messages.
-- Add manifest tests before live Kubernetes tests for infrastructure-backed resources.
-- Add API slice tests for route binding, auth/header behavior, or HTTP result mapping.
-- Run targeted tests first through `$pole-test-runner`, then the integration suite when the blast radius is broad.
+Load the focused Pole skill when the slice touches tenant scoping, outbox delivery, Kubernetes resources, or the frontend. Use `$pole-test-runner` to select tests that prove each changed boundary, and add manifest tests before live-cluster checks.

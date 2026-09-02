@@ -1,4 +1,4 @@
 interface:
   display_name: "Pole Post-task Review"
   short_description: "Review completed Pole changes"
-  default_prompt: "Use $pole-post-task-review to review completed Pole changes before final handoff."
+  default_prompt: "Use $pole-post-task-review to self-review or independently review completed Pole changes."
