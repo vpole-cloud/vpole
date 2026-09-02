@@ -44,7 +44,7 @@ Override `LocalSourceBuilds:HarborBaseUrl`, `HarborRegistryHost`, or `BuildKitAd
 1. Start the AppHost and inspect resources:
 
    ```powershell
-   aspire run --project src/api/Pole.AppHost/Pole.AppHost.csproj
+   aspire run --apphost src/api/Pole.AppHost/Pole.AppHost.csproj
    ```
 
 2. Explicitly start `pole-harbor` and `pole-buildkit` in the Aspire dashboard.
