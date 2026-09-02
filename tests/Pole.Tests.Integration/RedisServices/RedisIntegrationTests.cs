@@ -102,6 +102,11 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             .Find(message => message.EventType == "redis-service-created")
             .SingleAsync();
         Assert.Equal(TestData.TenantId, outbox.TenantId);
+        var registration = await DbContext.ResourceRegistrations
+            .Find(item => item.ResourceId == savedRedis.Id)
+            .SingleAsync();
+        Assert.Equal(RedisResourceDeployment.ResourceType.Value, registration.ResourceTypeId);
+        Assert.Equal(resourceGroup.Id, registration.ResourceGroupId);
     }
 
     [Fact]
@@ -666,6 +671,8 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
                 candidate.TenantId == TestData.TenantId &&
                 candidate.ResourceType == RedisResourceDeployment.ResourceType.Value &&
                 candidate.ResourceId == created.RedisId));
+        Assert.Equal(0L, await DbContext.ResourceRegistrations.CountDocumentsAsync(
+            registration => registration.ResourceId == created.RedisId));
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
             "redis-service-deleted"));
         var outbox = await DbContext.OutboxMessages

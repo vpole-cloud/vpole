@@ -1,5 +1,6 @@
 using Pole.Features.Domains.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
 
 namespace Pole.Features.WebServices.Application.Persistence;
 
@@ -9,4 +10,5 @@ namespace Pole.Features.WebServices.Application.Persistence;
 /// </summary>
 public union WebServiceFinalizationError(
     HostnameBindingCleanupError,
-    ResourceDeploymentFinalizationConflict);
+    ResourceDeploymentFinalizationConflict,
+    ResourceRegistrationMutationError);

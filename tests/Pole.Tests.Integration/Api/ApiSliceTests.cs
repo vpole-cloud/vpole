@@ -205,7 +205,7 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
                         TestData.DefaultDeploymentTargetId,
                         "fast")
                 ],
-                AllowedResourceTypes: ["Redis", "Postgres"],
+                AllowedResourceTypes: ["pole/redis", "pole/postgresql"],
                 TenantAccess: new StorageProfileTenantAccessDto("AllTenants", []),
                 SizeLimits: new StorageProfileSizeLimitsDto(1, 100)));
 

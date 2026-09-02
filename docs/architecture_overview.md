@@ -44,6 +44,11 @@ owns one default `IsolationScope`; a `RuntimeCell` materializes a scope in one
 `DeploymentTarget` and owns that cluster's Kubernetes namespace. Runtime cells are created
 lazily through a caller-owned Mongo transaction, then reconciled through the durable outbox.
 
+Cross-feature group membership is represented by ResourceGroups-owned `ResourceRegistration`
+documents keyed by stable `ResourceTypeId` values. Resource owners mutate registrations in their
+own Mongo transactions, so ResourceGroups does not reference concrete workload modules and can
+list or guard deletion without N+1 cross-feature queries.
+
 WebService, Redis, PostgreSQL, and Functions persist their logical-to-physical binding in
 `ResourceDeployment`, including the target, runtime cell, namespace, resolved storage/ingress,
 and an immutable compute snapshot. See [workload placement](workload-placement.md) for ownership,

@@ -1,5 +1,3 @@
-using Pole.Features.Shared.Models;
-
 namespace Pole.Features.ResourceGroups.Application.Common;
 
 public sealed record ResourceGroupDto(
@@ -11,12 +9,15 @@ public sealed record ResourceGroupDto(
     long Revision,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
-    IEnumerable<ShortResourceInfoDto> Resources,
+    long ResourceCount,
     IEnumerable<string> Tags
 );
 
-public sealed record ShortResourceInfoDto(
-    string Id,
-    string Name,
-    ResourceType Type
-);
+public sealed record ResourceRegistrationDto(
+    string RegistrationId,
+    string ResourceId,
+    string ResourceTypeId,
+    string DisplayName,
+    string? OwningPluginId,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc);

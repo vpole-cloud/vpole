@@ -29,7 +29,7 @@ interface StorageSettingsPageProps {
 
 const mediaTypes: StorageMediaType[] = ['Unknown', 'HDD', 'SSD', 'NVMe', 'Network']
 const performanceTiers: StoragePerformanceTier[] = ['Standard', 'Bulk', 'Fast', 'Ultra']
-const resourceTypes: PoleResourceType[] = ['WebService', 'Redis', 'Postgres']
+const resourceTypes: PoleResourceType[] = ['pole/redis', 'pole/postgresql']
 
 const parseList = (value: string) =>
   value
@@ -378,7 +378,7 @@ function StorageProfileForm({
     initialValue?.storageClassNames.join(', ') ?? defaultStorageClassName,
   )
   const [allowedResourceTypes, setAllowedResourceTypes] = useState<PoleResourceType[]>(
-    initialValue?.allowedResourceTypes ?? ['Redis', 'Postgres'],
+    initialValue?.allowedResourceTypes ?? ['pole/redis', 'pole/postgresql'],
   )
   const [tenantAccessMode, setTenantAccessMode] =
     useState<StorageProfileTenantAccessMode>(

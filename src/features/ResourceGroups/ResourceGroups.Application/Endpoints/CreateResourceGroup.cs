@@ -81,7 +81,7 @@ public sealed class CreateResourceGroupHandler(
             resourceGroup,
             defaultScope,
             cancellationToken);
-        return persisted.ToDto();
+        return persisted.ToDto(resourceCount: 0);
     }
 }
 

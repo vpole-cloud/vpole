@@ -113,6 +113,11 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal("webhook", httpRoute.HandlerName);
         Assert.Equal(FunctionExposure.Public, httpRoute.Exposure);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("function-app-created"));
+        var registration = await DbContext.ResourceRegistrations
+            .Find(item => item.ResourceId == created.FunctionAppId)
+            .SingleAsync();
+        Assert.Equal(FunctionResourceDeployment.ResourceType.Value, registration.ResourceTypeId);
+        Assert.Equal(group.Id, registration.ResourceGroupId);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("function-revision-promoted"));
         var timer = await DbContext.FunctionTimerStates
             .Find(candidate => candidate.FunctionAppId == created.FunctionAppId)
@@ -536,6 +541,8 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             item => item.FunctionAppId == created.FunctionAppId));
         Assert.Equal(0L, await DbContext.ResourceDeployments.CountDocumentsAsync(
             item => item.Id == deployment.Id));
+        Assert.Equal(0L, await DbContext.ResourceRegistrations.CountDocumentsAsync(
+            registration => registration.ResourceId == created.FunctionAppId));
     }
 
     private static async Task<FunctionRevisionLifecycleOutcome> MarkReadyAndPromoteAsync(

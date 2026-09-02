@@ -9,19 +9,7 @@ public sealed class ModuleBoundaryArchitectureTests
         TemporaryProjectReferenceAllowlist = [];
 
     private static readonly IReadOnlyList<DocumentedProjectException>
-        TemporarySharedProjectReferenceAllowlist =
-        [
-            DocumentedProjectException.Create(
-                "StorageProfiles.Contracts",
-                "Models",
-                "The legacy ResourceType model is pending replacement.",
-                "#53"),
-            DocumentedProjectException.Create(
-                "ResourceGroups.Events",
-                "Models",
-                "ResourceGroup.Resources still uses the legacy shared resource model.",
-                "#53")
-        ];
+        TemporarySharedProjectReferenceAllowlist = [];
 
     private static readonly IReadOnlyList<DocumentedSourceException>
         TemporaryIntegrationEventPlacementAllowlist = [];

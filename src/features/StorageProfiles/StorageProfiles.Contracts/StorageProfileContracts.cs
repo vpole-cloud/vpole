@@ -1,7 +1,7 @@
 using MongoDB.Driver;
-using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Primitives;
 using Pole.ResultType;
+using Pole.Workloads;
 
 namespace Pole.Features.StorageProfiles.Contracts;
 
@@ -42,7 +42,7 @@ public sealed record StorageProfileResolutionRequest(
     string StorageProfileId,
     string DeploymentTargetId,
     string TenantId,
-    ResourceType ResourceType,
+    ResourceTypeId ResourceType,
     int SizeGb
 );
 
@@ -56,7 +56,7 @@ public sealed record StorageProfileTenantAccessDenied(
 
 public sealed record StorageProfileResourceTypeNotAllowed(
     string StorageProfileId,
-    ResourceType ResourceType);
+    ResourceTypeId ResourceType);
 
 public sealed record StorageProfileSizeNotAllowed(
     string StorageProfileId,

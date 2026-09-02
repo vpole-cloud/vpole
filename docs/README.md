@@ -53,6 +53,7 @@ requirement when adding or changing one feature.
 
 ## Feature documentation
 
+- [Resource groups and resource registrations](../src/features/ResourceGroups/README.md)
 - [Pole Functions](../src/features/Functions/README.md)
 - [Compute profiles](../src/features/ComputeProfiles/README.md)
 - [PostgreSQL clusters](../src/features/Postgres/README.md)

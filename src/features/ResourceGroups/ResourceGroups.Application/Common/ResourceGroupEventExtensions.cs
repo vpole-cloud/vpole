@@ -13,7 +13,6 @@ internal static class ResourceGroupEventExtensions
                 resourceGroup.Id,
                 resourceGroup.Name,
                 resourceGroup.Description,
-                resourceGroup.Resources,
                 resourceGroup.Tags,
                 resourceGroup.Revision)
             {
@@ -25,7 +24,6 @@ internal static class ResourceGroupEventExtensions
                 resourceGroup.Id,
                 resourceGroup.Name,
                 resourceGroup.Description,
-                resourceGroup.Resources,
                 resourceGroup.Tags,
                 resourceGroup.Revision)
             {

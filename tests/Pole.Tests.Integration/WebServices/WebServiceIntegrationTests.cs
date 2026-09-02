@@ -50,6 +50,12 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(1, await Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings")
             .CountDocumentsAsync(binding => binding.ResourceDeploymentId == deployment.DeploymentId));
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("web-service-created"));
+        var registration = await DbContext.ResourceRegistrations
+            .Find(item => item.ResourceId == service.Id)
+            .SingleAsync();
+        Assert.Equal(WebServiceResourceDeployment.ResourceType.Value, registration.ResourceTypeId);
+        Assert.Equal(group.Id, registration.ResourceGroupId);
+        Assert.Equal(service.Name, registration.DisplayName);
     }
 
     [Fact]
@@ -561,6 +567,8 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(0, await Fixture.Database
             .GetCollection<HostnameBinding>("HostnameBindings")
             .CountDocumentsAsync(binding => binding.ResourceId == created.WebServiceId));
+        Assert.Equal(0, await DbContext.ResourceRegistrations
+            .CountDocumentsAsync(item => item.ResourceId == created.WebServiceId));
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
             "web-service-deleted"));
         var deletionMessage = await DbContext.OutboxMessages

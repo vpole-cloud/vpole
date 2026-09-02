@@ -49,6 +49,14 @@ When testing source builds, explicitly start `pole-harbor` and `pole-buildkit` b
 
 On Windows, stop the `pole-server` Aspire resource before building projects that replace its loaded assemblies. Restart it after the build. A running server can lock output DLLs and cause misleading build failures.
 
+## Resetting data after a schema-breaking change
+
+Issue #54 intentionally provides no backfill for embedded ResourceGroup resources or legacy
+Storage Profile enum values. For a development environment created before that change, stop the
+AppHost and remove the persistent `pole-mongo-data` Docker volume, then restart the AppHost. This
+deletes all local Pole Mongo data and cannot be undone; do not use this procedure for an environment
+whose data must be retained.
+
 For an isolated, disposable AppHost graph with real Keycloak authentication and a browser smoke path, see [Aspire E2E testing](aspire-e2e-testing.md). That profile deliberately uses random host ports and session-scoped containers, rather than the persistent local-development data volumes.
 
 ## Validation Boundaries

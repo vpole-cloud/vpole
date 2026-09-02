@@ -22,12 +22,31 @@ internal static class ResourceGroupFilters
             ByTenantAndId(tenantId, resourceGroupId),
             Builders<ResourceGroup>.Filter.Eq(group => group.Revision, revision));
 
+    public static FilterDefinition<ResourceGroup> AtRevisionAndRegistrationFence(
+        ResourceGroup resourceGroup) =>
+        Builders<ResourceGroup>.Filter.And(
+            AtRevision(
+                resourceGroup.TenantId,
+                resourceGroup.Id,
+                resourceGroup.Revision),
+            Builders<ResourceGroup>.Filter.Eq(
+                group => group.RegistrationFence,
+                resourceGroup.RegistrationFence));
+
     public static FilterDefinition<ResourceGroup> ActiveAtRevision(
         string tenantId,
         string resourceGroupId,
         long revision) =>
         Builders<ResourceGroup>.Filter.And(
             AtRevision(tenantId, resourceGroupId, revision),
+            Builders<ResourceGroup>.Filter
+                .OfType<ResourceGroupLifecycleState, ActiveResourceGroupLifecycleState>(
+                    group => group.Lifecycle));
+
+    public static FilterDefinition<ResourceGroup> ActiveAtRevisionAndRegistrationFence(
+        ResourceGroup resourceGroup) =>
+        Builders<ResourceGroup>.Filter.And(
+            AtRevisionAndRegistrationFence(resourceGroup),
             Builders<ResourceGroup>.Filter
                 .OfType<ResourceGroupLifecycleState, ActiveResourceGroupLifecycleState>(
                     group => group.Lifecycle));
@@ -49,17 +68,6 @@ internal static class ResourceGroupFilters
             Builders<ResourceGroup>.Filter
                 .OfType<ResourceGroupLifecycleState, DeletingResourceGroupLifecycleState>(
                     group => group.Lifecycle));
-
-    public static FilterDefinition<ResourceGroup> WithoutResource(
-        string tenantId,
-        string resourceGroupId,
-        string resourceId) =>
-        Builders<ResourceGroup>.Filter.And(
-            ByTenantAndId(tenantId, resourceGroupId),
-            Builders<ResourceGroup>.Filter.Not(
-                Builders<ResourceGroup>.Filter.ElemMatch(
-                    group => group.Resources,
-                    resource => resource.Id == resourceId)));
 
     public static FilterDefinition<ResourceGroup> Search(
         string tenantId,

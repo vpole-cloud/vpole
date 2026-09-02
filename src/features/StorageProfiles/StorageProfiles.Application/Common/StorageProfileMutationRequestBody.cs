@@ -1,9 +1,9 @@
 using FluentValidation;
 using Pole.Validation;
 using MongoDB.Bson;
-using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
+using Pole.Workloads;
 
 namespace Pole.Features.StorageProfiles.Application.Common;
 
@@ -58,7 +58,7 @@ public abstract class StorageProfileMutationRequestBodyValidator<TBody>
             .NotNull()
             .NotEmpty();
         RuleForEach(body => body.AllowedResourceTypes)
-            .Must(BeDefinedEnumValue<ResourceType>)
+            .Must(value => ResourceTypeId.TryCreate(value, out _))
             .WithMessage("Allowed resource type is invalid.");
 
         RuleFor(body => body.TenantAccess)

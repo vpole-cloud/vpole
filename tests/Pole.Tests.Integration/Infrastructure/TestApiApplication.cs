@@ -292,6 +292,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         await new DeploymentTargetMigration().Up(fixture.Database);
         await new DeploymentTargetReferenceMigration().Up(fixture.Database);
         await new ResourceGroupPlacementMigration().Up(fixture.Database);
+        await new ResourceRegistrationMigration().Up(fixture.Database);
         await new ResourceDeploymentMigration().Up(fixture.Database);
         await new ResourceDeploymentSchemaValidationMigration().Up(fixture.Database);
         await new WebServiceReleaseSchemaValidationMigration().Up(fixture.Database);

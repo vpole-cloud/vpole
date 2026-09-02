@@ -10,7 +10,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\StorageProfiles.Primitives\StorageProfiles.Primitives.csproj" />
-      <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
+      <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
     </ItemGroup>
 
     <ItemGroup>

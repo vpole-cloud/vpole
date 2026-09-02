@@ -1,11 +1,11 @@
 using MongoDB.Driver;
 using Microsoft.Extensions.DependencyInjection;
-using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
+using Pole.Workloads;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
 
@@ -32,7 +32,7 @@ public sealed class StorageProfileResolutionFenceTests(
             isEnabled: true,
             isDefault: false,
             [StorageProfileTargetMapping.Create(TargetId, "fast")],
-            [ResourceType.Redis],
+            [ResourceTypeId.Create("pole/redis")],
             StorageProfileTenantAccess.Create(
                 StorageProfileTenantAccessMode.AllTenants,
                 []),
@@ -66,7 +66,7 @@ public sealed class StorageProfileResolutionFenceTests(
             isEnabled: true,
             isDefault: false,
             [StorageProfileTargetMapping.Create(TargetId, "fast")],
-            [ResourceType.Redis],
+            [ResourceTypeId.Create("pole/redis")],
             StorageProfileTenantAccess.Create(
                 StorageProfileTenantAccessMode.AllTenants,
                 []),

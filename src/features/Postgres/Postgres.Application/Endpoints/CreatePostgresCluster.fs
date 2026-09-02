@@ -20,6 +20,7 @@ open Pole.Features.Postgres.Application.Persistence.Mutations
 open Pole.Features.Postgres.Domain
 open Pole.Features.Quotas.Contracts
 open Pole.Features.ResourceDeployments.Contracts
+open Pole.Features.ResourceGroups.Contracts
 open Pole.Features.Shared.Models
 open Pole.Features.StorageProfiles.Contracts
 open Pole.Mediator
@@ -48,6 +49,7 @@ type CreatePostgresClusterError =
     | CreateStorage of StorageProfileResolutionError
     | CreateCredential of PostgresCredentialError
     | CreateDeployment of CreateResourceDeploymentError
+    | CreateRegistration of ResourceRegistrationMutationError
     | CreateQuota of QuotaExecutionError
     interface IUnion with
         member this.Value =
@@ -58,6 +60,7 @@ type CreatePostgresClusterError =
             | CreateStorage error -> box error
             | CreateCredential error -> box error
             | CreateDeployment error -> box error
+            | CreateRegistration error -> box error
             | CreateQuota error -> box error
 
 type CreatePostgresClusterOutcome =
@@ -167,7 +170,7 @@ module private CreatePostgresClusterWorkflow =
                                 request.Body.StorageProfileId,
                                 target.Id,
                                 request.TenantId,
-                                ResourceType.Postgres,
+                                PostgresResourceDeployment.ResourceType,
                                 requestedStorage),
                             cancellationToken)
 
@@ -224,6 +227,7 @@ module private CreatePostgresClusterWorkflow =
     let execute
         (quotaAdmissionExecutor : IQuotaAdmissionExecutor)
         (persistCreatedCluster : PersistCreatedPostgresCluster)
+        (registerResource : RegisterResource)
         (createResourceDeployment : CreateResourceDeployment)
         (plan : CreatePostgresClusterPlan)
         cancellationToken =
@@ -244,37 +248,55 @@ module private CreatePostgresClusterWorkflow =
                             plan.Credential,
                             ct)
 
-                    let! deploymentResult =
-                        createResourceDeployment.Invoke(
-                            CreateResourceDeploymentRequest(
-                                plan.DeploymentId,
-                                plan.Cluster.TenantId,
+                    let! registrationResult =
+                        registerResource.Invoke(
+                            plan.Cluster.TenantId,
+                            plan.Cluster.GroupId,
+                            ResourceRegistrationDescriptor(
                                 PostgresResourceDeployment.ResourceType,
                                 plan.Cluster.Id,
-                                plan.Cluster.GroupId,
-                                plan.IsolationScopeId |> Option.toObj,
-                                plan.Target,
-                                plan.Compute,
-                                plan.Storage,
-                                ResourcePlacementCapability.SingleTarget),
+                                plan.Cluster.Name),
                             transaction.Session,
                             ct)
 
-                    match TypedResultInterop.toResult deploymentResult with
+                    match TypedResultInterop.toResult registrationResult with
                     | Error error ->
                         return
                             transaction.Abort(
-                                CreatePostgresClusterRejected(CreateDeployment error))
-                    | Ok deployment ->
-                        return
-                            transaction.Commit(
-                                PostgresClusterDto.create plan.Cluster deployment
-                                |> PostgresClusterCreated)
+                                CreatePostgresClusterRejected(CreateRegistration error))
+                    | Ok _ ->
+                        let! deploymentResult =
+                            createResourceDeployment.Invoke(
+                                CreateResourceDeploymentRequest(
+                                    plan.DeploymentId,
+                                    plan.Cluster.TenantId,
+                                    PostgresResourceDeployment.ResourceType,
+                                    plan.Cluster.Id,
+                                    plan.Cluster.GroupId,
+                                    plan.IsolationScopeId |> Option.toObj,
+                                    plan.Target,
+                                    plan.Compute,
+                                    plan.Storage,
+                                    ResourcePlacementCapability.SingleTarget),
+                                transaction.Session,
+                                ct)
+
+                        match TypedResultInterop.toResult deploymentResult with
+                        | Error error ->
+                            return
+                                transaction.Abort(
+                                    CreatePostgresClusterRejected(CreateDeployment error))
+                        | Ok deployment ->
+                            return
+                                transaction.Commit(
+                                    PostgresClusterDto.create plan.Cluster deployment
+                                    |> PostgresClusterCreated)
                 }),
             cancellationToken)
 
 type CreatePostgresClusterHandler(
     persistCreatedCluster : PersistCreatedPostgresCluster,
+    registerResource : RegisterResource,
     resolveStorageProfile : ResolveStorageProfile,
     createCredential : CreatePostgresCredential,
     settings : PostgresSettings,
@@ -303,6 +325,7 @@ type CreatePostgresClusterHandler(
                         CreatePostgresClusterWorkflow.execute
                             quotaAdmissionExecutor
                             persistCreatedCluster
+                            registerResource
                             createResourceDeployment
                             plan
                             cancellationToken

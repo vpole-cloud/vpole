@@ -1,7 +1,6 @@
 ﻿using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
-using Pole.Features.Shared.Models;
 
 namespace Pole.Features.ResourceGroups.Domain;
 
@@ -16,8 +15,8 @@ public sealed record ResourceGroup(
     [property: BsonRepresentation(BsonType.ObjectId)]
     string DefaultIsolationScopeId,
     ResourceGroupLifecycleState Lifecycle,
-    ImmutableList<ShortResourceInfo> Resources,
     ImmutableHashSet<string> Tags,
+    long RegistrationFence,
     long Revision,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc)
@@ -94,7 +93,6 @@ public static class ResourceGroupFactory
     public sealed record ResourceGroupCreateOptions(
         string Id,
         string DefaultIsolationScopeId,
-        ImmutableList<ShortResourceInfo> Resources,
         ImmutableHashSet<string> Tags,
         DateTime CreatedAtUtc);
     
@@ -102,7 +100,6 @@ public static class ResourceGroupFactory
         new(
             Id: ObjectId.GenerateNewId().ToString(),
             DefaultIsolationScopeId: ObjectId.GenerateNewId().ToString(),
-            Resources: ImmutableList<ShortResourceInfo>.Empty,
             Tags: ImmutableHashSet<string>.Empty,
             CreatedAtUtc: DateTime.UtcNow);
     
@@ -113,7 +110,6 @@ public static class ResourceGroupFactory
         ResourceGroupCreateOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(options.Resources);
         ArgumentNullException.ThrowIfNull(options.Tags);
 
         var createdAtUtc = ResourceGroupValueGuard.Utc(
@@ -141,8 +137,8 @@ public static class ResourceGroupFactory
                 options.DefaultIsolationScopeId,
                 nameof(options.DefaultIsolationScopeId)),
             new ActiveResourceGroupLifecycleState(),
-            options.Resources,
             tags,
+            RegistrationFence: 0,
             Revision: 1,
             createdAtUtc,
             createdAtUtc);

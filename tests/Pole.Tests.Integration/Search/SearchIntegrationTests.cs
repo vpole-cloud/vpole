@@ -17,7 +17,6 @@ using Pole.Features.Search.Application.Migrations;
 using Pole.Features.Search.Application.Projection;
 using Pole.Features.Search.Contracts;
 using Pole.Features.Search.Domain;
-using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Search;
 using Pole.Features.WebServices.Events;
 using Pole.Mediator;
@@ -58,7 +57,6 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
                 resourceGroupId,
                 "platform",
                 "description",
-                ImmutableList<ShortResourceInfo>.Empty,
                 ImmutableHashSet.Create("production"),
                 1)
             {

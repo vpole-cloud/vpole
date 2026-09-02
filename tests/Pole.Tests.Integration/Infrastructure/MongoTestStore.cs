@@ -25,6 +25,7 @@ public sealed class MongoTestStore(
     public IMongoDatabase Database { get; } = database;
     public IMongoClient Client { get; } = client;
     public IMongoCollection<ResourceGroup> ResourceGroups { get; } = database.GetCollection<ResourceGroup>("ResourceGroups");
+    public IMongoCollection<ResourceRegistration> ResourceRegistrations { get; } = database.GetCollection<ResourceRegistration>("ResourceRegistrations");
     public IMongoCollection<IsolationScope> IsolationScopes { get; } = database.GetCollection<IsolationScope>("IsolationScopes");
     public IMongoCollection<RuntimeCell> RuntimeCells { get; } = database.GetCollection<RuntimeCell>("RuntimeCells");
     public IMongoCollection<ResourceDeployment> ResourceDeployments { get; } = database.GetCollection<ResourceDeployment>("ResourceDeployments");

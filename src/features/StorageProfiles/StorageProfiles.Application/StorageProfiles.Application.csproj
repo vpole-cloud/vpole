@@ -21,6 +21,7 @@
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
       <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
       <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj" />
+      <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
     </ItemGroup>
 
     <ItemGroup>

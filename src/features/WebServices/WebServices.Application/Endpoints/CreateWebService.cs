@@ -66,6 +66,7 @@ public union CreateWebServiceError(
     GeneratedDomainZoneError,
     GeneratedHostnameBindingError,
     CreateResourceDeploymentError,
+    ResourceRegistrationMutationError,
     QuotaExecutionError);
 
 public union CreateWebServiceOutcome(
@@ -80,6 +81,7 @@ public sealed class CreateWebServiceHandler(
     GetOrCreateGeneratedDomainZonesOutcome getOrCreateGeneratedDomainZones,
     CreateGeneratedHostnameBindingsOutcome createGeneratedHostnameBindings,
     CreateResourceDeploymentSet createResourceDeploymentSet,
+    RegisterResource registerResource,
     PersistCreatedWebService persistCreatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     TimeProvider timeProvider)
@@ -333,6 +335,17 @@ public sealed class CreateWebServiceHandler(
         var createdEvent = webService.ToCreateEvent(
             WebServiceDeploymentWorkflow.ToEventDeployments(deployments));
         await persistCreatedWebService(transaction.Session, webService, createdEvent, cancellationToken);
+        var registration = await registerResource(
+            webService.TenantId,
+            webService.ResourceGroupId,
+            new ResourceRegistrationDescriptor(
+                WebServiceResourceDeployment.ResourceType,
+                webService.Id,
+                webService.Name),
+            transaction.Session,
+            cancellationToken);
+        if (!registration.TryGetValue(out _, out var registrationError))
+            return Abort(transaction, new CreateWebServiceError(registrationError));
 
         var release = WebServiceReleaseFactory.CreatePending(
             webService.TenantId,

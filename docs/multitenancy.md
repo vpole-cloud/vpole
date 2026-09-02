@@ -79,6 +79,7 @@ requires it, but events and mutations remain fenced by the document tenant id.
 Tenant-owned domain documents include `TenantId`:
 
 * `ResourceGroup`
+* `ResourceRegistration`
 * `IsolationScope`
 * `RuntimeCell`
 * `WebService`
@@ -104,6 +105,10 @@ request and must combine resource identity filters with tenant filters.
 instead of producing an unscoped filter.
 
 When creating a resource that references another resource, the referenced resource must be loaded from the same tenant. For example, web service, Redis, and Postgres creation must validate that the target resource group has the same `TenantId` as the active tenant.
+
+Resource registration identities and ResourceGroup membership queries always include `TenantId`.
+The unique identity index is tenant-prefixed, so tenants may use the same provider resource ID
+without colliding, while a resource cannot be registered into two groups within one tenant.
 
 Hostname ownership is intentionally unique across tenants. Tenant filters protect zone and binding
 access, while a global canonical-hostname index prevents two tenants or deployment targets from
