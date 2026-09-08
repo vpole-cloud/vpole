@@ -1,5 +1,7 @@
 <Solution>
   <Folder Name="/api/">
+    <Project Path="src/api/Pole.Platform.Hosting/Pole.Platform.Hosting.csproj" />
+    <Project Path="src/api/Pole.Testing/Pole.Testing.csproj" />
     <Project Path="src/api/Pole.AppHost/Pole.AppHost.csproj" />
     <Project Path="src/api/Pole.Server/Pole.Server.csproj" />
     <Project Path="src/api/ServiceDefaults/ServiceDefaults.csproj" />
@@ -81,11 +83,15 @@
     <Project Path="src/features/Domains/Domains.Domain/Domains.Domain.csproj" />
   </Folder>
   <Folder Name="/features/RedisServices/">
+    <Project Path="src/features/RedisServices/RedisServices.Tests/RedisServices.Tests.csproj" />
+    <Project Path="src/features/RedisServices/RedisServices.Tests.Integration/RedisServices.Tests.Integration.csproj" />
     <Project Path="src/features/RedisServices/RedisServices.Application/RedisServices.Application.csproj" />
     <Project Path="src/features/RedisServices/RedisServices.Domain/RedisServices.Domain.csproj" />
     <Project Path="src/features/RedisServices/RedisServices.Events/RedisServices.Events.csproj" />
   </Folder>
   <Folder Name="/features/Postgres/">
+    <Project Path="src/features/Postgres/Postgres.Tests/Postgres.Tests.csproj" />
+    <Project Path="src/features/Postgres/Postgres.Tests.Integration/Postgres.Tests.Integration.csproj" />
     <Project Path="src/features/Postgres/Postgres.Application/Postgres.Application.fsproj" />
     <Project Path="src/features/Postgres/Postgres.Domain/Postgres.Domain.fsproj" />
     <Project Path="src/features/Postgres/Postgres.Events/Postgres.Events.fsproj" />

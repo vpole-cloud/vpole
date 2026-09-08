@@ -63,4 +63,5 @@
       <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />
     </ItemGroup>
 
+<ItemGroup><ProjectReference Include="../Pole.Platform.Hosting/Pole.Platform.Hosting.csproj" /></ItemGroup>
 </Project>

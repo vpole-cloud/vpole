@@ -32,9 +32,6 @@ public sealed class DeploymentTargetAdmissionGateTests(MongoReplicaSetFixture fi
         var baseline = await CaptureDurableCountsAsync();
 
         await AssertRejectedAsync(
-            "/api/v1/redis-services/",
-            TestData.CreateRedisServiceRequest(group.Id, "admission-redis").Body);
-        await AssertRejectedAsync(
             "/api/v1/web-services/",
             TestData.CreateWebServiceRequest(
                 group.Id,
@@ -48,9 +45,6 @@ public sealed class DeploymentTargetAdmissionGateTests(MongoReplicaSetFixture fi
                 group.Id,
                 CreateFunctionRevision(),
                 ["admission"]));
-        await AssertRejectedAsync(
-            "/api/v1/postgres/",
-            TestData.CreatePostgresClusterRequest(group.Id, "admission-postgres").Body);
 
         Assert.Equal(baseline, await CaptureDurableCountsAsync());
     }
@@ -65,16 +59,12 @@ public sealed class DeploymentTargetAdmissionGateTests(MongoReplicaSetFixture fi
         new(
             await Fixture.DbContext.ResourceGroups.CountDocumentsAsync(
                 Builders<ResourceGroup>.Filter.Empty),
-            await Fixture.Database.RedisServices().CountDocumentsAsync(
-                Builders<Pole.Features.RedisServices.Domain.Redis>.Filter.Empty),
             await Fixture.Database.WebServices().CountDocumentsAsync(
                 Builders<Pole.Features.WebServices.Domain.WebService>.Filter.Empty),
             await Fixture.DbContext.FunctionApps.CountDocumentsAsync(
                 Builders<FunctionApp>.Filter.Empty),
             await Fixture.DbContext.FunctionRevisions.CountDocumentsAsync(
                 Builders<FunctionRevision>.Filter.Empty),
-            await Fixture.DbContext.Postgres.CountDocumentsAsync(
-                Builders<Pole.Features.Postgres.Domain.PostgresCluster>.Filter.Empty),
             await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
                 Builders<Pole.Features.Outbox.Application.Model.OutboxMessage>.Filter.Empty),
             await Fixture.Database
@@ -104,11 +94,9 @@ public sealed class DeploymentTargetAdmissionGateTests(MongoReplicaSetFixture fi
 
     private sealed record DurableCounts(
         long ResourceGroups,
-        long RedisServices,
         long WebServices,
         long FunctionApps,
         long FunctionRevisions,
-        long PostgresClusters,
         long OutboxMessages,
         long QuotaReservations);
 

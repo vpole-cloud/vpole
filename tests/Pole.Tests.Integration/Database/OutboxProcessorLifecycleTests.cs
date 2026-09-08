@@ -111,7 +111,7 @@ public sealed class OutboxProcessorLifecycleTests(
     public async Task Process_InvalidPayload_IsAbandoned()
     {
         var message = CreateMessage(
-            "runtime-cell-reconciliation-requested",
+            "pole.resource-groups/v1/runtime-cell-reconciliation-requested",
             "{ not-json",
             "invalid-payload-key",
             InitialNowUtc.AddMinutes(-1));
@@ -131,7 +131,7 @@ public sealed class OutboxProcessorLifecycleTests(
     public async Task Process_NullEventCore_IsAbandonedAndDoesNotBlockBatch()
     {
         var invalid = CreateMessage(
-            "runtime-cell-reconciliation-requested",
+            "pole.resource-groups/v1/runtime-cell-reconciliation-requested",
             $$"""
               {
                 "runtimeCellId": "{{ObjectId.GenerateNewId()}}",
@@ -318,7 +318,7 @@ public sealed class OutboxProcessorLifecycleTests(
             EventExtensions.SerializerOptions);
 
         return CreateMessage(
-            "runtime-cell-reconciliation-requested",
+            "pole.resource-groups/v1/runtime-cell-reconciliation-requested",
             payload,
             pendingKey,
             enqueued);

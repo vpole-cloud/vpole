@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Pole.Features.Outbox.Application;
 using Pole.Server.Extensions;
+using Pole.Platform.Hosting;
 using Xunit;
 
 namespace Pole.Tests.Integration.Outbox;

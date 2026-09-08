@@ -73,11 +73,10 @@ public sealed class TenantContextMiddleware(RequestDelegate next)
     private static bool RequiresTenant(HttpContext httpContext)
     {
         var path = httpContext.Request.Path;
-        return path.StartsWithSegments("/api/v1/resource-groups") ||
+        return httpContext.GetEndpoint()?.Metadata.GetMetadata<TenantEndpointMetadata>() is not null ||
+               path.StartsWithSegments("/api/v1/resource-groups") ||
                path.StartsWithSegments("/api/v1/web-services") ||
-               path.StartsWithSegments("/api/v1/redis-services") ||
                path.StartsWithSegments("/api/v1/function-apps") ||
-               path.StartsWithSegments("/api/v1/postgres") ||
                path.StartsWithSegments("/api/v1/tenant-quotas") ||
                path.StartsWithSegments("/api/v1/storage-profiles") ||
                path.StartsWithSegments("/api/v1/compute-profiles") ||

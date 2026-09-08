@@ -14,7 +14,7 @@ type PostgresClusterSpecSnapshot =
       Version : int
       DeploymentMode : PostgresDeploymentModeSnapshot }
 
-[<EntityName("postgres-cluster-created")>]
+[<EntityName("pole.postgres/v1/postgres-cluster-created")>]
 type PostgresClusterCreatedEvent =
     { EventCore : EventCore
       ClusterId : string

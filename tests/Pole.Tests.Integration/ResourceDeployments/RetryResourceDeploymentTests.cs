@@ -97,7 +97,7 @@ public sealed class RetryResourceDeploymentTests(
             .Find(FilterDefinition<Pole.Features.Outbox.Application.Model.OutboxMessage>.Empty)
             .SingleAsync();
         Assert.Equal(
-            "resource-deployment-reconciliation-requested",
+            "pole.resource-deployments/v1/resource-deployment-reconciliation-requested",
             message.EventType);
         Assert.Equal(TenantId, message.TenantId);
         Assert.Equal(

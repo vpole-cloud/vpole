@@ -49,7 +49,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.StartsWith("webservice-", deployment.Ingress.Hostnames.Single());
         Assert.Equal(1, await Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings")
             .CountDocumentsAsync(binding => binding.ResourceDeploymentId == deployment.DeploymentId));
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("web-service-created"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.web-services/v1/web-service-created"));
         var registration = await DbContext.ResourceRegistrations
             .Find(item => item.ResourceId == service.Id)
             .SingleAsync();
@@ -570,9 +570,9 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(0, await DbContext.ResourceRegistrations
             .CountDocumentsAsync(item => item.ResourceId == created.WebServiceId));
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
-            "web-service-deleted"));
+            "pole.web-services/v1/web-service-deleted"));
         var deletionMessage = await DbContext.OutboxMessages
-            .Find(message => message.EventType == "web-service-deleted")
+            .Find(message => message.EventType == "pole.web-services/v1/web-service-deleted")
             .SingleAsync();
         var deletionEvent = JsonSerializer.Deserialize<WebServiceDeletedEvent>(
             deletionMessage.PayloadJson,

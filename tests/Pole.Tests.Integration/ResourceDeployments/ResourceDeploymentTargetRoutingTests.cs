@@ -210,7 +210,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         Assert.Equal(
             1L,
             await fixture.DbContext.CountOutboxMessagesAsync(
-                "resource-deployment-failed"));
+                "pole.resource-deployments/v1/resource-deployment-failed"));
     }
 
     private ReconciliationCapabilities CreateReconciliationCapabilities(

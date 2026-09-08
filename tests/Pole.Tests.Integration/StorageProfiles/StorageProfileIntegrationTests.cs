@@ -45,13 +45,13 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                 defaultId,
                 "Default SSD",
                 "standard",
-                [ResourceTypeId.Create("pole/redis")],
+                [ResourceTypeId.Create("third-party/widget")],
                 isDefault: true),
             CreateProfile(
                 bulkId,
                 "Bulk SSD",
                 "fast",
-                [ResourceTypeId.Create("pole/redis")])
+                [ResourceTypeId.Create("third-party/widget")])
         ]);
 
         var response = (await Mediator.Send(
@@ -152,27 +152,27 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                 previousDefaultId,
                 "Previous Default",
                 "standard",
-                [ResourceTypeId.Create("pole/redis")],
+                [ResourceTypeId.Create("third-party/widget")],
                 isDefault: true),
             CreateProfile(
                 targetId,
-                "Fast Redis",
+                "Fast Widget",
                 "fast",
-                [ResourceTypeId.Create("pole/redis")])
+                [ResourceTypeId.Create("third-party/widget")])
         ]);
 
         var response = (await Mediator.Send(new UpdateStorageProfileRequest(
             targetId,
             ValidUpdateBody(
                 revision: 1,
-                displayName: "Fast Redis Updated",
+                displayName: "Fast Widget Updated",
                 isDefault: true,
-                allowedResourceTypes: ["pole/redis"],
+                allowedResourceTypes: ["third-party/widget"],
                 sizeLimits: new StorageProfileSizeLimitsDto(2, 50)))))
             .AssertSuccess().AssertSuccess();
 
         Assert.Equal(targetId, response.Id);
-        Assert.Equal("Fast Redis Updated", response.DisplayName);
+        Assert.Equal("Fast Widget Updated", response.DisplayName);
         Assert.True(response.IsDefault);
         Assert.Equal(2, response.Revision);
         Assert.Equal(new StorageProfileSizeLimitsDto(2, 50), response.SizeLimits);
@@ -239,7 +239,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             ObjectId.GenerateNewId().ToString(),
             "Fenced profile",
             "fast",
-            [ResourceTypeId.Create("pole/redis")]);
+            [ResourceTypeId.Create("third-party/widget")]);
         await DbContext.StorageProfiles.InsertOneAsync(profile);
         var fence = Services.GetRequiredService<FenceStorageProfileResolution>();
         using (var session = await Fixture.Client.StartSessionAsync())
@@ -294,7 +294,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                 bothTargetsId,
                 "Both targets",
                 "standard",
-                [ResourceTypeId.Create("pole/redis")],
+                [ResourceTypeId.Create("third-party/widget")],
                 additionalMappings:
                 [
                     StorageProfileTargetMapping.Create(
@@ -305,7 +305,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                 defaultOnlyId,
                 "Default only",
                 "fast",
-                [ResourceTypeId.Create("pole/redis")])
+                [ResourceTypeId.Create("third-party/widget")])
         ]);
         var discovery = new TestStorageDiscoveryService(
             new Dictionary<string, IReadOnlyCollection<string>>
@@ -327,7 +327,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
 
         var response = (await handler.HandleAsync(
             new GetAvailableStorageProfilesRequest(
-                "pole/redis",
+                "third-party/widget",
                 SecondDeploymentTargetId,
                 TestData.TenantId))).AssertSuccess();
 
@@ -379,9 +379,9 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             Builders<StorageProfile>.Filter.Empty);
         var profile = CreateProfile(
             ObjectId.GenerateNewId().ToString(),
-            "Multi-target Redis",
+            "Multi-target Widget",
             "standard",
-            [ResourceTypeId.Create("pole/redis")],
+            [ResourceTypeId.Create("third-party/widget")],
             additionalMappings:
             [
                 StorageProfileTargetMapping.Create(
@@ -410,7 +410,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                 profile.Id,
                 SecondDeploymentTargetId,
                 TestData.TenantId,
-                ResourceTypeId.Create("pole/redis"),
+                ResourceTypeId.Create("third-party/widget"),
                 SizeGb: 5))).AssertSuccess();
 
         Assert.Equal(profile.Id, resolved.ProfileId);
@@ -433,7 +433,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                 TestData.DefaultStorageProfileId,
                 SecondDeploymentTargetId,
                 TestData.TenantId,
-                ResourceTypeId.Create("pole/redis"),
+                ResourceTypeId.Create("third-party/widget"),
                 SizeGb: 5));
 
         Assert.IsType<StorageProfileDeploymentTargetNotConfigured>(
@@ -451,7 +451,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             profileId,
             "Other Tenant Redis",
             "standard",
-            [ResourceTypeId.Create("pole/redis")],
+            [ResourceTypeId.Create("third-party/widget")],
             tenantAccess: StorageProfileTenantAccess.Create(
                 StorageProfileTenantAccessMode.SelectedTenants,
                 ["507f1f77bcf86cd799439205"])));
@@ -461,7 +461,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             profileId,
             TestData.DefaultDeploymentTargetId,
             TestData.TenantId,
-            ResourceTypeId.Create("pole/redis"),
+            ResourceTypeId.Create("third-party/widget"),
             SizeGb: 5));
 
         Assert.IsType<StorageProfileTenantAccessDenied>(result.AssertFailure().Value);
@@ -477,7 +477,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                 "not-an-object-id",
                 TestData.DefaultDeploymentTargetId,
                 TestData.TenantId,
-                ResourceTypeId.Create("pole/redis"),
+                ResourceTypeId.Create("third-party/widget"),
                 SizeGb: 5)));
     }
 
@@ -503,7 +503,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                 ObjectId.GenerateNewId().ToString(),
                 "Second default",
                 "fast",
-                [ResourceTypeId.Create("pole/redis")],
+                [ResourceTypeId.Create("third-party/widget")],
                 isDefault: true)));
     }
 
@@ -527,7 +527,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                     TestData.DefaultDeploymentTargetId,
                     "fast")
             ],
-            AllowedResourceTypes: allowedResourceTypes ?? ["pole/redis", "pole/postgresql"],
+            AllowedResourceTypes: allowedResourceTypes ?? ["third-party/widget", "pole/postgresql"],
             TenantAccess: tenantAccess ??
                 new StorageProfileTenantAccessDto("AllTenants", []),
             SizeLimits: sizeLimits ?? new StorageProfileSizeLimitsDto(1, 100));
@@ -553,7 +553,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                     TestData.DefaultDeploymentTargetId,
                     "fast")
             ],
-            AllowedResourceTypes: allowedResourceTypes ?? ["pole/redis", "pole/postgresql"],
+            AllowedResourceTypes: allowedResourceTypes ?? ["third-party/widget", "pole/postgresql"],
             TenantAccess: tenantAccess ??
                 new StorageProfileTenantAccessDto("AllTenants", []),
             SizeLimits: sizeLimits ?? new StorageProfileSizeLimitsDto(1, 100),

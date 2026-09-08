@@ -1,0 +1,87 @@
+using System.Collections.Immutable;
+using Pole.Features.ComputeProfiles.Domain;
+using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Endpoints;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.StorageProfiles.Contracts;
+using Pole.Features.StorageProfiles.Domain;
+
+namespace Pole.Features.RedisServices.Tests.Integration.Infrastructure;
+
+public static class RedisTestData
+{
+    public const string TenantId = "507f1f77bcf86cd799439011";
+    public const string DefaultDeploymentTargetId = "507f1f77bcf86cd799439098";
+    public const string DefaultStorageProfileId = "507f1f77bcf86cd799439099";
+    public const string DefaultComputeProfileId = "507f1f77bcf86cd799439097";
+
+    public static CreateRedisServiceRequest CreateRedisServiceRequest(
+        string resourceGroupId,
+        string name = "redis-main",
+        string? tenantId = null) =>
+        new(
+            new CreateRedisServiceRequestBody(
+                name,
+                resourceGroupId,
+                ValidRedisSpec(),
+                ImmutableHashSet<string>.Empty),
+            tenantId ?? TenantId);
+
+    public static RedisSpecDto ValidRedisSpec() =>
+        new(new StorageDto(5, DefaultStorageProfileId));
+
+    public static StorageProfile SeedStorageProfile(
+        string id = DefaultStorageProfileId,
+        string storageClassName = "standard",
+        bool isEnabled = true,
+        bool isDefault = true) =>
+        StorageProfileFactory.Create(
+            "Standard",
+            "Default test storage",
+            StorageMediaType.SSD,
+            StoragePerformanceTier.Standard,
+            isEnabled,
+            isDefault,
+            [StorageProfileTargetMapping.Create(DefaultDeploymentTargetId, storageClassName)],
+            [ResourceTypeId.Create("pole/redis")],
+            StorageProfileTenantAccess.Create(StorageProfileTenantAccessMode.AllTenants, []),
+            StorageProfileSizeLimits.Create(1, 100),
+            StorageProfileFactory.DefaultOptions with { Id = id });
+
+    public static ComputeProfile SeedComputeProfile(
+        string id = DefaultComputeProfileId,
+        long requestedCpuMillis = 250,
+        long requestedMemoryMi = 256,
+        long limitCpuMillis = 1000,
+        long limitMemoryMi = 1024,
+        bool isDefault = true) =>
+        ComputeProfileFactory.Create(
+            "Default",
+            "Default test compute profile",
+            ComputeProfileResourceRequirements.Create(
+                ComputeProfileResourceQuantity.Create(requestedCpuMillis, requestedMemoryMi),
+                ComputeProfileResourceQuantity.Create(limitCpuMillis, limitMemoryMi)),
+            ComputeArchitecture.Any,
+            [],
+            [ResourceTypeId.Create("pole/redis")],
+            AllTenantsComputeProfileAccess.Create(),
+            [ComputeProfileTargetMapping.Create(DefaultDeploymentTargetId)],
+            isEnabled: true,
+            isDefault,
+            new ComputeProfileFactory.CreateOptions(
+                id,
+                new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
+
+    public static ResourceGroup SeedResourceGroup(
+        string name = "alpha",
+        string tenantId = TenantId) =>
+        ResourceGroupFactory.Create(
+            tenantId,
+            name,
+            $"{name} description",
+            ResourceGroupFactory.DefaultCreateOptions with
+            {
+                Tags = ImmutableHashSet.Create("seed")
+            });
+}

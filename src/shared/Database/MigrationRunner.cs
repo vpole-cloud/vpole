@@ -30,7 +30,7 @@ public class MigrationRunner(
 
     private sealed record AppliedMigration(
         [property: BsonId]
-        ObjectId Id,
+        BsonValue Id,
         string Name,
         string Description,
         DateTime AppliedOnUtc
@@ -62,9 +62,17 @@ public class MigrationRunner(
             .Project(migration => migration.Id)
             .ToListAsync(cancellationToken);
 
-        var pendingMigrations = migrations
-            .OrderBy(migration => migration.Id)
-            .Where(migration => !appliedMigrationIds.Contains(migration.Id))
+        var migrationArray = migrations.ToArray();
+        var duplicate = migrationArray.GroupBy(DurableId).FirstOrDefault(group => group.Count() > 1);
+        if (duplicate is not null)
+            throw new InvalidOperationException($"Duplicate migration identity: {duplicate.Key}.");
+        var featureOrder = migrationArray.OfType<FeatureScopedMigration>()
+            .Select(migration => migration.FeatureId).Distinct()
+            .Select((id, index) => (id, index)).ToDictionary(item => item.id, item => item.index);
+        var pendingMigrations = migrationArray
+            .OrderBy(migration => migration is FeatureScopedMigration feature ? featureOrder[feature.FeatureId] + 1 : 0)
+            .ThenBy(migration => migration.Id)
+            .Where(migration => !appliedMigrationIds.Contains(DurableId(migration)))
             .ToList();
 
         if (pendingMigrations.Count == 0)
@@ -87,7 +95,7 @@ public class MigrationRunner(
 
             await appliedMigrations.InsertOneAsync(
                 new AppliedMigration(
-                    Id: migration.Id,
+                    Id: DurableId(migration),
                     Name: migration.Name,
                     Description: migration.Description,
                     AppliedOnUtc: DateTime.UtcNow),
@@ -101,6 +109,9 @@ public class MigrationRunner(
 
         logger.LogInformation("Finished running migrations");
     }
+
+    private static BsonValue DurableId(IMigration migration) =>
+        migration is FeatureScopedMigration scoped ? scoped.DurableId : (BsonValue)migration.Id;
 
     private async Task<MigrationLockHandle> AcquireLockAsync(string ownerId, CancellationToken cancellationToken)
     {

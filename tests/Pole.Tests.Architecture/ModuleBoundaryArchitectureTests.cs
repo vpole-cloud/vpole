@@ -15,6 +15,34 @@ public sealed class ModuleBoundaryArchitectureTests
         TemporaryIntegrationEventPlacementAllowlist = [];
 
     [Fact]
+    public void ReusableHostingAndTesting_DoNotDependOnConcreteServicesOrTheServer()
+    {
+        var root = FindRepositoryRoot();
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        Visit(Path.Combine(root, "src/api/Pole.Platform.Hosting/Pole.Platform.Hosting.csproj"));
+        Visit(Path.Combine(root, "src/api/Pole.Testing/Pole.Testing.csproj"));
+        var centralTests = File.ReadAllText(Path.Combine(root, "tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj"));
+        Assert.DoesNotContain("RedisServices", centralTests);
+        Assert.DoesNotContain("Postgres", centralTests);
+        foreach (var feature in new[] { "RedisServices", "Postgres" })
+        foreach (var project in Directory.EnumerateFiles(Path.Combine(root, "src/features", feature), "*.*proj", SearchOption.AllDirectories))
+            Assert.DoesNotContain("Pole.Tests.Integration.csproj", File.ReadAllText(project));
+
+        void Visit(string project)
+        {
+            project = Path.GetFullPath(project);
+            if (!visited.Add(project)) return;
+            Assert.DoesNotContain("Pole.Server.csproj", project);
+            foreach (var feature in new[] { "RedisServices", "WebServices", "Postgres", "Functions" })
+                Assert.DoesNotContain($"{Path.DirectorySeparatorChar}{feature}{Path.DirectorySeparatorChar}", project);
+            foreach (var reference in XDocument.Load(project).Descendants("ProjectReference")
+                         .Where(reference => reference.Attribute("ReferenceOutputAssembly")?.Value != "false"))
+                Visit(Path.Combine(Path.GetDirectoryName(project)!, reference.Attribute("Include")!.Value
+                    .Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar)));
+        }
+    }
+
+    [Fact]
     public void SearchApplication_DoesNotReferenceConcreteResourceFeatures()
     {
         var repositoryRoot = FindRepositoryRoot();

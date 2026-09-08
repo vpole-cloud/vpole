@@ -3,7 +3,7 @@ using Pole.Features.Events.Abstractions;
 
 namespace Pole.Features.WebServices.Events;
 
-[EntityName("web-service-deployment-completed")]
+[EntityName("pole.web-services/v1/web-service-deployment-completed")]
 public sealed record WebServiceDeploymentCompletedEvent(
     string ReleaseId,
     string WebServiceId,

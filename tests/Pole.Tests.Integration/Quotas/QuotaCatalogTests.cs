@@ -5,10 +5,6 @@ using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Postgres.Application;
-using Pole.Features.Postgres.Application.Common;
-using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application;
 using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Tests.Integration.Infrastructure;
@@ -70,21 +66,6 @@ public sealed class QuotaCatalogTests
         Assert.Contains("returned undeclared quotas", exception.Message);
     }
 
-    [Fact]
-    public void FeatureRegistrationOwnsItsQuotaProfile()
-    {
-        var services = new ServiceCollection();
-        services.AddRedisServicesFeature();
-        services.AddQuotasFeature(new ConfigurationBuilder().Build());
-        using var provider = services.BuildServiceProvider();
-
-        var catalog = provider.GetRequiredService<QuotaCatalog>();
-
-        Assert.True(catalog.Contains(CpuQuota.QuotaKey));
-        Assert.True(catalog.Contains(RedisServiceCountQuota.QuotaKey));
-        Assert.False(catalog.Contains(WebServiceCountQuota.QuotaKey));
-        Assert.IsType<RedisQuotaProfile>(catalog.GetProfile<RedisQuotaInput>());
-    }
 
     [Fact]
     public void WorkloadFeatureRegistrationsContributeTheirOwnQuotaProfiles()
@@ -92,8 +73,6 @@ public sealed class QuotaCatalogTests
         var configuration = new ConfigurationBuilder().Build();
         var services = new ServiceCollection();
         services.AddFunctionAppsFeature();
-        services.AddPostgresFeature(configuration);
-        services.AddRedisServicesFeature();
         services.AddWebServicesFeature();
         services.AddQuotasFeature(configuration);
         using var provider = services.BuildServiceProvider();
@@ -101,29 +80,10 @@ public sealed class QuotaCatalogTests
         var profiles = provider.GetServices<IQuotaProfile>().ToArray();
 
         Assert.Contains(profiles, profile => profile is FunctionAppQuotaProfile);
-        Assert.Contains(profiles, profile => profile is PostgresQuotaProfile);
-        Assert.Contains(profiles, profile => profile is RedisQuotaProfile);
         Assert.Contains(profiles, profile => profile is WebServiceQuotaProfile);
         _ = provider.GetRequiredService<QuotaCatalog>().Definitions;
     }
 
-    [Fact]
-    public void RedisProfileCalculatesSharedAndFeatureQuota()
-    {
-        var profile = new RedisQuotaProfile(
-            new CpuQuota(),
-            new RamQuota(),
-            new WorkloadInstancesQuota(),
-            new RedisServiceCountQuota());
-        var input = RedisQuotaInput.Create(1000, 128);
-
-        var impact = profile.Calculate(input);
-
-        Assert.Equal(1000, impact[CpuQuota.QuotaKey]);
-        Assert.Equal(128, impact[RamQuota.QuotaKey]);
-        Assert.Equal(1, impact[WorkloadInstancesQuota.QuotaKey]);
-        Assert.Equal(1, impact[RedisServiceCountQuota.QuotaKey]);
-    }
 
     [Fact]
     public void WebServiceProfileUsesAutoscalingMaximumAsWorkloadSize()

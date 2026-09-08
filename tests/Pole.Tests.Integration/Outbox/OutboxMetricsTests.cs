@@ -30,10 +30,10 @@ public sealed class OutboxMetricsTests
         using var metrics = new OutboxMetrics();
 
         metrics.RecordPublished(
-            "runtime-cell-ready",
+            "pole.resource-groups/v1/runtime-cell-ready",
             TimeSpan.FromMilliseconds(5));
         metrics.RecordRetry(
-            "runtime-cell-ready",
+            "pole.resource-groups/v1/runtime-cell-ready",
             TimeSpan.FromSeconds(15));
         metrics.RecordAbandoned("unknown", "UnknownEventType");
         metrics.RecordCleaned("published", 3);

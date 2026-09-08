@@ -11,7 +11,6 @@ using Pole.Features.StorageProfiles.Domain;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.Users.Domain;
-using PostgresCluster = Pole.Features.Postgres.Domain.PostgresCluster;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
@@ -29,7 +28,6 @@ public sealed class MongoTestStore(
     public IMongoCollection<IsolationScope> IsolationScopes { get; } = database.GetCollection<IsolationScope>("IsolationScopes");
     public IMongoCollection<RuntimeCell> RuntimeCells { get; } = database.GetCollection<RuntimeCell>("RuntimeCells");
     public IMongoCollection<ResourceDeployment> ResourceDeployments { get; } = database.GetCollection<ResourceDeployment>("ResourceDeployments");
-    public IMongoCollection<PostgresCluster> Postgres { get; } = database.GetCollection<PostgresCluster>("Postgres");
     public IMongoCollection<StorageProfile> StorageProfiles { get; } = database.GetCollection<StorageProfile>("StorageProfiles");
     public IMongoCollection<OutboxMessage> OutboxMessages { get; } = database.GetCollection<OutboxMessage>("OutboxMessages");
     public IMongoCollection<Tenant> Tenants { get; } = database.GetCollection<Tenant>("Tenants");

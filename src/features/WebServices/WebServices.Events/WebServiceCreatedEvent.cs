@@ -4,7 +4,7 @@ using Pole.Features.Events.Abstractions;
 
 namespace Pole.Features.WebServices.Events;
 
-[EntityName("web-service-created")]
+[EntityName("pole.web-services/v1/web-service-created")]
 public sealed record WebServiceCreatedEvent(
     string WebServiceId,
     string Name,

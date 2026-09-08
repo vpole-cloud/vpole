@@ -18,8 +18,9 @@ deployment snapshot.
 - `RedisServices.Events` owns durable Redis event contracts.
 - `RedisServices.Application` owns HTTP application flows, persistence capabilities, deployment
   integration, and Kubernetes mapping.
-- `Pole.Server` is the composition root. It provides the Mongo client/database and composes the
-  feature persistence module. Production code has no general `MongoDbContext`.
+- `Pole.Server` is the host composition root. It provides Mongo, broker, tenant, and other
+  shared infrastructure and composes the feature.
+  Production code has no general `MongoDbContext`.
 
 Redis is tenant-owned. Every identity lookup and mutation fence must include `TenantId`; callers
 must not treat an absent tenant as an unscoped query.
@@ -121,9 +122,11 @@ MongoDB document-validation error `121`. The Redis tests cover both collection c
 
 ## Verification
 
-The persistence boundary is covered by Mongo-backed integration tests for tenant isolation, stale revision
-conflicts, rollback, finalization atomicity, idempotency, and outbox tenant metadata. API-slice tests
-exercise the same registration path as production.
+`RedisServices.Tests` covers the feature without the shared integration harness.
+`RedisServices.Tests.Integration` covers Mongo-backed tenant isolation, stale revision conflicts,
+rollback, finalization atomicity, idempotency, outbox metadata, and the production registration
+path. Its existing Kubernetes tests are gated by the current kubeconfig and skip when no cluster
+is available; provisioning a cluster fixture is deferred.
 
 Useful audit searches:
 

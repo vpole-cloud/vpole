@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.RedisServices.Application.Endpoints;
 
 namespace Pole.Features.RedisServices.Application.Common;
@@ -15,6 +16,7 @@ public static class RedisServiceEndpoints
         {
             app.MapGroup(Route)
                 .WithTags("RedisServices")
+                .WithMetadata(new TenantEndpointMetadata())
                 .MapCreateRedisServiceEndpoint()
                 .MapUpdateRedisServiceEndpoint()
                 .MapDeleteRedisServiceEndpoints()
@@ -25,4 +27,3 @@ public static class RedisServiceEndpoints
         }
     }
 }
-

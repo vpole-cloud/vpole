@@ -78,7 +78,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
                     DeploymentId,
                     2))
             .SingleAsync();
-        Assert.Equal("resource-deployment-reconciliation-requested", request.EventType);
+        Assert.Equal("pole.resource-deployments/v1/resource-deployment-reconciliation-requested", request.EventType);
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
                     DeploymentId,
                     2))
             .SingleAsync();
-        Assert.Equal("resource-deployment-deletion-requested", request.EventType);
+        Assert.Equal("pole.resource-deployments/v1/resource-deployment-deletion-requested", request.EventType);
     }
 
     [Fact]
@@ -189,7 +189,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
                     DeploymentId,
                     1))
             .SingleAsync();
-        Assert.Equal("resource-deployment-reconciliation-requested", request.EventType);
+        Assert.Equal("pole.resource-deployments/v1/resource-deployment-reconciliation-requested", request.EventType);
     }
 
     [Fact]
@@ -412,7 +412,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         Assert.Equal(
             2L,
             await fixture.DbContext.CountOutboxMessagesAsync(
-                "resource-deployment-reconciliation-requested"));
+                "pole.resource-deployments/v1/resource-deployment-reconciliation-requested"));
     }
 
     [Fact]
@@ -463,7 +463,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         Assert.Equal(
             2L,
             await fixture.DbContext.CountOutboxMessagesAsync(
-                "resource-deployment-deletion-requested"));
+                "pole.resource-deployments/v1/resource-deployment-deletion-requested"));
 
         var retry = await RunTypedTransactionAsync(
             (session, cancellationToken) => mutations.SetDeletion(
@@ -484,7 +484,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         Assert.Equal(
             2L,
             await fixture.DbContext.CountOutboxMessagesAsync(
-                "resource-deployment-deletion-requested"));
+                "pole.resource-deployments/v1/resource-deployment-deletion-requested"));
     }
 
     [Fact]

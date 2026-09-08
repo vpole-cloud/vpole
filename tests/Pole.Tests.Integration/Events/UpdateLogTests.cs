@@ -1,7 +1,5 @@
 using System.Collections.Immutable;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
@@ -84,15 +82,4 @@ public sealed class UpdateLogTests
         Assert.True(updateLog.AreEqual);
     }
 
-    [Fact]
-    public void Of_ReturnsEqual_ForEquivalentRedisSpecs()
-    {
-        var previous = TestData.ValidRedisSpec().ToDomain();
-        var next = new RedisSpec(
-            Storage: new Storage(5, TestData.DefaultStorageProfileId));
-
-        var updateLog = UpdateLog<RedisSpec>.Of(previous, next);
-
-        Assert.True(updateLog.AreEqual);
-    }
 }

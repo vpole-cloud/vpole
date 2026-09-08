@@ -1,5 +1,10 @@
 # PostgreSQL clusters
 
+`Postgres.Tests`
+owns infrastructure-free domain, credential, quota, HTTP-mapping, and manifest checks;
+`Postgres.Tests.Integration` owns Mongo, HTTP/outbox, and existing opt-in Kubernetes tests. No
+cluster is provisioned by these suites.
+
 The PostgreSQL feature owns tenant-scoped logical database clusters and supports two deployment
 modes: a native Kubernetes StatefulSet and the CloudNativePG operator.
 

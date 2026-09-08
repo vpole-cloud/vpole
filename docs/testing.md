@@ -16,12 +16,14 @@ idempotency, tenant and group isolation, caller-owned transaction rollback, regi
 ResourceGroup deletion, paginated listing, and batched group counts. Each resource provider must
 prove registration on create and unregistration on final deletion.
 
-Outbox changes should cover state transitions, required event identities, settings
+Outbox changes should cover state transitions, required versioned event identities, settings
 validation, keyed-write deduplication, concurrent Mongo transactions, publish/retry/abandon
 lifecycle, cancellation, and bounded terminal cleanup. The focused tests are under
-`tests/Pole.Tests.Integration/Database` and `tests/Pole.Tests.Integration/Outbox`. The
-processor tests use a narrow fake publisher; RabbitMQ is not required. Mongo persistence and
-concurrency tests use the existing replica-set Testcontainer.
+`tests/Pole.Tests.Integration/Database`, `tests/Pole.Tests.Integration/Outbox`, and
+`tests/Pole.Tests.Integration/Events`. Most processor tests use a narrow fake publisher, while
+the event-identity contract test uses a disposable RabbitMQ Testcontainer to prove real
+publish/consume behavior. Mongo persistence and concurrency tests use the existing replica-set
+Testcontainer.
 
 The shared integration test suite lives in:
 
@@ -32,6 +34,10 @@ Independently testable feature behavior can live beside the feature in a dedicat
 - `src/features/Functions/Functions.Tests`
 - `src/features/GitProviders/GitProviders.Tests`
 - `src/features/SourceBuilds/SourceBuilds.Tests`
+- `src/features/RedisServices/RedisServices.Tests`
+- `src/features/RedisServices/RedisServices.Tests.Integration`
+- `src/features/Postgres/Postgres.Tests`
+- `src/features/Postgres/Postgres.Tests.Integration`
 
 ## Current approach
 
@@ -121,7 +127,18 @@ dotnet test src/features/GitProviders/GitProviders.Tests/GitProviders.Tests.cspr
 dotnet test src/features/SourceBuilds/SourceBuilds.Tests/SourceBuilds.Tests.csproj
 ```
 
-Feature-local tests do not require Docker or the shared integration fixtures.
+Run the Redis and PostgreSQL feature suites from the repository root:
+
+```bash
+dotnet test src/features/RedisServices/RedisServices.Tests/RedisServices.Tests.csproj
+dotnet test src/features/RedisServices/RedisServices.Tests.Integration/RedisServices.Tests.Integration.csproj
+dotnet test src/features/Postgres/Postgres.Tests/Postgres.Tests.csproj
+dotnet test src/features/Postgres/Postgres.Tests.Integration/Postgres.Tests.Integration.csproj
+```
+
+The Functions, GitProviders, SourceBuilds, Redis, and PostgreSQL unit suites do not require Docker or the
+shared integration fixtures. The Redis and PostgreSQL integration suites use feature-owned Mongo
+fixtures; their Kubernetes cases remain separately gated.
 
 Run the architecture boundary checks from the repository root with:
 
@@ -153,13 +170,13 @@ dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter 
 To run only the cluster-backed Postgres tests:
 
 ```bash
-dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter PostgresKubernetesTests
+dotnet test src/features/Postgres/Postgres.Tests.Integration/Postgres.Tests.Integration.csproj --filter PostgresKubernetesTests
 ```
 
 To run only the cluster-backed Redis tests:
 
 ```bash
-dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter RedisKubernetesTests
+dotnet test src/features/RedisServices/RedisServices.Tests.Integration/RedisServices.Tests.Integration.csproj --filter RedisKubernetesTests
 ```
 
 If ingress discovery needs an explicit base address:

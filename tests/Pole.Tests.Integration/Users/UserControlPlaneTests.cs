@@ -20,6 +20,7 @@ using Pole.Features.Users.Domain;
 using Pole.Features.Users.Events;
 using Pole.ResultType;
 using Pole.Server.Extensions;
+using Pole.Platform.Hosting;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -89,7 +90,7 @@ public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsy
         var storedUser = await fixture.DbContext.Users
             .Find(stored => stored.Id == "keycloak-user-1")
             .FirstAsync();
-        Assert.Equal(1L, await fixture.DbContext.CountOutboxMessagesAsync("user-created"));
+        Assert.Equal(1L, await fixture.DbContext.CountOutboxMessagesAsync("pole.users/v1/user-created"));
 
         using var consumerScope = Services.CreateScope();
         var consumer = new CreateDefaultTenantOnUserCreatedConsumer(
@@ -134,7 +135,7 @@ public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsy
             error is IdentityUserCreationFailed);
         Assert.Equal(0, await fixture.DbContext.Users.CountDocumentsAsync(Builders<PoleUser>.Filter.Empty));
         Assert.Equal(0, await fixture.DbContext.Tenants.CountDocumentsAsync(Builders<Tenant>.Filter.Empty));
-        Assert.Equal(0L, await fixture.DbContext.CountOutboxMessagesAsync("user-created"));
+        Assert.Equal(0L, await fixture.DbContext.CountOutboxMessagesAsync("pole.users/v1/user-created"));
     }
 
     [Fact]
@@ -188,7 +189,7 @@ public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsy
             });
         Assert.Equal(["keycloak-user-1"], identityProvider.DeletedUserIds);
         Assert.Equal(1, await fixture.DbContext.Users.CountDocumentsAsync(Builders<PoleUser>.Filter.Empty));
-        Assert.Equal(0L, await fixture.DbContext.CountOutboxMessagesAsync("user-created"));
+        Assert.Equal(0L, await fixture.DbContext.CountOutboxMessagesAsync("pole.users/v1/user-created"));
     }
 
     private static CreateUserHandler CreateHandler(

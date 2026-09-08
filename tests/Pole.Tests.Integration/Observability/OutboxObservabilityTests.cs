@@ -2,7 +2,6 @@ using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Observability;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Tests.Integration.Postgres;
 using Xunit;
 
 namespace Pole.Tests.Integration.Observability;
@@ -23,7 +22,7 @@ public sealed class OutboxObservabilityTests(MongoReplicaSetFixture fixture)
         _ = result.AssertSuccess();
 
         var outboxMessage = await DbContext.OutboxMessages
-            .Find(message => message.EventType == "resource-group-created")
+            .Find(message => message.EventType == "pole.resource-groups/v1/resource-group-created")
             .SingleAsync();
 
         Assert.Equal(TraceId, outboxMessage.TraceId);
@@ -35,26 +34,5 @@ public sealed class OutboxObservabilityTests(MongoReplicaSetFixture fixture)
         Assert.Equal(CorrelationId, eventCore.GetProperty("correlationId").GetString());
     }
 
-    [Fact]
-    public async Task StoreEvent_PersistsTraceContext_ForFSharpPostgresEvents()
-    {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        using var scope = TraceContext.Push(new TraceContextSnapshot(TraceId, CorrelationId));
 
-        var result = await Mediator.Send(TestData.CreatePostgresClusterRequest(resourceGroup.Id));
-
-        _ = result.AssertCreated();
-
-        var outboxMessage = await DbContext.OutboxMessages
-            .Find(message => message.EventType == "postgres-cluster-created")
-            .SingleAsync();
-
-        Assert.Equal(TraceId, outboxMessage.TraceId);
-        Assert.Equal(CorrelationId, outboxMessage.CorrelationId);
-
-        using var payload = JsonDocument.Parse(outboxMessage.PayloadJson);
-        var eventCore = payload.RootElement.GetProperty("eventCore");
-        Assert.Equal(TraceId, eventCore.GetProperty("traceId").GetString());
-        Assert.Equal(CorrelationId, eventCore.GetProperty("correlationId").GetString());
-    }
 }

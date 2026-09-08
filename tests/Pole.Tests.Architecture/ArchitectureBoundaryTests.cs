@@ -275,7 +275,11 @@ public sealed class ArchitectureBoundaryTests
     public void ServerComposition_UsesFeatureRegistrationEntryPoints()
     {
         var program = ArchitectureSources.ServerProgram();
-        var invokedMethods = program.Root.DescendantNodes()
+        Assert.Contains(program.Root.DescendantNodes().OfType<InvocationExpressionSyntax>(),
+            invocation => GetInvokedMethodName(invocation) == "AddPolePlatform");
+        var hosting = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(File.ReadAllText(
+            Path.Combine(ArchitectureSources.RepositoryRoot, "src/api/Pole.Platform.Hosting/PolePlatform.cs")));
+        var invokedMethods = program.Root.DescendantNodes().Concat(hosting.GetRoot().DescendantNodes())
             .OfType<InvocationExpressionSyntax>()
             .Select(GetInvokedMethodName)
             .Where(name => name is not null)

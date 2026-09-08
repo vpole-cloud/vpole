@@ -16,8 +16,6 @@
     <ProjectReference Include="..\SourceBuilds.Events\SourceBuilds.Events.csproj" />
     <ProjectReference Include="..\..\GitProviders\GitProviders.Contracts\GitProviders.Contracts.csproj" />
     <ProjectReference Include="..\..\ContainerRegistries\ContainerRegistries.Contracts\ContainerRegistries.Contracts.csproj" />
-    <ProjectReference Include="..\..\WebServices\WebServices.Contracts\WebServices.Contracts.csproj" />
-    <ProjectReference Include="..\..\WebServices\WebServices.Events\WebServices.Events.csproj" />
     <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
     <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
     <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />

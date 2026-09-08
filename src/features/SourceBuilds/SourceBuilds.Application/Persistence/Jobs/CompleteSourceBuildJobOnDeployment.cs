@@ -1,18 +1,8 @@
 using MongoDB.Driver;
+using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 
 namespace Pole.Features.SourceBuilds.Application.Persistence.Jobs;
-
-public sealed record SourceBuildDeploymentCompletion(
-    string TenantId,
-    string ReleaseId,
-    string ReleaseOutcome,
-    string? FailureMessage,
-    DateTime CompletedAtUtc);
-
-public delegate Task CompleteSourceBuildJobOnDeployment(
-    SourceBuildDeploymentCompletion completion,
-    CancellationToken cancellationToken = default);
 
 internal sealed class MongoCompleteSourceBuildJobOnDeployment(
     IMongoCollection<SourceBuildJob> jobs)

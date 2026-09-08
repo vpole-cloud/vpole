@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Globalization;
+using System.Text.RegularExpressions;
 using MassTransit;
 
 namespace Pole.Features.Events.Abstractions;
@@ -21,9 +23,7 @@ public static class EventTypeIdentity
                 nameof(eventType));
         }
 
-        var entityName = eventType
-            .GetCustomAttribute<EntityNameAttribute>(inherit: false)
-            ?.EntityName;
+        var entityName = eventType.GetCustomAttribute<EntityNameAttribute>(inherit: false)?.EntityName;
         if (string.IsNullOrWhiteSpace(entityName))
         {
             throw new InvalidOperationException(
@@ -31,7 +31,37 @@ public static class EventTypeIdentity
                 $"[{nameof(EntityNameAttribute)}].");
         }
 
-        return entityName.Trim();
+        if (!IsValidIdentity(entityName))
+        {
+            throw new InvalidOperationException(
+                $"Persisted event type '{DisplayName(eventType)}' must declare an " +
+                $"[{nameof(EntityNameAttribute)}] in the form 'namespace/vN/name', where N is a positive integer.");
+        }
+
+        return entityName;
+    }
+
+    private static bool IsValidIdentity(string entityName)
+    {
+        if (!string.Equals(entityName, entityName.Trim(), StringComparison.Ordinal))
+            return false;
+
+        var segments = entityName.Split('/', StringSplitOptions.None);
+        if (segments.Length != 3 || segments.Any(string.IsNullOrWhiteSpace))
+            return false;
+
+        if (!Regex.IsMatch(segments[0], "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$") ||
+            !Regex.IsMatch(segments[2], "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"))
+            return false;
+        var version = segments[1];
+        return version.Length > 1 &&
+               version[0] == 'v' && version[1] != '0' &&
+               int.TryParse(
+                   version.AsSpan(1),
+                   NumberStyles.None,
+                   CultureInfo.InvariantCulture,
+                   out var value) &&
+               value > 0;
     }
 
     private static string DisplayName(Type eventType) =>

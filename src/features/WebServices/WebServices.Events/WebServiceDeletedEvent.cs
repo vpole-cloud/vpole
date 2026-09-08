@@ -4,7 +4,7 @@ using Pole.Features.Events.Abstractions;
 
 namespace Pole.Features.WebServices.Events;
 
-[EntityName("web-service-deleted")]
+[EntityName("pole.web-services/v1/web-service-deleted")]
 public sealed record WebServiceDeletedEvent(
     string WebServiceId,
     string Name,

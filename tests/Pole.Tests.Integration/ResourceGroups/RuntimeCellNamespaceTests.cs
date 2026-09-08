@@ -12,6 +12,7 @@ using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
 using Pole.Server.Extensions;
+using Pole.Platform.Hosting;
 using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;

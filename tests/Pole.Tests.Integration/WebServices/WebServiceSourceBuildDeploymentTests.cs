@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Events;
+using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Consumers;
 using Pole.Features.WebServices.Application.Persistence;
@@ -12,7 +13,6 @@ using Pole.Features.WebServices.Application.Persistence.Deployments;
 using Pole.Features.WebServices.Application.Persistence.Mutations;
 using Pole.Features.WebServices.Application.Persistence.Reads;
 using Pole.Features.WebServices.Application.Persistence.Releases;
-using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
@@ -94,7 +94,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             .SingleAsync();
         Assert.Equal(WebServiceReleaseOutcome.Succeeded, completedRelease.Outcome);
         Assert.True(await Fixture.DbContext.OutboxMessages
-            .Find(item => item.EventType == "web-service-deployment-completed")
+            .Find(item => item.EventType == "pole.web-services/v1/web-service-deployment-completed")
             .AnyAsync());
     }
 
@@ -130,7 +130,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             .Find(item => item.WebServiceId == webService.Id)
             .AnyAsync());
         Assert.False(await Fixture.DbContext.OutboxMessages
-            .Find(item => item.EventType == "web-service-updated")
+            .Find(item => item.EventType == "pole.web-services/v1/web-service-updated")
             .AnyAsync());
     }
 

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Mediator;
 using Pole.Server.Extensions;
+using Pole.Platform.Hosting;
 using Xunit;
 
 namespace Pole.Tests.Integration.Infrastructure;

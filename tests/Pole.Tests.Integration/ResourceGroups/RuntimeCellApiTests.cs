@@ -60,7 +60,7 @@ public sealed class RuntimeCellApiTests(MongoReplicaSetFixture fixture)
         Assert.Null(retried.RetryNotBeforeUtc);
 
         Assert.Equal(1L, await Fixture.DbContext.CountOutboxMessagesAsync(
-            "runtime-cell-reconciliation-requested"));
+            "pole.resource-groups/v1/runtime-cell-reconciliation-requested"));
     }
 
     [Fact]

@@ -34,7 +34,7 @@ public sealed class QuotaPrimitiveBsonCompatibilityTests
         var reservation = QuotaDomainFactory.CreateReservation(
             "507f1f77bcf86cd799439011",
             QuotaDelta.From(new QuotaKey("MemoryMi"), 512),
-            QuotaResourceKey.Create("redis-service", "507f1f77bcf86cd799439012"),
+            QuotaResourceKey.Create("widget", "507f1f77bcf86cd799439012"),
             NowUtc,
             TimeSpan.FromMinutes(5),
             TimeSpan.FromDays(1));
@@ -42,7 +42,7 @@ public sealed class QuotaPrimitiveBsonCompatibilityTests
         var document = reservation.ToBsonDocument();
 
         Assert.Equal(
-            "redis-service:507f1f77bcf86cd799439012",
+            "widget:507f1f77bcf86cd799439012",
             document["ResourceKey"].AsString);
         Assert.Equal(
             "MemoryMi",
@@ -55,7 +55,7 @@ public sealed class QuotaPrimitiveBsonCompatibilityTests
         var roundTripped = MongoDB.Bson.Serialization.BsonSerializer
             .Deserialize<QuotaReservation>(document);
         Assert.Equal(
-            "redis-service:507f1f77bcf86cd799439012",
+            "widget:507f1f77bcf86cd799439012",
             roundTripped.ResourceKey.Value);
     }
 }

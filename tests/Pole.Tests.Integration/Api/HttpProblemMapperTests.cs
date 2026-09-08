@@ -17,16 +17,12 @@ using Pole.Features.Quotas.Application.Endpoints;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Contracts.HttpMapping;
 using Pole.Features.Quotas.Primitives;
-using Pole.Features.Postgres.Application.Common;
-using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Endpoints;
@@ -51,24 +47,6 @@ namespace Pole.Tests.Integration.Api;
 
 public sealed class HttpProblemMapperTests
 {
-    [Fact]
-    public void RedisOutcomeUnwrapsProviderOwnedStorageError()
-    {
-        var mapper = new HttpProblemMapper(
-        [
-            .. RedisHttpMappings.All,
-            .. StorageProfileHttpMappings.All
-        ]);
-        CreateRedisServiceError error = new(
-            new StorageProfileResolutionError(
-                new StorageProfileNotFound("storage-1")));
-
-        var problem = mapper.Map(error);
-
-        Assert.Equal((int)HttpStatusCode.NotFound, problem.StatusCode);
-        Assert.Equal("storage-profiles.not-found", problem.Code);
-        Assert.Equal("storage-1", problem.Extensions["storageProfileId"]);
-    }
 
     [Fact]
     public void StorageProfileCreateOutcomeMapsTargetValidationErrors()
@@ -106,20 +84,6 @@ public sealed class HttpProblemMapperTests
         Assert.Equal("target-1", problem.Extensions["deploymentTargetId"]);
     }
 
-    [Fact]
-    public void RedisOutcomeUsesTheRedisOwnedStateMapping()
-    {
-        var mapper = new HttpProblemMapper(RedisHttpMappings.All);
-        UpdateRedisServiceError error = new(
-            new RedisUpdateStateError(
-                new RedisStorageProfileChangeNotAllowed("redis-1")));
-
-        var problem = mapper.Map(error);
-
-        Assert.Equal((int)HttpStatusCode.UnprocessableEntity, problem.StatusCode);
-        Assert.Equal("redis-services.storage-profile-change-not-allowed", problem.Code);
-        Assert.Equal("redis-1", problem.Extensions["redisId"]);
-    }
 
     [Fact]
     public void NewWorkloadAdmissionMappingIncludesSelectionDetails()
@@ -219,39 +183,9 @@ public sealed class HttpProblemMapperTests
         Assert.Equal("resource-group-1", problem.Extensions["resourceGroupId"]);
     }
 
-    [Fact]
-    public void PostgresOutcomeUnwrapsProviderOwnedComputeError()
-    {
-        var mapper = new HttpProblemMapper(
-        [
-            .. PostgresHttpMappings.all,
-            .. ComputeProfileContractHttpMappings.All
-        ]);
-        UpdatePostgresClusterError error = UpdatePostgresClusterError.NewUpdateCompute(
-            new ComputeProfileResolutionError(
-                new ComputeProfileNotFound("compute-1")));
 
-        var problem = mapper.Map(error);
 
-        Assert.Equal((int)HttpStatusCode.NotFound, problem.StatusCode);
-        Assert.Equal("compute-profiles.not-found", problem.Code);
-        Assert.Equal("compute-1", problem.Extensions["computeProfileId"]);
-    }
 
-    [Fact]
-    public void PostgresOutcomeUsesThePostgresOwnedStateMapping()
-    {
-        var mapper = new HttpProblemMapper(PostgresHttpMappings.all);
-        CreatePostgresClusterStateError error =
-            CreatePostgresClusterStateError.NewPostgresClusterComputeRuntimeClassUnsupported(
-                "target-1");
-
-        var problem = mapper.Map(error);
-
-        Assert.Equal((int)HttpStatusCode.UnprocessableEntity, problem.StatusCode);
-        Assert.Equal("postgres.compute.runtime-class-unsupported", problem.Code);
-        Assert.Equal("target-1", problem.Extensions["deploymentTargetId"]);
-    }
 
     [Fact]
     public void DeleteComputeProfileOutcomeUsesTheComputeProfileApplicationMapping()

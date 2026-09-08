@@ -18,7 +18,7 @@ public sealed class QuotaApiTests(MongoReplicaSetFixture fixture)
         {
             limits = new[]
             {
-                new { key = "RedisServiceCount", value = 1 }
+                new { key = "WebServiceCount", value = 1 }
             }
         };
 

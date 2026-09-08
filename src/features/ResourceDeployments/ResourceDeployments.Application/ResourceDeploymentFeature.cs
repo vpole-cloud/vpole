@@ -50,6 +50,9 @@ public static class ResourceDeploymentFeature
         return services;
     }
 
+    public static void ValidateResourceDeploymentContributions(this IServiceProvider services) =>
+        _ = services.GetRequiredService<ResourceDeploymentAdapterCatalog>();
+
     public static IServiceProvider ScheduleResourceDeploymentRecurringJobs(
         this IServiceProvider services)
     {

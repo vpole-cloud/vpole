@@ -68,19 +68,19 @@ public sealed class ResourceDeploymentContractTests
     [Theory]
     [InlineData(
         typeof(ResourceDeploymentReconciliationRequestedEvent),
-        "resource-deployment-reconciliation-requested")]
+        "pole.resource-deployments/v1/resource-deployment-reconciliation-requested")]
     [InlineData(
         typeof(ResourceDeploymentDeletionRequestedEvent),
-        "resource-deployment-deletion-requested")]
+        "pole.resource-deployments/v1/resource-deployment-deletion-requested")]
     [InlineData(
         typeof(ResourceDeploymentAppliedEvent),
-        "resource-deployment-applied")]
+        "pole.resource-deployments/v1/resource-deployment-applied")]
     [InlineData(
         typeof(ResourceDeploymentFailedEvent),
-        "resource-deployment-failed")]
+        "pole.resource-deployments/v1/resource-deployment-failed")]
     [InlineData(
         typeof(ResourceDeploymentDeletedEvent),
-        "resource-deployment-deleted")]
+        "pole.resource-deployments/v1/resource-deployment-deleted")]
     public void Events_HaveStablePersistedNames(
         Type eventType,
         string expectedName)

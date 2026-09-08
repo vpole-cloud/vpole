@@ -1,10 +1,10 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using MassTransit;
 using Pole.Features.Events.Abstractions;
 
 namespace Pole.Features.RedisServices.Events;
 
-[EntityName("redis-service-deleted")]
+[EntityName("pole.redis/v1/redis-service-deleted")]
 public record RedisServiceDeletedEvent(
     string RedisId,
     string Name,

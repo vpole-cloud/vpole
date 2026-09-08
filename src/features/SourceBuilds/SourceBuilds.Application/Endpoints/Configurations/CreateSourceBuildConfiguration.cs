@@ -8,8 +8,8 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
+using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
-using Pole.Features.WebServices.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
@@ -37,7 +37,7 @@ public union CreateSourceBuildConfigurationOutcome(
 
 public sealed class CreateSourceBuildConfigurationHandler(
     FindSourceRepositoryBuild findSourceRepositoryBuild,
-    WebServiceExists webServiceExists,
+    SourceBuildWebServiceExists webServiceExists,
     CreateSourceBuildConfiguration createSourceBuildConfiguration,
     TimeProvider timeProvider)
     : IMediatorOutcomeHandler<
@@ -72,7 +72,7 @@ public sealed class CreateSourceBuildConfigurationHandler(
     private static async Task<CreateSourceBuildConfigurationOutcome> CreateAsync(
         CreateSourceBuildConfigurationRequest request,
         SourceRepositoryBuildSnapshot sourceRepository,
-        WebServiceExists webServiceExists,
+        SourceBuildWebServiceExists webServiceExists,
         CreateSourceBuildConfiguration createSourceBuildConfiguration,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)

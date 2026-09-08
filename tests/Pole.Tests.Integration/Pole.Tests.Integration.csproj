@@ -12,7 +12,6 @@
         <PackageReference Include="Microsoft.AspNetCore.TestHost" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" />
         <PackageReference Include="Npgsql" />
-        <PackageReference Include="StackExchange.Redis" />
         <PackageReference Include="Testcontainers" />
         <PackageReference Include="xunit" />
         <PackageReference Include="xunit.runner.visualstudio">
@@ -52,4 +51,5 @@
         <ProjectReference Include="..\..\src\shared\Observability\Observability.csproj" />
     </ItemGroup>
 
+<ItemGroup><ProjectReference Include="../../src/api/Pole.Testing/Pole.Testing.csproj" /></ItemGroup>
 </Project>

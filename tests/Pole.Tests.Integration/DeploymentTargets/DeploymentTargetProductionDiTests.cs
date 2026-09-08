@@ -18,14 +18,13 @@ using Pole.Features.DeploymentTargets.Application.Persistence.References;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Runtime.Kubernetes;
-using Pole.Features.Postgres.Application.Kubernetes;
-using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Server.Extensions;
+using Pole.Platform.Hosting;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -118,9 +117,7 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
         var consumerAssemblies = new[]
         {
             typeof(ResourceGroupApplicationRegistration).Assembly,
-            typeof(CreateRedisServiceHandler).Assembly,
             typeof(WebServiceResourceDeploymentAdapter).Assembly,
-            typeof(PostgresResourceDeploymentAdapter).Assembly,
             typeof(FunctionRevisionKubernetesManager).Assembly,
             typeof(StorageProfileApplicationRegistration).Assembly
         };
@@ -182,7 +179,7 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
         services.AddLogging();
         services.AddSingleton<IMongoClient>(fixture.Client);
         services.AddSingleton<IMongoDatabase>(fixture.Database);
-        services.AddSingleton<IEnvelopeEncryptionService>(TestPostgresEnvelopeEncryption.Create());
+        services.AddSingleton<IEnvelopeEncryptionService>(TestEnvelopeEncryption.Create());
         services.AddSingleton<IHostEnvironment>(new FakeHostEnvironment());
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<MongoRunTransaction>();

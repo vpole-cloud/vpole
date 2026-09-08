@@ -102,7 +102,7 @@ public sealed class ResourceGroupDomainTests
         Assert.Throws<ArgumentException>(() => ResourceRegistrationFactory.Create(
             TenantId,
             ResourceGroupId,
-            ResourceTypeId.Create("pole/redis"),
+            ResourceTypeId.Create("third-party/widget"),
             "external-42",
             "Redis",
             "pole",
