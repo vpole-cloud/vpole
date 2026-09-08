@@ -4,7 +4,7 @@ using Pole.Features.Events.Abstractions;
 
 namespace Pole.Features.ResourceGroups.Events;
 
- [EntityName("resource-group-updated")]
+[EntityName("pole.resource-groups/v1/resource-group-updated")]
 public sealed record ResourceGroupUpdatedEvent(
     string ResourceGroupId,
     string Name,

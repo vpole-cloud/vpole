@@ -11,6 +11,7 @@ using Orleans.Configuration;
 using Pole.Features.Functions.Runtime.Coordination;
 using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Server.Extensions;
+using Pole.Platform.Hosting;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

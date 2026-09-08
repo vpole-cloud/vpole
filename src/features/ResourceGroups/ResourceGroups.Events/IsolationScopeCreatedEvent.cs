@@ -3,7 +3,7 @@ using Pole.Features.Events.Abstractions;
 
 namespace Pole.Features.ResourceGroups.Events;
 
-[EntityName("isolation-scope-created")]
+[EntityName("pole.resource-groups/v1/isolation-scope-created")]
 public sealed record IsolationScopeCreatedEvent(
     string IsolationScopeId,
     string ResourceGroupId,
@@ -13,7 +13,7 @@ public sealed record IsolationScopeCreatedEvent(
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
-[EntityName("isolation-scope-deletion-requested")]
+[EntityName("pole.resource-groups/v1/isolation-scope-deletion-requested")]
 public sealed record IsolationScopeDeletionRequestedEvent(
     string IsolationScopeId,
     string ResourceGroupId) : IPoleEvent

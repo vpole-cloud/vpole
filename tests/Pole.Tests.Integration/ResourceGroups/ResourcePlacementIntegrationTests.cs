@@ -48,9 +48,9 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
         Assert.Equal([DefaultTargetId], referenceChange.AddedDeploymentTargetIds);
         Assert.Empty(referenceChange.RemovedDeploymentTargetIds);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
-            "runtime-cell-reconciliation-requested"));
+            "pole.resource-groups/v1/runtime-cell-reconciliation-requested"));
         var requestMessage = await DbContext.OutboxMessages
-            .Find(message => message.EventType == "runtime-cell-reconciliation-requested")
+            .Find(message => message.EventType == "pole.resource-groups/v1/runtime-cell-reconciliation-requested")
             .SingleAsync();
         Assert.Equal(
             RuntimeCellPendingKey.Reconciliation(placements[0].RuntimeCellId, 1),
@@ -122,7 +122,7 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
         Assert.Equal(2L, await DbContext.RuntimeCells.CountDocumentsAsync(
             cell => cell.ResourceGroupId == resourceGroup.Id));
         Assert.Equal(2L, await DbContext.CountOutboxMessagesAsync(
-            "runtime-cell-reconciliation-requested"));
+            "pole.resource-groups/v1/runtime-cell-reconciliation-requested"));
     }
 
     [Fact]

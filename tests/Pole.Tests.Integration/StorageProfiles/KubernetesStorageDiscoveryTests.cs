@@ -11,12 +11,12 @@ public sealed class KubernetesStorageDiscoveryTests
     public void PersistentVolumeClaimOwner_PrefersCanonicalResourceTypeAnnotation()
     {
         var claim = CreateClaim(
-            resourceTypeLabel: "Redis",
-            resourceTypeAnnotation: "pole/redis");
+            resourceTypeLabel: "Widget",
+            resourceTypeAnnotation: "third-party/widget");
 
         var mapped = KubernetesStorageDiscovery.MapPersistentVolumeClaim(claim);
 
-        Assert.Equal("pole/redis", mapped.Owner.ResourceType);
+        Assert.Equal("third-party/widget", mapped.Owner.ResourceType);
         Assert.Equal("resource-1", mapped.Owner.ResourceId);
     }
 
@@ -24,12 +24,12 @@ public sealed class KubernetesStorageDiscoveryTests
     public void PersistentVolumeClaimOwner_FallsBackToCompatibilityLabel()
     {
         var claim = CreateClaim(
-            resourceTypeLabel: "Redis",
+            resourceTypeLabel: "Widget",
             resourceTypeAnnotation: null);
 
         var mapped = KubernetesStorageDiscovery.MapPersistentVolumeClaim(claim);
 
-        Assert.Equal("Redis", mapped.Owner.ResourceType);
+        Assert.Equal("Widget", mapped.Owner.ResourceType);
     }
 
     private static V1PersistentVolumeClaim CreateClaim(

@@ -45,9 +45,7 @@ public sealed class OutboxEventAssemblyCatalog(IEnumerable<Assembly> assemblies)
                 .OrderBy(TypeName, StringComparer.Ordinal)
                 .ToArray();
             var registrations = eventTypes
-                .Select(type => new EventRegistration(
-                    EventTypeIdentity.GetRequiredName(type),
-                    type))
+                .Select(type => new EventRegistration(EventTypeIdentity.GetRequiredName(type), type))
                 .ToArray();
             var duplicate = registrations
                 .GroupBy(registration => registration.Name, StringComparer.Ordinal)

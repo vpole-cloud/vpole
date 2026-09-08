@@ -13,15 +13,8 @@ using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Outbox.Application.Persistence;
-using Pole.Features.Postgres.Application.Common;
-using Pole.Features.Postgres.Application;
-using Pole.Features.Postgres.Domain;
-using Pole.Features.Postgres.Application.Kubernetes;
-using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
-using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Common;
@@ -41,6 +34,7 @@ using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Mediator;
 using Pole.Server.Extensions;
+using Pole.Platform.Hosting;
 using Pole.Workloads;
 
 namespace Pole.Tests.Integration.Infrastructure;
@@ -53,10 +47,8 @@ public static class TestServiceProviderFactory
         typeof(ComputeProfileApplicationRegistration).Assembly,
         typeof(FunctionAppFeature).Assembly,
         typeof(FunctionRuntimeFeature).Assembly,
-        typeof(PostgresClusterEndpoints).Assembly,
         typeof(QuotaEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,
-        typeof(RedisServiceEndpoints).Assembly,
         typeof(ResourceDeploymentFeature).Assembly,
         typeof(DomainZoneEndpoints).Assembly,
         typeof(DeploymentTargetFeature).Assembly,
@@ -102,14 +94,7 @@ public static class TestServiceProviderFactory
         services.AddDomainsFeature();
         services.AddComputeProfilesFeature();
         services.AddStorageProfilesFeature();
-        services.AddRedisServicesFeature();
-        services.AddPostgresFeature(configuration);
         services.AddWebServicesFeature();
-        services.AddSingleton(new PostgresSettings
-        {
-            DefaultDeploymentMode = PostgresDeploymentMode.Operator,
-            SupportedVersions = new PostgresSupportedVersionsSettings { From = 16, To = 17 }
-        });
         services.AddQuotasFeature(configuration);
         var deploymentTargetLookup = new TestDeploymentTargetLookup();
         services.AddSingleton(deploymentTargetLookup);
@@ -136,7 +121,7 @@ public static class TestServiceProviderFactory
         services.AddSingleton<FenceDeploymentTargetWorkloadConfigurations>(
             deploymentTargetLookup.FenceManyOutcomeAsync);
         services.AddSingleton<IEnvelopeEncryptionService>(
-            TestPostgresEnvelopeEncryption.Create());
+            TestEnvelopeEncryption.Create());
         services.AddMigrations(Assemblies);
         services.AddSingleton(new SearchSourceType(
             ResourceTypeId.Create("third-party/widget"),

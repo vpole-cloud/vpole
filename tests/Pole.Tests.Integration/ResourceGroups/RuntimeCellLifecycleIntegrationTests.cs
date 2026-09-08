@@ -43,7 +43,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         Assert.IsType<ReadyRuntimeCellState>(saved.State);
         Assert.Equal(1, saved.ObservedGeneration);
         Assert.Equal(1, manager.EnsureCallCount);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("runtime-cell-ready"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/runtime-cell-ready"));
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         Assert.DoesNotContain(providerSecret, failed.FailureMessage, StringComparison.Ordinal);
         Assert.True(failed.RetryNotBeforeUtc > failed.AttemptedAtUtc);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
-            "runtime-cell-reconciliation-failed"));
+            "pole.resource-groups/v1/runtime-cell-reconciliation-failed"));
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         Assert.Equal(deleting.DesiredGeneration, saved.ObservedGeneration);
         Assert.Equal(1, manager.DeleteCallCount);
         Assert.Equal(1, admission.UnregisterCallCount);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("runtime-cell-deleted"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/runtime-cell-deleted"));
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         var failed = Assert.IsType<FailedRuntimeCellState>(saved.State);
         Assert.Equal(RuntimeCellOperation.Deletion, failed.Operation);
         Assert.Equal(0, admission.UnregisterCallCount);
-        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync("runtime-cell-deleted"));
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/runtime-cell-deleted"));
     }
 
     [Fact]
@@ -161,8 +161,8 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         Assert.False(await DbContext.RuntimeCells
             .Find(item => item.ResourceGroupId == resourceGroup.Id)
             .AnyAsync());
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("runtime-cell-deleted"));
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("resource-group-deleted"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/runtime-cell-deleted"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/resource-group-deleted"));
     }
 
     [Fact]
@@ -186,9 +186,9 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         Assert.IsType<ProvisioningRuntimeCellState>(recovered.State);
         Assert.Equal(cell.DesiredGeneration + 1, recovered.DesiredGeneration);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
-            "runtime-cell-reconciliation-requested"));
+            "pole.resource-groups/v1/runtime-cell-reconciliation-requested"));
         var pendingRequest = await DbContext.OutboxMessages
-            .Find(message => message.EventType == "runtime-cell-reconciliation-requested")
+            .Find(message => message.EventType == "pole.resource-groups/v1/runtime-cell-reconciliation-requested")
             .SingleAsync();
         Assert.Equal(
             RuntimeCellPendingKey.Reconciliation(recovered.Id, recovered.DesiredGeneration),
@@ -202,7 +202,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         await CreateRecoveryJob(InitialTime.AddMinutes(3)).RecoverAsync();
 
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
-            "runtime-cell-reconciliation-requested"));
+            "pole.resource-groups/v1/runtime-cell-reconciliation-requested"));
     }
 
     [Fact]
@@ -236,7 +236,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         Assert.False(await DbContext.ResourceGroups
             .Find(group => group.Id == resourceGroup.Id)
             .AnyAsync());
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("resource-group-deleted"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/resource-group-deleted"));
     }
 
     private async Task<RuntimeCell> InsertCellAsync()

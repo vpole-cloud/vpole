@@ -22,10 +22,10 @@ public sealed class ResourceRegistrationApiTests(MongoReplicaSetFixture fixture)
             ResourceRegistrationFactory.Create(
                 group.TenantId,
                 group.Id,
-                ResourceTypeId.Create("pole/redis"),
-                "redis-1",
-                "Cache",
-                null,
+                ResourceTypeId.Create("third-party/widget"),
+                "widget-1",
+                "Widget",
+                "third-party",
                 new ResourceRegistrationFactory.CreateOptions(
                     ObjectId.GenerateNewId().ToString(),
                     DateTime.UtcNow)));
@@ -39,8 +39,8 @@ public sealed class ResourceRegistrationApiTests(MongoReplicaSetFixture fixture)
         Assert.NotNull(page);
         Assert.Equal(1, page.TotalCount);
         var registration = Assert.Single(page.Items);
-        Assert.Equal("pole/redis", registration.ResourceTypeId);
-        Assert.Equal("redis-1", registration.ResourceId);
+        Assert.Equal("third-party/widget", registration.ResourceTypeId);
+        Assert.Equal("widget-1", registration.ResourceId);
     }
 
     [Fact]

@@ -1,10 +1,10 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using MassTransit;
 using Pole.Features.Events.Abstractions;
 
 namespace Pole.Features.RedisServices.Events;
 
-[EntityName("redis-service-updated")]
+[EntityName("pole.redis/v1/redis-service-updated")]
 public sealed record RedisServiceUpdatedEvent(
     string RedisId,
     string Name,

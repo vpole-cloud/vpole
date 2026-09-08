@@ -3,7 +3,7 @@ namespace Pole.Features.Postgres.Events
 open MassTransit
 open Pole.Features.Events.Abstractions
 
-[<EntityName("postgres-cluster-deleted")>]
+[<EntityName("pole.postgres/v1/postgres-cluster-deleted")>]
 type PostgresClusterDeletedEvent =
     { EventCore : EventCore
       ClusterId : string

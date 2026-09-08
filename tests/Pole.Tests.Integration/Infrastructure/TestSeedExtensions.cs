@@ -1,6 +1,5 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.WebServices.Domain;
 
@@ -38,12 +37,6 @@ public static class TestSeedExtensions
     {
         await dbContext.Database.WebServices().InsertOneAsync(webService);
         return webService;
-    }
-
-    public static async Task<Redis> InsertRedisAsync(this MongoTestStore dbContext, Redis redis)
-    {
-        await dbContext.Database.RedisServices().InsertOneAsync(redis);
-        return redis;
     }
 
     public static async Task<long> CountOutboxMessagesAsync(this MongoTestStore dbContext, string eventType)

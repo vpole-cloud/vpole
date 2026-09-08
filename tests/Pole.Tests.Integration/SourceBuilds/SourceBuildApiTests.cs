@@ -50,7 +50,7 @@ public sealed class SourceBuildApiTests(MongoReplicaSetFixture fixture)
         Assert.IsType<QueuedSourceBuild>(storedBuild.State);
 
         var outbox = await Fixture.DbContext.OutboxMessages
-            .Find(item => item.TenantId == TestData.TenantId && item.EventType == "source-build-requested")
+            .Find(item => item.TenantId == TestData.TenantId && item.EventType == "pole.source-builds/v1/source-build-requested")
             .SingleAsync();
         Assert.Contains(build.Id, outbox.PayloadJson, StringComparison.Ordinal);
 

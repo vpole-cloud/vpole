@@ -77,7 +77,7 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             promote(TestData.TenantId, created.FunctionAppId, created.RevisionId),
             promote(TestData.TenantId, created.FunctionAppId, created.RevisionId));
         Assert.All(promotions, result => result.RequireLifecycleSuccess());
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("function-revision-promoted"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.functions/v1/function-revision-promoted"));
     }
 
     [Fact]
@@ -112,13 +112,13 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         var httpRoute = Assert.Single(route.HttpRoutes);
         Assert.Equal("webhook", httpRoute.HandlerName);
         Assert.Equal(FunctionExposure.Public, httpRoute.Exposure);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("function-app-created"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.functions/v1/function-app-created"));
         var registration = await DbContext.ResourceRegistrations
             .Find(item => item.ResourceId == created.FunctionAppId)
             .SingleAsync();
         Assert.Equal(FunctionResourceDeployment.ResourceType.Value, registration.ResourceTypeId);
         Assert.Equal(group.Id, registration.ResourceGroupId);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("function-revision-promoted"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.functions/v1/function-revision-promoted"));
         var timer = await DbContext.FunctionTimerStates
             .Find(candidate => candidate.FunctionAppId == created.FunctionAppId)
             .SingleAsync();
@@ -175,7 +175,7 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(response.RevisionId, app.PendingRevisionId);
         Assert.Equal(FunctionAppStatus.Updating, app.Status);
         Assert.Equal(1000, app.AdmittedQuota.TotalCpuMillis);
-        Assert.Equal(2L, await DbContext.CountOutboxMessagesAsync("function-revision-created"));
+        Assert.Equal(2L, await DbContext.CountOutboxMessagesAsync("pole.functions/v1/function-revision-created"));
 
         var promotion = await MarkReadyAndPromoteAsync(
             markReady,
@@ -278,7 +278,7 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             .Find(revision => revision.Id == created.RevisionId)
             .SingleAsync();
         Assert.IsType<RetiredFunctionRevisionStatus>(retired.Status);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("function-revision-retired"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.functions/v1/function-revision-retired"));
     }
 
     [Fact]
@@ -331,7 +331,7 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             .Find(item => item.Id == created.RevisionId)
             .SingleAsync();
         Assert.IsType<DrainingFunctionRevisionStatus>(revision.Status);
-        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync("function-revision-retired"));
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync("pole.functions/v1/function-revision-retired"));
     }
 
     [Fact]
@@ -476,7 +476,7 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(FunctionAppDesiredState.Deleting, app.DesiredState);
         Assert.Equal(FunctionRouteBindingState.Disabled, route.State);
         Assert.Equal(before.AdmittedQuota, app.AdmittedQuota);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("function-app-delete-requested"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.functions/v1/function-app-delete-requested"));
         var timer = await DbContext.FunctionTimerStates
             .Find(value => value.FunctionAppId == created.FunctionAppId)
             .SingleAsync();

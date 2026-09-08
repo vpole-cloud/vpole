@@ -48,9 +48,9 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
         Assert.True(defaultScope.IsDefault);
         Assert.Equal(IsolationScopeFactory.DefaultScopeName, defaultScope.Name);
 
-        var outboxCount = await DbContext.CountOutboxMessagesAsync("resource-group-created");
+        var outboxCount = await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/resource-group-created");
         Assert.Equal(1L, outboxCount);
-        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync("isolation-scope-created"));
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/isolation-scope-created"));
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             .Find(scope => scope.ResourceGroupId == resourceGroup.Id)
             .AnyAsync());
 
-        var outboxCount = await DbContext.CountOutboxMessagesAsync("resource-group-deleted");
+        var outboxCount = await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/resource-group-deleted");
         Assert.Equal(1L, outboxCount);
     }
 
@@ -194,7 +194,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             .Find(registration => registration.ResourceId == "racing-resource")
             .AnyAsync());
         Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
-            "resource-group-deleted"));
+            "pole.resource-groups/v1/resource-group-deleted"));
     }
 
     [Fact]
@@ -229,9 +229,9 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             .SingleAsync();
         Assert.IsType<DeletingRuntimeCellState>(savedCell.State);
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
-            "runtime-cell-deletion-requested"));
+            "pole.resource-groups/v1/runtime-cell-deletion-requested"));
         Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
-            "resource-group-deleted"));
+            "pole.resource-groups/v1/resource-group-deleted"));
     }
 
     [Fact]

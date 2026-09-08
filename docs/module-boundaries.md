@@ -123,6 +123,11 @@ An integration event is an historical serialized contract:
 - Enums have stable string representations rather than relying on numeric ordinals.
 - Previously persisted outbox payloads must remain deserializable after deployment.
 
+Every concrete `IPoleEvent` has one required `[EntityName]` with the stable form
+`owner/vN/name`, where `N` is a positive integer. This is the single broker and outbox identity;
+do not add a second persisted-name property or an alias for an earlier identity. The feature owner
+chooses its namespace, for example `pole.redis/v1/redis-service-created`.
+
 Application maps domain state to event-owned payloads. Avoiding a small amount of mapping code is
 not a reason to couple event evolution to a domain or synchronous contract model.
 

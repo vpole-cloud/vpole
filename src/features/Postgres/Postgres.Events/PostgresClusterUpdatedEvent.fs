@@ -6,7 +6,7 @@ open Pole.Features.Events.Abstractions
 type PostgresClusterUpdatedEventChanges =
     { Spec : UpdateLog<PostgresClusterSpecSnapshot> }
 
-[<EntityName("postgres-cluster-updated")>]
+[<EntityName("pole.postgres/v1/postgres-cluster-updated")>]
 type PostgresClusterUpdatedEvent =
     { EventCore : EventCore
       ClusterId : string

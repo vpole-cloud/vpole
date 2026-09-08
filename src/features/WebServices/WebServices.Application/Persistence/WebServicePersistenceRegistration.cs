@@ -11,6 +11,7 @@ using Pole.Features.WebServices.Application.Persistence.Releases;
 using Pole.Features.WebServices.Application.Persistence.Tokens;
 using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Domain;
+using Pole.Features.SourceBuilds.Contracts;
 
 namespace Pole.Features.WebServices.Application.Persistence;
 
@@ -30,6 +31,7 @@ public static class WebServicePersistenceRegistration
             .GetCollection<WebServiceDeploymentToken>("WebServiceDeploymentTokens"));
         services.AddCapability<MongoLoadWebServiceById, LoadWebServiceById>(x => x.InvokeAsync);
         services.AddCapability<MongoWebServiceExists, WebServiceExists>(x => x.InvokeAsync);
+        services.AddCapability<MongoWebServiceExists, SourceBuildWebServiceExists>(x => x.InvokeAsync);
         services.AddCapability<MongoLoadWebServicePage, LoadWebServicePage>(x => x.InvokeAsync);
         services.AddCapability<MongoLoadWebServiceReleaseHistory, LoadWebServiceReleaseHistory>(x => x.InvokeAsync);
         services.AddCapability<MongoLoadSucceededWebServiceRelease, LoadSucceededWebServiceRelease>(x => x.InvokeAsync);

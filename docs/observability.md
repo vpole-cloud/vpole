@@ -61,8 +61,11 @@ delivers events at least once: a process crash after RabbitMQ accepts a publish 
 Mongo records `Published` can publish the same event again. Consumers must therefore remain
 idempotent, and no global or per-aggregate event ordering is guaranteed.
 
-Persisted event names come from required, unique `[EntityName]` attributes. Pole validates
-the configured event catalog during startup instead of falling back to CLR type names.
+Every persisted event has one required, unique `[EntityName]` in the form `owner/vN/name`, where
+`N` is a positive integer. For example, Redis publishes
+`pole.redis/v1/redis-service-created`. The same identity names the broker topology and the outbox
+event type; Pole has no separate persisted-name field or legacy read aliases. The configured event
+catalog is validated at startup instead of falling back to CLR type names.
 
 ## RabbitMQ Flow
 

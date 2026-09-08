@@ -32,7 +32,7 @@ public sealed class StorageProfileResolutionFenceTests(
             isEnabled: true,
             isDefault: false,
             [StorageProfileTargetMapping.Create(TargetId, "fast")],
-            [ResourceTypeId.Create("pole/redis")],
+            [ResourceTypeId.Create("third-party/widget")],
             StorageProfileTenantAccess.Create(
                 StorageProfileTenantAccessMode.AllTenants,
                 []),
@@ -66,7 +66,7 @@ public sealed class StorageProfileResolutionFenceTests(
             isEnabled: true,
             isDefault: false,
             [StorageProfileTargetMapping.Create(TargetId, "fast")],
-            [ResourceTypeId.Create("pole/redis")],
+            [ResourceTypeId.Create("third-party/widget")],
             StorageProfileTenantAccess.Create(
                 StorageProfileTenantAccessMode.AllTenants,
                 []),

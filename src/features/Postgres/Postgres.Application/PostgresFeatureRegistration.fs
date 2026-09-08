@@ -12,6 +12,7 @@ open Pole.Features.Postgres.Application.Endpoints
 open Pole.Features.Postgres.Application.Kubernetes
 open Pole.Features.Postgres.Application.Persistence
 open Pole.Features.Postgres.Application.Search
+open Pole.Features.Postgres.Domain
 open Pole.Features.Quotas.Contracts
 open Pole.Features.Search.Contracts
 
@@ -26,6 +27,17 @@ type PostgresFeatureRegistration =
         services
             .AddOptions<PostgresSettings>()
             .Bind(configuration.GetSection(PostgresSettings.SectionName))
+            .Validate(
+                Func<PostgresSettings, bool>(fun settings ->
+                    settings.SupportedVersions.From > 0 &&
+                    settings.SupportedVersions.``To`` >= settings.SupportedVersions.From &&
+                    Enum.IsDefined(typeof<PostgresDeploymentMode>, box settings.DefaultDeploymentMode) &&
+                    not (String.IsNullOrWhiteSpace(settings.OperatorImage.Server)) &&
+                    not (String.IsNullOrWhiteSpace(settings.OperatorImage.Name)) &&
+                    not (String.IsNullOrWhiteSpace(settings.StatefulSetImage.Server)) &&
+                    not (String.IsNullOrWhiteSpace(settings.StatefulSetImage.Name))),
+                "PostgreSQL requires a valid deployment mode, ordered positive version bounds, and nonblank image server/name values.")
+            .ValidateOnStart()
         |> ignore
         services.TryAddSingleton<PostgresSettings>(
             Func<IServiceProvider, PostgresSettings>(fun serviceProvider ->

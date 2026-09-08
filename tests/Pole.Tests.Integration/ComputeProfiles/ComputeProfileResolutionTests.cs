@@ -66,7 +66,7 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
             profile.Id,
             target.Id,
             ComputeProfileTestData.TenantId,
-            ResourceTypeId.Create("pole/redis")));
+            ResourceTypeId.Create("third-party/widget")));
         Assert.IsType<ComputeProfileUnavailable>(wrongResourceType.AssertError().Value);
 
         var missingMapping = await resolve(new ComputeProfileResolutionRequest(
@@ -241,7 +241,7 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
             displayName: "Other tenant"));
         await create(ComputeProfileTestData.CreateProfile(
             target.Id,
-            resourceTypes: [ResourceTypeId.Create("pole/redis")],
+            resourceTypes: [ResourceTypeId.Create("third-party/widget")],
             displayName: "Other resource"));
         await create(ComputeProfileTestData.CreateProfile(
             otherTarget.Id,

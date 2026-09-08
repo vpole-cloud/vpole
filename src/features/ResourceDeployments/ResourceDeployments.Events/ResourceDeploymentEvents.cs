@@ -3,7 +3,7 @@ using Pole.Features.Events.Abstractions;
 
 namespace Pole.Features.ResourceDeployments.Events;
 
-[EntityName("resource-deployment-reconciliation-requested")]
+[EntityName("pole.resource-deployments/v1/resource-deployment-reconciliation-requested")]
 public sealed record ResourceDeploymentReconciliationRequestedEvent(
     string ResourceDeploymentId,
     string RuntimeCellId,
@@ -13,7 +13,7 @@ public sealed record ResourceDeploymentReconciliationRequestedEvent(
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
-[EntityName("resource-deployment-deletion-requested")]
+[EntityName("pole.resource-deployments/v1/resource-deployment-deletion-requested")]
 public sealed record ResourceDeploymentDeletionRequestedEvent(
     string ResourceDeploymentId,
     string RuntimeCellId,
@@ -23,7 +23,7 @@ public sealed record ResourceDeploymentDeletionRequestedEvent(
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
-[EntityName("resource-deployment-applied")]
+[EntityName("pole.resource-deployments/v1/resource-deployment-applied")]
 public sealed record ResourceDeploymentAppliedEvent(
     string ResourceDeploymentId,
     string ResourceType,
@@ -35,7 +35,7 @@ public sealed record ResourceDeploymentAppliedEvent(
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
-[EntityName("resource-deployment-failed")]
+[EntityName("pole.resource-deployments/v1/resource-deployment-failed")]
 public sealed record ResourceDeploymentFailedEvent(
     string ResourceDeploymentId,
     string ResourceType,
@@ -50,7 +50,7 @@ public sealed record ResourceDeploymentFailedEvent(
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
-[EntityName("resource-deployment-deleted")]
+[EntityName("pole.resource-deployments/v1/resource-deployment-deleted")]
 public sealed record ResourceDeploymentDeletedEvent(
     string ResourceDeploymentId,
     string ResourceType,

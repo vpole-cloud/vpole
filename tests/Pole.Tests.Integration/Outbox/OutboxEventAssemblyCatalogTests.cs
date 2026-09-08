@@ -15,22 +15,18 @@ public sealed class OutboxEventAssemblyCatalogTests
         [
             typeof(Pole.Features.WebServices.Events.WebServiceCreatedEvent).Assembly,
             typeof(Pole.Features.Functions.Events.FunctionAppCreatedEvent).Assembly,
-            typeof(Pole.Features.Postgres.Events.PostgresClusterCreatedEvent).Assembly,
-            typeof(Pole.Features.RedisServices.Events.RedisServiceCreatedEvent).Assembly,
             typeof(Pole.Features.ResourceDeployments.Events.ResourceDeploymentAppliedEvent).Assembly,
             typeof(Pole.Features.ResourceGroups.Events.ResourceGroupCreatedEvent).Assembly,
             typeof(Pole.Features.SourceBuilds.Events.SourceBuildRequestedEvent).Assembly,
             typeof(Pole.Features.Users.Events.UserCreatedEvent).Assembly
         ]);
 
-        Assert.Contains("web-service-created", catalog.EventTypes.Keys);
-        Assert.Contains("function-app-created", catalog.EventTypes.Keys);
-        Assert.Contains("postgres-cluster-created", catalog.EventTypes.Keys);
-        Assert.Contains("redis-service-created", catalog.EventTypes.Keys);
-        Assert.Contains("resource-deployment-applied", catalog.EventTypes.Keys);
-        Assert.Contains("runtime-cell-reconciliation-requested", catalog.EventTypes.Keys);
-        Assert.Contains("source-build-requested", catalog.EventTypes.Keys);
-        Assert.Contains("user-created", catalog.EventTypes.Keys);
+        Assert.Contains("pole.web-services/v1/web-service-created", catalog.EventTypes.Keys);
+        Assert.Contains("pole.functions/v1/function-app-created", catalog.EventTypes.Keys);
+        Assert.Contains("pole.resource-deployments/v1/resource-deployment-applied", catalog.EventTypes.Keys);
+        Assert.Contains("pole.resource-groups/v1/runtime-cell-reconciliation-requested", catalog.EventTypes.Keys);
+        Assert.Contains("pole.source-builds/v1/source-build-requested", catalog.EventTypes.Keys);
+        Assert.Contains("pole.users/v1/user-created", catalog.EventTypes.Keys);
     }
 
     [Fact]
@@ -45,12 +41,12 @@ public sealed class OutboxEventAssemblyCatalogTests
         Assert.Equal(2, catalog.EventTypes.Count);
         Assert.Same(
             typeof(FirstNamedEvent),
-            catalog.GetRequiredEventType("catalog-first"));
+            catalog.GetRequiredEventType("catalog/v1/first"));
         Assert.Same(
             typeof(SecondNamedEvent),
-            catalog.GetRequiredEventType("catalog-second"));
+            catalog.GetRequiredEventType("catalog/v1/second"));
         Assert.Equal(
-            "catalog-first",
+            "catalog/v1/first",
             EventTypeIdentity.GetRequiredName(typeof(FirstNamedEvent)));
     }
 
@@ -94,11 +90,12 @@ public sealed class OutboxEventAssemblyCatalogTests
     }
 
     [Fact]
-    public void EventTypeIdentity_NormalizesPersistedNameWhitespace()
+    public void EventTypeIdentity_RejectsMalformedIdentity()
     {
-        Assert.Equal(
-            "catalog-padded",
-            EventTypeIdentity.GetRequiredName(typeof(PaddedEntityNameEvent)));
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => EventTypeIdentity.GetRequiredName(typeof(PaddedEntityNameEvent)));
+
+        Assert.Contains("namespace/vN/name", exception.Message);
     }
 
     [Fact]
@@ -120,7 +117,7 @@ public sealed class OutboxEventAssemblyCatalogTests
             ]));
 
         Assert.Equal(firstOrder.Message, secondOrder.Message);
-        Assert.Contains("catalog-duplicate", firstOrder.Message);
+        Assert.Contains("catalog/v1/duplicate", firstOrder.Message);
         Assert.True(
             firstOrder.Message.IndexOf(
                 nameof(DuplicateEventA),
@@ -142,7 +139,7 @@ public sealed class OutboxEventAssemblyCatalogTests
 
         Assert.Same(
             typeof(FirstNamedEvent),
-            catalog.GetRequiredEventType("catalog-first"));
+            catalog.GetRequiredEventType("catalog/v1/first"));
     }
 
     [Fact]
@@ -168,19 +165,19 @@ public sealed class OutboxEventAssemblyCatalogTests
         ]);
 
         var exception = Assert.Throws<KeyNotFoundException>(
-            () => catalog.GetRequiredEventType("catalog-unknown"));
+            () => catalog.GetRequiredEventType("catalog/v1/unknown"));
 
-        Assert.Contains("catalog-unknown", exception.Message);
-        Assert.Contains("catalog-first", exception.Message);
+        Assert.Contains("catalog/v1/unknown", exception.Message);
+        Assert.Contains("catalog/v1/first", exception.Message);
     }
 
-    [EntityName("catalog-first")]
+    [EntityName("catalog/v1/first")]
     private sealed record FirstNamedEvent : IPoleEvent
     {
         public EventCore EventCore { get; init; } = EventCore.Create();
     }
 
-    [EntityName("catalog-second")]
+    [EntityName("catalog/v1/second")]
     private sealed record SecondNamedEvent : IPoleEvent
     {
         public EventCore EventCore { get; init; } = EventCore.Create();
@@ -202,19 +199,19 @@ public sealed class OutboxEventAssemblyCatalogTests
         public EventCore EventCore { get; init; } = EventCore.Create();
     }
 
-    [EntityName(" catalog-padded ")]
+    [EntityName(" catalog/v1/padded ")]
     private sealed record PaddedEntityNameEvent : IPoleEvent
     {
         public EventCore EventCore { get; init; } = EventCore.Create();
     }
 
-    [EntityName("catalog-duplicate")]
+    [EntityName("catalog/v1/duplicate")]
     private sealed record DuplicateEventA : IPoleEvent
     {
         public EventCore EventCore { get; init; } = EventCore.Create();
     }
 
-    [EntityName("catalog-duplicate")]
+    [EntityName("catalog/v1/duplicate")]
     private sealed record DuplicateEventB : IPoleEvent
     {
         public EventCore EventCore { get; init; } = EventCore.Create();

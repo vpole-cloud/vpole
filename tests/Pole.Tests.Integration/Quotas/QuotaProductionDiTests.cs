@@ -8,8 +8,6 @@ using Pole.Features.Quotas.Application.Persistence.Policies;
 using Pole.Features.Quotas.Application.Persistence.Reservations;
 using Pole.Features.Quotas.Application.Persistence.Usage;
 using Pole.Features.Quotas.Contracts;
-using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application;
 using Microsoft.Extensions.Configuration;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -29,7 +27,6 @@ public sealed class QuotaProductionDiTests(MongoReplicaSetFixture fixture)
         services.AddSingleton<MongoRunTransaction>();
         services.AddSingleton(TimeProvider.System);
         var configuration = new ConfigurationBuilder().Build();
-        services.AddRedisServicesFeature();
         services.AddQuotasFeature(configuration);
 
         Assert.DoesNotContain(services, descriptor =>

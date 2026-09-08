@@ -1,10 +1,10 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using MassTransit;
 using Pole.Features.Events.Abstractions;
 
 namespace Pole.Features.RedisServices.Events;
 
-[EntityName("redis-service-created")]
+[EntityName("pole.redis/v1/redis-service-created")]
 public record RedisServiceCreatedEvent(
     string RedisId,
     string Name,

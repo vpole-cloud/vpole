@@ -271,9 +271,9 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             .SingleAsync();
         Assert.NotNull(usedToken.LastUsedAtUtc);
         Assert.Equal("github-actions", usedToken.LastUsedSource);
-        Assert.Equal(1L, await Fixture.DbContext.CountOutboxMessagesAsync("web-service-updated"));
+        Assert.Equal(1L, await Fixture.DbContext.CountOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
         Assert.Equal(1L, await Fixture.DbContext.CountOutboxMessagesAsync(
-            "resource-deployment-reconciliation-requested"));
+            "pole.resource-deployments/v1/resource-deployment-reconciliation-requested"));
     }
 
     [Fact]

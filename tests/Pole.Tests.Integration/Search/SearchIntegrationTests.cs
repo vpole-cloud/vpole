@@ -5,10 +5,6 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Postgres.Application.Search;
-using Pole.Features.Postgres.Events;
-using Pole.Features.RedisServices.Application.Search;
-using Pole.Features.RedisServices.Events;
 using Pole.Features.Request;
 using Pole.Features.ResourceGroups.Application.Search;
 using Pole.Features.ResourceGroups.Events;
@@ -49,8 +45,6 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var resourceGroupId = ObjectId.GenerateNewId().ToString();
         var webServiceId = ObjectId.GenerateNewId().ToString();
-        var redisId = ObjectId.GenerateNewId().ToString();
-        var postgresId = ObjectId.GenerateNewId().ToString();
 
         await new AddResourceGroupToSearchOnResourceGroupCreatedConsumer(CreateProjection)
             .Handle(new ResourceGroupCreatedEvent(
@@ -67,40 +61,12 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             .Handle(CreateWebServiceEvent(webServiceId, resourceGroupId, "portal"),
                 CancellationToken.None);
 
-        await new AddRedisServiceToSearchOnRedisServiceCreatedConsumer(CreateProjection)
-            .Handle(new RedisServiceCreatedEvent(
-                redisId,
-                "cache",
-                resourceGroupId,
-                new RedisServiceSpecSnapshot(
-                    new RedisServiceStorageSnapshot(5, TestData.DefaultStorageProfileId)),
-                ImmutableHashSet<string>.Empty,
-                1)
-            {
-                EventCore = EventCore.Create(TestData.TenantId)
-            }, CancellationToken.None);
-
-        await new AddPostgresClusterToSearchOnPostgresClusterCreatedConsumer(CreateProjection)
-            .Handle(new PostgresClusterCreatedEvent(
-                EventCore.Create(TestData.TenantId),
-                postgresId,
-                "database",
-                resourceGroupId,
-                1,
-                new PostgresClusterSpecSnapshot(
-                    1,
-                    10,
-                    TestData.DefaultStorageProfileId,
-                    17,
-                    PostgresDeploymentModeSnapshot.StatefulSet)),
-                CancellationToken.None);
-
         var sources = await SearchSources.Find(source =>
             source.TenantId == TestData.TenantId).ToListAsync();
 
-        Assert.Equal(4, sources.Count);
+        Assert.Equal(2, sources.Count);
         Assert.Equal(
-            ["ResourceGroup", "WebService", "RedisService", "PostgresCluster"],
+            ["ResourceGroup", "WebService"],
             sources.OrderBy(source => source.SourceSortOrder)
                 .Select(source => source.SourceApiName));
         Assert.All(sources, source => Assert.False(string.IsNullOrWhiteSpace(source.ResourceTypeId)));
@@ -294,14 +260,14 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             sharedTitle));
         await CreateProjection(CreateSnapshot(
             TestData.TenantId,
-            PostgresSearchProjection.SourceType.ResourceTypeId,
+            WebServiceSearchProjection.SourceType.ResourceTypeId,
             ObjectId.GenerateNewId().ToString(),
             sharedTitle));
 
         var response = await SearchAsync(TestData.TenantId, "same");
 
         Assert.Equal(
-            ["ResourceGroup", "Widget", "PostgresCluster"],
+            ["ResourceGroup", "WebService", "Widget"],
             response.Items.Select(item => item.SourceType));
         var widgetOnly = await SearchAsync(TestData.TenantId, "same", ["Widget"]);
         Assert.Equal("Widget", Assert.Single(widgetOnly.Items).SourceType);

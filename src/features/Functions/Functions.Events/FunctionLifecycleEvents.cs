@@ -3,7 +3,7 @@ using Pole.Features.Events.Abstractions;
 
 namespace Pole.Features.Functions.Events;
 
-[EntityName("function-app-created")]
+[EntityName("pole.functions/v1/function-app-created")]
 public sealed record FunctionAppCreatedEvent(
     string FunctionAppId,
     string RevisionId,
@@ -17,7 +17,7 @@ public sealed record FunctionAppCreatedEvent(
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
-[EntityName("function-revision-created")]
+[EntityName("pole.functions/v1/function-revision-created")]
 public sealed record FunctionRevisionCreatedEvent(
     string FunctionAppId,
     string RevisionId,
@@ -28,7 +28,7 @@ public sealed record FunctionRevisionCreatedEvent(
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
-[EntityName("function-revision-promoted")]
+[EntityName("pole.functions/v1/function-revision-promoted")]
 public sealed record FunctionRevisionPromotedEvent(
     string FunctionAppId,
     string RevisionId,
@@ -39,7 +39,7 @@ public sealed record FunctionRevisionPromotedEvent(
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
-[EntityName("function-revision-failed")]
+[EntityName("pole.functions/v1/function-revision-failed")]
 public sealed record FunctionRevisionFailedEvent(
     string FunctionAppId,
     string RevisionId,
@@ -51,7 +51,7 @@ public sealed record FunctionRevisionFailedEvent(
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
-[EntityName("function-revision-retired")]
+[EntityName("pole.functions/v1/function-revision-retired")]
 public sealed record FunctionRevisionRetiredEvent(
     string FunctionAppId,
     string RevisionId,
@@ -61,7 +61,7 @@ public sealed record FunctionRevisionRetiredEvent(
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
-[EntityName("function-app-delete-requested")]
+[EntityName("pole.functions/v1/function-app-delete-requested")]
 public sealed record FunctionAppDeleteRequestedEvent(
     string FunctionAppId,
     FunctionPlacementSnapshot Placement,

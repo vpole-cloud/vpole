@@ -56,7 +56,7 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
         Assert.Equal(
             0L,
             await DbContext.CountOutboxMessagesAsync(
-                "web-service-deployment-completed"));
+                "pole.web-services/v1/web-service-deployment-completed"));
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
         await consumer.Handle(deployment);
 
         var completionEvents = await DbContext.OutboxMessages
-            .Find(message => message.EventType == "web-service-deployment-completed")
+            .Find(message => message.EventType == "pole.web-services/v1/web-service-deployment-completed")
             .ToListAsync();
         Assert.Single(completionEvents);
     }
@@ -99,7 +99,7 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
         Assert.Equal(
             1L,
             await DbContext.CountOutboxMessagesAsync(
-                "web-service-deployment-completed"));
+                "pole.web-services/v1/web-service-deployment-completed"));
     }
 
     [Fact]
@@ -120,7 +120,7 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
         Assert.Equal(
             0L,
             await DbContext.CountOutboxMessagesAsync(
-                "web-service-deployment-completed"));
+                "pole.web-services/v1/web-service-deployment-completed"));
     }
 
     private async Task<WebServiceRelease> InsertPendingReleaseAsync()

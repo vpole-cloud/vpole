@@ -8,6 +8,7 @@ using Pole.Features.Tenants.Application.Persistence.Tenants;
 using Pole.Features.Tenants.Contracts;
 using Pole.Mediator;
 using Pole.Server.Extensions;
+using Pole.Platform.Hosting;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

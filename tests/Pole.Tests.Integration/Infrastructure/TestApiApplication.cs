@@ -33,16 +33,10 @@ using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Runtime.Consumers;
-using Pole.Features.Postgres.Application.Common;
-using Pole.Features.Postgres.Application;
-using Pole.Features.Postgres.Application.Kubernetes;
-using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Outbox.Application.Migrations;
 using Pole.Features.Outbox.Application.Persistence;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
-using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Migrations;
@@ -71,6 +65,7 @@ using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Application.Identity;
 using Pole.Observability;
 using Pole.Server.Extensions;
+using Pole.Platform.Hosting;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
@@ -85,10 +80,8 @@ public sealed class TestApiApplication : IAsyncDisposable
         typeof(ComputeProfileApplicationRegistration).Assembly,
         typeof(FunctionAppFeature).Assembly,
         typeof(FunctionRuntimeFeature).Assembly,
-        typeof(PostgresClusterEndpoints).Assembly,
         typeof(QuotaEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,
-        typeof(RedisServiceEndpoints).Assembly,
         typeof(ResourceDeploymentFeature).Assembly,
         typeof(DomainZoneEndpoints).Assembly,
         typeof(GitProviderEndpoints).Assembly,
@@ -192,14 +185,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddDomainsFeature();
         builder.Services.AddComputeProfilesFeature();
         builder.Services.AddStorageProfilesFeature();
-        builder.Services.AddRedisServicesFeature();
-        builder.Services.AddPostgresFeature(builder.Configuration);
         builder.Services.AddWebServicesFeature();
-        builder.Services.AddSingleton(new PostgresSettings
-        {
-            DefaultDeploymentMode = Pole.Features.Postgres.Domain.PostgresDeploymentMode.Operator,
-            SupportedVersions = new PostgresSupportedVersionsSettings { From = 16, To = 17 }
-        });
         builder.Services.AddQuotasFeature(builder.Configuration);
         builder.Services.AddMigrations(Assemblies);
         builder.Services.AddSearchFeature();
@@ -303,7 +289,6 @@ public sealed class TestApiApplication : IAsyncDisposable
         await new ComputeProfileIndexesMigration().Up(fixture.Database);
         await new ResourceDeploymentComputeProfileIndexMigration().Up(fixture.Database);
         await new ResourceDeploymentRecoveryIndexMigration().Up(fixture.Database);
-        await ((IMigration)new PostgresCredentialMigration()).Up(fixture.Database);
         await new StorageProfileMigration().Up(fixture.Database);
         await new OutboxMessageMigration().Up(fixture.Database);
         await new SourceBuildMigration().Up(fixture.Database);
@@ -325,10 +310,8 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapDeploymentTargetAvailabilityEndpoints()
             .MapDeploymentTargetEncryptionEndpoints()
             .MapWebServiceEndpoints()
-            .MapRedisServiceEndpoints()
             .MapResourceDeploymentEndpoints()
             .MapFunctionAppEndpoints()
-            .MapPostgresClusterEndpoints()
             .MapQuotaEndpoints()
             .MapSearchEndpoints()
             .MapDomainZoneEndpoints()

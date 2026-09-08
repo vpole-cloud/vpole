@@ -3,7 +3,7 @@ using Pole.Features.Events.Abstractions;
 
 namespace Pole.Features.Users.Events;
 
-[EntityName("user-created")]
+[EntityName("pole.users/v1/user-created")]
 public sealed record UserCreatedEvent(
     string UserId,
     string Email,

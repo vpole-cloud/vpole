@@ -54,7 +54,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.Equal(created.IsDefault, found.IsDefault);
         Assert.Equal(created.Lifecycle, found.Lifecycle);
         Assert.Equal(created.Revision, found.Revision);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("isolation-scope-created"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/isolation-scope-created"));
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.True(failure is IsolationScopeNameConflict);
         Assert.Equal(2L, await DbContext.IsolationScopes.CountDocumentsAsync(
             scope => scope.ResourceGroupId == resourceGroup.Id));
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("isolation-scope-created"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/isolation-scope-created"));
     }
 
     [Fact]
@@ -172,7 +172,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             .Find(item => item.Id == scope.Id)
             .AnyAsync());
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
-            "isolation-scope-deletion-requested"));
+            "pole.resource-groups/v1/isolation-scope-deletion-requested"));
     }
 
     [Fact]
@@ -242,12 +242,12 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.All(savedCells, cell =>
             Assert.IsType<DeletingRuntimeCellState>(cell.State));
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
-            "isolation-scope-deletion-requested"));
+            "pole.resource-groups/v1/isolation-scope-deletion-requested"));
         Assert.Equal(2L, await DbContext.CountOutboxMessagesAsync(
-            "runtime-cell-deletion-requested"));
+            "pole.resource-groups/v1/runtime-cell-deletion-requested"));
         var deletionRequests = await DbContext.OutboxMessages
             .Find(message =>
-                message.EventType == "runtime-cell-deletion-requested")
+                message.EventType == "pole.resource-groups/v1/runtime-cell-deletion-requested")
             .ToListAsync();
         Assert.All(deletionRequests, request =>
         {

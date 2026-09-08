@@ -19,7 +19,7 @@ public sealed class OutboxMessageDomainTests
         var message = CreateMessage(" pending-key ");
 
         Assert.Equal(MessageId, message.Id);
-        Assert.Equal("runtime-cell-ready", message.EventType);
+        Assert.Equal("pole.resource-groups/v1/runtime-cell-ready", message.EventType);
         Assert.Equal("tenant-id", message.TenantId);
         Assert.Equal("trace-id", message.TraceId);
         Assert.Equal("correlation-id", message.CorrelationId);
@@ -106,7 +106,7 @@ public sealed class OutboxMessageDomainTests
             OccurredAtUtc.AddSeconds(-1));
 
         Assert.Throws<ArgumentException>(() => OutboxMessageFactory.Create(
-            "runtime-cell-ready",
+            "pole.resource-groups/v1/runtime-cell-ready",
             "tenant-id",
             "{}",
             "trace-id",
@@ -128,7 +128,7 @@ public sealed class OutboxMessageDomainTests
 
     private static OutboxMessage CreateMessage(string? pendingKey) =>
         OutboxMessageFactory.Create(
-            " runtime-cell-ready ",
+            " pole.resource-groups/v1/runtime-cell-ready ",
             " tenant-id ",
             "{}",
             " trace-id ",

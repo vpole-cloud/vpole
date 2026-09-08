@@ -112,7 +112,7 @@ public sealed class StorageProfileDomainTests
             isEnabled: true,
             isDefault: false,
             targetMappings,
-            [ResourceTypeId.Create("pole/redis")],
+            [ResourceTypeId.Create("third-party/widget")],
             StorageProfileTenantAccess.Create(
                 StorageProfileTenantAccessMode.AllTenants,
                 []),

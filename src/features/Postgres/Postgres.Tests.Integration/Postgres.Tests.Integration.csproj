@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>Pole.Features.Postgres.Tests.Integration</AssemblyName>
+    <RootNamespace>Pole.Features.Postgres.Tests.Integration</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="KubernetesClient" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="MongoDB.Driver" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Postgres.Application\Postgres.Application.fsproj" />
+    <ProjectReference Include="..\Postgres.Domain\Postgres.Domain.fsproj" />
+    <ProjectReference Include="..\Postgres.Events\Postgres.Events.fsproj" />
+    <ProjectReference Include="..\..\..\api\Pole.Platform.Hosting\Pole.Platform.Hosting.csproj" />
+    <ProjectReference Include="..\..\..\api\Pole.Testing\Pole.Testing.csproj" />
+    <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Application\ComputeProfiles.Application.csproj" />
+    <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj" />
+    <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Domain\ComputeProfiles.Domain.csproj" />
+    <ProjectReference Include="..\..\Quotas\Quotas.Application\Quotas.Application.csproj" />
+    <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
+    <ProjectReference Include="..\..\Quotas\Quotas.Domain\Quotas.Domain.csproj" />
+    <ProjectReference Include="..\..\Quotas\Quotas.Primitives\Quotas.Primitives.csproj" />
+    <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Application\ResourceDeployments.Application.csproj" />
+    <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
+    <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Domain\ResourceDeployments.Domain.csproj" />
+    <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Application\ResourceGroups.Application.csproj" />
+    <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Domain\ResourceGroups.Domain.csproj" />
+    <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
+    <ProjectReference Include="..\..\Search\Search.Application\Search.Application.fsproj" />
+    <ProjectReference Include="..\..\Search\Search.Domain\Search.Domain.fsproj" />
+    <ProjectReference Include="..\..\Tenants\Tenants.Domain\Tenants.Domain.csproj" />
+    <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
+    <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
+    <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
+  </ItemGroup>
+
+</Project>

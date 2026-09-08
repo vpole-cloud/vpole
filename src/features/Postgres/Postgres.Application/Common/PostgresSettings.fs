@@ -24,4 +24,3 @@ module PostgresSettings =
 
     let buildImageReference (image : PostgresImageSettings) version =
         $"{image.Server}/{image.Name}:{version}"
-

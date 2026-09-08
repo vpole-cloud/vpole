@@ -30,6 +30,7 @@ public static class OutboxFeatureRegistration
             .Value);
         services.TryAddSingleton(new OutboxEventAssemblyCatalog(eventAssemblies));
         services.AddOutboxPersistence();
+        services.TryAddSingleton<Persistence.Delivery.EnsurePendingOutboxEventsRegistered>();
         services.TryAddScoped<OutboxProcessorJob>();
         services.TryAddScoped<IOutboxPublisher, MassTransitOutboxPublisher>();
         services.TryAddSingleton<OutboxMetrics>();

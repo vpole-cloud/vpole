@@ -20,12 +20,12 @@ using Pole.Features.Functions.Runtime;
 using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Features.Outbox.Application;
-using Pole.Features.Postgres.Application.Endpoints;
-using Pole.Features.Postgres.Application;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
+using Pole.Features.Postgres.Application;
+using Pole.Features.Postgres.Application.Common;
 using Pole.Features.RedisServices.Application;
-using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Migrations;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Common;
@@ -44,75 +44,43 @@ using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Observability;
 using Pole.Server.Extensions;
+using Pole.Platform.Hosting;
 using Pole.ServiceDefaults;
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
-Assembly[] assemblies = [
-    typeof(WebServiceEndpoints).Assembly,
-    typeof(FunctionAppFeature).Assembly,
+Assembly[] serviceAssemblies = [
+    typeof(WebServiceEndpoints).Assembly, typeof(FunctionAppFeature).Assembly,
     typeof(FunctionRuntimeFeature).Assembly,
-    typeof(PostgresClusterEndpoints).Assembly,
-    typeof(QuotaEndpoints).Assembly,
-    typeof(DomainZoneEndpoints).Assembly,
-    typeof(GitProviderEndpoints).Assembly,
-    typeof(ContainerRegistryFeature).Assembly,
-    typeof(ComputeProfileApplicationRegistration).Assembly,
-    typeof(DeploymentTargetFeature).Assembly,
-    typeof(SourceBuildFeature).Assembly,
-    typeof(OutboxFeatureRegistration).Assembly,
-    typeof(ResourceGroupEndpoints).Assembly,
-    typeof(RedisServiceEndpoints).Assembly,
-    typeof(ResourceDeploymentFeature).Assembly,
-    typeof(SearchEndpoints).Assembly,
-    typeof(StorageProfileEndpoints).Assembly,
-    typeof(TenantEndpoints).Assembly,
-    typeof(UserEndpoints).Assembly,
+    typeof(RedisServicesFeatureRegistration).Assembly,
+    typeof(PostgresFeatureRegistration).Assembly
 ];
-Assembly[] outboxEventAssemblies = [
+Assembly[] serviceEventAssemblies = [
     typeof(Pole.Features.WebServices.Events.WebServiceCreatedEvent).Assembly,
     typeof(Pole.Features.Functions.Events.FunctionAppCreatedEvent).Assembly,
-    typeof(Pole.Features.Postgres.Events.PostgresClusterCreatedEvent).Assembly,
     typeof(Pole.Features.RedisServices.Events.RedisServiceCreatedEvent).Assembly,
-    typeof(Pole.Features.ResourceDeployments.Events.ResourceDeploymentAppliedEvent).Assembly,
-    typeof(Pole.Features.ResourceGroups.Events.ResourceGroupCreatedEvent).Assembly,
-    typeof(Pole.Features.SourceBuilds.Events.SourceBuildRequestedEvent).Assembly,
-    typeof(Pole.Features.Users.Events.UserCreatedEvent).Assembly
+    typeof(Pole.Features.Postgres.Events.PostgresClusterCreatedEvent).Assembly
 ];
+Assembly[] assemblies = [..PolePlatform.ApplicationAssemblies, ..serviceAssemblies];
 
 builder.AddServiceDefaults();
 builder.AddMongoDBClient("pole-database");
 builder.AddFunctionOrleansHosting();
 builder.AddSecurity();
 
-builder.Services.AddKubernetes(configuration)
+builder.Services.AddPolePlatform(configuration, serviceAssemblies, serviceEventAssemblies, [])
     .AddEventBus(configuration, assemblies)
-    .AddDatabase()
-    .AddOutboxFeature(configuration, outboxEventAssemblies)
-    .AddResourceGroupsFeature(configuration)
     .AddFunctionAppsFeature()
     .AddFunctionRuntimeFeature(configuration)
-    .AddResourceDeploymentsFeature(configuration)
-    .AddTenantsFeature()
-    .AddDomainsFeature()
-    .AddComputeProfilesFeature()
-    .AddStorageProfilesFeature()
+    .AddWebServicesFeature()
     .AddRedisServicesFeature()
     .AddPostgresFeature(configuration)
-    .AddWebServicesFeature()
-    .AddQuotasFeature(configuration)
-    .AddMigrations(assemblies)
-    .AddEnvelopeEncryption(configuration)
-    .AddDeploymentTargetsFeature(configuration)
-    .AddSearchFeature()
-    .AddGitProvidersFeature(configuration)
-    .AddContainerRegistriesFeature(configuration)
-    .AddSourceBuildsFeature(configuration)
-    .AddUsersFeature(configuration)
     .AddHangfireWithMongo(configuration)
-    .AddValidatorsFromAssemblies(assemblies)
-    .AddOpenApi()
-    .AddPoleMediator(assemblies);
+    .AddOpenApi();
+builder.Services.AddSingleton<IMigration>(new FeatureScopedMigration(
+    "pole.redis", new RedisSchemaValidationMigration()));
+builder.Services.AddSingleton<IMigration>(new FeatureScopedMigration(
+    "pole.postgres", new PostgresCredentialMigration()));
 builder.Services.AddCors(options =>
 {
     var frontendOrigin = configuration["Cors:FrontendOrigin"] ?? "http://localhost:5173";
@@ -125,10 +93,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Validate and load every configured KEK before migrations or background-job setup can touch MongoDB.
-_ = app.Services.GetRequiredService<IEnvelopeEncryptionService>();
-_ = app.Services.GetRequiredService<OutboxEventAssemblyCatalog>();
-await app.Services.GetRequiredService<MigrationRunner>().RunMigrations();
+await app.Services.InitializePolePlatformAsync();
 await app.Services.GetRequiredService<BootstrapDeploymentTargets>()();
 await app.Services.GetRequiredService<BootstrapComputeProfiles>()();
 
@@ -152,9 +117,7 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseCors("frontend-dev");
-app.UseAuthentication();
-app.UseAuthorization();
-app.UseMiddleware<TenantContextMiddleware>();
+app.UsePoleTenantPipeline();
 
 app.UseHangfire();
 app.Services
@@ -170,5 +133,4 @@ app.MapGet("/test-keycloak", () => "Hello World!")
     .RequireAuthorization();
 
 app.MapApiEndpoints();
-
 app.Run();

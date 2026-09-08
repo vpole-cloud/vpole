@@ -26,27 +26,27 @@ public sealed class RuntimeCellLifecycleEventTests
             {
                 typeof(RuntimeCellReconciliationRequestedEvent),
                 new RuntimeCellReconciliationRequestedEvent(RuntimeCellId, Generation) { EventCore = Core },
-                "runtime-cell-reconciliation-requested"
+                "pole.resource-groups/v1/runtime-cell-reconciliation-requested"
             },
             {
                 typeof(RuntimeCellReadyEvent),
                 new RuntimeCellReadyEvent(RuntimeCellId, Generation) { EventCore = Core },
-                "runtime-cell-ready"
+                "pole.resource-groups/v1/runtime-cell-ready"
             },
             {
                 typeof(RuntimeCellReconciliationFailedEvent),
                 new RuntimeCellReconciliationFailedEvent(RuntimeCellId, Generation, "NamespaceOwnershipConflict") { EventCore = Core },
-                "runtime-cell-reconciliation-failed"
+                "pole.resource-groups/v1/runtime-cell-reconciliation-failed"
             },
             {
                 typeof(RuntimeCellDeletionRequestedEvent),
                 new RuntimeCellDeletionRequestedEvent(RuntimeCellId, Generation) { EventCore = Core },
-                "runtime-cell-deletion-requested"
+                "pole.resource-groups/v1/runtime-cell-deletion-requested"
             },
             {
                 typeof(RuntimeCellDeletedEvent),
                 new RuntimeCellDeletedEvent(RuntimeCellId, Generation) { EventCore = Core },
-                "runtime-cell-deleted"
+                "pole.resource-groups/v1/runtime-cell-deleted"
             }
         };
 
@@ -112,7 +112,7 @@ public sealed class RuntimeCellLifecycleEventTests
             .GetCustomAttribute<EntityNameAttribute>();
 
         Assert.NotNull(entityName);
-        Assert.Equal("isolation-scope-deletion-requested", entityName.EntityName);
+        Assert.Equal("pole.resource-groups/v1/isolation-scope-deletion-requested", entityName.EntityName);
         var payloadJson = JsonSerializer.Serialize(@event, EventJson.SerializerOptions);
         var roundTripped = JsonSerializer.Deserialize<IsolationScopeDeletionRequestedEvent>(
             payloadJson,

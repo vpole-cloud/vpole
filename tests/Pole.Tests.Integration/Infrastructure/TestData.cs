@@ -3,9 +3,6 @@ using Microsoft.FSharp.Core;
 using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.Postgres.Application.Endpoints;
-using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Application.Endpoints;
@@ -52,37 +49,6 @@ public static class TestData
             new ClaimValue<string>(UserId),
             new ClaimValue<string>(UserEmail));
 
-    public static CreateRedisServiceRequest CreateRedisServiceRequest(
-        string resourceGroupId,
-        string name = "redis-main",
-        string? tenantId = null)
-        => new(new CreateRedisServiceRequestBody(
-            Name: name,
-            ResourceGroupId: resourceGroupId,
-            Spec: ValidRedisSpec(),
-            Tags: ImmutableHashSet<string>.Empty),
-            tenantId ?? TenantId);
-
-    public static CreatePostgresClusterRequest CreatePostgresClusterRequest(
-        string resourceGroupId,
-        string name = "postgres-main",
-        int version = 17,
-        string username = "postgres",
-        string password = "postgres-secret",
-        string? tenantId = null)
-        => new(new CreatePostgresClusterRequestBody(
-            name,
-            resourceGroupId,
-            version,
-            FSharpOption<int>.Some(1),
-            FSharpOption<int>.Some(10),
-            DefaultStorageProfileId,
-            FSharpOption<string>.None,
-            username,
-            password,
-            FSharpOption<PlacementRequest>.None),
-            tenantId ?? TenantId);
-
     public static WebServiceSpecDto ValidWebServiceSpec() => new(
         Image: new ImageInfoDto("docker.io", "nginx", "1.27"),
         Config: new WebServiceConfigDto(
@@ -97,9 +63,6 @@ public static class TestData
             Startup: ValidProbe(),
             Liveness: ValidProbe(),
             Readiness: ValidProbe()));
-
-    public static RedisSpecDto ValidRedisSpec() => new(
-        Storage: new StorageDto(5, DefaultStorageProfileId));
 
     public static ResolvedStorageProfile DefaultResolvedStorageProfile(string storageClassName = "standard") =>
         new(
@@ -133,7 +96,7 @@ public static class TestData
             ],
             allowedResourceTypes:
             [
-                ResourceTypeId.Create("pole/redis"),
+                ResourceTypeId.Create("third-party/widget"),
                 ResourceTypeId.Create("pole/postgresql")
             ],
             tenantAccess: tenantAccess ?? StorageProfileTenantAccess.Create(
@@ -169,7 +132,7 @@ public static class TestData
             allowedResourceTypes:
             [
                 ResourceTypeId.Create("pole/web-service"),
-                ResourceTypeId.Create("pole/redis"),
+                ResourceTypeId.Create("third-party/widget"),
                 ResourceTypeId.Create("pole/postgresql"),
                 ResourceTypeId.Create("pole/function-app")
             ],
