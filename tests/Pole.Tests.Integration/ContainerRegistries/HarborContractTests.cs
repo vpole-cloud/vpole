@@ -5,17 +5,20 @@ using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.ResultType;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Text.Json;
+using Pole.Testing;
 using Xunit;
 
 namespace Pole.Tests.Integration.ContainerRegistries;
 
-public sealed class HarborContractTests
+[Collection(HarborContractCollection.Name)]
+public sealed class HarborContractTests(HarborContractFixture fixture)
 {
     [HarborContractFact]
     [Trait("Category", "HarborContract")]
     public async Task ProvisionProject_CreatesUsableProjectAndRobotCredentials()
     {
-        var options = GetOptions();
+        var options = fixture.HarborOptions;
         using var handler = new HttpClientHandler { UseCookies = false };
         using var httpClient = new HttpClient(handler);
         var client = new HarborContainerRegistryClient(
@@ -52,7 +55,7 @@ public sealed class HarborContractTests
     [Trait("Category", "HarborBuildKitContract")]
     public async Task ProvisionedBuildRobot_PushesAnImageWithBuildKit()
     {
-        var options = GetOptions();
+        var options = fixture.HarborOptions;
         using var handler = new HttpClientHandler { UseCookies = false };
         using var httpClient = new HttpClient(handler);
         var registryClient = new HarborContainerRegistryClient(
@@ -78,8 +81,8 @@ public sealed class HarborContractTests
                 new BuildKitOptions
                 {
                     Enabled = true,
-                    Address = Environment.GetEnvironmentVariable("POLE_BUILDKIT_CONTRACT_ADDRESS")!,
-                    BuildctlPath = Environment.GetEnvironmentVariable("POLE_BUILDKIT_CONTRACT_PATH")!,
+                    Address = fixture.BuildKitAddress,
+                    BuildctlPath = fixture.BuildctlPath,
                     TimeoutMinutes = 5
                 },
                 NullLogger<BuildKitClient>.Instance);
@@ -112,37 +115,13 @@ public sealed class HarborContractTests
         }
     }
 
-    private static HarborOptions GetOptions() =>
-        new()
-        {
-            Enabled = true,
-            BaseUrl = Environment.GetEnvironmentVariable("POLE_HARBOR_CONTRACT_BASE_URL")!,
-            RegistryHost = Environment.GetEnvironmentVariable("POLE_HARBOR_CONTRACT_REGISTRY_HOST")!,
-            Username = Environment.GetEnvironmentVariable("POLE_HARBOR_CONTRACT_USERNAME")!,
-            Password = Environment.GetEnvironmentVariable("POLE_HARBOR_CONTRACT_PASSWORD")!,
-            RobotDurationDays = -1
-        };
 }
 
 public sealed class HarborBuildKitContractFactAttribute : FactAttribute
 {
-    private static readonly string[] RequiredVariables =
-    [
-        "POLE_HARBOR_CONTRACT_BASE_URL",
-        "POLE_HARBOR_CONTRACT_REGISTRY_HOST",
-        "POLE_HARBOR_CONTRACT_USERNAME",
-        "POLE_HARBOR_CONTRACT_PASSWORD",
-        "POLE_BUILDKIT_CONTRACT_ADDRESS",
-        "POLE_BUILDKIT_CONTRACT_PATH"
-    ];
-
     public HarborBuildKitContractFactAttribute()
     {
-        if (RequiredVariables.Any(name =>
-                string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name))))
-        {
-            Skip = "Set POLE_HARBOR_CONTRACT_* and POLE_BUILDKIT_CONTRACT_* variables to run against real Harbor and BuildKit instances.";
-        }
+        Skip = KubernetesLabSelection.GetOptInSkipReason("harbor", "buildkit");
     }
 }
 
@@ -165,20 +144,95 @@ internal sealed class TemporaryDirectory : IDisposable
 
 public sealed class HarborContractFactAttribute : FactAttribute
 {
-    private static readonly string[] RequiredVariables =
-    [
-        "POLE_HARBOR_CONTRACT_BASE_URL",
-        "POLE_HARBOR_CONTRACT_REGISTRY_HOST",
-        "POLE_HARBOR_CONTRACT_USERNAME",
-        "POLE_HARBOR_CONTRACT_PASSWORD"
-    ];
-
     public HarborContractFactAttribute()
     {
-        if (RequiredVariables.Any(name =>
-                string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name))))
+        Skip = KubernetesLabSelection.GetOptInSkipReason("harbor");
+    }
+}
+
+public sealed class HarborContractFixture : IAsyncLifetime
+{
+    private readonly KubernetesLabState _state;
+    private KubernetesPortForwardSession? _harborForward;
+    private KubernetesPortForwardSession? _buildKitForward;
+
+    public HarborContractFixture()
+    {
+        var selection = KubernetesLabSelection.RequireSelection();
+        _state = selection.State;
+    }
+
+    public HarborOptions HarborOptions { get; private set; } = null!;
+    public string BuildKitAddress { get; private set; } = null!;
+    public string BuildctlPath => _state.BuildctlPath
+        ?? throw new InvalidOperationException("The selected lab does not expose buildctl.");
+
+    public async Task InitializeAsync()
+    {
+        var services = _state.Services
+                       ?? throw new InvalidOperationException("The selected lab does not expose Harbor and BuildKit services.");
+        var credentials = JsonSerializer.Deserialize<Dictionary<string, string>>(
+                              await File.ReadAllTextAsync(services.Harbor.CredentialsPath))
+                          ?? throw new InvalidOperationException("The lab Harbor credentials file is malformed.");
+        if (!credentials.TryGetValue("username", out var username) ||
+            !credentials.TryGetValue("password", out var password) ||
+            string.IsNullOrWhiteSpace(username) ||
+            string.IsNullOrWhiteSpace(password))
         {
-            Skip = "Set the POLE_HARBOR_CONTRACT_* variables to run against a real Harbor instance.";
+            throw new InvalidOperationException("The lab Harbor credentials file is incomplete.");
+        }
+        if (services.Harbor.TargetKey != services.BuildKit.TargetKey)
+            throw new InvalidOperationException("The lab Harbor and BuildKit services must use the same target.");
+        var serviceTarget = _state.GetRequiredTarget(services.Harbor.TargetKey);
+        _harborForward = await KubernetesPortForwardSession.StartAsync(
+            serviceTarget,
+            services.Harbor.Namespace,
+            $"service/{services.Harbor.Service}",
+            services.Harbor.Port);
+        try
+        {
+            _buildKitForward = await KubernetesPortForwardSession.StartAsync(
+                serviceTarget,
+                services.BuildKit.Namespace,
+                $"service/{services.BuildKit.Service}",
+                services.BuildKit.Port);
+        }
+        catch
+        {
+            await _harborForward.DisposeAsync();
+            _harborForward = null;
+            throw;
+        }
+
+        HarborOptions = new HarborOptions
+        {
+            Enabled = true,
+            BaseUrl = $"http://127.0.0.1:{_harborForward.LocalPort}",
+            RegistryHost = services.Harbor.RegistryHost,
+            Username = username,
+            Password = password,
+            RobotDurationDays = -1
+        };
+        BuildKitAddress = $"tcp://127.0.0.1:{_buildKitForward.LocalPort}";
+    }
+
+    public async Task DisposeAsync()
+    {
+        try
+        {
+            if (_buildKitForward is not null)
+                await _buildKitForward.DisposeAsync();
+        }
+        finally
+        {
+            if (_harborForward is not null)
+                await _harborForward.DisposeAsync();
         }
     }
+}
+
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class HarborContractCollection : ICollectionFixture<HarborContractFixture>
+{
+    public const string Name = "Kubernetes lab Harbor contracts";
 }

@@ -15,8 +15,10 @@ type PostgresResourceDeploymentMetadata =
 
 [<RequireQualifiedAccess>]
 module PostgresClusterKubernetesBuilder =
-    let buildSecretName (clusterId : string) = $"{clusterId}-secret"
-    let buildReadWriteServiceName (clusterId : string) = $"{clusterId}-rw"
+    let buildResourceName (clusterId : string) = $"pg-{clusterId}"
+
+    let buildSecretName (clusterId : string) = $"{buildResourceName clusterId}-secret"
+    let buildReadWriteServiceName (clusterId : string) = $"{buildResourceName clusterId}-rw"
     let buildDatabaseName (clusterId : string) = clusterId
 
     let buildLabels (cluster : PostgresCluster) (metadata : PostgresResourceDeploymentMetadata) =
@@ -109,7 +111,7 @@ module PostgresClusterKubernetesBuilder =
             kind = "Cluster"
             metadata =
                 {|
-                    name = cluster.Id
+                    name = buildResourceName cluster.Id
                     ``namespace`` = namespaceName
                     labels = buildLabels cluster metadata
                     annotations = buildAnnotations ()

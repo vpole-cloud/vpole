@@ -19,7 +19,7 @@ Pole uses one Harbor instance per environment and creates one private Harbor pro
    ```
 
 4. Keep HTTPS disabled only for this local deployment. Run the installer's `prepare` command from Linux or WSL to generate `docker-compose.yml`. Do not run `install.sh`; Aspire will own `docker compose up` after preparation.
-5. Install the `buildctl` client from the official BuildKit `v0.30.0` release and put it on `PATH`, or configure its absolute path below.
+5. Install the `buildctl` client from the official BuildKit `v0.31.2` release and put it on `PATH`, or configure its absolute path below.
 6. Configure Docker Desktop or the local Kubernetes container runtime to allow the development registry `host.docker.internal:5000`. AppHost's checked-in `buildkitd.toml` already marks this endpoint as HTTP/insecure for BuildKit only.
 
 Set AppHost user secrets:
@@ -30,6 +30,9 @@ dotnet user-secrets set "LocalSourceBuilds:HarborComposeDirectory" "C:\path\to\h
 dotnet user-secrets set "LocalSourceBuilds:BuildctlPath" "C:\path\to\buildctl.exe" --project src/api/Pole.AppHost
 dotnet user-secrets set "Parameters:harbor-admin-password" "<local-admin-password>" --project src/api/Pole.AppHost
 ```
+
+For a Podman-managed Harbor Compose deployment, also set
+`LocalSourceBuilds:ComposeCli` to `podman`; Docker remains the default.
 
 The Harbor password must match `harbor.yml`. The defaults are:
 
@@ -56,7 +59,9 @@ Override `LocalSourceBuilds:HarborBaseUrl`, `HarborRegistryHost`, or `BuildKitAd
    buildctl --addr tcp://localhost:1234 debug workers
    ```
 
-5. Run the real Harbor contract test using the environment variables documented in `docs/testing.md`.
+5. Use the automated full Kubernetes lab described in `docs/testing.md` for the repeatable Harbor
+   contract and source-build E2E tests. This Compose setup is only for manual validation against a
+   real GitHub installation.
 
 ## End-to-end workflow
 

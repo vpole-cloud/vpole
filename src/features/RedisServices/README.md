@@ -125,8 +125,8 @@ MongoDB document-validation error `121`. The Redis tests cover both collection c
 `RedisServices.Tests` covers the feature without the shared integration harness.
 `RedisServices.Tests.Integration` covers Mongo-backed tenant isolation, stale revision conflicts,
 rollback, finalization atomicity, idempotency, outbox metadata, and the production registration
-path. Its existing Kubernetes tests are gated by the current kubeconfig and skip when no cluster
-is available; provisioning a cluster fixture is deferred.
+path. Its Kubernetes tests use the explicit target from the reusable lab state and fail clearly
+when that required lab is unavailable; they never select the ambient kubeconfig.
 
 Useful audit searches:
 

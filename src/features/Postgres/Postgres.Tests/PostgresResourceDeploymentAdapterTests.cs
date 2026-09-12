@@ -37,7 +37,7 @@ public sealed class PostgresResourceDeploymentAdapterTests
         var endpoint = Assert.Single(succeeded.Endpoints);
         Assert.Equal("PostgreSql", endpoint.Kind);
         Assert.Equal(
-            $"{ResourceId}-rw.{KubernetesNamespace}.svc.cluster.local",
+            $"{PostgresClusterKubernetesBuilder.buildReadWriteServiceName(ResourceId)}.{KubernetesNamespace}.svc.cluster.local",
             endpoint.Host);
         Assert.Equal(5432, endpoint.Port);
         Assert.Equal([TargetId], provider.RequestedTargetIds);

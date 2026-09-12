@@ -14,9 +14,28 @@ public static class RuntimeCellNamespaceLabels
 
 public static class RuntimeCellNamespaceManifestBuilder
 {
-    public static V1Namespace Build(RuntimeCell runtimeCell)
+    internal static IReadOnlySet<string> ReservedLabelKeys { get; } =
+        new HashSet<string>(
+            [
+                RuntimeCellNamespaceLabels.TenantId,
+                RuntimeCellNamespaceLabels.ResourceGroupId,
+                RuntimeCellNamespaceLabels.IsolationScopeId,
+                RuntimeCellNamespaceLabels.RuntimeCellId,
+                RuntimeCellNamespaceLabels.DeploymentTargetId
+            ],
+            StringComparer.Ordinal);
+
+    public static V1Namespace Build(
+        RuntimeCell runtimeCell,
+        IReadOnlyDictionary<string, string>? additionalLabels = null)
     {
         ArgumentNullException.ThrowIfNull(runtimeCell);
+
+        var labels = additionalLabels is null
+            ? new Dictionary<string, string>(StringComparer.Ordinal)
+            : new Dictionary<string, string>(additionalLabels, StringComparer.Ordinal);
+        foreach (var (key, value) in ExpectedOwnershipLabels(runtimeCell))
+            labels[key] = value;
 
         return new V1Namespace
         {
@@ -25,7 +44,7 @@ public static class RuntimeCellNamespaceManifestBuilder
             Metadata = new V1ObjectMeta
             {
                 Name = runtimeCell.KubernetesNamespace,
-                Labels = ExpectedOwnershipLabels(runtimeCell)
+                Labels = labels
             }
         };
     }

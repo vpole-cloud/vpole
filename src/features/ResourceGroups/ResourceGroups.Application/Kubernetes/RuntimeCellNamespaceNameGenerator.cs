@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using Microsoft.Extensions.Options;
+using Pole.KubernetesValidation;
 
 namespace Pole.Features.ResourceGroups.Application.Kubernetes;
 
@@ -71,6 +72,16 @@ public sealed class RuntimeCellNamespaceOptionsValidator
         try
         {
             RuntimeCellNamespaceNameGenerator.NormalizePrefix(options.NamespaceNamePrefix);
+            foreach (var (key, value) in options.AdditionalNamespaceLabels)
+            {
+                KubernetesValueGuard.LabelKey(key, nameof(options.AdditionalNamespaceLabels));
+                KubernetesValueGuard.LabelValue(value, nameof(options.AdditionalNamespaceLabels));
+                if (RuntimeCellNamespaceManifestBuilder.ReservedLabelKeys.Contains(key))
+                {
+                    return ValidateOptionsResult.Fail(
+                        $"Additional Kubernetes namespace label '{key}' is reserved for Pole ownership.");
+                }
+            }
             return ValidateOptionsResult.Success;
         }
         catch (ArgumentException exception)

@@ -7,6 +7,10 @@ using Xunit;
 namespace Pole.Tests.E2E;
 
 [Collection(PoleE2ECollection.Name)]
+[Trait("Layer", "E2E")]
+[Trait("Concern", "SourceBuild")]
+[Trait("Feature", "SourceBuilds")]
+[Trait("Scope", "FullE2E")]
 public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
 {
     private const string RevisionOneCommitSha = "1111111111111111111111111111111111111111";
@@ -17,7 +21,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
     {
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(15));
         var cancellationToken = cancellation.Token;
-        await fixture.StartSourceBuildInfrastructureAsync(cancellationToken);
+        await fixture.EnsureSourceBuildInfrastructureReadyAsync(cancellationToken);
 
         string? resourceGroupId = null;
         CreatedWebService? webService = null;
@@ -26,8 +30,8 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         try
         {
             resourceGroupId = await CreateResourceGroupAsync(cancellationToken);
-            await fixture.WaitForNamespaceCreationAsync(resourceGroupId, cancellationToken);
             webService = await CreateWebServiceAsync(resourceGroupId, cancellationToken);
+            await fixture.WaitForNamespaceCreationAsync(resourceGroupId, cancellationToken);
             await WaitForReleaseOutcomeAsync(webService.Id, "Succeeded", cancellationToken);
 
             var connectionId = await EnsureGitHubConnectionAsync(cancellationToken);
@@ -90,7 +94,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
                 v2ReleaseId,
                 cancellationToken);
 
-            await fixture.StopBuildKitAsync(cancellationToken);
+            await fixture.StopBuildKitAccessAsync();
             var failedBuild = await StartBuildAsync(sourceBuildConfigurationId, cancellationToken);
             var failed = await WaitForBuildAsync(failedBuild, "failed", cancellationToken);
             var failedState = failed.GetProperty("state");
@@ -144,21 +148,14 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         {
             name,
             resourceGroupId,
-            domainName = $"{name}.e2e.pole.test",
             tags = new[] { "e2e", "source-build" },
             spec = new
             {
                 image = new { server = "docker.io", name = "library/nginx", tag = "1.27" },
-                replicas = 1,
-                resources = new
-                {
-                    requests = new { cpuCores = 1, memoryMi = 64 },
-                    limits = new { cpuCores = 1, memoryMi = 128 }
-                },
                 config = new
                 {
                     environmentVariables = new Dictionary<string, string>(),
-                    portMappings = new[] { new { servicePort = 80, targetPort = "8080", protocol = "TCP", name = "http" } }
+                    portMappings = new[] { new { servicePort = 80, targetPort = "80", protocol = "TCP", name = "http" } }
                 },
                 autoscaling = (object?)null,
                 probes = new
@@ -166,6 +163,19 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
                     startup = Probe(),
                     liveness = Probe(),
                     readiness = Probe()
+                }
+            },
+            placement = new
+            {
+                isolationScopeId = (string?)null,
+                targets = new[]
+                {
+                    new
+                    {
+                        deploymentTargetId = (string?)null,
+                        fixedReplicas = 1,
+                        computeProfileId = (string?)null
+                    }
                 }
             }
         });
@@ -386,7 +396,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
 
     private async Task<JsonElement> GetReleasesAsync(string webServiceId, CancellationToken cancellationToken)
     {
-        using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/web-services/{webServiceId}/deployments", fixture.Alpha, fixture.Alpha.DefaultTenantId);
+        using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/web-services/{webServiceId}/releases", fixture.Alpha, fixture.Alpha.DefaultTenantId);
         using var response = await fixture.Api.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
         using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
@@ -445,10 +455,17 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
 
     private async Task DeleteAsync(string path, CancellationToken cancellationToken)
     {
-        using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, path, fixture.Alpha, fixture.Alpha.DefaultTenantId);
-        using var response = await fixture.Api.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode && response.StatusCode != System.Net.HttpStatusCode.NotFound)
-            response.EnsureSuccessStatusCode();
+        while (true)
+        {
+            using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, path, fixture.Alpha, fixture.Alpha.DefaultTenantId);
+            using var response = await fixture.Api.SendAsync(request, cancellationToken);
+            if (response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return;
+            if (response.StatusCode != System.Net.HttpStatusCode.Conflict)
+                response.EnsureSuccessStatusCode();
+
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
     }
 
     private static object Probe() => new

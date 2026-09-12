@@ -1,7 +1,0 @@
-{
-  "SourceBuilds": {
-    "Enabled": true,
-    "HarborComposeDirectory": "C:\\Users\\<user>\\Tools\\harbor-v2.14.4",
-    "HarborAdminPassword": "<local-harbor-admin-password>"
-  }
-}

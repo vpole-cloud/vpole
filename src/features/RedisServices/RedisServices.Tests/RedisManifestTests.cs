@@ -8,6 +8,10 @@ using Redis = Pole.Features.RedisServices.Domain.Redis;
 
 namespace Pole.Features.RedisServices.Tests;
 
+[Trait("Layer", "Manifest")]
+[Trait("Concern", "Rendering")]
+[Trait("Scope", "ManifestOnly")]
+[Trait("Feature", "RedisServices")]
 public sealed class RedisManifestTests
 {
     [Fact]

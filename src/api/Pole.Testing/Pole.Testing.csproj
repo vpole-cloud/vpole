@@ -11,6 +11,7 @@
     <ProjectReference Include="../Pole.Platform.Hosting/Pole.Platform.Hosting.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="KubernetesClient" />
     <PackageReference Include="Microsoft.AspNetCore.TestHost" />
     <PackageReference Include="Testcontainers" />
     <PackageReference Include="xunit" />

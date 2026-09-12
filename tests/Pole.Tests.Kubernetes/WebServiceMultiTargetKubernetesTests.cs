@@ -1,0 +1,155 @@
+using System.Collections.Immutable;
+using k8s;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.Shared.Models;
+using Pole.Features.WebServices.Application.Kubernetes;
+using Pole.Features.WebServices.Domain;
+using Pole.ResultType;
+using Pole.Testing;
+using Pole.Workloads;
+using Xunit;
+using KubernetesClient = k8s.Kubernetes;
+
+namespace Pole.Tests.Kubernetes;
+
+[Collection(KubernetesLabCollection.Name)]
+[Trait(TestTraits.Layer, TestTraits.Layers.Kubernetes)]
+[Trait(TestTraits.Concern, "MultiCluster")]
+[Trait(TestTraits.Scope, TestTraits.Scopes.MultiCluster)]
+[Trait(TestTraits.Feature, "WebServices")]
+public sealed class WebServiceMultiTargetKubernetesTests(KubernetesClusterFixture fixture)
+{
+    [KubernetesFact("multi-cluster", "monitoring")]
+    public async Task Deployment_succeeds_on_two_targets_and_failed_target_can_be_retried()
+    {
+        var targets = new[]
+        {
+            fixture.State.GetRequiredTarget("workload-a"),
+            fixture.State.GetRequiredTarget("workload-b")
+        };
+        var clients = targets.Select(target => new KubernetesClient(target.CreateConfiguration())).ToArray();
+        var identity = fixture.Identity;
+        var namespaceName = identity.CreateNamespaceName("web-multi");
+        var ownedNamespaces = new List<(IKubernetes Client, OwnedNamespace Namespace)>();
+        var webService = BuildWebService();
+
+        try
+        {
+            foreach (var client in clients)
+            {
+                var owned = await OwnedNamespaceManager.CreateAsync(client, namespaceName, identity);
+                ownedNamespaces.Add((client, owned));
+            }
+
+            var first = await ApplyAsync(clients[0], targets[0], webService, namespaceName);
+            Assert.True(first.TryGetValue(out _, out _));
+            var healthyBefore = await clients[0].AppsV1.ReadNamespacedDeploymentAsync(
+                webService.Name,
+                namespaceName);
+            var healthyUid = healthyBefore.Metadata.Uid;
+            var healthyGeneration = healthyBefore.Metadata.Generation;
+
+            var unavailableConfiguration = targets[1].CreateConfiguration();
+            unavailableConfiguration.Host = "http://127.0.0.1:1";
+            using var unavailable = new KubernetesClient(unavailableConfiguration);
+            var failed = await ApplyAsync(unavailable, targets[1], webService, namespaceName);
+            Assert.False(failed.TryGetValue(out _, out var failure));
+            Assert.Contains("applying", failure.Message, StringComparison.Ordinal);
+
+            var retried = await ApplyAsync(clients[1], targets[1], webService, namespaceName);
+            Assert.True(retried.TryGetValue(out _, out _));
+            var targetBDeployment = await clients[1].AppsV1.ReadNamespacedDeploymentAsync(
+                webService.Name,
+                namespaceName);
+            var healthyAfter = await clients[0].AppsV1.ReadNamespacedDeploymentAsync(
+                webService.Name,
+                namespaceName);
+
+            Assert.Equal("release-1", targetBDeployment.Spec.Template.Metadata.Annotations["pole.server/releaseId"]);
+            Assert.Equal(healthyUid, healthyAfter.Metadata.Uid);
+            Assert.Equal(healthyGeneration, healthyAfter.Metadata.Generation);
+            Assert.Equal("release-1", healthyAfter.Spec.Template.Metadata.Annotations["pole.server/releaseId"]);
+        }
+        finally
+        {
+            var cleanupFailures = new List<Exception>();
+            try
+            {
+                foreach (var owned in ownedNamespaces)
+                {
+                    try
+                    {
+                        await OwnedNamespaceManager.DeleteAsync(owned.Client, owned.Namespace);
+                    }
+                    catch (Exception exception)
+                    {
+                        cleanupFailures.Add(exception);
+                    }
+                }
+            }
+            finally
+            {
+                foreach (var client in clients)
+                    client.Dispose();
+            }
+            if (cleanupFailures.Count > 0)
+                throw new AggregateException("Multi-target WebService cleanup failed.", cleanupFailures);
+        }
+    }
+
+    private static Task<Result<Unit, WebServiceKubernetesApplyFailed>> ApplyAsync(
+        IKubernetes client,
+        KubernetesLabTarget target,
+        WebService webService,
+        string namespaceName) =>
+        WebServiceKubernetesResourceManager.ApplyAsync(
+            client,
+            webService.ToKubernetes(
+                namespaceName,
+                ResourceDeploymentIngressConfiguration.Create(
+                    "traefik",
+                    "pole-lab",
+                    target.PublicBaseDomain,
+                    [$"multi-{namespaceName}.{target.PublicBaseDomain}"]),
+                BuildCompute(target.Key),
+                fixedReplicas: 1),
+            WebServiceReleaseDeploymentMetadata.Create("release-1", 1, DateTime.UtcNow));
+
+    private static WebService BuildWebService() =>
+        WebServiceFactory.Create(
+            name: "multi-target-web",
+            tenantId: "507f1f77bcf86cd799439011",
+            resourceGroupId: "507f1f77bcf86cd799439012",
+            isolationScopeId: "507f1f77bcf86cd799439013",
+            spec: new WebServiceSpec(
+                new ImageInfo("docker.io", "library/nginx", "1.27.5-alpine"),
+                new WebServiceConfig(
+                    ImmutableDictionary<string, string>.Empty,
+                    [new PortMapping(80, "80", "TCP", "http")]),
+                Autoscaling: null,
+                new ProbeSpec(
+                    new ProbeConfig("/", "80"),
+                    new ProbeConfig("/", "80"),
+                    new ProbeConfig("/", "80"))),
+            exposure: WebServiceExposure.Create(),
+            options: WebServiceFactory.DefaultOptions with
+            {
+                Id = "507f1f77bcf86cd799439014"
+            });
+
+    private static ResourceDeploymentComputeConfiguration BuildCompute(string targetKey) =>
+        new(
+            "507f1f77bcf86cd799439015",
+            1,
+            targetKey,
+            "Lab",
+            new ResourceDeploymentComputeResourceValues(50, 32),
+            new ResourceDeploymentComputeResourceValues(250, 128),
+            ComputeArchitecture.Any,
+            [],
+            [],
+            [],
+            [],
+            [],
+            RuntimeClassName: null);
+}

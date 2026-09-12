@@ -89,28 +89,33 @@ The current suite intentionally mixes a few different test layers inside one pro
 
 The default choice should still be the cheapest useful boundary. Most behavior should be covered without needing a live cluster.
 
+Use the [feature test contract](feature-test-contract.md) when planning a feature or material
+behavior change so tenant isolation, concurrency, retries, placement, cleanup, and skipped
+infrastructure lanes are explicit before implementation.
+
 For infrastructure-aware features, normal handler and mediator tests should prefer small fakes or in-memory adapters for external systems. The real infrastructure path should then be covered separately by manifest tests and a small number of live cluster tests.
 
 ## Requirements
 
 Before running the integration suite:
 
-- make sure **Docker is running**
+- make sure a **Docker-compatible container runtime** is running (Docker or a configured Podman socket)
 - make sure the .NET SDK for the repo is installed
 
 On Linux kernels 6.19 through 7.0.13, MongoDB can be affected by an upstream TCMalloc
 incompatibility. Prefer running Mongo-backed tests on kernel 6.18 or 7.0.14+. Use the image
 override above when checking a specific MongoDB version.
 
-If Docker is not running, Testcontainers will fail before tests start.
+The lab records its Docker-compatible endpoint in state. Container-bearing test assemblies apply
+that endpoint and the Aspire runtime before Testcontainers or Aspire starts, so the separate
+`dotnet test` process also uses the Podman socket selected by `lab.sh up`. Explicit Docker,
+Testcontainers, and Aspire environment variables remain overrides. If the configured container
+runtime is not running, Testcontainers will fail before tests start.
 
-Before running cluster-backed tests:
-
-- make sure your kubeconfig points to a ready cluster
-- make sure required ingress/controllers/CRDs already exist
-- optionally set `POLE_K8S_INGRESS_BASE_URI` if ingress is reachable through a stable URI that is not discoverable from resource status
-- optionally set `POLE_K8S_REDIS_STORAGE_CLASS` if the cluster does not have a default StorageClass and you want to run Redis Kubernetes tests
-- as an alternative, you can create `tests/Pole.Tests.Integration/testsettings.local.json` with a local ingress base URI; this file is gitignored and not required for running tests
+Cluster-backed tests use the reproducible [local Kubernetes test lab](../infrastructure/kubernetes-lab/README.md).
+Start the lab once before the backend suite. Linked worktrees discover the primary worktree's
+shared default state and target without reading the ambient kubeconfig. `POLE_K8S_LAB_STATE` and
+`POLE_K8S_LAB_TARGET` are optional overrides for deliberately non-default lab selections.
 
 ## Running tests
 
@@ -161,9 +166,23 @@ dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj -maxcpuco
 
 The extra flags are useful in constrained or sandboxed environments and are safe to keep for local runs too.
 
-To run only the cluster-backed webservice tests:
+The normal repository-wide backend workflow is:
 
 ```bash
+./infrastructure/kubernetes-lab/lab.sh up
+./infrastructure/kubernetes-lab/lab.sh verify
+dotnet test
+```
+
+The default `full` lab supplies every Kubernetes capability used by the solution, including the
+three-cluster placement topology, monitoring CRDs, cert-manager, CloudNativePG, Harbor, and
+BuildKit. Lab lifecycle remains explicit: `dotnet test` validates and uses an existing lab but
+never creates, resets, or deletes one.
+
+To run the lab contracts and only the cluster-backed webservice tests:
+
+```bash
+dotnet test tests/Pole.Tests.Kubernetes/Pole.Tests.Kubernetes.csproj
 dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter WebServiceKubernetesTests
 ```
 
@@ -179,18 +198,12 @@ To run only the cluster-backed Redis tests:
 dotnet test src/features/RedisServices/RedisServices.Tests.Integration/RedisServices.Tests.Integration.csproj --filter RedisKubernetesTests
 ```
 
-If ingress discovery needs an explicit base address:
+Smaller `minimal`, `multi`, and `topology` profiles remain available for focused development; see
+the lab guide for their capability contract. Plain repository-wide `dotnet test` expects the full
+profile. Cluster-independent Kubernetes manifest tests can be selected without a lab:
 
 ```bash
-POLE_K8S_INGRESS_BASE_URI=http://<reachable-ingress-address> dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter WebServiceKubernetesTests
-```
-
-You can also use an optional local config file:
-
-```json
-{
-  "POLE_K8S_INGRESS_BASE_URI": "http://<reachable-ingress-address>"
-}
+dotnet test Pole.slnx --filter Layer=Manifest
 ```
 
 ## Entity construction
@@ -208,32 +221,35 @@ For generated infrastructure identifiers, prefer shared generators and helpers o
 
 ## Notes
 
-- The current suite is intentionally **not Aspire-based**.
+- Most test projects do not boot Aspire; only the focused E2E project starts the full service graph.
 - The default test boundary is integration testing around real Mongo-backed handlers.
-- The opt-in Aspire and browser test lane is documented in [Aspire E2E testing](aspire-e2e-testing.md).
-- External infrastructure such as Kubernetes is not started by the suite itself; cluster-backed tests assume it already exists.
+- Aspire and browser coverage is documented in [Aspire E2E testing](aspire-e2e-testing.md) and is
+  included by plain `dotnet test` when the full lab is ready.
+- The normal test command does not start Kubernetes. Start the reusable lab explicitly first.
 - Use the full Aspire stack only for production startup wiring and workflows that cross real local services. See [Aspire local development](aspire-local-development.md).
 
 ## Harbor contract test
 
-`HarborContractTests` is environment-gated and performs no external I/O unless all four settings are present:
+`HarborContractTests` uses the Harbor service declared by the full lab state. No Harbor or BuildKit
+test environment variables are required:
 
-```powershell
-$env:POLE_HARBOR_CONTRACT_BASE_URL = 'http://localhost:5000'
-$env:POLE_HARBOR_CONTRACT_REGISTRY_HOST = 'host.docker.internal:5000'
-$env:POLE_HARBOR_CONTRACT_USERNAME = 'admin'
-$env:POLE_HARBOR_CONTRACT_PASSWORD = '<local-admin-password>'
+```bash
+./infrastructure/kubernetes-lab/lab.sh up
 dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter Category=HarborContract
 ```
 
-The test creates a uniquely named private project and build/runtime robot credentials through the real Harbor API, then removes the project in `finally`. Do not place the password in tracked settings or command output.
+The test port-forwards the lab service, reads the generated mode-`0600` credential file referenced
+by state, creates a uniquely named private project and robot credentials through the real Harbor
+API, and removes the project in `finally`. Credentials are never stored in tracked settings.
 
-To also verify a real BuildKit push through the provisioned build robot, keep the Harbor settings above and add:
+To also verify a real BuildKit push through the provisioned build robot:
 
-```powershell
-$env:POLE_BUILDKIT_CONTRACT_ADDRESS = 'tcp://localhost:1234'
-$env:POLE_BUILDKIT_CONTRACT_PATH = 'C:\path\to\buildctl.exe'
+```bash
 dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter Category=HarborBuildKitContract
 ```
 
-This opt-in contract test builds a hermetic `FROM scratch` image, pushes it to a unique private Harbor project, verifies the digest returned by BuildKit, and removes the project afterward.
+The test uses the lab's pinned `buildctl` and a temporary port-forward to the shared BuildKit
+service.
+
+This contract test builds a hermetic `FROM scratch` image, pushes it to a unique private Harbor
+project, verifies the digest returned by BuildKit, and removes the project afterward.
