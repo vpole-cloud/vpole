@@ -28,7 +28,8 @@ public delegate Task<RuntimeCellNamespaceOperationOutcome> DeleteRuntimeCellName
     CancellationToken cancellationToken = default);
 
 public sealed class KubernetesRuntimeCellNamespaceManager(
-    IKubernetesClientProvider kubernetesClientProvider)
+    IKubernetesClientProvider kubernetesClientProvider,
+    KubernetesOptions? kubernetesOptions = null)
 {
     public async Task<RuntimeCellNamespaceOperationOutcome> EnsureCreatedAsync(
         RuntimeCell runtimeCell,
@@ -44,7 +45,9 @@ public sealed class KubernetesRuntimeCellNamespaceManager(
             try
             {
                 await kubernetes.CoreV1.CreateNamespaceAsync(
-                    RuntimeCellNamespaceManifestBuilder.Build(runtimeCell),
+                    RuntimeCellNamespaceManifestBuilder.Build(
+                        runtimeCell,
+                        kubernetesOptions?.AdditionalNamespaceLabels),
                     cancellationToken: cancellationToken);
                 return Unit.Value;
             }

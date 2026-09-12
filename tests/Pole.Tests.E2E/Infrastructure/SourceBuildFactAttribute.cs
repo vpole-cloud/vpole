@@ -1,3 +1,4 @@
+using Pole.Testing;
 using Xunit;
 
 namespace Pole.Tests.E2E.Infrastructure;
@@ -7,9 +8,9 @@ public sealed class SourceBuildFactAttribute : FactAttribute
 {
     public SourceBuildFactAttribute()
     {
-        if (E2ETestSettings.Load().SourceBuilds is null)
+        if (KubernetesLabSelection.GetOptInSkipReason("harbor", "buildkit", "monitoring") is { } labSkip)
         {
-            Skip = "Configure SourceBuilds in tests/Pole.Tests.E2E/testsettings.local.json to run this lane.";
+            Skip = labSkip;
         }
     }
 }

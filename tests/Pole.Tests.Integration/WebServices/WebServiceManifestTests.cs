@@ -11,6 +11,10 @@ using Xunit;
 
 namespace Pole.Tests.Integration.WebServices;
 
+[Trait("Layer", "Manifest")]
+[Trait("Concern", "Rendering")]
+[Trait("Scope", "ManifestOnly")]
+[Trait("Feature", "WebServices")]
 public sealed class WebServiceManifestTests
 {
     [Fact]

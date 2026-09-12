@@ -64,6 +64,8 @@ requirement when adding or changing one feature.
 ## Development and verification
 
 - [Testing](testing.md)
+- [Feature test contract](feature-test-contract.md)
+- [Local Kubernetes test lab](../infrastructure/kubernetes-lab/README.md)
 - [Aspire end-to-end testing](aspire-e2e-testing.md)
 - [GitHub source build end-to-end testing](github-source-build-e2e.md)
 

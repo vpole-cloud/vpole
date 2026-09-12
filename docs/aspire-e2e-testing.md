@@ -1,67 +1,97 @@
-# Aspire E2E Testing
+# Aspire E2E testing
 
-`tests/Pole.Tests.E2E` is an opt-in full-stack test lane. It starts an isolated Aspire graph with disposable MongoDB, Keycloak, and RabbitMQ containers; real Pole API/frontend processes; and a local GitHub protocol stub. It does not reuse local-development ports or data volumes.
+`tests/Pole.Tests.E2E` starts an isolated Aspire graph with disposable MongoDB, Keycloak, and
+RabbitMQ containers; real Pole API/frontend processes; and a local GitHub protocol stub. It uses
+the reusable Kubernetes lab for deployment targets, Harbor, and BuildKit.
 
-The focused coverage is intentionally small:
+The suite covers:
 
-- real Keycloak login, JWT validation, realm roles, and the platform-admin user-creation policy;
-- asynchronous default-tenant creation through MongoDB transactions, the outbox, and RabbitMQ;
-- tenant isolation before a GitHub provider request is made;
-- GitHub App installation and OAuth callback redirects against the local stub;
-- browser login, explicit tenant selection, and resource-group creation at desktop and mobile viewports.
+- real Keycloak login, JWT validation, roles, and the platform-admin user policy;
+- asynchronous default-tenant creation through MongoDB transactions and RabbitMQ;
+- tenant isolation and GitHub App installation/OAuth flows against the local stub;
+- browser login, tenant selection, and resource-group creation at desktop and mobile viewports;
+- multi-target Kubernetes placement and isolated target failure/retry;
+- deterministic source analysis, BuildKit build/push, Harbor artifacts, and Kubernetes deployment.
 
-The GitHub stub serves deterministic `v1` and `v2` source archives and exposes protected reset, revision, and sanitized request-journal routes. It never records bearer tokens, OAuth codes, callback state, private keys, or client secrets.
+The GitHub stub serves deterministic `v1` and `v2` source archives and never records credentials,
+OAuth state, private keys, or bearer tokens.
 
-## Prerequisites
+## Prerequisites and run
 
-- A Docker-compatible container runtime that Aspire/DCP can use.
-- The repository's .NET 11 SDK, Node.js, and dependencies for `src/api/frontend`.
-- On Linux, a kernel supported by the selected MongoDB image. MongoDB 8.x currently rejects
-  kernels 6.19 and later; follow [SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912)
-  rather than applying an unsupported production workaround.
-- A ready local Kubernetes context and `kubectl`. The core browser flow creates a resource group
-  and verifies its namespace reconciliation; optional platform CRDs are not required for this lane.
-- Playwright Chromium installed for the browser test.
+Start a Docker-compatible container runtime, install the repository's .NET and Node.js versions,
+and install frontend dependencies once:
 
-Install frontend and browser dependencies once:
-
-```powershell
+```bash
 npm ci --prefix src/api/frontend
-pwsh tests/Pole.Tests.E2E/bin/Debug/net11.0/playwright.ps1 install chromium
 ```
 
-Build the test project first if the Playwright script has not been generated yet.
+Start and verify the reusable full lab, then run either the whole backend suite or only E2E:
 
-## Run
+```bash
+./infrastructure/kubernetes-lab/lab.sh up
+./infrastructure/kubernetes-lab/lab.sh verify
+dotnet test
 
-Run only this opt-in lane from the repository root:
-
-```powershell
-dotnet test tests/Pole.Tests.E2E/Pole.Tests.E2E.csproj --no-restore -maxcpucount:1
+# focused alternative
+dotnet test tests/Pole.Tests.E2E/Pole.Tests.E2E.csproj
 ```
 
-Do not run it beside a manually started AppHost that shares Docker, Keycloak, or Kubernetes resources. The fixture creates a unique Keycloak bootstrap user, two test users, a direct-grant client, a temporary RSA key, and a dynamic frontend origin. It restores the UI client configuration, deletes temporary Keycloak principals/client, and disposes the entire AppHost graph in reverse cleanup order.
+No E2E settings file, lab-selection variables, Harbor secrets, local `buildctl`, or host browser
+installation is required. The fixture discovers `.tmp/kubernetes-lab/state.json`, uses its
+`default` target and pinned `buildctl`, and starts a pinned Playwright browser in a disposable
+container. The environment variables `POLE_K8S_LAB_STATE` and `POLE_K8S_LAB_TARGET` remain optional
+overrides.
 
-The test results need no user secrets and never call the real GitHub API.
+The fixture creates a unique Keycloak bootstrap user, test users, a direct-grant client, temporary
+RSA material, and a dynamic frontend origin. It removes those resources and disposes the AppHost
+graph in reverse order. Kubernetes namespaces carry the shared test ownership labels and are
+deleted only after their UID and labels are verified.
 
-## Source-build lane
+E2E configures an optional outbox trigger interval of five seconds so asynchronous workflows do
+not wait for the production minute-based recurring schedule. The production default remains
+unset, so this faster trigger is active only when a test or another environment enables it.
 
-Full source-build verification remains an explicitly prepared, manual lane because Harbor owns a fixed Compose topology and BuildKit requires a privileged container. Prepare Harbor, `buildctl`, Docker registry trust, and Kubernetes using [GitHub source build E2E](github-source-build-e2e.md). Keep that lane serial and on an isolated self-hosted runner; do not add Harbor credentials or generated Harbor files to repository settings.
+The first browser run may take several minutes while the pinned Playwright image is downloaded.
+Later runs reuse the local image and start the browser test immediately.
 
-The core Aspire E2E lane validates the source provider contract with deterministic repository revisions. To enable `SourceBuildE2ETests`, create the gitignored local configuration once:
+## Multi-cluster and source-build behavior
 
-```powershell
-Copy-Item tests\Pole.Tests.E2E\testsettings.local.example.json tests\Pole.Tests.E2E\testsettings.local.json
-# Edit the copied file with the prepared Harbor directory and local Harbor admin password.
-# buildctl defaults to `buildctl`; set SourceBuilds:BuildctlPath only when it is not on PATH.
+The default full lab provides `default`, `workload-a`, and `workload-b`. Multi-cluster tests register
+the workload targets through the platform API, reconcile a WebService to both, disable one target,
+observe the isolated failure, re-enable it, and retry only its failed physical deployment.
 
-dotnet test tests/Pole.Tests.E2E/Pole.Tests.E2E.csproj --filter SourceBuildE2ETests -maxcpucount:1
+Source-build tests use Harbor and BuildKit running inside the lab's default cluster. The fixture
+opens temporary port-forwards for host-side API/buildctl access while image references use the
+lab's stable registry authority. Failure injection closes only that fixture's BuildKit
+port-forward; it never stops or mutates the shared BuildKit deployment. This keeps concurrent test
+runs and other worktrees independent.
+
+The source image is deliberately `FROM scratch`, so the test proves build, push, release,
+provenance, image-pull-secret, and reconciliation behavior without an external base image. It does
+not wait for an HTTP-ready application workload.
+
+## Parallelism and cleanup
+
+Independent worktrees may run tests against the same lab. They resolve the state and lifecycle lock
+beneath the primary worktree, but derive distinct worktree IDs from their own Git metadata. Every
+test namespace is labeled with `pole.dev/owned-by`, that stable worktree ID, and a test-host run ID.
+Normal fixture teardown targets only exact owned namespaces, and lab lifecycle commands are
+serialized by the shared lock. Disposable Testcontainers and Aspire containers carry the same
+identity labels; the recovery and audit commands include them as well.
+
+After an interrupted run, stop the tests and recover only the current worktree's namespaces:
+
+```bash
+./infrastructure/kubernetes-lab/lab.sh clean-tests
+./infrastructure/kubernetes-lab/lab.sh audit-tests
 ```
 
-`testsettings.local.json` is not tracked. The source-build test is skipped when `SourceBuilds:Enabled` is `false` or the local file is absent.
-
-That test starts Harbor and BuildKit through Aspire, performs a deterministic `v1` → `v2` reanalysis, verifies both immutable commit/release snapshots and Harbor artifact digests, and checks the deployed Kubernetes manifest for the exact image, release annotation, and Harbor pull secret. It also exercises a safe BuildKit failure path. The stub image is deliberately `FROM scratch`, so this verifies build, push, release, and Kubernetes reconciliation without an external base-image pull; it does not wait for an HTTP-ready application workload. The test then removes the source-build configuration, source repository, web service, resource group/namespace, Harbor project, workspace, and Compose resources. The Kubernetes context must be authorized to create and delete the temporary namespace.
+The test results need no user secrets and never call the real GitHub API. For manual validation
+against a real GitHub installation, see [GitHub source build E2E](github-source-build-e2e.md).
 
 ## CI
 
-The workflow [aspire-e2e.yml](../.github/workflows/aspire-e2e.yml) is manually dispatched on a prepared self-hosted runner. It is intentionally separate from the fast integration-test workflow. A source-build job should be enabled only after the runner has the Harbor and Kubernetes prerequisites above.
+The [Test workflow](../.github/workflows/kubernetes-lab.yml) runs the full lab and plain
+`dotnet test` on GitHub-hosted Ubuntu for every pull request and push to `master`. Diagnostics and
+the worktree-scoped leak audit run even after test failure. Frontend unit tests and the frontend
+build run in a separate job.

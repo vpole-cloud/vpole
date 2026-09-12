@@ -13,6 +13,10 @@ using PostgresCluster = Pole.Features.Postgres.Domain.PostgresCluster;
 
 namespace Pole.Features.Postgres.Tests;
 
+[Trait("Layer", "Manifest")]
+[Trait("Concern", "Rendering")]
+[Trait("Scope", "ManifestOnly")]
+[Trait("Feature", "Postgres")]
 public sealed class PostgresManifestTests
 {
     [Fact]
@@ -38,7 +42,7 @@ public sealed class PostgresManifestTests
         var secret = spec["secret"]!.AsObject();
 
         Assert.Equal("Cluster", clusterManifest["kind"]!.GetValue<string>());
-        Assert.Equal(cluster.Id, metadata["name"]!.GetValue<string>());
+        Assert.Equal(PostgresClusterKubernetesBuilder.buildResourceName(cluster.Id), metadata["name"]!.GetValue<string>());
         Assert.Equal("pole-data", metadata["namespace"]!.GetValue<string>());
         Assert.Equal(
             "Postgres",
@@ -73,11 +77,11 @@ public sealed class PostgresManifestTests
         Assert.Equal("dedicated", toleration["key"]!.GetValue<string>());
         Assert.Equal("database", toleration["value"]!.GetValue<string>());
         Assert.Equal("NoSchedule", toleration["effect"]!.GetValue<string>());
-        Assert.Equal($"{cluster.Id}-secret", secret["name"]!.GetValue<string>());
+        Assert.Equal(PostgresClusterKubernetesBuilder.buildSecretName(cluster.Id), secret["name"]!.GetValue<string>());
         Assert.Equal("ghcr.io/cloudnative-pg/postgresql:17", spec["imageName"]!.GetValue<string>());
         Assert.Equal(cluster.Id, bootstrap["database"]!.GetValue<string>());
         Assert.Equal("app_user", bootstrap["owner"]!.GetValue<string>());
-        Assert.Equal($"{cluster.Id}-secret", bootstrapSecret["name"]!.GetValue<string>());
+        Assert.Equal(PostgresClusterKubernetesBuilder.buildSecretName(cluster.Id), bootstrapSecret["name"]!.GetValue<string>());
         Assert.Equal(
             TestData.DefaultDeploymentTargetId,
             metadata["labels"]!["pole.io/deployment-target-id"]!.GetValue<string>());
@@ -96,7 +100,7 @@ public sealed class PostgresManifestTests
 
         Assert.Equal("v1", secret.ApiVersion);
         Assert.Equal("Secret", secret.Kind);
-        Assert.Equal($"{cluster.Id}-secret", secret.Metadata.Name);
+        Assert.Equal(PostgresClusterKubernetesBuilder.buildSecretName(cluster.Id), secret.Metadata.Name);
         Assert.Equal("pole-data", secret.Metadata.NamespaceProperty);
         Assert.Equal("kubernetes.io/basic-auth", secret.Type);
         Assert.Equal("app_user", secret.StringData["username"]);
@@ -140,7 +144,7 @@ public sealed class PostgresManifestTests
 
         Assert.Equal("apps/v1", statefulSet.ApiVersion);
         Assert.Equal("StatefulSet", statefulSet.Kind);
-        Assert.Equal(cluster.Id, statefulSet.Metadata.Name);
+        Assert.Equal(PostgresClusterKubernetesBuilder.buildResourceName(cluster.Id), statefulSet.Metadata.Name);
         Assert.Equal("pole-data", statefulSet.Metadata.NamespaceProperty);
         Assert.Equal("Postgres", statefulSet.Metadata.Labels["pole.io/resource-type"]);
         Assert.Equal(
@@ -150,7 +154,7 @@ public sealed class PostgresManifestTests
             "pole/postgresql",
             statefulSet.Spec.Template.Metadata.Annotations["pole.io/resource-type"]);
         Assert.Equal("docker.io/postgres:17", statefulSet.Spec.Template.Spec.Containers.Single().Image);
-        Assert.Equal($"{cluster.Id}-headless", statefulSet.Spec.ServiceName);
+        Assert.Equal(PostgresStatefulSetKubernetesBuilder.buildHeadlessServiceName(cluster.Id), statefulSet.Spec.ServiceName);
 
         var env = statefulSet.Spec.Template.Spec.Containers.Single().Env.ToDictionary(x => x.Name);
         var resources = statefulSet.Spec.Template.Spec.Containers.Single().Resources;
@@ -164,9 +168,9 @@ public sealed class PostgresManifestTests
         Assert.Equal("kata", statefulSet.Spec.Template.Spec.RuntimeClassName);
         Assert.NotNull(statefulSet.Spec.Template.Spec.Affinity.NodeAffinity);
         Assert.Single(statefulSet.Spec.Template.Spec.Tolerations);
-        Assert.Equal($"{cluster.Id}-secret", env["POSTGRES_USER"].ValueFrom.SecretKeyRef.Name);
+        Assert.Equal(PostgresClusterKubernetesBuilder.buildSecretName(cluster.Id), env["POSTGRES_USER"].ValueFrom.SecretKeyRef.Name);
         Assert.Equal("username", env["POSTGRES_USER"].ValueFrom.SecretKeyRef.Key);
-        Assert.Equal($"{cluster.Id}-secret", env["POSTGRES_PASSWORD"].ValueFrom.SecretKeyRef.Name);
+        Assert.Equal(PostgresClusterKubernetesBuilder.buildSecretName(cluster.Id), env["POSTGRES_PASSWORD"].ValueFrom.SecretKeyRef.Name);
         Assert.Equal("password", env["POSTGRES_PASSWORD"].ValueFrom.SecretKeyRef.Key);
         Assert.Equal(cluster.Id, env["POSTGRES_DB"].Value);
         var volumeClaim = statefulSet.Spec.VolumeClaimTemplates.Single();
@@ -193,8 +197,12 @@ public sealed class PostgresManifestTests
             "pole-data",
             Metadata());
 
-        Assert.Equal($"{cluster.Id}-headless", headless.Metadata.Name);
-        Assert.Equal($"{cluster.Id}-rw", readWrite.Metadata.Name);
+        Assert.Equal(PostgresStatefulSetKubernetesBuilder.buildHeadlessServiceName(cluster.Id), headless.Metadata.Name);
+        Assert.Equal(PostgresClusterKubernetesBuilder.buildReadWriteServiceName(cluster.Id), readWrite.Metadata.Name);
+        Assert.Matches("^[a-z]([-a-z0-9]*[a-z0-9])?$", headless.Metadata.Name);
+        Assert.Matches("^[a-z]([-a-z0-9]*[a-z0-9])?$", readWrite.Metadata.Name);
+        Assert.InRange(headless.Metadata.Name.Length, 1, 63);
+        Assert.InRange(readWrite.Metadata.Name.Length, 1, 63);
         Assert.Equal("None", headless.Spec.ClusterIP);
         Assert.Null(readWrite.Spec.ClusterIP);
         Assert.Equal("Postgres", headless.Metadata.Labels["pole.io/resource-type"]);
@@ -207,6 +215,20 @@ public sealed class PostgresManifestTests
             readWrite.Metadata.Annotations["pole.io/resource-type"]);
     }
 
+    [Theory]
+    [InlineData("0123456789abcdef01234567", "pg-0123456789abcdef01234567")]
+    [InlineData("abcdef0123456789abcdef01", "pg-abcdef0123456789abcdef01")]
+    public void ResourceName_IsStableAndDns1035Compatible(
+        string clusterId,
+        string expected)
+    {
+        var actual = PostgresClusterKubernetesBuilder.buildResourceName(clusterId);
+
+        Assert.Equal(expected, actual);
+        Assert.Matches("^[a-z]([-a-z0-9]*[a-z0-9])?$", actual);
+        Assert.InRange(actual.Length, 1, 63);
+    }
+
     private static (PostgresCluster cluster, PostgresSettings settings) CreateOperatorSubject()
     {
         var cluster = PostgresCluster.Create(
@@ -217,7 +239,7 @@ public sealed class PostgresManifestTests
             PostgresDeploymentMode.Operator,
             TestData.DefaultStorageProfileId,
             new CreatePostgresClusterOptions(
-                FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()),
+                FSharpOption<string>.Some("0123456789abcdef01234567"),
                 2,
                 20));
         return (cluster, CreateSettings());
@@ -233,7 +255,7 @@ public sealed class PostgresManifestTests
             PostgresDeploymentMode.StatefulSet,
             TestData.DefaultStorageProfileId,
             new CreatePostgresClusterOptions(
-                FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()),
+                FSharpOption<string>.Some("0123456789abcdef01234567"),
                 1,
                 20));
         return (cluster, CreateSettings());

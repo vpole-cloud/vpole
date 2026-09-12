@@ -8,7 +8,8 @@ open Pole.Features.Postgres.Application.Common
 
 [<RequireQualifiedAccess>]
 module PostgresStatefulSetKubernetesBuilder =
-    let buildHeadlessServiceName (clusterId : string) = $"{clusterId}-headless"
+    let buildHeadlessServiceName (clusterId : string) =
+        $"{PostgresClusterKubernetesBuilder.buildResourceName clusterId}-headless"
 
     let private buildSecretKeyReference secretName key =
         V1EnvVarSource(SecretKeyRef = V1SecretKeySelector(Name = secretName, Key = key))
@@ -52,7 +53,7 @@ module PostgresStatefulSetKubernetesBuilder =
             Kind = "StatefulSet",
             Metadata =
                 V1ObjectMeta(
-                    Name = cluster.Id,
+                    Name = PostgresClusterKubernetesBuilder.buildResourceName cluster.Id,
                     NamespaceProperty = namespaceName,
                     Labels = labels,
                     Annotations = annotations),

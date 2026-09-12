@@ -103,6 +103,69 @@ public sealed class RuntimeCellNamespaceTests
     }
 
     [Fact]
+    public void ManifestBuilder_AddsValidatedExternalLabelsWithoutReplacingOwnership()
+    {
+        var runtimeCell = CreateRuntimeCell();
+
+        var manifest = RuntimeCellNamespaceManifestBuilder.Build(
+            runtimeCell,
+            new Dictionary<string, string>
+            {
+                ["pole.dev/owned-by"] = "pole-tests",
+                ["pole.dev/test-run-id"] = "run-123"
+            });
+
+        Assert.Equal(7, manifest.Metadata.Labels.Count);
+        Assert.Equal("pole-tests", manifest.Metadata.Labels["pole.dev/owned-by"]);
+        Assert.Equal("run-123", manifest.Metadata.Labels["pole.dev/test-run-id"]);
+        Assert.Equal(runtimeCell.Id, manifest.Metadata.Labels[RuntimeCellNamespaceLabels.RuntimeCellId]);
+    }
+
+    [Theory]
+    [InlineData("not a label", "value")]
+    [InlineData("pole.dev/example", "not a value!")]
+    [InlineData(RuntimeCellNamespaceLabels.RuntimeCellId, "replacement")]
+    public async Task InvalidAdditionalNamespaceLabels_PreventHostStartup(string key, string value)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["kubernetes:NamespaceNamePrefix"] = "pole",
+                [$"kubernetes:AdditionalNamespaceLabels:{key}"] = value
+            })
+            .Build();
+        using var host = new HostBuilder()
+            .ConfigureServices(services => services.AddResourceGroupsFeature(configuration))
+            .Build();
+
+        await Assert.ThrowsAsync<OptionsValidationException>(() => host.StartAsync());
+    }
+
+    [Fact]
+    public async Task EnsureCreated_AppliesConfiguredAdditionalNamespaceLabels()
+    {
+        var runtimeCell = CreateRuntimeCell();
+        using var handler = new NamespaceApiHandler();
+        using var kubernetes = CreateKubernetes(handler);
+        var options = new KubernetesOptions
+        {
+            NamespaceNamePrefix = "pole",
+            AdditionalNamespaceLabels = new Dictionary<string, string>
+            {
+                ["pole.dev/owned-by"] = "pole-tests"
+            }
+        };
+        var subject = new KubernetesRuntimeCellNamespaceManager(
+            new RecordingKubernetesClientProvider(kubernetes),
+            options);
+
+        var result = await subject.EnsureCreatedAsync(runtimeCell);
+
+        Assert.True(result is Unit);
+        Assert.Equal("pole-tests", handler.CreatedNamespace!.Metadata.Labels["pole.dev/owned-by"]);
+    }
+
+    [Fact]
     public async Task EnsureCreated_UsesPersistedTarget_AndCreatesDesiredManifest()
     {
         var runtimeCell = CreateRuntimeCell();

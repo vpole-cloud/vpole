@@ -225,7 +225,7 @@ type PostgresClusterDeploymentManager(settings : PostgresSettings) =
                                 compute
                                 metadata
                                 settings)
-                            cluster.Id
+                            (PostgresClusterKubernetesBuilder.buildResourceName cluster.Id)
                             namespaceName
                             cancellationToken
                 | PostgresDeploymentMode.StatefulSet ->
@@ -270,6 +270,8 @@ type PostgresClusterDeploymentManager(settings : PostgresSettings) =
             deploymentMode,
             cancellationToken) =
             task {
+                let kubernetesName =
+                    PostgresClusterKubernetesBuilder.buildResourceName clusterId
                 match deploymentMode with
                 | PostgresDeploymentMode.Operator ->
                     do!
@@ -279,13 +281,13 @@ type PostgresClusterDeploymentManager(settings : PostgresSettings) =
                                 version = "v1",
                                 namespaceParameter = namespaceName,
                                 plural = "clusters",
-                                name = clusterId,
+                                name = kubernetesName,
                                 cancellationToken = cancellationToken))
                 | PostgresDeploymentMode.StatefulSet ->
                     do!
                         KubernetesExtensions.DeleteIfExistsAsync(fun () ->
                             kubernetes.AppsV1.DeleteNamespacedStatefulSetAsync(
-                                clusterId,
+                                kubernetesName,
                                 namespaceName,
                                 cancellationToken = cancellationToken))
                     do!
@@ -303,7 +305,7 @@ type PostgresClusterDeploymentManager(settings : PostgresSettings) =
                     do!
                         KubernetesExtensions.DeleteIfExistsAsync(fun () ->
                             kubernetes.CoreV1.DeleteNamespacedPersistentVolumeClaimAsync(
-                                dataPersistentVolumeClaimName clusterId,
+                                dataPersistentVolumeClaimName kubernetesName,
                                 namespaceName,
                                 cancellationToken = cancellationToken))
                 | mode ->

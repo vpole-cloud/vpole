@@ -155,14 +155,14 @@ if (bool.TryParse(builder.Configuration["LocalSourceBuilds:Enabled"], out var lo
 
     builder.AddExecutable(
             "pole-harbor",
-            "docker",
+            builder.Configuration["LocalSourceBuilds:ComposeCli"] ?? "docker",
             Path.GetFullPath(harborComposeDirectory),
             "compose",
             "up",
             "--remove-orphans")
         .WithExplicitStart();
 
-    var buildKit = builder.AddContainer("pole-buildkit", "moby/buildkit", "v0.30.0")
+    var buildKit = builder.AddContainer("pole-buildkit", "moby/buildkit", "v0.31.2")
         .WithBindMount("BuildKit/buildkitd.toml", "/etc/buildkit/buildkitd.toml", isReadOnly: true)
         .WithArgs(
             "--addr", "tcp://0.0.0.0:1234",

@@ -29,11 +29,13 @@ public class MongoReplicaSetFixture : IAsyncLifetime
     public MongoReplicaSetFixture()
     {
         _mongoPort = GetFreePort();
+        var identity = TestRunIdentity.Create();
         var mongoImage = Environment.GetEnvironmentVariable("POLE_TEST_MONGO_IMAGE");
         if (string.IsNullOrWhiteSpace(mongoImage))
             mongoImage = DefaultMongoImage;
 
         _container = new ContainerBuilder(mongoImage)
+            .WithTestOwnership(identity)
             .WithPortBinding(_mongoPort, _mongoPort)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(_mongoPort))
             .WithCommand("mongod", "--replSet", "rs0", "--bind_ip_all", "--port", _mongoPort.ToString())

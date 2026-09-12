@@ -7,6 +7,10 @@ using Xunit;
 
 namespace Pole.Features.Functions.Tests;
 
+[Trait("Layer", "Manifest")]
+[Trait("Concern", "Rendering")]
+[Trait("Scope", "ManifestOnly")]
+[Trait("Feature", "Functions")]
 public sealed class FunctionRevisionManifestTests
 {
     [Fact]

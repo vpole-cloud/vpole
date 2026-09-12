@@ -5,6 +5,7 @@ using MassTransit;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Application;
+using Pole.Testing;
 using Xunit;
 using EventJson = Pole.Features.Events.Abstractions.EventExtensions;
 
@@ -72,6 +73,7 @@ public sealed class EventIdentityContractTests
     public async Task RabbitMq_PublishesAndConsumesTheVersionedEvent()
     {
         await using var container = new ContainerBuilder("rabbitmq:4.1-management-alpine")
+            .WithTestOwnership(TestRunIdentity.Create())
             .WithPortBinding(5672, true)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5672))
             .Build();

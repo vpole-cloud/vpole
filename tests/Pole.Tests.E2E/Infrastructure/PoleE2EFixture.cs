@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -13,8 +13,11 @@ using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.JavaScript;
 using Aspire.Hosting.Testing;
-using Microsoft.Extensions.Configuration;
+using k8s;
+using k8s.Autorest;
+using k8s.Models;
 using Microsoft.Extensions.DependencyInjection;
+using Pole.Testing;
 using Xunit;
 
 namespace Pole.Tests.E2E.Infrastructure;
@@ -24,25 +27,42 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     private const string KeycloakAdminUsername = "pole-e2e-admin";
     private readonly CancellationTokenSource _shutdown = new(TimeSpan.FromMinutes(10));
     private readonly List<Func<CancellationToken, Task>> _cleanup = [];
-    private readonly TcpListener _buildKitPortReservation;
-    private readonly int _buildKitPort;
+    private readonly TestRunIdentity _identity = TestRunIdentity.Create();
+    private readonly Dictionary<string, RecordedNamespace> _kubernetesNamespaces = new(StringComparer.Ordinal);
     private readonly string _githubClientSecret = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private readonly string _keycloakAdminPassword = $"E2e-{Guid.NewGuid():N}-1!";
     private readonly TcpListener _keycloakPortReservation = ReserveTcpPort();
-    private readonly string _kubernetesNamespacePrefix = $"e2e-{Guid.NewGuid():N}"[..12];
+    private readonly string _kubernetesNamespacePrefix;
     private readonly string _mongoPassword = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private readonly string _rabbitMqPassword = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-    private readonly SourceBuildSettings? _sourceBuildSettings;
+    private readonly SelectedKubernetesLab _lab;
+    private readonly KubernetesLabTarget _kubernetesTarget;
+    private readonly IKubernetes _kubernetes;
+    private readonly KubernetesLabServices _labServices;
+    private readonly KubernetesLabTarget _serviceTarget;
     private readonly string _stubControlKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private DistributedApplication? _application;
+    private KubernetesPortForwardSession? _buildKitPortForward;
+    private KubernetesPortForwardSession? _harborPortForward;
+    private HarborCredentials? _harborCredentials;
     private KeycloakAdminClient? _keycloak;
     private string? _scratchDirectory;
 
     public PoleE2EFixture()
     {
-        _sourceBuildSettings = E2ETestSettings.Load().SourceBuilds;
-        _buildKitPortReservation = ReserveTcpPort();
-        _buildKitPort = ((IPEndPoint)_buildKitPortReservation.LocalEndpoint).Port;
+        _lab = KubernetesLabSelection.RequireSelection();
+        _kubernetesTarget = _lab.Target;
+        _labServices = _lab.State.Services
+                       ?? throw new InvalidOperationException(
+                           "The Aspire E2E suite requires a full Kubernetes lab with Harbor and BuildKit services.");
+        if (_labServices.Harbor.TargetKey != _labServices.BuildKit.TargetKey)
+            throw new InvalidOperationException("Harbor and BuildKit must belong to the same Kubernetes lab target.");
+        _serviceTarget = _lab.State.GetRequiredTarget(_labServices.Harbor.TargetKey);
+        _kubernetes = new Kubernetes(_kubernetesTarget.CreateConfiguration());
+        // RuntimeCellNamespaceNameGenerator appends stable tenant/scope identities. Keep the
+        // worktree at the front so recovery can also identify PVC-backed PVs after a namespace
+        // has already disappeared.
+        _kubernetesNamespacePrefix = $"pole-{_identity.WorktreeId}";
     }
 
     public HttpClient Api { get; private set; } = null!;
@@ -50,10 +70,13 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     public Uri FrontendBaseAddress { get; private set; } = null!;
     public TestUser Alpha { get; private set; } = null!;
     public TestUser Beta { get; private set; } = null!;
-    public bool SourceBuildsEnabled => _sourceBuildSettings is not null;
+    public string PlatformAdminAccessToken { get; private set; } = null!;
+    public KubernetesLabState LabState => _lab.State;
+    public TestRunIdentity Identity => _identity;
 
     public async Task InitializeAsync()
     {
+        await StartLabServiceAccessAsync(_shutdown.Token);
         _scratchDirectory = Path.Combine(Path.GetTempPath(), "pole-e2e", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_scratchDirectory);
         var privateKeyPath = Path.Combine(_scratchDirectory, "github-app-private-key.pem");
@@ -79,12 +102,11 @@ public sealed class PoleE2EFixture : IAsyncLifetime
                 privateKeyPath,
                 envelopeEncryptionKeyPath,
                 githubClientId,
-                _sourceBuildSettings,
                 _scratchDirectory,
                 _kubernetesNamespacePrefix,
-                BuildKitPort,
                 KeycloakPort,
                 _keycloakAdminPassword,
+                _harborCredentials!.Password,
                 _githubClientSecret,
                 _mongoPassword,
                 _rabbitMqPassword),
@@ -92,13 +114,10 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
         var api = appHost.CreateResourceBuilder<ProjectResource>("pole-server");
         var frontend = appHost.CreateResourceBuilder<ViteAppResource>("frontend");
-        if (_sourceBuildSettings is not null)
-        {
-            // The test server is a host process, whereas BuildKit is a proxyless container.
-            // Give buildctl the reserved host endpoint rather than container service discovery.
-            api.WithEnvironment(context =>
-                context.EnvironmentVariables["BuildKit__Address"] = $"tcp://127.0.0.1:{BuildKitPort}");
-        }
+        var harborAdminPassword = appHost.AddParameter("e2e-harbor-admin-password", secret: true);
+        ConfigureLabServices(api, harborAdminPassword);
+        ConfigureLabDeploymentTarget(api);
+        api.WithEnvironment("Outbox__ProcessingTriggerInterval", "00:00:05");
         var githubStub = appHost
             .AddProject(
                 "github-stub",
@@ -119,14 +138,14 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         githubStub
             .WithEnvironment("GitHubStub__CallbackBaseUrl", api.GetEndpoint("http"))
             .WithEnvironment("GitHubStub__ControlKey", _stubControlKey);
+        ConfigureOwnedContainerResources(appHost);
 
         _application = await appHost.BuildAsync(_shutdown.Token);
-        _buildKitPortReservation.Stop();
         _keycloakPortReservation.Stop();
         await _application.StartAsync(_shutdown.Token);
-        await _application.ResourceNotifications.WaitForResourceHealthyAsync("pole-server", _shutdown.Token);
-        await _application.ResourceNotifications.WaitForResourceHealthyAsync("frontend", _shutdown.Token);
-        await _application.ResourceNotifications.WaitForResourceHealthyAsync("github-stub", _shutdown.Token);
+        await WaitForRequiredResourceHealthyAsync("pole-server", _shutdown.Token);
+        await WaitForRequiredResourceHealthyAsync("frontend", _shutdown.Token);
+        await WaitForRequiredResourceHealthyAsync("github-stub", _shutdown.Token);
 
         Api = _application.CreateHttpClient("pole-server", "http");
         Stub = _application.CreateHttpClient("github-stub", "http");
@@ -141,6 +160,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             _application.CreateHttpClient("pole-keycloak", "http"),
             _shutdown.Token);
 
+        await _keycloak.SetRealmAccessTokenLifespanAsync(TimeSpan.FromHours(1), _shutdown.Token);
         await ConfigureInteractiveClientAsync(_shutdown.Token);
         var directGrantClient = await _keycloak.CreateDirectGrantClientAsync(
             $"pole.e2e.direct-{Guid.NewGuid():N}",
@@ -155,6 +175,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             bootstrap.Email,
             bootstrap.Password,
             _shutdown.Token);
+        PlatformAdminAccessToken = bootstrapToken;
 
         Alpha = await CreatePlatformUserAsync("alpha", bootstrapToken, directGrantClient, _shutdown.Token);
         Beta = await CreatePlatformUserAsync("beta", bootstrapToken, directGrantClient, _shutdown.Token);
@@ -162,9 +183,9 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        _buildKitPortReservation.Stop();
         _keycloakPortReservation.Stop();
-        var cancellationToken = new CancellationTokenSource(TimeSpan.FromMinutes(2)).Token;
+        using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        var cancellationToken = cleanupTimeout.Token;
         foreach (var action in _cleanup.AsEnumerable().Reverse())
         {
             try
@@ -177,21 +198,48 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             }
         }
 
-        await StopSourceBuildInfrastructureAsync(cancellationToken);
-        if (_application is not null)
-            await _application.DisposeAsync();
-        _shutdown.Dispose();
-
-        if (!string.IsNullOrWhiteSpace(_scratchDirectory) && Directory.Exists(_scratchDirectory))
+        try
         {
-            try
+            if (_application is not null)
             {
-                Directory.Delete(_scratchDirectory, recursive: true);
+                await _shutdown.CancelAsync();
+                using var stopTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+                await _application.StopAsync(stopTimeout.Token);
+                await _application.DisposeAsync();
             }
-            catch
+        }
+        finally
+        {
+            await DisposePortForwardAsync(_buildKitPortForward);
+            _buildKitPortForward = null;
+            await DisposePortForwardAsync(_harborPortForward);
+            _harborPortForward = null;
+            _kubernetes.Dispose();
+            _shutdown.Dispose();
+
+            if (!string.IsNullOrWhiteSpace(_scratchDirectory) && Directory.Exists(_scratchDirectory))
             {
-                // Test diagnostics and a locked process should not hide the original test result.
+                try
+                {
+                    Directory.Delete(_scratchDirectory, recursive: true);
+                }
+                catch
+                {
+                    // Test diagnostics and a locked process should not hide the original test result.
+                }
             }
+        }
+    }
+
+    private void ConfigureOwnedContainerResources(IDistributedApplicationBuilder appHost)
+    {
+        var labelArguments = _identity.NamespaceLabels
+            .SelectMany(label => new[] { "--label", $"{label.Key}={label.Value}" })
+            .ToArray();
+        foreach (var resource in appHost.Resources.OfType<ContainerResource>())
+        {
+            appHost.CreateResourceBuilder(resource)
+                .WithContainerRuntimeArgs(labelArguments);
         }
     }
 
@@ -204,58 +252,36 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         return request;
     }
 
-    public async Task StartSourceBuildInfrastructureAsync(CancellationToken cancellationToken)
+    public HttpRequestMessage CreatePlatformAdminRequest(HttpMethod method, string path)
     {
-        if (_sourceBuildSettings is null || _application is null)
-            throw new InvalidOperationException("The source-build lane is not enabled for this run.");
+        var request = new HttpRequestMessage(method, path);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", PlatformAdminAccessToken);
+        return request;
+    }
 
-        var harborStart = await _application.ResourceCommands.ExecuteCommandAsync(
-            "pole-harbor",
-            KnownResourceCommands.StartCommand,
-            cancellationToken);
-        if (!harborStart.Success)
-            throw new InvalidOperationException($"Aspire could not start Harbor: {harborStart.Message}");
-
-        var buildKitStart = await _application.ResourceCommands.ExecuteCommandAsync(
-            "pole-buildkit",
-            KnownResourceCommands.StartCommand,
-            cancellationToken);
-        if (!buildKitStart.Success)
-            throw new InvalidOperationException($"Aspire could not start BuildKit: {buildKitStart.Message}");
-
-        await _application.ResourceNotifications.WaitForResourceAsync(
-            "pole-buildkit",
-            KnownResourceStates.Running,
-            cancellationToken);
+    public async Task EnsureSourceBuildInfrastructureReadyAsync(CancellationToken cancellationToken)
+    {
         await WaitForBuildKitReadyAsync(cancellationToken);
         await WaitForHarborHealthAsync(cancellationToken);
     }
 
-    public async Task StopBuildKitAsync(CancellationToken cancellationToken)
+    public async Task StopBuildKitAccessAsync()
     {
-        if (_application is null)
-            throw new InvalidOperationException("The AppHost has not started.");
-
-        var stop = await _application.ResourceCommands.ExecuteCommandAsync(
-            "pole-buildkit",
-            KnownResourceCommands.StopCommand,
-            cancellationToken);
-        if (!stop.Success)
-            throw new InvalidOperationException($"Aspire could not stop BuildKit: {stop.Message}");
+        var portForward = Interlocked.Exchange(ref _buildKitPortForward, null)
+                          ?? throw new InvalidOperationException("BuildKit access has already been stopped.");
+        await portForward.DisposeAsync();
     }
 
     public async Task DeleteHarborProjectAsync(string tenantId, CancellationToken cancellationToken)
     {
-        if (_sourceBuildSettings is null)
-            return;
-
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(tenantId));
         var projectName = $"pole-{Convert.ToHexStringLower(hash.AsSpan(0, 16))}";
         using var client = new HttpClient(new HttpClientHandler { UseCookies = false })
         {
-            BaseAddress = new Uri(_sourceBuildSettings.HarborBaseUrl)
+            BaseAddress = HarborBaseAddress
         };
-        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"admin:{_sourceBuildSettings.HarborAdminPassword}"));
+        var credentials = Convert.ToBase64String(
+            Encoding.UTF8.GetBytes($"{_harborCredentials!.Username}:{_harborCredentials.Password}"));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
         var repositoryNames = new List<string>();
         for (var page = 1; ; page++)
@@ -308,18 +334,16 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         string buildJobId,
         CancellationToken cancellationToken)
     {
-        if (_sourceBuildSettings is null)
-            throw new InvalidOperationException("The source-build lane is not enabled for this run.");
-
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(tenantId));
         var projectName = $"pole-{Convert.ToHexStringLower(hash.AsSpan(0, 16))}";
         // See DeleteHarborProjectAsync: nested repository paths require double encoding.
         var repository = Uri.EscapeDataString(Uri.EscapeDataString($"web-services/{webServiceId}"));
         using var client = new HttpClient(new HttpClientHandler { UseCookies = false })
         {
-            BaseAddress = new Uri(_sourceBuildSettings.HarborBaseUrl)
+            BaseAddress = HarborBaseAddress
         };
-        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"admin:{_sourceBuildSettings.HarborAdminPassword}"));
+        var credentials = Convert.ToBase64String(
+            Encoding.UTF8.GetBytes($"{_harborCredentials!.Username}:{_harborCredentials.Password}"));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
         using var response = await client.GetAsync(
             $"/api/v2.0/projects/{Uri.EscapeDataString(projectName)}/repositories/{repository}/artifacts/build-{buildJobId}",
@@ -332,34 +356,56 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     public async Task WaitForNamespaceDeletionAsync(string resourceGroupId, CancellationToken cancellationToken)
     {
-        if (_sourceBuildSettings is null)
+        if (!_kubernetesNamespaces.TryGetValue(resourceGroupId, out var recorded))
             return;
 
-        var namespaceName = GetNamespaceName(resourceGroupId);
-        if (await RunKubectlAsync(["get", "namespace", namespaceName], cancellationToken) != 0)
+        var existing = await ReadNamespaceIfPresentAsync(recorded.Name, cancellationToken);
+        if (existing is null)
             return;
+        VerifyOwnedNamespace(existing, recorded.Uid);
 
         var exitCode = await RunKubectlAsync(
-            ["wait", "--for=delete", $"namespace/{namespaceName}", "--timeout=2m"],
+            ["wait", "--for=delete", $"namespace/{recorded.Name}", "--timeout=2m"],
             cancellationToken);
         if (exitCode != 0)
-            throw new TimeoutException($"Kubernetes namespace '{namespaceName}' was not deleted.");
+            throw new TimeoutException($"Kubernetes namespace '{recorded.Name}' was not deleted.");
 
     }
 
     public async Task WaitForNamespaceCreationAsync(string resourceGroupId, CancellationToken cancellationToken)
     {
-        var namespaceName = GetNamespaceName(resourceGroupId);
         var deadline = DateTimeOffset.UtcNow.AddMinutes(2);
         while (DateTimeOffset.UtcNow < deadline)
         {
-            if (await RunKubectlAsync(["get", "namespace", namespaceName], cancellationToken) == 0)
-                return;
+            using var request = CreateAuthenticatedRequest(
+                HttpMethod.Get,
+                $"/api/v1/resource-groups/{resourceGroupId}/runtime-cells",
+                Alpha,
+                Alpha.DefaultTenantId);
+            using var response = await Api.SendAsync(request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            using var document = JsonDocument.Parse(
+                await response.Content.ReadAsStreamAsync(cancellationToken));
+            var cells = document.RootElement.EnumerateArray().ToArray();
+            if (cells.Length == 1)
+            {
+                var namespaceName = cells[0].GetProperty("kubernetesNamespace").GetString()
+                                    ?? throw new InvalidOperationException("Runtime cell has no Kubernetes namespace.");
+                var namespaceResource = await ReadNamespaceIfPresentAsync(namespaceName, cancellationToken);
+                if (namespaceResource is not null)
+                {
+                    VerifyOwnedNamespace(namespaceResource);
+                    _kubernetesNamespaces[resourceGroupId] = new RecordedNamespace(
+                        namespaceName,
+                        namespaceResource.Metadata.Uid);
+                    return;
+                }
+            }
 
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
 
-        throw new TimeoutException($"Kubernetes namespace '{namespaceName}' was not created.");
+        throw new TimeoutException($"A runtime-cell namespace for resource group '{resourceGroupId}' was not created.");
     }
 
     public Task<JsonElement> GetWebServiceDeploymentAsync(
@@ -464,21 +510,193 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     private string GetNamespaceName(string resourceGroupId)
     {
-        var tenantSegment = Alpha.DefaultTenantId[..Math.Min(8, Alpha.DefaultTenantId.Length)];
-        var groupSegment = resourceGroupId[..Math.Min(8, resourceGroupId.Length)];
-        return $"{_kubernetesNamespacePrefix}-t-{tenantSegment}-rg-{groupSegment}";
+        return _kubernetesNamespaces.TryGetValue(resourceGroupId, out var recorded)
+            ? recorded.Name
+            : throw new InvalidOperationException(
+                $"No runtime-cell namespace was recorded for resource group '{resourceGroupId}'.");
     }
+
+    private async Task<V1Namespace?> ReadNamespaceIfPresentAsync(
+        string namespaceName,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _kubernetes.CoreV1.ReadNamespaceAsync(
+                namespaceName,
+                cancellationToken: cancellationToken);
+        }
+        catch (HttpOperationException exception) when (exception.Response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
+    private void VerifyOwnedNamespace(V1Namespace namespaceResource, string? expectedUid = null)
+    {
+        var labels = namespaceResource.Metadata.Labels;
+        if ((expectedUid is not null &&
+             !string.Equals(namespaceResource.Metadata.Uid, expectedUid, StringComparison.Ordinal)) ||
+            labels is null ||
+            !labels.TryGetValue(TestRunIdentity.OwnerLabel, out var owner) ||
+            !string.Equals(owner, TestRunIdentity.Owner, StringComparison.Ordinal) ||
+            !labels.TryGetValue(TestRunIdentity.WorktreeLabel, out var worktreeId) ||
+            !string.Equals(worktreeId, _identity.WorktreeId, StringComparison.Ordinal) ||
+            !labels.TryGetValue(TestRunIdentity.RunLabel, out var runId) ||
+            !string.Equals(runId, _identity.RunId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Kubernetes namespace '{namespaceResource.Metadata.Name}' does not match the E2E test ownership contract.");
+        }
+    }
+
+    private async Task StartLabServiceAccessAsync(CancellationToken cancellationToken)
+    {
+        if (!string.Equals(_lab.State.Profile, "full", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"The Aspire E2E suite requires Kubernetes lab profile 'full', but '{_lab.State.Profile}' is active.");
+        }
+
+        _harborCredentials = await ReadHarborCredentialsAsync(
+            _labServices.Harbor.CredentialsPath,
+            cancellationToken);
+        _harborPortForward = await KubernetesPortForwardSession.StartAsync(
+            _serviceTarget,
+            _labServices.Harbor.Namespace,
+            $"service/{_labServices.Harbor.Service}",
+            _labServices.Harbor.Port,
+            cancellationToken);
+        try
+        {
+            _buildKitPortForward = await KubernetesPortForwardSession.StartAsync(
+                _serviceTarget,
+                _labServices.BuildKit.Namespace,
+                $"service/{_labServices.BuildKit.Service}",
+                _labServices.BuildKit.Port,
+                cancellationToken);
+        }
+        catch
+        {
+            await _harborPortForward.DisposeAsync();
+            _harborPortForward = null;
+            throw;
+        }
+    }
+
+    private void ConfigureLabServices(
+        IResourceBuilder<ProjectResource> api,
+        IResourceBuilder<ParameterResource> harborAdminPassword)
+    {
+        api.WithEnvironment("Harbor__Enabled", "true")
+            .WithEnvironment("Harbor__BaseUrl", HarborBaseAddress.ToString())
+            .WithEnvironment("Harbor__RegistryHost", _labServices.Harbor.RegistryHost)
+            .WithEnvironment("Harbor__Username", _harborCredentials!.Username)
+            .WithEnvironment("Harbor__Password", harborAdminPassword)
+            .WithEnvironment("Harbor__RobotDurationDays", "-1")
+            .WithEnvironment("BuildKit__Enabled", "true")
+            .WithEnvironment("BuildKit__Address", BuildKitAddress)
+            .WithEnvironment("BuildKit__BuildctlPath", _lab.State.BuildctlPath!)
+            .WithEnvironment("BuildKit__TimeoutMinutes", "30");
+
+        foreach (var (key, value) in _identity.NamespaceLabels)
+            api.WithEnvironment($"kubernetes__AdditionalNamespaceLabels__{key}", value);
+    }
+
+    private void ConfigureLabDeploymentTarget(IResourceBuilder<ProjectResource> api)
+    {
+        api.WithEnvironment("DeploymentTargets__Bootstrap__Mode", "Kubeconfig")
+            .WithEnvironment("DeploymentTargets__Bootstrap__KubeconfigPath", _kubernetesTarget.KubeconfigPath)
+            .WithEnvironment("DeploymentTargets__Bootstrap__KubeconfigContext", _kubernetesTarget.Context)
+            .WithEnvironment(
+                "DeploymentTargets__Bootstrap__WorkloadConfiguration__Ingress__IngressClassName",
+                "traefik")
+            .WithEnvironment(
+                "DeploymentTargets__Bootstrap__WorkloadConfiguration__Ingress__ClusterIssuerName",
+                "pole-lab")
+            .WithEnvironment(
+                "DeploymentTargets__Bootstrap__WorkloadConfiguration__Ingress__PublicBaseDomain",
+                _kubernetesTarget.PublicBaseDomain);
+    }
+
+    private async Task WaitForRequiredResourceHealthyAsync(
+        string resourceName,
+        CancellationToken cancellationToken)
+    {
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        try
+        {
+            var healthy = _application!.ResourceNotifications.WaitForResourceHealthyAsync(
+                resourceName,
+                WaitBehavior.StopOnResourceUnavailable,
+                wait.Token);
+            var terminal = _application.ResourceNotifications.WaitForResourceAsync(
+                resourceName,
+                KnownResourceStates.TerminalStates,
+                wait.Token);
+            var completed = await Task.WhenAny(healthy, terminal);
+            if (completed == terminal)
+            {
+                var state = await terminal;
+                throw new InvalidOperationException(
+                    $"Aspire resource '{resourceName}' reached terminal state '{state}' before becoming healthy.");
+            }
+
+            await healthy;
+        }
+        finally
+        {
+            await wait.CancelAsync();
+        }
+    }
+
+    private static async Task<HarborCredentials> ReadHarborCredentialsAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        await using var stream = File.OpenRead(path);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+        var username = document.RootElement.TryGetProperty("username", out var usernameElement)
+            ? usernameElement.GetString()
+            : null;
+        var password = document.RootElement.TryGetProperty("password", out var passwordElement)
+            ? passwordElement.GetString()
+            : null;
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+            throw new InvalidOperationException("The Kubernetes lab Harbor credentials file is malformed.");
+        return new HarborCredentials(username, password);
+    }
+
+    private static async Task DisposePortForwardAsync(KubernetesPortForwardSession? portForward)
+    {
+        if (portForward is null)
+            return;
+
+        try
+        {
+            await portForward.DisposeAsync();
+        }
+        catch
+        {
+            // The disposable test VM or lab process may already have stopped the forwarding process.
+        }
+    }
+
+    private Uri HarborBaseAddress => new(
+        $"http://127.0.0.1:{_harborPortForward?.LocalPort ?? throw new InvalidOperationException("Harbor access is not active.")}");
+
+    private string BuildKitAddress =>
+        $"tcp://127.0.0.1:{_buildKitPortForward?.LocalPort ?? throw new InvalidOperationException("BuildKit access is not active.")}";
 
     private static string[] CreateAppHostArguments(
         string privateKeyPath,
         string envelopeEncryptionKeyPath,
         string githubClientId,
-        SourceBuildSettings? sourceBuildSettings,
         string scratchDirectory,
         string kubernetesNamespacePrefix,
-        int buildKitPort,
         int keycloakPort,
         string keycloakAdminPassword,
+        string harborAdminPassword,
         string githubClientSecret,
         string mongoPassword,
         string rabbitMqPassword)
@@ -486,7 +704,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         var arguments = new List<string>
         {
         "E2E:Enabled=true",
-        $"E2E:BuildKitPort={buildKitPort}",
+        "LocalSourceBuilds:Enabled=false",
         $"E2E:KeycloakPort={keycloakPort}",
         $"E2E:KubernetesNamespacePrefix={kubernetesNamespacePrefix}",
         "Parameters:mongo-username=pole-e2e",
@@ -502,21 +720,12 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         "Parameters:github-app-public-base-url=http://placeholder.invalid",
         "Parameters:envelope-encryption-active-key-id=pole-e2e",
         "Parameters:envelope-encryption-active-key-version=1",
-        $"Parameters:envelope-encryption-active-key-path={envelopeEncryptionKeyPath}"
+        $"Parameters:envelope-encryption-active-key-path={envelopeEncryptionKeyPath}",
+        $"Parameters:e2e-harbor-admin-password={harborAdminPassword}",
+        "ResourceDeployments:InitialRetryDelaySeconds=3600",
+        "ResourceDeployments:MaximumRetryDelaySeconds=3600",
+        $"E2E:WorkspaceRoot={Path.Combine(scratchDirectory, "source-workspace")}"
         };
-        if (sourceBuildSettings is not null)
-        {
-            arguments.AddRange(
-            [
-                "LocalSourceBuilds:Enabled=true",
-                $"LocalSourceBuilds:HarborComposeDirectory={sourceBuildSettings.HarborComposeDirectory}",
-                $"LocalSourceBuilds:HarborBaseUrl={sourceBuildSettings.HarborBaseUrl}",
-                $"LocalSourceBuilds:HarborRegistryHost={sourceBuildSettings.HarborRegistryHost}",
-                $"LocalSourceBuilds:BuildctlPath={sourceBuildSettings.BuildctlPath}",
-                $"Parameters:harbor-admin-password={sourceBuildSettings.HarborAdminPassword}",
-                $"E2E:WorkspaceRoot={Path.Combine(scratchDirectory, "source-workspace")}"
-            ]);
-        }
 
         return arguments.ToArray();
     }
@@ -534,8 +743,6 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         path?.Split('?', 2)[0] ?? string.Empty;
 
     private int KeycloakPort => ((IPEndPoint)_keycloakPortReservation.LocalEndpoint).Port;
-
-    private int BuildKitPort => _buildKitPort;
 
     private static TcpListener ReserveTcpPort()
     {
@@ -648,7 +855,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     {
         using var client = new HttpClient(new HttpClientHandler { UseCookies = false })
         {
-            BaseAddress = new Uri(_sourceBuildSettings!.HarborBaseUrl)
+            BaseAddress = HarborBaseAddress
         };
         var deadline = DateTimeOffset.UtcNow.AddMinutes(3);
         while (DateTimeOffset.UtcNow < deadline)
@@ -695,14 +902,14 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     private async Task<bool> IsBuildKitReadyAsync(CancellationToken cancellationToken)
     {
-        if (_sourceBuildSettings is null)
+        if (_buildKitPortForward is null || string.IsNullOrWhiteSpace(_lab.State.BuildctlPath))
             return false;
 
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName = _sourceBuildSettings.BuildctlPath,
+                FileName = _lab.State.BuildctlPath,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -710,7 +917,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             }
         };
         process.StartInfo.ArgumentList.Add("--addr");
-        process.StartInfo.ArgumentList.Add($"tcp://127.0.0.1:{BuildKitPort}");
+        process.StartInfo.ArgumentList.Add(BuildKitAddress);
         process.StartInfo.ArgumentList.Add("debug");
         process.StartInfo.ArgumentList.Add("workers");
 
@@ -791,65 +998,12 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         throw new TimeoutException("Keycloak did not expose OpenID discovery within two minutes.");
     }
 
-    private async Task StopSourceBuildInfrastructureAsync(CancellationToken cancellationToken)
+    private async Task<int> RunKubectlAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
-        if (_sourceBuildSettings is null)
-            return;
-
-        if (_application is not null)
-        {
-            try
-            {
-                await _application.ResourceCommands.ExecuteCommandAsync(
-                    "pole-buildkit",
-                    KnownResourceCommands.StopCommand,
-                    cancellationToken);
-                await _application.ResourceCommands.ExecuteCommandAsync(
-                    "pole-harbor",
-                    KnownResourceCommands.StopCommand,
-                    cancellationToken);
-            }
-            catch
-            {
-                // Always attempt the Compose cleanup below.
-            }
-        }
-
-        var process = new Process
-        {
-            StartInfo = new ProcessStartInfo("docker")
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true
-            }
-        };
-        process.StartInfo.ArgumentList.Add("compose");
-        process.StartInfo.ArgumentList.Add("--project-directory");
-        process.StartInfo.ArgumentList.Add(_sourceBuildSettings.HarborComposeDirectory);
-        process.StartInfo.ArgumentList.Add("down");
-        process.StartInfo.ArgumentList.Add("--remove-orphans");
-        process.StartInfo.ArgumentList.Add("--volumes");
-
-        try
-        {
-            process.Start();
-            await process.WaitForExitAsync(cancellationToken);
-        }
-        catch
-        {
-            // The test's primary failure is more actionable; the runner teardown must be checked separately.
-        }
-        finally
-        {
-            process.Dispose();
-        }
-    }
-
-    private static async Task<int> RunKubectlAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
-    {
+        var target = _kubernetesTarget;
         using var process = new Process
         {
-            StartInfo = new ProcessStartInfo("kubectl")
+            StartInfo = new ProcessStartInfo(target.KubectlPath)
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -857,6 +1011,8 @@ public sealed class PoleE2EFixture : IAsyncLifetime
                 RedirectStandardError = true
             }
         };
+        foreach (var argument in target.KubectlSelectionArguments)
+            process.StartInfo.ArgumentList.Add(argument);
         foreach (var argument in arguments)
             process.StartInfo.ArgumentList.Add(argument);
         process.Start();
@@ -867,13 +1023,14 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         return process.ExitCode;
     }
 
-    private static async Task<JsonElement> ReadKubectlJsonAsync(
+    private async Task<JsonElement> ReadKubectlJsonAsync(
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
+        var target = _kubernetesTarget;
         using var process = new Process
         {
-            StartInfo = new ProcessStartInfo("kubectl")
+            StartInfo = new ProcessStartInfo(target.KubectlPath)
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -881,6 +1038,8 @@ public sealed class PoleE2EFixture : IAsyncLifetime
                 RedirectStandardError = true
             }
         };
+        foreach (var argument in target.KubectlSelectionArguments)
+            process.StartInfo.ArgumentList.Add(argument);
         foreach (var argument in arguments)
             process.StartInfo.ArgumentList.Add(argument);
         process.Start();
@@ -895,6 +1054,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         using var document = JsonDocument.Parse(output);
         return document.RootElement.Clone();
     }
+
 }
 
 public sealed record TestUser(
@@ -904,46 +1064,6 @@ public sealed record TestUser(
     string AccessToken,
     string DefaultTenantId);
 
-internal sealed record E2ETestSettings(SourceBuildSettings? SourceBuilds)
-{
-    public static E2ETestSettings Load()
-    {
-        var configuration = new ConfigurationBuilder()
-            .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("testsettings.json", optional: true)
-            .AddJsonFile("testsettings.local.json", optional: true)
-            .Build();
-        return FromConfiguration(configuration);
-    }
+internal sealed record HarborCredentials(string Username, string Password);
 
-    internal static E2ETestSettings FromConfiguration(IConfiguration configuration)
-    {
-        var sourceBuilds = configuration.GetSection("SourceBuilds");
-        if (!bool.TryParse(sourceBuilds["Enabled"], out var enabled) || !enabled)
-            return new E2ETestSettings((SourceBuildSettings?)null);
-
-        return new E2ETestSettings(new SourceBuildSettings(
-            Required(sourceBuilds, "HarborComposeDirectory"),
-            Optional(sourceBuilds, "HarborBaseUrl", "http://localhost:5000"),
-            Optional(sourceBuilds, "HarborRegistryHost", "host.docker.internal:5000"),
-            Required(sourceBuilds, "HarborAdminPassword"),
-            Optional(sourceBuilds, "BuildctlPath", "buildctl")));
-    }
-
-    private static string Optional(IConfigurationSection section, string name, string defaultValue) =>
-        section[name] is { } value && !string.IsNullOrWhiteSpace(value)
-            ? value
-            : defaultValue;
-
-    private static string Required(IConfigurationSection section, string name) =>
-        section[name] is { } value && !string.IsNullOrWhiteSpace(value)
-            ? value
-            : throw new InvalidOperationException($"SourceBuilds:{name} is required when SourceBuilds:Enabled=true.");
-}
-
-internal sealed record SourceBuildSettings(
-    string HarborComposeDirectory,
-    string HarborBaseUrl,
-    string HarborRegistryHost,
-    string HarborAdminPassword,
-    string BuildctlPath);
+internal sealed record RecordedNamespace(string Name, string Uid);

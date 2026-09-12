@@ -25,7 +25,7 @@ creates a replacement.
 Source builds add two optional, explicit-start resources:
 
 - `pole-harbor` runs Harbor's official generated Docker Compose deployment.
-- `pole-buildkit` runs pinned `moby/buildkit:v0.30.0` with its gRPC endpoint on port `1234`.
+- `pole-buildkit` runs pinned `moby/buildkit:v0.31.2` with its gRPC endpoint on port `1234`.
 
 They are excluded from the default graph because Harbor requires at least 4 GB of memory and several containers. See [GitHub source build E2E](github-source-build-e2e.md) for the one-time Harbor preparation and AppHost configuration.
 

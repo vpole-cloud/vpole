@@ -4,6 +4,10 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
 
+[Trait("Layer", "Manifest")]
+[Trait("Concern", "Rendering")]
+[Trait("Scope", "ManifestOnly")]
+[Trait("Feature", "ResourceDeployments")]
 public sealed class ResolvedComputeConfigurationKubernetesTests
 {
     [Fact]

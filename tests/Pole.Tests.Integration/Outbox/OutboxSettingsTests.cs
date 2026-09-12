@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Pole.Features.Outbox.Application;
 using Pole.Server.Extensions;
@@ -22,6 +23,7 @@ public sealed class OutboxSettingsTests
         Assert.False(validation.Failed);
         Assert.Equal(100, settings.BatchSize);
         Assert.Equal("* * * * *", settings.ProcessingCronExpression);
+        Assert.Null(settings.ProcessingTriggerInterval);
         Assert.Equal(TimeSpan.FromSeconds(15), settings.InitialRetryDelay);
         Assert.Equal(TimeSpan.FromMinutes(5), settings.MaximumRetryDelay);
         Assert.Equal(7, settings.PublishedRetentionDays);
@@ -77,6 +79,7 @@ public sealed class OutboxSettingsTests
         var settings = new OutboxSettings
         {
             BatchSize = 0,
+            ProcessingTriggerInterval = TimeSpan.Zero,
             InitialRetryDelay = TimeSpan.Zero,
             MaximumRetryDelay = TimeSpan.FromSeconds(-1),
             PublishedRetentionDays = 0,
@@ -88,6 +91,7 @@ public sealed class OutboxSettingsTests
 
         Assert.True(validation.Failed);
         AssertFailureFor(validation.Failures, nameof(OutboxSettings.BatchSize));
+        AssertFailureFor(validation.Failures, nameof(OutboxSettings.ProcessingTriggerInterval));
         AssertFailureFor(validation.Failures, nameof(OutboxSettings.InitialRetryDelay));
         AssertFailureFor(validation.Failures, nameof(OutboxSettings.MaximumRetryDelay));
         AssertFailureFor(validation.Failures, nameof(OutboxSettings.PublishedRetentionDays));
@@ -114,6 +118,31 @@ public sealed class OutboxSettingsTests
     }
 
     [Fact]
+    public async Task ProcessingTriggerInterval_TriggersTheOutboxJobWithoutWaitingForTheCronSchedule()
+    {
+        var trigger = new RecordingOutboxProcessingTrigger();
+        var service = new OutboxProcessingTriggerService(
+            Options.Create(new OutboxSettings
+            {
+                ProcessingTriggerInterval = TimeSpan.FromMilliseconds(10)
+            }),
+            trigger,
+            NullLogger<OutboxProcessingTriggerService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        try
+        {
+            await trigger.FirstTrigger.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
+        }
+
+        Assert.True(trigger.Count >= 1);
+    }
+
+    [Fact]
     public void AddOutboxFeature_WiresValidationIntoOptionsPipeline()
     {
         var configuration = new ConfigurationBuilder()
@@ -136,4 +165,19 @@ public sealed class OutboxSettingsTests
         Assert.Contains(
             failures,
             failure => failure.Contains(propertyName, StringComparison.Ordinal));
+
+    private sealed class RecordingOutboxProcessingTrigger : IOutboxProcessingTrigger
+    {
+        private int _count;
+
+        public int Count => Volatile.Read(ref _count);
+        public TaskCompletionSource FirstTrigger { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void Trigger()
+        {
+            Interlocked.Increment(ref _count);
+            FirstTrigger.TrySetResult();
+        }
+    }
 }

@@ -9,6 +9,10 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <InternalsVisibleTo Include="Pole.Tests.Integration" />
+    </ItemGroup>
+
+    <ItemGroup>
       <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
       <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
       <ProjectReference Include="..\..\..\shared\Observability\Observability.csproj" />

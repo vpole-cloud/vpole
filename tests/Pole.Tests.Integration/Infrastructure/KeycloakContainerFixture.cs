@@ -6,6 +6,7 @@ using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.Options;
 using Pole.Features.Users.Application.Identity;
+using Pole.Testing;
 using Xunit;
 
 namespace Pole.Tests.Integration.Infrastructure;
@@ -25,8 +26,10 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
     public KeycloakContainerFixture()
     {
         var realmFile = ResolveRealmFile();
+        var identity = TestRunIdentity.Create();
 
         _container = new ContainerBuilder("quay.io/keycloak/keycloak:26.4.7")
+            .WithTestOwnership(identity)
             .WithEnvironment("KC_BOOTSTRAP_ADMIN_USERNAME", "admin")
             .WithEnvironment("KC_BOOTSTRAP_ADMIN_PASSWORD", "admin")
             .WithBindMount(realmFile, "/opt/keycloak/data/import/pole.control-plane.realm.json", AccessMode.ReadOnly)
@@ -191,4 +194,3 @@ public sealed record KeycloakAdminUser(
     [property: JsonPropertyName("lastName")] string? LastName,
     [property: JsonPropertyName("enabled")] bool Enabled,
     [property: JsonPropertyName("requiredActions")] IReadOnlyCollection<string>? RequiredActions);
-

@@ -21,6 +21,17 @@ internal sealed class KeycloakAdminClient(HttpClient httpClient, string adminUse
     public async Task UpdateClientAsync(string internalId, JsonObject client, CancellationToken cancellationToken) =>
         await SendAsync(HttpMethod.Put, $"/admin/realms/{Realm}/clients/{internalId}", client, cancellationToken);
 
+    public async Task SetRealmAccessTokenLifespanAsync(TimeSpan lifespan, CancellationToken cancellationToken)
+    {
+        var seconds = checked((int)lifespan.TotalSeconds);
+        if (seconds <= 0)
+            throw new ArgumentOutOfRangeException(nameof(lifespan), "The access-token lifespan must be positive.");
+
+        var realm = (await GetJsonAsync($"/admin/realms/{Realm}", cancellationToken)).AsObject();
+        realm["accessTokenLifespan"] = seconds;
+        await SendAsync(HttpMethod.Put, $"/admin/realms/{Realm}", realm, cancellationToken);
+    }
+
     public async Task<DirectGrantClient> CreateDirectGrantClientAsync(string clientId, CancellationToken cancellationToken)
     {
         var client = new JsonObject
@@ -158,14 +169,30 @@ internal sealed class KeycloakAdminClient(HttpClient httpClient, string adminUse
         JsonNode? body,
         CancellationToken cancellationToken)
     {
+        var response = await SendOnceAsync(method, path, body, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            response.Dispose();
+            _accessToken = null;
+            response = await SendOnceAsync(method, path, body, cancellationToken);
+        }
+
+        await EnsureSuccessAsync(response, cancellationToken);
+        return response;
+    }
+
+    private async Task<HttpResponseMessage> SendOnceAsync(
+        HttpMethod method,
+        string path,
+        JsonNode? body,
+        CancellationToken cancellationToken)
+    {
         using var request = new HttpRequestMessage(method, path);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await GetAccessTokenAsync(cancellationToken));
         if (body is not null)
             request.Content = JsonContent.Create(body);
 
-        var response = await httpClient.SendAsync(request, cancellationToken);
-        await EnsureSuccessAsync(response, cancellationToken);
-        return response;
+        return await httpClient.SendAsync(request, cancellationToken);
     }
 
     private async Task<string> GetAccessTokenAsync(CancellationToken cancellationToken)

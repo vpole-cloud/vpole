@@ -10,6 +10,8 @@ namespace Pole.Features.Outbox.Application;
 
 public static class OutboxFeatureRegistration
 {
+    internal const string ProcessingJobId = "process-outbox-messages";
+
     public static IServiceCollection AddOutboxFeature(
         this IServiceCollection services,
         IConfiguration configuration,
@@ -35,6 +37,8 @@ public static class OutboxFeatureRegistration
         services.TryAddScoped<IOutboxPublisher, MassTransitOutboxPublisher>();
         services.TryAddSingleton<OutboxMetrics>();
         services.TryAddSingleton<OutboxRetryDelayPolicy>();
+        services.TryAddSingleton<IOutboxProcessingTrigger, HangfireOutboxProcessingTrigger>();
+        services.AddHostedService<OutboxProcessingTriggerService>();
         return services;
     }
 
@@ -43,7 +47,7 @@ public static class OutboxFeatureRegistration
     {
         var settings = services.GetRequiredService<OutboxSettings>();
         RecurringJob.AddOrUpdate<OutboxProcessorJob>(
-            "process-outbox-messages",
+            ProcessingJobId,
             job => job.ProcessOutboxMessagesAsync(CancellationToken.None),
             settings.ProcessingCronExpression);
         RecurringJob.AddOrUpdate<OutboxProcessorJob>(

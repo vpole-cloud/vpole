@@ -9,6 +9,7 @@ public sealed class OutboxSettings
 
     public int BatchSize { get; set; } = 100;
     public string ProcessingCronExpression { get; set; } = "* * * * *";
+    public TimeSpan? ProcessingTriggerInterval { get; set; }
     public TimeSpan InitialRetryDelay { get; set; } = TimeSpan.FromSeconds(15);
     public TimeSpan MaximumRetryDelay { get; set; } = TimeSpan.FromMinutes(5);
     public int PublishedRetentionDays { get; set; } = 7;
@@ -29,6 +30,14 @@ public sealed class OutboxSettingsValidator : IValidateOptions<OutboxSettings>
             failures.Add(
                 $"{OutboxSettings.SectionName}:{nameof(options.ProcessingCronExpression)} " +
                 "must be a valid five-field cron expression.");
+        }
+
+        if (options.ProcessingTriggerInterval is { } processingTriggerInterval)
+        {
+            RequirePositive(
+                processingTriggerInterval,
+                nameof(options.ProcessingTriggerInterval),
+                failures);
         }
 
         RequirePositive(

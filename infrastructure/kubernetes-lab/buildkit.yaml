@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pole-lab-build
+  labels:
+    pole.dev/owned-by: kubernetes-lab
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: buildkit-config
+  namespace: pole-lab-build
+  labels:
+    pole.dev/owned-by: kubernetes-lab
+data:
+  buildkitd.toml: |
+    [registry."POLE_LAB_HARBOR_REGISTRY"]
+      http = true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: buildkit
+  namespace: pole-lab-build
+  labels:
+    app.kubernetes.io/name: buildkit
+    pole.dev/owned-by: kubernetes-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: buildkit
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: buildkit
+        pole.dev/owned-by: kubernetes-lab
+    spec:
+      hostAliases:
+        - ip: "POLE_LAB_HARBOR_IP"
+          hostnames:
+            - "harbor.pole.localhost"
+      containers:
+        - name: buildkit
+          image: docker.io/moby/buildkit:v0.31.2
+          args:
+            - "--config=/etc/buildkit/buildkitd.toml"
+            - "--addr=tcp://0.0.0.0:1234"
+          ports:
+            - name: grpc
+              containerPort: 1234
+          readinessProbe:
+            exec:
+              command:
+                - buildctl
+                - --addr
+                - tcp://127.0.0.1:1234
+                - debug
+                - workers
+            initialDelaySeconds: 2
+            periodSeconds: 3
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: config
+              mountPath: /etc/buildkit
+              readOnly: true
+            - name: state
+              mountPath: /var/lib/buildkit
+      volumes:
+        - name: config
+          configMap:
+            name: buildkit-config
+        - name: state
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: buildkit
+  namespace: pole-lab-build
+  labels:
+    pole.dev/owned-by: kubernetes-lab
+spec:
+  selector:
+    app.kubernetes.io/name: buildkit
+  ports:
+    - name: grpc
+      port: 1234
+      targetPort: grpc
