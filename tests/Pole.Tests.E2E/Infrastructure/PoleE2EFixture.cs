@@ -117,7 +117,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         var harborAdminPassword = appHost.AddParameter("e2e-harbor-admin-password", secret: true);
         ConfigureLabServices(api, harborAdminPassword);
         ConfigureLabDeploymentTarget(api);
-        api.WithEnvironment("Outbox__ProcessingTriggerInterval", "00:00:05");
+        api.WithEnvironment("Outbox__ProcessingTriggerInterval", "00:00:01");
         var githubStub = appHost
             .AddProject(
                 "github-stub",

@@ -15,6 +15,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
 {
     private const string RevisionOneCommitSha = "1111111111111111111111111111111111111111";
     private const string RevisionTwoCommitSha = "2222222222222222222222222222222222222222";
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
 
     [SourceBuildFact]
     public async Task Source_build_uses_the_exact_repository_commit_pushes_an_artifact_and_records_release_provenance()
@@ -355,7 +356,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
                         : $"{Environment.NewLine}Server diagnostic: {diagnostics}"));
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            await Task.Delay(PollInterval, cancellationToken);
         }
     }
 
@@ -390,7 +391,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
                             : $"{Environment.NewLine}Server diagnostic: {diagnostics}"));
                 }
             }
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            await Task.Delay(PollInterval, cancellationToken);
         }
     }
 
@@ -464,7 +465,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
             if (response.StatusCode != System.Net.HttpStatusCode.Conflict)
                 response.EnsureSuccessStatusCode();
 
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            await Task.Delay(PollInterval, cancellationToken);
         }
     }
 

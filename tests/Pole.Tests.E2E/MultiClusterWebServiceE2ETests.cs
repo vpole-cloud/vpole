@@ -17,6 +17,8 @@ namespace Pole.Tests.E2E;
 [Trait("Scope", "FullE2E")]
 public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
 {
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
+
     [KubernetesFact("multi-cluster", "monitoring")]
     public async Task Two_target_reconciliation_isolates_failure_and_retries_only_failed_target()
     {
@@ -142,10 +144,26 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
             {
                 await TryCleanupAsync(() => DeleteTenantResourceAsync($"/api/v1/resource-groups/{resourceGroupId}", cleanupToken), cleanupFailures);
             }
-            if (namespaceA is not null)
-                await TryCleanupAsync(() => WaitForNamespaceDeletionAsync(clientA, namespaceA, cleanupToken), cleanupFailures);
-            if (namespaceB is not null)
-                await TryCleanupAsync(() => WaitForNamespaceDeletionAsync(clientB, namespaceB, cleanupToken), cleanupFailures);
+            var namespaceCleanupResults = await Task.WhenAll(
+                new (KubernetesClient Client, string? Namespace)[]
+                {
+                    (clientA, namespaceA),
+                    (clientB, namespaceB)
+                }
+                .Where(item => item.Namespace is not null)
+                .Select(async item =>
+                {
+                    try
+                    {
+                        await WaitForNamespaceDeletionAsync(item.Client, item.Namespace!, cleanupToken);
+                        return null;
+                    }
+                    catch (Exception exception)
+                    {
+                        return exception;
+                    }
+                }));
+            cleanupFailures.AddRange(namespaceCleanupResults.OfType<Exception>());
             if (computeProfile is not null)
                 await TryCleanupAsync(() => DeleteAdminResourceAsync(
                     $"/api/v1/platform/compute-profiles/{computeProfile.Id}?revision={computeProfile.Revision}",
@@ -342,7 +360,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
             var placements = json.EnumerateArray().Select(item => item.Clone()).ToArray();
             if (completed(placements))
                 return placements;
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            await Task.Delay(PollInterval, cancellationToken);
         }
     }
 
@@ -367,7 +385,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
                     item => RequiredString(item, "kubernetesNamespace"));
             if (cells.ContainsKey(targetAId) && cells.ContainsKey(targetBId))
                 return cells;
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            await Task.Delay(PollInterval, cancellationToken);
         }
     }
 
@@ -392,7 +410,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
             catch (HttpOperationException exception) when (exception.Response?.StatusCode == HttpStatusCode.NotFound)
             {
             }
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            await Task.Delay(PollInterval, cancellationToken);
         }
     }
 
@@ -430,7 +448,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
                     $"Pole API returned {(int)response.StatusCode} for {request.Method} {request.RequestUri}.");
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            await Task.Delay(PollInterval, cancellationToken);
         }
     }
 
@@ -448,7 +466,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
                 return;
             if (!response.IsSuccessStatusCode)
                 throw new HttpRequestException($"Cleanup GET '{path}' returned {(int)response.StatusCode}.");
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            await Task.Delay(PollInterval, cancellationToken);
         }
     }
 
@@ -467,7 +485,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
             {
                 return;
             }
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            await Task.Delay(PollInterval, cancellationToken);
         }
     }
 

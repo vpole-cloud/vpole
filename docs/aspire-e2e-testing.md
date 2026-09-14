@@ -47,7 +47,7 @@ RSA material, and a dynamic frontend origin. It removes those resources and disp
 graph in reverse order. Kubernetes namespaces carry the shared test ownership labels and are
 deleted only after their UID and labels are verified.
 
-E2E configures an optional outbox trigger interval of five seconds so asynchronous workflows do
+E2E configures an optional outbox trigger interval of one second so asynchronous workflows do
 not wait for the production minute-based recurring schedule. The production default remains
 unset, so this faster trigger is active only when a test or another environment enables it.
 
