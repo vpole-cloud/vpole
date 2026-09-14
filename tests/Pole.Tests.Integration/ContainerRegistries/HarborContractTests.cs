@@ -26,29 +26,24 @@ public sealed class HarborContractTests(HarborContractFixture fixture)
             options);
         var projectName = $"pole-contract-{Guid.NewGuid():N}"[..30];
         var attemptId = Guid.NewGuid().ToString("N");
-        ProvisionedRegistryProject? provisioned = null;
-
-        try
+        await using var resources = new TestResourceScope("Harbor provisioning contract");
+        resources.Defer($"delete Harbor project '{projectName}'", async token =>
         {
-            var result = await client.ProvisionProjectAsync(
-                new RegistryProjectProvisioningRequest("contract-test", projectName, attemptId));
-
-            if (!result.TryGetValue(out var created, out var failure))
-                Assert.Fail(failure.ToString());
-            provisioned = created;
-            Assert.Equal(projectName, created.ProjectName);
-            Assert.False(string.IsNullOrWhiteSpace(created.BuildCredential.Username));
-            Assert.False(string.IsNullOrWhiteSpace(created.BuildCredential.Secret));
-            Assert.False(string.IsNullOrWhiteSpace(created.PullCredential.Username));
-            Assert.False(string.IsNullOrWhiteSpace(created.PullCredential.Secret));
-            Assert.NotEqual(created.BuildCredential.Username, created.PullCredential.Username);
-        }
-        finally
-        {
-            var cleanup = await client.DeleteProjectAsync(
-                provisioned?.ExternalProjectId ?? projectName);
+            var cleanup = await client.DeleteProjectAsync(projectName, token);
             Assert.True(TypedResultExtensions.TryGetValue(cleanup).Succeeded);
-        }
+        });
+
+        var result = await client.ProvisionProjectAsync(
+            new RegistryProjectProvisioningRequest("contract-test", projectName, attemptId));
+
+        if (!result.TryGetValue(out var created, out var failure))
+            Assert.Fail(failure.ToString());
+        Assert.Equal(projectName, created.ProjectName);
+        Assert.False(string.IsNullOrWhiteSpace(created.BuildCredential.Username));
+        Assert.False(string.IsNullOrWhiteSpace(created.BuildCredential.Secret));
+        Assert.False(string.IsNullOrWhiteSpace(created.PullCredential.Username));
+        Assert.False(string.IsNullOrWhiteSpace(created.PullCredential.Secret));
+        Assert.NotEqual(created.BuildCredential.Username, created.PullCredential.Username);
     }
 
     [HarborBuildKitContractFact]
@@ -63,56 +58,51 @@ public sealed class HarborContractTests(HarborContractFixture fixture)
             options);
         var projectName = $"pole-buildkit-contract-{Guid.NewGuid():N}"[..30];
         var attemptId = Guid.NewGuid().ToString("N");
-        ProvisionedRegistryProject? provisioned = null;
         using var context = new TemporaryDirectory();
         var completed = false;
-
-        try
+        await using var resources = new TestResourceScope("Harbor BuildKit contract");
+        resources.Defer($"delete Harbor project '{projectName}'", async token =>
         {
-            var projectResult = await registryClient.ProvisionProjectAsync(
-                new RegistryProjectProvisioningRequest("buildkit-contract-test", projectName, attemptId));
-            if (!projectResult.TryGetValue(out var created, out var provisioningFailure))
-                Assert.Fail(provisioningFailure.ToString());
-            provisioned = created;
-
-            var processRunner = new ProcessRunner();
-            var buildKit = new BuildKitClient(
-                processRunner.InvokeAsync,
-                new BuildKitOptions
-                {
-                    Enabled = true,
-                    Address = fixture.BuildKitAddress,
-                    BuildctlPath = fixture.BuildctlPath,
-                    TimeoutMinutes = 5
-                },
-                NullLogger<BuildKitClient>.Instance);
-            var target = new RegistryPushTarget(
-                options.RegistryHost,
-                provisioned.ProjectName,
-                "web-services/buildkit-contract",
-                $"run-{Guid.NewGuid():N}");
-
-            var buildResult = await buildKit.InvokeAsync(new BuildKitBuildRequest(
-                context.Path,
-                "FROM scratch\nLABEL pole.contract-test=buildkit\n",
-                target,
-                provisioned.BuildCredential.Username,
-                provisioned.BuildCredential.Secret));
-
-            var build = TypedResultExtensions.TryGetValue(buildResult);
-            if (!build.Succeeded)
-                Assert.Fail(build.Error.ToString());
-            Assert.Equal(target.Reference, build.Value!.Reference);
-            Assert.StartsWith("sha256:", build.Value.Digest, StringComparison.Ordinal);
-            completed = true;
-        }
-        finally
-        {
-            var cleanup = await registryClient.DeleteProjectAsync(
-                provisioned?.ExternalProjectId ?? projectName);
+            var cleanup = await registryClient.DeleteProjectAsync(projectName, token);
             if (completed)
                 Assert.True(TypedResultExtensions.TryGetValue(cleanup).Succeeded);
-        }
+        });
+
+        var projectResult = await registryClient.ProvisionProjectAsync(
+            new RegistryProjectProvisioningRequest("buildkit-contract-test", projectName, attemptId));
+        if (!projectResult.TryGetValue(out var provisioned, out var provisioningFailure))
+            Assert.Fail(provisioningFailure.ToString());
+
+        var processRunner = new ProcessRunner();
+        var buildKit = new BuildKitClient(
+            processRunner.InvokeAsync,
+            new BuildKitOptions
+            {
+                Enabled = true,
+                Address = fixture.BuildKitAddress,
+                BuildctlPath = fixture.BuildctlPath,
+                TimeoutMinutes = 5
+            },
+            NullLogger<BuildKitClient>.Instance);
+        var target = new RegistryPushTarget(
+            options.RegistryHost,
+            provisioned.ProjectName,
+            "web-services/buildkit-contract",
+            $"run-{Guid.NewGuid():N}");
+
+        var buildResult = await buildKit.InvokeAsync(new BuildKitBuildRequest(
+            context.Path,
+            "FROM scratch\nLABEL pole.contract-test=buildkit\n",
+            target,
+            provisioned.BuildCredential.Username,
+            provisioned.BuildCredential.Secret));
+
+        var build = TypedResultExtensions.TryGetValue(buildResult);
+        if (!build.Succeeded)
+            Assert.Fail(build.Error.ToString());
+        Assert.Equal(target.Reference, build.Value!.Reference);
+        Assert.StartsWith("sha256:", build.Value.Digest, StringComparison.Ordinal);
+        completed = true;
     }
 
 }

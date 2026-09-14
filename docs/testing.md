@@ -219,6 +219,15 @@ Prefer factory methods over direct record or class construction because they:
 
 For generated infrastructure identifiers, prefer shared generators and helpers over hand-built strings.
 
+Tests that create external resources should register cleanup immediately through `TestResourceScope`
+instead of maintaining nullable identifiers in a large `finally` block. Cleanup runs in reverse
+registration order, continues after individual failures, and reports them together. Use a cleanup
+sequence when one resource has ordered deletion and observation steps that must all be attempted.
+Use a concurrent cleanup group only for independent resources such as same-run namespaces on
+different lab targets.
+Kubernetes cleanup must retain the namespace UID and ownership-label checks; do not register deletion
+of shared operators, volumes, ingress controllers, or other lab infrastructure.
+
 ## Notes
 
 - Most test projects do not boot Aspire; only the focused E2E project starts the full service graph.
@@ -240,7 +249,8 @@ dotnet test tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj --filter 
 
 The test port-forwards the lab service, reads the generated mode-`0600` credential file referenced
 by state, creates a uniquely named private project and robot credentials through the real Harbor
-API, and removes the project in `finally`. Credentials are never stored in tracked settings.
+API, and registers project deletion with `TestResourceScope`. Credentials are never stored in
+tracked settings.
 
 To also verify a real BuildKit push through the provisioned build robot:
 

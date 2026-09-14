@@ -23,57 +23,37 @@ public sealed class KubernetesLabMultiClusterTests(KubernetesClusterFixture fixt
         var identity = fixture.Identity;
         var namespaceName = identity.CreateNamespaceName("multi");
         var clients = targets.Select(target => new KubernetesClient(target.CreateConfiguration())).ToArray();
-        var ownedNamespaces = new List<(IKubernetes Client, OwnedNamespace Namespace)>();
-
-        try
+        await using var resources = new TestResourceScope("multi-cluster namespace isolation");
+        resources.Defer("dispose Kubernetes clients", _ =>
         {
-            for (var index = 0; index < clients.Length; index++)
-            {
-                var owned = await OwnedNamespaceManager.CreateAsync(clients[index], namespaceName, identity);
-                ownedNamespaces.Add((clients[index], owned));
-                await clients[index].CoreV1.CreateNamespacedConfigMapAsync(
-                    new k8s.Models.V1ConfigMap
-                    {
-                        Metadata = new k8s.Models.V1ObjectMeta { Name = "same-name" },
-                        Data = new Dictionary<string, string> { ["target"] = targets[index].Key }
-                    },
-                    namespaceName);
-            }
+            foreach (var client in clients)
+                client.Dispose();
+            return Task.CompletedTask;
+        });
+        var namespaces = resources.CreateConcurrentCleanupGroup("owned namespaces");
 
-            var values = await Task.WhenAll(clients.Select(client =>
-                client.CoreV1.ReadNamespacedConfigMapAsync("same-name", namespaceName)));
-
-            Assert.Equal("workload-a", values[0].Data["target"]);
-            Assert.Equal("workload-b", values[1].Data["target"]);
-            Assert.NotEqual(targets[0].CreateConfiguration().Host, targets[1].CreateConfiguration().Host);
-        }
-        finally
+        for (var index = 0; index < clients.Length; index++)
         {
-            var cleanupFailures = new List<Exception>();
-            try
-            {
-                var namespaceCleanupResults = await Task.WhenAll(ownedNamespaces.Select(async owned =>
+            await OwnedNamespaceManager.CreateTrackedAsync(
+                namespaces,
+                clients[index],
+                namespaceName,
+                identity);
+            await clients[index].CoreV1.CreateNamespacedConfigMapAsync(
+                new k8s.Models.V1ConfigMap
                 {
-                    try
-                    {
-                        await OwnedNamespaceManager.DeleteAsync(owned.Client, owned.Namespace);
-                        return null;
-                    }
-                    catch (Exception exception)
-                    {
-                        return exception;
-                    }
-                }));
-                cleanupFailures.AddRange(namespaceCleanupResults.OfType<Exception>());
-            }
-            finally
-            {
-                foreach (var client in clients)
-                    client.Dispose();
-            }
-            if (cleanupFailures.Count > 0)
-                throw new AggregateException("Multi-cluster namespace cleanup failed.", cleanupFailures);
+                    Metadata = new k8s.Models.V1ObjectMeta { Name = "same-name" },
+                    Data = new Dictionary<string, string> { ["target"] = targets[index].Key }
+                },
+                namespaceName);
         }
+
+        var values = await Task.WhenAll(clients.Select(client =>
+            client.CoreV1.ReadNamespacedConfigMapAsync("same-name", namespaceName)));
+
+        Assert.Equal("workload-a", values[0].Data["target"]);
+        Assert.Equal("workload-b", values[1].Data["target"]);
+        Assert.NotEqual(targets[0].CreateConfiguration().Host, targets[1].CreateConfiguration().Host);
     }
 
     [KubernetesFact("multi-cluster")]
@@ -86,33 +66,29 @@ public sealed class KubernetesLabMultiClusterTests(KubernetesClusterFixture fixt
         using var unavailable = new KubernetesClient(unavailableConfiguration);
         var identity = fixture.Identity;
         var namespaceName = identity.CreateNamespaceName("partial");
-        OwnedNamespace? ownedNamespace = null;
+        await using var resources = new TestResourceScope("unavailable target isolation");
 
-        try
-        {
-            ownedNamespace = await OwnedNamespaceManager.CreateAsync(
+        await resources.CreateAsync(
+            $"delete owned namespace '{namespaceName}'",
+            token => OwnedNamespaceManager.CreateAsync(
                 healthy,
                 namespaceName,
-                identity);
-            await healthy.CoreV1.CreateNamespacedConfigMapAsync(
-                new k8s.Models.V1ConfigMap
-                {
-                    Metadata = new k8s.Models.V1ObjectMeta { Name = "healthy" },
-                    Data = new Dictionary<string, string> { ["revision"] = "1" }
-                },
-                namespaceName);
+                identity,
+                token),
+            (owned, token) => OwnedNamespaceManager.DeleteAsync(healthy, owned, token));
+        await healthy.CoreV1.CreateNamespacedConfigMapAsync(
+            new k8s.Models.V1ConfigMap
+            {
+                Metadata = new k8s.Models.V1ObjectMeta { Name = "healthy" },
+                Data = new Dictionary<string, string> { ["revision"] = "1" }
+            },
+            namespaceName);
 
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            await Assert.ThrowsAnyAsync<Exception>(() =>
-                unavailable.CoreV1.ListNamespaceAsync(cancellationToken: timeout.Token));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            unavailable.CoreV1.ListNamespaceAsync(cancellationToken: timeout.Token));
 
-            var unchanged = await healthy.CoreV1.ReadNamespacedConfigMapAsync("healthy", namespaceName);
-            Assert.Equal("1", unchanged.Data["revision"]);
-        }
-        finally
-        {
-            if (ownedNamespace is not null)
-                await OwnedNamespaceManager.DeleteAsync(healthy, ownedNamespace);
-        }
+        var unchanged = await healthy.CoreV1.ReadNamespacedConfigMapAsync("healthy", namespaceName);
+        Assert.Equal("1", unchanged.Data["revision"]);
     }
 }
