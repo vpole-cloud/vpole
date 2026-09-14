@@ -13,7 +13,8 @@ internal static class OwnedNamespaceManager
     public static async Task<OwnedNamespace> CreateAsync(
         IKubernetes client,
         string name,
-        TestRunIdentity identity)
+        TestRunIdentity identity,
+        CancellationToken cancellationToken = default)
     {
         var created = await client.CoreV1.CreateNamespaceAsync(new V1Namespace
         {
@@ -22,13 +23,29 @@ internal static class OwnedNamespaceManager
                 Name = name,
                 Labels = new Dictionary<string, string>(identity.NamespaceLabels, StringComparer.Ordinal)
             }
-        });
+        }, cancellationToken: cancellationToken);
         return new OwnedNamespace(name, created.Metadata.Uid, identity);
     }
 
-    public static async Task DeleteAsync(IKubernetes client, OwnedNamespace owned)
+    public static Task<OwnedNamespace> CreateTrackedAsync(
+        TestResourceCleanupGroup cleanupGroup,
+        IKubernetes client,
+        string name,
+        TestRunIdentity identity,
+        CancellationToken cancellationToken = default) =>
+        cleanupGroup.CreateAsync(
+            $"delete owned namespace '{name}'",
+            token => CreateAsync(client, name, identity, token),
+            (owned, token) => DeleteAsync(client, owned, token),
+            cancellationToken);
+
+    public static async Task DeleteAsync(
+        IKubernetes client,
+        OwnedNamespace owned,
+        CancellationToken cancellationToken = default)
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMinutes(1));
         V1Namespace existing;
         try
         {
@@ -79,7 +96,8 @@ internal static class OwnedNamespaceManager
                 await Task.Delay(TimeSpan.FromSeconds(1), timeout.Token);
             }
         }
-        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        catch (OperationCanceledException) when (
+            timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
             throw new TimeoutException($"Namespace '{owned.Name}' was not deleted within one minute.");
         }

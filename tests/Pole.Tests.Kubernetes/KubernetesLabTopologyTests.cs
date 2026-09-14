@@ -35,37 +35,31 @@ public sealed class KubernetesLabTopologyTests(KubernetesClusterFixture fixture)
     {
         var identity = fixture.Identity;
         var namespaceName = identity.CreateNamespaceName("topology");
-        var ownedNamespace = await OwnedNamespaceManager.CreateAsync(
-            fixture.Client,
-            namespaceName,
-            identity);
+        await using var resources = new TestResourceScope("topology workload placement");
+        await resources.CreateAsync(
+            $"delete owned namespace '{namespaceName}'",
+            token => OwnedNamespaceManager.CreateAsync(fixture.Client, namespaceName, identity, token),
+            (owned, token) => OwnedNamespaceManager.DeleteAsync(fixture.Client, owned, token));
 
-        try
-        {
-            var nodes = await fixture.Client.CoreV1.ListNodeAsync();
-            var architecture = nodes.Items
-                .Select(node => node.Metadata.Labels["kubernetes.io/arch"])
-                .Distinct(StringComparer.Ordinal)
-                .Single();
-            await fixture.Client.CoreV1.CreateNamespacedPodAsync(
-                BuildPod("general", "general", architecture, useAffinity: false, tolerateIsolated: false),
-                namespaceName);
-            await fixture.Client.CoreV1.CreateNamespacedPodAsync(
-                BuildPod("isolated", "isolated", architecture, useAffinity: true, tolerateIsolated: true),
-                namespaceName);
+        var nodes = await fixture.Client.CoreV1.ListNodeAsync();
+        var architecture = nodes.Items
+            .Select(node => node.Metadata.Labels["kubernetes.io/arch"])
+            .Distinct(StringComparer.Ordinal)
+            .Single();
+        await fixture.Client.CoreV1.CreateNamespacedPodAsync(
+            BuildPod("general", "general", architecture, useAffinity: false, tolerateIsolated: false),
+            namespaceName);
+        await fixture.Client.CoreV1.CreateNamespacedPodAsync(
+            BuildPod("isolated", "isolated", architecture, useAffinity: true, tolerateIsolated: true),
+            namespaceName);
 
-            var general = await WaitForSchedulingAsync("general", namespaceName);
-            var isolated = await WaitForSchedulingAsync("isolated", namespaceName);
-            var generalNode = await fixture.Client.CoreV1.ReadNodeAsync(general.Spec.NodeName);
-            var isolatedNode = await fixture.Client.CoreV1.ReadNodeAsync(isolated.Spec.NodeName);
+        var general = await WaitForSchedulingAsync("general", namespaceName);
+        var isolated = await WaitForSchedulingAsync("isolated", namespaceName);
+        var generalNode = await fixture.Client.CoreV1.ReadNodeAsync(general.Spec.NodeName);
+        var isolatedNode = await fixture.Client.CoreV1.ReadNodeAsync(isolated.Spec.NodeName);
 
-            Assert.Equal("general", generalNode.Metadata.Labels["pole.dev/compute-pool"]);
-            Assert.Equal("isolated", isolatedNode.Metadata.Labels["pole.dev/compute-pool"]);
-        }
-        finally
-        {
-            await OwnedNamespaceManager.DeleteAsync(fixture.Client, ownedNamespace);
-        }
+        Assert.Equal("general", generalNode.Metadata.Labels["pole.dev/compute-pool"]);
+        Assert.Equal("isolated", isolatedNode.Metadata.Labels["pole.dev/compute-pool"]);
     }
 
     private static k8s.Models.V1Pod BuildPod(

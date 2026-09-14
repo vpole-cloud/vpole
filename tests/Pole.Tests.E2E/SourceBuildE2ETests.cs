@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Pole.Testing;
 using Pole.Tests.E2E.Infrastructure;
 using Xunit;
 
@@ -23,106 +24,105 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(15));
         var cancellationToken = cancellation.Token;
         await fixture.EnsureSourceBuildInfrastructureReadyAsync(cancellationToken);
+        await using var resources = new TestResourceScope("source-build E2E");
+        resources.Defer(
+            "delete tenant Harbor project",
+            token => fixture.DeleteHarborProjectAsync(fixture.Alpha.DefaultTenantId, token));
 
-        string? resourceGroupId = null;
-        CreatedWebService? webService = null;
-        string? sourceRepositoryId = null;
-        string? sourceBuildConfigurationId = null;
-        try
-        {
-            resourceGroupId = await CreateResourceGroupAsync(cancellationToken);
-            webService = await CreateWebServiceAsync(resourceGroupId, cancellationToken);
-            await fixture.WaitForNamespaceCreationAsync(resourceGroupId, cancellationToken);
-            await WaitForReleaseOutcomeAsync(webService.Id, "Succeeded", cancellationToken);
+        var resourceGroupCleanup = resources.CreateCleanupSequence("source-build resource group");
+        var resourceGroupId = await resourceGroupCleanup.CreateAsync(
+            "delete source-build resource group",
+            CreateResourceGroupAsync,
+            (id, token) => DeleteAsync($"/api/v1/resource-groups/{id}", token),
+            cancellationToken);
+        resourceGroupCleanup.Defer(
+            "wait for source-build namespace deletion",
+            token => fixture.WaitForNamespaceDeletionAsync(resourceGroupId, token));
+        var webService = await resources.CreateAsync(
+            "delete source-build WebService",
+            token => CreateWebServiceAsync(resourceGroupId, token),
+            (service, token) => DeleteAsync($"/api/v1/web-services/{service.Id}", token),
+            cancellationToken);
+        await fixture.WaitForNamespaceCreationAsync(resourceGroupId, cancellationToken);
+        await WaitForReleaseOutcomeAsync(webService.Id, "Succeeded", cancellationToken);
 
-            var connectionId = await EnsureGitHubConnectionAsync(cancellationToken);
-            sourceRepositoryId = await LinkSourceRepositoryAsync(connectionId, cancellationToken);
-            sourceBuildConfigurationId = await CreateSourceBuildConfigurationAsync(sourceRepositoryId, webService.Id, cancellationToken);
+        var connectionId = await EnsureGitHubConnectionAsync(cancellationToken);
+        var sourceRepositoryId = await resources.CreateAsync(
+            "delete linked source repository",
+            token => LinkSourceRepositoryAsync(connectionId, token),
+            (id, token) => DeleteAsync($"/api/v1/source-repositories/{id}", token),
+            cancellationToken);
+        var sourceBuildConfigurationId = await resources.CreateAsync(
+            "delete source-build configuration",
+            token => CreateSourceBuildConfigurationAsync(sourceRepositoryId, webService.Id, token),
+            (id, token) => DeleteAsync($"/api/v1/source-build-configurations/{id}", token),
+            cancellationToken);
 
-            var v1Build = await StartBuildAsync(sourceBuildConfigurationId, cancellationToken);
-            var v1CompletedBuild = await WaitForBuildAsync(v1Build, "succeeded", cancellationToken);
-            var v1State = v1CompletedBuild.GetProperty("state");
-            var v1CommitSha = RequiredString(v1CompletedBuild, "commitSha");
-            var v1ImageDigest = RequiredString(v1State, "imageDigest");
-            var v1ImageReference = RequiredString(v1State, "imageReference");
-            var v1ReleaseId = RequiredString(v1State, "releaseId");
-            Assert.Equal(RevisionOneCommitSha, v1CommitSha);
+        var v1Build = await StartBuildAsync(sourceBuildConfigurationId, cancellationToken);
+        var v1CompletedBuild = await WaitForBuildAsync(v1Build, "succeeded", cancellationToken);
+        var v1State = v1CompletedBuild.GetProperty("state");
+        var v1CommitSha = RequiredString(v1CompletedBuild, "commitSha");
+        var v1ImageDigest = RequiredString(v1State, "imageDigest");
+        var v1ImageReference = RequiredString(v1State, "imageReference");
+        var v1ReleaseId = RequiredString(v1State, "releaseId");
+        Assert.Equal(RevisionOneCommitSha, v1CommitSha);
 
-            var v1ArtifactDigest = await fixture.GetHarborArtifactDigestAsync(
-                fixture.Alpha.DefaultTenantId,
-                webService.Id,
-                v1Build,
-                cancellationToken);
-            Assert.Equal(v1ImageDigest, v1ArtifactDigest);
-            await WaitForReleaseOutcomeAsync(webService.Id, "Succeeded", cancellationToken, v1ReleaseId);
-            var v1Releases = await GetReleasesAsync(webService.Id, cancellationToken);
-            var v1Release = FindRelease(v1Releases, v1ReleaseId);
-            AssertSourceBuildRelease(v1Release, v1ReleaseId, v1CommitSha, v1ImageDigest, v1ImageReference);
-            await AssertSourceBuildDeploymentAsync(
-                resourceGroupId,
-                webService,
-                v1ImageReference,
-                v1ReleaseId,
-                cancellationToken);
+        var v1ArtifactDigest = await fixture.GetHarborArtifactDigestAsync(
+            fixture.Alpha.DefaultTenantId,
+            webService.Id,
+            v1Build,
+            cancellationToken);
+        Assert.Equal(v1ImageDigest, v1ArtifactDigest);
+        await WaitForReleaseOutcomeAsync(webService.Id, "Succeeded", cancellationToken, v1ReleaseId);
+        var v1Releases = await GetReleasesAsync(webService.Id, cancellationToken);
+        var v1Release = FindRelease(v1Releases, v1ReleaseId);
+        AssertSourceBuildRelease(v1Release, v1ReleaseId, v1CommitSha, v1ImageDigest, v1ImageReference);
+        await AssertSourceBuildDeploymentAsync(
+            resourceGroupId,
+            webService,
+            v1ImageReference,
+            v1ReleaseId,
+            cancellationToken);
 
-            await SetStubRevisionAsync("v2", cancellationToken);
-            await ReanalyzeSourceRepositoryAsync(sourceRepositoryId, RevisionTwoCommitSha, cancellationToken);
+        await SetStubRevisionAsync("v2", cancellationToken);
+        await ReanalyzeSourceRepositoryAsync(sourceRepositoryId, RevisionTwoCommitSha, cancellationToken);
 
-            var v2Build = await StartBuildAsync(sourceBuildConfigurationId, cancellationToken);
-            var v2CompletedBuild = await WaitForBuildAsync(v2Build, "succeeded", cancellationToken);
-            var v2State = v2CompletedBuild.GetProperty("state");
-            var v2CommitSha = RequiredString(v2CompletedBuild, "commitSha");
-            var v2ImageDigest = RequiredString(v2State, "imageDigest");
-            var v2ImageReference = RequiredString(v2State, "imageReference");
-            var v2ReleaseId = RequiredString(v2State, "releaseId");
-            Assert.Equal(RevisionTwoCommitSha, v2CommitSha);
-            Assert.NotEqual(v1ImageDigest, v2ImageDigest);
+        var v2Build = await StartBuildAsync(sourceBuildConfigurationId, cancellationToken);
+        var v2CompletedBuild = await WaitForBuildAsync(v2Build, "succeeded", cancellationToken);
+        var v2State = v2CompletedBuild.GetProperty("state");
+        var v2CommitSha = RequiredString(v2CompletedBuild, "commitSha");
+        var v2ImageDigest = RequiredString(v2State, "imageDigest");
+        var v2ImageReference = RequiredString(v2State, "imageReference");
+        var v2ReleaseId = RequiredString(v2State, "releaseId");
+        Assert.Equal(RevisionTwoCommitSha, v2CommitSha);
+        Assert.NotEqual(v1ImageDigest, v2ImageDigest);
 
-            var v2ArtifactDigest = await fixture.GetHarborArtifactDigestAsync(
-                fixture.Alpha.DefaultTenantId,
-                webService.Id,
-                v2Build,
-                cancellationToken);
-            Assert.Equal(v2ImageDigest, v2ArtifactDigest);
-            await WaitForReleaseOutcomeAsync(webService.Id, "Succeeded", cancellationToken, v2ReleaseId);
-            var releases = await GetReleasesAsync(webService.Id, cancellationToken);
-            AssertSourceBuildRelease(FindRelease(releases, v1ReleaseId), v1ReleaseId, v1CommitSha, v1ImageDigest, v1ImageReference);
-            AssertSourceBuildRelease(FindRelease(releases, v2ReleaseId), v2ReleaseId, v2CommitSha, v2ImageDigest, v2ImageReference);
-            await AssertSourceBuildDeploymentAsync(
-                resourceGroupId,
-                webService,
-                v2ImageReference,
-                v2ReleaseId,
-                cancellationToken);
+        var v2ArtifactDigest = await fixture.GetHarborArtifactDigestAsync(
+            fixture.Alpha.DefaultTenantId,
+            webService.Id,
+            v2Build,
+            cancellationToken);
+        Assert.Equal(v2ImageDigest, v2ArtifactDigest);
+        await WaitForReleaseOutcomeAsync(webService.Id, "Succeeded", cancellationToken, v2ReleaseId);
+        var releases = await GetReleasesAsync(webService.Id, cancellationToken);
+        AssertSourceBuildRelease(FindRelease(releases, v1ReleaseId), v1ReleaseId, v1CommitSha, v1ImageDigest, v1ImageReference);
+        AssertSourceBuildRelease(FindRelease(releases, v2ReleaseId), v2ReleaseId, v2CommitSha, v2ImageDigest, v2ImageReference);
+        await AssertSourceBuildDeploymentAsync(
+            resourceGroupId,
+            webService,
+            v2ImageReference,
+            v2ReleaseId,
+            cancellationToken);
 
-            await fixture.StopBuildKitAccessAsync();
-            var failedBuild = await StartBuildAsync(sourceBuildConfigurationId, cancellationToken);
-            var failed = await WaitForBuildAsync(failedBuild, "failed", cancellationToken);
-            var failedState = failed.GetProperty("state");
-            Assert.False(string.IsNullOrWhiteSpace(failedState.GetProperty("failureCode").GetString()));
-            Assert.DoesNotContain("password", failedState.GetProperty("failureMessage").GetString() ?? string.Empty, StringComparison.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            using var cleanup = new CancellationTokenSource(TimeSpan.FromMinutes(3));
-            var cleanupToken = cleanup.Token;
-            var cleanupFailures = new List<Exception>();
-            if (!string.IsNullOrWhiteSpace(sourceBuildConfigurationId))
-                await TryCleanupAsync(() => DeleteAsync($"/api/v1/source-build-configurations/{sourceBuildConfigurationId}", cleanupToken), cleanupFailures);
-            if (!string.IsNullOrWhiteSpace(sourceRepositoryId))
-                await TryCleanupAsync(() => DeleteAsync($"/api/v1/source-repositories/{sourceRepositoryId}", cleanupToken), cleanupFailures);
-            if (webService is not null)
-                await TryCleanupAsync(() => DeleteAsync($"/api/v1/web-services/{webService.Id}", cleanupToken), cleanupFailures);
-            if (!string.IsNullOrWhiteSpace(resourceGroupId))
-            {
-                await TryCleanupAsync(() => DeleteAsync($"/api/v1/resource-groups/{resourceGroupId}", cleanupToken), cleanupFailures);
-                await TryCleanupAsync(() => fixture.WaitForNamespaceDeletionAsync(resourceGroupId, cleanupToken), cleanupFailures);
-            }
-
-            await TryCleanupAsync(() => fixture.DeleteHarborProjectAsync(fixture.Alpha.DefaultTenantId, cleanupToken), cleanupFailures);
-            if (cleanupFailures.Count > 0)
-                throw new AggregateException("The source-build E2E cleanup did not complete.", cleanupFailures);
-        }
+        await fixture.StopBuildKitAccessAsync();
+        var failedBuild = await StartBuildAsync(sourceBuildConfigurationId, cancellationToken);
+        var failed = await WaitForBuildAsync(failedBuild, "failed", cancellationToken);
+        var failedState = failed.GetProperty("state");
+        Assert.False(string.IsNullOrWhiteSpace(failedState.GetProperty("failureCode").GetString()));
+        Assert.DoesNotContain(
+            "password",
+            failedState.GetProperty("failureMessage").GetString() ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<string> CreateResourceGroupAsync(CancellationToken cancellationToken)
@@ -508,18 +508,6 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
                                value.ValueKind == JsonValueKind.String)
             .Select(property => $"{property}={SanitizeDiagnostic(document.RootElement.GetProperty(property).GetString())}");
         return string.Join(", ", properties);
-    }
-
-    private static async Task TryCleanupAsync(Func<Task> action, ICollection<Exception> failures)
-    {
-        try
-        {
-            await action();
-        }
-        catch (Exception exception)
-        {
-            failures.Add(exception);
-        }
     }
 
     private static string RequiredString(JsonElement element, string propertyName) =>

@@ -30,73 +30,53 @@ public sealed class WebServiceMultiTargetKubernetesTests(KubernetesClusterFixtur
         var clients = targets.Select(target => new KubernetesClient(target.CreateConfiguration())).ToArray();
         var identity = fixture.Identity;
         var namespaceName = identity.CreateNamespaceName("web-multi");
-        var ownedNamespaces = new List<(IKubernetes Client, OwnedNamespace Namespace)>();
         var webService = BuildWebService();
-
-        try
+        await using var resources = new TestResourceScope("multi-target WebService deployment");
+        resources.Defer("dispose Kubernetes clients", _ =>
         {
             foreach (var client in clients)
-            {
-                var owned = await OwnedNamespaceManager.CreateAsync(client, namespaceName, identity);
-                ownedNamespaces.Add((client, owned));
-            }
+                client.Dispose();
+            return Task.CompletedTask;
+        });
+        var namespaces = resources.CreateConcurrentCleanupGroup("owned namespaces");
 
-            var first = await ApplyAsync(clients[0], targets[0], webService, namespaceName);
-            Assert.True(first.TryGetValue(out _, out _));
-            var healthyBefore = await clients[0].AppsV1.ReadNamespacedDeploymentAsync(
-                webService.Name,
-                namespaceName);
-            var healthyUid = healthyBefore.Metadata.Uid;
-            var healthyGeneration = healthyBefore.Metadata.Generation;
-
-            var unavailableConfiguration = targets[1].CreateConfiguration();
-            unavailableConfiguration.Host = "http://127.0.0.1:1";
-            using var unavailable = new KubernetesClient(unavailableConfiguration);
-            var failed = await ApplyAsync(unavailable, targets[1], webService, namespaceName);
-            Assert.False(failed.TryGetValue(out _, out var failure));
-            Assert.Contains("applying", failure.Message, StringComparison.Ordinal);
-
-            var retried = await ApplyAsync(clients[1], targets[1], webService, namespaceName);
-            Assert.True(retried.TryGetValue(out _, out _));
-            var targetBDeployment = await clients[1].AppsV1.ReadNamespacedDeploymentAsync(
-                webService.Name,
-                namespaceName);
-            var healthyAfter = await clients[0].AppsV1.ReadNamespacedDeploymentAsync(
-                webService.Name,
-                namespaceName);
-
-            Assert.Equal("release-1", targetBDeployment.Spec.Template.Metadata.Annotations["pole.server/releaseId"]);
-            Assert.Equal(healthyUid, healthyAfter.Metadata.Uid);
-            Assert.Equal(healthyGeneration, healthyAfter.Metadata.Generation);
-            Assert.Equal("release-1", healthyAfter.Spec.Template.Metadata.Annotations["pole.server/releaseId"]);
-        }
-        finally
+        foreach (var client in clients)
         {
-            var cleanupFailures = new List<Exception>();
-            try
-            {
-                var namespaceCleanupResults = await Task.WhenAll(ownedNamespaces.Select(async owned =>
-                {
-                    try
-                    {
-                        await OwnedNamespaceManager.DeleteAsync(owned.Client, owned.Namespace);
-                        return null;
-                    }
-                    catch (Exception exception)
-                    {
-                        return exception;
-                    }
-                }));
-                cleanupFailures.AddRange(namespaceCleanupResults.OfType<Exception>());
-            }
-            finally
-            {
-                foreach (var client in clients)
-                    client.Dispose();
-            }
-            if (cleanupFailures.Count > 0)
-                throw new AggregateException("Multi-target WebService cleanup failed.", cleanupFailures);
+            await OwnedNamespaceManager.CreateTrackedAsync(
+                namespaces,
+                client,
+                namespaceName,
+                identity);
         }
+
+        var first = await ApplyAsync(clients[0], targets[0], webService, namespaceName);
+        Assert.True(first.TryGetValue(out _, out _));
+        var healthyBefore = await clients[0].AppsV1.ReadNamespacedDeploymentAsync(
+            webService.Name,
+            namespaceName);
+        var healthyUid = healthyBefore.Metadata.Uid;
+        var healthyGeneration = healthyBefore.Metadata.Generation;
+
+        var unavailableConfiguration = targets[1].CreateConfiguration();
+        unavailableConfiguration.Host = "http://127.0.0.1:1";
+        using var unavailable = new KubernetesClient(unavailableConfiguration);
+        var failed = await ApplyAsync(unavailable, targets[1], webService, namespaceName);
+        Assert.False(failed.TryGetValue(out _, out var failure));
+        Assert.Contains("applying", failure.Message, StringComparison.Ordinal);
+
+        var retried = await ApplyAsync(clients[1], targets[1], webService, namespaceName);
+        Assert.True(retried.TryGetValue(out _, out _));
+        var targetBDeployment = await clients[1].AppsV1.ReadNamespacedDeploymentAsync(
+            webService.Name,
+            namespaceName);
+        var healthyAfter = await clients[0].AppsV1.ReadNamespacedDeploymentAsync(
+            webService.Name,
+            namespaceName);
+
+        Assert.Equal("release-1", targetBDeployment.Spec.Template.Metadata.Annotations["pole.server/releaseId"]);
+        Assert.Equal(healthyUid, healthyAfter.Metadata.Uid);
+        Assert.Equal(healthyGeneration, healthyAfter.Metadata.Generation);
+        Assert.Equal("release-1", healthyAfter.Spec.Template.Metadata.Annotations["pole.server/releaseId"]);
     }
 
     private static Task<Result<Unit, WebServiceKubernetesApplyFailed>> ApplyAsync(

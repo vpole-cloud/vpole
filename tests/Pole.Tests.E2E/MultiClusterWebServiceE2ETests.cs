@@ -30,151 +30,133 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         var labB = lab.GetRequiredTarget("workload-b");
         using var clientA = new KubernetesClient(labA.CreateConfiguration());
         using var clientB = new KubernetesClient(labB.CreateConfiguration());
+        await using var resources = new TestResourceScope("multi-cluster WebService E2E");
 
-        CreatedTarget? targetA = null;
-        CreatedTarget? targetB = null;
-        CreatedComputeProfile? computeProfile = null;
-        string? resourceGroupId = null;
-        string? webServiceId = null;
-        string? namespaceA = null;
-        string? namespaceB = null;
         var targetBEnabled = true;
         var serviceName = $"multi-{Guid.NewGuid():N}"[..24];
 
-        try
-        {
-            targetA = await CreateTargetAsync(labA, cancellationToken);
-            targetB = await CreateTargetAsync(labB, cancellationToken);
-            Assert.NotEqual(targetA.ClusterIdentity, targetB.ClusterIdentity);
+        var targetA = await resources.CreateAsync(
+            $"delete deployment target '{labA.Key}'",
+            token => CreateTargetAsync(labA, token),
+            (target, token) => DeleteAdminResourceAsync($"/api/v1/platform/deployment-targets/{target.Id}", token),
+            cancellationToken);
+        var targetB = await resources.CreateAsync(
+            $"delete deployment target '{labB.Key}'",
+            token => CreateTargetAsync(labB, token),
+            (target, token) => DeleteAdminResourceAsync($"/api/v1/platform/deployment-targets/{target.Id}", token),
+            cancellationToken);
+        Assert.NotEqual(targetA.ClusterIdentity, targetB.ClusterIdentity);
 
-            computeProfile = await CreateComputeProfileAsync(targetA.Id, targetB.Id, cancellationToken);
-            resourceGroupId = await CreateResourceGroupAsync(cancellationToken);
-            webServiceId = await CreateWebServiceAsync(
+        var computeProfile = await resources.CreateAsync(
+            "delete multi-cluster compute profile",
+            token => CreateComputeProfileAsync(targetA.Id, targetB.Id, token),
+            (profile, token) => DeleteAdminResourceAsync(
+                $"/api/v1/platform/compute-profiles/{profile.Id}?revision={profile.Revision}",
+                token),
+            cancellationToken);
+        var namespaceCleanup = resources.CreateConcurrentCleanupGroup("resource-group namespaces");
+        var resourceGroupId = await resources.CreateAsync(
+            "delete multi-cluster resource group",
+            CreateResourceGroupAsync,
+            (id, token) => DeleteTenantResourceAsync($"/api/v1/resource-groups/{id}", token),
+            cancellationToken);
+        var webServiceCleanup = resources.CreateCleanupSequence("multi-cluster WebService");
+        var webServiceId = await webServiceCleanup.CreateAsync(
+            "delete multi-cluster WebService",
+            token => CreateWebServiceAsync(
                 serviceName,
                 resourceGroupId,
                 computeProfile.Id,
                 targetA.Id,
                 targetB.Id,
-                cancellationToken);
+                token),
+            (id, token) => DeleteTenantResourceAsync($"/api/v1/web-services/{id}", token),
+            cancellationToken);
+        webServiceCleanup.Defer(
+            "wait for multi-cluster WebService deletion",
+            token => WaitForNotFoundAsync($"/api/v1/web-services/{webServiceId}", token));
 
-            var applied = await WaitForPlacementsAsync(
-                webServiceId,
-                placements => placements.Length == 2 && placements.All(IsApplied),
-                cancellationToken);
-            var cells = await WaitForRuntimeCellsAsync(resourceGroupId, targetA.Id, targetB.Id, cancellationToken);
-            namespaceA = cells[targetA.Id];
-            namespaceB = cells[targetB.Id];
-            await AssertNamespaceOwnershipAsync(clientA, namespaceA, cancellationToken);
-            await AssertNamespaceOwnershipAsync(clientB, namespaceB, cancellationToken);
-            await WaitForDeploymentAvailableAsync(clientA, serviceName, namespaceA, cancellationToken);
-            await WaitForDeploymentAvailableAsync(clientB, serviceName, namespaceB, cancellationToken);
+        var applied = await WaitForPlacementsAsync(
+            webServiceId,
+            placements => placements.Length == 2 && placements.All(IsApplied),
+            cancellationToken);
+        var cells = await WaitForRuntimeCellsAsync(resourceGroupId, targetA.Id, targetB.Id, cancellationToken);
+        var namespaceA = cells[targetA.Id];
+        var namespaceB = cells[targetB.Id];
+        namespaceCleanup.Defer(
+            $"wait for namespace '{namespaceA}' on '{labA.Key}'",
+            token => WaitForNamespaceDeletionAsync(clientA, namespaceA, token));
+        namespaceCleanup.Defer(
+            $"wait for namespace '{namespaceB}' on '{labB.Key}'",
+            token => WaitForNamespaceDeletionAsync(clientB, namespaceB, token));
+        await AssertNamespaceOwnershipAsync(clientA, namespaceA, cancellationToken);
+        await AssertNamespaceOwnershipAsync(clientB, namespaceB, cancellationToken);
+        await WaitForDeploymentAvailableAsync(clientA, serviceName, namespaceA, cancellationToken);
+        await WaitForDeploymentAvailableAsync(clientB, serviceName, namespaceB, cancellationToken);
 
-            var initialB = await clientB.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceB);
-            var initialBRelease = RequiredReleaseId(initialB.Spec.Template.Metadata.Annotations);
+        var initialB = await clientB.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceB);
+        var initialBRelease = RequiredReleaseId(initialB.Spec.Template.Metadata.Annotations);
 
-            targetB = await UpdateTargetAsync(targetB, enabled: false, cancellationToken);
-            targetBEnabled = false;
-            await SendAsync(
-                fixture.CreateAuthenticatedRequest(
-                    HttpMethod.Post,
-                    $"/api/v1/web-services/{webServiceId}/redeploy",
-                    fixture.Alpha,
-                    fixture.Alpha.DefaultTenantId),
-                cancellationToken);
-
-            var partial = await WaitForPlacementsAsync(
-                webServiceId,
-                placements =>
-                    placements.Any(item => IsTarget(item, targetA.Id) && IsApplied(item)) &&
-                    placements.Any(item => IsTarget(item, targetB.Id) &&
-                                           RequiredString(item, "status") == "Failed" &&
-                                           RequiredString(item, "failureCode") == "DeploymentTargetDisabled"),
-                cancellationToken);
-            var failedB = partial.Single(item => IsTarget(item, targetB.Id));
-            var healthyPlacementBeforeRetry = partial.Single(item => IsTarget(item, targetA.Id));
-            var healthyDesiredGeneration = healthyPlacementBeforeRetry.GetProperty("desiredGeneration").GetInt64();
-            var healthyObservedGeneration = healthyPlacementBeforeRetry.GetProperty("observedGeneration").GetInt64();
-            var healthyBeforeRetry = await clientA.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceA);
-            var healthyRelease = RequiredReleaseId(healthyBeforeRetry.Spec.Template.Metadata.Annotations);
-
-            targetB = await UpdateTargetAsync(targetB, enabled: true, cancellationToken);
-            targetBEnabled = true;
-            using (var retry = fixture.CreateAuthenticatedRequest(
-                       HttpMethod.Post,
-                       $"/api/v1/web-services/{webServiceId}/deployments/{RequiredString(failedB, "deploymentId")}/retry",
-                       fixture.Alpha,
-                       fixture.Alpha.DefaultTenantId))
-            {
-                retry.Content = JsonContent.Create(new
-                {
-                    expectedDeploymentRevision = failedB.GetProperty("deploymentRevision").GetInt64(),
-                    expectedOperation = "Apply"
-                });
-                await SendAsync(retry, cancellationToken);
-            }
-
-            var retried = await WaitForPlacementsAsync(
-                webServiceId,
-                placements => placements.Any(item => IsTarget(item, targetB.Id) && IsApplied(item)),
-                cancellationToken);
-            await WaitForDeploymentAvailableAsync(clientB, serviceName, namespaceB, cancellationToken);
-            var healthyAfterRetry = await clientA.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceA);
-            var retriedB = await clientB.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceB);
-
-            var healthyPlacementAfterRetry = retried.Single(item => IsTarget(item, targetA.Id));
-            Assert.Equal(healthyDesiredGeneration, healthyPlacementAfterRetry.GetProperty("desiredGeneration").GetInt64());
-            Assert.Equal(healthyObservedGeneration, healthyPlacementAfterRetry.GetProperty("observedGeneration").GetInt64());
-            Assert.Equal(healthyRelease, RequiredReleaseId(healthyAfterRetry.Spec.Template.Metadata.Annotations));
-            Assert.NotEqual(initialBRelease, RequiredReleaseId(retriedB.Spec.Template.Metadata.Annotations));
-            Assert.Equal(2, applied.Select(item => RequiredString(item, "deploymentTargetId")).Distinct().Count());
-        }
-        finally
+        targetB = await UpdateTargetAsync(targetB, enabled: false, cancellationToken);
+        targetBEnabled = false;
+        resources.Defer("re-enable workload-b deployment target", async token =>
         {
-            using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
-            var cleanupToken = cleanupTimeout.Token;
-            var cleanupFailures = new List<Exception>();
-            if (targetB is not null && !targetBEnabled)
-                await TryCleanupAsync(async () => targetB = await UpdateTargetAsync(targetB, true, cleanupToken), cleanupFailures);
-            if (webServiceId is not null)
+            if (!targetBEnabled)
+                targetB = await UpdateTargetAsync(targetB, enabled: true, token);
+        });
+        await SendAsync(
+            fixture.CreateAuthenticatedRequest(
+                HttpMethod.Post,
+                $"/api/v1/web-services/{webServiceId}/redeploy",
+                fixture.Alpha,
+                fixture.Alpha.DefaultTenantId),
+            cancellationToken);
+
+        var partial = await WaitForPlacementsAsync(
+            webServiceId,
+            placements =>
+                placements.Any(item => IsTarget(item, targetA.Id) && IsApplied(item)) &&
+                placements.Any(item => IsTarget(item, targetB.Id) &&
+                                       RequiredString(item, "status") == "Failed" &&
+                                       RequiredString(item, "failureCode") == "DeploymentTargetDisabled"),
+            cancellationToken);
+        var failedB = partial.Single(item => IsTarget(item, targetB.Id));
+        var healthyPlacementBeforeRetry = partial.Single(item => IsTarget(item, targetA.Id));
+        var healthyDesiredGeneration = healthyPlacementBeforeRetry.GetProperty("desiredGeneration").GetInt64();
+        var healthyObservedGeneration = healthyPlacementBeforeRetry.GetProperty("observedGeneration").GetInt64();
+        var healthyBeforeRetry = await clientA.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceA);
+        var healthyRelease = RequiredReleaseId(healthyBeforeRetry.Spec.Template.Metadata.Annotations);
+
+        targetB = await UpdateTargetAsync(targetB, enabled: true, cancellationToken);
+        targetBEnabled = true;
+        using (var retry = fixture.CreateAuthenticatedRequest(
+                   HttpMethod.Post,
+                   $"/api/v1/web-services/{webServiceId}/deployments/{RequiredString(failedB, "deploymentId")}/retry",
+                   fixture.Alpha,
+                   fixture.Alpha.DefaultTenantId))
+        {
+            retry.Content = JsonContent.Create(new
             {
-                await TryCleanupAsync(() => DeleteTenantResourceAsync($"/api/v1/web-services/{webServiceId}", cleanupToken), cleanupFailures);
-                await TryCleanupAsync(() => WaitForNotFoundAsync($"/api/v1/web-services/{webServiceId}", cleanupToken), cleanupFailures);
-            }
-            if (resourceGroupId is not null)
-            {
-                await TryCleanupAsync(() => DeleteTenantResourceAsync($"/api/v1/resource-groups/{resourceGroupId}", cleanupToken), cleanupFailures);
-            }
-            var namespaceCleanupResults = await Task.WhenAll(
-                new (KubernetesClient Client, string? Namespace)[]
-                {
-                    (clientA, namespaceA),
-                    (clientB, namespaceB)
-                }
-                .Where(item => item.Namespace is not null)
-                .Select(async item =>
-                {
-                    try
-                    {
-                        await WaitForNamespaceDeletionAsync(item.Client, item.Namespace!, cleanupToken);
-                        return null;
-                    }
-                    catch (Exception exception)
-                    {
-                        return exception;
-                    }
-                }));
-            cleanupFailures.AddRange(namespaceCleanupResults.OfType<Exception>());
-            if (computeProfile is not null)
-                await TryCleanupAsync(() => DeleteAdminResourceAsync(
-                    $"/api/v1/platform/compute-profiles/{computeProfile.Id}?revision={computeProfile.Revision}",
-                    cleanupToken), cleanupFailures);
-            if (targetB is not null)
-                await TryCleanupAsync(() => DeleteAdminResourceAsync($"/api/v1/platform/deployment-targets/{targetB.Id}", cleanupToken), cleanupFailures);
-            if (targetA is not null)
-                await TryCleanupAsync(() => DeleteAdminResourceAsync($"/api/v1/platform/deployment-targets/{targetA.Id}", cleanupToken), cleanupFailures);
-            if (cleanupFailures.Count > 0)
-                throw new AggregateException("Multi-cluster E2E cleanup failed.", cleanupFailures);
+                expectedDeploymentRevision = failedB.GetProperty("deploymentRevision").GetInt64(),
+                expectedOperation = "Apply"
+            });
+            await SendAsync(retry, cancellationToken);
         }
+
+        var retried = await WaitForPlacementsAsync(
+            webServiceId,
+            placements => placements.Any(item => IsTarget(item, targetB.Id) && IsApplied(item)),
+            cancellationToken);
+        await WaitForDeploymentAvailableAsync(clientB, serviceName, namespaceB, cancellationToken);
+        var healthyAfterRetry = await clientA.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceA);
+        var retriedB = await clientB.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceB);
+
+        var healthyPlacementAfterRetry = retried.Single(item => IsTarget(item, targetA.Id));
+        Assert.Equal(healthyDesiredGeneration, healthyPlacementAfterRetry.GetProperty("desiredGeneration").GetInt64());
+        Assert.Equal(healthyObservedGeneration, healthyPlacementAfterRetry.GetProperty("observedGeneration").GetInt64());
+        Assert.Equal(healthyRelease, RequiredReleaseId(healthyAfterRetry.Spec.Template.Metadata.Annotations));
+        Assert.NotEqual(initialBRelease, RequiredReleaseId(retriedB.Spec.Template.Metadata.Annotations));
+        Assert.Equal(2, applied.Select(item => RequiredString(item, "deploymentTargetId")).Distinct().Count());
     }
 
     private async Task AssertNamespaceOwnershipAsync(
@@ -546,18 +528,6 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         failureThreshold = 3,
         successThreshold = 1
     };
-
-    private static async Task TryCleanupAsync(Func<Task> action, ICollection<Exception> failures)
-    {
-        try
-        {
-            await action();
-        }
-        catch (Exception exception)
-        {
-            failures.Add(exception);
-        }
-    }
 
     private sealed record CreatedTarget(
         string Id,
