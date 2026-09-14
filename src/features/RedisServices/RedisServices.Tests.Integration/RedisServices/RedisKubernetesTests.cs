@@ -21,7 +21,7 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
     : KubernetesIntegrationTestBase(fixture)
 {
     [KubernetesFact]
-    public async Task CreateAsync_WaitsForPodReadiness_AndRespondsToPing()
+    public async Task Lifecycle_creates_a_ready_instance_updates_compute_and_deletes_resources()
     {
         var (redis, storage, compute) = BuildTestRedis("redis-k8s");
         var redisInKubernetes = redis.ToKubernetes(
@@ -38,29 +38,22 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
 
         await WaitForStatefulSetReadyAsync(redis.Name);
 
-        await using var portForward = await KubernetesPortForwardSession.StartAsync(
-            Target,
-            NamespaceName,
-            $"service/{RedisInKubernetes.BuildServiceName(redis.Name)}",
-            remotePort: 6379);
-
-        await using var connection = await ConnectionMultiplexer.ConnectAsync(
-            $"127.0.0.1:{portForward.LocalPort},connectTimeout=15000,syncTimeout=15000,abortConnect=false");
-        var pong = await connection.GetDatabase().PingAsync();
+        TimeSpan pong;
+        await using (var portForward = await KubernetesPortForwardSession.StartAsync(
+                         Target,
+                         NamespaceName,
+                         $"service/{RedisInKubernetes.BuildServiceName(redis.Name)}",
+                         remotePort: 6379))
+        await using (var connection = await ConnectionMultiplexer.ConnectAsync(
+                         $"127.0.0.1:{portForward.LocalPort},connectTimeout=15000,syncTimeout=15000,abortConnect=false"))
+        {
+            pong = await connection.GetDatabase().PingAsync();
+        }
 
         Assert.Equal("redis:8-alpine", statefulSet.Spec.Template.Spec.Containers.Single().Image);
         Assert.Equal("None", service.Spec.ClusterIP);
         Assert.Equal("redis", service.Spec.Ports.Single().Name);
         Assert.True(pong > TimeSpan.Zero);
-    }
-
-    [KubernetesFact]
-    public async Task ReplaceAsync_UpdatesStatefulSetAndService()
-    {
-        var (redis, storage, compute) = BuildTestRedis("redis-k8s-replace");
-        await RedisKubernetesResourceManager.CreateAsync(
-            Kubernetes,
-            redis.ToKubernetes(NamespaceName, storage, compute));
 
         var updatedCompute = compute with
         {
@@ -73,33 +66,25 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
             Kubernetes,
             redis.ToKubernetes(NamespaceName, storage, updatedCompute));
 
-        var statefulSet = await Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(redis.Name, NamespaceName);
-        var service = await Kubernetes.CoreV1.ReadNamespacedServiceAsync(
+        var updatedStatefulSet = await Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(redis.Name, NamespaceName);
+        var updatedService = await Kubernetes.CoreV1.ReadNamespacedServiceAsync(
             RedisInKubernetes.BuildServiceName(redis.Name),
             NamespaceName);
-        var container = statefulSet.Spec.Template.Spec.Containers.Single();
+        var container = updatedStatefulSet.Spec.Template.Spec.Containers.Single();
 
         Assert.Equal("1", container.Resources.Requests["cpu"].ToString());
         Assert.Equal("256Mi", container.Resources.Requests["memory"].ToString());
         Assert.Equal("2", container.Resources.Limits["cpu"].ToString());
         Assert.Equal("512Mi", container.Resources.Limits["memory"].ToString());
-        Assert.Equal(NamespaceName, service.Metadata.NamespaceProperty);
-    }
+        Assert.Equal(NamespaceName, updatedService.Metadata.NamespaceProperty);
 
-    [KubernetesFact]
-    public async Task DeleteAsync_RemovesResources()
-    {
-        var (redis, storage, compute) = BuildTestRedis("redis-k8s-delete");
-
-        await RedisKubernetesResourceManager.CreateAsync(
-            Kubernetes,
-            redis.ToKubernetes(NamespaceName, storage, compute));
         await RedisKubernetesResourceManager.DeleteAsync(Kubernetes, redis.Name, NamespaceName);
 
-        await AssertResourceDeletedAsync(() => Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(redis.Name, NamespaceName));
-        await AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedServiceAsync(
-            RedisInKubernetes.BuildServiceName(redis.Name),
-            NamespaceName));
+        await Task.WhenAll(
+            AssertResourceDeletedAsync(() => Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(redis.Name, NamespaceName)),
+            AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedServiceAsync(
+                RedisInKubernetes.BuildServiceName(redis.Name),
+                NamespaceName)));
     }
 
     private (

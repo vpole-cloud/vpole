@@ -74,7 +74,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     }
 
     [KubernetesFact("monitoring")]
-    public async Task CreateAsync_CreatesWebServiceResourcesInCluster()
+    public async Task Lifecycle_creates_a_reachable_web_service_and_deletes_its_resources()
     {
         var webService = BuildTestWebService();
 
@@ -100,7 +100,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
             name: $"{webService.Name}-sm");
 
         await WaitForDeploymentAvailableAsync(webService.Name);
-        var httpResponse = await WaitForIngressHttpResponseAsync(ingress);
+        using var httpResponse = await WaitForIngressHttpResponseAsync(ingress);
 
         Assert.Equal("Development", configMap.Data["ASPNETCORE_ENVIRONMENT"]);
         Assert.Equal(1, deployment.Spec.Replicas);
@@ -110,34 +110,26 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         Assert.NotNull(serviceMonitor);
         Assert.Equal(HttpStatusCode.OK, httpResponse.StatusCode);
         Assert.Contains("nginx", await httpResponse.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
-    }
 
-    [KubernetesFact("monitoring")]
-    public async Task DeleteAsync_RemovesWebServiceResourcesFromCluster()
-    {
-        var webService = BuildTestWebService();
-
-        await WebServiceKubernetesResourceManager.CreateAsync(
-            Kubernetes,
-            ToKubernetes(webService));
         await WebServiceKubernetesResourceManager.DeleteAsync(Kubernetes, webService.Name, NamespaceName);
 
-        await AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedConfigMapAsync(
-            WebServiceInKubernetes.BuildConfigMapName(webService.Name),
-            NamespaceName));
-        await AssertResourceDeletedAsync(() => Kubernetes.AppsV1.ReadNamespacedDeploymentAsync(webService.Name, NamespaceName));
-        await AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedServiceAsync(
-            WebServiceInKubernetes.BuildServiceName(webService.Name),
-            NamespaceName));
-        await AssertResourceDeletedAsync(() => Kubernetes.NetworkingV1.ReadNamespacedIngressAsync(
-            WebServiceInKubernetes.BuildIngressName(webService.Name),
-            NamespaceName));
-        await AssertResourceDeletedAsync(() => Kubernetes.CustomObjects.GetNamespacedCustomObjectAsync(
-            group: "monitoring.coreos.com",
-            version: "v1",
-            namespaceParameter: NamespaceName,
-            plural: "servicemonitors",
-            name: $"{webService.Name}-sm"));
+        await Task.WhenAll(
+            AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedConfigMapAsync(
+                WebServiceInKubernetes.BuildConfigMapName(webService.Name),
+                NamespaceName)),
+            AssertResourceDeletedAsync(() => Kubernetes.AppsV1.ReadNamespacedDeploymentAsync(webService.Name, NamespaceName)),
+            AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedServiceAsync(
+                WebServiceInKubernetes.BuildServiceName(webService.Name),
+                NamespaceName)),
+            AssertResourceDeletedAsync(() => Kubernetes.NetworkingV1.ReadNamespacedIngressAsync(
+                WebServiceInKubernetes.BuildIngressName(webService.Name),
+                NamespaceName)),
+            AssertResourceDeletedAsync(() => Kubernetes.CustomObjects.GetNamespacedCustomObjectAsync(
+                group: "monitoring.coreos.com",
+                version: "v1",
+                namespaceParameter: NamespaceName,
+                plural: "servicemonitors",
+                name: $"{webService.Name}-sm")));
     }
 
     private WebService BuildTestWebService()

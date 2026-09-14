@@ -52,17 +52,19 @@ public sealed class KubernetesLabMultiClusterTests(KubernetesClusterFixture fixt
             var cleanupFailures = new List<Exception>();
             try
             {
-                foreach (var owned in ownedNamespaces)
+                var namespaceCleanupResults = await Task.WhenAll(ownedNamespaces.Select(async owned =>
                 {
                     try
                     {
                         await OwnedNamespaceManager.DeleteAsync(owned.Client, owned.Namespace);
+                        return null;
                     }
                     catch (Exception exception)
                     {
-                        cleanupFailures.Add(exception);
+                        return exception;
                     }
-                }
+                }));
+                cleanupFailures.AddRange(namespaceCleanupResults.OfType<Exception>());
             }
             finally
             {
