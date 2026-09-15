@@ -500,14 +500,16 @@ ensure_tooling() {
     BUILDCTL_BIN="$(ensure_pinned_buildctl "${architecture}" "${buildctl_sha256}")"
 
     local reported_version
-    reported_version="$(${K3D_BIN} version | awk '/k3d version/ { print $3; exit }')"
+    reported_version="$(${K3D_BIN} version | awk '/k3d version/ { version = $3 } END { print version }')"
     [[ "${reported_version}" == "${K3D_VERSION}" ]] \
         || die "Expected k3d ${K3D_VERSION}, got '${reported_version:-unknown}'."
     [[ "$(${KUBECTL_BIN} version --client --output json | jq --raw-output '.clientVersion.gitVersion')" == "${KUBECTL_VERSION}" ]] \
         || die "Pinned kubectl did not report expected version ${KUBECTL_VERSION}."
     [[ "$(${HELM_BIN} version --short)" == "${HELM_VERSION}"* ]] \
         || die "Pinned Helm did not report expected version ${HELM_VERSION}."
-    "${BUILDCTL_BIN}" --version | grep --fixed-strings --quiet "${BUILDCTL_VERSION}" \
+    local buildctl_version
+    buildctl_version="$("${BUILDCTL_BIN}" --version)"
+    [[ "${buildctl_version}" == *"${BUILDCTL_VERSION}"* ]] \
         || die "Pinned buildctl did not report expected version ${BUILDCTL_VERSION}."
 }
 

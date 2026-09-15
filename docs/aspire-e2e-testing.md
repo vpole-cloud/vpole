@@ -91,7 +91,10 @@ against a real GitHub installation, see [GitHub source build E2E](github-source-
 
 ## CI
 
-The [Test workflow](../.github/workflows/kubernetes-lab.yml) runs the full lab and plain
-`dotnet test` on GitHub-hosted Ubuntu for every pull request and push to `master`. Diagnostics and
-the worktree-scoped leak audit run even after test failure. Frontend unit tests and the frontend
-build run in a separate job.
+The [Test workflow](../.github/workflows/kubernetes-lab.yml) runs the full lab and the complete
+backend test set on GitHub-hosted Ubuntu for every pull request and push to `master`. The workflow
+removes the unused preinstalled Android SDK to retain enough disk for the nested clusters, restores
+and builds once, and serializes test projects on the constrained runner. Local development retains
+the plain `dotnet test` command. Failure diagnostics include node conditions, pods, and events for
+every target; the worktree-scoped leak audit still runs after test failure. Frontend unit tests and
+the frontend build run in a separate job.

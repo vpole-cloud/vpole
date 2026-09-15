@@ -237,7 +237,7 @@ public sealed class FunctionHttpGatewayTests
             renew: (_, _, _) => Task.FromResult(new FunctionAdmissionRenewalDecision(
                 FunctionAdmissionRenewalDecisionKind.Stale,
                 null)),
-            tokenLifetime: TimeSpan.FromSeconds(3));
+            tokenLifetime: TimeSpan.FromSeconds(10));
         var fixture = new GatewayFixture(admissionCoordinator: admissionCoordinator);
         var context = fixture.CreateContext();
         context.Request.ContentLength = 1;
@@ -257,8 +257,11 @@ public sealed class FunctionHttpGatewayTests
     public async Task Request_body_timeout_releases_admission_while_heartbeat_is_healthy()
     {
         var options = GatewayFixture.CreateOptions();
-        options.RequestBodyTimeoutSeconds = 1;
+        options.RequestBodyTimeoutSeconds = 3;
         var admissionCoordinator = new FakeAdmissionCoordinator(
+            renew: (_, request, _) => Task.FromResult(new FunctionAdmissionRenewalDecision(
+                FunctionAdmissionRenewalDecisionKind.Renewed,
+                request.Token with { ExpiresAtUtc = DateTimeOffset.MaxValue })),
             tokenLifetime: TimeSpan.FromSeconds(3));
         var fixture = new GatewayFixture(
             options: options,
@@ -267,11 +270,13 @@ public sealed class FunctionHttpGatewayTests
         context.Request.ContentLength = 1;
         context.Request.Body = new BlockingRequestBodyStream();
 
-        await fixture.Gateway.InvokeAsync(context, "orders", "items/42");
+        var invocation = fixture.Gateway.InvokeAsync(context, "orders", "items/42");
+        await admissionCoordinator.FirstRenewal.WaitAsync(TimeSpan.FromSeconds(2));
+        await invocation;
 
         Assert.Equal(StatusCodes.Status408RequestTimeout, context.Response.StatusCode);
         Assert.Equal("request_body_timeout", await ReadErrorCodeAsync(context));
-        Assert.True(admissionCoordinator.RenewCalls >= 1);
+        Assert.Equal(1, admissionCoordinator.RenewCalls);
         Assert.Equal(0, fixture.Activator.Calls);
         Assert.Empty(fixture.Agent.ReservedEndpoints);
         AssertExactAdmissionRelease(admissionCoordinator);
@@ -812,8 +817,12 @@ public sealed class FunctionHttpGatewayTests
             Task<FunctionAdmissionRenewalDecision>>? renew = null,
         TimeSpan? tokenLifetime = null) : IFunctionAdmissionCoordinator
     {
+        private readonly TaskCompletionSource firstRenewal = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
         public int AcquireCalls { get; private set; }
         public int RenewCalls { get; private set; }
+        public Task FirstRenewal => firstRenewal.Task;
         public FunctionAdmissionRequest? LastAcquireRequest { get; private set; }
         public FunctionAdmissionToken? LastGrantedToken { get; private set; }
         public List<RecordedAdmissionRelease> Releases { get; } = [];
@@ -849,6 +858,7 @@ public sealed class FunctionHttpGatewayTests
             CancellationToken cancellationToken = default)
         {
             RenewCalls++;
+            firstRenewal.TrySetResult();
             return renew?.Invoke(key, request, cancellationToken) ??
                    Task.FromResult(new FunctionAdmissionRenewalDecision(
                        FunctionAdmissionRenewalDecisionKind.Renewed,

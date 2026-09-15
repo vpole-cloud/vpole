@@ -26,6 +26,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Reclaim runner disk space
+        run: |
+          sudo rm -rf -- /usr/local/lib/android
+          docker system prune --all --force
+          used_percent="$(df --output=pcent / | tail -n 1 | tr -dc '0-9')"
+          if (( used_percent > 75 )); then
+            echo "Only $((100 - used_percent))% of the runner filesystem is available after cleanup." >&2
+            exit 1
+          fi
+          df -h /
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 11.0.100-preview.7.26381.103
@@ -39,25 +50,52 @@ jobs:
       - name: Install frontend runtime dependencies
         run: npm ci --prefix src/api/frontend
 
+      - name: Restore backend
+        run: dotnet restore Pole.slnx --disable-build-servers --nologo -maxcpucount:1 -nodeReuse:false
+
+      - name: Build backend
+        run: dotnet build Pole.slnx --no-restore --disable-build-servers --nologo -maxcpucount:1 -nodeReuse:false
+
       - name: Start and verify the full lab
         run: |
           ./infrastructure/kubernetes-lab/lab.sh up
           ./infrastructure/kubernetes-lab/lab.sh verify
 
       - name: Run all backend tests
-        run: dotnet test
-
-      - name: Lab diagnostics
-        if: always()
-        run: |
-          df -h
-          free -h
-          docker ps --all
-          ./infrastructure/kubernetes-lab/lab.sh status
+        run: dotnet test --no-build --no-restore --nologo -maxcpucount:1 -nodeReuse:false
 
       - name: Reject leaked test resources
         if: always()
         run: ./infrastructure/kubernetes-lab/lab.sh audit-tests
+
+      - name: Lab diagnostics
+        if: failure()
+        run: |
+          set +e
+          df -h
+          free -h
+          docker system df
+          docker ps --all
+          ./infrastructure/kubernetes-lab/lab.sh status
+          state=.tmp/kubernetes-lab/state.json
+          if [[ ! -f "${state}" ]]; then
+            echo "Lab state '${state}' is unavailable; skipping Kubernetes diagnostics."
+            exit 0
+          fi
+          kubectl="$(jq --raw-output '.tools.kubectlPath' "${state}")"
+          if [[ ! -x "${kubectl}" ]]; then
+            echo "Pinned kubectl '${kubectl}' is unavailable; skipping Kubernetes diagnostics."
+            exit 0
+          fi
+          while IFS=$'\t' read -r target kubeconfig context; do
+            echo "::group::Kubernetes target ${target}"
+            "${kubectl}" --kubeconfig "${kubeconfig}" --context "${context}" describe nodes
+            "${kubectl}" --kubeconfig "${kubeconfig}" --context "${context}" \
+              get pods --all-namespaces --output wide
+            "${kubectl}" --kubeconfig "${kubeconfig}" --context "${context}" \
+              get events --all-namespaces --sort-by=.metadata.creationTimestamp
+            echo "::endgroup::"
+          done < <(jq --raw-output '.targets[] | [.key, .kubeconfigPath, .context] | @tsv' "${state}")
 
   frontend:
     name: Frontend
