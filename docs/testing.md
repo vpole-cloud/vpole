@@ -179,6 +179,48 @@ three-cluster placement topology, monitoring CRDs, cert-manager, CloudNativePG, 
 BuildKit. Lab lifecycle remains explicit: `dotnet test` validates and uses an existing lab but
 never creates, resets, or deletes one.
 
+## Code coverage
+
+Coverage is an optional diagnostic and does not change the normal local test commands. To collect
+fresh backend coverage for one project, clear the previous inputs and add the built-in Microsoft
+collector:
+
+```bash
+rm -rf -- .artifacts/coverage/backend/raw .artifacts/coverage/backend/report
+dotnet test src/features/GitProviders/GitProviders.Tests/GitProviders.Tests.csproj \
+  --collect:"Code Coverage;Format=Cobertura" \
+  --results-directory .artifacts/coverage/backend/raw
+```
+
+The repository pins ReportGenerator as a local .NET tool. After collecting one or more backend
+Cobertura files, restore the tool and merge them into an HTML report:
+
+```bash
+dotnet tool restore
+dotnet tool run reportgenerator \
+  "-reports:.artifacts/coverage/backend/raw/**/*.cobertura.xml" \
+  "-targetdir:.artifacts/coverage/backend/report" \
+  "-reporttypes:Html;Cobertura;MarkdownAssembliesSummary" \
+  "-assemblyfilters:+Pole.*;-*.Tests*;-Pole.Testing;-Pole.ArchitectureAnalyzers" \
+  "-filefilters:-**/obj/**;-**/*.g.cs;-**/*.generated.cs"
+```
+
+Run frontend tests with V8 coverage using:
+
+```bash
+npm run test:coverage --prefix src/api/frontend
+```
+
+Its HTML report is written to `src/api/frontend/coverage`. CI collects backend coverage during the
+existing complete backend run and frontend coverage during the existing Vitest run, writes separate
+summaries to the Actions run page, and uploads both HTML reports as 14-day artifacts. Coverage has
+no threshold yet; establish a representative baseline before using it as a merge gate.
+
+Line or branch coverage only shows whether code executed, not whether assertions proved the right
+behavior. The backend collector measures production assemblies loaded inside each test host.
+Services launched as separate Aspire processes are not automatically attributed to the E2E test
+host, so E2E results remain separate behavioral evidence rather than a coverage metric.
+
 To run the lab contracts and only the cluster-backed webservice tests:
 
 ```bash
