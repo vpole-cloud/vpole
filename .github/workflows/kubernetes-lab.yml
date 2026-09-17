@@ -56,13 +56,41 @@ jobs:
       - name: Build backend
         run: dotnet build Pole.slnx --no-restore --disable-build-servers --nologo -maxcpucount:1 -nodeReuse:false
 
+      - name: Restore coverage report tool
+        run: dotnet tool restore
+
       - name: Start and verify the full lab
         run: |
           ./infrastructure/kubernetes-lab/lab.sh up
           ./infrastructure/kubernetes-lab/lab.sh verify
 
-      - name: Run all backend tests
-        run: dotnet test --no-build --no-restore --nologo -maxcpucount:1 -nodeReuse:false
+      - name: Run all backend tests with coverage
+        run: |
+          dotnet test --no-build --no-restore --nologo -maxcpucount:1 -nodeReuse:false \
+            --collect:"Code Coverage;Format=Cobertura" \
+            --results-directory .artifacts/coverage/backend/raw
+
+      - name: Generate backend coverage report
+        run: |
+          dotnet tool run reportgenerator \
+            "-reports:.artifacts/coverage/backend/raw/**/*.cobertura.xml" \
+            "-targetdir:.artifacts/coverage/backend/report" \
+            "-reporttypes:Html;Cobertura;MarkdownAssembliesSummary" \
+            "-assemblyfilters:+Pole.*;-*.Tests*;-Pole.Testing;-Pole.ArchitectureAnalyzers" \
+            "-filefilters:-**/obj/**;-**/*.g.cs;-**/*.generated.cs" \
+            "-title:Pole backend coverage"
+          {
+            cat .artifacts/coverage/backend/report/Summary.md
+            echo
+            echo "> Aspire workloads that execute outside the test host are not included in this report."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload backend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: .artifacts/coverage/backend/report
+          retention-days: 14
 
       - name: Reject leaked test resources
         if: always()
@@ -113,8 +141,30 @@ jobs:
       - name: Install dependencies
         run: npm ci --prefix src/api/frontend
 
-      - name: Test
-        run: npm test --prefix src/api/frontend
+      - name: Test with coverage
+        run: npm run test:coverage --prefix src/api/frontend
+
+      - name: Add frontend coverage summary
+        run: |
+          jq --raw-output '
+            def row($name; $value):
+              "| \($name) | \($value.covered) | \($value.total) | \($value.pct)% |";
+            .total |
+              "## Frontend coverage\n\n" +
+              "| Metric | Covered | Total | Coverage |\n" +
+              "| --- | ---: | ---: | ---: |\n" +
+              row("Lines"; .lines) + "\n" +
+              row("Branches"; .branches) + "\n" +
+              row("Functions"; .functions) + "\n" +
+              row("Statements"; .statements)
+          ' src/api/frontend/coverage/coverage-summary.json >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Build
         run: npm run build --prefix src/api/frontend
+
+      - name: Upload frontend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: src/api/frontend/coverage
+          retention-days: 14
