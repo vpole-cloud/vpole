@@ -19,6 +19,7 @@ public static class DeploymentTargetEndpoints
                 .MapGetDeploymentTargetEndpoint()
                 .MapCreateDeploymentTargetEndpoint()
                 .MapUpdateDeploymentTargetEndpoint()
+                .MapUpdateDeploymentTargetNetworkPolicyEndpoint()
                 .MapRotateDeploymentTargetCredentialsEndpoint()
                 .MapValidateDeploymentTargetEndpoint()
                 .MapDeleteDeploymentTargetEndpoint();

@@ -65,7 +65,7 @@ public sealed class FunctionResourceDeploymentAdapter(
             deployment.Id,
             deployment.RuntimeCellId,
             deployment.Placement.DeploymentTargetId,
-            deployment.Placement.KubernetesNamespace);
+            deployment.Placement.KubernetesNamespace, deployment.IsolationScopeId);
         var revisions = await loadFunctionAppRevisions(app, cancellationToken);
         foreach (var revision in revisions)
         {

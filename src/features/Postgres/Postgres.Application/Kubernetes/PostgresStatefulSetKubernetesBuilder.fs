@@ -61,7 +61,7 @@ module PostgresStatefulSetKubernetesBuilder =
                 V1StatefulSetSpec(
                     ServiceName = buildHeadlessServiceName cluster.Id,
                     Replicas = 1,
-                    Selector = V1LabelSelector(MatchLabels = labels),
+                    Selector = V1LabelSelector(MatchLabels = dict [ "pole.io/resource-deployment-id", metadata.DeploymentId ]),
                     Template =
                         V1PodTemplateSpec(
                             Metadata = V1ObjectMeta(Labels = labels, Annotations = annotations),
@@ -101,7 +101,7 @@ module PostgresStatefulSetKubernetesBuilder =
                 V1ServiceSpec(
                     Type = "ClusterIP",
                     ClusterIP = "None",
-                    Selector = labels,
+                    Selector = dict [ "pole.io/resource-deployment-id", metadata.DeploymentId ],
                     Ports = ResizeArray([ V1ServicePort(Name = "postgres", Port = 5432, Protocol = "TCP") ])))
 
     let buildReadWriteService
@@ -123,5 +123,5 @@ module PostgresStatefulSetKubernetesBuilder =
             Spec =
                 V1ServiceSpec(
                     Type = "ClusterIP",
-                    Selector = labels,
+                    Selector = dict [ "pole.io/resource-deployment-id", metadata.DeploymentId ],
                     Ports = ResizeArray([ V1ServicePort(Name = "postgres", Port = 5432, Protocol = "TCP") ])))

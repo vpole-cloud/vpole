@@ -76,7 +76,14 @@ public sealed record PlacementSummaryDto(
     int FixedReplicas = 1,
     ResourceDeploymentIngressConfiguration? Ingress = null,
     long DeploymentRevision = 1,
-    string DesiredOperation = "Apply");
+    string DesiredOperation = "Apply")
+{
+    public ResourceDeploymentIsolationDto Isolation { get; init; } =
+        new("Unknown", "EnforcementRequired", "EnforcementNotEstablished", null);
+}
+
+public sealed record ResourceDeploymentIsolationDto(
+    string Enforcement, string Readiness, string Reason, DateTime? LastCheckedAtUtc);
 
 public sealed record ResourceDeploymentDto(
     string Id,
@@ -100,7 +107,8 @@ public sealed record ResourceDeploymentRuntimePlacementDto(
     long DeploymentRevision,
     ResourceDeploymentComputeConfiguration Compute,
     string Status,
-    string DesiredOperation);
+    string DesiredOperation,
+    string IsolationScopeId);
 
 public sealed record ResourceGroupHasUnfinishedDeployments(string ResourceGroupId);
 

@@ -94,7 +94,8 @@ public sealed class WebServiceMultiTargetKubernetesTests(KubernetesClusterFixtur
                     target.PublicBaseDomain,
                     [$"multi-{namespaceName}.{target.PublicBaseDomain}"]),
                 BuildCompute(target.Key),
-                fixedReplicas: 1),
+                fixedReplicas: 1,
+                new Pole.Features.Core.Kubernetes.WorkloadIdentityLabels(webService.TenantId, webService.ResourceGroupId, "scope-44", "cell-44", target.Key, "WebService", webService.Id, "deployment-44")),
             WebServiceReleaseDeploymentMetadata.Create("release-1", 1, DateTime.UtcNow));
 
     private static WebService BuildWebService() =>

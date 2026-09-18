@@ -15,6 +15,25 @@ namespace Pole.Features.RedisServices.Tests;
 public sealed class RedisManifestTests
 {
     [Fact]
+    public void PlacementIdentity_IsSharedByPodAndService_AndSelectorsSurviveRename()
+    {
+        var subject = CreateSubject();
+        var identity = new Pole.Features.Core.Kubernetes.WorkloadIdentityLabels(
+            subject.Redis.TenantId, subject.Redis.ResourceGroupId, "scope-44", "cell-44", "target-44",
+            "Redis", subject.Redis.Id, "deployment-44");
+        subject = subject with { PlacementIdentity = identity };
+        var workload = subject.ToStatefulSet();
+        var service = subject.ToService();
+        Assert.Equal(identity.ToDictionary(), workload.Spec.Template.Metadata.Labels);
+        Assert.Equal(identity.ToDictionary(), service.Metadata.Labels);
+        Assert.All(service.Spec.Selector, pair => Assert.Equal(pair.Value, workload.Spec.Template.Metadata.Labels[pair.Key]));
+        var renamed = subject with { Redis = subject.Redis with { Name = "renamed" } };
+        Assert.Equal(workload.Spec.Selector.MatchLabels, renamed.ToStatefulSet().Spec.Selector.MatchLabels);
+        Assert.Equal(service.Spec.Selector, renamed.ToService().Spec.Selector);
+        Assert.DoesNotContain("app", service.Spec.Selector.Keys);
+    }
+
+    [Fact]
     public void ToStatefulSet_UsesRedisImageStorageResourcesAndManagedMetadata()
     {
         var manifest = CreateSubject();
@@ -107,7 +126,7 @@ public sealed class RedisManifestTests
         Assert.Equal("pole-cache", service.Metadata.NamespaceProperty);
         Assert.Equal("ClusterIP", service.Spec.Type);
         Assert.Equal("None", service.Spec.ClusterIP);
-        Assert.Equal("redis-cache", service.Spec.Selector["app"]);
+        Assert.Equal("redis-1", service.Spec.Selector["pole.io/resource-id"]);
         Assert.Equal("redis", port.Name);
         Assert.Equal(6379, port.Port);
         Assert.Equal("6379", port.TargetPort.Value);
@@ -179,7 +198,8 @@ public sealed class RedisManifestTests
                         ComputeTaintEffect.NoSchedule,
                         TolerationSeconds: null)
                 ],
-                RuntimeClassName: "workload-runtime"));
+                RuntimeClassName: "workload-runtime"),
+            new Pole.Features.Core.Kubernetes.WorkloadIdentityLabels(TenantId, "rg-1", "scope-44", "cell-44", "target-44", "Redis", "redis-1", "deployment-44"));
 
     private static Redis BuildRedis(string id, string name, RedisSpec spec) =>
         RedisFactory.Create(

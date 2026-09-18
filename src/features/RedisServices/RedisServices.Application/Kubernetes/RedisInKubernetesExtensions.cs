@@ -1,3 +1,4 @@
+using Pole.Features.Core.Kubernetes;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 
@@ -10,11 +11,11 @@ public static class RedisInKubernetesExtensions
         public RedisInKubernetes ToKubernetes(
             string kubernetesNamespace,
             ResourceDeploymentStorageConfiguration storageConfiguration,
-            ResourceDeploymentComputeConfiguration computeConfiguration) =>
+            ResourceDeploymentComputeConfiguration computeConfiguration, WorkloadIdentityLabels placementIdentity) =>
             RedisInKubernetes.Create(
                 redis,
                 kubernetesNamespace,
                 storageConfiguration,
-                computeConfiguration);
+                computeConfiguration, placementIdentity);
     }
 }

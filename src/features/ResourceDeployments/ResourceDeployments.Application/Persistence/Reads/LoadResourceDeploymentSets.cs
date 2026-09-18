@@ -6,7 +6,8 @@ using Pole.Features.ResourceDeployments.Domain;
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Reads;
 
 internal sealed class MongoLoadResourceDeploymentSets(
-    IMongoCollection<ResourceDeployment> resourceDeployments)
+    IMongoCollection<ResourceDeployment> resourceDeployments,
+    ResourceDeploymentIsolationProjection isolation)
 {
     public async Task<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>> InvokeAsync(
         string tenantId,
@@ -23,12 +24,13 @@ internal sealed class MongoLoadResourceDeploymentSets(
             .SortBy(deployment => deployment.ResourceId)
             .ThenBy(deployment => deployment.Id)
             .ToListAsync(cancellationToken);
+        var policies = await isolation.LoadAsync(deployments.Select(item => item.ResolvedPlacement.DeploymentTargetId), cancellationToken);
         return deployments
             .GroupBy(deployment => deployment.ResourceId, StringComparer.Ordinal)
             .ToDictionary(
                 group => group.Key,
                 group => (IReadOnlyList<PlacementSummaryDto>)group
-                    .Select(deployment => deployment.ToPlacementSummaryDto())
+                    .Select(deployment => deployment.ToPlacementSummaryDto() with { Isolation = policies[deployment.ResolvedPlacement.DeploymentTargetId] })
                     .ToArray(),
                 StringComparer.Ordinal);
     }

@@ -20,6 +20,7 @@ internal static class ResourceDeploymentPersistenceRegistration
     internal static IServiceCollection AddResourceDeploymentPersistence(
         this IServiceCollection services)
     {
+        services.TryAddScoped<Pole.Features.ResourceDeployments.Application.Common.ResourceDeploymentIsolationProjection>();
         services.TryAddSingleton(serviceProvider => serviceProvider
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<ResourceDeployment>("ResourceDeployments"));

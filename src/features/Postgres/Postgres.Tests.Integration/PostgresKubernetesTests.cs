@@ -236,6 +236,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
 
     private static PostgresResourceDeploymentMetadata Metadata() =>
         new(
+            "507f1f77bcf86cd799439044",
             ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(),
             PostgresTestData.DefaultDeploymentTargetId,

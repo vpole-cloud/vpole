@@ -4,6 +4,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.DeploymentTargets.Application.Common;
+using Pole.Tests.Integration.DeploymentTargets;
+using Pole.ResultType;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceDeployments.Application.Persistence.Reconciliation;
@@ -49,8 +52,11 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         return Task.CompletedTask;
     }
 
-    [Fact]
-    public async Task ReconciliationOnTargetB_UsesOnlyTargetBClient_AndNeverDefault()
+    [Theory]
+    [InlineData("EnforcementAttested", true)]
+    [InlineData("IsolationNotEnforced", true)]
+    [InlineData("EnforcementRequired", false)]
+    public async Task ReconciliationOnTargetB_ChecksCurrentEnforcementBeforeApplying(string readiness, bool allowed)
     {
         var now = DateTime.UtcNow;
         var runtimeCell = RuntimeCellFactory.Create(
@@ -110,6 +116,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             persistence.PersistFailure,
             Services.GetRequiredService<LoadResourcePlacement>(),
             _ => (adapter, ResourcePlacementCapability.SingleTarget),
+            (id, ct) => LookupTarget(id, ct, readiness),
             metrics,
             NullLogger<ResourceDeploymentReconciler>.Instance);
 
@@ -120,6 +127,13 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             generation: 1,
             ResourceDeploymentOperation.Apply);
 
+        if (!allowed)
+        {
+            Assert.Empty(provider.RequestedTargetIds);
+            var blocked = await fixture.DbContext.ResourceDeployments.Find(item => item.Id == DeploymentId).SingleAsync();
+            Assert.Equal("NetworkPolicyEnforcementRequired", Assert.IsType<FailedResourceDeploymentState>(blocked.State).FailureCode);
+            return;
+        }
         Assert.Equal([TargetBId], provider.RequestedTargetIds);
         Assert.Equal(0, provider.DefaultRequestCount);
         Assert.Same(targetB, adapter.Kubernetes);
@@ -190,6 +204,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             persistence.PersistFailure,
             Services.GetRequiredService<LoadResourcePlacement>(),
             _ => (adapter, ResourcePlacementCapability.SingleTarget),
+            (id, ct) => LookupTarget(id, ct),
             metrics,
             NullLogger<ResourceDeploymentReconciler>.Instance);
 
@@ -212,6 +227,15 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             await fixture.DbContext.CountOutboxMessagesAsync(
                 "pole.resource-deployments/v1/resource-deployment-failed"));
     }
+
+    private static Task<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>> LookupTarget(
+        string id, CancellationToken cancellationToken, string readiness = "EnforcementAttested") =>
+        Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
+            new Ok<DeploymentTargetLookupDto>(DeploymentTargetNetworkPolicyTests.Target().ToLookupDto() with
+            {
+                Id = id,
+                NetworkPolicy = new("Unknown", readiness, "TestEvidence", DateTime.UnixEpoch, "OperatorAttestation", false)
+            }));
 
     private ReconciliationCapabilities CreateReconciliationCapabilities(
         ResourceDeploymentSettings settings)

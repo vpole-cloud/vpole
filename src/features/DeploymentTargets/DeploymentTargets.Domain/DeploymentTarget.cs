@@ -296,7 +296,7 @@ public static class DeploymentTargetFactory
             options.CreatedAtUtc,
             nameof(options.CreatedAtUtc));
         var normalizedWorkloadConfiguration = DeploymentTargetWorkloadConfiguration.Create(
-            workloadConfiguration.Ingress);
+            workloadConfiguration.Ingress) with { NetworkPolicy = workloadConfiguration.NetworkPolicy };
 
         if (!enabled && acceptsWorkloads)
         {

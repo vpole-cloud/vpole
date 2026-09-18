@@ -1,3 +1,4 @@
+using Pole.Features.Core.Kubernetes;
 using System.Collections.Immutable;
 using System.Globalization;
 using k8s.Models;
@@ -42,13 +43,15 @@ public readonly record struct RedisInKubernetes(
     Redis Redis,
     string Namespace,
     ResourceDeploymentStorageConfiguration StorageConfiguration,
-    ResourceDeploymentComputeConfiguration ComputeConfiguration)
+    ResourceDeploymentComputeConfiguration ComputeConfiguration,
+    WorkloadIdentityLabels PlacementIdentity)
 {
     public static RedisInKubernetes Create(
         Redis redis,
         string kubernetesNamespace,
         ResourceDeploymentStorageConfiguration storageConfiguration,
-        ResourceDeploymentComputeConfiguration computeConfiguration)
+        ResourceDeploymentComputeConfiguration computeConfiguration,
+        WorkloadIdentityLabels placementIdentity)
     {
         ArgumentNullException.ThrowIfNull(redis);
         ArgumentException.ThrowIfNullOrWhiteSpace(kubernetesNamespace);
@@ -59,7 +62,7 @@ public readonly record struct RedisInKubernetes(
             redis,
             kubernetesNamespace.Trim(),
             storageConfiguration,
-            computeConfiguration);
+            computeConfiguration, placementIdentity);
     }
 
     public string StatefulSetName => Redis.Name;
@@ -90,7 +93,7 @@ public readonly record struct RedisInKubernetes(
             {
                 MatchLabels = new Dictionary<string, string>
                 {
-                    { "app", Redis.Name }
+                    { "pole.io/resource-id", Redis.Id }
                 }
             },
             Template = new V1PodTemplateSpec
@@ -148,7 +151,7 @@ public readonly record struct RedisInKubernetes(
             ClusterIP = "None", // Headless service for StatefulSet
             Selector = new Dictionary<string, string>
             {
-                { "app", Redis.Name }
+                { "pole.io/resource-id", Redis.Id }
             },
             Ports = new List<V1ServicePort>
             {
@@ -194,16 +197,7 @@ public readonly record struct RedisInKubernetes(
         return annotations;
     }
 
-    private Dictionary<string, string> BuildLabels() => new()
-    {
-        { "app", Redis.Name },
-        { "component", "redis" },
-        { PoleStorageLabels.TenantId, Redis.TenantId },
-        { PoleStorageLabels.ResourceGroupId, Redis.ResourceGroupId },
-        { PoleStorageLabels.ResourceType, "Redis" },
-        { PoleStorageLabels.ResourceId, Redis.Id },
-        { PoleStorageLabels.ResourceName, Redis.Name }
-    };
+    private Dictionary<string, string> BuildLabels() => PlacementIdentity.ToDictionary();
 
     private V1PodSpec BuildPodSpec()
     {

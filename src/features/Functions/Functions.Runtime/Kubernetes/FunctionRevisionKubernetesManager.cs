@@ -44,6 +44,7 @@ public sealed record FunctionReplicaState(
 
 public sealed class FunctionRevisionKubernetesManager(
     IKubernetesClientProvider kubernetesClientProvider,
+    LookupDeploymentTarget lookupDeploymentTarget,
     IEnumerable<IFunctionAgentTrustBundleProvider> trustBundleProviders)
     : IFunctionRevisionKubernetesManager
 {
@@ -54,6 +55,9 @@ public sealed class FunctionRevisionKubernetesManager(
         FunctionRevisionInKubernetes revision,
         CancellationToken cancellationToken = default)
     {
+        if (!await AllowsWorkloadsAsync(revision.Placement.DeploymentTargetId, cancellationToken))
+            return EnforcementRequired();
+
         var clientResult = await ResolveKubernetesAsync(
             revision.Placement.DeploymentTargetId,
             cancellationToken);
@@ -163,6 +167,8 @@ public sealed class FunctionRevisionKubernetesManager(
             return Invalid("Replica count is outside the Function revision scaling bounds.");
         }
 
+        var allowsIncrease = replicas == 0 ||
+            await AllowsWorkloadsAsync(revision.Placement.DeploymentTargetId, cancellationToken);
         var clientResult = await ResolveKubernetesAsync(
             revision.Placement.DeploymentTargetId,
             cancellationToken);
@@ -175,6 +181,8 @@ public sealed class FunctionRevisionKubernetesManager(
                 revision.DeploymentName,
                 revision.Namespace,
                 cancellationToken: cancellationToken);
+            if (replicas > (scale.Spec.Replicas ?? 0) && !allowsIncrease)
+                return EnforcementRequired();
             scale.Spec.Replicas = replicas;
             await kubernetes.AppsV1.ReplaceNamespacedDeploymentScaleAsync(
                 scale,
@@ -208,6 +216,8 @@ public sealed class FunctionRevisionKubernetesManager(
             return Invalid("Scale coordination generation must be positive.");
         }
 
+        var allowsIncrease = replicas == 0 ||
+            await AllowsWorkloadsAsync(revision.Placement.DeploymentTargetId, cancellationToken);
         var clientResult = await ResolveKubernetesAsync(
             revision.Placement.DeploymentTargetId,
             cancellationToken);
@@ -240,6 +250,8 @@ public sealed class FunctionRevisionKubernetesManager(
                             "The Function revision scale generation is already associated with another replica count.");
                 }
 
+                if (replicas > (deployment.Spec.Replicas ?? 0) && !allowsIncrease)
+                    return EnforcementRequired();
                 deployment.Spec.Replicas = replicas;
                 deployment.Metadata.Annotations ??= new Dictionary<string, string>();
                 deployment.Metadata.Annotations[FunctionRevisionInKubernetes.ScaleGenerationAnnotation] =
@@ -309,6 +321,18 @@ public sealed class FunctionRevisionKubernetesManager(
             return Unavailable("Unable to read Function revision replica state from Kubernetes.");
         }
     }
+
+    // Function provisioning/activation/scaling also run outside ResourceDeployment reconciliation.
+    // Guard the shared mutation boundary, not placement lookup or diagnostics. Never cache evidence.
+    private async Task<bool> AllowsWorkloadsAsync(string targetId, CancellationToken cancellationToken)
+    {
+        var result = await lookupDeploymentTarget(targetId, cancellationToken);
+        return result.TryGetValue(out var target, out _) &&
+            target.NetworkPolicy.Readiness is "EnforcementAttested" or "IsolationNotEnforced";
+    }
+
+    private static Err<FunctionRevisionKubernetesOperationError> EnforcementRequired() =>
+        Rejected("NetworkPolicy enforcement has not been established for this target.");
 
     private async Task<Result<IKubernetes, FunctionRevisionKubernetesOperationError>> ResolveKubernetesAsync(
         string deploymentTargetId,

@@ -17,6 +17,62 @@ namespace Pole.Features.Functions.Tests;
 
 public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
 {
+    [Theory]
+    [InlineData("EnforcementRequired", false)]
+    [InlineData("EnforcementAttested", true)]
+    [InlineData("IsolationNotEnforced", true)]
+    public async Task Apply_checks_current_readiness_before_any_Kubernetes_write(string readiness, bool allowed)
+    {
+        var subject = CreateSubject();
+        using var handler = new DeploymentHandler(Deployment(subject, 0, 0));
+        using var kubernetes = CreateKubernetes(handler);
+        var currentReadiness = readiness;
+        var lookups = 0;
+        var manager = new FunctionRevisionKubernetesManager(new FixedKubernetesClientProvider(kubernetes),
+            (id, ct) => { lookups++; Assert.Equal(subject.Placement.DeploymentTargetId, id); return LookupTarget(id, currentReadiness); }, []);
+        var result = await manager.ApplyAsync(subject);
+        Assert.Equal(allowed, TypedResultExtensions.TryGetValue(result).Succeeded);
+        Assert.Equal(allowed ? 2 : 0, handler.PostRequests.Count);
+        currentReadiness = "EnforcementRequired";
+        Assert.False(TypedResultExtensions.TryGetValue(await manager.ApplyAsync(subject)).Succeeded);
+        Assert.Equal(2, lookups);
+        Assert.Equal(allowed ? 2 : 0, handler.PostRequests.Count);
+    }
+
+    [Theory]
+    [InlineData(false, 1, 3, false)]
+    [InlineData(false, 3, 1, true)]
+    [InlineData(false, 3, 0, true)]
+    [InlineData(true, 1, 3, false)]
+    [InlineData(true, 3, 1, true)]
+    [InlineData(true, 3, 0, true)]
+    public async Task Revoked_target_rejects_increases_but_preserves_downscale(bool provisioning, int current, int desired, bool allowed)
+    {
+        var subject = CreateSubject();
+        using var handler = new DeploymentHandler(Deployment(subject, current, 4));
+        using var kubernetes = CreateKubernetes(handler);
+        var manager = new FunctionRevisionKubernetesManager(new FixedKubernetesClientProvider(kubernetes),
+            (id, ct) => LookupTarget(id, "EnforcementRequired"), []);
+        var result = provisioning
+            ? await manager.ScaleProvisioningAsync(subject, desired)
+            : await manager.ScaleAsync(subject, desired, 5);
+        Assert.Equal(allowed, TypedResultExtensions.TryGetValue(result).Succeeded);
+        Assert.Equal(allowed ? 1 : 0, handler.PutRequests.Count);
+    }
+
+    [Fact]
+    public async Task Read_and_delete_do_not_require_readiness_lookup()
+    {
+        var subject = CreateSubject();
+        using var handler = new DeploymentHandler(Deployment(subject, 1, 4));
+        using var kubernetes = CreateKubernetes(handler);
+        var manager = new FunctionRevisionKubernetesManager(new FixedKubernetesClientProvider(kubernetes),
+            (_, _) => throw new InvalidOperationException("Readiness lookup is forbidden for diagnostics/deletion."), []);
+        Assert.True(TypedResultExtensions.TryGetValue(await manager.ReadReplicaStateAsync(subject)).Succeeded);
+        Assert.True(TypedResultExtensions.TryGetValue(await manager.DeleteAsync(subject)).Succeeded);
+        Assert.Equal(2, handler.DeleteRequests);
+    }
+
     [Fact]
     public async Task Newer_generation_replaces_replicas_and_annotation_in_one_request()
     {
@@ -100,7 +156,15 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
     }
 
     private static FunctionRevisionKubernetesManager CreateManager(IKubernetes kubernetes) =>
-        new(new FixedKubernetesClientProvider(kubernetes), Array.Empty<IFunctionAgentTrustBundleProvider>());
+        new(new FixedKubernetesClientProvider(kubernetes), (id, ct) => LookupTarget(id, "EnforcementAttested"), Array.Empty<IFunctionAgentTrustBundleProvider>());
+
+    private static Task<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>> LookupTarget(string id, string readiness) =>
+        Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
+            new Ok<DeploymentTargetLookupDto>(new(id, "Target", "cluster", "InCluster", 1,
+                new(1, null), 1, true, true, false, "Healthy")
+            {
+                NetworkPolicy = new("Unknown", readiness, "TestEvidence", DateTime.UnixEpoch, "OperatorAttestation", false)
+            }));
 
     private static Kubernetes CreateKubernetes(DelegatingHandler handler) =>
         new(
@@ -168,7 +232,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
                 app.Placement.ResourceDeploymentId,
                 app.Placement.RuntimeCellId,
                 app.Placement.DeploymentTargetId,
-                "pole-tenant-rg"));
+                "pole-tenant-rg", "507f1f77bcf86cd799439044"));
     }
 
     private sealed record RecordedPut(
@@ -189,6 +253,8 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
     private sealed class DeploymentHandler(V1Deployment deployment) : DelegatingHandler
     {
         public List<RecordedPut> PutRequests { get; } = [];
+        public List<string> PostRequests { get; } = [];
+        public int DeleteRequests { get; private set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -196,6 +262,17 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         {
             if (request.Method == HttpMethod.Get)
                 return JsonResponse(request, Serialize(deployment));
+            if (request.Method == HttpMethod.Post)
+            {
+                var body = await request.Content!.ReadAsStringAsync(cancellationToken);
+                PostRequests.Add(body);
+                return JsonResponse(request, body);
+            }
+            if (request.Method == HttpMethod.Delete)
+            {
+                DeleteRequests++;
+                return new HttpResponseMessage(HttpStatusCode.NotFound) { RequestMessage = request };
+            }
 
             if (request.Method == HttpMethod.Put)
             {

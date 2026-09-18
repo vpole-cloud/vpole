@@ -97,7 +97,20 @@ internal static class DeploymentTargetFilters
         Builders<DeploymentTarget>.Filter.And(
             Builders<DeploymentTarget>.Filter.Eq(target => target.Enabled, true),
             Builders<DeploymentTarget>.Filter.Eq(target => target.AcceptsWorkloads, true),
-            NotPendingDeletion());
+            NotPendingDeletion(),
+            NetworkPolicyAdmission());
+
+    private static FilterDefinition<DeploymentTarget> NetworkPolicyAdmission() =>
+        Builders<DeploymentTarget>.Filter.And(
+            Builders<DeploymentTarget>.Filter.Ne(target => target.Health.FailureCode, "ClusterIdentityMismatch"),
+            Builders<DeploymentTarget>.Filter.Or(
+                Builders<DeploymentTarget>.Filter.Eq(target => target.WorkloadConfiguration.NetworkPolicy.Enforcement, NetworkPolicyEnforcement.Supported),
+                Builders<DeploymentTarget>.Filter.Eq(target => target.WorkloadConfiguration.NetworkPolicy.AllowIsolationNotEnforced, true)),
+            new MongoDB.Bson.BsonDocument("$expr", new MongoDB.Bson.BsonDocument("$and", new MongoDB.Bson.BsonArray
+            {
+                new MongoDB.Bson.BsonDocument("$eq", new MongoDB.Bson.BsonArray { "$WorkloadConfiguration.NetworkPolicy.ClusterIdentity", "$ClusterIdentity" }),
+                new MongoDB.Bson.BsonDocument("$eq", new MongoDB.Bson.BsonArray { "$WorkloadConfiguration.NetworkPolicy.ConnectionVersion", "$Connection.Version" })
+            })));
 
     public static FilterDefinition<DeploymentTarget> WithConfiguredPublicBaseDomain() =>
         Builders<DeploymentTarget>.Filter.And(

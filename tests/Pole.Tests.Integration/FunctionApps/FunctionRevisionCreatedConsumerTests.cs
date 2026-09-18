@@ -1,3 +1,9 @@
+using k8s;
+using Pole.Features.DeploymentTargets.Application.Common;
+using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.DeploymentTargets.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Tests.Integration.DeploymentTargets;
 using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -21,6 +27,58 @@ namespace Pole.Tests.Integration.FunctionApps;
 public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
+    [Theory]
+    [InlineData(NetworkPolicyEnforcement.Unknown, false)]
+    [InlineData(NetworkPolicyEnforcement.Unsupported, false)]
+    [InlineData(NetworkPolicyEnforcement.Supported, true)]
+    public async Task Applied_placement_does_not_bypass_revoked_or_rotated_target(
+        NetworkPolicyEnforcement enforcement, bool rotateCredentials)
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = (await Mediator.Send(new CreateFunctionAppRequest(
+            new CreateFunctionAppRequestBody("revoked-functions", "revoked-functions", group.Id, RevisionRequest(), []),
+            TestData.TenantId))).RequireSuccess();
+        var target = DeploymentTargetNetworkPolicyTests.Attest(
+            DeploymentTargetNetworkPolicyTests.Target() with { Id = created.Placement.DeploymentTargetId },
+            enforcement, false);
+        if (rotateCredentials)
+            target = target.ReplaceConnectionCredential(target.ClusterIdentity,
+                DeploymentTargetConnectionFactory.CreateInCluster(2), target.UpdatedAtUtc.AddMinutes(1));
+        Assert.Equal("EnforcementRequired", target.ToNetworkPolicyDto().Readiness);
+        var provider = new NoCallsKubernetesProvider();
+        var manager = new FunctionRevisionKubernetesManager(provider,
+            (id, ct) => Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
+                new Ok<DeploymentTargetLookupDto>(target.ToLookupDto())), []);
+        var loadPlacement = Services.GetRequiredService<LoadExactResourceDeploymentRuntimePlacement>();
+        var resolver = new FunctionResourcePlacementResolver(async (tenant, type, resource, deployment, ct) =>
+        {
+            var placement = await loadPlacement(tenant, type, resource, deployment, ct);
+            Assert.NotNull(placement);
+            return placement with { Status = "Applied" };
+        });
+        var consumer = new FunctionRevisionCreatedConsumer(
+            new MongoLoadFunctionRevisionProvisioningSubject(DbContext.FunctionApps, DbContext.FunctionRevisions).InvokeAsync,
+            resolver, manager, Services.GetRequiredService<FailFunctionRevision>(), [],
+            NullLogger<FunctionRevisionCreatedConsumer>.Instance);
+        await consumer.HandleAsync(new FunctionRevisionCreatedEvent(created.FunctionAppId, created.RevisionId,
+            created.RevisionNumber, Placement(created), null!) { EventCore = EventCore.Create(TestData.TenantId) });
+        Assert.Equal(0, provider.Calls);
+        var revision = await DbContext.FunctionRevisions.Find(item => item.Id == created.RevisionId).SingleAsync();
+        Assert.Equal("kubernetes-apply", Assert.IsType<FailedFunctionRevisionStatus>(revision.Status).Failure.Code);
+    }
+
+    private sealed class NoCallsKubernetesProvider : IKubernetesClientProvider
+    {
+        public int Calls { get; private set; }
+        public Task<IKubernetes> GetAsync(string deploymentTargetId, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            throw new InvalidOperationException("A revoked target must not reach Kubernetes.");
+        }
+        public Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Default target must not be used.");
+    }
+
     [Fact]
     public async Task Failed_kubernetes_apply_marks_revision_failed_and_redelivery_is_a_noop()
     {
@@ -239,7 +297,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                     app.Placement.ResourceDeploymentId,
                     app.Placement.RuntimeCellId,
                     app.Placement.DeploymentTargetId,
-                    "functions")));
+                    "functions", "507f1f77bcf86cd799439044")));
     }
 
     private sealed class RecordingKubernetesManager(

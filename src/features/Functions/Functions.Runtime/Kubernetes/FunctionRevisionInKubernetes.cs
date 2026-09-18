@@ -227,6 +227,7 @@ public readonly record struct FunctionRevisionInKubernetes(
         ["app.kubernetes.io/instance"] = ResourceName,
         ["pole.io/tenant-id"] = App.TenantId,
         ["pole.io/resource-group-id"] = App.ResourceGroupId,
+        ["pole.io/isolation-scope-id"] = Placement.IsolationScopeId,
         ["pole.io/resource-type"] = "function-app",
         ["pole.io/resource-id"] = App.Id,
         ["pole.io/resource-deployment-id"] = Placement.ResourceDeploymentId,

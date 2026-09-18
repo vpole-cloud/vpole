@@ -187,3 +187,13 @@ WebService, Redis, PostgreSQL, and Functions reconcile through `ResourceDeployme
 features must use the ResourceDeployment placement, mutation, and fence capabilities; they must
 not add Kubernetes placement fields to logical resource aggregates. No production-data migration
 or backward-compatibility path is included because Pole has not yet deployed the old model.
+
+### Kubernetes authorization identity
+
+RuntimeCell namespaces carry immutable `pole.io/tenant-id`, `resource-group-id`,
+`isolation-scope-id`, `runtime-cell-id`, and `deployment-target-id` labels (all under `pole.io/`).
+Workload pod templates and Services additionally carry `resource-type`, `resource-id`, and
+`resource-deployment-id`. WebService, Redis, PostgreSQL, and Function reconciliation propagate
+these identities from persisted placement. Resource names are informational only; generated
+selectors use immutable identities, and never display names or deployment generations.
+PostgreSQL operator resources propagate the labels through `inheritedMetadata`.
