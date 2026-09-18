@@ -32,8 +32,8 @@ public static class WebServiceHttpMappings
             HttpProblemMapping.For<DeleteWebServiceDeploymentStateError>(
                 MapDeleteDeploymentStateError),
             HttpProblemMapping.For<DeleteWebServiceStateError>(MapDeleteStateError),
-            HttpProblemMapping.For<SourceBuildWebServiceConfigurationExists>(
-                MapSourceBuildWebServiceConfigurationExists),
+            HttpProblemMapping.For<SourceBuildWebServiceHasActiveJobs>(
+                MapSourceBuildWebServiceHasActiveJobs),
             HttpProblemMapping.For<GetWebServiceDeploymentHostnamesError>(
                 MapGetDeploymentHostnamesError),
             HttpProblemMapping.For<WebServiceImageTagAuthorizationError>(
@@ -173,11 +173,11 @@ public static class WebServiceHttpMappings
                 ("webServiceId", empty.WebServiceId))
         };
 
-    private static HttpProblem MapSourceBuildWebServiceConfigurationExists(
-        SourceBuildWebServiceConfigurationExists error) => Problem(
+    private static HttpProblem MapSourceBuildWebServiceHasActiveJobs(
+        SourceBuildWebServiceHasActiveJobs error) => Problem(
             HttpStatusCode.Conflict,
-            "source-builds.web-service-configuration-exists",
-            "Delete the source build configuration before deleting this web service",
+            "source-builds.web-service-has-active-jobs",
+            "Wait for active source builds to finish before deleting this web service",
             ("webServiceId", error.WebServiceId));
 
     private static HttpProblem MapGetDeploymentHostnamesError(

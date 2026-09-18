@@ -70,6 +70,12 @@ internal static class SourceBuildJobFilters
         return filter;
     }
 
+    public static FilterDefinition<SourceBuildJob> ActiveForWebService(string tenantId, string webServiceId) =>
+        Builders<SourceBuildJob>.Filter.And(
+            Builders<SourceBuildJob>.Filter.ForTenant(tenantId),
+            Builders<SourceBuildJob>.Filter.Eq(item => item.WebServiceId, webServiceId),
+            Builders<SourceBuildJob>.Filter.Not(TerminalStates()));
+
     public static FilterDefinition<SourceBuildJob> ActiveForConfiguration(
         string tenantId,
         string configurationId) =>

@@ -59,7 +59,7 @@ public union DeleteWebServiceStateError(
 
 public union DeleteWebServiceError(
     DeleteWebServiceStateError,
-    SourceBuildWebServiceConfigurationExists,
+    SourceBuildWebServiceHasActiveJobs,
     ResourceDeploymentMutationError,
     WebServiceUpdateConflict,
     QuotaExecutionError);

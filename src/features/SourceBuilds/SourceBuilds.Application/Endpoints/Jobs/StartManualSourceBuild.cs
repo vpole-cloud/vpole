@@ -1,4 +1,5 @@
 using FluentValidation;
+using Pole.Features.SourceBuilds.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -27,6 +28,7 @@ public sealed record StartManualSourceBuildRequest(
 
 public union StartManualSourceBuildError(
     SourceBuildConfigurationNotFound,
+    SourceBuildConfigurationWebServiceNotFound,
     SourceBuildLinkedRepositoryNotFound,
     SourceBuildLinkedRepositoryCandidateChanged);
 
@@ -115,7 +117,12 @@ public sealed class StartManualSourceBuildHandler(
                 EventCore = EventCore.Create(request.TenantId)
             },
             cancellationToken);
-        return queued.ToDto();
+        return queued switch
+        {
+            Ok<SourceBuildJob> success => success.Value.ToDto(),
+            Err<SourceBuildWebServiceNotFound> error => new StartManualSourceBuildError(
+                new SourceBuildConfigurationWebServiceNotFound(error.Value.WebServiceId))
+        };
     }
 }
 

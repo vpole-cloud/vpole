@@ -66,9 +66,12 @@ public static class SourceBuildApplicationRegistration
         services.AddCapability<MongoCompleteSourceBuildJobOnDeployment, CompleteSourceBuildJobOnDeployment>(
             implementation => implementation.InvokeAsync);
 
-        services.TryAddScoped<MongoEnsureNoWebServiceSourceBuildConfiguration>();
-        services.TryAddScoped<EnsureNoWebServiceSourceBuildConfiguration>(provider =>
-            provider.GetRequiredService<MongoEnsureNoWebServiceSourceBuildConfiguration>().InvokeAsync);
+        services.AddCapability<MongoCleanupSourceBuildConfigurations, CleanupSourceBuildConfigurations>(
+            implementation => implementation.InvokeAsync);
+
+        services.TryAddScoped<MongoEnsureNoWebServiceActiveSourceBuilds>();
+        services.TryAddScoped<EnsureNoWebServiceActiveSourceBuilds>(provider =>
+            provider.GetRequiredService<MongoEnsureNoWebServiceActiveSourceBuilds>().InvokeAsync);
         services.TryAddScoped<MongoEnsureNoSourceRepositoryBuildConfiguration>();
         services.TryAddScoped<EnsureNoSourceRepositoryBuildConfiguration>(provider =>
             provider.GetRequiredService<MongoEnsureNoSourceRepositoryBuildConfiguration>().InvokeAsync);

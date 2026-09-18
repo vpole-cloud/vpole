@@ -7,6 +7,7 @@
     <RootNamespace>Pole.Features.SourceBuilds.Contracts</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="MongoDB.Driver" />
     <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
   </ItemGroup>
 </Project>

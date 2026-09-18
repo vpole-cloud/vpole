@@ -101,8 +101,11 @@ public sealed class CreateSourceBuildConfigurationHandler(
         return created switch
         {
             Ok<SourceBuildConfiguration> success => success.Value.ToDto(),
-            Err<SourceBuildConfigurationAlreadyExists> error =>
-                new CreateSourceBuildConfigurationError(error.Value)
+            Err<PersistSourceBuildConfigurationError> error => error.Value switch
+            {
+                SourceBuildConfigurationAlreadyExists existsError => new CreateSourceBuildConfigurationError(existsError),
+                SourceBuildConfigurationWebServiceNotFound missing => new CreateSourceBuildConfigurationError(missing)
+            }
         };
     }
 }
