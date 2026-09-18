@@ -10,7 +10,8 @@ namespace Pole.Features.ResourceGroups.Application.Persistence.ResourceRegistrat
 internal sealed class MongoResourceRegistrationMutations(
     IMongoCollection<ResourceGroup> resourceGroups,
     IMongoCollection<ResourceRegistration> registrations,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    StoreOutboxWrites storeOutboxWrites)
 {
     public async Task<Result<RegisteredResource, ResourceRegistrationMutationError>> RegisterAsync(
         string? owningPluginId,
@@ -173,6 +174,10 @@ internal sealed class MongoResourceRegistrationMutations(
                 resourceTypeId,
                 resourceId),
             cancellationToken: cancellationToken);
+        if (deletion.DeletedCount == 1)
+            await storeOutboxWrites(session, [OutboxWrite.Create(
+                new Pole.Features.ResourceGroups.Events.ResourceUnregisteredEvent(resourceGroupId, resourceTypeId.Value, resourceId)
+                { EventCore = Pole.Features.Events.Abstractions.EventCore.Create(tenantId) })], cancellationToken);
         return deletion.DeletedCount == 1
             ? new Ok<Unit>(Unit.Value)
             : new Err<ResourceRegistrationMutationError>(

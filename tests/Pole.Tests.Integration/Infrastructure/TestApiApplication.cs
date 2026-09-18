@@ -1,3 +1,4 @@
+using Pole.Features.Secrets.Application;
 using System.Reflection;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication;
@@ -76,6 +77,7 @@ public sealed class TestApiApplication : IAsyncDisposable
 
     private static readonly Assembly[] Assemblies =
     [
+        typeof(SecretFeature).Assembly,
         typeof(WebServiceEndpoints).Assembly,
         typeof(ComputeProfileApplicationRegistration).Assembly,
         typeof(FunctionAppFeature).Assembly,
@@ -178,6 +180,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddFunctionAppsFeature();
         builder.Services.AddResourceDeploymentsFeature(builder.Configuration);
         builder.Services.AddResourceGroupsFeature(builder.Configuration);
+        builder.Services.AddSecretsFeature();
         builder.Services.AddTenantsFeature();
         builder.Services.AddUsersFeature(builder.Configuration);
         builder.Services.RemoveAll<IIdentityProvider>();
@@ -292,6 +295,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         await new StorageProfileMigration().Up(fixture.Database);
         await new OutboxMessageMigration().Up(fixture.Database);
         await new SourceBuildMigration().Up(fixture.Database);
+        await new Pole.Features.Secrets.Application.Migrations.SecretIndexesMigration().Up(fixture.Database);
         await fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
             .InsertOneAsync(TestData.SeedComputeProfile());
@@ -304,7 +308,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         var api = app.MapGroup("/api/v1")
             .RequireAuthorization();
         api
-            .MapResourceGroupEndpoints()
+            .MapSecretEndpoints().MapResourceGroupEndpoints()
             .MapContainerRegistryEndpoints()
             .MapDeploymentTargetEndpoints()
             .MapDeploymentTargetAvailabilityEndpoints()

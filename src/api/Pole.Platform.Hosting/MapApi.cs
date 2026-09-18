@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
+using Pole.Features.Secrets.Application;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Application.Common;
@@ -25,7 +26,7 @@ public static class MapApi
         var group = app.MapGroup("/api/v1")
             .RequireAuthorization();
 
-        group.MapResourceGroupEndpoints()
+        group.MapSecretEndpoints().MapResourceGroupEndpoints()
             .MapContainerRegistryEndpoints()
             .MapDeploymentTargetEndpoints()
             .MapDeploymentTargetAvailabilityEndpoints()

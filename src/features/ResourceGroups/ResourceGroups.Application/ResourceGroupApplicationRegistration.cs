@@ -52,6 +52,7 @@ public static class ResourceGroupApplicationRegistration
             .Value);
 
         services.AddResourceGroupPersistence();
+        services.AddCapability<MongoAdmitResourceScopeReference, AdmitResourceScopeReference>(implementation => implementation.InvokeAsync);
         services.AddCapability<RuntimeCellNamespaceNameGenerator,
             GenerateRuntimeCellNamespaceName>(implementation => implementation.Invoke);
         services.TryAddScoped<KubernetesRuntimeCellNamespaceManager>();

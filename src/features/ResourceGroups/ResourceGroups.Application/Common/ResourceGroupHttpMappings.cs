@@ -30,6 +30,9 @@ public static class ResourceGroupHttpMappings
             HttpProblemMapping.For<IsolationScopeDeleting>(MapIsolationScopeDeleting),
             HttpProblemMapping.For<DefaultIsolationScopeDeletionForbidden>(
                 MapDefaultIsolationScopeDeletionForbidden),
+            HttpProblemMapping.For<Pole.Features.ResourceGroups.Contracts.IsolationScopeReferenced>(error => Problem(
+                HttpStatusCode.Conflict, "resource-groups.isolation-scopes.referenced",
+                "Isolation scope still has resource references", ("isolationScopeId", error.IsolationScopeId))),
             HttpProblemMapping.For<IsolationScopeDeploymentInProgress>(
                 MapIsolationScopeDeploymentInProgress),
             HttpProblemMapping.For<RuntimeCellNotFound>(MapRuntimeCellNotFound),

@@ -5,6 +5,7 @@ using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Persistence.RuntimeCells;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
+using Pole.Features.ResourceGroups.Contracts;
 
 namespace Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
 
@@ -18,6 +19,7 @@ public union IsolationScopeDeletionError(
     IsolationScopeNotFound,
     DefaultIsolationScopeDeletionForbidden,
     IsolationScopeDeploymentInProgress,
+    IsolationScopeReferenced,
     ResourceGroupRevisionConflict);
 
 public union BeginIsolationScopeDeletionOutcome(
@@ -38,7 +40,8 @@ internal sealed class MongoBeginIsolationScopeDeletion(
     EnsureNoUnfinishedIsolationScopeDeployments ensureNoUnfinishedDeployments,
     StoreOutboxWrites storeOutboxWrites,
     RunMongoOutcomeTransaction<BeginIsolationScopeDeletionOutcome> runMongoTransaction,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IEnumerable<IIsolationScopeReferenceGuard> referenceGuards)
 {
     public Task<BeginIsolationScopeDeletionOutcome> InvokeAsync(
         string tenantId,
@@ -95,6 +98,15 @@ internal sealed class MongoBeginIsolationScopeDeletion(
             {
                 throw new InvalidOperationException(
                     $"Isolation scope '{scope.Id}' has an unsupported lifecycle state.");
+            }
+
+            foreach (var guard in referenceGuards)
+            {
+                var reference = await guard.EnsureUnreferencedAsync(
+                    tenantId, resourceGroupId, isolationScopeId, transaction.Session, ct);
+                if (reference is Err<IsolationScopeReferenced> referenced)
+                    return transaction.Abort(new BeginIsolationScopeDeletionOutcome(
+                        new IsolationScopeDeletionError(referenced.Value)));
             }
 
             var deploymentGuard = await ensureNoUnfinishedDeployments(

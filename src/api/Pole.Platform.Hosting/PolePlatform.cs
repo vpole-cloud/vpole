@@ -1,6 +1,7 @@
 using Pole.Features.Outbox.Application.Persistence.Delivery;
 using System.Reflection;
 using Pole.ASP.Helpers;
+using Pole.Features.Secrets.Application;
 using Pole.Database;
 using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Application;
@@ -45,6 +46,7 @@ namespace Pole.Platform.Hosting;
 public static class PolePlatform
 {
 public static Assembly[] ApplicationAssemblies => [
+    typeof(SecretFeature).Assembly,
     typeof(QuotaEndpoints).Assembly,
     typeof(DomainZoneEndpoints).Assembly,
     typeof(GitProviderEndpoints).Assembly,
@@ -61,6 +63,7 @@ public static Assembly[] ApplicationAssemblies => [
     typeof(UserEndpoints).Assembly,
 ];
 public static Assembly[] EventAssemblies => [
+    typeof(Pole.Features.Secrets.Events.SecretChangedEvent).Assembly,
     typeof(Pole.Features.ResourceDeployments.Events.ResourceDeploymentAppliedEvent).Assembly,
     typeof(Pole.Features.ResourceGroups.Events.ResourceGroupCreatedEvent).Assembly,
     typeof(Pole.Features.SourceBuilds.Events.SourceBuildRequestedEvent).Assembly,
@@ -78,6 +81,7 @@ public static Assembly[] EventAssemblies => [
     .AddResourceDeploymentsFeature(configuration)
     .AddTenantsFeature()
     .AddDomainsFeature()
+    .AddSecretsFeature()
     .AddComputeProfilesFeature()
     .AddStorageProfilesFeature()
     .AddQuotasFeature(configuration)
