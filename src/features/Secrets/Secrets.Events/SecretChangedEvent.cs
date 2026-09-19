@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using MassTransit;
 using Pole.Features.Events.Abstractions;
 
@@ -8,11 +9,28 @@ public sealed record SecretChangedEvent(
     string SecretId,
     long Version,
     long Revision,
-    string Change,
-    string? BindingId) : IPoleEvent
+    SecretChange Change) : IPoleEvent
 {
     public EventCore EventCore
     {
         get; init;
     } = EventCore.Create();
 }
+
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(SecretCreated), "created")]
+[JsonDerivedType(typeof(SecretRotated), "rotated")]
+[JsonDerivedType(typeof(SecretDeletedChange), "deleted")]
+[JsonDerivedType(typeof(SecretBindingAdded), "binding-added")]
+[JsonDerivedType(typeof(SecretBindingRemoved), "binding-removed")]
+public abstract record SecretChange;
+
+public sealed record SecretCreated : SecretChange;
+
+public sealed record SecretRotated : SecretChange;
+
+public sealed record SecretDeletedChange : SecretChange;
+
+public sealed record SecretBindingAdded(string BindingId) : SecretChange;
+
+public sealed record SecretBindingRemoved(string BindingId) : SecretChange;

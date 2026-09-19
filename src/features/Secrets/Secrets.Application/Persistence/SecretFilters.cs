@@ -2,7 +2,7 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Secrets.Domain;
 
-namespace Pole.Features.Secrets.Application;
+namespace Pole.Features.Secrets.Application.Persistence;
 
 internal static class SecretFilters
 {

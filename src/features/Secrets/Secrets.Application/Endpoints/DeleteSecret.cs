@@ -5,15 +5,26 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Secrets.Application.Persistence;
+using Pole.Features.Secrets.Domain;
 using Pole.Mediator;
+using Pole.ResultType;
 using Pole.Validation;
 
 namespace Pole.Features.Secrets.Application.Endpoints;
 
+public sealed record SecretDeleted;
+
+public union DeleteSecretOutcome(
+    SecretDeleted,
+    SecretMissing,
+    SecretBindingsRemain,
+    SecretReferenceRejected);
+
 public sealed record DeleteSecretRequest(
     [FromRoute] string Id,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<SecretMutationOutcome>, ITenantWriteOperation;
+    : IMediatorRequest<DeleteSecretOutcome>, ITenantWriteOperation;
 
 public sealed class DeleteSecretValidator : AbstractValidator<DeleteSecretRequest>
 {
@@ -23,13 +34,19 @@ public sealed class DeleteSecretValidator : AbstractValidator<DeleteSecretReques
     }
 }
 
-public sealed class DeleteSecretHandler(SecretStore store)
-    : IMediatorOutcomeHandler<DeleteSecretRequest, SecretMutationOutcome>
+public sealed class DeleteSecretHandler(DeleteStoredSecret persist)
+    : IMediatorOutcomeHandler<DeleteSecretRequest, DeleteSecretOutcome>
 {
-    public async Task<SecretMutationOutcome> HandleAsync(
+    public async Task<DeleteSecretOutcome> HandleAsync(
         DeleteSecretRequest request,
         CancellationToken cancellationToken = default) =>
-        await store.DeleteAsync(request.TenantId, request.Id, cancellationToken);
+        (await persist(request.TenantId, request.Id, cancellationToken)) switch
+        {
+            Unit => new SecretDeleted(),
+            SecretMissing error => error,
+            SecretBindingsRemain error => error,
+            SecretReferenceRejected error => error,
+        };
 }
 
 public static class DeleteSecretEndpoint
@@ -37,16 +54,18 @@ public static class DeleteSecretEndpoint
     public static IEndpointRouteBuilder MapDeleteSecretEndpoint(this IEndpointRouteBuilder app)
     {
         app.MapDelete("/{Id}", async (
-            IMediator mediator,
-            IHttpProblemMapper problems,
-            [AsParameters] DeleteSecretRequest request,
-            CancellationToken ct) =>
-            (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
-            {
-                SecretMetadata metadata => Results.Ok(metadata),
-                SecretDeleted => Results.NoContent(),
-                SecretError error => problems.Map(error).ToHttpResult()
-            }))
+                IMediator mediator,
+                IHttpProblemMapper problems,
+                [AsParameters] DeleteSecretRequest request,
+                CancellationToken ct) =>
+                (await mediator.Send(request, ct))
+                .ToHttpResult(outcome => outcome switch
+                {
+                    SecretDeleted => Results.NoContent(),
+                    SecretMissing error => problems.Map(error).ToHttpResult(),
+                    SecretBindingsRemain error => problems.Map(error).ToHttpResult(),
+                    SecretReferenceRejected error => problems.Map(error).ToHttpResult()
+                }))
             .WithName("DeleteSecret");
 
         return app;

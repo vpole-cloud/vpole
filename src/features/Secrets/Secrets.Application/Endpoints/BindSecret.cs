@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -6,12 +7,21 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Secrets.Application.Persistence;
 using Pole.Features.Secrets.Domain;
 using Pole.Mediator;
 using Pole.Validation;
 using Pole.Workloads;
 
 namespace Pole.Features.Secrets.Application.Endpoints;
+
+public union BindSecretOutcome(
+    SecretMetadata,
+    SecretMissing,
+    SecretBindingLimitReached,
+    SecretConsumerAlreadyBound,
+    SecretUnknownKeys,
+    SecretReferenceRejected);
 
 public sealed record BindSecretBody(
     string ConsumerType,
@@ -24,7 +34,7 @@ public sealed record BindSecretRequest(
     [FromRoute] string Id,
     [FromBody] BindSecretBody Body,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<SecretMutationOutcome>, ITenantWriteOperation;
+    : IMediatorRequest<BindSecretOutcome>, ITenantWriteOperation;
 
 public sealed class BindSecretValidator : AbstractValidator<BindSecretRequest>
 {
@@ -57,23 +67,32 @@ public sealed class BindSecretValidator : AbstractValidator<BindSecretRequest>
     }
 }
 
-public sealed class BindSecretHandler(SecretStore store)
-    : IMediatorOutcomeHandler<BindSecretRequest, SecretMutationOutcome>
+public sealed class BindSecretHandler(PersistSecretBinding persist)
+    : IMediatorOutcomeHandler<BindSecretRequest, BindSecretOutcome>
 {
-    public async Task<SecretMutationOutcome> HandleAsync(
+    public async Task<BindSecretOutcome> HandleAsync(
         BindSecretRequest request,
         CancellationToken cancellationToken = default) =>
-        await store.BindAsync(
+        (await persist(
             request.TenantId,
             request.Id,
-            new SecretBinding(
+            SecretBinding.Create(
                 ObjectId.GenerateNewId().ToString(),
                 request.Body.ConsumerType,
                 request.Body.ConsumerId,
-                request.Body.AllDeployments,
-                request.Body.DeploymentIds,
+                request.Body.AllDeployments
+                    ? new AllSecretDeployments()
+                    : new SelectedSecretDeployments(request.Body.DeploymentIds.ToImmutableArray()),
                 request.Body.KeyMappings ?? []),
-            cancellationToken);
+            cancellationToken)) switch
+        {
+            Secret secret => SecretMetadata.From(secret),
+            SecretMissing error => error,
+            SecretBindingLimitReached error => error,
+            SecretConsumerAlreadyBound error => error,
+            SecretUnknownKeys error => error,
+            SecretReferenceRejected error => error,
+        };
 }
 
 public static class BindSecretEndpoint
@@ -81,16 +100,20 @@ public static class BindSecretEndpoint
     public static IEndpointRouteBuilder MapBindSecretEndpoint(this IEndpointRouteBuilder app)
     {
         app.MapPost("/{Id}/bindings", async (
-            IMediator mediator,
-            IHttpProblemMapper problems,
-            [AsParameters] BindSecretRequest request,
-            CancellationToken ct) =>
-            (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
-            {
-                SecretMetadata metadata => Results.Ok(metadata),
-                SecretDeleted => Results.NoContent(),
-                SecretError error => problems.Map(error).ToHttpResult()
-            }))
+                IMediator mediator,
+                IHttpProblemMapper problems,
+                [AsParameters] BindSecretRequest request,
+                CancellationToken ct) =>
+                (await mediator.Send(request, ct))
+                .ToHttpResult(outcome => outcome switch
+                {
+                    SecretMetadata metadata => Results.Ok(metadata),
+                    SecretMissing error => problems.Map(error).ToHttpResult(),
+                    SecretBindingLimitReached error => problems.Map(error).ToHttpResult(),
+                    SecretConsumerAlreadyBound error => problems.Map(error).ToHttpResult(),
+                    SecretUnknownKeys error => problems.Map(error).ToHttpResult(),
+                    SecretReferenceRejected error => problems.Map(error).ToHttpResult()
+                }))
             .WithName("BindSecret");
 
         return app;

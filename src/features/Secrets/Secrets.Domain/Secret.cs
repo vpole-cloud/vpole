@@ -1,15 +1,56 @@
+using System.Collections.Immutable;
+using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using Pole.Encryption;
 
 namespace Pole.Features.Secrets.Domain;
 
+[BsonDiscriminator(RootClass = true)]
+[BsonKnownTypes(typeof(AllSecretDeployments), typeof(SelectedSecretDeployments))]
+public abstract record SecretDeploymentSelection;
+
+public sealed record AllSecretDeployments : SecretDeploymentSelection;
+
+public sealed record SelectedSecretDeployments : SecretDeploymentSelection
+{
+    [BsonElement]
+    public ImmutableArray<string> DeploymentIds { get; }
+
+    [BsonConstructor]
+    public SelectedSecretDeployments(ImmutableArray<string> deploymentIds)
+    {
+        if (deploymentIds.IsDefaultOrEmpty || deploymentIds.Length > 256 ||
+            deploymentIds.Distinct(StringComparer.OrdinalIgnoreCase).Count() != deploymentIds.Length)
+            throw new ArgumentException("Select between 1 and 256 distinct deployments.", nameof(deploymentIds));
+        DeploymentIds = deploymentIds;
+    }
+}
+
 public sealed record SecretBinding(
     string Id,
     string ConsumerType,
     string ConsumerId,
-    bool AllDeployments,
-    string[] DeploymentIds,
-    Dictionary<string, string> KeyMappings);
+    SecretDeploymentSelection Selection,
+    ImmutableDictionary<string, string> KeyMappings)
+{
+    public static SecretBinding Create(
+        string id,
+        string consumerType,
+        string consumerId,
+        SecretDeploymentSelection selection,
+        IEnumerable<KeyValuePair<string, string>> keyMappings) =>
+        new(
+            id,
+            consumerType,
+            consumerId,
+            selection,
+            keyMappings.ToImmutableDictionary());
+}
+
+public enum SecretLifecycle
+{
+    Active
+}
 
 // Ciphertext is deliberately stored separately from the metadata aggregate.
 public sealed record SecretVersion(
@@ -33,25 +74,27 @@ public sealed record Secret(
     string Name,
     string NormalizedName,
     string Purpose,
-    string[] KeyNames,
+    ImmutableArray<string> KeyNames,
     long CurrentVersion,
     long Revision,
-    string Lifecycle,
-    SecretBinding[] Bindings,
+    [property: BsonRepresentation(BsonType.String)]
+    SecretLifecycle Lifecycle,
+    ImmutableArray<SecretBinding> Bindings,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc)
 {
     public const int MaximumBindings = 256;
 
     public Secret Rotate(
-        string[] keys,
+        IEnumerable<string> keys,
         DateTime now)
     {
-        if (Bindings.Any(binding => binding.KeyMappings.Keys.Except(keys).Any()))
+        var ownedKeys = keys.ToImmutableArray();
+        if (Bindings.Any(binding => binding.KeyMappings.Keys.Except(ownedKeys).Any()))
             throw new InvalidOperationException("Rotation must retain keys used by bindings.");
         return this with
         {
-            KeyNames = keys,
+            KeyNames = ownedKeys,
             CurrentVersion = checked(CurrentVersion + 1),
             Revision = checked(Revision + 1),
             UpdatedAtUtc = now
@@ -66,8 +109,6 @@ public sealed record Secret(
             throw new InvalidOperationException("Secret binding limit reached.");
         if (Bindings.Any(x => x.ConsumerType == binding.ConsumerType && x.ConsumerId == binding.ConsumerId))
             throw new InvalidOperationException("Consumer already bound.");
-        if (binding.AllDeployments == (binding.DeploymentIds.Length > 0))
-            throw new InvalidOperationException("Select all deployments or explicit deployment IDs.");
         if (binding.KeyMappings.Keys.Except(KeyNames).Any())
             throw new InvalidOperationException("Binding references an unknown key.");
         return this with
@@ -82,8 +123,35 @@ public sealed record Secret(
         string bindingId,
         DateTime now) => this with
     {
-        Bindings = Bindings.Where(x => x.Id != bindingId).ToArray(),
+        Bindings = Bindings.Where(x => x.Id != bindingId).ToImmutableArray(),
         Revision = checked(Revision + 1),
         UpdatedAtUtc = now
     };
+}
+
+public static class SecretFactory
+{
+    public static Secret Create(
+        string id,
+        string tenantId,
+        string resourceGroupId,
+        string isolationScopeId,
+        string name,
+        string purpose,
+        IEnumerable<string> keys,
+        DateTime now) => new(
+            id,
+            tenantId,
+            resourceGroupId,
+            isolationScopeId,
+            name.Trim(),
+            name.Trim().ToLowerInvariant(),
+            purpose.Trim(),
+            keys.Order().ToImmutableArray(),
+            1,
+            1,
+            SecretLifecycle.Active,
+            [],
+            now,
+            now);
 }

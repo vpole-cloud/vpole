@@ -1,7 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Secrets.Domain;
 
 namespace Pole.Features.Secrets.Application.Migrations;
 
@@ -17,39 +16,40 @@ public sealed class SecretIndexesMigration : IMigration
         IMongoDatabase context,
         CancellationToken cancellationToken = default)
     {
-        await context.GetCollection<Secret>("Secrets").Indexes.CreateManyAsync([
-            new CreateIndexModel<Secret>(
-                Builders<Secret>.IndexKeys
-                    .Ascending(x => x.TenantId)
-                    .Ascending(x => x.ResourceGroupId)
-                    .Ascending(x => x.IsolationScopeId)
-                    .Ascending(x => x.NormalizedName),
+        // Index field names are frozen historical BSON contracts, independent of live domain types.
+        await context.GetCollection<BsonDocument>("Secrets").Indexes.CreateManyAsync([
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys
+                    .Ascending("TenantId")
+                    .Ascending("ResourceGroupId")
+                    .Ascending("IsolationScopeId")
+                    .Ascending("NormalizedName"),
                 new CreateIndexOptions
                 {
                     Unique = true
                 }),
-            new CreateIndexModel<Secret>(
-                Builders<Secret>.IndexKeys
-                    .Ascending(x => x.TenantId)
-                    .Ascending(x => x.Id)),
-            new CreateIndexModel<Secret>(
-                Builders<Secret>.IndexKeys
-                    .Ascending(x => x.TenantId)
-                    .Ascending(x => x.ResourceGroupId)
-                    .Ascending(x => x.IsolationScopeId)),
-            new CreateIndexModel<Secret>(
-                Builders<Secret>.IndexKeys
-                    .Ascending(x => x.TenantId)
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys
+                    .Ascending("TenantId")
+                    .Ascending("_id")),
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys
+                    .Ascending("TenantId")
+                    .Ascending("ResourceGroupId")
+                    .Ascending("IsolationScopeId")),
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys
+                    .Ascending("TenantId")
                     .Ascending("Bindings.ConsumerType")
                     .Ascending("Bindings.ConsumerId"))
         ], cancellationToken);
 
-        await context.GetCollection<SecretVersion>("SecretVersions").Indexes.CreateOneAsync(
-            new CreateIndexModel<SecretVersion>(
-                Builders<SecretVersion>.IndexKeys
-                    .Ascending(x => x.TenantId)
-                    .Ascending(x => x.SecretId)
-                    .Ascending(x => x.Version),
+        await context.GetCollection<BsonDocument>("SecretVersions").Indexes.CreateOneAsync(
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys
+                    .Ascending("TenantId")
+                    .Ascending("SecretId")
+                    .Ascending("Version"),
                 new CreateIndexOptions
                 {
                     Unique = true

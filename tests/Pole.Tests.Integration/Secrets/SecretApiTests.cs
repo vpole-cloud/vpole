@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
-using System.Net;
 using System.Net.Http.Json;
+using System.Net;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -9,6 +10,8 @@ using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
+using Pole.Features.Secrets.Application.Endpoints;
+using Pole.Features.Secrets.Application.Persistence;
 using Pole.Features.Secrets.Application;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.WebServices.Application.Endpoints;
@@ -40,6 +43,9 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         var metadata = await created.Content.ReadFromJsonAsync<SecretMetadata>();
         Assert.NotNull(metadata);
+        var duplicateName = await Client.PostAsJsonAsync("/api/v1/secrets/", Body(" ONE "));
+        Assert.Equal(HttpStatusCode.Conflict, duplicateName.StatusCode);
+        await AssertProblemCode(duplicateName, "secrets.name-already-exists");
         var second = await Client.PostAsJsonAsync("/api/v1/secrets/", Body("two"));
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
         var get = await Client.GetStringAsync($"/api/v1/secrets/{metadata.Id}");
@@ -78,6 +84,7 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
             }
             });
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        await AssertProblemCode(stale, "secrets.version-conflict");
         Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync("/api/v1/secrets/bad-id")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync("/api/v1/secrets/?pageSize=0")).StatusCode);
         Assert.Equal(
@@ -175,6 +182,7 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
                 }
             });
         Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        await AssertProblemCode(duplicate, "secrets.name-already-exists");
         var deletion = await Client.DeleteAsync($"/api/v1/resource-groups/{group.Id}/isolation-scopes/{scope.Id}");
         Assert.Equal(HttpStatusCode.Conflict, deletion.StatusCode);
         Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
@@ -217,6 +225,21 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
         var consumer = await createdConsumer.Content.ReadFromJsonAsync<CreateWebServiceResponse>();
         Assert.NotNull(consumer);
         var deployment = Assert.Single(consumer.Deployments);
+        var unknownKeys = await Client.PostAsJsonAsync(
+            $"/api/v1/secrets/{secret.Id}/bindings",
+            new
+            {
+                consumerType = "pole/web-service",
+                consumerId = consumer.WebServiceId,
+                allDeployments = true,
+                deploymentIds = Array.Empty<string>(),
+                keyMappings = new Dictionary<string, string>
+                {
+                    ["missing"] = "MISSING"
+                }
+            });
+        Assert.Equal(HttpStatusCode.Conflict, unknownKeys.StatusCode);
+        await AssertProblemCode(unknownKeys, "secrets.unknown-keys");
         var bound = await Client.PostAsJsonAsync(
             $"/api/v1/secrets/{secret.Id.ToUpperInvariant()}/bindings",
             new
@@ -227,9 +250,28 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
                 deploymentIds = new[]
                 {
                     deployment.DeploymentId.ToUpperInvariant()
+                },
+                keyMappings = new Dictionary<string, string>
+                {
+                    ["password"] = "PASSWORD"
                 }
             });
         Assert.Equal(HttpStatusCode.OK, bound.StatusCode);
+        var removeMappedKey = await Client.PostAsJsonAsync(
+            $"/api/v1/secrets/{secret.Id}/versions",
+            new
+            {
+                expectedVersion = 1,
+                values = new
+                {
+                    other = "replacement"
+                }
+            });
+        Assert.Equal(HttpStatusCode.Conflict, removeMappedKey.StatusCode);
+        await AssertProblemCode(removeMappedKey, "secrets.mapped-keys-required");
+        var boundDeletion = await Client.DeleteAsync($"/api/v1/secrets/{secret.Id}");
+        Assert.Equal(HttpStatusCode.Conflict, boundDeletion.StatusCode);
+        await AssertProblemCode(boundDeletion, "secrets.bindings-remain");
         var usage = await Client.GetFromJsonAsync<SecretUsage[]>($"/api/v1/secrets/{secret.Id}/usage");
         Assert.NotNull(usage);
         var binding = Assert.Single(usage).Binding;
@@ -246,6 +288,7 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
                 deploymentIds = Array.Empty<string>()
             });
         Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        await AssertProblemCode(duplicate, "secrets.consumer-already-bound");
         using var services = TestServiceProviderFactory.Create(Fixture);
         using var serviceScope = services.CreateScope();
         using var session = await Fixture.Client.StartSessionAsync();
@@ -257,7 +300,7 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
             consumer.WebServiceId,
             session);
         await session.CommitTransactionAsync();
-        var cleanup = new RemoveSecretBindingsOnResourceUnregistered(serviceScope.ServiceProvider.GetRequiredService<SecretStore>());
+        var cleanup = new RemoveSecretBindingsOnResourceUnregistered(serviceScope.ServiceProvider.GetRequiredService<RemoveConsumerSecretBindings>());
         await cleanup.Handle(new ResourceUnregisteredEvent(group.Id, "pole/web-service", consumer.WebServiceId)
             {
                 EventCore = EventCore.Create(group.TenantId)
@@ -265,5 +308,13 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
         var cleaned = await Client.GetFromJsonAsync<SecretUsage[]>($"/api/v1/secrets/{secret.Id}/usage");
         Assert.NotNull(cleaned);
         Assert.Empty(cleaned);
+    }
+
+    private static async Task AssertProblemCode(
+        HttpResponseMessage response,
+        string expected)
+    {
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(expected, body.RootElement.GetProperty("code").GetString());
     }
 }

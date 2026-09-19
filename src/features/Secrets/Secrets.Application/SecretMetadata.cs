@@ -23,39 +23,10 @@ public sealed record SecretMetadata(
         secret.IsolationScopeId,
         secret.Name,
         secret.Purpose,
-        secret.KeyNames,
+        secret.KeyNames.ToArray(),
         secret.CurrentVersion,
         secret.Revision,
-        secret.Lifecycle,
+        secret.Lifecycle.ToString(),
         secret.CreatedAtUtc,
         secret.UpdatedAtUtc);
 }
-
-public sealed record SecretMissing;
-
-public sealed record SecretConflict;
-
-public sealed record SecretReferenceRejected;
-
-public sealed record SecretEncryptionFailed;
-
-public union SecretError(
-    SecretMissing,
-    SecretConflict,
-    SecretReferenceRejected,
-    SecretEncryptionFailed);
-
-public sealed record SecretDeleted;
-
-public union SecretMutationOutcome(
-    SecretMetadata,
-    SecretDeleted,
-    SecretError);
-
-public sealed record SecretUsage(
-    SecretBinding Binding,
-    string[] AffectedDeploymentIds);
-
-public sealed record SecretPage(
-    SecretMetadata[] Items,
-    string? NextCursor);

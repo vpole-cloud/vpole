@@ -1,4 +1,4 @@
-using MongoDB.Bson;
+using System.Collections.Immutable;
 using Pole.Features.Secrets.Domain;
 using Pole.Workloads;
 
@@ -16,6 +16,12 @@ internal static class SecretIdentity
         Id = ObjectId(binding.Id),
         ConsumerType = ResourceTypeId.Create(binding.ConsumerType).Value,
         ConsumerId = ObjectId(binding.ConsumerId),
-        DeploymentIds = binding.DeploymentIds.Select(ObjectId).ToArray()
+        Selection = binding.Selection switch
+        {
+            AllSecretDeployments => new AllSecretDeployments(),
+            SelectedSecretDeployments selected => new SelectedSecretDeployments(
+                selected.DeploymentIds.Select(ObjectId).ToImmutableArray()),
+            _ => throw new InvalidOperationException("Unknown deployment selection.")
+        }
     };
 }

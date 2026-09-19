@@ -51,6 +51,25 @@ a mapping selects source key names and their consumer-facing names. With `allDep
 the nonempty explicit ID list remains fixed. Read usage to obtain binding IDs for detach. A consumer
 has at most one binding per Secret; detach and reattach to change its selection.
 
+## Application and persistence boundaries
+
+Each endpoint owns its request, validator, closed outcome and handler. Handlers depend on named
+persistence capabilities (`LoadSecretById`, `LoadSecretPage`, `PersistCreatedSecret`,
+`PersistRotatedSecret`, `PersistSecretBinding`, `RemoveSecretBinding`, `DeleteStoredSecret`).
+Each capability has one internal Mongo implementation and returns domain values or operation-specific
+failures. `RemoveConsumerSecretBindings` owns retry-safe cleanup. HTTP metadata is mapped at the
+endpoint boundary; persisted domain bindings are never serialized directly as API responses.
+
+`SecretFactory` owns normalization and initial lifecycle/version/revision. Aggregate key sets,
+bindings and mappings are immutable. Deployment selection has separate `AllSecretDeployments` and
+nonempty `SelectedSecretDeployments` variants. HTTP accepts the existing selection fields and maps
+them into those valid domain states after request validation.
+
+Expected conflicts have distinct problem codes: `secrets.name-already-exists`,
+`secrets.version-conflict`, `secrets.mapped-keys-required`, `secrets.binding-limit-reached`,
+`secrets.consumer-already-bound`, `secrets.unknown-keys`, and `secrets.bindings-remain`.
+Clients can identify the correction needed without parsing a generic conflict message.
+
 ## Mutation and lifecycle flows
 
 1. Create validates the active group/scope through ResourceGroups' provider-owned contract, acquires
@@ -76,8 +95,9 @@ usage is a current inventory, not a transactionally frozen deployment plan.
 
 ## Events, operations and limits
 
-`pole.secrets/v1/secret-changed` carries Secret ID, version, revision, change kind and optional binding
-ID, plus tenant/trace context. It contains no values, key names, names or purposes. Secrets have no
+`pole.secrets/v1/secret-changed` carries Secret ID, version, revision and a typed change variant
+(`created`, `rotated`, `deleted`, `binding-added`, `binding-removed`), plus tenant/trace context.
+Only binding variants carry a required binding ID. It contains no values, key names, names or purposes. Secrets have no
 search projection; metadata APIs and group inventory provide discovery. No payload is logged by the
 feature, and write-body diagnostic strings are redacted.
 

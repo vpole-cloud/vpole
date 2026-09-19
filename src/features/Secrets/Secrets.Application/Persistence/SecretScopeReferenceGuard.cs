@@ -1,12 +1,11 @@
 using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.Secrets.Application;
+namespace Pole.Features.Secrets.Application.Persistence;
 
-public sealed class SecretScopeReferenceGuard(IMongoCollection<Secret> secrets)
+internal sealed class SecretScopeReferenceGuard(IMongoCollection<Secret> secrets)
     : IIsolationScopeReferenceGuard
 {
     public async Task<Result<Unit, IsolationScopeReferenced>> EnsureUnreferencedAsync(

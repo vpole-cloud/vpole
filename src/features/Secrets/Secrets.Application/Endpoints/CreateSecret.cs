@@ -5,10 +5,18 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Secrets.Application.Persistence;
+using Pole.Features.Secrets.Domain;
 using Pole.Mediator;
 using Pole.Validation;
 
 namespace Pole.Features.Secrets.Application.Endpoints;
+
+public union CreateSecretOutcome(
+    SecretMetadata,
+    SecretNameAlreadyExists,
+    SecretReferenceRejected,
+    SecretEncryptionFailed);
 
 public sealed record CreateSecretBody(
     string ResourceGroupId,
@@ -23,7 +31,7 @@ public sealed record CreateSecretBody(
 public sealed record CreateSecretRequest(
     [FromBody] CreateSecretBody Body,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<SecretMutationOutcome>, ITenantCreateOperation;
+    : IMediatorRequest<CreateSecretOutcome>, ITenantCreateOperation;
 
 public sealed class CreateSecretValidator : AbstractValidator<CreateSecretRequest>
 {
@@ -43,20 +51,26 @@ public sealed class CreateSecretValidator : AbstractValidator<CreateSecretReques
     }
 }
 
-public sealed class CreateSecretHandler(SecretStore store)
-    : IMediatorOutcomeHandler<CreateSecretRequest, SecretMutationOutcome>
+public sealed class CreateSecretHandler(PersistCreatedSecret persist)
+    : IMediatorOutcomeHandler<CreateSecretRequest, CreateSecretOutcome>
 {
-    public async Task<SecretMutationOutcome> HandleAsync(
+    public async Task<CreateSecretOutcome> HandleAsync(
         CreateSecretRequest request,
         CancellationToken cancellationToken = default) =>
-        await store.CreateAsync(
+        (await persist(
             request.TenantId,
             request.Body.ResourceGroupId,
             request.Body.IsolationScopeId,
             request.Body.Name,
             request.Body.Purpose,
             request.Body.Values,
-            cancellationToken);
+            cancellationToken)) switch
+        {
+            Secret secret => SecretMetadata.From(secret),
+            SecretNameAlreadyExists error => error,
+            SecretReferenceRejected error => error,
+            SecretEncryptionFailed error => error,
+        };
 }
 
 public static class CreateSecretEndpoint
@@ -64,16 +78,18 @@ public static class CreateSecretEndpoint
     public static IEndpointRouteBuilder MapCreateSecretEndpoint(this IEndpointRouteBuilder app)
     {
         app.MapPost("/", async (
-            IMediator mediator,
-            IHttpProblemMapper problems,
-            [AsParameters] CreateSecretRequest request,
-            CancellationToken ct) =>
-            (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
-            {
-                SecretMetadata metadata => Results.Created($"/api/v1/secrets/{metadata.Id}", metadata),
-                SecretDeleted => Results.NoContent(),
-                SecretError error => problems.Map(error).ToHttpResult()
-            }))
+                IMediator mediator,
+                IHttpProblemMapper problems,
+                [AsParameters] CreateSecretRequest request,
+                CancellationToken ct) =>
+                (await mediator.Send(request, ct))
+                .ToHttpResult(outcome => outcome switch
+                {
+                    SecretMetadata metadata => Results.Created($"/api/v1/secrets/{metadata.Id}", metadata),
+                    SecretNameAlreadyExists error => problems.Map(error).ToHttpResult(),
+                    SecretReferenceRejected error => problems.Map(error).ToHttpResult(),
+                    SecretEncryptionFailed error => problems.Map(error).ToHttpResult()
+                }))
             .WithName("CreateSecret");
 
         return app;
