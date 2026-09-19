@@ -1,13 +1,15 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
+using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.ResultType;
 
 namespace Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 
-public union PersistSourceBuildConfigurationError(SourceBuildConfigurationAlreadyExists, SourceBuildConfigurationWebServiceNotFound);
+public union PersistSourceBuildConfigurationError(
+    SourceBuildConfigurationAlreadyExists,
+    SourceBuildConfigurationWebServiceNotFound);
 
 public delegate Task<Result<SourceBuildConfiguration, PersistSourceBuildConfigurationError>>
     CreateSourceBuildConfiguration(
@@ -26,15 +28,27 @@ internal sealed class MongoCreateSourceBuildConfiguration(
     {
         try
         {
-            return await transactions.InvokeOutcomeAsync<Result<SourceBuildConfiguration, PersistSourceBuildConfigurationError>>(async (transaction, ct) =>
-            {
-                var admitted = await admitWebService(configuration.TenantId, configuration.WebServiceId, transaction.Session, ct);
-                if (!admitted.TryGetValue(out _, out _))
-                    return transaction.Abort(new Err<PersistSourceBuildConfigurationError>(
-                        new(new SourceBuildConfigurationWebServiceNotFound(configuration.WebServiceId))));
-                await configurations.InsertOneAsync(transaction.Session, configuration, cancellationToken: ct);
-                return transaction.Commit(new Ok<SourceBuildConfiguration>(configuration));
-            }, cancellationToken);
+            return await transactions.InvokeOutcomeAsync<
+                Result<SourceBuildConfiguration, PersistSourceBuildConfigurationError>>(
+                async (transaction, ct) =>
+                {
+                    var admitted = await admitWebService(
+                        configuration.TenantId,
+                        configuration.WebServiceId,
+                        transaction.Session,
+                        ct);
+                    if (!admitted.TryGetValue(out _, out _))
+                        return transaction.Abort(new Err<PersistSourceBuildConfigurationError>(
+                            new(new SourceBuildConfigurationWebServiceNotFound(configuration.WebServiceId))));
+
+                    await configurations.InsertOneAsync(
+                        transaction.Session,
+                        configuration,
+                        cancellationToken: ct);
+
+                    return transaction.Commit(new Ok<SourceBuildConfiguration>(configuration));
+                },
+                cancellationToken);
         }
         catch (MongoWriteException exception) when (
             exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)

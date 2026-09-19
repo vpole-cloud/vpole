@@ -5,15 +5,15 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Events;
-using Pole.Features.WebServices.Domain;
-using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.SourceBuilds.Contracts;
-using Pole.Features.Quotas.Contracts;
+using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence.Lifecycle;
 using Pole.Features.WebServices.Application.Persistence.Reads;
+using Pole.Features.WebServices.Application.Persistence;
+using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -113,7 +113,10 @@ public sealed class DeleteWebServiceHandler(
                         Error(new DeleteWebServiceError(replaceError)));
 
                 var buildGuard = await ensureNoActiveSourceBuilds(
-                    request.TenantId, request.Id, transaction.Session, transactionCancellationToken);
+                    request.TenantId,
+                    request.Id,
+                    transaction.Session,
+                    transactionCancellationToken);
                 if (!buildGuard.TryGetValue(out _, out var buildError))
                     return transaction.Abort(Error(new DeleteWebServiceError(buildError)));
 

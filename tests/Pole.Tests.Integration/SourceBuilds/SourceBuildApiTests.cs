@@ -1,15 +1,15 @@
-using System.Collections.Immutable;
-using System.Net;
-using System.Net.Http.Json;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.GitProviders.Domain;
 using Pole.Features.Request;
 using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Application.Endpoints;
 using Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
+using Pole.Features.SourceBuilds.Application.Endpoints;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Tests.Integration.Infrastructure;
+using System.Collections.Immutable;
+using System.Net.Http.Json;
+using System.Net;
 using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
@@ -26,22 +26,31 @@ public sealed class SourceBuildApiTests(MongoReplicaSetFixture fixture)
         var repository = CreateSourceRepository(TestData.TenantId);
         await Fixture.Database.WebServices().InsertOneAsync(webService);
         await Fixture.DbContext.SourceRepositories.InsertOneAsync(repository);
-        var response = await Client.PostAsJsonAsync("/api/v1/source-build-configurations",
+        var response = await Client.PostAsJsonAsync(
+            "/api/v1/source-build-configurations",
             new CreateSourceBuildConfigurationBody(repository.Id, webService.Id));
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var configuration = (await response.Content.ReadFromJsonAsync<SourceBuildConfigurationDto>())!;
         if (physicallyDeleted)
             await Fixture.Database.WebServices().DeleteOneAsync(x => x.Id == webService.Id);
         else
-            await Fixture.Database.WebServices().ReplaceOneAsync(x => x.Id == webService.Id,
+            await Fixture.Database.WebServices().ReplaceOneAsync(
+                x => x.Id == webService.Id,
                 webService.BeginDeletion(DateTime.UtcNow));
 
-        var build = await Client.PostAsync($"/api/v1/source-build-configurations/{configuration.Id}/builds", null);
+        var build = await Client.PostAsync(
+            $"/api/v1/source-build-configurations/{configuration.Id}/builds",
+            null);
         Assert.Equal(HttpStatusCode.NotFound, build.StatusCode);
         Assert.Equal(0, await Fixture.DbContext.SourceBuildJobs.CountDocumentsAsync(x => true));
-        Assert.Equal(0, await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(x => x.EventType == "pole.source-builds/v1/source-build-requested"));
+        Assert.Equal(
+            0,
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
+                x => x.EventType == "pole.source-builds/v1/source-build-requested"));
+
         await Fixture.DbContext.SourceBuildConfigurations.DeleteOneAsync(x => x.Id == configuration.Id);
-        var create = await Client.PostAsJsonAsync("/api/v1/source-build-configurations",
+        var create = await Client.PostAsJsonAsync(
+            "/api/v1/source-build-configurations",
             new CreateSourceBuildConfigurationBody(repository.Id, webService.Id));
         Assert.Equal(HttpStatusCode.NotFound, create.StatusCode);
         Assert.Equal(0, await Fixture.DbContext.SourceBuildConfigurations.CountDocumentsAsync(x => true));

@@ -5,14 +5,18 @@ using Pole.ResultType;
 
 namespace Pole.Features.WebServices.Application.Persistence.Mutations;
 
-internal sealed class MongoAdmitSourceBuildWebService(IMongoCollection<WebService> webServices)
+internal sealed class MongoAdmitSourceBuildWebService(
+    IMongoCollection<WebService> webServices)
 {
     public async Task<Result<Unit, SourceBuildWebServiceNotFound>> InvokeAsync(
-        string tenantId, string webServiceId, IClientSessionHandle session,
+        string tenantId,
+        string webServiceId,
+        IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         if (!session.IsInTransaction)
             throw new InvalidOperationException("Source build admission requires a transaction.");
+
         // A real write (not a read/no-op) conflicts with concurrent deletion. Revision is
         // the persistence fence; ActiveRevision and the desired deployment stay unchanged.
         var result = await webServices.UpdateOneAsync(

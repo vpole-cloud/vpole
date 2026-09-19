@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Contracts;
@@ -95,7 +96,7 @@ public sealed class CreateSourceBuildConfigurationHandler(
             sourceRepository.SelectedPlan.ToBuildRecipe(),
             request.CurrentUserId.Value,
             new SourceBuildConfigurationFactory.CreateOptions(
-                MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
+                ObjectId.GenerateNewId().ToString(),
                 now));
         var created = await createSourceBuildConfiguration(configuration, cancellationToken);
         return created switch
@@ -103,8 +104,10 @@ public sealed class CreateSourceBuildConfigurationHandler(
             Ok<SourceBuildConfiguration> success => success.Value.ToDto(),
             Err<PersistSourceBuildConfigurationError> error => error.Value switch
             {
-                SourceBuildConfigurationAlreadyExists existsError => new CreateSourceBuildConfigurationError(existsError),
-                SourceBuildConfigurationWebServiceNotFound missing => new CreateSourceBuildConfigurationError(missing)
+                SourceBuildConfigurationAlreadyExists existsError =>
+                    new CreateSourceBuildConfigurationError(existsError),
+                SourceBuildConfigurationWebServiceNotFound missing =>
+                    new CreateSourceBuildConfigurationError(missing)
             }
         };
     }
