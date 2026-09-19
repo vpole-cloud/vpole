@@ -1,3 +1,6 @@
+using System.Collections.Immutable;
+using System.Net.Http.Json;
+using System.Net;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.GitProviders.Domain;
@@ -7,9 +10,6 @@ using Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
 using Pole.Features.SourceBuilds.Application.Endpoints;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Tests.Integration.Infrastructure;
-using System.Collections.Immutable;
-using System.Net.Http.Json;
-using System.Net;
 using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;

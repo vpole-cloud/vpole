@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -15,8 +17,6 @@ using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
-using System.Collections.Immutable;
-using System.Text.Json;
 using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
@@ -65,7 +65,7 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
         // Configuration remains until final deletion, but the target already rejects admission.
         var deniedJob = Job(configuration);
         var denied = await queue(deniedJob, Requested(deniedJob));
-        Assert.False(denied.TryGetValue(out _, out _));
+        Assert.IsType<Err<SourceBuildWebServiceNotFound>>(denied.Value);
         Assert.Equal(
             1,
             await DbContext.SourceBuildJobs.CountDocumentsAsync(x => x.TenantId == TestData.TenantId));
@@ -120,7 +120,8 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
                     20))).Items.Single().Id);
 
         var missingJob = Job(configuration);
-        Assert.False((await queue(missingJob, Requested(missingJob))).TryGetValue(out _, out _));
+        Assert.IsType<Err<SourceBuildWebServiceNotFound>>(
+            (await queue(missingJob, Requested(missingJob))).Value);
     }
 
     [Fact]
@@ -172,23 +173,22 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
         Assert.True(jobs == 1 || stored.Lifecycle is DeletingWebServiceLifecycle);
     }
 
-    private static SourceBuildConfiguration Configuration(string serviceId) => new(
-        ObjectId.GenerateNewId().ToString(),
-        TestData.TenantId,
-        ObjectId.GenerateNewId().ToString(),
-        serviceId,
-        new(
-            "Dockerfile:.",
-            SourceBuildRecipeKind.Dockerfile,
-            ".",
-            "Dockerfile",
-            ImmutableList<string>.Empty,
-            null,
-            "FROM scratch",
-            false),
-        TestData.UserId,
-        DateTime.UtcNow,
-        DateTime.UtcNow);
+    private static SourceBuildConfiguration Configuration(string serviceId) =>
+        SourceBuildConfigurationFactory.Create(
+            TestData.TenantId,
+            ObjectId.GenerateNewId().ToString(),
+            serviceId,
+            new(
+                "Dockerfile:.",
+                SourceBuildRecipeKind.Dockerfile,
+                ".",
+                "Dockerfile",
+                ImmutableList<string>.Empty,
+                null,
+                "FROM scratch",
+                false),
+            TestData.UserId,
+            SourceBuildConfigurationFactory.DefaultOptions);
 
     private static SourceBuildJob Job(SourceBuildConfiguration configuration) =>
         SourceBuildJobFactory.CreateManual(

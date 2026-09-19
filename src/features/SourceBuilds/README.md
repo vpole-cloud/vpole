@@ -4,6 +4,16 @@ Source Builds owns build configurations and immutable-input jobs. Configuration 
 scoped by `X-Pole-Tenant-ID`; job history can be filtered by configuration or WebService ID even
 after those resources are removed. Manual builds currently provide the queue entrypoint.
 
+## Integration boundary
+
+Source Builds owns the contribution contracts used by target adapters. WebServices implements
+`AdmitSourceBuildWebService` to fence its own active target inside a Source Builds transaction,
+and adapts its deletion event to `CleanupSourceBuildConfigurations`. The cleanup capability and
+Mongo filters remain Source Builds-owned; the adapter never reads Source Builds collections.
+This follows the platform contribution pattern without coupling Source Builds to target features.
+Configuration creation and queueing rely on transactional admission rather than an earlier
+existence check that can become stale before the write.
+
 ## WebService deletion
 
 Deleting a WebService rejects queued, running, or deployment-waiting builds with HTTP 409
