@@ -176,6 +176,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             bootstrap.Password,
             _shutdown.Token);
         PlatformAdminAccessToken = bootstrapToken;
+        await AllowBootstrapTargetWithoutEnforcementAsync(_shutdown.Token);
 
         Alpha = await CreatePlatformUserAsync("alpha", bootstrapToken, directGrantClient, _shutdown.Token);
         Beta = await CreatePlatformUserAsync("beta", bootstrapToken, directGrantClient, _shutdown.Token);
@@ -257,6 +258,43 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         var request = new HttpRequestMessage(method, path);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", PlatformAdminAccessToken);
         return request;
+    }
+
+    public async Task<JsonElement> AllowTargetWithoutEnforcementAsync(
+        string targetId,
+        long revision,
+        CancellationToken cancellationToken)
+    {
+        // Workload E2E does not verify CNI enforcement; explicitly opt out for this test target.
+        using var request = CreatePlatformAdminRequest(
+            HttpMethod.Put,
+            $"/api/v1/platform/deployment-targets/{targetId}/network-policy");
+        request.Content = JsonContent.Create(new
+        {
+            enforcement = "Unknown",
+            allowIsolationNotEnforced = true,
+            revision
+        });
+        using var response = await Api.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
+    }
+
+    private async Task AllowBootstrapTargetWithoutEnforcementAsync(
+        CancellationToken cancellationToken)
+    {
+        using var request = CreatePlatformAdminRequest(
+            HttpMethod.Get,
+            "/api/v1/platform/deployment-targets/");
+        using var response = await Api.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var targets = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
+        var target = targets.EnumerateArray().Single(item => item.GetProperty("isDefault").GetBoolean());
+        await AllowTargetWithoutEnforcementAsync(
+            target.GetProperty("id").GetString()
+                ?? throw new InvalidOperationException("The bootstrap deployment target has no ID."),
+            target.GetProperty("revision").GetInt64(),
+            cancellationToken);
     }
 
     public async Task EnsureSourceBuildInfrastructureReadyAsync(CancellationToken cancellationToken)

@@ -87,7 +87,8 @@ internal static class ComputeProfileTestData
             DeploymentTargetTestData.CreateWorkloadConfiguration(),
             enabled: true,
             acceptsWorkloads: true,
-            new DeploymentTargetFactory.CreateOptions(id, CreatedAtUtc));
+            new DeploymentTargetFactory.CreateOptions(id, CreatedAtUtc))
+            .AttestForTests();
     }
 }
 
