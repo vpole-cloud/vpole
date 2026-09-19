@@ -1,6 +1,11 @@
 namespace Pole.Features.DeploymentTargets.Domain;
 
-public enum NetworkPolicyEnforcement { Unknown, Supported, Unsupported }
+public enum NetworkPolicyEnforcement
+{
+    Unknown,
+    Supported,
+    Unsupported
+}
 
 /// <summary>Platform operator attestation, not proof obtained from Kubernetes API discovery.</summary>
 public sealed record DeploymentTargetNetworkPolicy(
@@ -14,7 +19,8 @@ public sealed record DeploymentTargetNetworkPolicy(
         new(NetworkPolicyEnforcement.Unknown, "", 0, null, false);
 
     public bool Matches(DeploymentTarget target) =>
-        ClusterIdentity == target.ClusterIdentity && ConnectionVersion == target.Connection.Version &&
+        ClusterIdentity == target.ClusterIdentity &&
+        ConnectionVersion == target.Connection.Version &&
         target.Health.FailureCode != "ClusterIdentityMismatch";
 
     public NetworkPolicyEnforcement EffectiveEnforcement(DeploymentTarget target) =>
@@ -28,7 +34,8 @@ public sealed record DeploymentTargetNetworkPolicy(
         EffectiveEnforcement(target) == NetworkPolicyEnforcement.Supported
             ? "EnforcementAttested"
             : Matches(target) && AllowIsolationNotEnforced
-                ? "IsolationNotEnforced" : "EnforcementRequired";
+                ? "IsolationNotEnforced"
+                : "EnforcementRequired";
 
     public string Reason(DeploymentTarget target) => EffectiveEnforcement(target) switch
     {

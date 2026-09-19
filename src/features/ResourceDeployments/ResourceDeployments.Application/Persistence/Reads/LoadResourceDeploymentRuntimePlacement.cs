@@ -63,7 +63,8 @@ internal sealed class MongoLoadResourceDeploymentRuntimePlacement(
                 _ => throw new InvalidOperationException(
                     $"Unsupported resource deployment state '{deployment.State.GetType().FullName}'.")
             },
-            deployment.DesiredOperation.ToString(), deployment.IsolationScopeId);
+            deployment.DesiredOperation.ToString(),
+            deployment.IsolationScopeId);
 
     private static ResourceDeploymentComputeConfiguration ToContract(
         ResolvedComputeConfiguration compute,

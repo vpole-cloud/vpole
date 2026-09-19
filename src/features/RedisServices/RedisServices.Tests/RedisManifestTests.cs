@@ -1,3 +1,4 @@
+using Pole.Features.Core.Kubernetes;
 using System.Collections.Immutable;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ComputeProfiles.Contracts;
@@ -18,7 +19,7 @@ public sealed class RedisManifestTests
     public void PlacementIdentity_IsSharedByPodAndService_AndSelectorsSurviveRename()
     {
         var subject = CreateSubject();
-        var identity = new Pole.Features.Core.Kubernetes.WorkloadIdentityLabels(
+        var identity = new WorkloadIdentityLabels(
             subject.Redis.TenantId, subject.Redis.ResourceGroupId, "scope-44", "cell-44", "target-44",
             "Redis", subject.Redis.Id, "deployment-44");
         subject = subject with { PlacementIdentity = identity };
@@ -26,7 +27,9 @@ public sealed class RedisManifestTests
         var service = subject.ToService();
         Assert.Equal(identity.ToDictionary(), workload.Spec.Template.Metadata.Labels);
         Assert.Equal(identity.ToDictionary(), service.Metadata.Labels);
-        Assert.All(service.Spec.Selector, pair => Assert.Equal(pair.Value, workload.Spec.Template.Metadata.Labels[pair.Key]));
+        Assert.All(
+            service.Spec.Selector,
+            pair => Assert.Equal(pair.Value, workload.Spec.Template.Metadata.Labels[pair.Key]));
         var renamed = subject with { Redis = subject.Redis with { Name = "renamed" } };
         Assert.Equal(workload.Spec.Selector.MatchLabels, renamed.ToStatefulSet().Spec.Selector.MatchLabels);
         Assert.Equal(service.Spec.Selector, renamed.ToService().Spec.Selector);
@@ -199,7 +202,15 @@ public sealed class RedisManifestTests
                         TolerationSeconds: null)
                 ],
                 RuntimeClassName: "workload-runtime"),
-            new Pole.Features.Core.Kubernetes.WorkloadIdentityLabels(TenantId, "rg-1", "scope-44", "cell-44", "target-44", "Redis", "redis-1", "deployment-44"));
+            new WorkloadIdentityLabels(
+                TenantId,
+                "rg-1",
+                "scope-44",
+                "cell-44",
+                "target-44",
+                "Redis",
+                "redis-1",
+                "deployment-44"));
 
     private static Redis BuildRedis(string id, string name, RedisSpec spec) =>
         RedisFactory.Create(

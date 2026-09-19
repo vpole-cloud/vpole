@@ -1,3 +1,4 @@
+using Pole.ResultType;
 using k8s;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -152,17 +153,21 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
             () => discoverStorageClasses(
                 DeploymentTargetId));
         var functionFailure = await Assert.ThrowsAsync<TestProviderInfrastructureException>(
-            () => new FunctionRevisionKubernetesManager(provider,
-                (id, ct) => Task.FromResult<Pole.ResultType.Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
-                    new Pole.ResultType.Ok<DeploymentTargetLookupDto>(DeploymentTargetNetworkPolicyTests.Target().AttestForTests().ToLookupDto())), []).ApplyAsync(
-                new FunctionRevisionInKubernetes(
-                    null!,
-                    null!,
-                    new FunctionResourcePlacement(
-                        "507f1f77bcf86cd799439091",
-                        "507f1f77bcf86cd799439092",
-                        DeploymentTargetId,
-                        "functions", "507f1f77bcf86cd799439044"))));
+            () => new FunctionRevisionKubernetesManager(
+                provider,
+                (id, ct) => Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
+                    new Ok<DeploymentTargetLookupDto>(
+                        DeploymentTargetNetworkPolicyTests.Target().AttestForTests().ToLookupDto())),
+                []).ApplyAsync(
+                    new FunctionRevisionInKubernetes(
+                        null!,
+                        null!,
+                        new FunctionResourcePlacement(
+                            "507f1f77bcf86cd799439091",
+                            "507f1f77bcf86cd799439092",
+                            DeploymentTargetId,
+                            "functions",
+                            "507f1f77bcf86cd799439044"))));
 
         Assert.Same(expected, storageFailure);
         Assert.Equal([DeploymentTargetId, DeploymentTargetId], provider.RequestedTargetIds);

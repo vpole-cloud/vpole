@@ -83,7 +83,10 @@ public sealed record PlacementSummaryDto(
 }
 
 public sealed record ResourceDeploymentIsolationDto(
-    string Enforcement, string Readiness, string Reason, DateTime? LastCheckedAtUtc);
+    string Enforcement,
+    string Readiness,
+    string Reason,
+    DateTime? LastCheckedAtUtc);
 
 public sealed record ResourceDeploymentDto(
     string Id,

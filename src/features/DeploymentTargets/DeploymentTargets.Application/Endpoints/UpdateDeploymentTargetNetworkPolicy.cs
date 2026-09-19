@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -16,27 +17,39 @@ using Pole.Validation;
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 
 public sealed record UpdateDeploymentTargetNetworkPolicyBody(
-    [property: System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<NetworkPolicyEnforcement>))]
-    NetworkPolicyEnforcement Enforcement, bool AllowIsolationNotEnforced, long Revision);
+    [property: JsonConverter(typeof(JsonStringEnumConverter<NetworkPolicyEnforcement>))]
+    NetworkPolicyEnforcement Enforcement,
+    bool AllowIsolationNotEnforced,
+    long Revision);
+
 public sealed record UpdateDeploymentTargetNetworkPolicyRequest(
-    [FromRoute] string Id, [FromBody] UpdateDeploymentTargetNetworkPolicyBody Body)
+    [FromRoute] string Id,
+    [FromBody] UpdateDeploymentTargetNetworkPolicyBody Body)
     : IMediatorRequest<UpdateDeploymentTargetNetworkPolicyOutcome>;
+
 public union UpdateDeploymentTargetNetworkPolicyOutcome(
-    DeploymentTargetDto, DeploymentTargetNotFound, DeploymentTargetRevisionConflict);
+    DeploymentTargetDto,
+    DeploymentTargetNotFound,
+    DeploymentTargetRevisionConflict);
 
 public sealed class UpdateDeploymentTargetNetworkPolicyHandler(
     LoadDeploymentTargetById loadTarget,
     PersistUpdatedDeploymentTarget persistTarget,
     TimeProvider timeProvider)
-    : IMediatorOutcomeHandler<UpdateDeploymentTargetNetworkPolicyRequest, UpdateDeploymentTargetNetworkPolicyOutcome>
+    : IMediatorOutcomeHandler<
+        UpdateDeploymentTargetNetworkPolicyRequest,
+        UpdateDeploymentTargetNetworkPolicyOutcome>
 {
     public async Task<UpdateDeploymentTargetNetworkPolicyOutcome> HandleAsync(
-        UpdateDeploymentTargetNetworkPolicyRequest request, CancellationToken cancellationToken = default)
+        UpdateDeploymentTargetNetworkPolicyRequest request,
+        CancellationToken cancellationToken = default)
     {
         var target = await loadTarget(request.Id, cancellationToken);
-        if (target is null) return new DeploymentTargetNotFound(request.Id);
+        if (target is null)
+            return new DeploymentTargetNotFound(request.Id);
         if (target.Revision != request.Body.Revision)
             return new DeploymentTargetRevisionConflict(request.Id);
+
         var now = DeploymentTargetClock.UtcNowAfter(timeProvider, target.UpdatedAtUtc);
         var replacement = target with
         {
@@ -46,12 +59,17 @@ public sealed class UpdateDeploymentTargetNetworkPolicyHandler(
             {
                 Revision = checked(target.WorkloadConfiguration.Revision + 1),
                 NetworkPolicy = new DeploymentTargetNetworkPolicy(
-                    request.Body.Enforcement, target.ClusterIdentity, target.Connection.Version,
-                    now, request.Body.AllowIsolationNotEnforced)
+                    request.Body.Enforcement,
+                    target.ClusterIdentity,
+                    target.Connection.Version,
+                    now,
+                    request.Body.AllowIsolationNotEnforced)
             }
         };
         var result = await persistTarget(target, replacement, cancellationToken);
-        if (result.TryGetValue(out var persisted, out var error)) return persisted.ToDto();
+        if (result.TryGetValue(out var persisted, out var error))
+            return persisted.ToDto();
+
         return error switch
         {
             DeploymentTargetRevisionConflict conflict => conflict,
@@ -77,10 +95,12 @@ public sealed class UpdateDeploymentTargetNetworkPolicyValidator
 
 public static class UpdateDeploymentTargetNetworkPolicyEndpoint
 {
-    public static IEndpointRouteBuilder MapUpdateDeploymentTargetNetworkPolicyEndpoint(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapUpdateDeploymentTargetNetworkPolicyEndpoint(
+        this IEndpointRouteBuilder app)
     {
         app.MapPut("/{Id}/network-policy", async (
-            IMediator mediator, IHttpProblemMapper problems,
+            IMediator mediator,
+            IHttpProblemMapper problems,
             [AsParameters] UpdateDeploymentTargetNetworkPolicyRequest request,
             CancellationToken cancellationToken) =>
         {
@@ -88,9 +108,12 @@ public static class UpdateDeploymentTargetNetworkPolicyEndpoint
             return result.ToHttpResult(outcome => outcome switch
             {
                 DeploymentTargetDto dto => Results.Ok(dto),
-                DeploymentTargetNotFound or DeploymentTargetRevisionConflict => problems.Map(outcome).ToHttpResult()
+                DeploymentTargetNotFound or DeploymentTargetRevisionConflict =>
+                    problems.Map(outcome).ToHttpResult()
             });
-        }).WithName("UpdateDeploymentTargetNetworkPolicy").Produces<DeploymentTargetDto>();
+        })
+            .WithName("UpdateDeploymentTargetNetworkPolicy")
+            .Produces<DeploymentTargetDto>();
         return app;
     }
 }

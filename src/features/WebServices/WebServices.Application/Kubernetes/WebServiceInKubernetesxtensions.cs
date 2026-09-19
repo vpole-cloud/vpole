@@ -14,13 +14,15 @@ public static class WebServiceInKubernetesxtensions
             string kubernetesNamespace,
             ResourceDeploymentIngressConfiguration ingressConfiguration,
             ResourceDeploymentComputeConfiguration computeConfiguration,
-            int fixedReplicas, WorkloadIdentityLabels placementIdentity) =>
+            int fixedReplicas,
+            WorkloadIdentityLabels placementIdentity) =>
             WebServiceInKubernetes.Create(
                 webService,
                 kubernetesNamespace,
                 ingressConfiguration,
                 computeConfiguration,
-                fixedReplicas, placementIdentity);
+                fixedReplicas,
+                placementIdentity);
     }
     extension(ProbeConfig probeConfig)
     {

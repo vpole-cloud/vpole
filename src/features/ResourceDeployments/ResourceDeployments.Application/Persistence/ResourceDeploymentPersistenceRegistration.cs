@@ -1,3 +1,4 @@
+using Pole.Features.ResourceDeployments.Application.Common;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
@@ -20,7 +21,7 @@ internal static class ResourceDeploymentPersistenceRegistration
     internal static IServiceCollection AddResourceDeploymentPersistence(
         this IServiceCollection services)
     {
-        services.TryAddScoped<Pole.Features.ResourceDeployments.Application.Common.ResourceDeploymentIsolationProjection>();
+        services.TryAddScoped<ResourceDeploymentIsolationProjection>();
         services.TryAddSingleton(serviceProvider => serviceProvider
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<ResourceDeployment>("ResourceDeployments"));

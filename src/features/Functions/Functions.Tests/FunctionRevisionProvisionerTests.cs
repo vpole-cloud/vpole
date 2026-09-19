@@ -178,7 +178,8 @@ public sealed class FunctionRevisionProvisionerTests
                 app.Placement.ResourceDeploymentId,
                 app.Placement.RuntimeCellId,
                 app.Placement.DeploymentTargetId,
-                "functions", "507f1f77bcf86cd799439044"));
+                "functions",
+                "507f1f77bcf86cd799439044"));
     }
 
     private sealed class ReadyActivator(

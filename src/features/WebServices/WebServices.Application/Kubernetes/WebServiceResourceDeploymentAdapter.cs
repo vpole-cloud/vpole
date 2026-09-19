@@ -51,11 +51,16 @@ public sealed class WebServiceResourceDeploymentAdapter(
             context.Deployment.Placement.KubernetesNamespace,
             context.Deployment.Placement.Ingress!,
             context.Deployment.Placement.Compute,
-            context.Deployment.FixedReplicas, new WorkloadIdentityLabels(
-                context.Deployment.TenantId, context.Deployment.ResourceGroupId,
-                context.Deployment.IsolationScopeId, context.Deployment.RuntimeCellId,
+            context.Deployment.FixedReplicas,
+            new WorkloadIdentityLabels(
+                context.Deployment.TenantId,
+                context.Deployment.ResourceGroupId,
+                context.Deployment.IsolationScopeId,
+                context.Deployment.RuntimeCellId,
                 context.Deployment.Placement.DeploymentTargetId,
-                "WebService", context.Deployment.ResourceId, context.Deployment.Id));
+                "WebService",
+                context.Deployment.ResourceId,
+                context.Deployment.Id));
 
         if (webService.Spec.Image.SecretName is not null)
         {

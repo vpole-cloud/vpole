@@ -10,7 +10,8 @@ internal static class DeploymentTargetTestData
     {
         WorkloadConfiguration = target.WorkloadConfiguration with
         {
-            NetworkPolicy = new DeploymentTargetNetworkPolicy(NetworkPolicyEnforcement.Supported,
+            NetworkPolicy = new DeploymentTargetNetworkPolicy(
+                NetworkPolicyEnforcement.Supported,
                 target.ClusterIdentity, target.Connection.Version, target.CreatedAtUtc, false)
         }
     };

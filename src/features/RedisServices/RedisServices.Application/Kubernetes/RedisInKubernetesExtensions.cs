@@ -11,11 +11,13 @@ public static class RedisInKubernetesExtensions
         public RedisInKubernetes ToKubernetes(
             string kubernetesNamespace,
             ResourceDeploymentStorageConfiguration storageConfiguration,
-            ResourceDeploymentComputeConfiguration computeConfiguration, WorkloadIdentityLabels placementIdentity) =>
+            ResourceDeploymentComputeConfiguration computeConfiguration,
+            WorkloadIdentityLabels placementIdentity) =>
             RedisInKubernetes.Create(
                 redis,
                 kubernetesNamespace,
                 storageConfiguration,
-                computeConfiguration, placementIdentity);
+                computeConfiguration,
+                placementIdentity);
     }
 }

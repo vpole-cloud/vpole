@@ -1,3 +1,4 @@
+using Pole.Features.Core.Kubernetes;
 using System.Collections.Immutable;
 using System.Net;
 using k8s;
@@ -28,7 +29,15 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
             NamespaceName,
             storage,
             compute,
-            new Pole.Features.Core.Kubernetes.WorkloadIdentityLabels(redis.TenantId, redis.ResourceGroupId, "scope-44", "cell-44", "target-44", "Redis", redis.Id, "deployment-44"));
+            new WorkloadIdentityLabels(
+                redis.TenantId,
+                redis.ResourceGroupId,
+                "scope-44",
+                "cell-44",
+                "target-44",
+                "Redis",
+                redis.Id,
+                "deployment-44"));
 
         await RedisKubernetesResourceManager.CreateAsync(Kubernetes, redisInKubernetes);
 
@@ -65,8 +74,19 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
 
         await RedisKubernetesResourceManager.ReplaceAsync(
             Kubernetes,
-            redis.ToKubernetes(NamespaceName, storage, updatedCompute,
-            new Pole.Features.Core.Kubernetes.WorkloadIdentityLabels(redis.TenantId, redis.ResourceGroupId, "scope-44", "cell-44", "target-44", "Redis", redis.Id, "deployment-44")));
+            redis.ToKubernetes(
+                NamespaceName,
+                storage,
+                updatedCompute,
+                new WorkloadIdentityLabels(
+                    redis.TenantId,
+                    redis.ResourceGroupId,
+                    "scope-44",
+                    "cell-44",
+                    "target-44",
+                    "Redis",
+                    redis.Id,
+                    "deployment-44")));
 
         var updatedStatefulSet = await Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(redis.Name, NamespaceName);
         var updatedService = await Kubernetes.CoreV1.ReadNamespacedServiceAsync(

@@ -33,8 +33,12 @@ public sealed class FunctionRevisionManifestTests
         Assert.Equal(subject.App.Id, deployment.Metadata.Labels["pole.io/function-app-id"]);
         Assert.Equal(subject.Revision.Id, deployment.Metadata.Labels["pole.io/function-revision-id"]);
         Assert.Equal("function-app", deployment.Metadata.Labels["pole.io/resource-type"]);
-        Assert.Equal(subject.Placement.IsolationScopeId, deployment.Spec.Template.Metadata.Labels["pole.io/isolation-scope-id"]);
-        Assert.Equal(subject.Placement.ResourceDeploymentId, deployment.Spec.Template.Metadata.Labels["pole.io/resource-deployment-id"]);
+        Assert.Equal(
+            subject.Placement.IsolationScopeId,
+            deployment.Spec.Template.Metadata.Labels["pole.io/isolation-scope-id"]);
+        Assert.Equal(
+            subject.Placement.ResourceDeploymentId,
+            deployment.Spec.Template.Metadata.Labels["pole.io/resource-deployment-id"]);
         Assert.Equal(deployment.Spec.Template.Metadata.Labels, subject.ToService().Metadata.Labels);
         Assert.Equal(deployment.Spec.Selector.MatchLabels, deployment.Spec.Template.Metadata.Labels
             .Where(pair => deployment.Spec.Selector.MatchLabels.ContainsKey(pair.Key))
@@ -192,6 +196,7 @@ public sealed class FunctionRevisionManifestTests
                 app.Placement.ResourceDeploymentId,
                 app.Placement.RuntimeCellId,
                 app.Placement.DeploymentTargetId,
-                "pole-tenant-rg", "507f1f77bcf86cd799439044"));
+                "pole-tenant-rg",
+                "507f1f77bcf86cd799439044"));
     }
 }

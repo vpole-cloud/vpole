@@ -638,7 +638,8 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
                     app.Placement.ResourceDeploymentId,
                     app.Placement.RuntimeCellId,
                     app.Placement.DeploymentTargetId,
-                    "pole-tenant-rg", "507f1f77bcf86cd799439044")));
+                    "pole-tenant-rg",
+                    "507f1f77bcf86cd799439044")));
     }
 
     private sealed class SnapshotOrderEndpointSelector : IFunctionEndpointSelector

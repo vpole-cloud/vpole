@@ -81,13 +81,20 @@ public sealed class ResourceDeploymentReconciler(
         // creating/updating workloads; deletion remains possible on an unverified target.
         if (operation == ResourceDeploymentOperation.Apply)
         {
-            var targetResult = await lookupDeploymentTarget(claimed.ResolvedPlacement.DeploymentTargetId, cancellationToken);
+            var targetResult = await lookupDeploymentTarget(
+                claimed.ResolvedPlacement.DeploymentTargetId,
+                cancellationToken);
             if (!targetResult.TryGetValue(out var target, out _) ||
                 target.NetworkPolicy.Readiness is not ("EnforcementAttested" or "IsolationNotEnforced"))
             {
-                await PersistFailureAsync(claimed, generation, operation,
-                    "NetworkPolicyEnforcementRequired", "NetworkPolicy enforcement has not been established for this target.",
-                    retryable: true, cancellationToken);
+                await PersistFailureAsync(
+                    claimed,
+                    generation,
+                    operation,
+                    "NetworkPolicyEnforcementRequired",
+                    "NetworkPolicy enforcement has not been established for this target.",
+                    retryable: true,
+                    cancellationToken);
                 return;
             }
         }

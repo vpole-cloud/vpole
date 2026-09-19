@@ -24,13 +24,18 @@ internal sealed class MongoLoadResourceDeploymentSets(
             .SortBy(deployment => deployment.ResourceId)
             .ThenBy(deployment => deployment.Id)
             .ToListAsync(cancellationToken);
-        var policies = await isolation.LoadAsync(deployments.Select(item => item.ResolvedPlacement.DeploymentTargetId), cancellationToken);
+        var policies = await isolation.LoadAsync(
+            deployments.Select(item => item.ResolvedPlacement.DeploymentTargetId),
+            cancellationToken);
         return deployments
             .GroupBy(deployment => deployment.ResourceId, StringComparer.Ordinal)
             .ToDictionary(
                 group => group.Key,
                 group => (IReadOnlyList<PlacementSummaryDto>)group
-                    .Select(deployment => deployment.ToPlacementSummaryDto() with { Isolation = policies[deployment.ResolvedPlacement.DeploymentTargetId] })
+                    .Select(deployment => deployment.ToPlacementSummaryDto() with
+                    {
+                        Isolation = policies[deployment.ResolvedPlacement.DeploymentTargetId]
+                    })
                     .ToArray(),
                 StringComparer.Ordinal);
     }

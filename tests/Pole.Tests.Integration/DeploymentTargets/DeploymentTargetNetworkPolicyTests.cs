@@ -17,7 +17,10 @@ public sealed class DeploymentTargetNetworkPolicyTests
     [InlineData(NetworkPolicyEnforcement.Unknown, true, "IsolationNotEnforced", true)]
     [InlineData(NetworkPolicyEnforcement.Unsupported, true, "IsolationNotEnforced", true)]
     public void AdmissionAndProjection_AgreeWithoutClaimingIsolation(
-        NetworkPolicyEnforcement enforcement, bool allow, string readiness, bool admitted)
+        NetworkPolicyEnforcement enforcement,
+        bool allow,
+        string readiness,
+        bool admitted)
     {
         var target = Target();
         target = Attest(target, enforcement, allow);
@@ -26,8 +29,12 @@ public sealed class DeploymentTargetNetworkPolicyTests
         Assert.Equal(enforcement.ToString(), dto.Enforcement);
         Assert.Equal("OperatorAttestation", dto.EvidenceSource);
         Assert.Equal(target.CreatedAtUtc, dto.LastCheckedAtUtc);
-        Assert.Equal(admitted, DeploymentTargetAdmissionSupport.AdmitForWorkload(target) is Ok<DeploymentTargetLookupDto>);
-        Assert.Equal(admitted, DeploymentTargetAdmissionSupport.AdmitDefaultForNewWorkload(target) is Ok<DeploymentTargetLookupDto>);
+        Assert.Equal(
+            admitted,
+            DeploymentTargetAdmissionSupport.AdmitForWorkload(target) is Ok<DeploymentTargetLookupDto>);
+        Assert.Equal(
+            admitted,
+            DeploymentTargetAdmissionSupport.AdmitDefaultForNewWorkload(target) is Ok<DeploymentTargetLookupDto>);
     }
 
     [Fact]
@@ -45,11 +52,14 @@ public sealed class DeploymentTargetNetworkPolicyTests
         var first = Attest(Target(), NetworkPolicyEnforcement.Supported, false);
         var second = Target();
         Assert.Equal("Unknown", second.ToNetworkPolicyDto().Enforcement);
-        var rotated = first.ReplaceConnectionCredential(first.ClusterIdentity,
+        var rotated = first.ReplaceConnectionCredential(
+            first.ClusterIdentity,
             DeploymentTargetConnectionFactory.CreateInCluster(2), first.UpdatedAtUtc.AddMinutes(1));
         Assert.Equal("Unknown", rotated.ToNetworkPolicyDto().Enforcement);
         Assert.Equal("EnforcementRequired", rotated.ToNetworkPolicyDto().Readiness);
-        Assert.Equal("Unknown", (first with { ClusterIdentity = second.ClusterIdentity }).ToNetworkPolicyDto().Enforcement);
+        Assert.Equal(
+            "Unknown",
+            (first with { ClusterIdentity = second.ClusterIdentity }).ToNetworkPolicyDto().Enforcement);
         var overridden = Attest(first, NetworkPolicyEnforcement.Unsupported, true);
         Assert.False((overridden with { Connection = rotated.Connection }).ToNetworkPolicyDto().OverrideEnabled);
     }
@@ -58,18 +68,36 @@ public sealed class DeploymentTargetNetworkPolicyTests
     {
         var id = ObjectId.GenerateNewId().ToString();
         var now = DateTime.UtcNow;
-        return DeploymentTargetFactory.Create("Target", $"cluster:{id}",
-            DeploymentTargetConnectionFactory.CreateInCluster(1), DeploymentTargetHealth.Healthy(1, now),
-            DeploymentTargetCapabilities.Observed(1, now, "v1.35.0", new(true, true, true, true, true)),
-            DeploymentTargetWorkloadConfiguration.Create(null), true, true, new(id, now));
+        return DeploymentTargetFactory.Create(
+            "Target",
+            $"cluster:{id}",
+            DeploymentTargetConnectionFactory.CreateInCluster(1),
+            DeploymentTargetHealth.Healthy(1, now),
+            DeploymentTargetCapabilities.Observed(
+                1,
+                now,
+                "v1.35.0",
+                new(true, true, true, true, true)),
+            DeploymentTargetWorkloadConfiguration.Create(null),
+            true,
+            true,
+            new(id, now));
     }
 
-    internal static DeploymentTarget Attest(DeploymentTarget target, NetworkPolicyEnforcement enforcement, bool allow) =>
+    internal static DeploymentTarget Attest(
+        DeploymentTarget target,
+        NetworkPolicyEnforcement enforcement,
+        bool allow) =>
         target with
         {
             WorkloadConfiguration = target.WorkloadConfiguration with
             {
-                NetworkPolicy = new(enforcement, target.ClusterIdentity, target.Connection.Version, target.CreatedAtUtc, allow)
+                NetworkPolicy = new(
+                    enforcement,
+                    target.ClusterIdentity,
+                    target.Connection.Version,
+                    target.CreatedAtUtc,
+                    allow)
             }
         };
 }

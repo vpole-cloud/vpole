@@ -39,7 +39,10 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
 
         var attestResponse = await Client.PutAsJsonAsync(
             $"/api/v1/platform/deployment-targets/{created.Id}/network-policy",
-            new UpdateDeploymentTargetNetworkPolicyBody(NetworkPolicyEnforcement.Supported, false, created.Revision));
+            new UpdateDeploymentTargetNetworkPolicyBody(
+                NetworkPolicyEnforcement.Supported,
+                false,
+                created.Revision));
         Assert.Equal(HttpStatusCode.OK, attestResponse.StatusCode);
         var platformResponse = await Client.GetAsync("/api/v1/platform/deployment-targets/");
         var availableResponse = await Client.GetAsync(

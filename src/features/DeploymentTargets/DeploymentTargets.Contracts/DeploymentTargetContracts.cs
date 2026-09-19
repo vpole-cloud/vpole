@@ -71,8 +71,12 @@ public sealed record DeploymentTargetLookupDto(
 }
 
 public sealed record DeploymentTargetNetworkPolicyDto(
-    string Enforcement, string Readiness, string Reason, DateTime? LastCheckedAtUtc,
-    string EvidenceSource, bool OverrideEnabled)
+    string Enforcement,
+    string Readiness,
+    string Reason,
+    DateTime? LastCheckedAtUtc,
+    string EvidenceSource,
+    bool OverrideEnabled)
 {
     public static DeploymentTargetNetworkPolicyDto Unknown { get; } =
         new("Unknown", "EnforcementRequired", "EnforcementNotEstablished", null, "None", false);

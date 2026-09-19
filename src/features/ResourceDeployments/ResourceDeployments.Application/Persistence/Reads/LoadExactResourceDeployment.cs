@@ -23,6 +23,8 @@ internal sealed class MongoLoadExactResourceDeployment(
                 resourceId,
                 deploymentId))
             .FirstOrDefaultAsync(cancellationToken);
-        return deployment is null ? null : await isolation.ProjectAsync(deployment.ToPlacementSummaryDto(), cancellationToken);
+        return deployment is null
+            ? null
+            : await isolation.ProjectAsync(deployment.ToPlacementSummaryDto(), cancellationToken);
     }
 }

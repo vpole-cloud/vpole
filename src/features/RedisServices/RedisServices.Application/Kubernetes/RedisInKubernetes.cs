@@ -62,7 +62,8 @@ public readonly record struct RedisInKubernetes(
             redis,
             kubernetesNamespace.Trim(),
             storageConfiguration,
-            computeConfiguration, placementIdentity);
+            computeConfiguration,
+            placementIdentity);
     }
 
     public string StatefulSetName => Redis.Name;

@@ -21,15 +21,24 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
     [InlineData("EnforcementRequired", false)]
     [InlineData("EnforcementAttested", true)]
     [InlineData("IsolationNotEnforced", true)]
-    public async Task Apply_checks_current_readiness_before_any_Kubernetes_write(string readiness, bool allowed)
+    public async Task Apply_checks_current_readiness_before_any_Kubernetes_write(
+        string readiness,
+        bool allowed)
     {
         var subject = CreateSubject();
         using var handler = new DeploymentHandler(Deployment(subject, 0, 0));
         using var kubernetes = CreateKubernetes(handler);
         var currentReadiness = readiness;
         var lookups = 0;
-        var manager = new FunctionRevisionKubernetesManager(new FixedKubernetesClientProvider(kubernetes),
-            (id, ct) => { lookups++; Assert.Equal(subject.Placement.DeploymentTargetId, id); return LookupTarget(id, currentReadiness); }, []);
+        var manager = new FunctionRevisionKubernetesManager(
+            new FixedKubernetesClientProvider(kubernetes),
+            (id, ct) =>
+            {
+                lookups++;
+                Assert.Equal(subject.Placement.DeploymentTargetId, id);
+                return LookupTarget(id, currentReadiness);
+            },
+            []);
         var result = await manager.ApplyAsync(subject);
         Assert.Equal(allowed, TypedResultExtensions.TryGetValue(result).Succeeded);
         Assert.Equal(allowed ? 2 : 0, handler.PostRequests.Count);
@@ -46,13 +55,19 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
     [InlineData(true, 1, 3, false)]
     [InlineData(true, 3, 1, true)]
     [InlineData(true, 3, 0, true)]
-    public async Task Revoked_target_rejects_increases_but_preserves_downscale(bool provisioning, int current, int desired, bool allowed)
+    public async Task Revoked_target_rejects_increases_but_preserves_downscale(
+        bool provisioning,
+        int current,
+        int desired,
+        bool allowed)
     {
         var subject = CreateSubject();
         using var handler = new DeploymentHandler(Deployment(subject, current, 4));
         using var kubernetes = CreateKubernetes(handler);
-        var manager = new FunctionRevisionKubernetesManager(new FixedKubernetesClientProvider(kubernetes),
-            (id, ct) => LookupTarget(id, "EnforcementRequired"), []);
+        var manager = new FunctionRevisionKubernetesManager(
+            new FixedKubernetesClientProvider(kubernetes),
+            (id, ct) => LookupTarget(id, "EnforcementRequired"),
+            []);
         var result = provisioning
             ? await manager.ScaleProvisioningAsync(subject, desired)
             : await manager.ScaleAsync(subject, desired, 5);
@@ -66,8 +81,11 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         var subject = CreateSubject();
         using var handler = new DeploymentHandler(Deployment(subject, 1, 4));
         using var kubernetes = CreateKubernetes(handler);
-        var manager = new FunctionRevisionKubernetesManager(new FixedKubernetesClientProvider(kubernetes),
-            (_, _) => throw new InvalidOperationException("Readiness lookup is forbidden for diagnostics/deletion."), []);
+        var manager = new FunctionRevisionKubernetesManager(
+            new FixedKubernetesClientProvider(kubernetes),
+            (_, _) => throw new InvalidOperationException(
+                "Readiness lookup is forbidden for diagnostics/deletion."),
+            []);
         Assert.True(TypedResultExtensions.TryGetValue(await manager.ReadReplicaStateAsync(subject)).Succeeded);
         Assert.True(TypedResultExtensions.TryGetValue(await manager.DeleteAsync(subject)).Succeeded);
         Assert.Equal(2, handler.DeleteRequests);
@@ -156,14 +174,35 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
     }
 
     private static FunctionRevisionKubernetesManager CreateManager(IKubernetes kubernetes) =>
-        new(new FixedKubernetesClientProvider(kubernetes), (id, ct) => LookupTarget(id, "EnforcementAttested"), Array.Empty<IFunctionAgentTrustBundleProvider>());
+        new(
+            new FixedKubernetesClientProvider(kubernetes),
+            (id, ct) => LookupTarget(id, "EnforcementAttested"),
+            Array.Empty<IFunctionAgentTrustBundleProvider>());
 
-    private static Task<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>> LookupTarget(string id, string readiness) =>
+    private static Task<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>> LookupTarget(
+        string id,
+        string readiness) =>
         Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
-            new Ok<DeploymentTargetLookupDto>(new(id, "Target", "cluster", "InCluster", 1,
-                new(1, null), 1, true, true, false, "Healthy")
+            new Ok<DeploymentTargetLookupDto>(new(
+                id,
+                "Target",
+                "cluster",
+                "InCluster",
+                1,
+                new(1, null),
+                1,
+                true,
+                true,
+                false,
+                "Healthy")
             {
-                NetworkPolicy = new("Unknown", readiness, "TestEvidence", DateTime.UnixEpoch, "OperatorAttestation", false)
+                NetworkPolicy = new(
+                    "Unknown",
+                    readiness,
+                    "TestEvidence",
+                    DateTime.UnixEpoch,
+                    "OperatorAttestation",
+                    false)
             }));
 
     private static Kubernetes CreateKubernetes(DelegatingHandler handler) =>
@@ -232,7 +271,8 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
                 app.Placement.ResourceDeploymentId,
                 app.Placement.RuntimeCellId,
                 app.Placement.DeploymentTargetId,
-                "pole-tenant-rg", "507f1f77bcf86cd799439044"));
+                "pole-tenant-rg",
+                "507f1f77bcf86cd799439044"));
     }
 
     private sealed record RecordedPut(

@@ -2,9 +2,14 @@ namespace Pole.Features.Core.Kubernetes;
 
 /// <summary>Immutable authorization identity shared by pod, Service and policy selectors.</summary>
 public sealed record WorkloadIdentityLabels(
-    string TenantId, string ResourceGroupId, string IsolationScopeId,
-    string RuntimeCellId, string DeploymentTargetId,
-    string ResourceType, string ResourceId, string ResourceDeploymentId)
+    string TenantId,
+    string ResourceGroupId,
+    string IsolationScopeId,
+    string RuntimeCellId,
+    string DeploymentTargetId,
+    string ResourceType,
+    string ResourceId,
+    string ResourceDeploymentId)
 {
     public Dictionary<string, string> ToDictionary() => new(StringComparer.Ordinal)
     {

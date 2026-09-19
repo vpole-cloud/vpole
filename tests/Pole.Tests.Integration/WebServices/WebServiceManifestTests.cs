@@ -1,3 +1,4 @@
+using Pole.Features.Core.Kubernetes;
 using System.Text;
 using System.Text.Json;
 using System.Collections.Immutable;
@@ -21,15 +22,22 @@ public sealed class WebServiceManifestTests
     public void PlacementIdentity_IsSharedByPodAndService_AndSelectorsSurviveRename()
     {
         var subject = CreateSubject();
-        var identity = new Pole.Features.Core.Kubernetes.WorkloadIdentityLabels(
-            subject.WebService.TenantId, subject.WebService.ResourceGroupId, "scope-44", "cell-44", "target-44",
+        var identity = new WorkloadIdentityLabels(
+            subject.WebService.TenantId,
+                subject.WebService.ResourceGroupId,
+                "scope-44",
+                "cell-44",
+                "target-44",
+
             "WebService", subject.WebService.Id, "deployment-44");
         subject = subject with { PlacementIdentity = identity };
         var workload = subject.ToDeployment();
         var service = subject.ToService();
         Assert.Equal(identity.ToDictionary(), workload.Spec.Template.Metadata.Labels);
         Assert.Equal(identity.ToDictionary(), service.Metadata.Labels);
-        Assert.All(service.Spec.Selector, pair => Assert.Equal(pair.Value, workload.Spec.Template.Metadata.Labels[pair.Key]));
+        Assert.All(
+            service.Spec.Selector,
+            pair => Assert.Equal(pair.Value, workload.Spec.Template.Metadata.Labels[pair.Key]));
         var renamed = subject with { WebService = subject.WebService with { Name = "renamed" } };
         Assert.Equal(workload.Spec.Selector.MatchLabels, renamed.ToDeployment().Spec.Selector.MatchLabels);
         Assert.Equal(service.Spec.Selector, renamed.ToService().Spec.Selector);
@@ -311,7 +319,15 @@ public sealed class WebServiceManifestTests
                 Tolerations: [],
                 RuntimeClassName: "workload-runtime"),
             fixedReplicas: 2,
-            new Pole.Features.Core.Kubernetes.WorkloadIdentityLabels(webService.TenantId, webService.ResourceGroupId, "scope-44", "cell-44", "target-44", "WebService", webService.Id, "deployment-44"));
+            new WorkloadIdentityLabels(
+                webService.TenantId,
+                webService.ResourceGroupId,
+                "scope-44",
+                "cell-44",
+                "target-44",
+                "WebService",
+                webService.Id,
+                "deployment-44"));
     }
 
     private const string WebServiceId = "507f1f77bcf86cd799439031";

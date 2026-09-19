@@ -99,7 +99,8 @@ public readonly record struct WebServiceInKubernetes(
             kubernetesNamespace.Trim(),
             ingressConfiguration,
             computeConfiguration,
-            fixedReplicas, placementIdentity);
+            fixedReplicas,
+            placementIdentity);
     }
 
     private Dictionary<string, string> IdentityLabels() => PlacementIdentity.ToDictionary();

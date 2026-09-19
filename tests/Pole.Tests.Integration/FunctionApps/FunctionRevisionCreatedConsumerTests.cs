@@ -32,23 +32,34 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
     [InlineData(NetworkPolicyEnforcement.Unsupported, false)]
     [InlineData(NetworkPolicyEnforcement.Supported, true)]
     public async Task Applied_placement_does_not_bypass_revoked_or_rotated_target(
-        NetworkPolicyEnforcement enforcement, bool rotateCredentials)
+        NetworkPolicyEnforcement enforcement,
+        bool rotateCredentials)
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = (await Mediator.Send(new CreateFunctionAppRequest(
-            new CreateFunctionAppRequestBody("revoked-functions", "revoked-functions", group.Id, RevisionRequest(), []),
+            new CreateFunctionAppRequestBody(
+                "revoked-functions",
+                "revoked-functions",
+                group.Id,
+                RevisionRequest(),
+                []),
             TestData.TenantId))).RequireSuccess();
         var target = DeploymentTargetNetworkPolicyTests.Attest(
             DeploymentTargetNetworkPolicyTests.Target() with { Id = created.Placement.DeploymentTargetId },
-            enforcement, false);
+            enforcement,
+            false);
         if (rotateCredentials)
-            target = target.ReplaceConnectionCredential(target.ClusterIdentity,
-                DeploymentTargetConnectionFactory.CreateInCluster(2), target.UpdatedAtUtc.AddMinutes(1));
+            target = target.ReplaceConnectionCredential(
+                target.ClusterIdentity,
+                DeploymentTargetConnectionFactory.CreateInCluster(2),
+                target.UpdatedAtUtc.AddMinutes(1));
         Assert.Equal("EnforcementRequired", target.ToNetworkPolicyDto().Readiness);
         var provider = new NoCallsKubernetesProvider();
-        var manager = new FunctionRevisionKubernetesManager(provider,
+        var manager = new FunctionRevisionKubernetesManager(
+            provider,
             (id, ct) => Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
-                new Ok<DeploymentTargetLookupDto>(target.ToLookupDto())), []);
+                new Ok<DeploymentTargetLookupDto>(target.ToLookupDto())),
+            []);
         var loadPlacement = Services.GetRequiredService<LoadExactResourceDeploymentRuntimePlacement>();
         var resolver = new FunctionResourcePlacementResolver(async (tenant, type, resource, deployment, ct) =>
         {
@@ -57,20 +68,38 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             return placement with { Status = "Applied" };
         });
         var consumer = new FunctionRevisionCreatedConsumer(
-            new MongoLoadFunctionRevisionProvisioningSubject(DbContext.FunctionApps, DbContext.FunctionRevisions).InvokeAsync,
-            resolver, manager, Services.GetRequiredService<FailFunctionRevision>(), [],
+            new MongoLoadFunctionRevisionProvisioningSubject(
+                DbContext.FunctionApps,
+                DbContext.FunctionRevisions).InvokeAsync,
+            resolver,
+            manager,
+            Services.GetRequiredService<FailFunctionRevision>(),
+            [],
             NullLogger<FunctionRevisionCreatedConsumer>.Instance);
-        await consumer.HandleAsync(new FunctionRevisionCreatedEvent(created.FunctionAppId, created.RevisionId,
-            created.RevisionNumber, Placement(created), null!) { EventCore = EventCore.Create(TestData.TenantId) });
+        await consumer.HandleAsync(new FunctionRevisionCreatedEvent(
+            created.FunctionAppId,
+            created.RevisionId,
+            created.RevisionNumber,
+            Placement(created),
+            null!)
+        {
+            EventCore = EventCore.Create(TestData.TenantId)
+        });
         Assert.Equal(0, provider.Calls);
-        var revision = await DbContext.FunctionRevisions.Find(item => item.Id == created.RevisionId).SingleAsync();
-        Assert.Equal("kubernetes-apply", Assert.IsType<FailedFunctionRevisionStatus>(revision.Status).Failure.Code);
+        var revision = await DbContext.FunctionRevisions
+            .Find(item => item.Id == created.RevisionId)
+            .SingleAsync();
+        Assert.Equal(
+            "kubernetes-apply",
+            Assert.IsType<FailedFunctionRevisionStatus>(revision.Status).Failure.Code);
     }
 
     private sealed class NoCallsKubernetesProvider : IKubernetesClientProvider
     {
         public int Calls { get; private set; }
-        public Task<IKubernetes> GetAsync(string deploymentTargetId, CancellationToken cancellationToken = default)
+        public Task<IKubernetes> GetAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default)
         {
             Calls++;
             throw new InvalidOperationException("A revoked target must not reach Kubernetes.");
@@ -297,7 +326,8 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                     app.Placement.ResourceDeploymentId,
                     app.Placement.RuntimeCellId,
                     app.Placement.DeploymentTargetId,
-                    "functions", "507f1f77bcf86cd799439044")));
+                    "functions",
+                    "507f1f77bcf86cd799439044")));
     }
 
     private sealed class RecordingKubernetesManager(

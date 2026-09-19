@@ -324,7 +324,9 @@ public sealed class FunctionRevisionKubernetesManager(
 
     // Function provisioning/activation/scaling also run outside ResourceDeployment reconciliation.
     // Guard the shared mutation boundary, not placement lookup or diagnostics. Never cache evidence.
-    private async Task<bool> AllowsWorkloadsAsync(string targetId, CancellationToken cancellationToken)
+    private async Task<bool> AllowsWorkloadsAsync(
+        string targetId,
+        CancellationToken cancellationToken)
     {
         var result = await lookupDeploymentTarget(targetId, cancellationToken);
         return result.TryGetValue(out var target, out _) &&

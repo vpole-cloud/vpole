@@ -56,7 +56,9 @@ public sealed class ResourceDeploymentTargetRoutingTests(
     [InlineData("EnforcementAttested", true)]
     [InlineData("IsolationNotEnforced", true)]
     [InlineData("EnforcementRequired", false)]
-    public async Task ReconciliationOnTargetB_ChecksCurrentEnforcementBeforeApplying(string readiness, bool allowed)
+    public async Task ReconciliationOnTargetB_ChecksCurrentEnforcementBeforeApplying(
+        string readiness,
+        bool allowed)
     {
         var now = DateTime.UtcNow;
         var runtimeCell = RuntimeCellFactory.Create(
@@ -131,7 +133,9 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         {
             Assert.Empty(provider.RequestedTargetIds);
             var blocked = await fixture.DbContext.ResourceDeployments.Find(item => item.Id == DeploymentId).SingleAsync();
-            Assert.Equal("NetworkPolicyEnforcementRequired", Assert.IsType<FailedResourceDeploymentState>(blocked.State).FailureCode);
+            Assert.Equal(
+                "NetworkPolicyEnforcementRequired",
+                Assert.IsType<FailedResourceDeploymentState>(blocked.State).FailureCode);
             return;
         }
         Assert.Equal([TargetBId], provider.RequestedTargetIds);
@@ -229,12 +233,20 @@ public sealed class ResourceDeploymentTargetRoutingTests(
     }
 
     private static Task<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>> LookupTarget(
-        string id, CancellationToken cancellationToken, string readiness = "EnforcementAttested") =>
+        string id,
+        CancellationToken cancellationToken,
+        string readiness = "EnforcementAttested") =>
         Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
             new Ok<DeploymentTargetLookupDto>(DeploymentTargetNetworkPolicyTests.Target().ToLookupDto() with
             {
                 Id = id,
-                NetworkPolicy = new("Unknown", readiness, "TestEvidence", DateTime.UnixEpoch, "OperatorAttestation", false)
+                NetworkPolicy = new(
+                    "Unknown",
+                    readiness,
+                    "TestEvidence",
+                    DateTime.UnixEpoch,
+                    "OperatorAttestation",
+                    false)
             }));
 
     private ReconciliationCapabilities CreateReconciliationCapabilities(

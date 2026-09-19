@@ -124,8 +124,11 @@ public static class DeploymentTargetDtoExtensions
     public static DeploymentTargetNetworkPolicyDto ToNetworkPolicyDto(this DeploymentTarget target)
     {
         var policy = target.WorkloadConfiguration.NetworkPolicy;
-        return new(policy.EffectiveEnforcement(target).ToString(), policy.Readiness(target),
-            policy.Reason(target), policy.Matches(target) ? policy.LastCheckedAtUtc : null,
+        return new(
+            policy.EffectiveEnforcement(target).ToString(),
+            policy.Readiness(target),
+            policy.Reason(target),
+            policy.Matches(target) ? policy.LastCheckedAtUtc : null,
             policy.Matches(target) ? "OperatorAttestation" : "None",
             policy.Matches(target) && policy.AllowIsolationNotEnforced);
     }

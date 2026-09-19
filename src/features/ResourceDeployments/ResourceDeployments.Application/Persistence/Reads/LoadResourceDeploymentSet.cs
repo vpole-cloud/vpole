@@ -19,8 +19,14 @@ internal sealed class MongoLoadResourceDeploymentSet(
             .Find(ResourceDeploymentFilters.ForResource(tenantId, resourceType, resourceId))
             .SortBy(deployment => deployment.Id)
             .ToListAsync(cancellationToken);
-        var policies = await isolation.LoadAsync(deployments.Select(item => item.ResolvedPlacement.DeploymentTargetId), cancellationToken);
-        return deployments.Select(deployment => deployment.ToPlacementSummaryDto() with
-        { Isolation = policies[deployment.ResolvedPlacement.DeploymentTargetId] }).ToArray();
+        var policies = await isolation.LoadAsync(
+            deployments.Select(item => item.ResolvedPlacement.DeploymentTargetId),
+            cancellationToken);
+        return deployments
+            .Select(deployment => deployment.ToPlacementSummaryDto() with
+            {
+                Isolation = policies[deployment.ResolvedPlacement.DeploymentTargetId]
+            })
+            .ToArray();
     }
 }

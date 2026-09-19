@@ -147,9 +147,16 @@ public sealed class PostgresManifestTests
         Assert.Equal(PostgresClusterKubernetesBuilder.buildResourceName(cluster.Id), statefulSet.Metadata.Name);
         Assert.Equal("pole-data", statefulSet.Metadata.NamespaceProperty);
         Assert.Equal("Postgres", statefulSet.Metadata.Labels["pole.io/resource-type"]);
-        Assert.Equal(8, statefulSet.Spec.Template.Metadata.Labels.Keys.Count(key => key.StartsWith("pole.io/") && key != "pole.io/resource-name" && key != "pole.io/deployment-generation"));
+        Assert.Equal(
+            8,
+            statefulSet.Spec.Template.Metadata.Labels.Keys.Count(key =>
+                key.StartsWith("pole.io/") &&
+                key != "pole.io/resource-name" &&
+                key != "pole.io/deployment-generation"));
         Assert.Single(statefulSet.Spec.Selector.MatchLabels);
-        Assert.Equal(statefulSet.Spec.Template.Metadata.Labels["pole.io/resource-deployment-id"], statefulSet.Spec.Selector.MatchLabels["pole.io/resource-deployment-id"]);
+        Assert.Equal(
+            statefulSet.Spec.Template.Metadata.Labels["pole.io/resource-deployment-id"],
+            statefulSet.Spec.Selector.MatchLabels["pole.io/resource-deployment-id"]);
         Assert.Equal(
             "pole/postgresql",
             statefulSet.Metadata.Annotations["pole.io/resource-type"]);

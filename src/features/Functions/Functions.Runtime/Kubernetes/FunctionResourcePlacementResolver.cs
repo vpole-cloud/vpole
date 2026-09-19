@@ -58,6 +58,7 @@ public sealed class FunctionResourcePlacementResolver(
             placement.DeploymentId,
             placement.RuntimeCellId,
             placement.DeploymentTargetId,
-            placement.KubernetesNamespace, placement.IsolationScopeId));
+            placement.KubernetesNamespace,
+            placement.IsolationScopeId));
     }
 }
