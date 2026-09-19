@@ -1,7 +1,9 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceGroups.Events;
 using Pole.ResultType;
 using Pole.Workloads;
 
@@ -175,9 +177,14 @@ internal sealed class MongoResourceRegistrationMutations(
                 resourceId),
             cancellationToken: cancellationToken);
         if (deletion.DeletedCount == 1)
-            await storeOutboxWrites(session, [OutboxWrite.Create(
-                new Pole.Features.ResourceGroups.Events.ResourceUnregisteredEvent(resourceGroupId, resourceTypeId.Value, resourceId)
-                { EventCore = Pole.Features.Events.Abstractions.EventCore.Create(tenantId) })], cancellationToken);
+            await storeOutboxWrites(
+                session,
+                [OutboxWrite.Create(
+                    new ResourceUnregisteredEvent(resourceGroupId, resourceTypeId.Value, resourceId)
+                    {
+                        EventCore = EventCore.Create(tenantId)
+                    })],
+                cancellationToken);
         return deletion.DeletedCount == 1
             ? new Ok<Unit>(Unit.Value)
             : new Err<ResourceRegistrationMutationError>(

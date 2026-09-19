@@ -3,18 +3,19 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Secrets.Domain;
 using Pole.Mediator;
 using Pole.Validation;
 
 namespace Pole.Features.Secrets.Application.Endpoints;
 
-public union GetSecretUsageOutcome(SecretUsage[], SecretError);
+public union GetSecretUsageOutcome(
+    SecretUsage[],
+    SecretError);
 
-public sealed record GetSecretUsageRequest([FromRoute] string Id,
+public sealed record GetSecretUsageRequest(
+    [FromRoute] string Id,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
     : IMediatorRequest<GetSecretUsageOutcome>, ITenantReadOperation;
 
@@ -26,9 +27,12 @@ public sealed class GetSecretUsageValidator : AbstractValidator<GetSecretUsageRe
     }
 }
 
-public sealed class GetSecretUsageHandler(SecretStore store) : IMediatorOutcomeHandler<GetSecretUsageRequest, GetSecretUsageOutcome>
+public sealed class GetSecretUsageHandler(SecretStore store)
+    : IMediatorOutcomeHandler<GetSecretUsageRequest, GetSecretUsageOutcome>
 {
-    public async Task<GetSecretUsageOutcome> HandleAsync(GetSecretUsageRequest request, CancellationToken cancellationToken = default)
+    public async Task<GetSecretUsageOutcome> HandleAsync(
+        GetSecretUsageRequest request,
+        CancellationToken cancellationToken = default)
     {
         var secret = await store.GetAsync(request.TenantId, request.Id, cancellationToken);
         return secret is null ? new SecretError(new SecretMissing()) : await store.UsageAsync(secret, cancellationToken);
@@ -39,13 +43,18 @@ public static class GetSecretUsageEndpoint
 {
     public static IEndpointRouteBuilder MapGetSecretUsageEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{Id}/usage", async (IMediator mediator, IHttpProblemMapper problems,
-            [AsParameters] GetSecretUsageRequest request, CancellationToken ct) =>
+        app.MapGet("/{Id}/usage", async (
+            IMediator mediator,
+            IHttpProblemMapper problems,
+            [AsParameters] GetSecretUsageRequest request,
+            CancellationToken ct) =>
             (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
             {
                 SecretUsage[] usage => Results.Ok(usage),
                 SecretError error => problems.Map(error).ToHttpResult()
-            })).WithName("GetSecretUsage");
+            }))
+            .WithName("GetSecretUsage");
+
         return app;
     }
 }

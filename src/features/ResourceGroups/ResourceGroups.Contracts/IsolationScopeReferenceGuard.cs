@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.ResultType;
+
 namespace Pole.Features.ResourceGroups.Contracts;
 
 public sealed record IsolationScopeReferenced(string IsolationScopeId);
@@ -8,6 +9,9 @@ public sealed record IsolationScopeReferenced(string IsolationScopeId);
 public interface IIsolationScopeReferenceGuard
 {
     Task<Result<Unit, IsolationScopeReferenced>> EnsureUnreferencedAsync(
-        string tenantId, string resourceGroupId, string isolationScopeId,
-        IClientSessionHandle session, CancellationToken cancellationToken = default);
+        string tenantId,
+        string resourceGroupId,
+        string isolationScopeId,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default);
 }

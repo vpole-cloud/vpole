@@ -3,15 +3,12 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Secrets.Domain;
 using Pole.Mediator;
 using Pole.Validation;
 
 namespace Pole.Features.Secrets.Application.Endpoints;
-
 
 public sealed record DeleteSecretRequest(
     [FromRoute] string Id,
@@ -29,7 +26,9 @@ public sealed class DeleteSecretValidator : AbstractValidator<DeleteSecretReques
 public sealed class DeleteSecretHandler(SecretStore store)
     : IMediatorOutcomeHandler<DeleteSecretRequest, SecretMutationOutcome>
 {
-    public async Task<SecretMutationOutcome> HandleAsync(DeleteSecretRequest request, CancellationToken cancellationToken = default) =>
+    public async Task<SecretMutationOutcome> HandleAsync(
+        DeleteSecretRequest request,
+        CancellationToken cancellationToken = default) =>
         await store.DeleteAsync(request.TenantId, request.Id, cancellationToken);
 }
 
@@ -37,14 +36,19 @@ public static class DeleteSecretEndpoint
 {
     public static IEndpointRouteBuilder MapDeleteSecretEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{Id}", async (IMediator mediator, IHttpProblemMapper problems,
-            [AsParameters] DeleteSecretRequest request, CancellationToken ct) =>
+        app.MapDelete("/{Id}", async (
+            IMediator mediator,
+            IHttpProblemMapper problems,
+            [AsParameters] DeleteSecretRequest request,
+            CancellationToken ct) =>
             (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
             {
                 SecretMetadata metadata => Results.Ok(metadata),
                 SecretDeleted => Results.NoContent(),
                 SecretError error => problems.Map(error).ToHttpResult()
-            })).WithName("DeleteSecret");
+            }))
+            .WithName("DeleteSecret");
+
         return app;
     }
 }

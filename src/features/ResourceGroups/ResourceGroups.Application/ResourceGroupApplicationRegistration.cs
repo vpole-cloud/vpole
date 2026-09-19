@@ -1,22 +1,22 @@
-using Microsoft.Extensions.Configuration;
 using Hangfire;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.ResourceGroups.Application.Jobs;
+using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.ResourceGroups.Application.Persistence;
 using Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
 using Pole.Features.ResourceGroups.Application.Persistence.Placements;
 using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 using Pole.Features.ResourceGroups.Application.Persistence.ResourceRegistrations;
 using Pole.Features.ResourceGroups.Application.Persistence.RuntimeCells;
+using Pole.Features.ResourceGroups.Application.Search;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.Features.ResourceGroups.Application.Search;
 using Pole.Features.Search.Contracts;
 using Pole.ResultType;
 
@@ -52,7 +52,8 @@ public static class ResourceGroupApplicationRegistration
             .Value);
 
         services.AddResourceGroupPersistence();
-        services.AddCapability<MongoAdmitResourceScopeReference, AdmitResourceScopeReference>(implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoAdmitResourceScopeReference, AdmitResourceScopeReference>(
+            implementation => implementation.InvokeAsync);
         services.AddCapability<RuntimeCellNamespaceNameGenerator,
             GenerateRuntimeCellNamespaceName>(implementation => implementation.Invoke);
         services.TryAddScoped<KubernetesRuntimeCellNamespaceManager>();
