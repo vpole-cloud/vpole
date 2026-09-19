@@ -117,28 +117,30 @@ public static class DependencyInjection
             return services;
         }
 
-        public IServiceCollection AddHangfireWithMongo(IConfiguration configuration)
+        public IServiceCollection AddHangfireWithMongo(IConfiguration configuration, Action<MongoStorageOptions>? configureStorage = null)
         {
             services.TryAddSingleton(TimeProvider.System);
             services.AddHangfire((serviceProvider, config) =>
             {
                 var mongoClient = serviceProvider.GetRequiredService<IMongoClient>();
 
+                var storageOptions = new MongoStorageOptions
+                {
+                    MigrationOptions = new MongoMigrationOptions
+                    {
+                        MigrationStrategy = new MigrateMongoMigrationStrategy(),
+                        BackupStrategy = new CollectionMongoBackupStrategy()
+                    },
+                    Prefix = "hangfire",
+                    CheckConnection = false,
+                    CheckQueuedJobsStrategy = CheckQueuedJobsStrategy.TailNotificationsCollection,
+                    ConnectionCheckTimeout = TimeSpan.FromSeconds(30)
+                };
+                configureStorage?.Invoke(storageOptions);
                 config.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
                     .UseSimpleAssemblyNameTypeSerializer()
                     .UseRecommendedSerializerSettings()
-                    .UseMongoStorage(mongoClient, "pole-database", new MongoStorageOptions
-                    {
-                        MigrationOptions = new MongoMigrationOptions
-                        {
-                            MigrationStrategy = new MigrateMongoMigrationStrategy(),
-                            BackupStrategy = new CollectionMongoBackupStrategy()
-                        },
-                        Prefix = "hangfire",
-                        CheckConnection = false,
-                        CheckQueuedJobsStrategy = CheckQueuedJobsStrategy.TailNotificationsCollection,
-                        ConnectionCheckTimeout = TimeSpan.FromSeconds(30)
-                    });
+                    .UseMongoStorage(mongoClient, "pole-database", storageOptions);
             });
 
             services.AddHangfireServer(options =>

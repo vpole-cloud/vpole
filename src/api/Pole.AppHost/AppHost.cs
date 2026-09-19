@@ -5,41 +5,54 @@ var builder = DistributedApplication.CreateBuilder(args);
 var e2eEnabled = builder.Configuration.GetValue("E2E:Enabled", false);
 var e2eBuildKitPort = e2eEnabled ? builder.Configuration.GetValue<int?>("E2E:BuildKitPort") : null;
 var e2eKeycloakPort = e2eEnabled ? builder.Configuration.GetValue<int?>("E2E:KeycloakPort") : null;
-var mongoEntrypointPath = Path.Combine(builder.AppHostDirectory, "MongoDb", "mongo-entrypoint.sh");
-var mongoEntrypointScript = File.ReadAllText(mongoEntrypointPath);
-
-var mongoUsername = builder.AddParameter("mongo-username");
-var mongoPassword = builder.AddParameter("mongo-password", secret: true);
-var mongoServer = builder.AddMongoDB("pole-mongo", userName: mongoUsername, password: mongoPassword)
-    .WithImageTag("7.0")
-    // Avoid executing a host bind mount, which rootless SELinux runtimes can deny.
-    .WithEntrypoint("/bin/bash")
-    .WithArgs("-c", mongoEntrypointScript, "mongo-entrypoint")
-    .WithMongoExpress(options =>
-    {
-        if (!e2eEnabled)
-            options.WithLifetime(ContainerLifetime.Persistent);
-    })
-    .WithReplicaSet();
-if (!e2eEnabled)
+var databaseProvider = builder.Configuration["Database:Provider"] ?? "MongoDB";
+var useSkrynia = string.Equals(databaseProvider, "Skrynia", StringComparison.OrdinalIgnoreCase);
+if (!useSkrynia && !string.Equals(databaseProvider, "MongoDB", StringComparison.OrdinalIgnoreCase))
+    throw new InvalidOperationException("Database:Provider must be MongoDB or Skrynia.");
+var databaseFilePath = builder.Configuration["Database:FilePath"];
+if (useSkrynia && (string.IsNullOrWhiteSpace(databaseFilePath) || !Path.IsPathFullyQualified(databaseFilePath)))
+    throw new InvalidOperationException("Database:FilePath must be an absolute path for Skrynia.");
+IResourceBuilder<MongoDBServerResource>? mongoServer = null;
+IResourceBuilder<MongoReplicaSetResource>? mongoReplicaSet = null;
+if (!useSkrynia)
 {
-    mongoServer
-        .WithEndpoint("tcp", endpoint =>
+    var mongoEntrypointPath = Path.Combine(builder.AppHostDirectory, "MongoDb", "mongo-entrypoint.sh");
+    var mongoEntrypointScript = File.ReadAllText(mongoEntrypointPath);
+
+    var mongoUsername = builder.AddParameter("mongo-username");
+    var mongoPassword = builder.AddParameter("mongo-password", secret: true);
+    mongoServer = builder.AddMongoDB("pole-mongo", userName: mongoUsername, password: mongoPassword)
+        .WithImageTag("7.0")
+        // Avoid executing a host bind mount, which rootless SELinux runtimes can deny.
+        .WithEntrypoint("/bin/bash")
+        .WithArgs("-c", mongoEntrypointScript, "mongo-entrypoint")
+        .WithMongoExpress(options =>
         {
-            endpoint.Port = 27017;
-            endpoint.TargetPort = 27017;
-            endpoint.IsProxied = false;
-        }, createIfNotExists: true)
-        .WithDataVolume("pole-mongo-data")
-        .WithLifetime(ContainerLifetime.Persistent);
-}
-else
-{
-    mongoServer.WithLifetime(ContainerLifetime.Session);
-}
+            if (!e2eEnabled)
+                options.WithLifetime(ContainerLifetime.Persistent);
+        })
+        .WithReplicaSet();
+    if (!e2eEnabled)
+    {
+        mongoServer
+            .WithEndpoint("tcp", endpoint =>
+            {
+                endpoint.Port = 27017;
+                endpoint.TargetPort = 27017;
+                endpoint.IsProxied = false;
+            }, createIfNotExists: true)
+            .WithDataVolume("pole-mongo-data")
+            .WithLifetime(ContainerLifetime.Persistent);
+    }
+    else
+    {
+        mongoServer.WithLifetime(ContainerLifetime.Session);
+    }
 
-var mongoReplicaSet = builder
-    .AddMongoReplicaSet("pole-database", mongoServer.Resource);
+    mongoReplicaSet = builder
+        .AddMongoReplicaSet("pole-database", mongoServer.Resource);
+
+}
 
 var keycloakUsername = builder.AddParameter("keycloak-username");
 var keycloakPassword = builder.AddParameter("keycloak-password", secret: true);
@@ -111,9 +124,17 @@ var api = builder.AddProject<Projects.Pole_Server>("pole-server")
     .WithEnvironment("EnvelopeEncryption__LocalKeyFile__Keys__0__Version", envelopeEncryptionActiveKeyVersion)
     .WithEnvironment("EnvelopeEncryption__LocalKeyFile__Keys__0__Path", envelopeEncryptionActiveKeyPath)
     .WithReference(keycloak)
-    .WithReference(mongoServer)
-    .WithReference(mongoReplicaSet)
     .WithReference(rabbitMq);
+if (useSkrynia)
+{
+    api.WithEnvironment("Database__Provider", "Skrynia")
+        .WithEnvironment("Database__FilePath", databaseFilePath!);
+}
+else
+{
+    api.WithReference(mongoServer!).WithReference(mongoReplicaSet!)
+        .WaitFor(mongoServer!).WaitFor(mongoReplicaSet!);
+}
 if (retainedEnvelopeKeyParametersPresent == retainedEnvelopeKeyParameterNames.Length)
 {
     var retainedKeyId = builder.AddParameter("envelope-encryption-retained-key-id");
@@ -129,15 +150,12 @@ if (e2eEnabled)
         .WithEndpoint("http", endpoint => endpoint.Port = null)
         .WithEndpoint("functions-public", endpoint => endpoint.Port = null)
         .WithEndpoint("functions-internal", endpoint => endpoint.Port = null)
-        .WaitFor(mongoReplicaSet)
         .WaitFor(rabbitMq);
 }
 else
 {
     api
         .WaitFor(keycloak)
-        .WaitFor(mongoServer)
-        .WaitFor(mongoReplicaSet)
         .WaitFor(rabbitMq);
 }
 api.WithHttpHealthCheck("/health", endpointName: "http");

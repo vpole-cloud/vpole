@@ -18,3 +18,7 @@ aspire.config.json
 .codex/notes/
 /.artifacts/
 /src/api/frontend/coverage/
+
+# Local Skrynia/Aspire verification artifacts (including ephemeral kubeconfig).
+/artifacts/
+**/TestResults/
