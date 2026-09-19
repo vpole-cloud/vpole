@@ -83,19 +83,17 @@ export function WebServiceForm({
       .map(([key, value]) => `${key}=${value}`)
       .join('\n'),
   )
-  const [targets, setTargets] = useState<WebServiceDeploymentInput[]>([])
+  const [selectedTargets, setTargets] = useState<WebServiceDeploymentInput[] | undefined>()
+  const defaultTargetId = mode === 'create' && availableTargets.length === 1 ? availableTargets[0].id : undefined
+  const targets = selectedTargets ?? (defaultTargetId ? [deploymentConfiguration(defaultTargetId)] : [])
   const [showAdvancedTargets, setShowAdvancedTargets] = useState(false)
   const [validationError, setValidationError] = useState('')
 
   useEffect(() => {
-    if (mode !== 'create' || availableTargets.length !== 1 || targets.length > 0) {
-      return
+    if (selectedTargets === undefined && defaultTargetId) {
+      void onLoadComputeProfiles(defaultTargetId)
     }
-
-    const target = availableTargets[0]
-    setTargets([deploymentConfiguration(target.id)])
-    void onLoadComputeProfiles(target.id)
-  }, [availableTargets, mode, onLoadComputeProfiles, targets.length])
+  }, [defaultTargetId, onLoadComputeProfiles, selectedTargets])
 
   useEffect(() => {
     if (mode !== 'create') {
@@ -105,9 +103,10 @@ export function WebServiceForm({
   }, [isolationScopeId, mode, onLoadTargets])
 
   const setTargetSelected = (targetId: string, selected: boolean) => {
-    setTargets((current) => {
+    if (selected) void onLoadComputeProfiles(targetId)
+    setTargets((value) => {
+      const current = value ?? targets
       if (selected) {
-        void onLoadComputeProfiles(targetId)
         return [...current, deploymentConfiguration(targetId)]
       }
       return current.filter((target) => target.deploymentTargetId !== targetId)
@@ -115,7 +114,7 @@ export function WebServiceForm({
   }
 
   const updateTarget = (targetId: string, change: Partial<WebServiceDeploymentInput>) => {
-    setTargets((current) => current.map((target) =>
+    setTargets((current) => (current ?? targets).map((target) =>
       target.deploymentTargetId === targetId ? { ...target, ...change } : target,
     ))
   }

@@ -37,14 +37,16 @@ public static class CreateDomainZone
     private static IResult ToHttpResult(
         CreateDomainZoneOutcome outcome,
         IHttpProblemMapper httpProblems) => outcome switch
-    {
-        TenantDomainZoneSnapshot zone =>
-            Results.Created($"/api/v1/domain-zones/{zone.Id}", zone),
-        CreateDomainZoneError error => httpProblems.Map(error).ToHttpResult()
-    };
+        {
+            TenantDomainZoneSnapshot zone =>
+                Results.Created($"/api/v1/domain-zones/{zone.Id}", zone),
+            CreateDomainZoneError error => httpProblems.Map(error).ToHttpResult()
+        };
 }
 
-public sealed record CreateDomainZoneBody(string DeploymentTargetId, string Label);
+public sealed record CreateDomainZoneBody(
+    string DeploymentTargetId,
+    string Label);
 
 public sealed record CreateDomainZoneRequest(
     [FromBody] CreateDomainZoneBody Body,

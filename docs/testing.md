@@ -117,6 +117,17 @@ Start the lab once before the backend suite. Linked worktrees discover the prima
 shared default state and target without reading the ambient kubeconfig. `POLE_K8S_LAB_STATE` and
 `POLE_K8S_LAB_TARGET` are optional overrides for deliberately non-default lab selections.
 
+## Publication requirement
+
+Before opening any PR, all local backend, frontend and automation tests must pass
+on the final source tree without filters or skips. Unavailable Kubernetes, Harbor
+or Aspire services block publication; they are not exceptions. This requirement
+also applies to documentation/tooling PRs. Run `python3 scripts/quality_gate.py run`
+after starting/resuming the full lab. The gate checks test reports, zero skips,
+formatting and current source contents; see [agent delivery](agent-delivery.md).
+Focused commands below are development tools, not substitutes for this full gate.
+Any summary of failing or blocked tests must begin with the affected tests and reason.
+
 ## Running tests
 
 Run the feature-local Functions suite from the repository root with:

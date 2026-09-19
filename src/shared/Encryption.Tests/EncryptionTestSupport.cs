@@ -43,7 +43,10 @@ internal sealed class TemporaryKeyDirectory : IDisposable
     }
 }
 
-internal sealed record TestKey(string Id, int Version, string Path);
+internal sealed record TestKey(
+    string Id,
+    int Version,
+    string Path);
 
 internal sealed class TestEncryptionService : IDisposable
 {

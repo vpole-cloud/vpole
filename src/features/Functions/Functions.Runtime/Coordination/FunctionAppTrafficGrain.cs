@@ -8,7 +8,9 @@ public sealed class FunctionAppTrafficGrain(
 {
     private static readonly TimeSpan IdempotencyRetention = TimeSpan.FromMinutes(1);
 
-    private sealed record TrafficRequestFingerprint(string HandlerName, int Cost);
+    private sealed record TrafficRequestFingerprint(
+        string HandlerName,
+        int Cost);
 
     private sealed record CachedTrafficDecision(
         TrafficRequestFingerprint Fingerprint,

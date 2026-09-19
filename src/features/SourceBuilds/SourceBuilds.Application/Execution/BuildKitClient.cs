@@ -19,7 +19,9 @@ public sealed record BuildKitBuildRequest(
         $"BuildKitBuildRequest(context={ContextPath}, target={Target.Reference}, credentials=[REDACTED])";
 }
 
-public sealed record BuiltContainerImage(string Reference, string Digest);
+public sealed record BuiltContainerImage(
+    string Reference,
+    string Digest);
 
 public sealed record BuildKitNotConfigured;
 

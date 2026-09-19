@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using Microsoft.AspNetCore.Mvc;
 namespace Pole.Features.Request;
 
@@ -15,7 +15,11 @@ public abstract record PaginatedRequest
     public int Skip => (PageNumber - 1) * PageSize;
 }
 
-public sealed record PaginatedResponse<T>(IEnumerable<T> Items, long TotalCount, int PageNumber, int PageSize)
+public sealed record PaginatedResponse<T>(
+    IEnumerable<T> Items,
+    long TotalCount,
+    int PageNumber,
+    int PageSize)
 {
     public int TotalPages => (int)Math.Ceiling((double)TotalCount / (PageSize == 0 ? 1 : PageSize));
     public bool HasPrevious => PageNumber > 1;

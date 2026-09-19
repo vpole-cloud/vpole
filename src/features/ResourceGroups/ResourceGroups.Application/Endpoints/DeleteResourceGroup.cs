@@ -50,7 +50,7 @@ public static class DeleteResourceGroup
 public sealed record DeleteResourceGroupRequest(
     [FromRoute] string Id,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<BeginResourceGroupDeletionOutcome>, ITenantWriteOperation;
+    : IMediatorRequest<DeleteResourceGroupOutcome>, ITenantWriteOperation;
 
 public sealed class DeleteResourceGroupRequestValidator
     : AbstractValidator<DeleteResourceGroupRequest>
@@ -64,12 +64,26 @@ public sealed record DeleteResourceGroupResponse(
     bool Deleted,
     bool DeletionRequested);
 
+public union DeleteResourceGroupOutcome(
+    ResourceGroupDeletionCompleted,
+    ResourceGroupDeletionRequested,
+    ResourceGroupDeletionError);
+
 public sealed class DeleteResourceGroupHandler(
     BeginResourceGroupDeletion beginResourceGroupDeletion)
-    : IMediatorOutcomeHandler<DeleteResourceGroupRequest, BeginResourceGroupDeletionOutcome>
+    : IMediatorOutcomeHandler<DeleteResourceGroupRequest, DeleteResourceGroupOutcome>
 {
-    public Task<BeginResourceGroupDeletionOutcome> HandleAsync(
+    public async Task<DeleteResourceGroupOutcome> HandleAsync(
         DeleteResourceGroupRequest request,
-        CancellationToken cancellationToken = default) =>
-        beginResourceGroupDeletion(request.TenantId, request.Id, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        var outcome = await beginResourceGroupDeletion(
+            request.TenantId, request.Id, cancellationToken);
+        return outcome switch
+        {
+            ResourceGroupDeletionCompleted completed => new DeleteResourceGroupOutcome(completed),
+            ResourceGroupDeletionRequested requested => new DeleteResourceGroupOutcome(requested),
+            ResourceGroupDeletionError error => new DeleteResourceGroupOutcome(error)
+        };
+    }
 }

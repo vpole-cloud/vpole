@@ -29,7 +29,9 @@ public union CreateIsolationScopeError(
     ResourceGroupRevisionConflict,
     IsolationScopeNameConflict);
 
-public union CreateIsolationScopeOutcome(IsolationScopeDto, CreateIsolationScopeError);
+public union CreateIsolationScopeOutcome(
+    IsolationScopeDto,
+    CreateIsolationScopeError);
 
 public sealed record CreateIsolationScopeRequestBody(string Name);
 

@@ -5,3 +5,9 @@
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
 POLE001 | Architecture | Error | Mongo query APIs must remain inside persistence capabilities.
+POLE002 | Architecture | Error | Endpoint handlers own colocated outcome types.
+POLE003 | Architecture | Error | Factory-owned domain entities are constructed through their factory.
+POLE004 | Architecture | Error | Factory-owned domain entities do not expose mutable collection properties.
+POLE005 | Architecture | Error | Domain State, Status and Lifecycle properties use dedicated types.
+POLE006 | Architecture | Error | Each endpoint file contains only one mediator request-handler pair.
+POLE007 | Architecture | Error | Multi-parameter records, unions and delegates use one parameter per line.

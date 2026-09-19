@@ -48,7 +48,9 @@ public sealed class MongoValidationExtensionsTests
                 error.ErrorMessage == "Optional ID must be a MongoDB ObjectId.");
     }
 
-    private sealed record TestRequest(string? RequiredId, string? OptionalId);
+    private sealed record TestRequest(
+        string? RequiredId,
+        string? OptionalId);
 
     private sealed class TestRequestValidator : AbstractValidator<TestRequest>
     {

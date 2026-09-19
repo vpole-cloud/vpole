@@ -369,18 +369,42 @@ public sealed class HarborContainerRegistryClient(
         return repositoryName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? repositoryName[prefix.Length..] : repositoryName;
     }
 
-    private sealed record HarborProject([property: JsonPropertyName("project_id")] long Id, string Name);
+    private sealed record HarborProject(
+        [property: JsonPropertyName("project_id")] long Id,
+        string Name);
     private sealed record HarborProjectLookup(HarborProject? Project);
-    private sealed record HarborProjectRequest([property: JsonPropertyName("project_name")] string ProjectName, [property: JsonPropertyName("public")] bool IsPublic);
-    private sealed record HarborRobotRequest(string Name, string Description, string Level, bool Disable, long Duration, IReadOnlyList<HarborRobotPermissionRequest> Permissions);
-    private sealed record HarborRobotPermissionRequest(string Kind, string Namespace, IReadOnlyList<HarborAccess> Access);
-    private sealed record HarborAccess(string Resource, string Action);
-    private sealed record HarborRobotCreated(long Id, string Name, string Secret, [property: JsonPropertyName("expires_at")] long ExpiresAt)
+    private sealed record HarborProjectRequest(
+        [property: JsonPropertyName("project_name")] string ProjectName,
+        [property: JsonPropertyName("public")] bool IsPublic);
+    private sealed record HarborRobotRequest(
+        string Name,
+        string Description,
+        string Level,
+        bool Disable,
+        long Duration,
+        IReadOnlyList<HarborRobotPermissionRequest> Permissions);
+    private sealed record HarborRobotPermissionRequest(
+        string Kind,
+        string Namespace,
+        IReadOnlyList<HarborAccess> Access);
+    private sealed record HarborAccess(
+        string Resource,
+        string Action);
+    private sealed record HarborRobotCreated(
+        long Id,
+        string Name,
+        string Secret,
+        [property: JsonPropertyName("expires_at")] long ExpiresAt)
     {
         public override string ToString() => "HarborRobotCreated([REDACTED])";
     }
-    private sealed record HarborRobot(long Id, string? Name, HarborRobotPermissionResponse[]? Permissions);
+    private sealed record HarborRobot(
+        long Id,
+        string? Name,
+        HarborRobotPermissionResponse[]? Permissions);
     private sealed record HarborRobotPermissionResponse(string? Namespace);
-    private sealed record HarborArtifact(string Digest, long Size);
+    private sealed record HarborArtifact(
+        string Digest,
+        long Size);
     private sealed record HarborRepository(string Name);
 }

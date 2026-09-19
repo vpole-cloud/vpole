@@ -6,7 +6,9 @@ namespace Pole.ResultType;
 /// Represents the success or the provider-owned expected error of an operation.
 /// Infrastructure failures remain exceptions.
 /// </summary>
-public union Result<T, TError>(Ok<T>, Err<TError>)
+public union Result<T, TError>(
+    Ok<T>,
+    Err<TError>)
     where T : notnull
     where TError : notnull;
 

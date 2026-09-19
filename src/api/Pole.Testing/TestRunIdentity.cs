@@ -4,7 +4,9 @@ using System.Text.RegularExpressions;
 
 namespace Pole.Testing;
 
-public sealed partial record TestRunIdentity(string WorktreeId, string RunId)
+public sealed partial record TestRunIdentity(
+    string WorktreeId,
+    string RunId)
 {
     public const string OwnerLabel = "pole.dev/owned-by";
     public const string WorktreeLabel = "pole.dev/worktree-id";

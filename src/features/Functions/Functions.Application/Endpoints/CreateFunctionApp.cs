@@ -99,7 +99,10 @@ public sealed record FunctionRevisionRequest(
                 .ToImmutableList());
 }
 
-public sealed record FunctionImageRequest(string Server, string Name, string Tag);
+public sealed record FunctionImageRequest(
+    string Server,
+    string Name,
+    string Tag);
 
 public sealed record FunctionHandlerRequest(
     string Name,

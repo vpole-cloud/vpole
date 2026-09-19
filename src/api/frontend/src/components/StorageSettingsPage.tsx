@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import type {
   KubernetesPersistentVolume,
   KubernetesPersistentVolumeClaim,
@@ -371,12 +371,14 @@ function StorageProfileForm({
   )
   const [isEnabled, setIsEnabled] = useState(initialValue?.isEnabled ?? true)
   const [isDefault, setIsDefault] = useState(initialValue?.isDefault ?? false)
-  const [selectedStorageClassNames, setSelectedStorageClassNames] = useState<string[]>(
-    initialValue?.storageClassNames ?? (defaultStorageClassName ? [defaultStorageClassName] : []),
+  const [selectedClasses, setSelectedStorageClassNames] = useState<string[] | undefined>(
+    initialValue?.storageClassNames,
   )
-  const [storageClassNamesText, setStorageClassNamesText] = useState(
-    initialValue?.storageClassNames.join(', ') ?? defaultStorageClassName,
+  const selectedStorageClassNames = selectedClasses ?? (defaultStorageClassName ? [defaultStorageClassName] : [])
+  const [classNamesText, setStorageClassNamesText] = useState<string | undefined>(
+    initialValue?.storageClassNames.join(', '),
   )
+  const storageClassNamesText = classNamesText ?? defaultStorageClassName
   const [allowedResourceTypes, setAllowedResourceTypes] = useState<PoleResourceType[]>(
     initialValue?.allowedResourceTypes ?? ['pole/redis', 'pole/postgresql'],
   )
@@ -394,13 +396,6 @@ function StorageProfileForm({
     initialValue?.sizeLimits?.maxSizeGb?.toString() ?? '',
   )
   const [validationError, setValidationError] = useState('')
-
-  useEffect(() => {
-    if (mode === 'create' && selectedStorageClassNames.length === 0 && defaultStorageClassName) {
-      setSelectedStorageClassNames([defaultStorageClassName])
-      setStorageClassNamesText(defaultStorageClassName)
-    }
-  }, [defaultStorageClassName, mode, selectedStorageClassNames.length])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -584,9 +579,10 @@ function StorageProfileForm({
                   <input
                     checked={selectedStorageClassNames.includes(item.name)}
                     onChange={() =>
-                      setSelectedStorageClassNames((current) =>
-                        toggleValue(current, item.name),
-                      )
+                      setSelectedStorageClassNames((value) => {
+                        const current = value ?? selectedStorageClassNames
+                        return toggleValue(current, item.name)
+                      })
                     }
                     type="checkbox"
                   />

@@ -465,7 +465,9 @@ public sealed record ComputeProfileToleration(
 
 public static class ComputeProfileFactory
 {
-    public sealed record CreateOptions(string Id, DateTime CreatedAtUtc);
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc);
 
     public static ComputeProfile Create(
         string displayName,

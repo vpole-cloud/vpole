@@ -16,11 +16,11 @@ public union DeleteDeploymentTargetError(
     DefaultDeploymentTargetDeletionRejected,
     DeploymentTargetHasDurableReferences);
 
-public union DeleteDeploymentTargetOutcome(
+public union DeleteDeploymentTargetPersistenceOutcome(
     DeploymentTargetDeleted,
     DeleteDeploymentTargetError);
 
-public delegate Task<DeleteDeploymentTargetOutcome> DeleteDeploymentTarget(
+public delegate Task<DeleteDeploymentTargetPersistenceOutcome> DeleteDeploymentTarget(
     string deploymentTargetId,
     CancellationToken cancellationToken = default);
 
@@ -28,10 +28,10 @@ internal sealed class MongoDeleteDeploymentTarget(
     IMongoCollection<DeploymentTarget> deploymentTargets,
     IMongoCollection<DeploymentTargetSettings> settings,
     EnsureNoDeploymentTargetReferences ensureNoDeploymentTargetReferences,
-    RunMongoOutcomeTransaction<DeleteDeploymentTargetOutcome> runMongoTransaction,
+    RunMongoOutcomeTransaction<DeleteDeploymentTargetPersistenceOutcome> runMongoTransaction,
     TimeProvider timeProvider)
 {
-    public async Task<DeleteDeploymentTargetOutcome> InvokeAsync(
+    public async Task<DeleteDeploymentTargetPersistenceOutcome> InvokeAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
@@ -112,6 +112,6 @@ internal sealed class MongoDeleteDeploymentTarget(
         }, cancellationToken);
     }
 
-    private static DeleteDeploymentTargetOutcome Error(DeleteDeploymentTargetError error) =>
+    private static DeleteDeploymentTargetPersistenceOutcome Error(DeleteDeploymentTargetError error) =>
         new(error);
 }

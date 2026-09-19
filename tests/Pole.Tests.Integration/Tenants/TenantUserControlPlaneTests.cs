@@ -45,7 +45,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         _services?.Dispose();
         return Task.CompletedTask;
     }
-    
+
     [Fact]
     public async Task CreateTenant_UsesAuthenticatedUserAsOwner()
     {
@@ -549,6 +549,9 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         [FromClaim(Claims.Email)] string CurrentUserEmail,
         [FromClaim(Claims.Roles)] ImmutableArray<string> Roles);
 
-    private sealed record ClaimBoundResponse(string CurrentUserId, string CurrentUserEmail, IEnumerable<string> Roles);
+    private sealed record ClaimBoundResponse(
+        string CurrentUserId,
+        string CurrentUserEmail,
+        IEnumerable<string> Roles);
 
 }

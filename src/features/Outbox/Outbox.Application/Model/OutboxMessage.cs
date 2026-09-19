@@ -141,7 +141,9 @@ public sealed record AbandonedOutboxMessageState(
 
 public static class OutboxMessageFactory
 {
-    public sealed record CreateOptions(string Id, DateTime EnqueuedAtUtc);
+    public sealed record CreateOptions(
+        string Id,
+        DateTime EnqueuedAtUtc);
 
     public static CreateOptions DefaultOptions =>
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);

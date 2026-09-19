@@ -46,11 +46,11 @@ npm run build
 npm run lint
 ```
 
-`npm test` and `npm run build` are currently passing. `npm run lint` is a valid gate but has existing React hook and fast-refresh failures; do not describe it as passing until those are fixed.
+`npm test`, `npm run build`, and `npm run lint` are required frontend gates. Run them on the current change; do not reuse historical passing results as current evidence.
 
 Docker is required for `tests/Pole.Tests.Integration`. Aspire E2E and live Kubernetes checks require their documented services and cluster prerequisites. Read `docs/testing.md`, `docs/aspire-local-development.md`, and `docs/aspire-e2e-testing.md`; never claim these lanes passed when their prerequisites were unavailable.
 
-Use `$pole-test-runner` to select the smallest evidence-bearing checks and decide when safe command-level parallelism applies.
+Use `$pole-test-runner` for focused development checks. Before opening a PR, run `python3 scripts/quality_gate.py run`: every local test must pass without filters or skips. Infrastructure unavailability and pre-existing failures block publication. See [agent delivery](docs/agent-delivery.md) for canonical implementations, early slice review and evidence commands.
 
 ## Engineering rules
 
@@ -80,12 +80,16 @@ Use `$pole-test-runner` to select the smallest evidence-bearing checks and decid
 - Prefer no delegation for ordinary implementation. Use parallel agents for independent, read-heavy exploration, review, or log analysis; use parallel writers only when file ownership is unquestionably disjoint.
 - Agents share the checkout and external services. They are not filesystem- or Docker-isolated. Never run concurrent builds or overlapping test projects through separate agents.
 - Test parallelism is command-level: build once, then run distinct infrastructure-free projects with `--no-build --no-restore`. Run integration, Aspire, E2E, and live Kubernetes lanes sequentially.
-- Before an authorized push or pull request for a non-trivial code change, complete focused tests and self-review, then delegate one independent review to a fresh built-in agent using `$pole-post-task-review`. Do not create a persistent reviewer persona or run multiple reviewers by default.
+- Before opening any pull request, complete the full local quality gate with zero failed or skipped tests, including Kubernetes, Harbor, Aspire E2E and frontend tests. Do not open a draft PR to bypass this requirement.
+- For new features or repeated endpoint families, give agents exact canonical reference files and review one complete representative slice before repeating its pattern. This primary-agent checkpoint does not require another user approval.
+- Before an authorized push or pull request for a non-trivial code change, complete the full test gate and self-review, then delegate one independent review to a fresh built-in agent using `$pole-post-task-review`. Do not create a persistent reviewer persona or run multiple reviewers by default.
 - Give that reviewer a bounded prompt containing the request or issue, approved plan when present, base branch or commit, exact diff target, test commands and outcomes, skipped checks, and known risks. The reviewer inspects the shared checkout read-only, does not edit or delegate further, and returns prioritized findings with file and line references.
 - The primary agent owns triage and fixes, reruns affected checks, and requests at most one further independent pass when review fixes materially change behavior. Skip the independent agent for documentation, skills, agent guidance, or mechanical-only changes unless the user requests it or the change carries unusual risk.
 
 ## Completion
 
-- Run the focused checks that prove the changed behavior and report any skipped or unavailable lanes.
+- Run focused checks while developing, then the full local gate before PR publication. Use `scripts/quality_gate.py record-review`, `verify`, and `open-pr`; do not bypass current evidence with direct PR creation.
+- If tests fail, the first sentence of every summary must name the tests and explain why (or state that diagnosis is pending). If suites cannot run, lead with the suite and missing prerequisite. This applies to progress summaries, handoffs, PR descriptions and final answers.
+- Turn recurring defects into a focused regression test, semantic rule, formatter rule or corrected canonical example; keep rules precise.
 - Inspect the actual diff and use `$pole-post-task-review` before handoff.
 - Report changed files, checks and outcomes, remaining risks, and any action that still requires user authorization.

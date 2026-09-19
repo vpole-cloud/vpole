@@ -17,7 +17,9 @@ public sealed record GetSourceBuildJobRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
     : IMediatorRequest<GetSourceBuildJobOutcome>, ITenantReadOperation;
 
-public union GetSourceBuildJobOutcome(SourceBuildJobDto, SourceBuildJobNotFound);
+public union GetSourceBuildJobOutcome(
+    SourceBuildJobDto,
+    SourceBuildJobNotFound);
 
 public sealed class GetSourceBuildJobHandler(LoadSourceBuildJob loadSourceBuildJob)
     : IMediatorOutcomeHandler<GetSourceBuildJobRequest, GetSourceBuildJobOutcome>

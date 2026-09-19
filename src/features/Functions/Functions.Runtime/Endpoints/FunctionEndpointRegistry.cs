@@ -9,7 +9,10 @@ public readonly record struct FunctionServiceKey(
     string Namespace,
     string ServiceName);
 
-public sealed record FunctionEndpoint(string Address, int Port, string? TargetUid);
+public sealed record FunctionEndpoint(
+    string Address,
+    int Port,
+    string? TargetUid);
 
 public sealed record FunctionEndpointSnapshot(
     FunctionServiceKey Service,

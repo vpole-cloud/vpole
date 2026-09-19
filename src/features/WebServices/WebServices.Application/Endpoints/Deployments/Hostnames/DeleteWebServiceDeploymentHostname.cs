@@ -52,7 +52,11 @@ public sealed record DeleteWebServiceDeploymentHostnameRequest(
     [FromRoute] string DeploymentId,
     [FromRoute] string BindingId,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<WebServiceDeploymentHostnameOutcome>, ITenantWriteOperation;
+    : IMediatorRequest<DeleteWebServiceDeploymentHostnameOutcome>, ITenantWriteOperation;
+
+public union DeleteWebServiceDeploymentHostnameOutcome(
+    PlacementSummaryDto,
+    WebServiceDeploymentHostnameError);
 
 public sealed class DeleteWebServiceDeploymentHostnameHandler(
     LoadWebServiceById loadWebService,
@@ -64,13 +68,13 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
     AdvanceResourceDeploymentRevision advanceResourceDeploymentRevision,
     PersistUpdatedWebServiceOutcome persistWebService,
     PersistCurrentWebServiceRelease persistRelease,
-    RunMongoOutcomeTransaction<WebServiceDeploymentHostnameOutcome> runTransaction,
+    RunMongoOutcomeTransaction<DeleteWebServiceDeploymentHostnameOutcome> runTransaction,
     TimeProvider timeProvider)
     : IMediatorOutcomeHandler<
         DeleteWebServiceDeploymentHostnameRequest,
-        WebServiceDeploymentHostnameOutcome>
+        DeleteWebServiceDeploymentHostnameOutcome>
 {
-    public async Task<WebServiceDeploymentHostnameOutcome> HandleAsync(
+    public async Task<DeleteWebServiceDeploymentHostnameOutcome> HandleAsync(
         DeleteWebServiceDeploymentHostnameRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -108,12 +112,12 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
             cancellationToken);
     }
 
-    private async Task<MongoTransactionDecision<WebServiceDeploymentHostnameOutcome>>
+    private async Task<MongoTransactionDecision<DeleteWebServiceDeploymentHostnameOutcome>>
         DeleteAndApplySnapshotAsync(
         DeleteWebServiceDeploymentHostnameRequest request,
         WebService webService,
         PlacementSummaryDto deployment,
-        MongoTransactionContext<WebServiceDeploymentHostnameOutcome> transaction,
+        MongoTransactionContext<DeleteWebServiceDeploymentHostnameOutcome> transaction,
         CancellationToken cancellationToken)
     {
         var deleted = await deleteCustomHostnameBinding(
@@ -186,14 +190,14 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
                 ObjectId.GenerateNewId().ToString(),
                 timeProvider.GetUtcNow().UtcDateTime));
         await persistRelease(transaction.Session, release, cancellationToken);
-        return transaction.Commit(new WebServiceDeploymentHostnameOutcome(changed));
+        return transaction.Commit(new DeleteWebServiceDeploymentHostnameOutcome(changed));
     }
 
-    private static WebServiceDeploymentHostnameOutcome Error(
+    private static DeleteWebServiceDeploymentHostnameOutcome Error(
         WebServiceDeploymentHostnameError error) => new(error);
 
-    private static MongoTransactionDecision<WebServiceDeploymentHostnameOutcome> Abort(
-        MongoTransactionContext<WebServiceDeploymentHostnameOutcome> transaction,
+    private static MongoTransactionDecision<DeleteWebServiceDeploymentHostnameOutcome> Abort(
+        MongoTransactionContext<DeleteWebServiceDeploymentHostnameOutcome> transaction,
         WebServiceDeploymentHostnameError error) =>
         transaction.Abort(Error(error));
 }

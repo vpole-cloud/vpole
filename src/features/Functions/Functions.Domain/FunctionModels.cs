@@ -174,7 +174,9 @@ public sealed record FunctionResources(
     FunctionResourceValues Requests,
     FunctionResourceValues Limits);
 
-public sealed record FunctionResourceValues(int CpuMillis, int MemoryMi);
+public sealed record FunctionResourceValues(
+    int CpuMillis,
+    int MemoryMi);
 
 public sealed record FunctionScalingPolicy(
     int MinInstances,
@@ -241,7 +243,9 @@ public sealed record FunctionRetryPolicy(
     int MaxAttempts,
     ImmutableList<int> BackoffSeconds);
 
-public sealed record FunctionRevisionFailure(string Code, string Message);
+public sealed record FunctionRevisionFailure(
+    string Code,
+    string Message);
 
 public sealed record FunctionRouteBinding(
     [property: BsonId]

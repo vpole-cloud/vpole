@@ -488,5 +488,8 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
     }
 
     private sealed record InstallationStart(string State);
-    private sealed record OAuthStart(string InstallState, string OAuthState, string CodeChallenge);
+    private sealed record OAuthStart(
+        string InstallState,
+        string OAuthState,
+        string CodeChallenge);
 }

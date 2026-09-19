@@ -55,7 +55,7 @@ public sealed record DeleteIsolationScopeRequest(
     [FromRoute] string ResourceGroupId,
     [FromRoute] string ScopeId,
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<BeginIsolationScopeDeletionOutcome>, ITenantWriteOperation;
+    : IMediatorRequest<DeleteIsolationScopeOutcome>, ITenantWriteOperation;
 
 public sealed record DeleteIsolationScopeResponse(
     string Id,
@@ -74,16 +74,29 @@ public sealed class DeleteIsolationScopeRequestValidator
     }
 }
 
+public union DeleteIsolationScopeOutcome(
+    IsolationScopeDeletionCompleted,
+    IsolationScopeDeletionRequested,
+    IsolationScopeDeletionError);
+
 public sealed class DeleteIsolationScopeHandler(
     BeginIsolationScopeDeletion beginIsolationScopeDeletion)
-    : IMediatorOutcomeHandler<DeleteIsolationScopeRequest, BeginIsolationScopeDeletionOutcome>
+    : IMediatorOutcomeHandler<DeleteIsolationScopeRequest, DeleteIsolationScopeOutcome>
 {
-    public Task<BeginIsolationScopeDeletionOutcome> HandleAsync(
+    public async Task<DeleteIsolationScopeOutcome> HandleAsync(
         DeleteIsolationScopeRequest request,
-        CancellationToken cancellationToken = default) =>
-        beginIsolationScopeDeletion(
+        CancellationToken cancellationToken = default)
+    {
+        var outcome = await beginIsolationScopeDeletion(
             request.TenantId,
             request.ResourceGroupId,
             request.ScopeId,
             cancellationToken);
+        return outcome switch
+        {
+            IsolationScopeDeletionCompleted completed => new DeleteIsolationScopeOutcome(completed),
+            IsolationScopeDeletionRequested requested => new DeleteIsolationScopeOutcome(requested),
+            IsolationScopeDeletionError error => new DeleteIsolationScopeOutcome(error)
+        };
+    }
 }

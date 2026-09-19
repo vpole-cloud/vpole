@@ -241,7 +241,9 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         return new QueuedJob(job, sourceRepositoryId);
     }
 
-    private sealed record QueuedJob(SourceBuildJob Job, string SourceRepositoryId);
+    private sealed record QueuedJob(
+        SourceBuildJob Job,
+        string SourceRepositoryId);
 
     private sealed class FakeWorkspaceService
     {

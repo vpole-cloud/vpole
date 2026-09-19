@@ -103,13 +103,26 @@ public sealed record WebServiceExposure(string GeneratedHostnameLabelPrefix)
             : generatedHostnameLabelPrefix.Trim().ToLowerInvariant());
 }
 
-public sealed record AutoscalingSpec(int MinReplicas, int MaxReplicas, AutoscalingMetric Metric);
-public sealed record AutoscalingMetric(string Type, int TargetAverageUtilization);
+public sealed record AutoscalingSpec(
+    int MinReplicas,
+    int MaxReplicas,
+    AutoscalingMetric Metric);
+public sealed record AutoscalingMetric(
+    string Type,
+    int TargetAverageUtilization);
 public sealed record WebServiceConfig(
     ImmutableDictionary<string, string> EnvironmentVariables,
     ImmutableList<PortMapping> PortMappings);
-public sealed record PortMapping(int ServicePort, string TargetPort, string Protocol, string Name);
-public sealed record ImageInfo(string Server, string Name, string Tag = "latest", string? SecretName = null)
+public sealed record PortMapping(
+    int ServicePort,
+    string TargetPort,
+    string Protocol,
+    string Name);
+public sealed record ImageInfo(
+    string Server,
+    string Name,
+    string Tag = "latest",
+    string? SecretName = null)
 {
     public string FullImageName => $"{Server}/{Name}:{Tag}";
 }

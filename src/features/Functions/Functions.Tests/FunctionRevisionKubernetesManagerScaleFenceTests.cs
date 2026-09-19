@@ -171,7 +171,9 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
                 "pole-tenant-rg"));
     }
 
-    private sealed record RecordedPut(string Path, string Body);
+    private sealed record RecordedPut(
+        string Path,
+        string Body);
 
     private sealed class FixedKubernetesClientProvider(IKubernetes kubernetes) : IKubernetesClientProvider
     {
@@ -207,10 +209,10 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
 
         private static HttpResponseMessage JsonResponse(HttpRequestMessage request, string body) =>
             new(HttpStatusCode.OK)
-        {
-            Content = new StringContent(body, Encoding.UTF8, "application/json"),
-            RequestMessage = request
-        };
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+                RequestMessage = request
+            };
 
         private static string Serialize(V1Deployment value) =>
             JsonSerializer.Serialize(new

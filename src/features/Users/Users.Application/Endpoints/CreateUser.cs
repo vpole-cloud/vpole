@@ -56,7 +56,9 @@ public union CreateUserError(
     CreateUserPersistenceError,
     IdentityUserCreationFailed);
 
-public union CreateUserOutcome(UserDto, CreateUserError);
+public union CreateUserOutcome(
+    UserDto,
+    CreateUserError);
 
 public sealed class CreateUserHandler(
     EnsureUserEmailAvailable ensureUserEmailAvailable,

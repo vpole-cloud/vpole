@@ -57,6 +57,10 @@ public sealed record RedeployWebServiceResponse(
     string ReleaseId,
     IReadOnlyList<PlacementSummaryDto> Deployments);
 
+public union RedeployWebServiceOutcome(
+    RedeployWebServiceResponse,
+    RedeployWebServiceError);
+
 public sealed class RedeployWebServiceHandler(
     LoadWebServiceById loadWebServiceById,
     LoadResourceDeploymentSet loadResourceDeploymentSet,

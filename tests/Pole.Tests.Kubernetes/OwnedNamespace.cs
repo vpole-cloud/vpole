@@ -6,7 +6,10 @@ using Pole.Testing;
 
 namespace Pole.Tests.Kubernetes;
 
-internal sealed record OwnedNamespace(string Name, string Uid, TestRunIdentity Identity);
+internal sealed record OwnedNamespace(
+    string Name,
+    string Uid,
+    TestRunIdentity Identity);
 
 internal static class OwnedNamespaceManager
 {

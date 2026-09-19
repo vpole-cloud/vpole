@@ -36,7 +36,9 @@ public sealed record SourceBuildConfiguration(
 
 public static class SourceBuildConfigurationFactory
 {
-    public sealed record CreateOptions(string Id, DateTime CreatedAtUtc);
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc);
 
     public static CreateOptions DefaultOptions =>
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
@@ -79,7 +81,9 @@ public sealed record SourceBuildJob(
 [BsonKnownTypes(typeof(ManualSourceBuildTrigger))]
 public abstract record SourceBuildTrigger;
 
-public sealed record ManualSourceBuildTrigger(string UserId, string? Email) : SourceBuildTrigger;
+public sealed record ManualSourceBuildTrigger(
+    string UserId,
+    string? Email) : SourceBuildTrigger;
 
 public enum SourceBuildPhase
 {
@@ -133,7 +137,9 @@ public sealed record FailedSourceBuild(
 
 public static class SourceBuildJobFactory
 {
-    public sealed record CreateOptions(string Id, DateTime CreatedAtUtc);
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc);
 
     public static CreateOptions DefaultOptions =>
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);

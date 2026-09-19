@@ -25,3 +25,11 @@ Read `docs/engineering-guidelines.md`, `docs/module-boundaries.md`, and the owni
 6. Add search, Kubernetes, or frontend support only when the user workflow requires it.
 
 Load the focused Pole skill when the slice touches tenant scoping, outbox delivery, Kubernetes resources, or the frontend. Use `$pole-test-runner` to select tests that prove each changed boundary, and add manifest tests before live-cluster checks.
+
+## Delivery Gate
+
+Follow `docs/agent-delivery.md`. Focused checks are development feedback; before opening any PR, run `python3 scripts/quality_gate.py run` on the final source tree. Every local backend, frontend, automation, and infrastructure test must pass with zero skips, including for documentation or tooling PRs. Missing prerequisites and pre-existing failures block publication; draft PRs are not an exception. Use the recorded full-run evidence and review required by AGENTS.md with the publication wrapper described there.
+
+If tests fail, the first sentence of every summary must identify the failing tests and explain the known cause (or say it is still unknown). Report unavailable infrastructure as a blocker, never as a passed test.
+
+Before implementation, name the exact canonical compiled/tested files for the affected patterns. The primary agent reviews one representative slice against those references before the pattern is repeated; this is an internal checkpoint, not another user approval. Add a focused automated safeguard for recurring mistakes where the invariant is mechanically checkable. Existing explicit user approval satisfies the corresponding approval gate.

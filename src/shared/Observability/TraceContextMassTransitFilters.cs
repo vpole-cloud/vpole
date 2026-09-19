@@ -70,7 +70,9 @@ public sealed class TraceContextConsumeFilter<T>(
         => headers.TryGetHeader(headerName, out var value) ? value?.ToString() : null;
 }
 
-internal sealed record EventCoreCarrier(string? TraceId, string? CorrelationId)
+internal sealed record EventCoreCarrier(
+    string? TraceId,
+    string? CorrelationId)
 {
     public static EventCoreCarrier? From(object? message)
     {

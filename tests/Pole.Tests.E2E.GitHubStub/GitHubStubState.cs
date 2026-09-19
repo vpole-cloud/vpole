@@ -121,6 +121,13 @@ public sealed class GitHubStubState
         """;
 }
 
-public sealed record Revision(string Name, string CommitSha, string TreeSha, string ProgramSource);
+public sealed record Revision(
+    string Name,
+    string CommitSha,
+    string TreeSha,
+    string ProgramSource);
 
-public sealed record SanitizedRequest(string Method, string Path, IReadOnlyList<string> QueryKeys);
+public sealed record SanitizedRequest(
+    string Method,
+    string Path,
+    IReadOnlyList<string> QueryKeys);

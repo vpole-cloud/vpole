@@ -2,6 +2,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.Database;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Endpoints;
+using Pole.Features.WebServices.Application.Endpoints.Deployments;
+using Pole.Features.WebServices.Application.Endpoints.Deployments.Hostnames;
+using Pole.Features.WebServices.Application.Endpoints.Releases;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Application.Persistence.Deployments;
@@ -27,7 +31,8 @@ public static class WebServicesFeatureRegistration
             ServiceDescriptor.Singleton<Quota, WebServiceCountQuota>());
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IQuotaProfile, WebServiceQuotaProfile>());
-        services.AddOutcomeTransaction<WebServiceDeploymentHostnameOutcome>();
+        services.AddOutcomeTransaction<AddWebServiceDeploymentHostnameOutcome>();
+        services.AddOutcomeTransaction<DeleteWebServiceDeploymentHostnameOutcome>();
         services.AddOutcomeTransaction<RedeployWebServiceOutcome>();
         services.AddOutcomeTransaction<UpdateWebServiceImageTagOutcome>();
         services.AddOutcomeTransaction<RetryWebServiceDeploymentOutcome>();

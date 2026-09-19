@@ -10,6 +10,7 @@ using Pole.Features.StorageProfiles.Application.Endpoints;
 using Pole.Features.StorageProfiles.Application.Endpoints.KubernetesInventory;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
+using Pole.Features.WebServices.Application.Endpoints.Deployments;
 using Pole.Features.WebServices.Application.Endpoints.Releases;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Application.Persistence.Deployments;
@@ -45,19 +46,19 @@ public static class ResultAssertionExtensions
 
     public static WebServiceDeploymentCompletionRecorded AssertSuccess(
         this CompleteWebServiceDeploymentOutcome outcome) => outcome switch
-    {
-        WebServiceDeploymentCompletionRecorded success => success,
-        WebServiceFinalizationError error =>
-            UnexpectedError<WebServiceDeploymentCompletionRecorded>(error)
-    };
+        {
+            WebServiceDeploymentCompletionRecorded success => success,
+            WebServiceFinalizationError error =>
+                UnexpectedError<WebServiceDeploymentCompletionRecorded>(error)
+        };
 
     public static WebServiceDeletionFinalized AssertSuccess(
         this FinalizeWebServiceDeletionOutcome outcome) => outcome switch
-    {
-        WebServiceDeletionFinalized success => success,
-        WebServiceFinalizationError error =>
-            UnexpectedError<WebServiceDeletionFinalized>(error)
-    };
+        {
+            WebServiceDeletionFinalized success => success,
+            WebServiceFinalizationError error =>
+                UnexpectedError<WebServiceDeletionFinalized>(error)
+        };
 
 
     public static StorageProfileDto AssertSuccess(this CreateStorageProfileOutcome outcome) =>
@@ -69,10 +70,10 @@ public static class ResultAssertionExtensions
 
     public static CreateStorageProfileError AssertFailure(
         this CreateStorageProfileOutcome outcome) => outcome switch
-    {
-        StorageProfileDto success => UnexpectedSuccess<CreateStorageProfileError>(success),
-        CreateStorageProfileError error => error
-    };
+        {
+            StorageProfileDto success => UnexpectedSuccess<CreateStorageProfileError>(success),
+            CreateStorageProfileError error => error
+        };
 
     public static StorageProfileDto AssertSuccess(this UpdateStorageProfileOutcome outcome) =>
         outcome switch
@@ -83,48 +84,48 @@ public static class ResultAssertionExtensions
 
     public static UpdateStorageProfileError AssertFailure(
         this UpdateStorageProfileOutcome outcome) => outcome switch
-    {
-        StorageProfileDto success => UnexpectedSuccess<UpdateStorageProfileError>(success),
-        UpdateStorageProfileError error => error
-    };
+        {
+            StorageProfileDto success => UnexpectedSuccess<UpdateStorageProfileError>(success),
+            UpdateStorageProfileError error => error
+        };
 
     public static IReadOnlyCollection<StorageProfileDto> AssertSuccess(
         this GetStorageProfilesOutcome outcome) => outcome switch
-    {
-        IReadOnlyCollection<StorageProfileDto> success => success
-    };
+        {
+            IReadOnlyCollection<StorageProfileDto> success => success
+        };
 
     public static IReadOnlyCollection<StorageProfileDto> AssertSuccess(
         this GetAvailableStorageProfilesOutcome outcome) => outcome switch
-    {
-        IReadOnlyCollection<StorageProfileDto> success => success,
-        KubernetesStorageDiscoveryUnavailable error =>
-            UnexpectedError<IReadOnlyCollection<StorageProfileDto>>(error)
-    };
+        {
+            IReadOnlyCollection<StorageProfileDto> success => success,
+            KubernetesStorageDiscoveryUnavailable error =>
+                UnexpectedError<IReadOnlyCollection<StorageProfileDto>>(error)
+        };
 
     public static IReadOnlyCollection<KubernetesStorageClassDto> AssertSuccess(
         this GetKubernetesStorageClassesOutcome outcome) => outcome switch
-    {
-        IReadOnlyCollection<KubernetesStorageClassDto> success => success,
-        KubernetesStorageDiscoveryUnavailable error =>
-            UnexpectedError<IReadOnlyCollection<KubernetesStorageClassDto>>(error)
-    };
+        {
+            IReadOnlyCollection<KubernetesStorageClassDto> success => success,
+            KubernetesStorageDiscoveryUnavailable error =>
+                UnexpectedError<IReadOnlyCollection<KubernetesStorageClassDto>>(error)
+        };
 
     public static IReadOnlyCollection<KubernetesPersistentVolumeDto> AssertSuccess(
         this GetKubernetesPersistentVolumesOutcome outcome) => outcome switch
-    {
-        IReadOnlyCollection<KubernetesPersistentVolumeDto> success => success,
-        KubernetesStorageDiscoveryUnavailable error =>
-            UnexpectedError<IReadOnlyCollection<KubernetesPersistentVolumeDto>>(error)
-    };
+        {
+            IReadOnlyCollection<KubernetesPersistentVolumeDto> success => success,
+            KubernetesStorageDiscoveryUnavailable error =>
+                UnexpectedError<IReadOnlyCollection<KubernetesPersistentVolumeDto>>(error)
+        };
 
     public static IReadOnlyCollection<KubernetesPersistentVolumeClaimDto> AssertSuccess(
         this GetKubernetesPersistentVolumeClaimsOutcome outcome) => outcome switch
-    {
-        IReadOnlyCollection<KubernetesPersistentVolumeClaimDto> success => success,
-        KubernetesStorageDiscoveryUnavailable error =>
-            UnexpectedError<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>(error)
-    };
+        {
+            IReadOnlyCollection<KubernetesPersistentVolumeClaimDto> success => success,
+            KubernetesStorageDiscoveryUnavailable error =>
+                UnexpectedError<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>(error)
+        };
 
     public static CreateWebServiceResponse AssertSuccess(
         this MediatorResult<CreateWebServiceOutcome> result) =>

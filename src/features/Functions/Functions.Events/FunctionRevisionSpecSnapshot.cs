@@ -26,7 +26,9 @@ public sealed record FunctionResourcesSnapshot(
     FunctionResourceValuesSnapshot Requests,
     FunctionResourceValuesSnapshot Limits);
 
-public sealed record FunctionResourceValuesSnapshot(int CpuMillis, int MemoryMi);
+public sealed record FunctionResourceValuesSnapshot(
+    int CpuMillis,
+    int MemoryMi);
 
 public sealed record FunctionScalingPolicySnapshot(
     int MinInstances,

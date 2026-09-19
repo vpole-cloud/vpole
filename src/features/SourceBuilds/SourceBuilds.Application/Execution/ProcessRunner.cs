@@ -10,7 +10,10 @@ public sealed record ProcessSpec(
     IReadOnlyDictionary<string, string> EnvironmentVariables,
     int MaxCapturedCharacters = 64 * 1024);
 
-public sealed record ProcessResult(int ExitCode, string StandardOutput, string StandardError);
+public sealed record ProcessResult(
+    int ExitCode,
+    string StandardOutput,
+    string StandardError);
 
 public delegate Task<ProcessResult> RunProcess(
     ProcessSpec spec,

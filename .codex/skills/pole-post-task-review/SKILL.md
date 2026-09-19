@@ -48,7 +48,7 @@ Review for bugs and regressions first, not style. Focus on:
 
 Use the repo's normal code-review stance:
 
-1. Lead with findings, ordered by severity.
+1. If tests fail, first state which tests fail and why. Then list findings ordered by severity.
 2. Include file and line references for each finding when possible.
 3. Explain the failure mode and the concrete consequence.
 4. Add open questions or assumptions only after findings.
@@ -67,3 +67,9 @@ When this skill is used by the same agent that implemented the task:
 ## Independent Or Review-only
 
 Do not edit files, commit, push, publish, or spawn more agents. Provide findings first, then questions or assumptions, then a brief verification summary. A clean review must say so explicitly and retain any residual risk or unavailable test lane.
+
+## Delivery Gate
+
+Follow `docs/agent-delivery.md`. Focused checks are development feedback; before opening any PR, run `python3 scripts/quality_gate.py run` on the final source tree. Every local backend, frontend, automation, and infrastructure test must pass with zero skips, including for documentation or tooling PRs. Missing prerequisites and pre-existing failures block publication; draft PRs are not an exception. Use the recorded full-run evidence and review required by AGENTS.md with the publication wrapper described there.
+
+If tests fail, the first sentence of every summary must identify the failing tests and explain the known cause (or say it is still unknown). Report unavailable infrastructure as a blocker, never as a passed test.

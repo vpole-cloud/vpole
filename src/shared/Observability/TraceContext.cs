@@ -2,7 +2,9 @@ using System.Diagnostics;
 
 namespace Pole.Observability;
 
-public sealed record TraceContextSnapshot(string TraceId, string CorrelationId);
+public sealed record TraceContextSnapshot(
+    string TraceId,
+    string CorrelationId);
 
 public interface ITraceContextCarrier
 {

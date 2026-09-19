@@ -22,7 +22,10 @@ public sealed record AddTenantMemberRequest(
     public TenantRole Role => Body.Role;
 }
 
-public sealed record AddTenantMemberRequestBody(string UserId, string Email, TenantRole Role);
+public sealed record AddTenantMemberRequestBody(
+    string UserId,
+    string Email,
+    TenantRole Role);
 
 public union AddTenantMemberError(TenantMemberAdditionError);
 

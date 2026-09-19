@@ -226,4 +226,7 @@ internal sealed class KeycloakAdminClient(HttpClient httpClient, string adminUse
     }
 }
 
-internal sealed record DirectGrantClient(string ClientId, string InternalId, string Secret);
+internal sealed record DirectGrantClient(
+    string ClientId,
+    string InternalId,
+    string Secret);

@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Blog;
@@ -221,14 +221,28 @@ namespace Blog
             SuccessThreshold = 1
         };
 
-        private sealed record ResourceGroupResponse(string Id, string Name, string Description, IReadOnlyCollection<string> Tags);
+        private sealed record ResourceGroupResponse(
+            string Id,
+            string Name,
+            string Description,
+            IReadOnlyCollection<string> Tags);
 
         private sealed record WebServiceCreateResponse(string WebServiceId);
 
-        private sealed record WebServiceResponse(string Id, string Name, string ResourceGroupId);
+        private sealed record WebServiceResponse(
+            string Id,
+            string Name,
+            string ResourceGroupId);
 
-        private sealed record PostgresClusterResponse(string Id, string Name, string GroupId);
+        private sealed record PostgresClusterResponse(
+            string Id,
+            string Name,
+            string GroupId);
 
-        private sealed record PaginatedResponse<T>(IReadOnlyCollection<T> Items, long TotalCount, int PageNumber, int PageSize);
+        private sealed record PaginatedResponse<T>(
+            IReadOnlyCollection<T> Items,
+            long TotalCount,
+            int PageNumber,
+            int PageSize);
     }
 }

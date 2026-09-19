@@ -298,7 +298,9 @@ public sealed class GitHubAppClient(
     private static string EscapePath(string value) =>
         string.Join('/', value.Split('/').Select(Uri.EscapeDataString));
 
-    private sealed record InstallationTokenCacheEntry(string Token, DateTimeOffset ExpiresAtUtc);
+    private sealed record InstallationTokenCacheEntry(
+        string Token,
+        DateTimeOffset ExpiresAtUtc);
 
     private sealed record InstallationResponse(
         long Id,
@@ -306,7 +308,10 @@ public sealed class GitHubAppClient(
         [property: JsonPropertyName("repository_selection")] string RepositorySelection,
         Dictionary<string, string> Permissions);
 
-    private sealed record AccountResponse(long Id, string Login, string Type);
+    private sealed record AccountResponse(
+        long Id,
+        string Login,
+        string Type);
 
     private sealed record OAuthTokenResponse(
         [property: JsonPropertyName("access_token")] string AccessToken);
@@ -328,11 +333,20 @@ public sealed class GitHubAppClient(
         [property: JsonPropertyName("default_branch")] string DefaultBranch,
         [property: JsonPropertyName("updated_at")] DateTime? UpdatedAt);
 
-    private sealed record BranchResponse(string Name, CommitReference Commit, bool Protected);
+    private sealed record BranchResponse(
+        string Name,
+        CommitReference Commit,
+        bool Protected);
     private sealed record CommitReference(string Sha);
     private sealed record GitCommitResponse(GitTreeReference Tree);
     private sealed record GitTreeReference(string Sha);
-    private sealed record GitTreeResponse(GitTreeItem[] Tree, bool Truncated);
-    private sealed record GitTreeItem(string Path, string Type);
-    private sealed record ContentResponse(string Content, string Encoding);
+    private sealed record GitTreeResponse(
+        GitTreeItem[] Tree,
+        bool Truncated);
+    private sealed record GitTreeItem(
+        string Path,
+        string Type);
+    private sealed record ContentResponse(
+        string Content,
+        string Encoding);
 }

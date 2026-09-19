@@ -13,7 +13,9 @@ public sealed record WebServiceListQuery(
     public int Skip => checked((PageNumber - 1) * PageSize);
 }
 
-public sealed record WebServicePage(IReadOnlyList<WebService> Items, long TotalCount);
+public sealed record WebServicePage(
+    IReadOnlyList<WebService> Items,
+    long TotalCount);
 
 public delegate Task<WebServicePage> LoadWebServicePage(
     WebServiceListQuery query,

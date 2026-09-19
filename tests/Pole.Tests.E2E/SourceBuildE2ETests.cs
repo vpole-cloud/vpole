@@ -514,5 +514,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         element.GetProperty(propertyName).GetString()
         ?? throw new InvalidOperationException($"Pole did not return '{propertyName}'.");
 
-    private sealed record CreatedWebService(string Id, string Name);
+    private sealed record CreatedWebService(
+        string Id,
+        string Name);
 }

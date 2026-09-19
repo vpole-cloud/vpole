@@ -4,7 +4,9 @@ namespace Pole.Features.Functions.Application.Common;
 
 public sealed record FunctionRevisionLifecycleCompleted;
 
-public sealed record FunctionRevisionNotFound(string FunctionAppId, string RevisionId);
+public sealed record FunctionRevisionNotFound(
+    string FunctionAppId,
+    string RevisionId);
 
 public sealed record FunctionRevisionNotProvisioning(string RevisionId);
 
@@ -12,15 +14,21 @@ public sealed record FunctionRevisionNotReady(string RevisionId);
 
 public sealed record FunctionRevisionNotDraining(string RevisionId);
 
-public sealed record FunctionRevisionNotPending(string FunctionAppId, string RevisionId);
+public sealed record FunctionRevisionNotPending(
+    string FunctionAppId,
+    string RevisionId);
 
-public sealed record FunctionRevisionConcurrencyConflict(string FunctionAppId, string RevisionId);
+public sealed record FunctionRevisionConcurrencyConflict(
+    string FunctionAppId,
+    string RevisionId);
 
 public sealed record FunctionAppConcurrencyConflict(string FunctionAppId);
 
 public sealed record FunctionRouteBindingUnavailable(string FunctionAppId);
 
-public sealed record FunctionRevisionHasDurableInvocations(string FunctionAppId, string RevisionId);
+public sealed record FunctionRevisionHasDurableInvocations(
+    string FunctionAppId,
+    string RevisionId);
 
 public union FunctionRevisionLifecycleOutcome(
     FunctionRevisionLifecycleCompleted,

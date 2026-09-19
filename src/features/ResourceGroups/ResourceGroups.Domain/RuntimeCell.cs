@@ -196,11 +196,15 @@ public enum RuntimeCellOperation
 public abstract record RuntimeCellState(long Generation);
 
 [BsonDiscriminator("provisioning")]
-public sealed record ProvisioningRuntimeCellState(long Generation, DateTime RequestedAtUtc)
+public sealed record ProvisioningRuntimeCellState(
+    long Generation,
+    DateTime RequestedAtUtc)
     : RuntimeCellState(Generation);
 
 [BsonDiscriminator("ready")]
-public sealed record ReadyRuntimeCellState(long Generation, DateTime ReadyAtUtc)
+public sealed record ReadyRuntimeCellState(
+    long Generation,
+    DateTime ReadyAtUtc)
     : RuntimeCellState(Generation);
 
 [BsonDiscriminator("failed")]
@@ -214,16 +218,22 @@ public sealed record FailedRuntimeCellState(
     : RuntimeCellState(Generation);
 
 [BsonDiscriminator("deleting")]
-public sealed record DeletingRuntimeCellState(long Generation, DateTime RequestedAtUtc)
+public sealed record DeletingRuntimeCellState(
+    long Generation,
+    DateTime RequestedAtUtc)
     : RuntimeCellState(Generation);
 
 [BsonDiscriminator("deleted")]
-public sealed record DeletedRuntimeCellState(long Generation, DateTime DeletedAtUtc)
+public sealed record DeletedRuntimeCellState(
+    long Generation,
+    DateTime DeletedAtUtc)
     : RuntimeCellState(Generation);
 
 public static class RuntimeCellFactory
 {
-    public sealed record CreateOptions(string Id, DateTime CreatedAtUtc);
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc);
 
     public static CreateOptions DefaultOptions =>
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);

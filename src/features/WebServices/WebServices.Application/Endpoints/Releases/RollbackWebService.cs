@@ -60,6 +60,10 @@ public sealed record RollbackWebServiceResponse(
     string ReleaseId,
     IReadOnlyList<PlacementSummaryDto> Deployments);
 
+public union RollbackWebServiceOutcome(
+    RollbackWebServiceResponse,
+    RollbackWebServiceError);
+
 public sealed class RollbackWebServiceHandler(
     LoadWebServiceById loadWebServiceById,
     LoadSucceededWebServiceRelease loadSucceededWebServiceRelease,

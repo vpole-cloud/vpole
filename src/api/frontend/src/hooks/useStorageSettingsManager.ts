@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   createStorageProfile,
   fetchKubernetesPersistentVolumeClaims,
@@ -31,30 +31,40 @@ export function useStorageSettingsManager({
   const [storageClasses, setStorageClasses] = useState<KubernetesStorageClass[]>([])
   const [persistentVolumes, setPersistentVolumes] = useState<KubernetesPersistentVolume[]>([])
   const [persistentVolumeClaims, setPersistentVolumeClaims] = useState<KubernetesPersistentVolumeClaim[]>([])
-  const [status, setStatus] = useState<LoadStatus>('idle')
+  const [status, setStatus] = useState<LoadStatus>(enabled ? 'loading' : 'idle')
   const [error, setError] = useState('')
   const [submitStatus, setSubmitStatus] = useState<LoadStatus>('idle')
   const [submitError, setSubmitError] = useState('')
 
-  const load = async (signal?: AbortSignal) => {
-    setStatus('loading')
+  const controllerRef = useRef<AbortController | null>(null)
+  const [scope, setScope] = useState({ apiBaseUrl, token, enabled })
+
+  if (scope.apiBaseUrl !== apiBaseUrl || scope.token !== token || scope.enabled !== enabled) {
+    setScope({ apiBaseUrl, token, enabled })
+    setProfiles([])
+    setStorageClasses([])
+    setPersistentVolumes([])
+    setPersistentVolumeClaims([])
+    setStatus(enabled ? 'loading' : 'idle')
     setError('')
+    setSubmitStatus('idle')
+    setSubmitError('')
+  }
 
-    try {
-      const [loadedProfiles, loadedClasses, loadedVolumes, loadedClaims] =
-        await Promise.all([
-          fetchStorageProfiles(apiBaseUrl, token, signal),
-          fetchKubernetesStorageClasses(apiBaseUrl, token, signal),
-          fetchKubernetesPersistentVolumes(apiBaseUrl, token, signal),
-          fetchKubernetesPersistentVolumeClaims(apiBaseUrl, token, signal),
-        ])
-
+  const load = useCallback((signal?: AbortSignal) => {
+    return Promise.all([
+      fetchStorageProfiles(apiBaseUrl, token, signal),
+      fetchKubernetesStorageClasses(apiBaseUrl, token, signal),
+      fetchKubernetesPersistentVolumes(apiBaseUrl, token, signal),
+      fetchKubernetesPersistentVolumeClaims(apiBaseUrl, token, signal),
+    ]).then(([loadedProfiles, loadedClasses, loadedVolumes, loadedClaims]) => {
+      if (signal?.aborted) return
       setProfiles(loadedProfiles)
       setStorageClasses(loadedClasses)
       setPersistentVolumes(loadedVolumes)
       setPersistentVolumeClaims(loadedClaims)
       setStatus('success')
-    } catch (loadError) {
+    }, (loadError: unknown) => {
       if (signal?.aborted) {
         return
       }
@@ -69,8 +79,8 @@ export function useStorageSettingsManager({
           ? loadError.message
           : 'Unable to load storage settings.',
       )
-    }
-  }
+    })
+  }, [apiBaseUrl, token])
 
   useEffect(() => {
     if (!enabled) {
@@ -78,26 +88,36 @@ export function useStorageSettingsManager({
     }
 
     const controller = new AbortController()
+    controllerRef.current = controller
     void load(controller.signal)
 
     return () => {
       controller.abort()
     }
-  }, [apiBaseUrl, enabled, token])
+  }, [enabled, load])
 
-  const refresh = async () => {
-    await load()
+  const refreshForScope = async (signal?: AbortSignal) => {
+    if (signal?.aborted) return
+    setStatus('loading')
+    setError('')
+    await load(signal)
   }
 
+  const refresh = () => refreshForScope(controllerRef.current?.signal)
+
   const create = async (input: StorageProfileInput) => {
+    const signal = controllerRef.current?.signal
     setSubmitStatus('loading')
     setSubmitError('')
 
     try {
       await createStorageProfile(apiBaseUrl, input, token)
-      await refresh()
+      if (signal?.aborted) return
+      await refreshForScope(signal)
+      if (signal?.aborted) return
       setSubmitStatus('success')
     } catch (submitErrorValue) {
+      if (signal?.aborted) throw submitErrorValue
       setSubmitStatus('error')
       setSubmitError(
         submitErrorValue instanceof Error
@@ -109,14 +129,18 @@ export function useStorageSettingsManager({
   }
 
   const update = async (id: string, input: StorageProfileInput) => {
+    const signal = controllerRef.current?.signal
     setSubmitStatus('loading')
     setSubmitError('')
 
     try {
       await updateStorageProfile(apiBaseUrl, id, input, token)
-      await refresh()
+      if (signal?.aborted) return
+      await refreshForScope(signal)
+      if (signal?.aborted) return
       setSubmitStatus('success')
     } catch (submitErrorValue) {
+      if (signal?.aborted) throw submitErrorValue
       setSubmitStatus('error')
       setSubmitError(
         submitErrorValue instanceof Error

@@ -27,7 +27,9 @@ public union RetryRuntimeCellError(
     RuntimeCellRetryRejected,
     ResourceGroupRevisionConflict);
 
-public union RetryRuntimeCellOutcome(RuntimeCellDto, RetryRuntimeCellError);
+public union RetryRuntimeCellOutcome(
+    RuntimeCellDto,
+    RetryRuntimeCellError);
 
 public sealed class RetryRuntimeCellHandler(
     PersistRuntimeCellRetry persistRuntimeCellRetry)
