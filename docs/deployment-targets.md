@@ -111,6 +111,18 @@ reason, and server time; this is not an active probe. The evidence is tied to th
 identity and credential version. Credential rotation invalidates the attestation and override;
 record a fresh attestation after validating the new connection.
 
+The domain stores separate `UnattestedNetworkPolicy` and `AttestedNetworkPolicy` states.
+An attestation requires the observed cluster identity, connection version, and check timestamp;
+an unattested target does not store empty identity or version placeholders. The aggregate's
+`AttestNetworkPolicy` transition binds evidence to its current connection and advances both
+target and workload-configuration revisions. Tests use the same transition as the API.
+
+Provider contracts expose typed enforcement, readiness, reason, and evidence-source values.
+Their JSON representation remains the documented strings; runtime workload writers use the
+contract's `AllowsWorkloads` policy rather than comparing display strings. Mongo admission uses
+typed member expressions, including comparisons against the target's current cluster identity
+and connection version, and is verified against the replica-set integration fixture.
+
 The explicit platform override `allowIsolationNotEnforced: true` permits admission without
 supported enforcement and reports `IsolationNotEnforced`. Without this override, unsupported
 and unknown targets fail closed, including transaction admission fences and placement discovery.

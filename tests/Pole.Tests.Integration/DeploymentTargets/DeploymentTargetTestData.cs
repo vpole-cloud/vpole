@@ -6,15 +6,8 @@ namespace Pole.Tests.Integration.DeploymentTargets;
 
 internal static class DeploymentTargetTestData
 {
-    public static DeploymentTarget AttestForTests(this DeploymentTarget target) => target with
-    {
-        WorkloadConfiguration = target.WorkloadConfiguration with
-        {
-            NetworkPolicy = new DeploymentTargetNetworkPolicy(
-                NetworkPolicyEnforcement.Supported,
-                target.ClusterIdentity, target.Connection.Version, target.CreatedAtUtc, false)
-        }
-    };
+    public static DeploymentTarget AttestForTests(this DeploymentTarget target) =>
+        target.AttestNetworkPolicy(NetworkPolicyEnforcement.Supported, false, target.UpdatedAtUtc);
 
     public static DeploymentTargetWorkloadConfiguration CreateWorkloadConfiguration(
         string ingressClassName = "traefik",

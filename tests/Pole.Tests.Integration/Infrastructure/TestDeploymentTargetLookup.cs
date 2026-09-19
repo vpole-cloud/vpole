@@ -38,11 +38,11 @@ internal sealed class TestDeploymentTargetLookup
         HealthStatus: "Healthy")
     {
         NetworkPolicy = new(
-            "Supported",
-            "EnforcementAttested",
-            "OperatorAttestedSupported",
+            NetworkPolicyEnforcementStatus.Supported,
+            NetworkPolicyReadiness.EnforcementAttested,
+            NetworkPolicyReason.OperatorAttestedSupported,
             DateTime.UnixEpoch,
-            "OperatorAttestation",
+            NetworkPolicyEvidenceSource.OperatorAttestation,
             false)
     };
 

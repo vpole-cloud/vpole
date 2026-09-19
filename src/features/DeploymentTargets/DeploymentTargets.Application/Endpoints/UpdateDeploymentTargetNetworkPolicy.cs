@@ -34,6 +34,7 @@ public union UpdateDeploymentTargetNetworkPolicyOutcome(
 
 public sealed class UpdateDeploymentTargetNetworkPolicyHandler(
     LoadDeploymentTargetById loadTarget,
+    LoadDefaultDeploymentTargetId loadDefaultTargetId,
     PersistUpdatedDeploymentTarget persistTarget,
     TimeProvider timeProvider)
     : IMediatorOutcomeHandler<
@@ -51,24 +52,16 @@ public sealed class UpdateDeploymentTargetNetworkPolicyHandler(
             return new DeploymentTargetRevisionConflict(request.Id);
 
         var now = DeploymentTargetClock.UtcNowAfter(timeProvider, target.UpdatedAtUtc);
-        var replacement = target with
-        {
-            Revision = checked(target.Revision + 1),
-            UpdatedAtUtc = now,
-            WorkloadConfiguration = target.WorkloadConfiguration with
-            {
-                Revision = checked(target.WorkloadConfiguration.Revision + 1),
-                NetworkPolicy = new DeploymentTargetNetworkPolicy(
-                    request.Body.Enforcement,
-                    target.ClusterIdentity,
-                    target.Connection.Version,
-                    now,
-                    request.Body.AllowIsolationNotEnforced)
-            }
-        };
+        var replacement = target.AttestNetworkPolicy(
+            request.Body.Enforcement,
+            request.Body.AllowIsolationNotEnforced,
+            now);
         var result = await persistTarget(target, replacement, cancellationToken);
         if (result.TryGetValue(out var persisted, out var error))
-            return persisted.ToDto();
+        {
+            var defaultId = await loadDefaultTargetId(cancellationToken);
+            return persisted.ToDto(persisted.Id == defaultId);
+        }
 
         return error switch
         {

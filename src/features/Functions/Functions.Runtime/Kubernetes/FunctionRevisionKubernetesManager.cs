@@ -330,7 +330,7 @@ public sealed class FunctionRevisionKubernetesManager(
     {
         var result = await lookupDeploymentTarget(targetId, cancellationToken);
         return result.TryGetValue(out var target, out _) &&
-            target.NetworkPolicy.Readiness is "EnforcementAttested" or "IsolationNotEnforced";
+            target.NetworkPolicy.AllowsWorkloads;
     }
 
     private static Err<FunctionRevisionKubernetesOperationError> EnforcementRequired() =>

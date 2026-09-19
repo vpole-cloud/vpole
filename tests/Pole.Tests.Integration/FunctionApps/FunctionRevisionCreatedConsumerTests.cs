@@ -53,7 +53,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                 target.ClusterIdentity,
                 DeploymentTargetConnectionFactory.CreateInCluster(2),
                 target.UpdatedAtUtc.AddMinutes(1));
-        Assert.Equal("EnforcementRequired", target.ToNetworkPolicyDto().Readiness);
+        Assert.Equal(NetworkPolicyReadiness.EnforcementRequired, target.ToNetworkPolicyDto().Readiness);
         var provider = new NoCallsKubernetesProvider();
         var manager = new FunctionRevisionKubernetesManager(
             provider,

@@ -70,18 +70,6 @@ public sealed record DeploymentTargetLookupDto(
     public DeploymentTargetNetworkPolicyDto NetworkPolicy { get; init; } = DeploymentTargetNetworkPolicyDto.Unknown;
 }
 
-public sealed record DeploymentTargetNetworkPolicyDto(
-    string Enforcement,
-    string Readiness,
-    string Reason,
-    DateTime? LastCheckedAtUtc,
-    string EvidenceSource,
-    bool OverrideEnabled)
-{
-    public static DeploymentTargetNetworkPolicyDto Unknown { get; } =
-        new("Unknown", "EnforcementRequired", "EnforcementNotEstablished", null, "None", false);
-}
-
 public sealed record DeploymentTargetWorkloadConfigurationLookupDto(
     long Revision,
     DeploymentTargetIngressConfigurationLookupDto? Ingress);

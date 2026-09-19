@@ -53,11 +53,11 @@ public sealed class ResourceDeploymentTargetRoutingTests(
     }
 
     [Theory]
-    [InlineData("EnforcementAttested", true)]
-    [InlineData("IsolationNotEnforced", true)]
-    [InlineData("EnforcementRequired", false)]
+    [InlineData(NetworkPolicyReadiness.EnforcementAttested, true)]
+    [InlineData(NetworkPolicyReadiness.IsolationNotEnforced, true)]
+    [InlineData(NetworkPolicyReadiness.EnforcementRequired, false)]
     public async Task ReconciliationOnTargetB_ChecksCurrentEnforcementBeforeApplying(
-        string readiness,
+        NetworkPolicyReadiness readiness,
         bool allowed)
     {
         var now = DateTime.UtcNow;
@@ -235,17 +235,17 @@ public sealed class ResourceDeploymentTargetRoutingTests(
     private static Task<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>> LookupTarget(
         string id,
         CancellationToken cancellationToken,
-        string readiness = "EnforcementAttested") =>
+        NetworkPolicyReadiness readiness = NetworkPolicyReadiness.EnforcementAttested) =>
         Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
             new Ok<DeploymentTargetLookupDto>(DeploymentTargetNetworkPolicyTests.Target().ToLookupDto() with
             {
                 Id = id,
                 NetworkPolicy = new(
-                    "Unknown",
+                    NetworkPolicyEnforcementStatus.Unknown,
                     readiness,
-                    "TestEvidence",
+                    NetworkPolicyReason.EnforcementNotEstablished,
                     DateTime.UnixEpoch,
-                    "OperatorAttestation",
+                    NetworkPolicyEvidenceSource.OperatorAttestation,
                     false)
             }));
 

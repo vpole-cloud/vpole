@@ -18,11 +18,11 @@ namespace Pole.Features.Functions.Tests;
 public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
 {
     [Theory]
-    [InlineData("EnforcementRequired", false)]
-    [InlineData("EnforcementAttested", true)]
-    [InlineData("IsolationNotEnforced", true)]
+    [InlineData(NetworkPolicyReadiness.EnforcementRequired, false)]
+    [InlineData(NetworkPolicyReadiness.EnforcementAttested, true)]
+    [InlineData(NetworkPolicyReadiness.IsolationNotEnforced, true)]
     public async Task Apply_checks_current_readiness_before_any_Kubernetes_write(
-        string readiness,
+        NetworkPolicyReadiness readiness,
         bool allowed)
     {
         var subject = CreateSubject();
@@ -42,7 +42,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         var result = await manager.ApplyAsync(subject);
         Assert.Equal(allowed, TypedResultExtensions.TryGetValue(result).Succeeded);
         Assert.Equal(allowed ? 2 : 0, handler.PostRequests.Count);
-        currentReadiness = "EnforcementRequired";
+        currentReadiness = NetworkPolicyReadiness.EnforcementRequired;
         Assert.False(TypedResultExtensions.TryGetValue(await manager.ApplyAsync(subject)).Succeeded);
         Assert.Equal(2, lookups);
         Assert.Equal(allowed ? 2 : 0, handler.PostRequests.Count);
@@ -66,7 +66,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         using var kubernetes = CreateKubernetes(handler);
         var manager = new FunctionRevisionKubernetesManager(
             new FixedKubernetesClientProvider(kubernetes),
-            (id, ct) => LookupTarget(id, "EnforcementRequired"),
+            (id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementRequired),
             []);
         var result = provisioning
             ? await manager.ScaleProvisioningAsync(subject, desired)
@@ -176,12 +176,12 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
     private static FunctionRevisionKubernetesManager CreateManager(IKubernetes kubernetes) =>
         new(
             new FixedKubernetesClientProvider(kubernetes),
-            (id, ct) => LookupTarget(id, "EnforcementAttested"),
+            (id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementAttested),
             Array.Empty<IFunctionAgentTrustBundleProvider>());
 
     private static Task<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>> LookupTarget(
         string id,
-        string readiness) =>
+        NetworkPolicyReadiness readiness) =>
         Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
             new Ok<DeploymentTargetLookupDto>(new(
                 id,
@@ -197,11 +197,11 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
                 "Healthy")
             {
                 NetworkPolicy = new(
-                    "Unknown",
+                    NetworkPolicyEnforcementStatus.Unknown,
                     readiness,
-                    "TestEvidence",
+                    NetworkPolicyReason.EnforcementNotEstablished,
                     DateTime.UnixEpoch,
-                    "OperatorAttestation",
+                    NetworkPolicyEvidenceSource.OperatorAttestation,
                     false)
             }));
 

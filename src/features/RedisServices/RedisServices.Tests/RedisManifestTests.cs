@@ -4,6 +4,7 @@ using Pole.Features.RedisServices.Domain;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.StorageProfiles.Contracts;
 using Xunit;
 using Redis = Pole.Features.RedisServices.Domain.Redis;
 
@@ -34,6 +35,11 @@ public sealed class RedisManifestTests
         Assert.Equal(workload.Spec.Selector.MatchLabels, renamed.ToStatefulSet().Spec.Selector.MatchLabels);
         Assert.Equal(service.Spec.Selector, renamed.ToService().Spec.Selector);
         Assert.DoesNotContain("app", service.Spec.Selector.Keys);
+        Assert.Equal(subject.Redis.Name, service.Metadata.Annotations[PoleStorageLabels.ResourceName]);
+        Assert.Equal("renamed", renamed.ToService().Metadata.Annotations[PoleStorageLabels.ResourceName]);
+        var renamedClaim = Assert.Single(renamed.ToStatefulSet().Spec.VolumeClaimTemplates);
+        Assert.Equal("renamed", renamedClaim.Metadata.Annotations[PoleStorageLabels.ResourceName]);
+        Assert.DoesNotContain(PoleStorageLabels.ResourceName, workload.Spec.Selector.MatchLabels.Keys);
     }
 
     [Fact]
@@ -62,6 +68,7 @@ public sealed class RedisManifestTests
         Assert.Equal(6379, Assert.Single(container.Ports).ContainerPort);
         Assert.Equal("/data", Assert.Single(container.VolumeMounts).MountPath);
         Assert.Equal("redis-data", volumeClaim.Metadata.Name);
+        Assert.Equal(manifest.Redis.Name, volumeClaim.Metadata.Annotations[PoleStorageLabels.ResourceName]);
         Assert.Equal("fast-cache", volumeClaim.Spec.StorageClassName);
         Assert.Equal(TenantId, volumeClaim.Metadata.Labels["pole.io/tenant-id"]);
         Assert.Equal("rg-1", volumeClaim.Metadata.Labels["pole.io/resource-group-id"]);

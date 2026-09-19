@@ -1,3 +1,5 @@
+using MongoDB.Bson.Serialization.Attributes;
+
 namespace Pole.Features.DeploymentTargets.Domain;
 
 public enum NetworkPolicyEnforcement
@@ -7,40 +9,36 @@ public enum NetworkPolicyEnforcement
     Unsupported
 }
 
-/// <summary>Platform operator attestation, not proof obtained from Kubernetes API discovery.</summary>
-public sealed record DeploymentTargetNetworkPolicy(
-    NetworkPolicyEnforcement Enforcement,
-    string ClusterIdentity,
-    long ConnectionVersion,
-    DateTime? LastCheckedAtUtc,
-    bool AllowIsolationNotEnforced)
+[BsonDiscriminator(RootClass = true)]
+[BsonKnownTypes(typeof(UnattestedNetworkPolicy), typeof(AttestedNetworkPolicy))]
+public abstract record DeploymentTargetNetworkPolicy
 {
-    public static DeploymentTargetNetworkPolicy Unknown { get; } =
-        new(NetworkPolicyEnforcement.Unknown, "", 0, null, false);
+    public static DeploymentTargetNetworkPolicy Unknown { get; } = new UnattestedNetworkPolicy();
 
     public bool Matches(DeploymentTarget target) =>
-        ClusterIdentity == target.ClusterIdentity &&
-        ConnectionVersion == target.Connection.Version &&
+        this is AttestedNetworkPolicy evidence &&
+        evidence.ClusterIdentity == target.ClusterIdentity &&
+        evidence.ConnectionVersion == target.Connection.Version &&
         target.Health.FailureCode != "ClusterIdentityMismatch";
 
     public NetworkPolicyEnforcement EffectiveEnforcement(DeploymentTarget target) =>
-        Matches(target) ? Enforcement : NetworkPolicyEnforcement.Unknown;
+        this is AttestedNetworkPolicy evidence && Matches(target)
+            ? evidence.Enforcement
+            : NetworkPolicyEnforcement.Unknown;
 
     public bool AllowsWorkloads(DeploymentTarget target) =>
-        EffectiveEnforcement(target) == NetworkPolicyEnforcement.Supported ||
-        Matches(target) && AllowIsolationNotEnforced;
-
-    public string Readiness(DeploymentTarget target) =>
-        EffectiveEnforcement(target) == NetworkPolicyEnforcement.Supported
-            ? "EnforcementAttested"
-            : Matches(target) && AllowIsolationNotEnforced
-                ? "IsolationNotEnforced"
-                : "EnforcementRequired";
-
-    public string Reason(DeploymentTarget target) => EffectiveEnforcement(target) switch
-    {
-        NetworkPolicyEnforcement.Supported => "OperatorAttestedSupported",
-        NetworkPolicyEnforcement.Unsupported => "OperatorAttestedUnsupported",
-        _ => "EnforcementNotEstablished"
-    };
+        this is AttestedNetworkPolicy evidence && Matches(target) &&
+        (evidence.Enforcement == NetworkPolicyEnforcement.Supported || evidence.AllowIsolationNotEnforced);
 }
+
+[BsonDiscriminator(nameof(UnattestedNetworkPolicy))]
+public sealed record UnattestedNetworkPolicy : DeploymentTargetNetworkPolicy;
+
+/// <summary>Operator evidence bound to one cluster and credential version, not API discovery.</summary>
+[BsonDiscriminator(nameof(AttestedNetworkPolicy))]
+public sealed record AttestedNetworkPolicy(
+    NetworkPolicyEnforcement Enforcement,
+    string ClusterIdentity,
+    long ConnectionVersion,
+    DateTime LastCheckedAtUtc,
+    bool AllowIsolationNotEnforced) : DeploymentTargetNetworkPolicy;

@@ -1,4 +1,3 @@
-using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -102,38 +101,16 @@ internal static class DeploymentTargetFilters
             NetworkPolicyAdmission());
 
     private static FilterDefinition<DeploymentTarget> NetworkPolicyAdmission() =>
-        Builders<DeploymentTarget>.Filter.And(
-            Builders<DeploymentTarget>.Filter.Ne(
-                target => target.Health.FailureCode,
-                "ClusterIdentityMismatch"),
-            Builders<DeploymentTarget>.Filter.Or(
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.WorkloadConfiguration.NetworkPolicy.Enforcement,
-                    NetworkPolicyEnforcement.Supported),
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.WorkloadConfiguration.NetworkPolicy.AllowIsolationNotEnforced,
-                    true)),
-            new BsonDocument(
-                "$expr",
-                new BsonDocument(
-                    "$and",
-                    new BsonArray
-                    {
-                        new BsonDocument(
-                            "$eq",
-                            new BsonArray
-                            {
-                                "$WorkloadConfiguration.NetworkPolicy.ClusterIdentity",
-                                "$ClusterIdentity"
-                            }),
-                        new BsonDocument(
-                            "$eq",
-                            new BsonArray
-                            {
-                                "$WorkloadConfiguration.NetworkPolicy.ConnectionVersion",
-                                "$Connection.Version"
-                            })
-                    })));
+        Builders<DeploymentTarget>.Filter.Where(target =>
+            target.Health.FailureCode != "ClusterIdentityMismatch" &&
+            target.WorkloadConfiguration.NetworkPolicy is AttestedNetworkPolicy &&
+            (((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).Enforcement ==
+                NetworkPolicyEnforcement.Supported ||
+             ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).AllowIsolationNotEnforced) &&
+            ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).ClusterIdentity ==
+                target.ClusterIdentity &&
+            ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).ConnectionVersion ==
+                target.Connection.Version);
 
     public static FilterDefinition<DeploymentTarget> WithConfiguredPublicBaseDomain() =>
         Builders<DeploymentTarget>.Filter.And(

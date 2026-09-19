@@ -84,7 +84,7 @@ public readonly record struct RedisInKubernetes(
             NamespaceProperty = Namespace,
             Labels = new Dictionary<string, string>
                 (BuildLabels()),
-            Annotations = _defaultAnnotations
+            Annotations = DefaultAnnotations
         },
         Spec = new V1StatefulSetSpec
         {
@@ -115,7 +115,7 @@ public readonly record struct RedisInKubernetes(
                     {
                         Name = "redis-data",
                         Labels = new Dictionary<string, string>(BuildLabels()),
-                        Annotations = _defaultAnnotations
+                        Annotations = DefaultAnnotations
                     },
                     Spec = new V1PersistentVolumeClaimSpec
                     {
@@ -144,7 +144,7 @@ public readonly record struct RedisInKubernetes(
             NamespaceProperty = Namespace,
             Labels = new Dictionary<string, string>
                 (BuildLabels()),
-            Annotations = _defaultAnnotations
+            Annotations = DefaultAnnotations
         },
         Spec = new V1ServiceSpec
         {
@@ -167,18 +167,19 @@ public readonly record struct RedisInKubernetes(
         }
     };
     
-    private readonly ImmutableDictionary<string, string> _defaultAnnotations =
+    private ImmutableDictionary<string, string> DefaultAnnotations =>
         new Dictionary<string, string>
         {
             { "app.kubernetes.io/managed-by", "pole-server" },
             { "pole.server/redisId", Redis.Id },
+            { PoleStorageLabels.ResourceName, Redis.Name },
             { PoleStorageLabels.ResourceType, RedisResourceDeployment.ResourceType.Value }
         }.ToImmutableDictionary();
 
     private Dictionary<string, string> BuildPodTemplateAnnotations(
         RedisResourceDeploymentMetadata? deploymentMetadata)
     {
-        var annotations = new Dictionary<string, string>(_defaultAnnotations);
+        var annotations = new Dictionary<string, string>(DefaultAnnotations);
         if (deploymentMetadata is null)
             return annotations;
 

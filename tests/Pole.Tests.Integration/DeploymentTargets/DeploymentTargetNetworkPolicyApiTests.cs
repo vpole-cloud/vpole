@@ -20,6 +20,8 @@ public sealed class DeploymentTargetNetworkPolicyApiTests(
     {
         var target = DeploymentTargetNetworkPolicyTests.Target();
         await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargetSettings.InsertOneAsync(
+            DeploymentTargetSettings.Create(target.Id, target.CreatedAtUtc));
         var body = new UpdateDeploymentTargetNetworkPolicyBody(
             NetworkPolicyEnforcement.Supported,
             false,
@@ -38,7 +40,11 @@ public sealed class DeploymentTargetNetworkPolicyApiTests(
             body);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var updated = (await response.Content.ReadFromJsonAsync<DeploymentTargetDto>())!;
-        Assert.Equal("EnforcementAttested", updated.NetworkPolicy.Readiness);
+        Assert.Equal(NetworkPolicyReadiness.EnforcementAttested, updated.NetworkPolicy.Readiness);
+        Assert.True(updated.IsDefault);
+        var attestationJson = await response.Content.ReadAsStringAsync();
+        Assert.Contains("\"enforcement\":\"Supported\"", attestationJson);
+        Assert.Contains("\"readiness\":\"EnforcementAttested\"", attestationJson);
         Assert.Equal(target.Revision + 1, updated.Revision);
         Assert.Equal(target.WorkloadConfiguration.Revision + 1, updated.WorkloadConfiguration.Revision);
         Assert.Single(await Fixture.DbContext.DeploymentTargets
@@ -100,7 +106,7 @@ public sealed class DeploymentTargetNetworkPolicyApiTests(
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var dto = Assert.Single((await response.Content.ReadFromJsonAsync<AvailableDeploymentTargetDto[]>())!);
         Assert.Equal(overridden.Id, dto.Id);
-        Assert.Equal("IsolationNotEnforced", dto.NetworkPolicy.Readiness);
+        Assert.Equal(NetworkPolicyReadiness.IsolationNotEnforced, dto.NetworkPolicy.Readiness);
         var json = await response.Content.ReadAsStringAsync();
         Assert.DoesNotContain(overridden.ClusterIdentity, json);
         Assert.DoesNotContain("namespace", json, StringComparison.OrdinalIgnoreCase);

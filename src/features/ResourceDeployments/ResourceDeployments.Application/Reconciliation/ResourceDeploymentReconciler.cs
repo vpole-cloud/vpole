@@ -85,7 +85,7 @@ public sealed class ResourceDeploymentReconciler(
                 claimed.ResolvedPlacement.DeploymentTargetId,
                 cancellationToken);
             if (!targetResult.TryGetValue(out var target, out _) ||
-                target.NetworkPolicy.Readiness is not ("EnforcementAttested" or "IsolationNotEnforced"))
+                !target.NetworkPolicy.AllowsWorkloads)
             {
                 await PersistFailureAsync(
                     claimed,

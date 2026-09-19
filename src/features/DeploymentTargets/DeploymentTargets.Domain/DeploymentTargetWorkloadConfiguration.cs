@@ -20,7 +20,10 @@ public sealed record DeploymentTargetWorkloadConfiguration(
             ? this
             : new DeploymentTargetWorkloadConfiguration(
                 checked(DeploymentTargetValueGuard.Positive(Revision, nameof(Revision)) + 1),
-                normalizedIngress) { NetworkPolicy = NetworkPolicy };
+                normalizedIngress)
+            {
+                NetworkPolicy = NetworkPolicy
+            };
     }
 
     private static DeploymentTargetIngressConfiguration? NormalizeIngress(

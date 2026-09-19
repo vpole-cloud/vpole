@@ -19,9 +19,9 @@ public sealed class ResourceDeploymentIsolationProjection(
         return summary with
         {
             Isolation = new(
-                policy.Enforcement,
-                policy.Readiness,
-                policy.Reason,
+                policy.Enforcement.ToString(),
+                policy.Readiness.ToString(),
+                policy.Reason.ToString(),
                 policy.LastCheckedAtUtc)
         };
     }
@@ -40,9 +40,9 @@ public sealed class ResourceDeploymentIsolationProjection(
             values.Add(
                 targetId,
                 new(
-                    policy.Enforcement,
-                    policy.Readiness,
-                    policy.Reason,
+                    policy.Enforcement.ToString(),
+                    policy.Readiness.ToString(),
+                    policy.Reason.ToString(),
                     policy.LastCheckedAtUtc));
         }
         return values;
