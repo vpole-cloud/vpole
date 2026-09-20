@@ -41,7 +41,9 @@ public sealed record RetryFunctionInvocationRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
     : IMediatorRequest<RetryFunctionInvocationOutcome>, ITenantWriteOperation;
 
-public sealed record RetryFunctionInvocationResponse(string InvocationId, int NextAttemptNumber);
+public sealed record RetryFunctionInvocationResponse(
+    string InvocationId,
+    int NextAttemptNumber);
 
 public union RetryFunctionInvocationOutcome(
     RetryFunctionInvocationResponse,

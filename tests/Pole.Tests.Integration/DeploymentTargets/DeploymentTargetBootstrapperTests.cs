@@ -282,7 +282,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
                         fixture.DbContext.DeploymentTargetReferences)
                     .InvokeAsync,
                 new MongoRunTransaction(fixture.Client)
-                    .InvokeOutcomeAsync<DeleteDeploymentTargetOutcome>,
+                    .InvokeOutcomeAsync<DeleteDeploymentTargetPersistenceOutcome>,
                 deleteClock).InvokeAsync,
             new NoOpClientCache().Invalidate);
 

@@ -25,8 +25,8 @@ public sealed class ModuleBoundaryArchitectureTests
         Assert.DoesNotContain("RedisServices", centralTests);
         Assert.DoesNotContain("Postgres", centralTests);
         foreach (var feature in new[] { "RedisServices", "Postgres" })
-        foreach (var project in Directory.EnumerateFiles(Path.Combine(root, "src/features", feature), "*.*proj", SearchOption.AllDirectories))
-            Assert.DoesNotContain("Pole.Tests.Integration.csproj", File.ReadAllText(project));
+            foreach (var project in Directory.EnumerateFiles(Path.Combine(root, "src/features", feature), "*.*proj", SearchOption.AllDirectories))
+                Assert.DoesNotContain("Pole.Tests.Integration.csproj", File.ReadAllText(project));
 
         void Visit(string project)
         {
@@ -391,13 +391,17 @@ public sealed class ModuleBoundaryArchitectureTests
         }
     }
 
-    private sealed record ProjectReferenceEdge(ProjectNode Source, ProjectNode Target);
+    private sealed record ProjectReferenceEdge(
+        ProjectNode Source,
+        ProjectNode Target);
 
     private sealed record SharedProjectReferenceEdge(
         ProjectNode Source,
         string TargetIdentity);
 
-    private sealed record ProjectEdge(string Source, string Target);
+    private sealed record ProjectEdge(
+        string Source,
+        string Target);
 
     private sealed record DocumentedProjectException(
         ProjectEdge Edge,

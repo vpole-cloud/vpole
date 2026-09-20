@@ -12,7 +12,9 @@ public sealed record GitProviderConnectionDto(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
 
-public sealed record BeginGitHubInstallationResponse(string InstallUrl, DateTime ExpiresAtUtc);
+public sealed record BeginGitHubInstallationResponse(
+    string InstallUrl,
+    DateTime ExpiresAtUtc);
 
 public sealed record ProviderRepositoryDto(
     string Id,
@@ -23,13 +25,22 @@ public sealed record ProviderRepositoryDto(
     string DefaultBranch,
     DateTime? UpdatedAtUtc);
 
-public sealed record ProviderBranchDto(string Name, string CommitSha, bool IsProtected);
+public sealed record ProviderBranchDto(
+    string Name,
+    string CommitSha,
+    bool IsProtected);
 
-public sealed record ProviderPage<T>(IReadOnlyList<T> Items, int Page, int PageSize, bool HasMore);
+public sealed record ProviderPage<T>(
+    IReadOnlyList<T> Items,
+    int Page,
+    int PageSize,
+    bool HasMore);
 
 public sealed record AnalyzeRepositoryRequestBody(string Branch);
 
-public sealed record LinkSourceRepositoryRequestBody(string Branch, string CandidateKey);
+public sealed record LinkSourceRepositoryRequestBody(
+    string Branch,
+    string CandidateKey);
 
 public sealed record RepositoryAnalysisDto(
     string RepositoryId,
@@ -130,7 +141,10 @@ public sealed record ProviderRepository(
     string DefaultBranch,
     DateTime? UpdatedAtUtc);
 
-public sealed record ProviderBranch(string Name, string CommitSha, bool IsProtected);
+public sealed record ProviderBranch(
+    string Name,
+    string CommitSha,
+    bool IsProtected);
 
 public sealed record RepositorySourceSnapshot(
     ProviderRepository Repository,

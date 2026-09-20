@@ -71,7 +71,10 @@ internal static class ArchitectureSources
     private static ArchitectureSource LoadSource(string path) =>
         new(
             Path.GetRelativePath(RepositoryRoot, path).Replace(Path.DirectorySeparatorChar, '/'),
-            CSharpSyntaxTree.ParseText(File.ReadAllText(path), path: path));
+            CSharpSyntaxTree.ParseText(
+                File.ReadAllText(path),
+                new CSharpParseOptions(LanguageVersion.Preview),
+                path: path));
 
     private static IEnumerable<ArchitectureTextSource> LoadTextSources(
         string directory,

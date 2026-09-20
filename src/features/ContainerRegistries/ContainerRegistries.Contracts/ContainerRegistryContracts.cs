@@ -7,7 +7,9 @@ public sealed record RegistryProjectProvisioningRequest(
     string ProjectName,
     string AttemptId);
 
-public sealed record RegistryRobotNames(string Build, string Pull)
+public sealed record RegistryRobotNames(
+    string Build,
+    string Pull)
 {
     public static RegistryRobotNames ForAttempt(string attemptId)
     {

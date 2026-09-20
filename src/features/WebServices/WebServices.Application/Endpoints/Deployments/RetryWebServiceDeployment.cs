@@ -57,6 +57,10 @@ public sealed record RetryWebServiceDeploymentBody(
     long ExpectedDeploymentRevision,
     string ExpectedOperation);
 
+public union RetryWebServiceDeploymentOutcome(
+    PlacementSummaryDto,
+    RetryWebServiceDeploymentError);
+
 public sealed class RetryWebServiceDeploymentHandler(
     LoadWebServiceById loadWebService,
     LoadExactResourceDeployment loadExactResourceDeployment,

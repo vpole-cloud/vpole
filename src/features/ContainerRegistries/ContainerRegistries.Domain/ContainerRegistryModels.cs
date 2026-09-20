@@ -31,7 +31,9 @@ public sealed record RegistryProject(
     typeof(FailedRegistryProjectProvisioning))]
 public abstract record RegistryProjectState;
 
-public sealed record ProvisioningRegistryProject(string AttemptId, DateTime StartedAtUtc) : RegistryProjectState;
+public sealed record ProvisioningRegistryProject(
+    string AttemptId,
+    DateTime StartedAtUtc) : RegistryProjectState;
 
 public sealed record RemoteProvisionedRegistryProject(
     string AttemptId,
@@ -73,7 +75,9 @@ public sealed record FailedRegistryProjectProvisioning(
 
 public static class RegistryProjectFactory
 {
-    public sealed record CreateOptions(string Id, DateTime CreatedAtUtc);
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc);
 
     public static CreateOptions DefaultOptions =>
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
@@ -118,7 +122,9 @@ public sealed record RegistryCredential(
 
 public static class RegistryCredentialFactory
 {
-    public sealed record CreateOptions(string Id, DateTime CreatedAtUtc);
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc);
 
     public static CreateOptions DefaultOptions =>
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);

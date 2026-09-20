@@ -34,7 +34,9 @@ public sealed record HostnameBinding(
 
 public static class HostnameBindingFactory
 {
-    public sealed record CreateOptions(string Id, DateTime CreatedAtUtc);
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc);
 
     public static HostnameBinding CreateGenerated(
         string tenantId,

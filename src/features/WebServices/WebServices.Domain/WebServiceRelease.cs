@@ -45,12 +45,29 @@ public sealed record WebServiceRelease(
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(typeof(ExternalImageTagUpdateProvenance), typeof(SourceBuildReleaseProvenance))]
 public abstract record WebServiceReleaseProvenance;
-public sealed record ExternalImageTagUpdateProvenance(string Source, string? CommitSha, string? BuildUrl, string? ImageDigest, string PreviousImageTag, string NewImageTag, string ActorType, string? DeploymentTokenId, string? DeploymentTokenName) : WebServiceReleaseProvenance;
-public sealed record SourceBuildReleaseProvenance(string BuildJobId, string SourceRepositoryId, string CommitSha, string ImageDigest, string PreviousImageReference, string NewImageReference) : WebServiceReleaseProvenance;
+public sealed record ExternalImageTagUpdateProvenance(
+    string Source,
+    string? CommitSha,
+    string? BuildUrl,
+    string? ImageDigest,
+    string PreviousImageTag,
+    string NewImageTag,
+    string ActorType,
+    string? DeploymentTokenId,
+    string? DeploymentTokenName) : WebServiceReleaseProvenance;
+public sealed record SourceBuildReleaseProvenance(
+    string BuildJobId,
+    string SourceRepositoryId,
+    string CommitSha,
+    string ImageDigest,
+    string PreviousImageReference,
+    string NewImageReference) : WebServiceReleaseProvenance;
 
 public static class WebServiceReleaseFactory
 {
-    public sealed record CreateOptions(string Id, DateTime RequestedAtUtc);
+    public sealed record CreateOptions(
+        string Id,
+        DateTime RequestedAtUtc);
 
     public static WebServiceRelease CreatePending(
         string tenantId, string webServiceId, long resourceRevision, WebServiceReleaseAction action,

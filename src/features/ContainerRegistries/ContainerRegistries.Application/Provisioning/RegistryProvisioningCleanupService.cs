@@ -17,7 +17,9 @@ public sealed record RegistryProvisioningAttempt(
     string? PullExternalRobotId,
     DateTime? NameVerificationNotBeforeUtc);
 
-public sealed record RegistryProvisioningFailure(string Code, string Message)
+public sealed record RegistryProvisioningFailure(
+    string Code,
+    string Message)
 {
     public static RegistryProvisioningFailure Interrupted(string message) =>
         new("container-registries.provisioning.interrupted", message);

@@ -30,7 +30,9 @@ public union StartManualSourceBuildError(
     SourceBuildLinkedRepositoryNotFound,
     SourceBuildLinkedRepositoryCandidateChanged);
 
-public union StartManualSourceBuildOutcome(SourceBuildJobDto, StartManualSourceBuildError);
+public union StartManualSourceBuildOutcome(
+    SourceBuildJobDto,
+    StartManualSourceBuildError);
 
 public sealed class StartManualSourceBuildHandler(
     LoadSourceBuildConfiguration loadSourceBuildConfiguration,

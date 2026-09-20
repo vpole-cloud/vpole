@@ -17,6 +17,10 @@ public sealed record DeleteDeploymentTargetRequest(
     [FromRoute] string Id)
     : IMediatorRequest<DeleteDeploymentTargetOutcome>;
 
+public union DeleteDeploymentTargetOutcome(
+    DeploymentTargetDeleted,
+    DeleteDeploymentTargetError);
+
 public sealed class DeleteDeploymentTargetHandler(
     DeleteDeploymentTarget deleteDeploymentTarget,
     InvalidateDeploymentTargetKubernetesClient invalidateDeploymentTargetKubernetesClient)
@@ -29,7 +33,11 @@ public sealed class DeleteDeploymentTargetHandler(
         var outcome = await deleteDeploymentTarget(request.Id, cancellationToken);
         if (outcome is DeploymentTargetDeleted deleted)
             invalidateDeploymentTargetKubernetesClient(deleted.DeploymentTargetId);
-        return outcome;
+        return outcome switch
+        {
+            DeploymentTargetDeleted value => new DeleteDeploymentTargetOutcome(value),
+            DeleteDeploymentTargetError error => new DeleteDeploymentTargetOutcome(error)
+        };
     }
 }
 

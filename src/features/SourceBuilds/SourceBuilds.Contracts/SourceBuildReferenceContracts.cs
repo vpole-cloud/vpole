@@ -60,7 +60,9 @@ public sealed record SourceBuildDeploymentRequest(
     string? ActorEmail,
     SourceBuildDeploymentImage Image);
 
-public sealed record SourceBuildDeploymentResult(string ReleaseId, long Revision);
+public sealed record SourceBuildDeploymentResult(
+    string ReleaseId,
+    long Revision);
 
 public sealed record SourceBuildWebServiceNotFound(string WebServiceId);
 

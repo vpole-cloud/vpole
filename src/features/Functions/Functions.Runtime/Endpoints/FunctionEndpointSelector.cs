@@ -10,7 +10,9 @@ public interface IFunctionEndpointSelector
 public sealed class FunctionEndpointSelector(TimeProvider timeProvider) : IFunctionEndpointSelector
 {
     private static readonly TimeSpan CursorRetention = TimeSpan.FromHours(1);
-    private sealed record CursorState(int Cursor, long LastUsed);
+    private sealed record CursorState(
+        int Cursor,
+        long LastUsed);
 
     private readonly ConcurrentDictionary<FunctionServiceKey, CursorState> cursors = [];
     private int selections;

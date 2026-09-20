@@ -135,3 +135,11 @@ Feature handlers should describe feature intent while shared infrastructure owns
 - Put repeated reserve/commit/release/compensation or similar sequences behind one shared executor or pipeline behavior.
 - Keep the resource mutation and outbox writes together in the transaction callback supplied by the feature.
 - Give stable cross-cutting identities small typed helpers instead of constructing strings throughout handlers.
+
+## Automated delivery checks
+
+[Agent delivery](agent-delivery.md) defines canonical compiled examples, the early slice
+review, semantic architecture diagnostics, formatting and the mandatory full local
+test gate. New positional record/union/delegate declarations with multiple parameters
+put each parameter on its own line. Shared DTOs are allowed; a shared mutation outcome
+that adds impossible results to unrelated handlers is not.

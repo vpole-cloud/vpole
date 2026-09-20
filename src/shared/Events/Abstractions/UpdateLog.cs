@@ -123,7 +123,9 @@ internal static class DeepEqualityComparer
             (i.GetGenericTypeDefinition() == typeof(ISet<>) ||
              i.GetGenericTypeDefinition().FullName == "System.Collections.Immutable.IImmutableSet`1"));
 
-    private readonly record struct ReferencePair(object Previous, object New)
+    private readonly record struct ReferencePair(
+        object Previous,
+        object New)
     {
         public bool Equals(ReferencePair other) =>
             ReferenceEquals(Previous, other.Previous) && ReferenceEquals(New, other.New);

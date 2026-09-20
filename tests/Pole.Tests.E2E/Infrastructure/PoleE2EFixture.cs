@@ -1064,6 +1064,10 @@ public sealed record TestUser(
     string AccessToken,
     string DefaultTenantId);
 
-internal sealed record HarborCredentials(string Username, string Password);
+internal sealed record HarborCredentials(
+    string Username,
+    string Password);
 
-internal sealed record RecordedNamespace(string Name, string Uid);
+internal sealed record RecordedNamespace(
+    string Name,
+    string Uid);

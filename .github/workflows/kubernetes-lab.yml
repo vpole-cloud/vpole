@@ -25,6 +25,8 @@ jobs:
       POLE_TEST_RUN_ID: attempt-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Reclaim runner disk space
         run: |
@@ -56,6 +58,18 @@ jobs:
       - name: Build backend
         run: dotnet build Pole.slnx --no-restore --disable-build-servers --nologo -maxcpucount:1 -nodeReuse:false
 
+      - name: Check source formatting
+        env:
+          FORMAT_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/master' }}
+        run: python3 scripts/quality_gate.py check-format --base "$FORMAT_BASE"
+
+      - name: Test delivery automation and lab recovery
+        run: |
+          python3 scripts/run_script_tests.py
+          for test_script in infrastructure/kubernetes-lab/tests/*.sh; do
+            bash "$test_script"
+          done
+
       - name: Restore coverage report tool
         run: dotnet tool restore
 
@@ -67,8 +81,11 @@ jobs:
       - name: Run all backend tests with coverage
         run: |
           dotnet test --no-build --no-restore --nologo -maxcpucount:1 -nodeReuse:false \
-            --collect:"Code Coverage;Format=Cobertura" \
+            --collect:"Code Coverage;Format=Cobertura" --logger trx \
             --results-directory .artifacts/coverage/backend/raw
+
+      - name: Reject failed, skipped, or missing backend suites
+        run: python3 scripts/quality_gate.py check-backend-reports --directory .artifacts/coverage/backend/raw
 
       - name: Generate backend coverage report
         run: |
@@ -142,7 +159,13 @@ jobs:
         run: npm ci --prefix src/api/frontend
 
       - name: Test with coverage
-        run: npm run test:coverage --prefix src/api/frontend
+        run: npm run test:coverage --prefix src/api/frontend -- --reporter=default --reporter=json --outputFile=coverage/tests.json
+
+      - name: Reject failed or skipped frontend tests
+        run: python3 scripts/quality_gate.py check-frontend-report --report src/api/frontend/coverage/tests.json
+
+      - name: Lint
+        run: npm run lint --prefix src/api/frontend
 
       - name: Add frontend coverage summary
         run: |

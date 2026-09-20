@@ -52,7 +52,9 @@ public sealed class FunctionAgentPublicKeyOptions
     public string SubjectPublicKeyInfoBase64 { get; set; } = string.Empty;
 }
 
-public sealed record FunctionAgentSigningKey(string KeyId, RSA PrivateKey)
+public sealed record FunctionAgentSigningKey(
+    string KeyId,
+    RSA PrivateKey)
 {
     public string SubjectPublicKeyInfoBase64 =>
         Convert.ToBase64String(PrivateKey.ExportSubjectPublicKeyInfo());
@@ -108,7 +110,9 @@ public sealed record FunctionAgentTokenDescriptor(
     FunctionAttemptIdentity? Attempt = null,
     string? AttemptId = null);
 
-public sealed record FunctionAgentTrustedKey(string KeyId, string SubjectPublicKeyInfoBase64);
+public sealed record FunctionAgentTrustedKey(
+    string KeyId,
+    string SubjectPublicKeyInfoBase64);
 
 public sealed record FunctionAgentTrustBundle(
     string Issuer,

@@ -69,6 +69,10 @@ public sealed record UpdateWebServiceImageTagResponse(
     string Tag,
     IReadOnlyList<PlacementSummaryDto> Deployments);
 
+public union UpdateWebServiceImageTagOutcome(
+    UpdateWebServiceImageTagResponse,
+    UpdateWebServiceImageTagError);
+
 public sealed class UpdateWebServiceImageTagHandler(
     LoadWebServiceById loadWebServiceById,
     LoadWebServiceDeploymentTokenByHash loadDeploymentTokenByHash,

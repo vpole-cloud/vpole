@@ -44,6 +44,10 @@ public static class DeleteWebService
     }
 }
 
+public union DeleteWebServiceOutcome(
+    DeleteWebServiceResponse,
+    DeleteWebServiceError);
+
 public sealed class DeleteWebServiceHandler(
     LoadWebServiceById loadWebServiceById,
     BeginWebServiceDeletionOutcome beginWebServiceDeletion,

@@ -2,7 +2,9 @@ using Pole.ResultType;
 
 namespace Pole.Encryption;
 
-public sealed record KeyEncryptionKeyIdentity(string Id, int Version);
+public sealed record KeyEncryptionKeyIdentity(
+    string Id,
+    int Version);
 
 public sealed record KeyEncryptionKeyDescriptor(
     KeyEncryptionKeyIdentity Identity,

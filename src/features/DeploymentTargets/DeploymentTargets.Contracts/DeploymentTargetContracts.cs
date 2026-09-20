@@ -279,7 +279,9 @@ public delegate Task<Result<
     AdmitDefaultDeploymentTargetForNewWorkload(
         CancellationToken cancellationToken = default);
 
-public sealed record DeploymentTargetReferenceOwner(string Type, string Id);
+public sealed record DeploymentTargetReferenceOwner(
+    string Type,
+    string Id);
 
 public sealed record DeploymentTargetReferenceChangeRejected(
     DeploymentTargetReferenceOwner Owner,

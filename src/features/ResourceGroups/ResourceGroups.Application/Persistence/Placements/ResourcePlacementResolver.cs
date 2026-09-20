@@ -487,5 +487,7 @@ internal sealed class MongoResourcePlacementResolver(
         DeploymentTargetLookupDto? Target,
         ResourceGroupPlacementError? Error);
 
-    private sealed record UpsertedRuntimeCell(RuntimeCell Cell, bool Created);
+    private sealed record UpsertedRuntimeCell(
+        RuntimeCell Cell,
+        bool Created);
 }

@@ -134,3 +134,42 @@ needed, and begin a new user session before retrying. The full multi-node lab al
 `fs.inotify.max_user_instances` of at least `512`; the script reports the exact one-time `sysctl`
 command when the host default is too small. A nonstandard local Podman Unix socket can be selected
 with matching `POLE_K8S_LAB_DOCKER_HOST` and `POLE_K8S_LAB_DOCKER_SOCK` values.
+
+## Recovering after a reboot
+
+Run `lab.sh status` to distinguish running, stopped, partially running, and missing lab resources.
+Run `lab.sh up` to resume stopped existing resources after validating their recorded ownership.
+It resumes the recorded registry and named lab clusters without resetting them. A missing recorded
+registry remains an explicit error; normal provisioning creates any absent profile clusters. Follow with `lab.sh verify` before running tests.
+
+Rootless Podman containers may remain stopped after reboot even when its API socket is active.
+A temporary inotify adjustment also resets at reboot. To persist the required capacity, have an
+administrator create `/etc/sysctl.d/90-pole-kubernetes-lab.conf` containing:
+
+```text
+fs.inotify.max_user_instances=1024
+```
+
+Apply that specific file with `sudo sysctl -p /etc/sysctl.d/90-pole-kubernetes-lab.conf`.
+The lab reports insufficient capacity before starting containers.
+
+Infrastructure-free recovery regression tests:
+
+```bash
+bash infrastructure/kubernetes-lab/tests/recovery.sh
+```
+
+The lifecycle lock stays in the lab shell. Container-runtime and k3d subprocesses
+close its descriptor before launch so long-lived Podman networking/monitor daemons
+cannot retain the lock after `up` exits. `tests/lifecycle-lock.sh` checks both runtime
+boundaries and confirms that the parent remains locked until it closes the descriptor.
+
+Harbor uses ephemeral storage in this disposable lab. The registry blob-descriptor
+cache therefore uses `inmemory`, scoped to the registry process. A Redis cache can
+survive replacement of a registry pod whose `/storage` is an `emptyDir`: it then
+claims an old manifest exists, skips rewriting its content, and produces
+`404 MANIFEST_UNKNOWN` immediately after a successful manifest PUT (see Distribution’s
+[descriptor lookup before write](https://github.com/distribution/distribution/blob/v2.8.3/registry/storage/blobstore.go)). The override
+is applied on every `up`, including existing generated values. The unchanged
+BuildKit scratch-image push/pull verification exercises the affected path; Redis
+data is not flushed as a recovery shortcut.

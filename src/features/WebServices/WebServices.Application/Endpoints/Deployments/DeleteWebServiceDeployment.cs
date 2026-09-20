@@ -54,6 +54,10 @@ public sealed record DeleteWebServiceDeploymentRequest(
     [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
     : IMediatorRequest<DeleteWebServiceDeploymentOutcome>, ITenantWriteOperation;
 
+public union DeleteWebServiceDeploymentOutcome(
+    PlacementSummaryDto,
+    DeleteWebServiceDeploymentError);
+
 public sealed class DeleteWebServiceDeploymentHandler(
     LoadWebServiceById loadWebService,
     LoadResourceDeploymentSet loadResourceDeploymentSet,

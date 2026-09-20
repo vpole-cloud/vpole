@@ -18,7 +18,9 @@ public static class DeploymentTargetReferenceFactory
     public const int MaximumOwnerTypeLength = 128;
     public const int MaximumOwnerIdLength = 512;
 
-    public sealed record CreateOptions(string Id, DateTime CreatedAtUtc);
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc);
 
     public static DeploymentTargetReference Create(
         string deploymentTargetId,

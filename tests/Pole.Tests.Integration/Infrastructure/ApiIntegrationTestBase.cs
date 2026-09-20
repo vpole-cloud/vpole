@@ -49,15 +49,14 @@ public abstract class ApiIntegrationTestBase : IAsyncLifetime
 
     private async Task SeedDefaultTenantAsync()
     {
-        var tenant = new Tenant(
-            TestData.TenantId,
-            "Test tenant",
-            DateTime.UtcNow,
-            ImmutableList.Create(TenantFactory.CreateMember(
+        var tenant = TenantFactory.Create("Test tenant", TestData.TenantId) with
+        {
+            Members = ImmutableList.Create(TenantFactory.CreateMember(
                 TestData.TenantId,
                 TestData.UserId,
                 TestData.UserEmail,
-                TenantRole.Owner)));
+                TenantRole.Owner))
+        };
 
         await Fixture.DbContext.Tenants.InsertOneAsync(tenant);
         await Fixture.DbContext.Users.InsertOneAsync(new PoleUser(

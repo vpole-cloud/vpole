@@ -166,5 +166,8 @@ public sealed class KubernetesClientProvider(
         Volatile.Read(ref _disposed) != 0,
         this);
 
-    private sealed record CacheEntry(long Revision, long ConnectionVersion, IKubernetes Client);
+    private sealed record CacheEntry(
+        long Revision,
+        long ConnectionVersion,
+        IKubernetes Client);
 }

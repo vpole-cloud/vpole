@@ -71,7 +71,9 @@ public sealed class OutboxEventAssemblyCatalog(IEnumerable<Assembly> assemblies)
         }
     }
 
-    private sealed record EventRegistration(string Name, Type Type);
+    private sealed record EventRegistration(
+        string Name,
+        Type Type);
 
     private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
     {

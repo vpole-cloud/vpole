@@ -81,7 +81,9 @@ public sealed class FunctionHttpGateway(
         FunctionAdmissionLease Lease,
         bool RequiresActivationFence);
 
-    private readonly record struct FunctionRequestBodyResult(bool Succeeded, byte[]? Body);
+    private readonly record struct FunctionRequestBodyResult(
+        bool Succeeded,
+        byte[]? Body);
 
     private sealed record FunctionHttpAttempt(
         string AttemptId,
@@ -1228,6 +1230,8 @@ public sealed class FunctionHttpGateway(
     }
 }
 
-public sealed record FunctionGatewayError(string Code, string Message);
+public sealed record FunctionGatewayError(
+    string Code,
+    string Message);
 
 internal sealed class FunctionRequestBodyTooLargeException : Exception;

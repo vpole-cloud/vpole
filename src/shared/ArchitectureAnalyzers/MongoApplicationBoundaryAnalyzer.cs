@@ -44,7 +44,8 @@ public sealed class MongoApplicationBoundaryAnalyzer : DiagnosticAnalyzer
     private static void AnalyzeSimpleName(SyntaxNodeAnalysisContext context)
     {
         var name = (SimpleNameSyntax)context.Node;
-        if (!RawMongoQuerySymbols.Contains(name.Identifier.ValueText) ||
+        if (!context.Node.SyntaxTree.FilePath.Replace('\\', '/').Contains(".Application/", StringComparison.Ordinal) ||
+            !RawMongoQuerySymbols.Contains(name.Identifier.ValueText) ||
             IsPersistenceOrMigrationSource(context.Node.SyntaxTree.FilePath))
             return;
 

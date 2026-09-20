@@ -58,6 +58,10 @@ public sealed record UpdateWebServiceDeploymentBody(
     int FixedReplicas,
     string? ComputeProfileId = null);
 
+public union UpdateWebServiceDeploymentOutcome(
+    PlacementSummaryDto,
+    UpdateWebServiceDeploymentError);
+
 public sealed class UpdateWebServiceDeploymentHandler(
     LoadWebServiceById loadWebService,
     LoadResourceDeploymentSet loadResourceDeploymentSet,

@@ -361,11 +361,12 @@ ensure_rootless_inotify_capacity() {
     local instances
     instances="$(<"${instances_path}")"
     [[ "${instances}" =~ ^[0-9]+$ ]] || die "The host inotify instance limit is malformed."
-    [[ "${instances}" -ge 512 ]] || die "Rootless Podman needs fs.inotify.max_user_instances >= 512 for the full k3d lab (current: ${instances}). Set it temporarily with 'sudo sysctl -w fs.inotify.max_user_instances=1024' or persist an equivalent sysctl.d setting, then retry."
+    [[ "${instances}" -ge 512 ]] || die "Rootless Podman needs fs.inotify.max_user_instances >= 512 for the full k3d lab (current: ${instances}). Temporary settings are lost at reboot. Set it temporarily with 'sudo sysctl -w fs.inotify.max_user_instances=1024' or persist an equivalent sysctl.d setting, then retry."
 }
 
 run_container() {
-    "${CONTAINER_CLI}" "$@"
+    # Podman daemons outlive this shell; they must not retain its lifecycle lock.
+    "${CONTAINER_CLI}" "$@" 9>&-
 }
 
 tool_architecture() {
@@ -599,7 +600,7 @@ configure_harbor_registry_resolution() {
 }
 
 run_k3d() {
-    KUBECONFIG="${LAB_K3D_KUBECONFIG_SINK}" "${K3D_BIN}" "$@"
+    KUBECONFIG="${LAB_K3D_KUBECONFIG_SINK}" "${K3D_BIN}" "$@" 9>&-
 }
 
 prepare_runtime() {
@@ -932,6 +933,10 @@ assert_fresh_names_available() {
 ensure_registry() {
     if registry_exists; then
         validate_registry_container_ownership
+        if [[ "$(container_running "${LAB_REGISTRY_CONTAINER_ID}")" != true ]]; then
+            info "Starting the existing owned registry"
+            run_container start "${LAB_REGISTRY_CONTAINER_ID}" >/dev/null
+        fi
         return
     fi
     [[ -z "${LAB_REGISTRY_CONTAINER_ID}" ]] \
@@ -969,11 +974,59 @@ ensure_network() {
         "${LAB_NETWORK_NAME}" >/dev/null
 }
 
+container_running() {
+    run_container inspect "$1" --format '{{.State.Running}}'
+}
+
+cluster_runtime_status() {
+    local cluster_name="$1"
+    local container_ids
+    container_ids="$(run_container ps --all --filter "label=k3d.cluster=${cluster_name}" --format '{{.ID}}')"
+    if [[ -z "${container_ids}" ]]; then
+        printf missing
+        return
+    fi
+    local running=0 stopped=0 container_id
+    while IFS= read -r container_id; do
+        if [[ "$(container_running "${container_id}")" == true ]]; then
+            running=$((running + 1))
+        else
+            stopped=$((stopped + 1))
+        fi
+    done <<<"${container_ids}"
+    if [[ "${stopped}" -eq 0 ]]; then
+        printf running
+    elif [[ "${running}" -eq 0 ]]; then
+        printf stopped
+    else
+        printf partial
+    fi
+}
+
+resume_owned_cluster() {
+    local cluster_name="$1"
+    validate_cluster_container_ownership "${cluster_name}"
+    if [[ "$(cluster_runtime_status "${cluster_name}")" != running ]]; then
+        info "Starting existing owned cluster '${cluster_name}'"
+        run_k3d cluster start "${cluster_name}" --wait --timeout 180s
+    fi
+}
+
+registry_runtime_status() {
+    if ! registry_exists; then
+        printf missing
+    elif [[ "$(container_running "${LAB_REGISTRY_CONTAINER}")" == true ]]; then
+        printf running
+    else
+        printf stopped
+    fi
+}
+
 ensure_cluster() {
     local index="$1"
     local cluster_name="${PROFILE_CLUSTER_NAMES[index]}"
     if cluster_exists "${cluster_name}"; then
-        validate_cluster_container_ownership "${cluster_name}"
+        resume_owned_cluster "${cluster_name}"
     else
         info "Creating cluster '${cluster_name}'"
         local -a create_arguments=(
@@ -1151,10 +1204,14 @@ install_harbor_overlay() {
             "secretKey: ${secret_key}" >"${values_path}"
         chmod 0600 -- "${values_path}"
     fi
+    # Registry data is ephemeral. A Redis descriptor cache can outlive /storage,
+    # report missing manifests as present, and make successful PUTs unreadable.
     run_helm_for_target "${index}" upgrade --install pole-lab-harbor \
         "https://helm.goharbor.io/harbor-${HARBOR_CHART_VERSION}.tgz" \
         --namespace pole-lab-harbor --create-namespace --wait --timeout 10m \
-        --values "${values_path}"
+        --values "${values_path}" \
+        --set 'registry.registry.extraEnvVars[0].name=REGISTRY_STORAGE_CACHE_BLOBDESCRIPTOR' \
+        --set 'registry.registry.extraEnvVars[0].value=inmemory'
 }
 
 install_buildkit_overlay() {
@@ -1256,10 +1313,10 @@ status_lab() {
     printf 'Runtime: %s\n' "${CONTAINER_RUNTIME}"
     printf 'Overlays: %s\n' "$(jq --raw-output 'if (.overlays | length) == 0 then "none" else (.overlays | join(", ")) end' "${LAB_STATE_FILE}")"
     printf 'Network: %s (%s)\n' "${LAB_NETWORK_NAME}" "$(network_exists && printf running || printf missing)"
-    printf 'Registry: %s (%s)\n' "${LAB_REGISTRY_NAME}" "$(registry_exists && printf running || printf missing)"
+    printf 'Registry: %s (%s)\n' "${LAB_REGISTRY_NAME}" "$(registry_runtime_status)"
     local cluster_name
     for cluster_name in "${PROFILE_CLUSTER_NAMES[@]}"; do
-        printf 'Cluster: %s (%s)\n' "${cluster_name}" "$(cluster_exists "${cluster_name}" && printf running || printf missing)"
+        printf 'Cluster: %s (%s)\n' "${cluster_name}" "$(cluster_runtime_status "${cluster_name}")"
     done
 }
 
@@ -1879,4 +1936,6 @@ main() {
     esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

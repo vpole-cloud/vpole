@@ -8,7 +8,7 @@ import {
   normalizeTenantRole,
   retryWebServiceDeployment,
 } from './api'
-import { retryOperationForStatus } from './components/WebServiceDeploymentsPanel'
+import { retryOperationForStatus } from './components/webServiceDeploymentStatus'
 
 describe('tenant role normalization', () => {
   it('maps the numeric API enum to the frontend role contract', () => {

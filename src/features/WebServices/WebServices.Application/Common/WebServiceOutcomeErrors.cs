@@ -3,8 +3,6 @@ using Pole.Features.Domains.Contracts;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.SourceBuilds.Contracts;
-using Pole.Features.WebServices.Application.Endpoints;
-using Pole.Features.WebServices.Application.Endpoints.Releases;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Application.Persistence.Mutations;
 
@@ -66,10 +64,6 @@ public union DeleteWebServiceError(
     WebServiceUpdateConflict,
     QuotaExecutionError);
 
-public union DeleteWebServiceOutcome(
-    DeleteWebServiceResponse,
-    DeleteWebServiceError);
-
 public union WebServiceImageTagAuthorizationError(
     WebServiceImageTagUnauthorized,
     WebServiceImageTagForbidden);
@@ -87,18 +81,10 @@ public union UpdateWebServiceError(
     WebServiceUpdateConflict,
     QuotaExecutionError);
 
-public union UpdateWebServiceOutcome(
-    UpdateWebServiceResponse,
-    UpdateWebServiceError);
-
 public union RedeployWebServiceError(
     WebServiceLifecycleMutationStateError,
     ResourceDeploymentMutationError,
     WebServiceUpdateConflict);
-
-public union RedeployWebServiceOutcome(
-    RedeployWebServiceResponse,
-    RedeployWebServiceError);
 
 public union RollbackWebServiceError(
     RollbackWebServiceStateError,
@@ -106,18 +92,10 @@ public union RollbackWebServiceError(
     WebServiceUpdateConflict,
     QuotaExecutionError);
 
-public union RollbackWebServiceOutcome(
-    RollbackWebServiceResponse,
-    RollbackWebServiceError);
-
 public union UpdateWebServiceImageTagError(
     WebServiceImageTagStateError,
     ResourceDeploymentMutationError,
     WebServiceUpdateConflict);
-
-public union UpdateWebServiceImageTagOutcome(
-    UpdateWebServiceImageTagResponse,
-    UpdateWebServiceImageTagError);
 
 public union UpdateWebServiceDeploymentError(
     WebServiceDeploymentMutationStateError,
@@ -127,10 +105,6 @@ public union UpdateWebServiceDeploymentError(
     WebServiceUpdateConflict,
     QuotaExecutionError);
 
-public union UpdateWebServiceDeploymentOutcome(
-    PlacementSummaryDto,
-    UpdateWebServiceDeploymentError);
-
 public union DeleteWebServiceDeploymentError(
     DeleteWebServiceDeploymentStateError,
     ResourceDeploymentMutationError,
@@ -138,19 +112,11 @@ public union DeleteWebServiceDeploymentError(
     WebServiceUpdateConflict,
     QuotaExecutionError);
 
-public union DeleteWebServiceDeploymentOutcome(
-    PlacementSummaryDto,
-    DeleteWebServiceDeploymentError);
-
 public union RetryWebServiceDeploymentError(
     WebServiceDeploymentMutationStateError,
     ResourceDeploymentMutationError,
     AdvanceResourceDeploymentRevisionError,
     WebServiceUpdateConflict);
-
-public union RetryWebServiceDeploymentOutcome(
-    PlacementSummaryDto,
-    RetryWebServiceDeploymentError);
 
 public union WebServiceDeploymentHostnameError(
     WebServiceDeploymentMutationStateError,
@@ -158,7 +124,3 @@ public union WebServiceDeploymentHostnameError(
     ResourceDeploymentMutationError,
     AdvanceResourceDeploymentRevisionError,
     WebServiceUpdateConflict);
-
-public union WebServiceDeploymentHostnameOutcome(
-    PlacementSummaryDto,
-    WebServiceDeploymentHostnameError);

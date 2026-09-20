@@ -66,7 +66,9 @@ public static class IsolationScopeFactory
     public const string DefaultScopeName = "default";
     public const int MaximumNameLength = ResourceGroupValueGuard.MaximumIsolationScopeNameLength;
 
-    public sealed record CreateOptions(string Id, DateTime CreatedAtUtc);
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc);
 
     public static CreateOptions DefaultOptions =>
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);

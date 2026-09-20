@@ -57,7 +57,10 @@ public sealed class FunctionScaler(
         Uncertain
     }
 
-    private sealed record ScaleOperation(string OperationId, int DesiredReplicas, long? QuiescingEpoch);
+    private sealed record ScaleOperation(
+        string OperationId,
+        int DesiredReplicas,
+        long? QuiescingEpoch);
 
     private sealed class RevisionState(string ownershipOperationId)
     {

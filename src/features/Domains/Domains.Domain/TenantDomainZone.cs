@@ -39,7 +39,9 @@ public sealed record TenantDomainZone(
 
 public static class TenantDomainZoneFactory
 {
-    public sealed record CreateOptions(string Id, DateTime CreatedAtUtc);
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc);
 
     public static TenantDomainZone CreateGenerated(
         string tenantId,

@@ -57,7 +57,9 @@ public union UpdateResourceGroupError(
     ResourceGroupNotFound,
     ResourceGroupRevisionConflict);
 
-public union UpdateResourceGroupOutcome(ResourceGroupDto, UpdateResourceGroupError);
+public union UpdateResourceGroupOutcome(
+    ResourceGroupDto,
+    UpdateResourceGroupError);
 
 public sealed record UpdateResourceGroupRequestBody(
     string Description,

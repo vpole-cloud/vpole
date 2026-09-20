@@ -293,7 +293,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
                 fixture.DbContext.DeploymentTargetSettings,
                 ensureNoDeploymentTargetReferences,
                 new MongoRunTransaction(fixture.Client)
-                    .InvokeOutcomeAsync<DeleteDeploymentTargetOutcome>,
+                    .InvokeOutcomeAsync<DeleteDeploymentTargetPersistenceOutcome>,
                 timeProvider ?? TimeProvider.System).InvokeAsync,
             new NoOpClientCache().Invalidate);
 

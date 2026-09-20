@@ -1,3 +1,4 @@
+import { retryOperationForStatus } from './webServiceDeploymentStatus'
 import { useEffect, useMemo, useState } from 'react'
 import type {
   AvailableComputeProfile,
@@ -34,9 +35,6 @@ const statusClass = (status: string) =>
     : status.toLowerCase().includes('pending')
       ? 'status-pill--accent'
       : 'status-pill--success'
-
-export const retryOperationForStatus = (status: string): 'Apply' | 'Delete' =>
-  status.toLowerCase().includes('delete') ? 'Delete' : 'Apply'
 
 export function WebServiceDeploymentsPanel({
   webService,

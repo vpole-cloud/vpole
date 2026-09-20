@@ -17,7 +17,9 @@ public sealed record DeleteTenantMemberRequest(
 
 public union DeleteTenantMemberError(TenantMemberMutationError);
 
-public union DeleteTenantMemberOutcome(string, DeleteTenantMemberError);
+public union DeleteTenantMemberOutcome(
+    string,
+    DeleteTenantMemberError);
 
 public sealed class DeleteTenantMemberHandler(
     PersistRemovedTenantMember persistRemovedTenantMember)

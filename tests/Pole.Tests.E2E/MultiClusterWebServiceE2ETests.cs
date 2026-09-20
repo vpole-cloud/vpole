@@ -535,5 +535,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         long Revision,
         KubernetesLabTarget LabTarget);
 
-    private sealed record CreatedComputeProfile(string Id, long Revision);
+    private sealed record CreatedComputeProfile(
+        string Id,
+        long Revision);
 }

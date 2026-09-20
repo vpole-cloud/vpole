@@ -38,7 +38,10 @@ public sealed record GitProviderConnection(
 
 public static class GitProviderConnectionFactory
 {
-    public sealed record CreateOptions(string Id, DateTime CreatedAtUtc, DateTime UpdatedAtUtc);
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc,
+        DateTime UpdatedAtUtc);
 
     public static CreateOptions DefaultOptions =>
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow, DateTime.UtcNow);
@@ -102,7 +105,10 @@ public sealed record GitHubInstallationMetadata(
 
 public static class GitHubSetupAttemptFactory
 {
-    public sealed record CreateOptions(string Id, DateTime CreatedAtUtc, DateTime ExpiresAtUtc);
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc,
+        DateTime ExpiresAtUtc);
 
     public static CreateOptions DefaultOptions =>
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow, DateTime.UtcNow.AddMinutes(10));
@@ -175,7 +181,10 @@ public sealed record SourceRepository(
 
 public static class SourceRepositoryFactory
 {
-    public sealed record CreateOptions(string Id, DateTime CreatedAtUtc, DateTime UpdatedAtUtc);
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc,
+        DateTime UpdatedAtUtc);
 
     public static CreateOptions DefaultOptions =>
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow, DateTime.UtcNow);

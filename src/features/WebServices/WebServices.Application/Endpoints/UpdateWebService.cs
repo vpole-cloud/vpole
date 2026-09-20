@@ -65,6 +65,10 @@ public sealed record UpdateWebServiceResponse(
     long ResourceRevision,
     IReadOnlyList<PlacementSummaryDto> Deployments);
 
+public union UpdateWebServiceOutcome(
+    UpdateWebServiceResponse,
+    UpdateWebServiceError);
+
 public sealed class UpdateWebServiceHandler(
     LoadWebServiceById loadWebServiceById,
     LoadResourceDeploymentSet loadResourceDeploymentSet,

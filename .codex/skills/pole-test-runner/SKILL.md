@@ -18,7 +18,7 @@ Inspect the changed files, nearest tests, and the verified commands in `AGENTS.m
 - Kubernetes client behavior: use a small live-cluster test only when manifests or fakes cannot prove it.
 - Production DI, Keycloak, RabbitMQ, browser flows, or cross-service behavior: use Aspire E2E.
 - Frontend logic: run Vitest. TypeScript and production bundling: run the build. React and lint rules: run lint.
-- Documentation, skills, or agent guidance alone normally need structural validation and diff review, not application tests.
+- Documentation, skills, or agent guidance use structural validation during editing; publication still requires every local test as specified below.
 
 An in-memory or standalone database is not evidence for Mongo transaction, replica-set, race, or concurrency behavior. A mocked HTTP boundary is not evidence for route binding or authentication middleware. A generated manifest is not evidence that a live cluster accepts or reconciles it.
 
@@ -42,3 +42,9 @@ An in-memory or standalone database is not evidence for Mongo transaction, repli
 ## Report
 
 Return the commands run, pass/fail counts, the first actionable failure, skipped checks with reasons, and the next check that would add meaningful evidence. Distinguish a test failure from an environment or sandbox failure.
+
+## Delivery Gate
+
+Follow `docs/agent-delivery.md`. Focused checks are development feedback; before opening any PR, run `python3 scripts/quality_gate.py run` on the final source tree. Every local backend, frontend, automation, and infrastructure test must pass with zero skips, including for documentation or tooling PRs. Missing prerequisites and pre-existing failures block publication; draft PRs are not an exception. Use the recorded full-run evidence and review required by AGENTS.md with the publication wrapper described there.
+
+If tests fail, the first sentence of every summary must identify the failing tests and explain the known cause (or say it is still unknown). Report unavailable infrastructure as a blocker, never as a passed test.
