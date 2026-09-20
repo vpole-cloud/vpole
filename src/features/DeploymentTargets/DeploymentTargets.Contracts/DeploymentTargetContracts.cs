@@ -309,6 +309,7 @@ public delegate Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
 public static class DeploymentTargetReferenceOwnerTypes
 {
     public const string DomainZone = "domain-zone";
+    public const string ComputeProfile = "compute-profile";
 }
 
 /// <summary>

@@ -28,13 +28,13 @@ public sealed class ComputeProfileBootstrapper(
         if (await loadDefault(cancellationToken) is not null)
             return;
 
-        var admitDefaultDeploymentTarget = scope.ServiceProvider
-            .GetRequiredService<AdmitDefaultDeploymentTargetForNewWorkload>();
-        var targetResult = await admitDefaultDeploymentTarget(cancellationToken);
+        var lookupDefaultDeploymentTarget = scope.ServiceProvider
+            .GetRequiredService<LookupDefaultDeploymentTarget>();
+        var targetResult = await lookupDefaultDeploymentTarget(cancellationToken);
         if (targetResult is not Ok<DeploymentTargetLookupDto> target)
         {
             throw new InvalidOperationException(
-                "The default compute profile cannot be bootstrapped because no eligible default deployment target is configured.");
+                "The default compute profile cannot be bootstrapped because no default deployment target is configured.");
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;

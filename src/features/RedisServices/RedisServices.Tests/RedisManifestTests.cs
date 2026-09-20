@@ -17,7 +17,7 @@ namespace Pole.Features.RedisServices.Tests;
 public sealed class RedisManifestTests
 {
     [Fact]
-    public void PlacementIdentity_IsSharedByPodAndService_AndSelectorsSurviveRename()
+    public void PlacementIdentity_IsStableAcrossRevisions_AndSeparatesRecreatedResources()
     {
         var subject = CreateSubject();
         var identity = new WorkloadIdentityLabels(
@@ -31,14 +31,28 @@ public sealed class RedisManifestTests
         Assert.All(
             service.Spec.Selector,
             pair => Assert.Equal(pair.Value, workload.Spec.Template.Metadata.Labels[pair.Key]));
-        var renamed = subject with { Redis = subject.Redis with { Name = "renamed" } };
-        Assert.Equal(workload.Spec.Selector.MatchLabels, renamed.ToStatefulSet().Spec.Selector.MatchLabels);
-        Assert.Equal(service.Spec.Selector, renamed.ToService().Spec.Selector);
+        var revised = subject with { Redis = subject.Redis with { Revision = subject.Redis.Revision + 1 } };
+        Assert.Equal(workload.Spec.Selector.MatchLabels, revised.ToStatefulSet().Spec.Selector.MatchLabels);
+        Assert.Equal(service.Spec.Selector, revised.ToService().Spec.Selector);
+        const string replacementId = "700000000000000000000044";
+        var replacement = subject with
+        {
+            Redis = subject.Redis with { Id = replacementId },
+            PlacementIdentity = identity with
+            {
+                ResourceId = replacementId,
+                ResourceDeploymentId = "replacement-deployment-44"
+            }
+        };
+        Assert.Equal(subject.Redis.Name, replacement.Redis.Name);
+        Assert.Equal(replacementId, replacement.ToService().Spec.Selector["pole.io/resource-id"]);
+        Assert.NotEqual(service.Spec.Selector["pole.io/resource-id"],
+            replacement.ToStatefulSet().Spec.Template.Metadata.Labels["pole.io/resource-id"]);
         Assert.DoesNotContain("app", service.Spec.Selector.Keys);
         Assert.Equal(subject.Redis.Name, service.Metadata.Annotations[PoleStorageLabels.ResourceName]);
-        Assert.Equal("renamed", renamed.ToService().Metadata.Annotations[PoleStorageLabels.ResourceName]);
-        var renamedClaim = Assert.Single(renamed.ToStatefulSet().Spec.VolumeClaimTemplates);
-        Assert.Equal("renamed", renamedClaim.Metadata.Annotations[PoleStorageLabels.ResourceName]);
+        Assert.Equal(subject.Redis.Name, replacement.ToService().Metadata.Annotations[PoleStorageLabels.ResourceName]);
+        var claim = Assert.Single(replacement.ToStatefulSet().Spec.VolumeClaimTemplates);
+        Assert.Equal(subject.Redis.Name, claim.Metadata.Annotations[PoleStorageLabels.ResourceName]);
         Assert.DoesNotContain(PoleStorageLabels.ResourceName, workload.Spec.Selector.MatchLabels.Keys);
     }
 

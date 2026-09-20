@@ -75,39 +75,39 @@ public readonly record struct RedisInKubernetes(
 
     public V1StatefulSet ToStatefulSet(
         RedisResourceDeploymentMetadata? deploymentMetadata = null) => new()
-    {
-        ApiVersion = "apps/v1",
-        Kind = "StatefulSet",
-        Metadata = new V1ObjectMeta
         {
-            Name = StatefulSetName,
-            NamespaceProperty = Namespace,
-            Labels = new Dictionary<string, string>
-                (BuildLabels()),
-            Annotations = DefaultAnnotations
-        },
-        Spec = new V1StatefulSetSpec
-        {
-            ServiceName = ServiceName,
-            Replicas = 1,
-            Selector = new V1LabelSelector
+            ApiVersion = "apps/v1",
+            Kind = "StatefulSet",
+            Metadata = new V1ObjectMeta
             {
-                MatchLabels = new Dictionary<string, string>
+                Name = StatefulSetName,
+                NamespaceProperty = Namespace,
+                Labels = new Dictionary<string, string>
+                (BuildLabels()),
+                Annotations = DefaultAnnotations
+            },
+            Spec = new V1StatefulSetSpec
+            {
+                ServiceName = ServiceName,
+                Replicas = 1,
+                Selector = new V1LabelSelector
+                {
+                    MatchLabels = new Dictionary<string, string>
                 {
                     { "pole.io/resource-id", Redis.Id }
                 }
-            },
-            Template = new V1PodTemplateSpec
-            {
-                Metadata = new V1ObjectMeta
-                {
-                    Labels = new Dictionary<string, string>
-                        (BuildLabels()),
-                    Annotations = BuildPodTemplateAnnotations(deploymentMetadata)
                 },
-                Spec = BuildPodSpec()
-            },
-            VolumeClaimTemplates = new List<V1PersistentVolumeClaim>
+                Template = new V1PodTemplateSpec
+                {
+                    Metadata = new V1ObjectMeta
+                    {
+                        Labels = new Dictionary<string, string>
+                        (BuildLabels()),
+                        Annotations = BuildPodTemplateAnnotations(deploymentMetadata)
+                    },
+                    Spec = BuildPodSpec()
+                },
+                VolumeClaimTemplates = new List<V1PersistentVolumeClaim>
             {
                 new()
                 {
@@ -131,8 +131,8 @@ public readonly record struct RedisInKubernetes(
                     }
                 }
             }
-        }
-    };
+            }
+        };
 
     public V1Service ToService() => new()
     {
@@ -166,7 +166,7 @@ public readonly record struct RedisInKubernetes(
             }
         }
     };
-    
+
     private ImmutableDictionary<string, string> DefaultAnnotations =>
         new Dictionary<string, string>
         {

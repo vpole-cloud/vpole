@@ -671,12 +671,14 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
     private sealed class RecordingAdmissionCoordinator : IFunctionAdmissionCoordinator
     {
         public List<(FunctionRevisionCoordinationKey Key, FunctionAdmissionRequest Request,
-            FunctionAdmissionToken Token)> AcquireRequests { get; } = [];
+            FunctionAdmissionToken Token)> AcquireRequests
+        { get; } = [];
         public List<(FunctionRevisionCoordinationKey Key, FunctionAdmissionReleaseRequest Request)> ReleaseRequests
-            { get; } = [];
+        { get; } = [];
 
         public Func<FunctionRevisionCoordinationKey, FunctionAdmissionRequest,
-            Task<FunctionAdmissionDecision>>? AcquireHandler { get; init; }
+            Task<FunctionAdmissionDecision>>? AcquireHandler
+        { get; init; }
         public DateTimeOffset TokenExpiresAtUtc { get; init; } = Now.AddYears(1);
 
         public async Task<FunctionAdmissionDecision> AcquireAsync(
@@ -735,11 +737,14 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         public DateTimeOffset StartedAtUtc { get; init; } = Now;
 
         public Func<FunctionEndpoint, ReserveFunctionAttemptRequest,
-            Task<FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse>>>? ReserveHandler { get; init; }
+            Task<FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse>>>? ReserveHandler
+        { get; init; }
         public Func<FunctionEndpoint, string, ExecuteFunctionAttemptRequest,
-            Task<FunctionAgentProtocolResponse<StartFunctionAttemptResponse>>>? ExecuteHandler { get; init; }
+            Task<FunctionAgentProtocolResponse<StartFunctionAttemptResponse>>>? ExecuteHandler
+        { get; init; }
         public Func<FunctionEndpoint, string,
-            Task<FunctionAgentProtocolResponse<FunctionAttemptStatusResponse>>>? ObserveHandler { get; init; }
+            Task<FunctionAgentProtocolResponse<FunctionAttemptStatusResponse>>>? ObserveHandler
+        { get; init; }
 
         public Task<FunctionAgentProtocolResponse<FunctionAgentMetadataResponse>> GetMetadataAsync(
             FunctionEndpoint endpoint,

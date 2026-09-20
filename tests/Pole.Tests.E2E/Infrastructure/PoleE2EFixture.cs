@@ -140,10 +140,42 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             .WithEnvironment("GitHubStub__ControlKey", _stubControlKey);
         ConfigureOwnedContainerResources(appHost);
 
+        var startupResourceNames = appHost.Resources
+            .Where(resource => resource is not ParameterResource)
+            .Select(resource => resource.Name)
+            .Order(StringComparer.Ordinal)
+            .Take(32)
+            .ToArray();
         _application = await appHost.BuildAsync(_shutdown.Token);
         _keycloakPortReservation.Stop();
-        await _application.StartAsync(_shutdown.Token);
-        await WaitForRequiredResourceHealthyAsync("pole-server", _shutdown.Token);
+        using (var startup = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token))
+        {
+            var starting = _application.StartAsync(startup.Token);
+            var serverReady = WaitForRequiredResourceHealthyAsync("pole-server", startup.Token);
+            try
+            {
+                var first = await Task.WhenAny(starting, serverReady);
+                await first;
+                await starting;
+                await serverReady;
+            }
+            catch (Exception exception)
+            {
+                await startup.CancelAsync();
+                // Observe both tasks after cancellation before disposing the application.
+                try
+                {
+                    await Task.WhenAll(starting, serverReady);
+                }
+                catch
+                {
+                    // The original failure is reported below.
+                }
+                throw new InvalidOperationException(
+                    $"Aspire startup failed. {DescribeStartupStates(startupResourceNames)}",
+                    exception);
+            }
+        }
         await WaitForRequiredResourceHealthyAsync("frontend", _shutdown.Token);
         await WaitForRequiredResourceHealthyAsync("github-stub", _shutdown.Token);
 
@@ -655,6 +687,35 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             .WithEnvironment(
                 "DeploymentTargets__Bootstrap__WorkloadConfiguration__Ingress__PublicBaseDomain",
                 _kubernetesTarget.PublicBaseDomain);
+    }
+
+    private string DescribeStartupStates(IEnumerable<string> resourceNames)
+    {
+        // Never serialize resource snapshots: they can contain credentials, URLs and environment values.
+        try
+        {
+            return string.Join("; ", resourceNames.Select(name =>
+            {
+                if (!_application!.ResourceNotifications.TryGetCurrentState(name, out var resource))
+                    return $"{name}: no snapshot";
+                var snapshot = resource.Snapshot;
+                var observedState = snapshot.State?.Text;
+                var state = observedState switch
+                {
+                    "Starting" or "Running" or "FailedToStart" or "RuntimeUnhealthy" or
+                    "Waiting" or "NotStarted" or "Building" or "Stopping" or "Exited" or
+                    "Finished" or "Hidden" or "ValueMissing" or "Active" => observedState,
+                    null => "none",
+                    _ => "Other"
+                };
+                return $"{name}: state={state}, health={snapshot.HealthStatus?.ToString() ?? "none"}, exit={snapshot.ExitCode?.ToString() ?? "none"}";
+            }));
+        }
+        catch
+        {
+            // Diagnostic collection must not replace the original startup failure or expose exception payloads.
+            return "Resource states unavailable.";
+        }
     }
 
     private async Task WaitForRequiredResourceHealthyAsync(

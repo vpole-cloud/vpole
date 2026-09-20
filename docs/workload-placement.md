@@ -194,6 +194,15 @@ RuntimeCell namespaces carry immutable `pole.io/tenant-id`, `resource-group-id`,
 `isolation-scope-id`, `runtime-cell-id`, and `deployment-target-id` labels (all under `pole.io/`).
 Workload pod templates and Services additionally carry `resource-type`, `resource-id`, and
 `resource-deployment-id`. WebService, Redis, PostgreSQL, and Function reconciliation propagate
-these identities from persisted placement. Resource names are informational only; generated
-selectors use immutable identities, and never display names or deployment generations.
+these identities from persisted placement. Generated selectors use concrete resource/deployment
+IDs rather than names or deployment generations. A resource's `Name` is immutable during its
+lifetime, but deletion and recreation can reuse that name with a new ID. The new instance must
+not match the previous instance's workload selectors or inherit its durable bindings.
+
+The agreed IaC-facing address is `(tenant, resource type, normalized name)`, represented as
+`kind + name` (or `kind/name`); typed reference fields may omit the kind. Group and isolation
+scope remain ownership/admission constraints, not name qualifiers. Providers enforce naming
+uniqueness in their own collections; this change does not introduce a name-resolution API or
+claim that every existing provider has completed naming alignment. Internal references and
+runtime selectors retain IDs. Human-readable names remain available in resource metadata.
 PostgreSQL operator resources propagate the labels through `inheritedMetadata`.

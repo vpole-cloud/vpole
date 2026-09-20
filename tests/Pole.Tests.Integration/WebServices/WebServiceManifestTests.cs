@@ -19,7 +19,7 @@ namespace Pole.Tests.Integration.WebServices;
 public sealed class WebServiceManifestTests
 {
     [Fact]
-    public void PlacementIdentity_IsSharedByPodAndService_AndSelectorsSurviveRename()
+    public void PlacementIdentity_IsStableAcrossRevisions_AndSeparatesRecreatedResources()
     {
         var subject = CreateSubject();
         var identity = new WorkloadIdentityLabels(
@@ -38,9 +38,23 @@ public sealed class WebServiceManifestTests
         Assert.All(
             service.Spec.Selector,
             pair => Assert.Equal(pair.Value, workload.Spec.Template.Metadata.Labels[pair.Key]));
-        var renamed = subject with { WebService = subject.WebService with { Name = "renamed" } };
-        Assert.Equal(workload.Spec.Selector.MatchLabels, renamed.ToDeployment().Spec.Selector.MatchLabels);
-        Assert.Equal(service.Spec.Selector, renamed.ToService().Spec.Selector);
+        var revised = subject with { WebService = subject.WebService with { Revision = subject.WebService.Revision + 1 } };
+        Assert.Equal(workload.Spec.Selector.MatchLabels, revised.ToDeployment().Spec.Selector.MatchLabels);
+        Assert.Equal(service.Spec.Selector, revised.ToService().Spec.Selector);
+        const string replacementId = "700000000000000000000044";
+        var replacement = subject with
+        {
+            WebService = subject.WebService with { Id = replacementId },
+            PlacementIdentity = identity with
+            {
+                ResourceId = replacementId,
+                ResourceDeploymentId = "replacement-deployment-44"
+            }
+        };
+        Assert.Equal(subject.WebService.Name, replacement.WebService.Name);
+        Assert.Equal(replacementId, replacement.ToService().Spec.Selector["pole.io/resource-id"]);
+        Assert.NotEqual(service.Spec.Selector["pole.io/resource-id"],
+            replacement.ToDeployment().Spec.Template.Metadata.Labels["pole.io/resource-id"]);
         Assert.DoesNotContain("app", service.Spec.Selector.Keys);
     }
 

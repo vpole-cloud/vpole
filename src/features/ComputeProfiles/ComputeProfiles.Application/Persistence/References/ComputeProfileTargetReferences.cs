@@ -7,7 +7,7 @@ namespace Pole.Features.ComputeProfiles.Application.Persistence.References;
 
 internal static class ComputeProfileTargetReferences
 {
-    public const string OwnerType = "compute-profile";
+    public const string OwnerType = DeploymentTargetReferenceOwnerTypes.ComputeProfile;
 
     public static Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
         ApplyChangesAsync(

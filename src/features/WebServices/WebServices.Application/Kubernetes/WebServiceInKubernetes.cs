@@ -117,7 +117,7 @@ public readonly record struct WebServiceInKubernetes(
     public static string BuildTlsSecretName(string webServiceName) => $"{webServiceName}-tls";
     public string ServiceMonitorName => BuildServiceMonitorName(WebService.Name);
     public static string BuildServiceMonitorName(string webServiceName) => $"{webServiceName}-sm";
-    public V1Deployment ToDeployment(WebServiceDeploymentMetadata? deploymentMetadata = null) => new ()
+    public V1Deployment ToDeployment(WebServiceDeploymentMetadata? deploymentMetadata = null) => new()
     {
         ApiVersion = "apps/v1",
         Kind = "Deployment",
@@ -205,7 +205,7 @@ public readonly record struct WebServiceInKubernetes(
             }).ToList()
         }
     };
-        
+
     public V1Secret? ToImagePullSecret(string username = "", string password = "")
     {
         var rs = WebService.Spec.Image.SecretName;
@@ -327,7 +327,7 @@ public readonly record struct WebServiceInKubernetes(
             }
         };
     }
-        
+
     public V1HorizontalPodAutoscaler? ToHorizontalPodAutoscaler() => WebService.Spec.Autoscaling is null ? null : new V1HorizontalPodAutoscaler
     {
         ApiVersion = "autoscaling/v2",
@@ -351,7 +351,7 @@ public readonly record struct WebServiceInKubernetes(
             MaxReplicas = WebService.Spec.Autoscaling.MaxReplicas,
         }
     };
-        
+
     public object ToServiceMonitor() => new
     {
         apiVersion = "monitoring.coreos.com/v1",
@@ -385,7 +385,7 @@ public readonly record struct WebServiceInKubernetes(
             }
         }
     };
-        
+
     private readonly ImmutableDictionary<string, string> _defaultAnnotations =
         new Dictionary<string, string>
         {
@@ -435,7 +435,7 @@ public readonly record struct WebServiceInKubernetes(
 
         return annotations;
     }
-        
+
     private static int GetIngressServicePort(WebService webService)
     {
         // Simple default: first mapping
