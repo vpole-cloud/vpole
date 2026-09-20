@@ -21,12 +21,11 @@ public sealed class SecretIndexesMigration : IMigration
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys
                     .Ascending("TenantId")
-                    .Ascending("ResourceGroupId")
-                    .Ascending("IsolationScopeId")
                     .Ascending("NormalizedName"),
                 new CreateIndexOptions
                 {
-                    Unique = true
+                    Unique = true,
+                    Name = "UX_Secrets_Tenant_NormalizedName"
                 }),
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys

@@ -16,7 +16,11 @@ with authenticated tenant, Secret ID and version context. Temporary serialized p
 cleared after encryption. Previously encrypted versions remain until the Secret is explicitly deleted.
 Accepted ObjectId identities and consumer resource types are stored canonically, so casing or
 surrounding type whitespace cannot bypass ownership, uniqueness or cleanup. Names are
-case-insensitively unique within a tenant/group/scope. Each secret is also registered as
+immutable and case-insensitively unique within a tenant, across all resource groups and scopes.
+The resource type is implicit in the Secrets collection, matching the `(tenant, kind, normalized name)`
+addressing model. Another resource type may use the same name. Group/scope restrictions still apply
+to bindings. Name reuse is allowed only after Secret deletion commits, and creates a new ID with no
+inherited bindings or version history. Each secret is also registered as
 `pole/secret`, preventing group deletion while secrets remain. A scope-reference guard prevents
 additional-scope deletion while a Secret remains, including an unbound Secret.
 

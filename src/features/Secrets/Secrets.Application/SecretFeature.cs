@@ -24,7 +24,7 @@ public static class SecretFeature
             HttpProblemMapping.For<SecretNameAlreadyExists>(_ => new(
                 409,
                 PoleProblemTypeId.FromCode("secrets.name-already-exists"),
-                "Secret name already exists in this scope",
+                "Secret name already exists in this tenant",
                 "secrets.name-already-exists")),
             HttpProblemMapping.For<SecretReferenceRejected>(_ => new(
                 422,

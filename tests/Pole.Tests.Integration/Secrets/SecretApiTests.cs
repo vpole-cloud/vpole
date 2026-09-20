@@ -68,8 +68,8 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
                 expectedVersion = 1,
                 values = new
                 {
-                password = "synthetic-rotated-password"
-            }
+                    password = "synthetic-rotated-password"
+                }
             });
         Assert.Equal(HttpStatusCode.OK, rotated.StatusCode);
         Assert.DoesNotContain("synthetic-rotated-password", await rotated.Content.ReadAsStringAsync());
@@ -80,8 +80,8 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
                 expectedVersion = 1,
                 values = new
                 {
-                password = "synthetic-rotated-password"
-            }
+                    password = "synthetic-rotated-password"
+                }
             });
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
         await AssertProblemCode(stale, "secrets.version-conflict");
@@ -90,6 +90,26 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(
             HttpStatusCode.NoContent,
             (await Client.DeleteAsync($"/api/v1/secrets/{metadata.Id}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task DuplicateNameInAnotherResourceGroupReturnsConflict()
+    {
+        var first = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("first"));
+        var second = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("second"));
+        object Body(ResourceGroup group, string name) => new
+        {
+            resourceGroupId = group.Id,
+            isolationScopeId = group.DefaultIsolationScopeId,
+            name,
+            purpose = "tenant name uniqueness",
+            values = new { password = "synthetic" }
+        };
+        using var created = await Client.PostAsJsonAsync("/api/v1/secrets/", Body(first, "shared-name"));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        using var conflict = await Client.PostAsJsonAsync("/api/v1/secrets/", Body(second, " SHARED-NAME "));
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+        await AssertProblemCode(conflict, "secrets.name-already-exists");
     }
 
     [Fact]
@@ -302,9 +322,9 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
         await session.CommitTransactionAsync();
         var cleanup = new RemoveSecretBindingsOnResourceUnregistered(serviceScope.ServiceProvider.GetRequiredService<RemoveConsumerSecretBindings>());
         await cleanup.Handle(new ResourceUnregisteredEvent(group.Id, "pole/web-service", consumer.WebServiceId)
-            {
-                EventCore = EventCore.Create(group.TenantId)
-            });
+        {
+            EventCore = EventCore.Create(group.TenantId)
+        });
         var cleaned = await Client.GetFromJsonAsync<SecretUsage[]>($"/api/v1/secrets/{secret.Id}/usage");
         Assert.NotNull(cleaned);
         Assert.Empty(cleaned);

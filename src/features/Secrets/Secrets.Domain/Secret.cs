@@ -122,11 +122,11 @@ public sealed record Secret(
     public Secret Detach(
         string bindingId,
         DateTime now) => this with
-    {
-        Bindings = Bindings.Where(x => x.Id != bindingId).ToImmutableArray(),
-        Revision = checked(Revision + 1),
-        UpdatedAtUtc = now
-    };
+        {
+            Bindings = Bindings.Where(x => x.Id != bindingId).ToImmutableArray(),
+            Revision = checked(Revision + 1),
+            UpdatedAtUtc = now
+        };
 }
 
 public static class SecretFactory
