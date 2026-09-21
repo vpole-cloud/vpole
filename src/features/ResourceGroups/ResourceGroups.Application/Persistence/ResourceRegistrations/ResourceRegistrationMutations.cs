@@ -1,7 +1,9 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceGroups.Events;
 using Pole.ResultType;
 using Pole.Workloads;
 
@@ -10,7 +12,8 @@ namespace Pole.Features.ResourceGroups.Application.Persistence.ResourceRegistrat
 internal sealed class MongoResourceRegistrationMutations(
     IMongoCollection<ResourceGroup> resourceGroups,
     IMongoCollection<ResourceRegistration> registrations,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    StoreOutboxWrites storeOutboxWrites)
 {
     public async Task<Result<RegisteredResource, ResourceRegistrationMutationError>> RegisterAsync(
         string? owningPluginId,
@@ -173,6 +176,15 @@ internal sealed class MongoResourceRegistrationMutations(
                 resourceTypeId,
                 resourceId),
             cancellationToken: cancellationToken);
+        if (deletion.DeletedCount == 1)
+            await storeOutboxWrites(
+                session,
+                [OutboxWrite.Create(
+                    new ResourceUnregisteredEvent(resourceGroupId, resourceTypeId.Value, resourceId)
+                    {
+                        EventCore = EventCore.Create(tenantId)
+                    })],
+                cancellationToken);
         return deletion.DeletedCount == 1
             ? new Ok<Unit>(Unit.Value)
             : new Err<ResourceRegistrationMutationError>(

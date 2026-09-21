@@ -35,6 +35,8 @@ public sealed record ResourceDeployment(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc)
 {
+    public long ReferenceFence { get; init; }
+
     public ResourceDeployment RequestReconciliation(
         ResolvedResourcePlacement resolvedPlacement,
         bool runtimeCellReady,

@@ -1,3 +1,4 @@
+using Pole.Features.Secrets.Application;
 using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -43,6 +44,7 @@ public static class TestServiceProviderFactory
 {
     private static readonly Assembly[] Assemblies =
     [
+        typeof(SecretFeature).Assembly,
         typeof(WebServiceEndpoints).Assembly,
         typeof(ComputeProfileApplicationRegistration).Assembly,
         typeof(FunctionAppFeature).Assembly,
@@ -89,6 +91,7 @@ public static class TestServiceProviderFactory
         services.AddResourceDeploymentsFeature(
             configuration);
         services.AddResourceGroupsFeature(configuration);
+        services.AddSecretsFeature();
         services.AddTenantsFeature();
         services.AddUsersFeature(configuration);
         services.AddDomainsFeature();

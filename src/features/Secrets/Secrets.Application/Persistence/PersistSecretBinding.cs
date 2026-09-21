@@ -1,0 +1,85 @@
+using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.Secrets.Domain;
+using Pole.Features.Secrets.Events;
+using Pole.ResultType;
+using Pole.Workloads;
+
+namespace Pole.Features.Secrets.Application.Persistence;
+
+public delegate Task<PersistSecretBindingResult> PersistSecretBinding(
+    string tenantId,
+    string id,
+    SecretBinding binding,
+    CancellationToken ct);
+
+public union PersistSecretBindingResult(
+    Secret,
+    SecretMissing,
+    SecretBindingLimitReached,
+    SecretConsumerAlreadyBound,
+    SecretUnknownKeys,
+    SecretReferenceRejected);
+
+internal sealed class MongoPersistSecretBinding(
+    IMongoCollection<Secret> secrets,
+    MongoRunTransaction transactions,
+    AdmitResourceScopeReference admitScope,
+    AdmitResourceDeploymentReferences admitDeployments,
+    StoreSecretChange publish,
+    TimeProvider clock)
+{
+    public Task<PersistSecretBindingResult> InvokeAsync(
+        string tenantId,
+        string id,
+        SecretBinding binding,
+        CancellationToken ct)
+    {
+        binding = SecretIdentity.Binding(binding);
+        return transactions.InvokeOutcomeAsync<PersistSecretBindingResult>(async (tx, token) =>
+        {
+            var current = await secrets
+                .Find(tx.Session, SecretFilters.Identity(tenantId, id))
+                .FirstOrDefaultAsync(token);
+            if (current is null)
+                return tx.Abort(new SecretMissing());
+            if (current.Bindings.Length >= Secret.MaximumBindings)
+                return tx.Abort(new SecretBindingLimitReached());
+            if (current.Bindings.Any(x => x.ConsumerType == binding.ConsumerType && x.ConsumerId == binding.ConsumerId))
+                return tx.Abort(new SecretConsumerAlreadyBound());
+            if (binding.KeyMappings.Keys.Except(current.KeyNames).Any())
+                return tx.Abort(new SecretUnknownKeys());
+
+            var type = ResourceTypeId.Create(binding.ConsumerType);
+            if (await admitScope(
+                current.TenantId,
+                current.ResourceGroupId,
+                current.IsolationScopeId,
+                new ResourceScopeConsumerReference(type, binding.ConsumerId),
+                tx.Session,
+                token) is Err<ResourceScopeReferenceUnavailable> ||
+                await admitDeployments(
+                    current.TenantId,
+                    current.ResourceGroupId,
+                    current.IsolationScopeId,
+                    type,
+                    binding.ConsumerId,
+                    binding.Selection is AllSecretDeployments,
+                    binding.Selection is SelectedSecretDeployments selected ? selected.DeploymentIds.ToArray() : [],
+                    tx.Session,
+                    token) is Err<ResourceDeploymentReferenceUnavailable>)
+                return tx.Abort(new SecretReferenceRejected());
+
+            var bound = current.Bind(binding, clock.GetUtcNow().UtcDateTime);
+            await secrets.ReplaceOneAsync(
+                tx.Session,
+                SecretFilters.Identity(tenantId, id),
+                bound,
+                cancellationToken: token);
+            await publish(tx.Session, bound, new SecretBindingAdded(binding.Id), token);
+            return tx.Commit(bound);
+        }, ct);
+    }
+}

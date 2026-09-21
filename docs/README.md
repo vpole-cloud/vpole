@@ -58,6 +58,7 @@ requirement when adding or changing one feature.
 - [Compute profiles](../src/features/ComputeProfiles/README.md)
 - [PostgreSQL clusters](../src/features/Postgres/README.md)
 - [Redis services](../src/features/RedisServices/README.md)
+- [Tenant secrets](../src/features/Secrets/README.md)
 - [Web services](../src/features/WebServices/README.md)
 - [Search](search.md) (existing central document; it can move beside the feature independently)
 

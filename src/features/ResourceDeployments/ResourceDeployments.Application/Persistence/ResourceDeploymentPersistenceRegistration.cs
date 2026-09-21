@@ -93,6 +93,9 @@ internal static class ResourceDeploymentPersistenceRegistration
             LoadCurrentResourceDeploymentCompute>(
             services,
             implementation => implementation.InvokeAsync);
+        AddCapability<MongoAdmitResourceDeploymentReferences, AdmitResourceDeploymentReferences>(
+            services,
+            implementation => implementation.InvokeAsync);
         AddCapability<MongoEnsureComputeProfileUnreferenced, EnsureComputeProfileUnreferenced>(
             services,
             implementation => implementation.InvokeAsync);

@@ -3,36 +3,37 @@ using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using MongoDB.Driver;
-using Pole.Encryption;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Encryption;
 using Pole.Features.ComputeProfiles.Application;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
 using Pole.Features.ComputeProfiles.Application.Migrations;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.Domains.Application;
-using Pole.Features.Domains.Application.Common;
-using Pole.Features.Domains.Application.Migrations;
 using Pole.Features.ContainerRegistries.Application;
 using Pole.Features.ContainerRegistries.Application.Common;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Application;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Application.Migrations;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.Domains.Application;
+using Pole.Features.Domains.Application.Common;
+using Pole.Features.Domains.Application.Migrations;
+using Pole.Features.Functions.Application;
+using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.GitProviders.Application;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
-using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application;
-using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Outbox.Application.Migrations;
 using Pole.Features.Outbox.Application.Persistence;
 using Pole.Features.Quotas.Application;
@@ -43,29 +44,30 @@ using Pole.Features.ResourceDeployments.Application.Migrations;
 using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Migrations;
-using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application;
-using Pole.Features.StorageProfiles.Application.Common;
-using Pole.Features.StorageProfiles.Application;
-using Pole.Features.StorageProfiles.Application.Discovery;
-using Pole.Features.StorageProfiles.Application.Migrations;
-using Pole.Features.SourceBuilds.Application.Common;
+using Pole.Features.Search.Application.Common;
+using Pole.Features.Secrets.Application;
+using Pole.Features.Secrets.Application.Migrations;
 using Pole.Features.SourceBuilds.Application;
+using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.SourceBuilds.Application.Migrations;
-using Pole.Features.WebServices.Application;
-using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Migrations;
-using Pole.Features.Core.Multitenancy;
-using Pole.Features.Tenants.Application.Middleware;
-using Pole.Features.Tenants.Application.Common;
+using Pole.Features.StorageProfiles.Application;
+using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application.Discovery;
+using Pole.Features.StorageProfiles.Application.Migrations;
 using Pole.Features.Tenants.Application;
+using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Tenants.Application.Middleware;
 using Pole.Features.Users.Application;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Application.Identity;
+using Pole.Features.WebServices.Application;
+using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Migrations;
 using Pole.Observability;
-using Pole.Server.Extensions;
 using Pole.Platform.Hosting;
+using Pole.Server.Extensions;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
@@ -76,6 +78,7 @@ public sealed class TestApiApplication : IAsyncDisposable
 
     private static readonly Assembly[] Assemblies =
     [
+        typeof(SecretFeature).Assembly,
         typeof(WebServiceEndpoints).Assembly,
         typeof(ComputeProfileApplicationRegistration).Assembly,
         typeof(FunctionAppFeature).Assembly,
@@ -178,6 +181,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddFunctionAppsFeature();
         builder.Services.AddResourceDeploymentsFeature(builder.Configuration);
         builder.Services.AddResourceGroupsFeature(builder.Configuration);
+        builder.Services.AddSecretsFeature();
         builder.Services.AddTenantsFeature();
         builder.Services.AddUsersFeature(builder.Configuration);
         builder.Services.RemoveAll<IIdentityProvider>();
@@ -292,6 +296,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         await new StorageProfileMigration().Up(fixture.Database);
         await new OutboxMessageMigration().Up(fixture.Database);
         await new SourceBuildMigration().Up(fixture.Database);
+        await new SecretIndexesMigration().Up(fixture.Database);
         await fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
             .InsertOneAsync(TestData.SeedComputeProfile());
@@ -304,6 +309,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         var api = app.MapGroup("/api/v1")
             .RequireAuthorization();
         api
+            .MapSecretEndpoints()
             .MapResourceGroupEndpoints()
             .MapContainerRegistryEndpoints()
             .MapDeploymentTargetEndpoints()

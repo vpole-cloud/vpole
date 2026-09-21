@@ -5,6 +5,7 @@
 <ProjectReference Include="../../features/Domains/Domains.Application/Domains.Application.csproj" />
 <ProjectReference Include="../../features/GitProviders/GitProviders.Application/GitProviders.Application.csproj" />
 <ProjectReference Include="../../features/ContainerRegistries/ContainerRegistries.Application/ContainerRegistries.Application.csproj" />
+<ProjectReference Include="../../features/Secrets/Secrets.Application/Secrets.Application.csproj" />
 <ProjectReference Include="../../features/ComputeProfiles/ComputeProfiles.Application/ComputeProfiles.Application.csproj" />
 <ProjectReference Include="../../features/DeploymentTargets/DeploymentTargets.Application/DeploymentTargets.Application.csproj" />
 <ProjectReference Include="../../features/SourceBuilds/SourceBuilds.Application/SourceBuilds.Application.csproj" />

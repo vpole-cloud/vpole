@@ -75,6 +75,11 @@ public sealed class ResourceDeploymentSchemaValidationMigration : IMigration
                 ["_id"] = Type("objectId"),
                 ["TenantId"] = Type("objectId"),
                 ["ResourceType"] = String(1, 128),
+                ["ReferenceFence"] = new BsonDocument
+                {
+                    ["bsonType"] = "long",
+                    ["minimum"] = 0
+                },
                 ["ResourceId"] = Type("objectId"),
                 ["ResourceGroupId"] = Type("objectId"),
                 ["IsolationScopeId"] = Type("objectId"),
