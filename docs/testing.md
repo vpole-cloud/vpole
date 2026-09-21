@@ -117,6 +117,28 @@ Start the lab once before the backend suite. Linked worktrees discover the prima
 shared default state and target without reading the ambient kubeconfig. `POLE_K8S_LAB_STATE` and
 `POLE_K8S_LAB_TARGET` are optional overrides for deliberately non-default lab selections.
 
+## Parallelism across worktrees
+
+Test isolation and host capacity are separate constraints. Independent worktrees have isolated test
+resources, including Docker/Testcontainers and Kubernetes resources. Kubernetes namespaces and
+container ownership use worktree/run identities; see [E2E isolation and cleanup](aspire-e2e-testing.md#parallelism-and-cleanup).
+
+- **Different worktrees:** Docker-backed suites are relatively light and may run concurrently.
+  Kubernetes-backed suites can also overlap safely at the resource-isolation boundary, but are heavy.
+  Default to one Kubernetes-backed run at a time, including Aspire E2E/Harbor/BuildKit workflows that
+  use the lab. The coordinating agent may allow overlap when current CPU, memory and disk capacity
+  support it; reduce concurrency when saturation or contention appears.
+- **One worktree:** build outputs are shared. Serialize restore/build against builds and tests using
+  those outputs. After building, distinct infrastructure-free projects may run in parallel with
+  `--no-build --no-restore`; do not split one project into overlapping invocations. Serialize
+  infrastructure lanes within that worktree.
+- **Shared lab lifecycle:** existing lifecycle locks and worktree-scoped cleanup still apply. Test
+  isolation does not authorize resetting shared services or cleaning another worktree's resources.
+
+The primary agent tracks active heavy runs across its agents. The full quality-gate runner continues
+running all projects sequentially; cross-worktree scheduling does not change its completeness or
+publication requirements.
+
 ## Publication requirement
 
 Before opening any PR, all local backend, frontend and automation tests must pass

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pole issue delivery"
+  short_description: "Coordinate Pole issues, agents, checks, and PRs"
+  default_prompt: "Use $pole-deliver-issues to plan and deliver a batch of Pole issues within my approved scope."
