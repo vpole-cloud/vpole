@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
@@ -10,6 +11,7 @@ using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
+using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.SourceBuilds.Events;
 using Pole.Mediator;
@@ -27,6 +29,7 @@ public sealed record StartManualSourceBuildRequest(
 
 public union StartManualSourceBuildError(
     SourceBuildConfigurationNotFound,
+    SourceBuildConfigurationWebServiceNotFound,
     SourceBuildLinkedRepositoryNotFound,
     SourceBuildLinkedRepositoryCandidateChanged);
 
@@ -106,7 +109,7 @@ public sealed class StartManualSourceBuildHandler(
             request.CurrentUserId.Value,
             request.CurrentUserEmail.Value,
             new SourceBuildJobFactory.CreateOptions(
-                MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
+                ObjectId.GenerateNewId().ToString(),
                 now));
         var queued = await queueSourceBuildJob(
             build,
@@ -115,7 +118,13 @@ public sealed class StartManualSourceBuildHandler(
                 EventCore = EventCore.Create(request.TenantId)
             },
             cancellationToken);
-        return queued.ToDto();
+        return queued switch
+        {
+            Ok<SourceBuildJob> success => success.Value.ToDto(),
+            Err<SourceBuildWebServiceNotFound> error =>
+                new StartManualSourceBuildError(
+                    new SourceBuildConfigurationWebServiceNotFound(error.Value.WebServiceId))
+        };
     }
 }
 

@@ -1,8 +1,22 @@
+using MongoDB.Driver;
 using Pole.ResultType;
 
 namespace Pole.Features.SourceBuilds.Contracts;
 
-public sealed record SourceBuildWebServiceConfigurationExists(string WebServiceId);
+/// <summary>Writes the active target in the caller transaction to fence admission against deletion.</summary>
+public delegate Task<Result<Unit, SourceBuildWebServiceNotFound>> AdmitSourceBuildWebService(
+    string tenantId,
+    string webServiceId,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
+/// <summary>Removes configuration for a deleted target, preserving all build history.</summary>
+public delegate Task CleanupSourceBuildConfigurations(
+    string tenantId,
+    string webServiceId,
+    CancellationToken cancellationToken = default);
+
+public sealed record SourceBuildWebServiceHasActiveJobs(string WebServiceId);
 
 public sealed record SourceBuildSourceRepositoryConfigurationExists(string SourceRepositoryId);
 
@@ -17,14 +31,14 @@ public delegate Task<bool> SourceBuildWebServiceExists(
     CancellationToken cancellationToken = default);
 
 /// <summary>
-/// Guards a WebService deletion against source-build configuration that still
-/// references it. The guard is provider-owned so consumers do not translate a
-/// source-build invariant through generic application failures.
+/// Rejects deletion while nonterminal jobs exist, inside the transaction
+/// which has already fenced new admissions by writing the WebService.
 /// </summary>
-public delegate Task<Result<Unit, SourceBuildWebServiceConfigurationExists>>
-    EnsureNoWebServiceSourceBuildConfiguration(
+public delegate Task<Result<Unit, SourceBuildWebServiceHasActiveJobs>>
+    EnsureNoWebServiceActiveSourceBuilds(
         string tenantId,
         string webServiceId,
+        IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
 /// <summary>

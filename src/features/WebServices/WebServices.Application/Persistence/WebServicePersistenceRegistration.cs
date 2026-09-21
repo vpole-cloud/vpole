@@ -32,6 +32,7 @@ public static class WebServicePersistenceRegistration
         services.AddCapability<MongoLoadWebServiceById, LoadWebServiceById>(x => x.InvokeAsync);
         services.AddCapability<MongoWebServiceExists, WebServiceExists>(x => x.InvokeAsync);
         services.AddCapability<MongoWebServiceExists, SourceBuildWebServiceExists>(x => x.InvokeAsync);
+        services.AddCapability<MongoAdmitSourceBuildWebService, AdmitSourceBuildWebService>(x => x.InvokeAsync);
         services.AddCapability<MongoLoadWebServicePage, LoadWebServicePage>(x => x.InvokeAsync);
         services.AddCapability<MongoLoadWebServiceReleaseHistory, LoadWebServiceReleaseHistory>(x => x.InvokeAsync);
         services.AddCapability<MongoLoadSucceededWebServiceRelease, LoadSucceededWebServiceRelease>(x => x.InvokeAsync);

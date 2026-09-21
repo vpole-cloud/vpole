@@ -5,15 +5,15 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Events;
-using Pole.Features.WebServices.Domain;
-using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.SourceBuilds.Contracts;
-using Pole.Features.Quotas.Contracts;
+using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence.Lifecycle;
 using Pole.Features.WebServices.Application.Persistence.Reads;
+using Pole.Features.WebServices.Application.Persistence;
+using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 
@@ -51,7 +51,7 @@ public union DeleteWebServiceOutcome(
 public sealed class DeleteWebServiceHandler(
     LoadWebServiceById loadWebServiceById,
     BeginWebServiceDeletionOutcome beginWebServiceDeletion,
-    EnsureNoWebServiceSourceBuildConfiguration ensureNoSourceBuildConfiguration,
+    EnsureNoWebServiceActiveSourceBuilds ensureNoActiveSourceBuilds,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     RequestResourceDeploymentSetDeletion requestResourceDeploymentSetDeletion,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
@@ -61,13 +61,6 @@ public sealed class DeleteWebServiceHandler(
     public async Task<DeleteWebServiceOutcome> HandleAsync(DeleteWebServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var configurationGuard = await ensureNoSourceBuildConfiguration(
-            request.TenantId,
-            request.Id,
-            cancellationToken);
-        if (!configurationGuard.TryGetValue(out _, out var configurationError))
-            return Error(new DeleteWebServiceError(configurationError));
-
         var webService = await loadWebServiceById(
             request.TenantId,
             request.Id,
@@ -118,6 +111,14 @@ public sealed class DeleteWebServiceHandler(
                 if (!replace.TryGetValue(out _, out var replaceError))
                     return transaction.Abort(
                         Error(new DeleteWebServiceError(replaceError)));
+
+                var buildGuard = await ensureNoActiveSourceBuilds(
+                    request.TenantId,
+                    request.Id,
+                    transaction.Session,
+                    transactionCancellationToken);
+                if (!buildGuard.TryGetValue(out _, out var buildError))
+                    return transaction.Abort(Error(new DeleteWebServiceError(buildError)));
 
                 var deploymentResult = await requestResourceDeploymentSetDeletion(
                     new ResourceDeploymentSetDeletionRequest(
