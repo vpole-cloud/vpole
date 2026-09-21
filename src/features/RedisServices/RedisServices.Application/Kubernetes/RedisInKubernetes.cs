@@ -1,3 +1,4 @@
+using Pole.Features.Core.Kubernetes;
 using System.Collections.Immutable;
 using System.Globalization;
 using k8s.Models;
@@ -42,13 +43,15 @@ public readonly record struct RedisInKubernetes(
     Redis Redis,
     string Namespace,
     ResourceDeploymentStorageConfiguration StorageConfiguration,
-    ResourceDeploymentComputeConfiguration ComputeConfiguration)
+    ResourceDeploymentComputeConfiguration ComputeConfiguration,
+    WorkloadIdentityLabels PlacementIdentity)
 {
     public static RedisInKubernetes Create(
         Redis redis,
         string kubernetesNamespace,
         ResourceDeploymentStorageConfiguration storageConfiguration,
-        ResourceDeploymentComputeConfiguration computeConfiguration)
+        ResourceDeploymentComputeConfiguration computeConfiguration,
+        WorkloadIdentityLabels placementIdentity)
     {
         ArgumentNullException.ThrowIfNull(redis);
         ArgumentException.ThrowIfNullOrWhiteSpace(kubernetesNamespace);
@@ -59,7 +62,8 @@ public readonly record struct RedisInKubernetes(
             redis,
             kubernetesNamespace.Trim(),
             storageConfiguration,
-            computeConfiguration);
+            computeConfiguration,
+            placementIdentity);
     }
 
     public string StatefulSetName => Redis.Name;
@@ -71,39 +75,39 @@ public readonly record struct RedisInKubernetes(
 
     public V1StatefulSet ToStatefulSet(
         RedisResourceDeploymentMetadata? deploymentMetadata = null) => new()
-    {
-        ApiVersion = "apps/v1",
-        Kind = "StatefulSet",
-        Metadata = new V1ObjectMeta
         {
-            Name = StatefulSetName,
-            NamespaceProperty = Namespace,
-            Labels = new Dictionary<string, string>
+            ApiVersion = "apps/v1",
+            Kind = "StatefulSet",
+            Metadata = new V1ObjectMeta
+            {
+                Name = StatefulSetName,
+                NamespaceProperty = Namespace,
+                Labels = new Dictionary<string, string>
                 (BuildLabels()),
-            Annotations = _defaultAnnotations
-        },
-        Spec = new V1StatefulSetSpec
-        {
-            ServiceName = ServiceName,
-            Replicas = 1,
-            Selector = new V1LabelSelector
+                Annotations = DefaultAnnotations
+            },
+            Spec = new V1StatefulSetSpec
             {
-                MatchLabels = new Dictionary<string, string>
+                ServiceName = ServiceName,
+                Replicas = 1,
+                Selector = new V1LabelSelector
                 {
-                    { "app", Redis.Name }
+                    MatchLabels = new Dictionary<string, string>
+                {
+                    { "pole.io/resource-id", Redis.Id }
                 }
-            },
-            Template = new V1PodTemplateSpec
-            {
-                Metadata = new V1ObjectMeta
-                {
-                    Labels = new Dictionary<string, string>
-                        (BuildLabels()),
-                    Annotations = BuildPodTemplateAnnotations(deploymentMetadata)
                 },
-                Spec = BuildPodSpec()
-            },
-            VolumeClaimTemplates = new List<V1PersistentVolumeClaim>
+                Template = new V1PodTemplateSpec
+                {
+                    Metadata = new V1ObjectMeta
+                    {
+                        Labels = new Dictionary<string, string>
+                        (BuildLabels()),
+                        Annotations = BuildPodTemplateAnnotations(deploymentMetadata)
+                    },
+                    Spec = BuildPodSpec()
+                },
+                VolumeClaimTemplates = new List<V1PersistentVolumeClaim>
             {
                 new()
                 {
@@ -111,7 +115,7 @@ public readonly record struct RedisInKubernetes(
                     {
                         Name = "redis-data",
                         Labels = new Dictionary<string, string>(BuildLabels()),
-                        Annotations = _defaultAnnotations
+                        Annotations = DefaultAnnotations
                     },
                     Spec = new V1PersistentVolumeClaimSpec
                     {
@@ -127,8 +131,8 @@ public readonly record struct RedisInKubernetes(
                     }
                 }
             }
-        }
-    };
+            }
+        };
 
     public V1Service ToService() => new()
     {
@@ -140,7 +144,7 @@ public readonly record struct RedisInKubernetes(
             NamespaceProperty = Namespace,
             Labels = new Dictionary<string, string>
                 (BuildLabels()),
-            Annotations = _defaultAnnotations
+            Annotations = DefaultAnnotations
         },
         Spec = new V1ServiceSpec
         {
@@ -148,7 +152,7 @@ public readonly record struct RedisInKubernetes(
             ClusterIP = "None", // Headless service for StatefulSet
             Selector = new Dictionary<string, string>
             {
-                { "app", Redis.Name }
+                { "pole.io/resource-id", Redis.Id }
             },
             Ports = new List<V1ServicePort>
             {
@@ -162,19 +166,20 @@ public readonly record struct RedisInKubernetes(
             }
         }
     };
-    
-    private readonly ImmutableDictionary<string, string> _defaultAnnotations =
+
+    private ImmutableDictionary<string, string> DefaultAnnotations =>
         new Dictionary<string, string>
         {
             { "app.kubernetes.io/managed-by", "pole-server" },
             { "pole.server/redisId", Redis.Id },
+            { PoleStorageLabels.ResourceName, Redis.Name },
             { PoleStorageLabels.ResourceType, RedisResourceDeployment.ResourceType.Value }
         }.ToImmutableDictionary();
 
     private Dictionary<string, string> BuildPodTemplateAnnotations(
         RedisResourceDeploymentMetadata? deploymentMetadata)
     {
-        var annotations = new Dictionary<string, string>(_defaultAnnotations);
+        var annotations = new Dictionary<string, string>(DefaultAnnotations);
         if (deploymentMetadata is null)
             return annotations;
 
@@ -194,16 +199,7 @@ public readonly record struct RedisInKubernetes(
         return annotations;
     }
 
-    private Dictionary<string, string> BuildLabels() => new()
-    {
-        { "app", Redis.Name },
-        { "component", "redis" },
-        { PoleStorageLabels.TenantId, Redis.TenantId },
-        { PoleStorageLabels.ResourceGroupId, Redis.ResourceGroupId },
-        { PoleStorageLabels.ResourceType, "Redis" },
-        { PoleStorageLabels.ResourceId, Redis.Id },
-        { PoleStorageLabels.ResourceName, Redis.Name }
-    };
+    private Dictionary<string, string> BuildLabels() => PlacementIdentity.ToDictionary();
 
     private V1PodSpec BuildPodSpec()
     {

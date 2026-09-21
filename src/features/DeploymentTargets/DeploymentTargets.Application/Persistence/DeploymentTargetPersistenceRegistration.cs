@@ -67,7 +67,8 @@ public static class DeploymentTargetPersistenceRegistration
         AddCapability<MongoDeleteDeploymentTarget, DeleteDeploymentTarget>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoLookupDeploymentTarget, LookupDeploymentTarget>(
+        // Stateless reads are also used by singleton Function runtime writers.
+        AddSingletonCapability<MongoLookupDeploymentTarget, LookupDeploymentTarget>(
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoLookupDefaultDeploymentTarget, LookupDefaultDeploymentTarget>(

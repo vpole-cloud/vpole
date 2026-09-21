@@ -85,6 +85,7 @@ type PostgresResourceDeploymentAdapter(
                                 let storage = deployment.Placement.Storage
                                 let metadata =
                                     { DeploymentId = deployment.Id
+                                      IsolationScopeId = deployment.IsolationScopeId
                                       RuntimeCellId = deployment.RuntimeCellId
                                       DeploymentTargetId = deployment.Placement.DeploymentTargetId
                                       Generation = deployment.DesiredGeneration }

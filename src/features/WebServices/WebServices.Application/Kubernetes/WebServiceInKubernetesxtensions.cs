@@ -1,3 +1,4 @@
+using Pole.Features.Core.Kubernetes;
 using k8s.Models;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Shared.Models;
@@ -13,13 +14,15 @@ public static class WebServiceInKubernetesxtensions
             string kubernetesNamespace,
             ResourceDeploymentIngressConfiguration ingressConfiguration,
             ResourceDeploymentComputeConfiguration computeConfiguration,
-            int fixedReplicas) =>
+            int fixedReplicas,
+            WorkloadIdentityLabels placementIdentity) =>
             WebServiceInKubernetes.Create(
                 webService,
                 kubernetesNamespace,
                 ingressConfiguration,
                 computeConfiguration,
-                fixedReplicas);
+                fixedReplicas,
+                placementIdentity);
     }
     extension(ProbeConfig probeConfig)
     {

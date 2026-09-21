@@ -1,3 +1,4 @@
+using Pole.Features.Core.Kubernetes;
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Text;
@@ -76,14 +77,16 @@ public readonly record struct WebServiceInKubernetes(
     string Namespace,
     ResourceDeploymentIngressConfiguration IngressConfiguration,
     ResourceDeploymentComputeConfiguration ComputeConfiguration,
-    int FixedReplicas)
+    int FixedReplicas,
+    WorkloadIdentityLabels PlacementIdentity)
 {
     public static WebServiceInKubernetes Create(
         WebService webService,
         string kubernetesNamespace,
         ResourceDeploymentIngressConfiguration ingressConfiguration,
         ResourceDeploymentComputeConfiguration computeConfiguration,
-        int fixedReplicas)
+        int fixedReplicas,
+        WorkloadIdentityLabels placementIdentity)
     {
         ArgumentNullException.ThrowIfNull(webService);
         ArgumentException.ThrowIfNullOrWhiteSpace(kubernetesNamespace);
@@ -96,8 +99,11 @@ public readonly record struct WebServiceInKubernetes(
             kubernetesNamespace.Trim(),
             ingressConfiguration,
             computeConfiguration,
-            fixedReplicas);
+            fixedReplicas,
+            placementIdentity);
     }
+
+    private Dictionary<string, string> IdentityLabels() => PlacementIdentity.ToDictionary();
 
     public string ConfigMapName => BuildConfigMapName(WebService.Name);
     public static string BuildConfigMapName(string webServiceName) => $"{webServiceName}-config";
@@ -111,7 +117,7 @@ public readonly record struct WebServiceInKubernetes(
     public static string BuildTlsSecretName(string webServiceName) => $"{webServiceName}-tls";
     public string ServiceMonitorName => BuildServiceMonitorName(WebService.Name);
     public static string BuildServiceMonitorName(string webServiceName) => $"{webServiceName}-sm";
-    public V1Deployment ToDeployment(WebServiceDeploymentMetadata? deploymentMetadata = null) => new ()
+    public V1Deployment ToDeployment(WebServiceDeploymentMetadata? deploymentMetadata = null) => new()
     {
         ApiVersion = "apps/v1",
         Kind = "Deployment",
@@ -119,30 +125,20 @@ public readonly record struct WebServiceInKubernetes(
         {
             Name = WebService.Name,
             NamespaceProperty = Namespace,
-            Labels = new Dictionary<string, string>()
-            {
-                { "app", WebService.Name }
-            }
+            Labels = IdentityLabels()
         },
         Spec = new V1DeploymentSpec()
         {
             Replicas = WebService.Spec.Autoscaling?.MinReplicas ?? FixedReplicas,
             Selector = new V1LabelSelector()
             {
-                MatchLabels = new Dictionary<string, string>()
-                {
-                    { "app", WebService.Name }
-                }
+                MatchLabels = IdentityLabels()
             },
             Template = new V1PodTemplateSpec()
             {
                 Metadata = new V1ObjectMeta()
                 {
-                    Labels = new Dictionary<string, string>()
-                    {
-                        { "app", WebService.Name }
-                            
-                    },
+                    Labels = IdentityLabels(),
                     Annotations = BuildPodTemplateAnnotations(deploymentMetadata),
                 },
                 Spec = BuildPodSpec()
@@ -193,16 +189,13 @@ public readonly record struct WebServiceInKubernetes(
         {
             Name = ServiceName,
             NamespaceProperty = Namespace,
-            Labels = new Dictionary<string, string>()
-            {
-                { "app", WebService.Name }
-            },
+            Labels = IdentityLabels(),
             Annotations = _defaultAnnotations,
         },
         Spec = new V1ServiceSpec()
         {
             Type = "ClusterIP",
-            Selector = new Dictionary<string, string> { ["app"] = WebService.Name },
+            Selector = IdentityLabels(),
             Ports = WebService.Spec.Config.PortMappings.Select((p, idx) => new V1ServicePort
             {
                 Name = $"p{idx}-{p.ServicePort}", // recommended: names for multi-port services
@@ -212,7 +205,7 @@ public readonly record struct WebServiceInKubernetes(
             }).ToList()
         }
     };
-        
+
     public V1Secret? ToImagePullSecret(string username = "", string password = "")
     {
         var rs = WebService.Spec.Image.SecretName;
@@ -267,10 +260,7 @@ public readonly record struct WebServiceInKubernetes(
         {
             Name = ConfigMapName,
             NamespaceProperty = Namespace,
-            Labels = new Dictionary<string, string>()
-            {
-                { "app", WebService.Name }
-            },
+            Labels = IdentityLabels(),
             Annotations = _defaultAnnotations,
         },
         Data = WebService.Spec.Config.EnvironmentVariables.ToDictionary(),
@@ -289,7 +279,7 @@ public readonly record struct WebServiceInKubernetes(
             {
                 Name = IngressName,
                 NamespaceProperty = Namespace,
-                Labels = new Dictionary<string, string> { ["app"] = WebService.Name },
+                Labels = IdentityLabels(),
                 Annotations = _defaultAnnotations.Concat(new Dictionary<string, string>
                 {
                     ["cert-manager.io/cluster-issuer"] = IngressConfiguration.ClusterIssuerName,
@@ -337,7 +327,7 @@ public readonly record struct WebServiceInKubernetes(
             }
         };
     }
-        
+
     public V1HorizontalPodAutoscaler? ToHorizontalPodAutoscaler() => WebService.Spec.Autoscaling is null ? null : new V1HorizontalPodAutoscaler
     {
         ApiVersion = "autoscaling/v2",
@@ -346,10 +336,7 @@ public readonly record struct WebServiceInKubernetes(
         {
             Name = $"{WebService.Name}-hpa",
             NamespaceProperty = Namespace,
-            Labels = new Dictionary<string, string>()
-            {
-                { "app", WebService.Name }
-            },
+            Labels = IdentityLabels(),
             Annotations = _defaultAnnotations,
         },
         Spec = new V1HorizontalPodAutoscalerSpec()
@@ -364,7 +351,7 @@ public readonly record struct WebServiceInKubernetes(
             MaxReplicas = WebService.Spec.Autoscaling.MaxReplicas,
         }
     };
-        
+
     public object ToServiceMonitor() => new
     {
         apiVersion = "monitoring.coreos.com/v1",
@@ -372,10 +359,7 @@ public readonly record struct WebServiceInKubernetes(
         metadata = new
         {
             name = ServiceMonitorName,
-            labels = new Dictionary<string, string>
-            {
-                { "app", WebService.Name }
-            },
+            labels = IdentityLabels(),
             annotations = _defaultAnnotations,
             @namespace = Namespace,
         },
@@ -383,10 +367,7 @@ public readonly record struct WebServiceInKubernetes(
         {
             selector = new
             {
-                matchLabels = new Dictionary<string, string>
-                {
-                    { "app", DeploymentName }
-                }
+                matchLabels = IdentityLabels()
             },
             namespaceSelector = new
             {
@@ -404,7 +385,7 @@ public readonly record struct WebServiceInKubernetes(
             }
         }
     };
-        
+
     private readonly ImmutableDictionary<string, string> _defaultAnnotations =
         new Dictionary<string, string>
         {
@@ -454,7 +435,7 @@ public readonly record struct WebServiceInKubernetes(
 
         return annotations;
     }
-        
+
     private static int GetIngressServicePort(WebService webService)
     {
         // Simple default: first mapping

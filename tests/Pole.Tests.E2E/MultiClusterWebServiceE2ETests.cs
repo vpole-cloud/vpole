@@ -201,6 +201,10 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
             }
         });
         var json = await SendJsonAsync(request, cancellationToken);
+        json = await fixture.AllowTargetWithoutEnforcementAsync(
+            RequiredString(json, "id"),
+            json.GetProperty("revision").GetInt64(),
+            cancellationToken);
         return new CreatedTarget(
             RequiredString(json, "id"),
             RequiredString(json, "clusterIdentity"),

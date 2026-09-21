@@ -6,6 +6,9 @@ namespace Pole.Tests.Integration.DeploymentTargets;
 
 internal static class DeploymentTargetTestData
 {
+    public static DeploymentTarget AttestForTests(this DeploymentTarget target) =>
+        target.AttestNetworkPolicy(NetworkPolicyEnforcement.Supported, false, target.UpdatedAtUtc);
+
     public static DeploymentTargetWorkloadConfiguration CreateWorkloadConfiguration(
         string ingressClassName = "traefik",
         string clusterIssuerName = "letsencrypt-prod") =>

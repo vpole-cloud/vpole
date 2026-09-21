@@ -9,6 +9,7 @@ open k8s.Models
 
 type PostgresResourceDeploymentMetadata =
     { DeploymentId : string
+      IsolationScopeId : string
       RuntimeCellId : string
       DeploymentTargetId : string
       Generation : int64 }
@@ -31,6 +32,7 @@ module PostgresClusterKubernetesBuilder =
             PoleStorageLabels.ResourceId, cluster.Id
             PoleStorageLabels.ResourceName, cluster.Name
             "pole.io/resource-deployment-id", metadata.DeploymentId
+            "pole.io/isolation-scope-id", metadata.IsolationScopeId
             "pole.io/runtime-cell-id", metadata.RuntimeCellId
             "pole.io/deployment-target-id", metadata.DeploymentTargetId
             "pole.io/deployment-generation", string metadata.Generation

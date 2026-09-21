@@ -86,3 +86,64 @@ temporary cordon/readiness state as permanent capability.
 `IKubernetesClientProvider` resolves a target from MongoDB on every request and compares durable revision and connection version with its cache. Metadata-only revisions reuse the transport; credential rotation rebuilds it. Disabled or missing targets raise a sanitized `DeploymentTargetUnavailableException`. Degraded-but-enabled targets still return a client so reconciliation can recover.
 
 Invalidated clients are retained until provider shutdown because callers receive `IKubernetes` directly and may still be using an earlier instance. This favors no use-after-dispose over immediate socket reclamation; rotations are administrative and expected to be infrequent.
+
+## NetworkPolicy enforcement readiness
+
+New and bootstrap targets default to `Unknown` enforcement and cannot admit workloads.
+Healthy Kubernetes API access and permission discovery do **not** prove that a CNI enforces
+NetworkPolicy. Logical resource groups can still be created.
+
+A platform administrator records an operator attestation with
+`PUT /api/v1/platform/deployment-targets/{id}/network-policy`:
+
+```json
+{
+  "enforcement": "Supported",
+  "allowIsolationNotEnforced": false,
+  "revision": 1
+}
+```
+
+`enforcement` accepts `Supported`, `Unsupported`, or `Unknown`. Before declaring support,
+the operator must establish enforcement in that specific cluster (for example using an
+independent connectivity/conformance test). Pole records `OperatorAttestation`, a safe fixed
+reason, and server time; this is not an active probe. The evidence is tied to the cluster
+identity and credential version. Credential rotation invalidates the attestation and override;
+record a fresh attestation after validating the new connection.
+
+The domain stores separate `UnattestedNetworkPolicy` and `AttestedNetworkPolicy` states.
+An attestation requires the observed cluster identity, connection version, and check timestamp;
+an unattested target does not store empty identity or version placeholders. The aggregate's
+`AttestNetworkPolicy` transition binds evidence to its current connection and advances both
+target and workload-configuration revisions. Tests use the same transition as the API.
+
+Provider contracts expose typed enforcement, readiness, reason, and evidence-source values.
+Their JSON representation remains the documented strings; runtime workload writers use the
+contract's `AllowsWorkloads` policy rather than comparing display strings. Mongo admission uses
+typed member expressions, including comparisons against the target's current cluster identity
+and connection version, and is verified against the replica-set integration fixture.
+
+The explicit platform override `allowIsolationNotEnforced: true` permits admission without
+supported enforcement and reports `IsolationNotEnforced`. Without this override, unsupported
+and unknown targets fail closed, including transaction admission fences and placement discovery.
+Changes advance target and workload configuration revisions, so stale placement admissions
+cannot silently use earlier settings.
+
+Platform target details, tenant-safe available-target metadata, and tenant-scoped deployment
+placement reads expose the current readiness. Deployment reads resolve current target metadata,
+so revoking an attestation appears on the next read without waiting for workload reconciliation.
+Reasons never contain provider errors, namespace names, or other tenants' workload identities.
+Search `Applied` remains a workload lifecycle status; it is not evidence of isolation.
+
+`EnforcementAttested` only describes the target's capability. It does not claim that baseline
+isolation policies have been installed: baseline NetworkPolicy generation is tracked separately
+in #45. Changing this setting does not remove running workloads or install policies.
+
+The reconciliation worker rechecks current readiness immediately before an apply, covering
+requests queued before an attestation was revoked. It records retryable
+`NetworkPolicyEnforcementRequired` when blocked. Delete reconciliation remains available.
+This check does not actively test the data plane or revoke already-running pods.
+Function revision provisioning, activation, and autoscaling also use this current-readiness
+check at their shared Kubernetes writer: revision apply and replica increases require evidence
+or the explicit override, even when the resource deployment was previously Applied. Diagnostic
+reads, deletion, and replica reductions remain available after revocation.

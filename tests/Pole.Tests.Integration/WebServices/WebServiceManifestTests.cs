@@ -1,3 +1,4 @@
+using Pole.Features.Core.Kubernetes;
 using System.Text;
 using System.Text.Json;
 using System.Collections.Immutable;
@@ -17,6 +18,46 @@ namespace Pole.Tests.Integration.WebServices;
 [Trait("Feature", "WebServices")]
 public sealed class WebServiceManifestTests
 {
+    [Fact]
+    public void PlacementIdentity_IsStableAcrossRevisions_AndSeparatesRecreatedResources()
+    {
+        var subject = CreateSubject();
+        var identity = new WorkloadIdentityLabels(
+            subject.WebService.TenantId,
+                subject.WebService.ResourceGroupId,
+                "scope-44",
+                "cell-44",
+                "target-44",
+
+            "WebService", subject.WebService.Id, "deployment-44");
+        subject = subject with { PlacementIdentity = identity };
+        var workload = subject.ToDeployment();
+        var service = subject.ToService();
+        Assert.Equal(identity.ToDictionary(), workload.Spec.Template.Metadata.Labels);
+        Assert.Equal(identity.ToDictionary(), service.Metadata.Labels);
+        Assert.All(
+            service.Spec.Selector,
+            pair => Assert.Equal(pair.Value, workload.Spec.Template.Metadata.Labels[pair.Key]));
+        var revised = subject with { WebService = subject.WebService with { Revision = subject.WebService.Revision + 1 } };
+        Assert.Equal(workload.Spec.Selector.MatchLabels, revised.ToDeployment().Spec.Selector.MatchLabels);
+        Assert.Equal(service.Spec.Selector, revised.ToService().Spec.Selector);
+        const string replacementId = "700000000000000000000044";
+        var replacement = subject with
+        {
+            WebService = subject.WebService with { Id = replacementId },
+            PlacementIdentity = identity with
+            {
+                ResourceId = replacementId,
+                ResourceDeploymentId = "replacement-deployment-44"
+            }
+        };
+        Assert.Equal(subject.WebService.Name, replacement.WebService.Name);
+        Assert.Equal(replacementId, replacement.ToService().Spec.Selector["pole.io/resource-id"]);
+        Assert.NotEqual(service.Spec.Selector["pole.io/resource-id"],
+            replacement.ToDeployment().Spec.Template.Metadata.Labels["pole.io/resource-id"]);
+        Assert.DoesNotContain("app", service.Spec.Selector.Keys);
+    }
+
     [Fact]
     public void ToConfigMap_UsesEnvironmentVariables_AndManagedMetadata()
     {
@@ -127,7 +168,7 @@ public sealed class WebServiceManifestTests
         Assert.Equal(9090, ports[1].Port);
         Assert.Equal("metrics", ports[1].TargetPort.Value);
         Assert.Equal("TCP", ports[1].Protocol);
-        Assert.Equal("api-gateway", service.Spec.Selector["app"]);
+        Assert.Equal(WebServiceId, service.Spec.Selector["pole.io/resource-id"]);
     }
 
     [Fact]
@@ -166,7 +207,7 @@ public sealed class WebServiceManifestTests
 
         Assert.Equal("api-gateway-sm", metadata["name"]!.GetValue<string>());
         Assert.Equal("pole-apps", metadata["namespace"]!.GetValue<string>());
-        Assert.Equal("api-gateway", selector["app"]!.GetValue<string>());
+        Assert.Equal(WebServiceId, selector["pole.io/resource-id"]!.GetValue<string>());
         Assert.Equal("pole-apps", namespaceSelector[0]!.GetValue<string>());
         Assert.Equal("p0-80", endpoint["port"]!.GetValue<string>());
         Assert.Equal("/metrics", endpoint["path"]!.GetValue<string>());
@@ -291,7 +332,16 @@ public sealed class WebServiceManifestTests
                 PreferredNodeAffinity: [],
                 Tolerations: [],
                 RuntimeClassName: "workload-runtime"),
-            fixedReplicas: 2);
+            fixedReplicas: 2,
+            new WorkloadIdentityLabels(
+                webService.TenantId,
+                webService.ResourceGroupId,
+                "scope-44",
+                "cell-44",
+                "target-44",
+                "WebService",
+                webService.Id,
+                "deployment-44"));
     }
 
     private const string WebServiceId = "507f1f77bcf86cd799439031";

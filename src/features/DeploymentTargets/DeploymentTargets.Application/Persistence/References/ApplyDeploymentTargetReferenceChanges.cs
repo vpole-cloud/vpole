@@ -25,6 +25,7 @@ internal sealed class MongoApplyDeploymentTargetReferenceChanges(
 
         var addedFence = await AdvanceFencesAsync(
             addedTargetIds,
+            owner,
             session,
             requireAdmission: true,
             cancellationToken);
@@ -75,6 +76,7 @@ internal sealed class MongoApplyDeploymentTargetReferenceChanges(
 
         var removedFence = await AdvanceFencesAsync(
             referencedTargetIds,
+            owner,
             session,
             requireAdmission: false,
             cancellationToken);
@@ -92,6 +94,7 @@ internal sealed class MongoApplyDeploymentTargetReferenceChanges(
 
     private async Task<bool> AdvanceFencesAsync(
         IReadOnlyCollection<string> deploymentTargetIds,
+        DeploymentTargetReferenceOwner owner,
         IClientSessionHandle session,
         bool requireAdmission,
         CancellationToken cancellationToken)
@@ -101,7 +104,7 @@ internal sealed class MongoApplyDeploymentTargetReferenceChanges(
 
         var update = await deploymentTargets.UpdateManyAsync(
             session,
-            DeploymentTargetFilters.FenceableReferences(deploymentTargetIds, requireAdmission),
+            DeploymentTargetFilters.FenceableReferences(deploymentTargetIds, requireAdmission, owner),
             Builders<DeploymentTarget>.Update.Inc(target => target.ReferenceFence, 1),
             cancellationToken: cancellationToken);
         return update.ModifiedCount == deploymentTargetIds.Count;

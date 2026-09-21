@@ -47,6 +47,12 @@ RSA material, and a dynamic frontend origin. It removes those resources and disp
 graph in reverse order. Kubernetes namespaces carry the shared test ownership labels and are
 deleted only after their UID and labels are verified.
 
+Before workloads are created, the fixture uses its platform-admin token to explicitly set
+`Unknown` enforcement with `AllowIsolationNotEnforced=true` on the bootstrap target and each
+multi-cluster target. These tests exercise workload flows, not CNI enforcement, so they do not
+claim `Supported` enforcement. This test-only API handshake preserves the production default
+that blocks workload admission until enforcement is attested or an operator explicitly overrides it.
+
 E2E configures an optional outbox trigger interval of one second so asynchronous workflows do
 not wait for the production minute-based recurring schedule. The production default remains
 unset, so this faster trigger is active only when a test or another environment enables it.

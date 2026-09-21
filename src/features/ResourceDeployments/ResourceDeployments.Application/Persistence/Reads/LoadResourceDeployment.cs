@@ -6,7 +6,8 @@ using Pole.Features.ResourceDeployments.Domain;
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Reads;
 
 internal sealed class MongoLoadResourceDeployment(
-    IMongoCollection<ResourceDeployment> resourceDeployments)
+    IMongoCollection<ResourceDeployment> resourceDeployments,
+    ResourceDeploymentIsolationProjection isolation)
 {
     public async Task<PlacementSummaryDto?> InvokeAsync(
         string tenantId,
@@ -17,6 +18,8 @@ internal sealed class MongoLoadResourceDeployment(
         var deployment = await resourceDeployments
             .Find(ResourceDeploymentFilters.ForResource(tenantId, resourceType, resourceId))
             .FirstOrDefaultAsync(cancellationToken);
-        return deployment?.ToPlacementSummaryDto();
+        return deployment is null
+            ? null
+            : await isolation.ProjectAsync(deployment.ToPlacementSummaryDto(), cancellationToken);
     }
 }

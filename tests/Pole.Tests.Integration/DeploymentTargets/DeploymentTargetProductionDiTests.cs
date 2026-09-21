@@ -1,3 +1,4 @@
+using Pole.ResultType;
 using k8s;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,6 +19,7 @@ using Pole.Features.DeploymentTargets.Application.Persistence.References;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Runtime.Kubernetes;
+using Pole.Features.Functions.Runtime;
 using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.StorageProfiles.Application;
@@ -86,7 +88,7 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
             descriptor.Lifetime == ServiceLifetime.Scoped);
         Assert.Contains(services, descriptor =>
             descriptor.ServiceType == typeof(LookupDeploymentTarget) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
+            descriptor.Lifetime == ServiceLifetime.Singleton);
         Assert.Contains(services, descriptor =>
             descriptor.ServiceType == typeof(LookupDefaultDeploymentTarget) &&
             descriptor.Lifetime == ServiceLifetime.Scoped);
@@ -151,15 +153,21 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
             () => discoverStorageClasses(
                 DeploymentTargetId));
         var functionFailure = await Assert.ThrowsAsync<TestProviderInfrastructureException>(
-            () => new FunctionRevisionKubernetesManager(provider, []).ApplyAsync(
-                new FunctionRevisionInKubernetes(
-                    null!,
-                    null!,
-                    new FunctionResourcePlacement(
-                        "507f1f77bcf86cd799439091",
-                        "507f1f77bcf86cd799439092",
-                        DeploymentTargetId,
-                        "functions"))));
+            () => new FunctionRevisionKubernetesManager(
+                provider,
+                (id, ct) => Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
+                    new Ok<DeploymentTargetLookupDto>(
+                        DeploymentTargetNetworkPolicyTests.Target().AttestForTests().ToLookupDto())),
+                []).ApplyAsync(
+                    new FunctionRevisionInKubernetes(
+                        null!,
+                        null!,
+                        new FunctionResourcePlacement(
+                            "507f1f77bcf86cd799439091",
+                            "507f1f77bcf86cd799439092",
+                            DeploymentTargetId,
+                            "functions",
+                            "507f1f77bcf86cd799439044"))));
 
         Assert.Same(expected, storageFailure);
         Assert.Equal([DeploymentTargetId, DeploymentTargetId], provider.RequestedTargetIds);
@@ -185,12 +193,14 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
         services.AddSingleton<MongoRunTransaction>();
         services.AddKubernetes(configuration)
             .AddDeploymentTargetsFeature(configuration);
+        services.AddFunctionRuntimeFeature(configuration);
 
         // AddKubernetes also contributes unrelated feature registrations. Resolve every
         // DeploymentTargets capability below instead of validating an intentionally partial host.
         using var provider = services.BuildServiceProvider(validateScopes: true);
         using var scope = provider.CreateScope();
 
+        AssertResolved<IFunctionRevisionKubernetesManager>(provider);
         AssertResolved<PrepareDeploymentTargetConnection>(provider);
         AssertResolved<CreateDeploymentTargetKubernetesClient>(provider);
         AssertResolved<ProbeDeploymentTargetConnection>(provider);

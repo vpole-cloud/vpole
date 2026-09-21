@@ -1,3 +1,4 @@
+using Pole.Features.Core.Kubernetes;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Domain;
@@ -40,7 +41,16 @@ public sealed class RedisResourceDeploymentAdapter(
         var inKubernetes = redis.ToKubernetes(
             context.Deployment.Placement.KubernetesNamespace,
             context.Deployment.Placement.Storage!,
-            context.Deployment.Placement.Compute);
+            context.Deployment.Placement.Compute,
+            new WorkloadIdentityLabels(
+                context.Deployment.TenantId,
+                context.Deployment.ResourceGroupId,
+                context.Deployment.IsolationScopeId,
+                context.Deployment.RuntimeCellId,
+                context.Deployment.Placement.DeploymentTargetId,
+                "Redis",
+                context.Deployment.ResourceId,
+                context.Deployment.Id));
         var metadata = RedisResourceDeploymentMetadata.Create(
             context.Deployment.Id,
             context.Deployment.RuntimeCellId,

@@ -323,27 +323,28 @@ public sealed class FunctionActivationTests
                 app.Placement.ResourceDeploymentId,
                 app.Placement.RuntimeCellId,
                 app.Placement.DeploymentTargetId,
-                "pole-tenant-rg"));
+                "pole-tenant-rg",
+                "507f1f77bcf86cd799439044"));
     }
 
     private static V1EndpointSlice Slice(
         string name,
         FunctionServiceKey service,
         params V1Endpoint[] endpoints) => new()
-    {
-        Metadata = new V1ObjectMeta
         {
-            Name = name,
-            NamespaceProperty = service.Namespace,
-            Labels = new Dictionary<string, string>
+            Metadata = new V1ObjectMeta
             {
-                ["kubernetes.io/service-name"] = service.ServiceName
-            }
-        },
-        AddressType = "IPv4",
-        Ports = [new Discoveryv1EndpointPort { Name = "agent", Protocol = "TCP", Port = 8080 }],
-        Endpoints = endpoints
-    };
+                Name = name,
+                NamespaceProperty = service.Namespace,
+                Labels = new Dictionary<string, string>
+                {
+                    ["kubernetes.io/service-name"] = service.ServiceName
+                }
+            },
+            AddressType = "IPv4",
+            Ports = [new Discoveryv1EndpointPort { Name = "agent", Protocol = "TCP", Port = 8080 }],
+            Endpoints = endpoints
+        };
 
     private static V1Endpoint Endpoint(string address, bool ready, bool terminating = false) => new()
     {

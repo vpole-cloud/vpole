@@ -31,10 +31,10 @@ public sealed class ComputeProfileBootstrapperTests
                     ComputeProfile,
                     PersistCreatedComputeProfileError>>(new Ok<ComputeProfile>(profile));
             });
-        services.AddScoped<AdmitDefaultDeploymentTargetForNewWorkload>(_ =>
+        services.AddScoped<LookupDefaultDeploymentTarget>(_ =>
             cancellationToken => Task.FromResult<Result<
                 DeploymentTargetLookupDto,
-                DefaultDeploymentTargetWorkloadAdmissionError>>(
+                DefaultDeploymentTargetLookupError>>(
                 new Ok<DeploymentTargetLookupDto>(CreateTarget(DeploymentTargetId))));
         await using var serviceProvider = services.BuildServiceProvider();
         var bootstrapper = new ComputeProfileBootstrapper(

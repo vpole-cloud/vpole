@@ -44,6 +44,36 @@ public sealed record DeploymentTarget(
             updatedAtUtc);
     }
 
+    public DeploymentTarget AttestNetworkPolicy(
+        NetworkPolicyEnforcement enforcement,
+        bool allowIsolationNotEnforced,
+        DateTime checkedAtUtc)
+    {
+        if (!Enum.IsDefined(enforcement))
+            throw new ArgumentOutOfRangeException(nameof(enforcement));
+
+        var observedAtUtc = DeploymentTargetValueGuard.Utc(checkedAtUtc, nameof(checkedAtUtc));
+        var policy = new AttestedNetworkPolicy(
+            enforcement,
+            ClusterIdentity,
+            Connection.Version,
+            observedAtUtc,
+            allowIsolationNotEnforced);
+        return Reconfigured(
+            DisplayName,
+            Connection,
+            Enabled,
+            AcceptsWorkloads,
+            Health,
+            Capabilities,
+            WorkloadConfiguration with
+            {
+                Revision = checked(WorkloadConfiguration.Revision + 1),
+                NetworkPolicy = policy
+            },
+            observedAtUtc);
+    }
+
     public DeploymentTarget SetWorkloadAdmission(bool acceptsWorkloads, DateTime updatedAtUtc)
     {
         if (acceptsWorkloads && !Enabled)

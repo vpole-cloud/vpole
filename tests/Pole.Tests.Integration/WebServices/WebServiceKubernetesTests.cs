@@ -1,3 +1,4 @@
+using Pole.Features.Core.Kubernetes;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Collections.Immutable;
@@ -179,7 +180,16 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
                 [BuildIngressHost()]),
             ResourceDeploymentTestData.ContractCompute(
                 "507f1f77bcf86cd799439020"),
-            fixedReplicas: 1);
+            fixedReplicas: 1,
+            new WorkloadIdentityLabels(
+                webService.TenantId,
+                webService.ResourceGroupId,
+                IsolationScopeId,
+                "cell-44",
+                "target-44",
+                "WebService",
+                webService.Id,
+                "deployment-44"));
 
     private const string SourceBuildWebServiceId = "507f1f77bcf86cd799439021";
     private const string WebServiceId = "507f1f77bcf86cd799439022";

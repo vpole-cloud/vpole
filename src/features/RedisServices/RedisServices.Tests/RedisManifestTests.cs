@@ -1,8 +1,10 @@
+using Pole.Features.Core.Kubernetes;
 using System.Collections.Immutable;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.StorageProfiles.Contracts;
 using Xunit;
 using Redis = Pole.Features.RedisServices.Domain.Redis;
 
@@ -14,6 +16,46 @@ namespace Pole.Features.RedisServices.Tests;
 [Trait("Feature", "RedisServices")]
 public sealed class RedisManifestTests
 {
+    [Fact]
+    public void PlacementIdentity_IsStableAcrossRevisions_AndSeparatesRecreatedResources()
+    {
+        var subject = CreateSubject();
+        var identity = new WorkloadIdentityLabels(
+            subject.Redis.TenantId, subject.Redis.ResourceGroupId, "scope-44", "cell-44", "target-44",
+            "Redis", subject.Redis.Id, "deployment-44");
+        subject = subject with { PlacementIdentity = identity };
+        var workload = subject.ToStatefulSet();
+        var service = subject.ToService();
+        Assert.Equal(identity.ToDictionary(), workload.Spec.Template.Metadata.Labels);
+        Assert.Equal(identity.ToDictionary(), service.Metadata.Labels);
+        Assert.All(
+            service.Spec.Selector,
+            pair => Assert.Equal(pair.Value, workload.Spec.Template.Metadata.Labels[pair.Key]));
+        var revised = subject with { Redis = subject.Redis with { Revision = subject.Redis.Revision + 1 } };
+        Assert.Equal(workload.Spec.Selector.MatchLabels, revised.ToStatefulSet().Spec.Selector.MatchLabels);
+        Assert.Equal(service.Spec.Selector, revised.ToService().Spec.Selector);
+        const string replacementId = "700000000000000000000044";
+        var replacement = subject with
+        {
+            Redis = subject.Redis with { Id = replacementId },
+            PlacementIdentity = identity with
+            {
+                ResourceId = replacementId,
+                ResourceDeploymentId = "replacement-deployment-44"
+            }
+        };
+        Assert.Equal(subject.Redis.Name, replacement.Redis.Name);
+        Assert.Equal(replacementId, replacement.ToService().Spec.Selector["pole.io/resource-id"]);
+        Assert.NotEqual(service.Spec.Selector["pole.io/resource-id"],
+            replacement.ToStatefulSet().Spec.Template.Metadata.Labels["pole.io/resource-id"]);
+        Assert.DoesNotContain("app", service.Spec.Selector.Keys);
+        Assert.Equal(subject.Redis.Name, service.Metadata.Annotations[PoleStorageLabels.ResourceName]);
+        Assert.Equal(subject.Redis.Name, replacement.ToService().Metadata.Annotations[PoleStorageLabels.ResourceName]);
+        var claim = Assert.Single(replacement.ToStatefulSet().Spec.VolumeClaimTemplates);
+        Assert.Equal(subject.Redis.Name, claim.Metadata.Annotations[PoleStorageLabels.ResourceName]);
+        Assert.DoesNotContain(PoleStorageLabels.ResourceName, workload.Spec.Selector.MatchLabels.Keys);
+    }
+
     [Fact]
     public void ToStatefulSet_UsesRedisImageStorageResourcesAndManagedMetadata()
     {
@@ -40,6 +82,7 @@ public sealed class RedisManifestTests
         Assert.Equal(6379, Assert.Single(container.Ports).ContainerPort);
         Assert.Equal("/data", Assert.Single(container.VolumeMounts).MountPath);
         Assert.Equal("redis-data", volumeClaim.Metadata.Name);
+        Assert.Equal(manifest.Redis.Name, volumeClaim.Metadata.Annotations[PoleStorageLabels.ResourceName]);
         Assert.Equal("fast-cache", volumeClaim.Spec.StorageClassName);
         Assert.Equal(TenantId, volumeClaim.Metadata.Labels["pole.io/tenant-id"]);
         Assert.Equal("rg-1", volumeClaim.Metadata.Labels["pole.io/resource-group-id"]);
@@ -107,7 +150,7 @@ public sealed class RedisManifestTests
         Assert.Equal("pole-cache", service.Metadata.NamespaceProperty);
         Assert.Equal("ClusterIP", service.Spec.Type);
         Assert.Equal("None", service.Spec.ClusterIP);
-        Assert.Equal("redis-cache", service.Spec.Selector["app"]);
+        Assert.Equal("redis-1", service.Spec.Selector["pole.io/resource-id"]);
         Assert.Equal("redis", port.Name);
         Assert.Equal(6379, port.Port);
         Assert.Equal("6379", port.TargetPort.Value);
@@ -179,7 +222,16 @@ public sealed class RedisManifestTests
                         ComputeTaintEffect.NoSchedule,
                         TolerationSeconds: null)
                 ],
-                RuntimeClassName: "workload-runtime"));
+                RuntimeClassName: "workload-runtime"),
+            new WorkloadIdentityLabels(
+                TenantId,
+                "rg-1",
+                "scope-44",
+                "cell-44",
+                "target-44",
+                "Redis",
+                "redis-1",
+                "deployment-44"));
 
     private static Redis BuildRedis(string id, string name, RedisSpec spec) =>
         RedisFactory.Create(

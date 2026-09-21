@@ -752,7 +752,8 @@ public sealed class FunctionHttpGatewayTests
                     app.Placement.ResourceDeploymentId,
                     app.Placement.RuntimeCellId,
                     app.Placement.DeploymentTargetId,
-                    "pole-tenant-rg")));
+                    "pole-tenant-rg",
+                    "507f1f77bcf86cd799439044")));
     }
 
     private sealed class SnapshotOrderEndpointSelector : IFunctionEndpointSelector
@@ -987,11 +988,14 @@ public sealed class FunctionHttpGatewayTests
         public List<ExecuteFunctionAttemptRequest> ExecuteRequests { get; } = [];
 
         public Func<FunctionEndpoint, ReserveFunctionAttemptRequest,
-            FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse>>? ReserveHandler { get; init; }
+            FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse>>? ReserveHandler
+        { get; init; }
         public Func<FunctionEndpoint, string, ExecuteFunctionAttemptRequest,
-            FunctionAgentProtocolResponse<StartFunctionAttemptResponse>>? ExecuteHandler { get; init; }
+            FunctionAgentProtocolResponse<StartFunctionAttemptResponse>>? ExecuteHandler
+        { get; init; }
         public Func<FunctionEndpoint, string,
-            FunctionAgentProtocolResponse<FunctionAttemptStatusResponse>>? ObserveHandler { get; init; }
+            FunctionAgentProtocolResponse<FunctionAttemptStatusResponse>>? ObserveHandler
+        { get; init; }
         public HttpFunctionInvocationResult CompletionResult { get; init; } =
             new(StatusCodes.Status200OK, [], Encoding.UTF8.GetBytes("ok"));
         public string? ObservedAgentInstanceId { get; init; }

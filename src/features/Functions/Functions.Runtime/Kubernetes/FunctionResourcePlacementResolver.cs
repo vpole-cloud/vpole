@@ -11,7 +11,8 @@ public sealed record FunctionResourcePlacement(
     string ResourceDeploymentId,
     string RuntimeCellId,
     string DeploymentTargetId,
-    string KubernetesNamespace);
+    string KubernetesNamespace,
+    string IsolationScopeId);
 
 public interface IFunctionResourcePlacementResolver
 {
@@ -57,6 +58,7 @@ public sealed class FunctionResourcePlacementResolver(
             placement.DeploymentId,
             placement.RuntimeCellId,
             placement.DeploymentTargetId,
-            placement.KubernetesNamespace));
+            placement.KubernetesNamespace,
+            placement.IsolationScopeId));
     }
 }

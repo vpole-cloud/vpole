@@ -93,11 +93,28 @@ internal static class DeploymentTargetFilters
                 item => item.DeletionRequestedAtUtc,
                 target.DeletionRequestedAtUtc));
 
-    public static FilterDefinition<DeploymentTarget> AcceptingNewWorkloads() =>
+    private static FilterDefinition<DeploymentTarget> AcceptingConfigurationReferences() =>
         Builders<DeploymentTarget>.Filter.And(
             Builders<DeploymentTarget>.Filter.Eq(target => target.Enabled, true),
             Builders<DeploymentTarget>.Filter.Eq(target => target.AcceptsWorkloads, true),
             NotPendingDeletion());
+
+    public static FilterDefinition<DeploymentTarget> AcceptingNewWorkloads() =>
+        Builders<DeploymentTarget>.Filter.And(
+            AcceptingConfigurationReferences(),
+            NetworkPolicyAdmission());
+
+    private static FilterDefinition<DeploymentTarget> NetworkPolicyAdmission() =>
+        Builders<DeploymentTarget>.Filter.Where(target =>
+            target.Health.FailureCode != "ClusterIdentityMismatch" &&
+            target.WorkloadConfiguration.NetworkPolicy is AttestedNetworkPolicy &&
+            (((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).Enforcement ==
+                NetworkPolicyEnforcement.Supported ||
+             ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).AllowIsolationNotEnforced) &&
+            ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).ClusterIdentity ==
+                target.ClusterIdentity &&
+            ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).ConnectionVersion ==
+                target.Connection.Version);
 
     public static FilterDefinition<DeploymentTarget> WithConfiguredPublicBaseDomain() =>
         Builders<DeploymentTarget>.Filter.And(
@@ -130,7 +147,8 @@ internal static class DeploymentTargetFilters
 
     public static FilterDefinition<DeploymentTarget> FenceableReferences(
         IReadOnlyCollection<string> deploymentTargetIds,
-        bool requireAdmission)
+        bool requireAdmission,
+        DeploymentTargetReferenceOwner owner)
     {
         var filter = Builders<DeploymentTarget>.Filter.And(
             Builders<DeploymentTarget>.Filter.In(
@@ -143,7 +161,11 @@ internal static class DeploymentTargetFilters
         return requireAdmission
             ? Builders<DeploymentTarget>.Filter.And(
                 filter,
-                AcceptingNewWorkloads())
+                // A profile configures future placement; it must exist before the operator
+                // can attest a fresh target. Runtime references still fence workload admission.
+                owner.Type == DeploymentTargetReferenceOwnerTypes.ComputeProfile
+                    ? AcceptingConfigurationReferences()
+                    : AcceptingNewWorkloads())
             : filter;
     }
 }

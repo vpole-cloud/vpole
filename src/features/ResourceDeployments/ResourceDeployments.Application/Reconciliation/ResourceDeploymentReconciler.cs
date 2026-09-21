@@ -7,6 +7,7 @@ using Pole.Features.ResourceDeployments.Application.Persistence.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Reconciliation;
 
@@ -16,6 +17,7 @@ public sealed class ResourceDeploymentReconciler(
     PersistResourceDeploymentFailure persistResourceDeploymentFailure,
     LoadResourcePlacement loadResourcePlacement,
     ResolveResourceDeploymentAdapter resolveResourceDeploymentAdapter,
+    LookupDeploymentTarget lookupDeploymentTarget,
     ResourceDeploymentMetrics metrics,
     ILogger<ResourceDeploymentReconciler> logger)
 {
@@ -73,6 +75,28 @@ public sealed class ResourceDeploymentReconciler(
                 retryable: true,
                 cancellationToken);
             return;
+        }
+
+        // Admission can be revoked after the deployment request was queued. Recheck before
+        // creating/updating workloads; deletion remains possible on an unverified target.
+        if (operation == ResourceDeploymentOperation.Apply)
+        {
+            var targetResult = await lookupDeploymentTarget(
+                claimed.ResolvedPlacement.DeploymentTargetId,
+                cancellationToken);
+            if (!targetResult.TryGetValue(out var target, out _) ||
+                !target.NetworkPolicy.AllowsWorkloads)
+            {
+                await PersistFailureAsync(
+                    claimed,
+                    generation,
+                    operation,
+                    "NetworkPolicyEnforcementRequired",
+                    "NetworkPolicy enforcement has not been established for this target.",
+                    retryable: true,
+                    cancellationToken);
+                return;
+            }
         }
 
         var (adapter, placementCapability) = resolveResourceDeploymentAdapter(

@@ -71,7 +71,12 @@ Deletion is also blocked while any `ResourceDeployment` snapshot references the 
 
 Mongo schema and index migrations are self-contained historical contracts. Startup runs target
 bootstrap first, then creates the built-in default profile if the catalog is empty. Existing
-administrator-created defaults are never overwritten.
+administrator-created defaults are never overwritten. Bootstrap resolves the configured target
+without workload admission: a fresh target can remain `Unknown` until an administrator attests
+NetworkPolicy enforcement through the running API. Compute-profile references still require an
+enabled target accepting workloads and fence target deletion, but do not require attestation.
+Actual workload admission and runtime-reference creation remain blocked until attestation or an
+explicit isolation-not-enforced override.
 
 ## Kubernetes validation and limitations
 

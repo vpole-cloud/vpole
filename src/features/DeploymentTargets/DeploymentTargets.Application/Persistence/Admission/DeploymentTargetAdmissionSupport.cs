@@ -49,7 +49,7 @@ internal static class DeploymentTargetAdmissionSupport
                 new DeploymentTargetWorkloadAdmissionError(
                     new DeploymentTargetDeletionRequested(lookup.Id)));
         }
-        if (!lookup.AcceptsWorkloads)
+        if (!lookup.AcceptsWorkloads || !target.WorkloadConfiguration.NetworkPolicy.AllowsWorkloads(target))
         {
             return new Err<DeploymentTargetWorkloadAdmissionError>(
                 new DeploymentTargetWorkloadAdmissionError(
@@ -71,7 +71,7 @@ internal static class DeploymentTargetAdmissionSupport
         if (lookup.DeletionRequested)
             return new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
                 new DeploymentTargetDeletionRequested(lookup.Id));
-        if (!lookup.AcceptsWorkloads)
+        if (!lookup.AcceptsWorkloads || !target.WorkloadConfiguration.NetworkPolicy.AllowsWorkloads(target))
             return new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
                 new DeploymentTargetNewWorkloadsDisabled(lookup.Id));
 

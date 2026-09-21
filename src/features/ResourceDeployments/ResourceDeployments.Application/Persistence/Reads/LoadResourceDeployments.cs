@@ -6,7 +6,8 @@ using Pole.Features.ResourceDeployments.Domain;
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Reads;
 
 internal sealed class MongoLoadResourceDeployments(
-    IMongoCollection<ResourceDeployment> resourceDeployments)
+    IMongoCollection<ResourceDeployment> resourceDeployments,
+    ResourceDeploymentIsolationProjection isolation)
 {
     public async Task<IReadOnlyDictionary<string, PlacementSummaryDto>> InvokeAsync(
         string tenantId,
@@ -21,6 +22,9 @@ internal sealed class MongoLoadResourceDeployments(
         var deployments = await resourceDeployments
             .Find(ResourceDeploymentFilters.ForResources(tenantId, resourceType, resourceIds))
             .ToListAsync(cancellationToken);
+        var policies = await isolation.LoadAsync(
+            deployments.Select(item => item.ResolvedPlacement.DeploymentTargetId),
+            cancellationToken);
         return deployments
             .GroupBy(deployment => deployment.ResourceId, StringComparer.Ordinal)
             .ToDictionary(
@@ -29,7 +33,10 @@ internal sealed class MongoLoadResourceDeployments(
                 {
                     var candidates = group.Take(2).ToArray();
                     return candidates.Length == 1
-                        ? candidates[0].ToPlacementSummaryDto()
+                        ? candidates[0].ToPlacementSummaryDto() with
+                        {
+                            Isolation = policies[candidates[0].ResolvedPlacement.DeploymentTargetId]
+                        }
                         : throw new InvalidOperationException(
                             $"Single-target resource '{group.Key}' has multiple deployments.");
                 },

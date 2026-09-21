@@ -360,7 +360,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
             DeploymentTargetTestData.CreateWorkloadConfiguration(),
             enabled: true,
             acceptsWorkloads: true,
-            new DeploymentTargetFactory.CreateOptions(id, now));
+            new DeploymentTargetFactory.CreateOptions(id, now)).AttestForTests();
     }
 
     private sealed class PausingDeletionGuard

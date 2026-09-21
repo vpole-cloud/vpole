@@ -400,7 +400,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
                     publicBaseDomain)),
             enabled: true,
             acceptsWorkloads: true,
-            new DeploymentTargetFactory.CreateOptions(id, now));
+            new DeploymentTargetFactory.CreateOptions(id, now)).AttestForTests();
     }
 
     private sealed class NoOpClientCache
