@@ -19,6 +19,8 @@ using k8s.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Testing;
 using Xunit;
+using MongoDB.Driver;
+using Skrynia;
 
 namespace Pole.Tests.E2E.Infrastructure;
 
@@ -77,7 +79,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await StartLabServiceAccessAsync(_shutdown.Token);
-        _scratchDirectory = Path.Combine(Path.GetTempPath(), "pole-e2e", Guid.NewGuid().ToString("N"));
+        _scratchDirectory = Path.Combine(AppContext.BaseDirectory, "pole-e2e", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_scratchDirectory);
         var privateKeyPath = Path.Combine(_scratchDirectory, "github-app-private-key.pem");
         using (var rsa = RSA.Create(2048))
@@ -142,8 +144,20 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
         _application = await appHost.BuildAsync(_shutdown.Token);
         _keycloakPortReservation.Stop();
-        await _application.StartAsync(_shutdown.Token);
-        await WaitForRequiredResourceHealthyAsync("pole-server", _shutdown.Token);
+        try
+        {
+            using var startup = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
+            startup.CancelAfter(TimeSpan.FromMinutes(3));
+            await _application.StartAsync(startup.Token);
+            await WaitForRequiredResourceHealthyAsync("pole-server", startup.Token);
+        }
+        catch
+        {
+            var diagnostics = await GetServerErrorDiagnosticsAsync(CancellationToken.None);
+            await _application.DisposeAsync();
+            _application = null;
+            throw new InvalidOperationException("Pole startup failed. " + diagnostics);
+        }
         await WaitForRequiredResourceHealthyAsync("frontend", _shutdown.Token);
         await WaitForRequiredResourceHealthyAsync("github-stub", _shutdown.Token);
 
@@ -250,6 +264,63 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         if (!string.IsNullOrWhiteSpace(tenantId))
             request.Headers.Add("X-Pole-Tenant-ID", tenantId);
         return request;
+    }
+
+    private async Task<string> GetServerResourceIdAsync(CancellationToken cancellationToken)
+    {
+        await foreach (var update in _application!.ResourceNotifications.WatchAsync(cancellationToken))
+            if (update.Resource.Name == "pole-server" && update.ResourceId != update.Resource.Name)
+                return update.ResourceId;
+        throw new InvalidOperationException("Pole server instance was not found.");
+    }
+
+    public async Task WaitForOutboxPublicationAsync(string eventType, CancellationToken cancellationToken)
+    {
+        var logger = _application!.Services.GetRequiredService<ResourceLoggerService>();
+        var resourceId = await GetServerResourceIdAsync(cancellationToken);
+        while (true)
+        {
+            await foreach (var batch in logger.GetAllAsync(resourceId).WithCancellation(cancellationToken))
+                if (batch.Any(line => line.Content.Contains("Published outbox message", StringComparison.Ordinal) &&
+                    line.Content.Contains(eventType, StringComparison.Ordinal))) return;
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+    }
+
+    public async Task RestartServerAsync(CancellationToken cancellationToken,
+        Func<IMongoDatabase, Task>? inspect = null)
+    {
+        var application = _application ?? throw new InvalidOperationException("AppHost is not running.");
+        var stop = await application.ResourceCommands.ExecuteCommandAsync(
+            "pole-server", KnownResourceCommands.StopCommand, cancellationToken);
+        if (!stop.Success)
+            throw new InvalidOperationException("Could not stop Pole for the persistence check.");
+        await application.ResourceNotifications.WaitForResourceAsync(
+            "pole-server", KnownResourceStates.Finished, cancellationToken);
+        try
+        {
+            if (inspect is not null)
+            {
+                if (string.Equals(Environment.GetEnvironmentVariable("POLE_E2E_DATABASE_PROVIDER"), "Skrynia", StringComparison.OrdinalIgnoreCase))
+                {
+                    using var owner = SkryniaClient.Open(Path.Combine(_scratchDirectory!, "pole.sqlite"));
+                    await inspect(owner.Client.GetDatabase("pole-database"));
+                }
+                else
+                {
+                    using var client = new MongoClient(await application.GetConnectionStringAsync("pole-database", cancellationToken));
+                    await inspect(client.GetDatabase("pole-database"));
+                }
+            }
+        }
+        finally
+        {
+            var restart = await application.ResourceCommands.ExecuteCommandAsync(
+                "pole-server", KnownResourceCommands.StartCommand, cancellationToken);
+            if (!restart.Success)
+                throw new InvalidOperationException("Could not restart Pole for the persistence check.");
+            await application.ResourceNotifications.WaitForResourceHealthyAsync("pole-server", cancellationToken);
+        }
     }
 
     public HttpRequestMessage CreatePlatformAdminRequest(HttpMethod method, string path)
@@ -726,6 +797,10 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         "ResourceDeployments:MaximumRetryDelaySeconds=3600",
         $"E2E:WorkspaceRoot={Path.Combine(scratchDirectory, "source-workspace")}"
         };
+        var provider = Environment.GetEnvironmentVariable("POLE_E2E_DATABASE_PROVIDER") ?? "MongoDB";
+        arguments.Add($"Database:Provider={provider}");
+        if (string.Equals(provider, "Skrynia", StringComparison.OrdinalIgnoreCase))
+            arguments.Add($"Database:FilePath={Path.Combine(scratchDirectory, "pole.sqlite")}");
 
         return arguments.ToArray();
     }

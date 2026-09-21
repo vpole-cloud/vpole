@@ -9,6 +9,7 @@ internal sealed class KeycloakAdminClient(HttpClient httpClient, string adminUse
 {
     private const string Realm = "pole.control-plane";
     private string? _accessToken;
+    private DateTimeOffset _accessTokenExpiresAt;
 
     public async Task<JsonObject> GetClientAsync(string clientId, CancellationToken cancellationToken)
     {
@@ -197,7 +198,7 @@ internal sealed class KeycloakAdminClient(HttpClient httpClient, string adminUse
 
     private async Task<string> GetAccessTokenAsync(CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrWhiteSpace(_accessToken))
+        if (!string.IsNullOrWhiteSpace(_accessToken) && DateTimeOffset.UtcNow < _accessTokenExpiresAt)
             return _accessToken;
 
         using var response = await httpClient.PostAsync(
@@ -212,6 +213,8 @@ internal sealed class KeycloakAdminClient(HttpClient httpClient, string adminUse
             cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
         var token = await response.Content.ReadFromJsonAsync<JsonObject>(cancellationToken: cancellationToken);
+        var lifetimeSeconds = token?["expires_in"]?.GetValue<int>() ?? 0;
+        _accessTokenExpiresAt = DateTimeOffset.UtcNow.AddSeconds(Math.Max(0, lifetimeSeconds - 15));
         return _accessToken = token?["access_token"]?.GetValue<string>()
                               ?? throw new InvalidOperationException("Keycloak did not return a master-admin token.");
     }

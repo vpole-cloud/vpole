@@ -38,6 +38,7 @@ requirement when adding or changing one feature.
 - [Installation](instalation.md)
 - [Architecture overview](architecture_overview.md)
 - [Aspire local development](aspire-local-development.md)
+- [Local Skrynia provider validation](skrynia-local-development.md)
 
 ## Architecture and engineering
 

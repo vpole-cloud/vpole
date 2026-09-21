@@ -25,7 +25,7 @@ public static class FunctionOrleansHosting
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
-        // The Aspire resource already owns the MongoClient and its connection lifecycle.
+        // The selected database provider owns the client and its connection lifecycle.
         // The Orleans provider factory only adapts that same client to its named-client contract.
         builder.Services.TryAddSingleton<IMongoClientFactory, DefaultMongoClientFactory>();
         builder.Services.AddKeyedSingleton<IGrainStateSerializer, BinaryGrainStateSerializer>(
@@ -70,7 +70,10 @@ public static class FunctionOrleansHosting
             {
                 mongoOptions.DatabaseName = options.DatabaseName;
                 mongoOptions.CollectionPrefix = options.CollectionPrefix;
-                mongoOptions.Strategy = MongoDBMembershipStrategy.Multiple;
+                mongoOptions.Strategy = builder.Configuration.GetValue("Database:Provider", PoleDatabaseProvider.MongoDB)
+                    == PoleDatabaseProvider.Skrynia
+                    ? MongoDBMembershipStrategy.SingleDocument
+                    : MongoDBMembershipStrategy.Multiple;
             });
             siloBuilder.AddMongoDBGrainStorage(
                 FunctionCoordinationStorage.ProviderName,

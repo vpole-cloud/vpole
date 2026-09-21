@@ -61,10 +61,10 @@ Assembly[] serviceEventAssemblies = [
     typeof(Pole.Features.RedisServices.Events.RedisServiceCreatedEvent).Assembly,
     typeof(Pole.Features.Postgres.Events.PostgresClusterCreatedEvent).Assembly
 ];
-Assembly[] assemblies = [..PolePlatform.ApplicationAssemblies, ..serviceAssemblies];
+Assembly[] assemblies = [.. PolePlatform.ApplicationAssemblies, .. serviceAssemblies];
 
 builder.AddServiceDefaults();
-builder.AddMongoDBClient("pole-database");
+builder.AddPolePersistence();
 builder.AddFunctionOrleansHosting();
 builder.AddSecurity();
 
@@ -75,7 +75,6 @@ builder.Services.AddPolePlatform(configuration, serviceAssemblies, serviceEventA
     .AddWebServicesFeature()
     .AddRedisServicesFeature()
     .AddPostgresFeature(configuration)
-    .AddHangfireWithMongo(configuration)
     .AddOpenApi();
 builder.Services.AddSingleton<IMigration>(new FeatureScopedMigration(
     "pole.redis", new RedisSchemaValidationMigration()));
