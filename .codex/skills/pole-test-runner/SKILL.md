@@ -32,12 +32,21 @@ An in-memory or standalone database is not evidence for Mongo transaction, repli
 
 ## Safe Parallelism
 
-- Parallelism does not require subagents. The primary agent can launch independent commands concurrently and summarize their outputs.
-- Restore and build once before parallel .NET tests. Then use `--no-build --no-restore` on distinct test projects.
-- Do not run concurrent builds: projects share `bin` and `obj` outputs.
-- Do not split one test project into simultaneous filtered invocations.
-- Run `Pole.Tests.Integration`, Aspire E2E, live Kubernetes tests, and other shared external-resource lanes sequentially.
-- Consider Docker, CPU, memory, ports, namespaces, and persisted identities shared even when commands come from different agents.
+Follow [test scheduling](../../../docs/testing.md#parallelism-across-worktrees).
+
+- Parallelism does not require subagents; the primary agent can coordinate commands directly.
+- Within one worktree, restore/build once, then run distinct infrastructure-free projects with
+  `--no-build --no-restore`. Do not overlap builds, a build with tests using its outputs, or multiple
+  invocations of the same test project. Serialize infrastructure lanes within that worktree.
+- Separate worktrees have isolated test resources, including Docker containers and Kubernetes
+  namespaces. Docker-backed suites may run concurrently across worktrees; they are relatively light.
+- Kubernetes-backed suites may also run concurrently across worktrees. Queue these heavy runs by
+  default for host capacity, not because their test resources collide. The primary agent coordinates
+  overlap against the host's current CPU, memory, disk and other active work.
+- Keep worktree/run ownership and scoped cleanup intact. Shared lab lifecycle operations retain their
+  existing lock; do not stop/reset shared services during other tests.
+- The full quality-gate runner intentionally executes its projects sequentially. Scheduling independent
+  worktrees does not justify filtering, skipping or changing that publication gate.
 
 ## Report
 

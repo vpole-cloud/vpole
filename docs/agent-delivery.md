@@ -4,6 +4,20 @@ The primary agent owns the result, including work delegated to other agents. A
 passing build is not evidence that endpoint ownership, domain invariants, or
 the user flow were reviewed.
 
+## Multi-issue delivery and current planning context
+
+Use [pole-deliver-issues](../.codex/skills/pole-deliver-issues/SKILL.md) when coordinating a batch of
+issues and delegated worktrees. It applies the rules here and links assignment/handoff templates;
+it does not grant permission to publish or merge. Use [test scheduling](testing.md#parallelism-across-worktrees)
+to distinguish test-resource isolation from host capacity.
+
+Pole is currently in private, predeployment development. Backward compatibility with production
+consumers is not a current constraint; coordinated code/API changes are acceptable. A substantial
+frontend implementation is a separate initiative, so prioritize backend delivery and add only UI
+pieces needed by the agreed scope. Revisit this context when deployment status or product priorities
+change. Domain decisions, including resource identity and naming for future IaC, remain in their
+owning feature/architecture documentation rather than being frozen into an orchestration skill.
+
 ## Task brief and canonical implementations
 
 Before delegating implementation, name the owning feature, acceptance criteria,

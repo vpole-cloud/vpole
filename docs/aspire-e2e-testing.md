@@ -85,6 +85,11 @@ Normal fixture teardown targets only exact owned namespaces, and lab lifecycle c
 serialized by the shared lock. Disposable Testcontainers and Aspire containers carry the same
 identity labels; the recovery and audit commands include them as well.
 
+Isolation allows concurrent worktrees, but Kubernetes-backed E2E places significant load on the
+host. Queue these runs by default and coordinate any overlap according to
+[test scheduling](testing.md#parallelism-across-worktrees). Docker-only suites from independent
+worktrees may run concurrently.
+
 After an interrupted run, stop the tests and recover only the current worktree's namespaces:
 
 ```bash
