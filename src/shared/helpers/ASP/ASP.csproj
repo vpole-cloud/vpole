@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net11.0</TargetFramework>
@@ -13,6 +13,7 @@
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\..\Mediator\Mediator.csproj" />
+      <ProjectReference Include="..\..\Multitenancy\Multitenancy.csproj" />
     </ItemGroup>
 
 </Project>

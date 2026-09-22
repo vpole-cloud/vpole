@@ -14,7 +14,7 @@ namespace Pole.Features.WebServices.Application.Endpoints.DeploymentTokens;
 
 public sealed record GetWebServiceDeploymentTokensRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
+    [FromTenantHeader] string TenantId
 ) : IMediatorRequest<GetWebServiceDeploymentTokensOutcome>, ITenantReadOperation;
 
 public union GetWebServiceDeploymentTokensOutcome(

@@ -49,7 +49,7 @@ public static class DeleteResourceGroup
 
 public sealed record DeleteResourceGroupRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<DeleteResourceGroupOutcome>, ITenantWriteOperation;
 
 public sealed class DeleteResourceGroupRequestValidator

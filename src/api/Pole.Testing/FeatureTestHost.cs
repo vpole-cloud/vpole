@@ -90,7 +90,7 @@ public sealed class FeatureTestHost : IAsyncDisposable
             await app.Services.InitializePolePlatformAsync(cancellationToken);
             app.UsePoleTenantPipeline();
             app.MapPolePlatformEndpoints();
-            mapFeatureEndpoints(app.MapGroup("/api/v1").RequireAuthorization());
+            mapFeatureEndpoints(app.MapGroup("/api/v1").ValidateTenantContextDeclarations().RequireAuthorization());
             await app.StartAsync(cancellationToken);
             return new FeatureTestHost(app, encryption);
         }

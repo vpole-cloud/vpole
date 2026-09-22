@@ -43,7 +43,7 @@ public static class DeleteFunctionApp
 
 public sealed record DeleteFunctionAppRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<DeleteFunctionAppOutcome>, ITenantWriteOperation;
 
 public sealed record DeleteFunctionAppResponse(string FunctionAppId);

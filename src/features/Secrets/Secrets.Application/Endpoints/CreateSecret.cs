@@ -30,7 +30,7 @@ public sealed record CreateSecretBody(
 
 public sealed record CreateSecretRequest(
     [FromBody] CreateSecretBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<CreateSecretOutcome>, ITenantCreateOperation;
 
 public sealed class CreateSecretValidator : AbstractValidator<CreateSecretRequest>

@@ -41,7 +41,7 @@ public union GetWebServiceResourceDeploymentsOutcome(
 
 public sealed record GetWebServiceResourceDeploymentsRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetWebServiceResourceDeploymentsOutcome>, ITenantReadOperation;
 
 public sealed class GetWebServiceResourceDeploymentsHandler(

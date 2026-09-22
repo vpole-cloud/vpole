@@ -34,15 +34,15 @@ public static class GetDomainZone
     private static IResult ToHttpResult(
         GetDomainZoneOutcome outcome,
         IHttpProblemMapper httpProblems) => outcome switch
-    {
-        TenantDomainZoneSnapshot zone => Results.Ok(zone),
-        DomainZoneNotFound notFound => httpProblems.Map(notFound).ToHttpResult()
-    };
+        {
+            TenantDomainZoneSnapshot zone => Results.Ok(zone),
+            DomainZoneNotFound notFound => httpProblems.Map(notFound).ToHttpResult()
+        };
 }
 
 public sealed record GetDomainZoneRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetDomainZoneOutcome>, ITenantReadOperation;
 
 public union GetDomainZoneOutcome(

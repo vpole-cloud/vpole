@@ -57,7 +57,7 @@ public sealed record GetFunctionUsageRequest(
     [FromRoute] string Id,
     [FromQuery] DateTimeOffset? FromUtc,
     [FromQuery] DateTimeOffset? ToUtc,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetFunctionUsageOutcome>, ITenantReadOperation;
 
 public union GetFunctionUsageOutcome(

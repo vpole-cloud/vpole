@@ -11,7 +11,7 @@ using Pole.Mediator;
 namespace Pole.Features.GitProviders.Application.Endpoints.Connections;
 
 public sealed record GetGitProviderConnectionsRequest(
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetGitProviderConnectionsOutcome>, ITenantReadOperation;
 
 public union GetGitProviderConnectionsOutcome(IReadOnlyList<GitProviderConnectionDto>);

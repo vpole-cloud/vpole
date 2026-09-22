@@ -176,7 +176,7 @@ public sealed class FinalizeWebServiceDeletionConsumer(
 
 public sealed record DeleteWebServiceRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
+    [FromTenantHeader] string TenantId
 ) : IMediatorRequest<DeleteWebServiceOutcome>, ITenantWriteOperation;
 
 

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Application.Endpoints.Deployments;
 using Pole.Features.WebServices.Application.Endpoints.Deployments.Hostnames;
@@ -18,6 +19,7 @@ public static class WebServiceEndpoints
         public IEndpointRouteBuilder MapWebServiceEndpoints()
         {
             app.MapGroup(Route)
+                .WithMetadata(new TenantEndpointMetadata())
                 .WithTags("WebServices")
                 .MapCreateWebServiceEndpoint()
                 .MapUpdateWebServiceEndpoint()

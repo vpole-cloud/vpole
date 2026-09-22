@@ -54,7 +54,7 @@ public static class DeleteIsolationScope
 public sealed record DeleteIsolationScopeRequest(
     [FromRoute] string ResourceGroupId,
     [FromRoute] string ScopeId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<DeleteIsolationScopeOutcome>, ITenantWriteOperation;
 
 public sealed record DeleteIsolationScopeResponse(

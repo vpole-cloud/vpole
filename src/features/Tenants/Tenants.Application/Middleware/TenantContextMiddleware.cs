@@ -2,27 +2,28 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Tenants.Application.Persistence;
 using Pole.Features.Tenants.Application.Persistence.Tenants;
+using Pole.Mediator;
 
 namespace Pole.Features.Tenants.Application.Middleware;
 
 public sealed class TenantContextMiddleware(RequestDelegate next)
 {
-    public async Task InvokeAsync(HttpContext httpContext, LoadTenant loadTenant)
+    public async Task InvokeAsync(
+        HttpContext httpContext,
+        LoadTenant loadTenant,
+        IHttpProblemMapper httpProblems)
     {
         var tenantContextAccessor = httpContext.RequestServices.GetRequiredService<ITenantContextAccessor>();
         tenantContextAccessor.Current = null;
+        var endpoint = httpContext.GetEndpoint();
+        var requirement = endpoint?.Metadata.GetMetadata<TenantEndpointMetadata>()?.ActiveTenant
+            ?? ActiveTenantRequirement.None;
 
-        if (!RequiresTenant(httpContext))
-        {
-            await next(httpContext);
-            return;
-        }
-
-        if (AllowsAnonymousPoleCiToken(httpContext))
+        if (requirement == ActiveTenantRequirement.None || UsesEndpointCredential(httpContext))
         {
             await next(httpContext);
             return;
@@ -30,22 +31,32 @@ public sealed class TenantContextMiddleware(RequestDelegate next)
 
         if (httpContext.User.Identity?.IsAuthenticated != true)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            await Reject(new TenantAuthenticationRequired());
             return;
         }
 
-        var tenantId = httpContext.Request.Headers[TenantHeaders.TenantId].FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(tenantId))
+        var values = httpContext.Request.Headers[TenantHeaders.TenantId];
+        if (values.Count == 0 && requirement == ActiveTenantRequirement.Optional)
         {
             await next(httpContext);
             return;
         }
 
-        var tenant = await loadTenant(tenantId, httpContext.RequestAborted);
+        if (values.Count != 1 || !ObjectId.TryParse(values[0], out var parsedTenantId))
+        {
+            await Reject(new RequestValidationRejected(new Dictionary<string, string[]>
+            {
+                [TenantHeaders.TenantId] =
+                ["Exactly one valid tenant ObjectId is required."]
+            }));
+            return;
+        }
 
+        var tenantId = parsedTenantId.ToString();
+        var tenant = await loadTenant(tenantId, httpContext.RequestAborted);
         if (tenant is null)
         {
-            await Results.NotFound(new { error = $"Tenant '{tenantId}' was not found." }).ExecuteAsync(httpContext);
+            await Reject(new TenantNotFound(tenantId));
             return;
         }
 
@@ -53,56 +64,38 @@ public sealed class TenantContextMiddleware(RequestDelegate next)
         var member = userId is null
             ? null
             : tenant.Members.FirstOrDefault(m => m.UserId == userId);
-
-        var isPlatformAdmin = httpContext.User.IsInRole(Roles.Admin);
+        var isPlatformAdmin = httpContext.User.Claims.Any(
+            claim => claim.Type == Claims.Roles && claim.Value == Roles.Admin);
         if (member is null && !isPlatformAdmin)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await Reject(new TenantMembershipRequired(tenantId));
             return;
         }
 
+        httpContext.Request.Headers[TenantHeaders.TenantId] = tenant.Id;
         tenantContextAccessor.Current = new TenantContext(
             tenant.Id,
             tenant.Name,
             member?.Role ?? TenantRole.Owner,
             isPlatformAdmin);
-
         await next(httpContext);
+        return;
+
+        Task Reject(IMediatorRejection rejection) =>
+            httpProblems.Map(rejection).ToHttpResult().ExecuteAsync(httpContext);
     }
 
-    private static bool RequiresTenant(HttpContext httpContext)
+    private static bool UsesEndpointCredential(HttpContext httpContext)
     {
-        var path = httpContext.Request.Path;
-        return httpContext.GetEndpoint()?.Metadata.GetMetadata<TenantEndpointMetadata>() is not null ||
-               path.StartsWithSegments("/api/v1/resource-groups") ||
-               path.StartsWithSegments("/api/v1/web-services") ||
-               path.StartsWithSegments("/api/v1/function-apps") ||
-               path.StartsWithSegments("/api/v1/tenant-quotas") ||
-               path.StartsWithSegments("/api/v1/storage-profiles") ||
-               path.StartsWithSegments("/api/v1/compute-profiles") ||
-               path.StartsWithSegments("/api/v1/deployment-targets") ||
-               path.StartsWithSegments("/api/v1/git-provider-connections") ||
-               path.StartsWithSegments("/api/v1/source-repositories") ||
-               path.StartsWithSegments("/api/v1/source-build-configurations") ||
-               path.StartsWithSegments("/api/v1/source-build-jobs") ||
-               path.StartsWithSegments("/api/v1/resource-deployments") ||
-               path.StartsWithSegments("/api/v1/domain-zones") ||
-               path.StartsWithSegments("/api/v1/search");
-    }
-
-    private static bool AllowsAnonymousPoleCiToken(HttpContext httpContext)
-    {
-        var allowsAnonymous = httpContext.GetEndpoint()?.Metadata.GetMetadata<IAllowAnonymous>() is not null;
-        if (!allowsAnonymous)
+        var endpoint = httpContext.GetEndpoint();
+        var credential = endpoint?.Metadata.GetMetadata<TenantCredentialMetadata>();
+        if (credential is null || endpoint?.Metadata.GetMetadata<IAllowAnonymous>() is null)
             return false;
 
-        var path = httpContext.Request.Path.Value;
-        var isImageTagEndpoint = path?.StartsWith("/api/v1/web-services/", StringComparison.OrdinalIgnoreCase) == true &&
-                                 path.EndsWith("/image-tag", StringComparison.OrdinalIgnoreCase);
-        if (!isImageTagEndpoint)
-            return false;
-
-        var authorization = httpContext.Request.Headers.Authorization.FirstOrDefault();
-        return authorization?.StartsWith("Bearer pole_ci_", StringComparison.OrdinalIgnoreCase) == true;
+        var authorization = httpContext.Request.Headers.Authorization;
+        return authorization.Count == 1 &&
+               authorization[0]?.StartsWith(
+                   $"Bearer {credential.BearerTokenPrefix}",
+                   StringComparison.OrdinalIgnoreCase) == true;
     }
 }

@@ -52,7 +52,7 @@ public union GetWebServiceDeploymentHostnamesOutcome(
 public sealed record GetWebServiceDeploymentHostnamesRequest(
     [FromRoute] string Id,
     [FromRoute] string DeploymentId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetWebServiceDeploymentHostnamesOutcome>, ITenantReadOperation;
 
 public sealed class GetWebServiceDeploymentHostnamesHandler(

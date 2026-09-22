@@ -14,7 +14,7 @@ namespace Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
 
 public sealed record DeleteSourceBuildConfigurationRequest(
     [FromRoute] string ConfigurationId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<DeleteSourceBuildConfigurationOutcome>, ITenantWriteOperation;
 
 public sealed record SourceBuildConfigurationDeleted(string ConfigurationId);

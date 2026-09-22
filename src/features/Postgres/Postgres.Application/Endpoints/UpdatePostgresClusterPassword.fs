@@ -54,7 +54,7 @@ type UpdatePostgresClusterPasswordRequest =
       ClusterId : string
       [<FromBody>]
       Body : UpdatePostgresClusterPasswordRequestBody
-      [<FromHeader(Name = TenantHeaders.TenantId)>]
+      [<Pole.ASP.Helpers.FromTenantHeader>]
       TenantId : string }
     interface IMediatorRequest<UpdatePostgresClusterPasswordOutcome>
     interface ITenantWriteOperation with

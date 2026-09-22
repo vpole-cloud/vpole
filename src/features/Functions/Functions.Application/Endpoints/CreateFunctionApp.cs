@@ -51,7 +51,7 @@ public static class CreateFunctionApp
 
 public sealed record CreateFunctionAppRequest(
     [FromBody] CreateFunctionAppRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<CreateFunctionAppOutcome>, ITenantCreateOperation;
 
 public sealed record CreateFunctionAppRequestBody(

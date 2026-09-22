@@ -17,7 +17,7 @@ public union GetSecretOutcome(
 
 public sealed record GetSecretRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetSecretOutcome>, ITenantReadOperation;
 
 public sealed class GetSecretValidator : AbstractValidator<GetSecretRequest>

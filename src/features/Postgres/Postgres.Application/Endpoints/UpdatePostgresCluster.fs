@@ -66,7 +66,7 @@ type UpdatePostgresClusterRequest =
       ClusterId : string
       [<FromBody>]
       Body : UpdatePostgresClusterRequestBody
-      [<FromHeader(Name = TenantHeaders.TenantId)>]
+      [<Pole.ASP.Helpers.FromTenantHeader>]
       TenantId : string }
     interface IMediatorRequest<UpdatePostgresClusterOutcome>
     interface ITenantWriteOperation with

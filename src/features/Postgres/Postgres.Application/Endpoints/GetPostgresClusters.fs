@@ -24,7 +24,7 @@ type GetPostgresClustersRequest() =
     interface ITenantReadOperation with
         member this.TenantId = this.TenantId
 
-    [<FromHeader(Name = TenantHeaders.TenantId)>]
+    [<Pole.ASP.Helpers.FromTenantHeader>]
     member val TenantId = "" with get, set
 
     [<FromQuery; DefaultValue(1); Description("The page number to retrieve (1-based).")>]

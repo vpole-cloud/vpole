@@ -17,7 +17,7 @@ namespace Pole.Features.RedisServices.Application.Endpoints;
 public static class GetRedisServiceById
 {
     public const string Route = "/{Id}";
-    
+
     public static IEndpointRouteBuilder MapGetRedisServiceByIdEndpoint(this IEndpointRouteBuilder app)
     {
         app.MapGet(Route, async (
@@ -34,7 +34,7 @@ public static class GetRedisServiceById
             .WithName("GetRedisServiceById")
             .WithDescription("Gets a Redis service by its ID.")
             .Produces<RedisDto>();
-        
+
         return app;
     }
 }
@@ -78,5 +78,5 @@ public sealed class GetRedisServiceByIdHandler(
 
 public record GetRedisServiceByIdRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
+    [FromTenantHeader] string TenantId
 ) : IMediatorRequest<GetRedisServiceByIdOutcome>, ITenantReadOperation;

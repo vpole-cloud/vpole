@@ -59,7 +59,7 @@ public static class AddWebServiceDeployment
 public sealed record AddWebServiceDeploymentRequest(
     [FromRoute] string Id,
     [FromBody] WebServiceDeploymentTargetRequest Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
+    [FromTenantHeader] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default,
     [FromClaim(Claims.Email)] ClaimValue<string?> ActorEmail = default)
     : IMediatorRequest<AddWebServiceDeploymentOutcome>, ITenantWriteOperation;

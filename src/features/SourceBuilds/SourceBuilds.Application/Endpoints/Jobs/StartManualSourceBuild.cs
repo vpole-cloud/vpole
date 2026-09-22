@@ -22,7 +22,7 @@ namespace Pole.Features.SourceBuilds.Application.Endpoints.Jobs;
 
 public sealed record StartManualSourceBuildRequest(
     [FromRoute] string ConfigurationId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
+    [FromTenantHeader] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue CurrentUserId,
     [FromClaim(Claims.Email)] ClaimValue<string?> CurrentUserEmail = default)
     : IMediatorRequest<StartManualSourceBuildOutcome>, ITenantWriteOperation;

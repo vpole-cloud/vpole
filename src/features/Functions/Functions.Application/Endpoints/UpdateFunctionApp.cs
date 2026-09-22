@@ -47,7 +47,7 @@ public static class UpdateFunctionApp
 public sealed record UpdateFunctionAppRequest(
     [FromRoute] string Id,
     [FromBody] UpdateFunctionAppRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<UpdateFunctionAppOutcome>, ITenantWriteOperation;
 
 public sealed record UpdateFunctionAppRequestBody(

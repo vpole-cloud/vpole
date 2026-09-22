@@ -50,7 +50,7 @@ public sealed record CreateDomainZoneBody(
 
 public sealed record CreateDomainZoneRequest(
     [FromBody] CreateDomainZoneBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<CreateDomainZoneOutcome>, ITenantCreateOperation;
 
 public union CreateDomainZoneError(

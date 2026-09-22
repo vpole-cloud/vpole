@@ -38,7 +38,7 @@ public static class RetryFunctionInvocation
 public sealed record RetryFunctionInvocationRequest(
     [FromRoute] string Id,
     [FromRoute] string InvocationId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<RetryFunctionInvocationOutcome>, ITenantWriteOperation;
 
 public sealed record RetryFunctionInvocationResponse(

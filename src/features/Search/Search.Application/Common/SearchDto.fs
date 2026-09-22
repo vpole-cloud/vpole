@@ -48,7 +48,7 @@ type GetSearchRequest() =
     interface IMediatorRequest<GetSearchOutcome>
     interface Pole.Features.Core.Multitenancy.ITenantReadOperation with
         member this.TenantId = this.TenantId
-    [<FromHeader(Name = Pole.Features.Core.Multitenancy.TenantHeaders.TenantId)>]
+    [<Pole.ASP.Helpers.FromTenantHeader>]
     member val TenantId = "" with get, set
     [<FromQuery>]
     member val Query = "" with get, set

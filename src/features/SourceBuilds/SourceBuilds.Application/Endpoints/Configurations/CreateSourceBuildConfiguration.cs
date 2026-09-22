@@ -18,7 +18,7 @@ namespace Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
 
 public sealed record CreateSourceBuildConfigurationRequest(
     [FromBody] CreateSourceBuildConfigurationBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
+    [FromTenantHeader] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue CurrentUserId)
     : IMediatorRequest<CreateSourceBuildConfigurationOutcome>, ITenantWriteOperation;
 

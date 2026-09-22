@@ -28,7 +28,7 @@ type GetPostgresClusterByIdOutcome =
 type GetPostgresClusterByIdRequest =
     { [<FromRoute>]
       ClusterId : string
-      [<FromHeader(Name = TenantHeaders.TenantId)>]
+      [<Pole.ASP.Helpers.FromTenantHeader>]
       TenantId : string }
     interface IMediatorRequest<GetPostgresClusterByIdOutcome>
     interface ITenantReadOperation with

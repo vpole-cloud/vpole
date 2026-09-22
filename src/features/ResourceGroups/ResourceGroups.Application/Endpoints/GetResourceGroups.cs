@@ -41,7 +41,7 @@ public record GetResourceGroupsRequest
 {
     [FromQuery, DefaultValue(1)] public int PageNumber { get; init; } = 1;
     [FromQuery, DefaultValue(10)] public int PageSize { get; init; } = 10;
-    [FromHeader(Name = TenantHeaders.TenantId)] public string TenantId { get; init; } = string.Empty;
+    [FromTenantHeader] public string TenantId { get; init; } = string.Empty;
     [FromQuery] public string? Search { get; init; }
 }
 

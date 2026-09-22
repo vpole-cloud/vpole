@@ -37,7 +37,7 @@ public static class GetFunctionAppById
 
 public sealed record GetFunctionAppByIdRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetFunctionAppByIdOutcome>, ITenantReadOperation;
 
 public union GetFunctionAppByIdOutcome(

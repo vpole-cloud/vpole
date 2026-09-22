@@ -10,6 +10,24 @@ namespace Pole.Tests.Integration.Quotas;
 public sealed class QuotaApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData("malformed-active-selection")]
+    [InlineData("507f1f77bcf86cd799439099")]
+    public async Task PlatformTargetDoesNotConsumeTheActiveTenantHeader(string? activeTenant)
+    {
+        Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
+        if (activeTenant is not null)
+            Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, activeTenant);
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+
+        var response = await Client.GetAsync($"/api/v1/platform/tenants/{TestData.TenantId}/quota");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(TestData.TenantId, body.RootElement.GetProperty("tenantId").GetString());
+    }
+
     [Fact]
     public async Task PolicyRequiresPlatformAdmin_AndTenantCanReadOwnUsage()
     {

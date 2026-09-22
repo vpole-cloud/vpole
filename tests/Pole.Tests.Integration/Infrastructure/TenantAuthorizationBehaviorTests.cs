@@ -35,7 +35,7 @@ public sealed class TenantAuthorizationBehaviorTests
     }
 
     [Fact]
-    public async Task TenantWideOperationRequiresPlatformAdministrator()
+    public async Task TenantOperationRequiresResolvedContext()
     {
         var behavior = CreateBehavior<WriteRequest>(tenantContext: null);
 
@@ -44,7 +44,7 @@ public sealed class TenantAuthorizationBehaviorTests
             () => Task.FromResult<MediatorResult<string>>("handled"),
             CancellationToken.None);
 
-        Assert.IsType<TenantPlatformAdminRequired>(AssertRejected(result));
+        Assert.IsType<TenantContextRequired>(AssertRejected(result));
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public sealed class TenantAuthorizationBehaviorTests
     }
 
     [Fact]
-    public async Task PlatformAdministratorCanContinueWithoutTenantContext()
+    public async Task PlatformAdministratorCannotContinueWithoutTenantContext()
     {
         var behavior = CreateBehavior<WriteRequest>(
             tenantContext: null,
@@ -102,13 +102,70 @@ public sealed class TenantAuthorizationBehaviorTests
             () => Task.FromResult<MediatorResult<string>>("handled"),
             CancellationToken.None);
 
-        Assert.Equal(
-            "handled",
-            result.Match(
-                value => value,
-                rejected => throw new XunitException(
-                    $"Expected an outcome, but received '{rejected.Reason.GetType().Name}'.")));
+        Assert.IsType<TenantContextRequired>(AssertRejected(result));
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ARequestCannotUseAnotherTenantEvenForAPlatformAdmin(bool admin)
+    {
+        var behavior = CreateBehavior<WriteRequest>(
+            new TenantContext("tenant-1", "Tenant 1", TenantRole.Owner, admin));
+        var result = await behavior.Handle(new WriteRequest("tenant-2"),
+            () => throw new XunitException("Handler must not execute."), CancellationToken.None);
+        Assert.IsType<TenantContextMismatch>(AssertRejected(result));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MatchingTargetCannotEscapeActiveTenant(bool admin)
+    {
+        var behavior = CreateBehavior<MatchingRequest>(
+            new TenantContext("tenant-1", "Tenant 1", TenantRole.Owner, admin));
+        var result = await behavior.Handle(new MatchingRequest("tenant-1", "tenant-2"),
+            () => throw new XunitException("Handler must not execute."), CancellationToken.None);
+        Assert.IsType<TenantContextMismatch>(AssertRejected(result));
+    }
+
+    [Fact]
+    public async Task ExplicitPlatformTargetRequiresAdminAndDoesNotConsumeActiveContext()
+    {
+        var request = new PlatformTargetRequest("target-tenant");
+        var unauthorized = CreateBehavior<PlatformTargetRequest>(tenantContext: null);
+        var result = await unauthorized.Handle(request,
+            () => throw new XunitException("Handler must not execute."), CancellationToken.None);
+        Assert.IsType<TenantPlatformAdminRequired>(AssertRejected(result));
+
+        var authorized = CreateBehavior<PlatformTargetRequest>(
+            new TenantContext("another-tenant", "Other", TenantRole.Viewer, false),
+            new Claim(Claims.Roles, Roles.Admin));
+        var allowed = await authorized.Handle(request,
+            () => Task.FromResult<MediatorResult<string>>("handled"), CancellationToken.None);
+        Assert.Equal("handled", allowed.Match(value => value, _ => "rejected"));
+    }
+
+    [Fact]
+    public async Task UnauthenticatedAdminClaimCannotAuthorizeAPlatformTarget()
+    {
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(Claims.Roles, Roles.Admin)]))
+        };
+        var behavior = new TenantAuthorizationBehavior<PlatformTargetRequest, string>(
+            new TenantContextAccessor(), new HttpContextAccessor { HttpContext = context });
+        var result = await behavior.Handle(new PlatformTargetRequest("tenant-1"),
+            () => throw new XunitException("Handler must not execute."), CancellationToken.None);
+        Assert.IsType<TenantPlatformAdminRequired>(AssertRejected(result));
+    }
+
+    private sealed record MatchingRequest(
+        string TenantId,
+        string TargetTenantId) : IMediatorRequest<string>, ITenantWriteOperation, ITenantMatchingTargetOperation;
+
+    private sealed record PlatformTargetRequest(string TargetTenantId)
+        : IMediatorRequest<string>, IPlatformTenantOperation;
 
     private static TenantAuthorizationBehavior<TRequest, string>
         CreateBehavior<TRequest>(

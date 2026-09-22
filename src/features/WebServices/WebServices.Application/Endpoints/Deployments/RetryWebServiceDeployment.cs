@@ -50,7 +50,7 @@ public sealed record RetryWebServiceDeploymentRequest(
     [FromRoute] string Id,
     [FromRoute] string DeploymentId,
     [FromBody] RetryWebServiceDeploymentBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<RetryWebServiceDeploymentOutcome>, ITenantWriteOperation;
 
 public sealed record RetryWebServiceDeploymentBody(

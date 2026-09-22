@@ -50,7 +50,7 @@ public static class UpdateResourceGroup
 public sealed record UpdateResourceGroupRequest(
     [FromRoute] string Id,
     [FromBody] UpdateResourceGroupRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
+    [FromTenantHeader] string TenantId
 ) : IMediatorRequest<UpdateResourceGroupOutcome>, ITenantWriteOperation;
 
 public union UpdateResourceGroupError(

@@ -8,6 +8,14 @@ public static class TenantAuthorizationHttpProblemMappings
     public static IReadOnlyList<HttpProblemMapping> All { get; } =
         Array.AsReadOnly<HttpProblemMapping>(
         [
+            HttpProblemMapping.For<TenantContextRequired>(_ => Problem(
+                "Active tenant context required",
+                "tenant.authorization.context-required",
+                "The active tenant must be resolved before executing a tenant operation.")),
+            HttpProblemMapping.For<TenantContextMismatch>(_ => Problem(
+                "Tenant context mismatch",
+                "tenant.authorization.context-mismatch",
+                "The operation tenant must match the active tenant.")),
             HttpProblemMapping.For<TenantPlatformAdminRequired>(
                 MapPlatformAdminRequired),
             HttpProblemMapping.For<TenantRoleRequired>(

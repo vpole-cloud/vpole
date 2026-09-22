@@ -17,7 +17,7 @@ namespace Pole.Features.GitProviders.Application.Endpoints.SourceRepositories;
 
 public sealed record ReanalyzeSourceRepositoryRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<ReanalyzeSourceRepositoryOutcome>, ITenantWriteOperation;
 
 public union ReanalyzeSourceRepositoryError(

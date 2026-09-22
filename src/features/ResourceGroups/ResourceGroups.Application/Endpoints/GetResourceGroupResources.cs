@@ -44,7 +44,7 @@ public static class GetResourceGroupResources
 
 public sealed record GetResourceGroupResourcesRequest(
     [FromRoute] string ResourceGroupId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
+    [FromTenantHeader] string TenantId,
     [FromQuery, DefaultValue(1)] int PageNumber = 1,
     [FromQuery, DefaultValue(20)] int PageSize = 20)
     : IMediatorRequest<GetResourceGroupResourcesOutcome>, ITenantReadOperation;

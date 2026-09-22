@@ -16,7 +16,7 @@ namespace Pole.Features.ComputeProfiles.Application.Endpoints;
 public sealed record GetAvailableComputeProfilesRequest(
     [FromQuery] string DeploymentTargetId,
     [FromQuery] string ResourceType,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetAvailableComputeProfilesOutcome>,
         ITenantReadOperation;
 

@@ -29,7 +29,7 @@ public sealed record RotateSecretBody(
 public sealed record RotateSecretRequest(
     [FromRoute] string Id,
     [FromBody] RotateSecretBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<RotateSecretOutcome>, ITenantWriteOperation;
 
 public sealed class RotateSecretValidator : AbstractValidator<RotateSecretRequest>

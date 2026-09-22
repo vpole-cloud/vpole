@@ -20,7 +20,7 @@ namespace Pole.Features.ResourceGroups.Application.Endpoints;
 public sealed record CreateIsolationScopeRequest(
     [FromRoute] string ResourceGroupId,
     [FromBody] CreateIsolationScopeRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<CreateIsolationScopeOutcome>, ITenantCreateOperation;
 
 public union CreateIsolationScopeError(

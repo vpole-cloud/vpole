@@ -20,7 +20,7 @@ namespace Pole.Features.StorageProfiles.Application.Endpoints;
 public sealed record GetAvailableStorageProfilesRequest(
     [FromQuery] string ResourceType,
     [FromQuery] string DeploymentTargetId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetAvailableStorageProfilesOutcome>, ITenantReadOperation;
 
 public union GetAvailableStorageProfilesOutcome(

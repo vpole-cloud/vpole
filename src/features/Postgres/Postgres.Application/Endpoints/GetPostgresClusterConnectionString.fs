@@ -43,7 +43,7 @@ type GetPostgresClusterConnectionStringOutcome =
 type GetPostgresClusterConnectionStringRequest =
     { [<FromRoute>]
       ClusterId : string
-      [<FromHeader(Name = TenantHeaders.TenantId)>]
+      [<Pole.ASP.Helpers.FromTenantHeader>]
       TenantId : string }
     interface IMediatorRequest<GetPostgresClusterConnectionStringOutcome>
     interface ITenantWriteOperation with

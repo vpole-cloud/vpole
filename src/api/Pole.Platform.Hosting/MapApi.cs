@@ -23,7 +23,7 @@ public static class MapApi
 {
     public static IEndpointRouteBuilder MapPolePlatformEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1")
+        var group = app.MapGroup("/api/v1").ValidateTenantContextDeclarations()
             .RequireAuthorization();
 
         group.MapSecretEndpoints()
@@ -53,6 +53,7 @@ public static class MapApi
 
         group.MapGroup("/compute-profiles")
             .WithTags("ComputeProfiles")
+            .WithMetadata(new Pole.Features.Core.Multitenancy.TenantEndpointMetadata())
             .MapGetAvailableComputeProfilesEndpoint();
 
         return app;

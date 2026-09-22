@@ -19,7 +19,7 @@ namespace Pole.Features.ResourceGroups.Application.Endpoints;
 public sealed record RetryRuntimeCellRequest(
     [FromRoute] string ResourceGroupId,
     [FromRoute] string CellId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<RetryRuntimeCellOutcome>, ITenantWriteOperation;
 
 public union RetryRuntimeCellError(

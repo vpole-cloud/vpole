@@ -47,7 +47,7 @@ public static class RollbackWebService
 public sealed record RollbackWebServiceRequest(
     [FromRoute] string Id,
     [FromBody] RollbackWebServiceRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
+    [FromTenantHeader] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default,
     [FromClaim(Claims.Email)] ClaimValue<string?> ActorEmail = default)
     : IMediatorRequest<RollbackWebServiceOutcome>, ITenantWriteOperation;

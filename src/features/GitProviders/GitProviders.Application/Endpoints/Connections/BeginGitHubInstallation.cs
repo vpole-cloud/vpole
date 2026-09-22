@@ -13,7 +13,7 @@ using Pole.Mediator;
 namespace Pole.Features.GitProviders.Application.Endpoints.Connections;
 
 public sealed record BeginGitHubInstallationRequest(
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
+    [FromTenantHeader] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue CurrentUserId)
     : IMediatorRequest<BeginGitHubInstallationOutcome>, ITenantWriteOperation;
 

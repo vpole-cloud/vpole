@@ -18,7 +18,7 @@ namespace Pole.Features.ResourceGroups.Application.Endpoints;
 
 public sealed record GetRuntimeCellsRequest(
     [FromRoute] string ResourceGroupId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetRuntimeCellsOutcome>, ITenantReadOperation;
 
 public union GetRuntimeCellsOutcome(

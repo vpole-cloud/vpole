@@ -33,7 +33,7 @@ public static class GetDomainZones
 }
 
 public sealed record GetDomainZonesRequest(
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
+    [FromTenantHeader] string TenantId,
     [FromQuery] string? DeploymentTargetId)
     : IMediatorRequest<GetDomainZonesOutcome>, ITenantReadOperation;
 

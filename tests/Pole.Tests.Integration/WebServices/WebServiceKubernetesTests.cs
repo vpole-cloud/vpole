@@ -1,5 +1,6 @@
 using Pole.Features.Core.Kubernetes;
 using System.Net;
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Collections.Immutable;
 using k8s;
@@ -198,9 +199,10 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
 
     private async Task WaitForDeploymentAvailableAsync(string deploymentName, int timeoutSeconds = 60)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+        // Use monotonic elapsed time instead of a wall-clock deadline.
+        var elapsed = Stopwatch.StartNew();
 
-        while (DateTime.UtcNow < deadline)
+        while (elapsed.Elapsed < TimeSpan.FromSeconds(timeoutSeconds))
         {
             var deployment = await Kubernetes.AppsV1.ReadNamespacedDeploymentStatusAsync(deploymentName, NamespaceName);
             if (deployment.Status.AvailableReplicas >= 1)
@@ -219,7 +221,8 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     {
         var host = ingress.Spec.Rules.Single().Host;
         var baseUri = Target.Ingress.HttpBaseUri;
-        var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+        // Use monotonic elapsed time instead of a wall-clock deadline.
+        var elapsed = Stopwatch.StartNew();
         Exception? lastError = null;
 
         using var httpClient = new HttpClient(CreateIngressHttpHandler())
@@ -228,7 +231,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
             Timeout = TimeSpan.FromSeconds(10)
         };
 
-        while (DateTime.UtcNow < deadline)
+        while (elapsed.Elapsed < TimeSpan.FromSeconds(timeoutSeconds))
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, "/");
             request.Headers.Host = host;
@@ -266,9 +269,10 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
 
     private static async Task AssertResourceDeletedAsync<T>(Func<Task<T>> readCall, int timeoutSeconds = 30)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+        // Use monotonic elapsed time instead of a wall-clock deadline.
+        var elapsed = Stopwatch.StartNew();
 
-        while (DateTime.UtcNow < deadline)
+        while (elapsed.Elapsed < TimeSpan.FromSeconds(timeoutSeconds))
         {
             try
             {

@@ -12,6 +12,7 @@ type SearchEndpoints =
     static member MapSearchEndpoints(endpoints : IEndpointRouteBuilder) =
         endpoints.MapGroup("/search")
             .WithTags("Search")
+            .WithMetadata(Pole.Features.Core.Multitenancy.TenantEndpointMetadata())
             .MapGetSearchEndpoint()
         |> ignore
         endpoints
