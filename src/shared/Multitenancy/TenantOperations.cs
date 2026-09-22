@@ -16,22 +16,15 @@ public interface ITenantWriteOperation : ITenantOperation;
 
 public interface ITenantCreateOperation : ITenantWriteOperation;
 
-/// <summary>A target identity is independent of the active header selection.</summary>
-public interface ITenantTargetOperation
-{
-    string TargetTenantId { get; }
-}
-
-/// <summary>A tenant-owned operation whose separate target must equal the active tenant.</summary>
-public interface ITenantMatchingTargetOperation : ITenantOperation, ITenantTargetOperation;
-
-/// <summary>A platform administrator may address a target without selecting an active tenant.</summary>
-public interface IPlatformTenantOperation : ITenantTargetOperation;
-
-public interface ITenantMemberOperation : ITenantTargetOperation
+/// <summary>An administrator operates on the route tenant without a tenant header.</summary>
+public interface IPlatformTenantOperation
 {
     string TenantId { get; }
-    string ITenantTargetOperation.TargetTenantId => TenantId;
+}
+
+public interface ITenantMemberOperation
+{
+    string TenantId { get; }
 }
 
 public interface ITenantMemberReadOperation : ITenantMemberOperation;

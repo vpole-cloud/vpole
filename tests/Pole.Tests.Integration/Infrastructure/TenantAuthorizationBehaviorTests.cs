@@ -117,29 +117,17 @@ public sealed class TenantAuthorizationBehaviorTests
         Assert.IsType<TenantContextMismatch>(AssertRejected(result));
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task MatchingTargetCannotEscapeActiveTenant(bool admin)
-    {
-        var behavior = CreateBehavior<MatchingRequest>(
-            new TenantContext("tenant-1", "Tenant 1", TenantRole.Owner, admin));
-        var result = await behavior.Handle(new MatchingRequest("tenant-1", "tenant-2"),
-            () => throw new XunitException("Handler must not execute."), CancellationToken.None);
-        Assert.IsType<TenantContextMismatch>(AssertRejected(result));
-    }
-
     [Fact]
-    public async Task ExplicitPlatformTargetRequiresAdminAndDoesNotConsumeActiveContext()
+    public async Task PlatformOperationRequiresAdminWithoutTenantContext()
     {
-        var request = new PlatformTargetRequest("target-tenant");
-        var unauthorized = CreateBehavior<PlatformTargetRequest>(tenantContext: null);
+        var request = new PlatformRequest("target-tenant");
+        var unauthorized = CreateBehavior<PlatformRequest>(tenantContext: null);
         var result = await unauthorized.Handle(request,
             () => throw new XunitException("Handler must not execute."), CancellationToken.None);
         Assert.IsType<TenantPlatformAdminRequired>(AssertRejected(result));
 
-        var authorized = CreateBehavior<PlatformTargetRequest>(
-            new TenantContext("another-tenant", "Other", TenantRole.Viewer, false),
+        var authorized = CreateBehavior<PlatformRequest>(
+            null,
             new Claim(Claims.Roles, Roles.Admin));
         var allowed = await authorized.Handle(request,
             () => Task.FromResult<MediatorResult<string>>("handled"), CancellationToken.None);
@@ -147,24 +135,20 @@ public sealed class TenantAuthorizationBehaviorTests
     }
 
     [Fact]
-    public async Task UnauthenticatedAdminClaimCannotAuthorizeAPlatformTarget()
+    public async Task UnauthenticatedAdminClaimCannotAuthorizeAPlatformOperation()
     {
         var context = new DefaultHttpContext
         {
             User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(Claims.Roles, Roles.Admin)]))
         };
-        var behavior = new TenantAuthorizationBehavior<PlatformTargetRequest, string>(
+        var behavior = new TenantAuthorizationBehavior<PlatformRequest, string>(
             new TenantContextAccessor(), new HttpContextAccessor { HttpContext = context });
-        var result = await behavior.Handle(new PlatformTargetRequest("tenant-1"),
+        var result = await behavior.Handle(new PlatformRequest("tenant-1"),
             () => throw new XunitException("Handler must not execute."), CancellationToken.None);
         Assert.IsType<TenantPlatformAdminRequired>(AssertRejected(result));
     }
 
-    private sealed record MatchingRequest(
-        string TenantId,
-        string TargetTenantId) : IMediatorRequest<string>, ITenantWriteOperation, ITenantMatchingTargetOperation;
-
-    private sealed record PlatformTargetRequest(string TargetTenantId)
+    private sealed record PlatformRequest(string TenantId)
         : IMediatorRequest<string>, IPlatformTenantOperation;
 
     private static TenantAuthorizationBehavior<TRequest, string>

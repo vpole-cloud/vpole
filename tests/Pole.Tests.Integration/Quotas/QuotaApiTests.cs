@@ -14,11 +14,11 @@ public sealed class QuotaApiTests(MongoReplicaSetFixture fixture)
     [InlineData(null)]
     [InlineData("malformed-active-selection")]
     [InlineData("507f1f77bcf86cd799439099")]
-    public async Task PlatformTargetDoesNotConsumeTheActiveTenantHeader(string? activeTenant)
+    public async Task PlatformOperationUsesRouteTenantWithoutConsumingHeader(string? tenantHeader)
     {
         Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
-        if (activeTenant is not null)
-            Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, activeTenant);
+        if (tenantHeader is not null)
+            Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, tenantHeader);
         Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
 
         var response = await Client.GetAsync($"/api/v1/platform/tenants/{TestData.TenantId}/quota");

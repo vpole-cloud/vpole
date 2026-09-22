@@ -306,7 +306,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         app.UseAuthorization();
         app.UseMiddleware<TenantContextMiddleware>();
         app.MapGitHubCallbackEndpoints();
-        var api = app.MapGroup("/api/v1").ValidateTenantContextDeclarations()
+        var api = app.MapGroup("/api/v1").RequireTenantContext()
             .RequireAuthorization();
         api
             .MapSecretEndpoints()
@@ -328,6 +328,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapUserEndpoints();
 
         api.MapGroup("/platform/compute-profiles")
+            .WithoutTenantContext()
             .WithTags("PlatformComputeProfiles")
             .RequireAuthorization(Policy.Admin)
             .MapGetComputeProfilesEndpoint()
@@ -338,7 +339,6 @@ public sealed class TestApiApplication : IAsyncDisposable
 
         api.MapGroup("/compute-profiles")
             .WithTags("ComputeProfiles")
-            .WithMetadata(new Pole.Features.Core.Multitenancy.TenantEndpointMetadata())
             .MapGetAvailableComputeProfilesEndpoint();
 
         await app.StartAsync();

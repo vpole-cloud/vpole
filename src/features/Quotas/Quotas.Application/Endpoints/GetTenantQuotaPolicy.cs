@@ -36,10 +36,7 @@ public static class GetTenantQuotaPolicy
 
 public sealed record GetTenantQuotaPolicyRequest(
     [FromRoute] string TenantId)
-    : IMediatorRequest<GetTenantQuotaPolicyOutcome>, IPlatformTenantOperation
-{
-    public string TargetTenantId => TenantId;
-}
+    : IMediatorRequest<GetTenantQuotaPolicyOutcome>, IPlatformTenantOperation;
 
 public union GetTenantQuotaPolicyOutcome(TenantQuotaPolicyDto);
 

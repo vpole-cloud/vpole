@@ -6,7 +6,17 @@ namespace Pole.ASP.Helpers;
 
 public static class TenantEndpointConventionExtensions
 {
-    /// <summary>Fails endpoint construction when a tenant request lacks its local declaration.</summary>
+    /// <summary>Requires tenant context for a group and validates its endpoint overrides.</summary>
+    public static TBuilder RequireTenantContext<TBuilder>(this TBuilder builder)
+        where TBuilder : IEndpointConventionBuilder =>
+        builder.WithMetadata(new TenantEndpointMetadata()).ValidateTenantContextDeclarations();
+
+    /// <summary>Ignores the tenant header; authentication and operation authorization still apply.</summary>
+    public static TBuilder WithoutTenantContext<TBuilder>(this TBuilder builder)
+        where TBuilder : IEndpointConventionBuilder =>
+        builder.WithMetadata(new TenantEndpointMetadata(ActiveTenantRequirement.None));
+
+    /// <summary>Fails endpoint construction when a tenant request lacks required context.</summary>
     public static TBuilder ValidateTenantContextDeclarations<TBuilder>(this TBuilder builder)
         where TBuilder : IEndpointConventionBuilder
     {

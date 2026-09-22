@@ -12,7 +12,7 @@ public static class MapApi
     public static IEndpointRouteBuilder MapApiEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPolePlatformEndpoints();
-        app.MapGroup("/api/v1").ValidateTenantContextDeclarations().RequireAuthorization()
+        app.MapGroup("/api/v1").RequireTenantContext().RequireAuthorization()
             .MapFunctionAppEndpoints()
             .MapWebServiceEndpoints()
             .MapRedisServiceEndpoints()

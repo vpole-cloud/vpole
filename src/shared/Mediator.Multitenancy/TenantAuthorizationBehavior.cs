@@ -28,7 +28,7 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
         var isRead = request is ITenantReadOperation;
         var isWrite = request is ITenantWriteOperation;
 
-        if (!isRead && !isWrite && request is not ITenantMatchingTargetOperation)
+        if (!isRead && !isWrite)
             return await next();
 
         var rejection = Authorize(request);
@@ -58,12 +58,6 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
 
         if (request is ITenantOperation scoped &&
             !string.Equals(scoped.TenantId, tenantContext.TenantId, StringComparison.Ordinal))
-        {
-            return new TenantContextMismatch();
-        }
-
-        if (request is ITenantMatchingTargetOperation target &&
-            !string.Equals(target.TargetTenantId, tenantContext.TenantId, StringComparison.Ordinal))
         {
             return new TenantContextMismatch();
         }

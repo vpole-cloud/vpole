@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using Pole.Features.Core.Multitenancy;
 using Pole.Features.Functions.Application.Endpoints;
 
 namespace Pole.Features.Functions.Application.Common;
@@ -13,7 +12,6 @@ public static class FunctionAppEndpoints
     public static IEndpointRouteBuilder MapFunctionAppEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGroup(Route)
-                .WithMetadata(new TenantEndpointMetadata())
             .WithTags("FunctionApps")
             .MapCreateFunctionAppEndpoint()
             .MapUpdateFunctionAppEndpoint()

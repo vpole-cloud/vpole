@@ -89,7 +89,7 @@ core union. Pipeline behavior delegates also return `MediatorResult<TOutcome>`, 
 can stop execution with its own rejection type without changing a request handler contract.
 
 Request validation stops the pipeline with `RequestValidationRejected`, which retains structured
-field errors without depending on a generic failure hierarchy. Base tenant authorization emits `TenantPlatformAdminRequired` for explicit platform targets,
+field errors without depending on a generic failure hierarchy. Base tenant authorization emits `TenantPlatformAdminRequired` for platform administration,
 `TenantRoleRequired` for insufficient membership roles, and `TenantContextRequired` or
 `TenantContextMismatch` when an active operation lacks or disagrees with its resolved context;
 its missing-tenant case reuses `RequestValidationRejected`. The feature-owned

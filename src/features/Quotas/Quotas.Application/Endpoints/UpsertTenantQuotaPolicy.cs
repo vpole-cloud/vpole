@@ -39,10 +39,7 @@ public static class UpsertTenantQuotaPolicy
 public sealed record UpsertTenantQuotaPolicyRequest(
     [FromRoute] string TenantId,
     [FromBody] UpsertTenantQuotaPolicyRequestBody Body)
-    : IMediatorRequest<UpsertTenantQuotaPolicyOutcome>, IPlatformTenantOperation
-{
-    public string TargetTenantId => TenantId;
-}
+    : IMediatorRequest<UpsertTenantQuotaPolicyOutcome>, IPlatformTenantOperation;
 
 public union UpsertTenantQuotaPolicyOutcome(TenantQuotaPolicyDto);
 

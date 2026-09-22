@@ -25,7 +25,7 @@ public sealed class TenantContextHttpTests
     private const string TenantId = "507f1f77bcf86cd799439011";
 
     [Fact]
-    public async Task ProductionEndpointGraphDeclaresEveryTenantRequest()
+    public async Task ProductionEndpointGraphRequiresTenantContextByDefault()
     {
         var builder = WebApplication.CreateBuilder();
         builder.Services.AddTenantsFeature();
@@ -43,6 +43,16 @@ public sealed class TenantContextHttpTests
         Assert.Contains(tenantEndpoints, endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "CreateRedisService");
         Assert.Contains(tenantEndpoints, endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "CreatePostgresCluster");
         Assert.Contains(tenantEndpoints, endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "CreateSecret");
+        var apiEndpoints = endpoints.OfType<RouteEndpoint>().ToArray();
+        Assert.All(apiEndpoints, endpoint =>
+        {
+            var route = endpoint.RoutePattern.RawText!;
+            var independent = route.StartsWith("/api/v1/platform/", StringComparison.Ordinal) ||
+                              route.StartsWith("/api/v1/tenants", StringComparison.Ordinal) ||
+                              route.StartsWith("/api/v1/users", StringComparison.Ordinal);
+            Assert.Equal(independent ? ActiveTenantRequirement.None : ActiveTenantRequirement.Required,
+                endpoint.Metadata.GetMetadata<TenantEndpointMetadata>()?.ActiveTenant);
+        });
     }
 
     [Theory]
@@ -66,7 +76,7 @@ public sealed class TenantContextHttpTests
     [Theory]
     [InlineData(TenantId)]
     [InlineData("507F1F77BCF86CD799439011")]
-    public async Task MetadataResolvesTenantBeforeBindingOnAnUnlistedRoute(string header)
+    public async Task InheritedDefaultResolvesTenantBeforeBindingOnAnUnlistedRoute(string header)
     {
         await using var app = await StartAsync();
         using var client = app.GetTestClient();
@@ -136,7 +146,7 @@ public sealed class TenantContextHttpTests
         client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
         client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, "malformed");
         Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/optional")).StatusCode);
-        Assert.Equal("none", await client.GetStringAsync("/independent-target"));
+        Assert.Equal("none", await client.GetStringAsync("/independent"));
     }
 
     [Fact]
@@ -159,11 +169,37 @@ public sealed class TenantContextHttpTests
         Assert.Contains("must declare required active tenant context", exception.Message);
     }
 
+    [Fact]
+    public async Task DisablingContextForATenantRequestFailsEndpointConstruction()
+    {
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => StartAsync(disableContext: true));
+        Assert.Contains("must declare required active tenant context", exception.Message);
+    }
+
+    [Fact]
+    public async Task NewEndpointInApiGroupInheritsRequirementWithoutAMarker()
+    {
+        await using var app = await StartAsync();
+        using var client = app.GetTestClient();
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/unlisted/plain")).StatusCode);
+        client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, TenantId);
+        Assert.Equal(TenantId, await client.GetStringAsync("/unlisted/plain"));
+    }
+
+    [Fact]
+    public async Task TechnicalEndpointOutsideApiGroupDoesNotRequireAuthenticationOrTenant()
+    {
+        await using var app = await StartAsync(authenticated: false);
+        using var client = app.GetTestClient();
+        Assert.Equal("healthy", await client.GetStringAsync("/health"));
+    }
+
     private static async Task<WebApplication> StartAsync(
         string userId = "member",
         bool platformAdmin = false,
         bool authenticated = true,
-        bool omitDeclaration = false)
+        bool omitDeclaration = false,
+        bool disableContext = false)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
@@ -187,10 +223,16 @@ public sealed class TenantContextHttpTests
             await next();
         });
         app.UseMiddleware<TenantContextMiddleware>();
-        var nested = app.MapGroup("/unlisted").ValidateTenantContextDeclarations()
-            .MapGroup("");
+        var api = app.MapGroup("");
         if (!omitDeclaration)
-            nested.WithMetadata(new TenantEndpointMetadata());
+            api.RequireTenantContext();
+        else
+            api.ValidateTenantContextDeclarations();
+        var nested = api.MapGroup("/unlisted").MapGroup("");
+        if (disableContext)
+            nested.WithoutTenantContext();
+        nested.MapGet("/plain", (ITenantContextAccessor accessor) => Results.Text(accessor.Current!.TenantId));
+        app.MapGet("/health", () => Results.Text("healthy"));
         nested.MapGet("/redis", (
                 [AsParameters] GetRedisServicesRequest request,
                 ITenantContextAccessor accessor) =>
@@ -203,15 +245,14 @@ public sealed class TenantContextHttpTests
             Assert.Equal(accessor.Current?.TenantId, request.TenantId);
             return Results.Text(request.TenantId);
         });
-        app.MapGet("/optional", (ITenantContextAccessor accessor) => Results.Text(accessor.Current?.TenantId ?? "none"))
+        api.MapGet("/optional", (ITenantContextAccessor accessor) => Results.Text(accessor.Current?.TenantId ?? "none"))
             .WithMetadata(new TenantEndpointMetadata(ActiveTenantRequirement.Optional));
-        app.MapGet("/independent-target", (ITenantContextAccessor accessor) => Results.Text(accessor.Current?.TenantId ?? "none"))
-            .WithMetadata(new TenantEndpointMetadata(ActiveTenantRequirement.None));
-        app.MapGet("/credential", () => Results.Text("credential-handler"))
-            .WithMetadata(new TenantEndpointMetadata(), new TenantCredentialMetadata("pole_ci_"))
+        api.MapGet("/independent", (ITenantContextAccessor accessor) => Results.Text(accessor.Current?.TenantId ?? "none"))
+            .WithoutTenantContext();
+        api.MapGet("/credential", () => Results.Text("credential-handler"))
+            .WithMetadata(new TenantCredentialMetadata("pole_ci_"))
             .AllowAnonymous();
-        app.MapGet("/unrelated-anonymous", () => Results.Text("must-not-run"))
-            .WithMetadata(new TenantEndpointMetadata())
+        api.MapGet("/unrelated-anonymous", () => Results.Text("must-not-run"))
             .AllowAnonymous();
         try
         {

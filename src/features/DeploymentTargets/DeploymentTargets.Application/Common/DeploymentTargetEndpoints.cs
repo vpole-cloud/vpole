@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
-using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
 
 namespace Pole.Features.DeploymentTargets.Application.Common;
@@ -14,6 +13,7 @@ public static class DeploymentTargetEndpoints
         public IEndpointRouteBuilder MapDeploymentTargetEndpoints()
         {
             app.MapGroup("/platform/deployment-targets")
+                .WithoutTenantContext()
                 .WithTags("PlatformDeploymentTargets")
                 .RequireAuthorization(Policy.Admin)
                 .MapGetDeploymentTargetsEndpoint()
@@ -31,6 +31,7 @@ public static class DeploymentTargetEndpoints
         public IEndpointRouteBuilder MapDeploymentTargetEncryptionEndpoints()
         {
             app.MapGroup("/platform/encryption")
+                .WithoutTenantContext()
                 .WithTags("PlatformEncryption")
                 .MapRewrapDeploymentTargetCredentialsEndpoint();
             return app;
@@ -43,7 +44,6 @@ public static class DeploymentTargetEndpoints
         public IEndpointRouteBuilder MapDeploymentTargetAvailabilityEndpoints()
         {
             app.MapGroup("/deployment-targets")
-                .WithMetadata(new TenantEndpointMetadata())
                 .WithTags("DeploymentTargets")
                 .MapGetAvailableDeploymentTargetsEndpoint();
 

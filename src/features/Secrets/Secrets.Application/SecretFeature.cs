@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
-using Pole.Features.Core.Multitenancy;
 using Pole.Features.Secrets.Application.Endpoints;
 using Pole.Features.Secrets.Application.Persistence;
 
@@ -74,7 +73,6 @@ public static class SecretFeature
     {
         app.MapGroup("/secrets")
             .WithTags("Secrets")
-            .WithMetadata(new TenantEndpointMetadata())
             .MapCreateSecretEndpoint()
             .MapListSecretsEndpoint()
             .MapGetSecretEndpoint()

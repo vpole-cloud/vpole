@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Endpoints;
 using Pole.Features.GitProviders.Application.Endpoints.Callbacks;
 using Pole.Features.GitProviders.Application.Endpoints.Connections;
@@ -17,7 +16,6 @@ public static class GitProviderEndpoints
         public IEndpointRouteBuilder MapGitProviderEndpoints()
         {
             app.MapGroup("/git-provider-connections")
-                .WithMetadata(new TenantEndpointMetadata())
                 .WithTags("GitProviderConnections")
                 .MapGetGitProviderConnectionsEndpoint()
                 .MapBeginGitHubInstallationEndpoint()
@@ -28,7 +26,6 @@ public static class GitProviderEndpoints
                 .MapLinkProviderRepositoryEndpoint();
 
             app.MapGroup("/source-repositories")
-                .WithMetadata(new TenantEndpointMetadata())
                 .WithTags("SourceRepositories")
                 .MapGetSourceRepositoriesEndpoint()
                 .MapReanalyzeSourceRepositoryEndpoint()

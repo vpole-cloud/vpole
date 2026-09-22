@@ -45,9 +45,13 @@ X-Pole-Tenant-ID: <tenant-id>
 Authorization: Bearer <access-token>
 ```
 
-Tenant context is declared locally with `TenantEndpointMetadata`, normally on the owning route
-group. The middleware runs after authentication/authorization and before request binding. It has
-no route-prefix list. The declaration has three modes:
+The API composition roots call `RequireTenantContext()` on their `/api/v1` route groups.
+All descendant endpoints require the tenant header by default, including newly added endpoints.
+Platform administration, tenant/member management and user registration explicitly opt out with
+`WithoutTenantContext()`. This only disables header resolution, not authentication or authorization.
+Technical endpoints and callbacks outside the API group do not inherit this requirement.
+The middleware runs after authentication/authorization and before request binding. It has no
+route-prefix list. The underlying metadata has three modes:
 
 | Mode | Header absent | Header present |
 | --- | --- | --- |
@@ -70,28 +74,28 @@ the active `TenantId` and role requirements. The Mediator rejects an absent reso
 request whose tenant differs from that context, even for platform admins. Programmatic callers
 must establish the context explicitly; a supplied tenant string and admin claim are not a substitute.
 
-The API composition roots apply `ValidateTenantContextDeclarations` to their route groups. This
-bounded endpoint convention inspects mapped handler parameter types and fails endpoint construction
-when an `ITenantOperation` request lacks a required-context declaration. It covers C# lambdas and
-F# `MapMethod` handlers, including nested groups. Features still own their local declaration;
-new roots that map tenant endpoints must install the convention too.
+`RequireTenantContext()` also installs `ValidateTenantContextDeclarations`. This bounded endpoint
+convention inspects mapped handler parameter types and rejects an `ITenantOperation` request whose
+effective context requirement is missing, optional or disabled. It covers C# lambdas and F#
+`MapMethod` handlers, including nested group overrides. New API roots must install the default too.
 
-### Active selection versus target identity
+### One tenant per operation
 
-`ITenantTargetOperation.TargetTenantId` describes a target independently of the active selection.
-The supported policies are explicit request interfaces rather than an implicit admin bypass:
+Every operation has one tenant identity with a defined source:
 
-- `ITenantMatchingTargetOperation` consumes an active selection and requires its separate target to
-  match it. Platform admins cannot override this fence.
-- `IPlatformTenantOperation` permits independently addressed targets only for an authenticated
-  platform administrator. Quota-policy endpoints use this policy and declare no active context.
-  A stale or malformed active header does not redirect their route target.
-- `ITenantMemberOperation` is an independently authorized target operation. Member endpoints use
-  the route tenant, declare no active context, and apply the existing Viewer/Admin/Owner rules in
-  `TenantMemberAuthorizationBehavior`; last-owner invariants remain in the member mutation.
+- Ordinary resource requests bind `TenantId` from the header. Middleware resolves membership and
+  Mediator checks the request against that verified context before enforcing read/write roles.
+- Platform quota-policy requests bind `TenantId` from the route. `IPlatformTenantOperation`
+  requires an authenticated platform administrator; no tenant header or membership is needed.
+- Member-management requests bind `TenantId` from the route. `ITenantMemberOperation` uses the
+  existing Viewer/Admin/Owner checks in `TenantMemberAuthorizationBehavior`; last-owner invariants
+  remain in the member mutation.
 
-Target policies do not grant unrestricted data access. Persistence remains explicitly scoped to the
-chosen target, and the target-owning operation retains its validation and resource invariants.
+Route-scoped operations ignore the tenant header, including stale or malformed values. They do
+not carry an additional active/target tenant pair. Platform administration needs no active tenant;
+any call to an ordinary resource endpoint still follows that endpoint's normal header contract.
+Persistence remains explicitly tenant-filtered and each operation retains its validation and
+resource invariants. No administration UI or tenant-switching workflow is introduced here.
 
 ### Anonymous deployment credentials
 
@@ -214,9 +218,9 @@ For a new tenant-owned feature:
 
 1. Add `TenantId` to the domain document.
 2. Add `TenantId` to create/update/delete events through `EventCore.Create(tenantId)`.
-3. Declare required `TenantEndpointMetadata` locally and add a non-nullable `[FromTenantHeader]`
-   member to request models. Use an explicit target-operation policy when the route addresses a
-   separate tenant.
+3. Map resource endpoints under the API group with `RequireTenantContext()` and add a non-nullable
+   `[FromTenantHeader]` member to request models. Route-scoped administration/member endpoints
+   explicitly use `WithoutTenantContext()` and retain their operation-specific authorization.
 4. Implement the correct tenant marker interface on request models.
 5. Validate all cross-resource references with both id and tenant id.
 6. Filter reads, updates, deletes, and consumer lookups by tenant id.
