@@ -33,7 +33,7 @@ internal sealed class EnvelopeReadManagedSecret(
         {
             var values = JsonSerializer.Deserialize<ImmutableDictionary<string, string>>(decrypted.Value)!;
             return new Ok<ManagedSecretValues>(new(secret.Id, secret.Name,
-                ((ProviderManagedSecret)secret.Management).ProjectionType == SecretProjectionType.BasicAuthentication ? ManagedSecretProjectionType.BasicAuthentication : ManagedSecretProjectionType.Opaque,
+                ((ProviderManagedSecret)secret.Management).KubernetesType == KubernetesSecretType.BasicAuthentication ? ManagedSecretKubernetesType.BasicAuthentication : ManagedSecretKubernetesType.Opaque,
                 secret.CurrentVersion, values));
         }
         finally

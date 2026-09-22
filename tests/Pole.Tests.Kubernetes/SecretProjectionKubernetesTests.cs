@@ -1,3 +1,4 @@
+using Pole.ResultType;
 using System.Net;
 using System.Text;
 using k8s;
@@ -33,12 +34,8 @@ public sealed class SecretProjectionKubernetesTests(KubernetesClusterFixture fix
         var tenantId = ObjectId.GenerateNewId().ToString();
         var deploymentId = ObjectId.GenerateNewId().ToString();
         var binding = SecretBinding.Create(ObjectId.GenerateNewId().ToString(), "pole/postgresql", ObjectId.GenerateNewId().ToString(), new AllSecretDeployments(), []);
-        var secret = SecretFactory.Create(ObjectId.GenerateNewId().ToString(), tenantId, ObjectId.GenerateNewId().ToString(),
-            ObjectId.GenerateNewId().ToString(), "credentials", "live projection", ["username", "password"], DateTime.UtcNow)
-            .Bind(binding, DateTime.UtcNow) with
-        {
-            Management = new ProviderManagedSecret(binding.ConsumerType, binding.ConsumerId, binding.Id, SecretProjectionType.BasicAuthentication)
-        };
+        var secret = SecretFactory.CreateManaged(ObjectId.GenerateNewId().ToString(), tenantId, ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString(), "credentials", "live projection", ["username", "password"], binding, KubernetesSecretType.BasicAuthentication, DateTime.UtcNow);
         SecretProjection Projection() => SecretProjectionFactory.Create(secret, binding, deploymentId, "cell", "selected-target", namespaceName);
         var services = new ServiceCollection().AddSecretsFeature();
         services.AddSingleton<IKubernetesClientProvider>(new SelectedClient(fixture.Client));
@@ -50,8 +47,9 @@ public sealed class SecretProjectionKubernetesTests(KubernetesClusterFixture fix
         async Task Apply(string password)
         {
             var projection = Projection();
-            await target.ApplyAsync(projection, _ => Task.FromResult(SecretProjectionManifest.Create(projection, binding,
-                new Dictionary<string, string> { ["username"] = "test-user", ["password"] = password })), default);
+            var applied = await target.ApplyAsync(projection, _ => Task.FromResult<Result<V1Secret, SecretProjectionTargetError>>(new Ok<V1Secret>(SecretProjectionManifest.Create(projection, binding,
+                new Dictionary<string, string> { ["username"] = "test-user", ["password"] = password }))), default);
+            Xunit.Assert.IsType<Ok<Unit>>(applied.Value);
         }
         await Apply("initial-password");
         var initial = await fixture.Client.CoreV1.ReadNamespacedSecretAsync(Projection().KubernetesName, namespaceName);
@@ -75,7 +73,7 @@ public sealed class SecretProjectionKubernetesTests(KubernetesClusterFixture fix
         Assert.NotEqual(initial.Metadata.Uid, recreated.Metadata.Uid);
         var revoked = Projection();
         secret = secret.Detach(binding.Id, DateTime.UtcNow);
-        await target.DeleteAsync(revoked, default);
+        Assert.IsType<Ok<Unit>>((await target.DeleteAsync(revoked, default)).Value);
         var missing = await Assert.ThrowsAsync<HttpOperationException>(() => fixture.Client.CoreV1.ReadNamespacedSecretAsync(revoked.KubernetesName, namespaceName));
         Assert.Equal(HttpStatusCode.NotFound, missing.Response.StatusCode);
     }

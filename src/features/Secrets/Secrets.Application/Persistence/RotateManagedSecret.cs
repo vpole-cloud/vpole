@@ -25,9 +25,9 @@ internal sealed class MongoRotateManagedSecret(
         var current = await secrets.Find(session, ManagedSecretFilters.Owner(prepared.TenantId, prepared.Owner)).FirstOrDefaultAsync(ct);
         if (current is null)
             return new Err<ManagedSecretError>(new ManagedSecretUnavailable());
-        var projectionType = ((ProviderManagedSecret)current.Management).ProjectionType == SecretProjectionType.BasicAuthentication
-            ? ManagedSecretProjectionType.BasicAuthentication : ManagedSecretProjectionType.Opaque;
-        if (projectionType != prepared.ProjectionType || current.Id != prepared.SecretId || current.CurrentVersion != expectedVersion || current.Name != prepared.Name ||
+        var kubernetesType = ((ProviderManagedSecret)current.Management).KubernetesType == KubernetesSecretType.BasicAuthentication
+            ? ManagedSecretKubernetesType.BasicAuthentication : ManagedSecretKubernetesType.Opaque;
+        if (kubernetesType != prepared.KubernetesType || current.Id != prepared.SecretId || current.CurrentVersion != expectedVersion || current.Name != prepared.Name ||
             current.Bindings.Any(x => x.KeyMappings.Keys.Except(prepared.Keys).Any()))
             return new Err<ManagedSecretError>(new ManagedSecretChanged());
         var now = clock.GetUtcNow().UtcDateTime;

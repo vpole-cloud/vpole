@@ -33,7 +33,7 @@ public sealed record SecretProjection(
     string DeploymentTargetId,
     string KubernetesNamespace,
     string KubernetesName,
-    [property: BsonRepresentation(BsonType.String)] SecretProjectionType ProjectionType,
+    [property: BsonRepresentation(BsonType.String)] KubernetesSecretType KubernetesType,
     long DesiredVersion,
     long DesiredRevision,
     long? AppliedVersion,
@@ -91,7 +91,7 @@ public static class SecretProjectionFactory
             kubernetesNamespace,
             $"pole-secret-{secret.Id}-{deploymentId}",
             secret.Management is ProviderManagedSecret owner && owner.BindingId == binding.Id
-                ? owner.ProjectionType : SecretProjectionType.Opaque,
+                ? owner.KubernetesType : KubernetesSecretType.Opaque,
             secret.CurrentVersion,
             secret.Revision,
             null,

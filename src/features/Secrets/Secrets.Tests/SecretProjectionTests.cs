@@ -61,7 +61,8 @@ public sealed class SecretProjectionTests
     public void Basic_authentication_type_is_reserved_for_owner_projection_not_remapped_shared_consumer()
     {
         var binding = Binding() with { KeyMappings = ImmutableDictionary<string, string>.Empty };
-        var secret = Secret() with { Management = new ProviderManagedSecret(binding.ConsumerType, binding.ConsumerId, binding.Id, SecretProjectionType.BasicAuthentication) };
+        var source = Secret();
+        var secret = SecretFactory.CreateManaged(source.Id, source.TenantId, source.ResourceGroupId, source.IsolationScopeId, source.Name, source.Purpose, source.KeyNames, binding, KubernetesSecretType.BasicAuthentication, source.CreatedAtUtc);
         var owner = SecretProjectionFactory.Create(secret, binding, "owner-deployment", "cell", "target", "namespace");
         var shared = SecretProjectionFactory.Create(secret, Binding() with { Id = "shared-binding" }, "shared-deployment", "cell", "target", "namespace");
         var values = new Dictionary<string, string> { ["username"] = "user", ["password"] = "password" };

@@ -43,12 +43,10 @@ internal sealed class MongoCreateBoundManagedSecret(
         var now = clock.GetUtcNow().UtcDateTime;
         var binding = SecretBinding.Create(ObjectId.GenerateNewId().ToString(), prepared.Owner.ResourceType,
             prepared.Owner.ResourceId, new AllSecretDeployments(), []);
-        var secret = SecretFactory.Create(prepared.SecretId, prepared.TenantId, resourceGroupId, isolationScopeId,
-            prepared.Name, "Provider-managed credentials", prepared.Keys, now).Bind(binding, now) with
-        {
-            Management = new ProviderManagedSecret(prepared.Owner.ResourceType, prepared.Owner.ResourceId, binding.Id,
-                prepared.ProjectionType == ManagedSecretProjectionType.BasicAuthentication ? SecretProjectionType.BasicAuthentication : SecretProjectionType.Opaque)
-        };
+        var secret = SecretFactory.CreateManaged(prepared.SecretId, prepared.TenantId, resourceGroupId, isolationScopeId,
+            prepared.Name, "Provider-managed credentials", prepared.Keys, binding,
+            prepared.KubernetesType == ManagedSecretKubernetesType.BasicAuthentication
+                ? KubernetesSecretType.BasicAuthentication : KubernetesSecretType.Opaque, now);
         if (await registrar.RegisterAsync(secret.TenantId, secret.ResourceGroupId,
                 new(SecretResource.Type, secret.Id, secret.Name), session, ct) is Err<ResourceRegistrationMutationError>)
             return new Err<ManagedSecretError>(new ManagedSecretReferenceRejected());

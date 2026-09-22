@@ -30,7 +30,7 @@ type PostgresCredentialCreator(prepareSecret : PrepareManagedSecret) =
                     PostgresManagedSecret.name clusterId,
                     1L,
                     values,
-                    ManagedSecretProjectionType.BasicAuthentication,
+                    ManagedSecretKubernetesType.BasicAuthentication,
                     cancellationToken)
             match TypedResultInterop.toResult prepared with
             | Ok value -> return PostgresSuccess value

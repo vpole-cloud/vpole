@@ -4,7 +4,7 @@ using Pole.ResultType;
 
 namespace Pole.Features.Secrets.Contracts;
 
-public enum ManagedSecretProjectionType
+public enum ManagedSecretKubernetesType
 {
     Opaque,
     BasicAuthentication
@@ -19,7 +19,7 @@ public sealed record PreparedManagedSecret(
     string TenantId,
     ManagedSecretOwner Owner,
     string Name,
-    ManagedSecretProjectionType ProjectionType,
+    ManagedSecretKubernetesType KubernetesType,
     long Version,
     ImmutableArray<string> Keys,
     ImmutableArray<byte> EncryptedValues)
@@ -30,7 +30,7 @@ public sealed record PreparedManagedSecret(
 public sealed record ManagedSecretValues(
     string SecretId,
     string Name,
-    ManagedSecretProjectionType ProjectionType,
+    ManagedSecretKubernetesType KubernetesType,
     long Version,
     ImmutableDictionary<string, string> Values)
 {
@@ -56,7 +56,7 @@ public delegate Task<Result<PreparedManagedSecret, ManagedSecretEncryptionUnavai
     string name,
     long version,
     IReadOnlyDictionary<string, string> values,
-    ManagedSecretProjectionType projectionType,
+    ManagedSecretKubernetesType kubernetesType,
     CancellationToken ct);
 
 /// <summary>Joins the caller transaction after its resource registration and deployment are staged.</summary>

@@ -17,13 +17,13 @@ internal sealed class EnvelopePrepareManagedSecret(IEnvelopeEncryptionService en
         string name,
         long version,
         IReadOnlyDictionary<string, string> values,
-        ManagedSecretProjectionType projectionType,
+        ManagedSecretKubernetesType kubernetesType,
         CancellationToken ct)
     {
         if (!Endpoints.SecretValuesValidation.Valid(values.ToDictionary()))
             throw new ArgumentException("Managed Secret values are invalid.", nameof(values));
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        if (!Enum.IsDefined(projectionType) || projectionType == ManagedSecretProjectionType.BasicAuthentication &&
+        if (!Enum.IsDefined(kubernetesType) || kubernetesType == ManagedSecretKubernetesType.BasicAuthentication &&
             (!values.ContainsKey("username") || !values.ContainsKey("password")))
             throw new ArgumentException("Basic authentication requires username and password keys.", nameof(values));
         tenantId = SecretIdentity.ObjectId(tenantId);
@@ -37,7 +37,7 @@ internal sealed class EnvelopePrepareManagedSecret(IEnvelopeEncryptionService en
             return protectedValues switch
             {
                 Ok<EncryptedValue> encrypted => new Ok<PreparedManagedSecret>(new(
-                    secretId, tenantId, owner, name, projectionType, version, values.Keys.Order().ToImmutableArray(), JsonSerializer.SerializeToUtf8Bytes(encrypted.Value).ToImmutableArray())),
+                    secretId, tenantId, owner, name, kubernetesType, version, values.Keys.Order().ToImmutableArray(), JsonSerializer.SerializeToUtf8Bytes(encrypted.Value).ToImmutableArray())),
                 Err<EnvelopeEncryptionFailed> => new Err<ManagedSecretEncryptionUnavailable>(new())
             };
         }

@@ -14,6 +14,6 @@ internal sealed class MongoLoadSecretProjections(IMongoCollection<SecretProjecti
         string tenantId,
         string secretId,
         CancellationToken ct) => await projections
-            .Find(x => x.TenantId == tenantId && x.SecretId == secretId)
+            .Find(SecretProjectionFilters.ForSecret(tenantId, secretId))
             .ToListAsync(ct);
 }

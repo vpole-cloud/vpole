@@ -11,3 +11,4 @@ POLE004 | Architecture | Error | Factory-owned domain entities do not expose mut
 POLE005 | Architecture | Error | Domain State, Status and Lifecycle properties use dedicated types.
 POLE006 | Architecture | Error | Each endpoint file contains only one mediator request-handler pair.
 POLE007 | Architecture | Error | Multi-parameter records, unions and delegates use one parameter per line.
+POLE008 | Architecture | Error | Declare Mongo filters in named helpers

@@ -15,7 +15,7 @@ internal sealed class MongoLoadSecretVersion(IMongoCollection<SecretVersion> ver
         string tenantId,
         string secretId,
         long version,
-        CancellationToken ct) => versions.Find(x => x.TenantId == tenantId && x.SecretId == secretId && x.Version == version)
+        CancellationToken ct) => versions.Find(SecretFilters.Version(tenantId, secretId, version))
             .FirstOrDefaultAsync(ct)!;
 
 }

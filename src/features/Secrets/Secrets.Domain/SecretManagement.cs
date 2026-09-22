@@ -8,7 +8,7 @@ public abstract record SecretManagement;
 
 public sealed record UnmanagedSecret : SecretManagement;
 
-public enum SecretProjectionType
+public enum KubernetesSecretType
 {
     Opaque,
     BasicAuthentication
@@ -18,4 +18,4 @@ public sealed record ProviderManagedSecret(
     string ResourceType,
     string ResourceId,
     string BindingId,
-    SecretProjectionType ProjectionType) : SecretManagement;
+    KubernetesSecretType KubernetesType) : SecretManagement;

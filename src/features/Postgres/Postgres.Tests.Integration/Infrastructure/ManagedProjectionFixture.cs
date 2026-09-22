@@ -1,3 +1,5 @@
+using Pole.ResultType;
+using k8s.Models;
 using k8s;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
@@ -29,11 +31,8 @@ internal sealed class ManagedProjectionFixture : IDisposable
     {
         _mode = cluster.Spec.DeploymentMode;
         _binding = SecretBinding.Create(Id(), "pole/postgresql", cluster.Id, new AllSecretDeployments(), []);
-        _authority = SecretFactory.Create(Id(), cluster.TenantId, cluster.GroupId, Id(), "managed-postgres", "credentials",
-            ["username", "password"], DateTime.UtcNow).Bind(_binding, DateTime.UtcNow) with
-        {
-            Management = new ProviderManagedSecret("pole/postgresql", cluster.Id, _binding.Id, SecretProjectionType.BasicAuthentication)
-        };
+        _authority = SecretFactory.CreateManaged(Id(), cluster.TenantId, cluster.GroupId, Id(), "managed-postgres", "credentials",
+            ["username", "password"], _binding, KubernetesSecretType.BasicAuthentication, DateTime.UtcNow);
         Projection = SecretProjectionFactory.Create(_authority, _binding, Id(), Id(), PostgresTestData.DefaultDeploymentTargetId, namespaceName);
         var services = new ServiceCollection();
         services.AddSecretsFeature();
@@ -66,15 +65,16 @@ internal sealed class ManagedProjectionFixture : IDisposable
             _authority = _authority!.Rotate(["username", "password"], DateTime.UtcNow);
         Projection = SecretProjectionFactory.Create(_authority!, _binding, Projection.DeploymentId, Projection.RuntimeCellId,
             Projection.DeploymentTargetId, Projection.KubernetesNamespace);
-        await Target.ApplyAsync(Projection, _ => Task.FromResult(SecretProjectionManifest.Create(Projection, _binding,
-            new Dictionary<string, string> { ["username"] = "postgres-user", ["password"] = password })), default);
+        var applied = await Target.ApplyAsync(Projection, _ => Task.FromResult<Result<V1Secret, SecretProjectionTargetError>>(new Ok<V1Secret>(SecretProjectionManifest.Create(Projection, _binding,
+            new Dictionary<string, string> { ["username"] = "postgres-user", ["password"] = password }))), default);
+        Xunit.Assert.IsType<Ok<Unit>>(applied.Value);
         _applied = true;
     }
 
-    public Task ReleaseAsync()
+    public async Task ReleaseAsync()
     {
         _authority = null;
-        return Target.DeleteAsync(Projection, default);
+        Xunit.Assert.IsType<Ok<Unit>>((await Target.DeleteAsync(Projection, default)).Value);
     }
 
     private ISecretProjectionTarget Target => _scope.ServiceProvider.GetRequiredService<ISecretProjectionTarget>();

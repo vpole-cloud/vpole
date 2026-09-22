@@ -131,8 +131,9 @@ Reference-only Secret events trigger reconciliation. A minute-based recovery job
 placements, retries failures and repairs deleted objects or ordinary data/annotation drift. Discovery
 uses bounded pages. Every projection has its own lease, storage revision, desired/applied version,
 last attempt and explicit state. A failed target retains its previous applied version and cannot roll
-back another target. Expected target availability and SDK failures become safe failure codes; database
-and unexpected programming failures propagate. SDK request/response exceptions are discarded without
+back another target. The target adapter returns `Result<Unit, SecretProjectionTargetError>` for expected availability,
+ownership, concurrency and SDK failures; reconciliation stores explicit safe failure codes. Database
+and unexpected programming failures, as well as caller cancellation, propagate. SDK request/response exceptions are discarded without
 retaining an inner exception because they may contain plaintext HTTP bodies.
 
 The writer resolves the target, reads current metadata and rechecks authoritative bindings/revision
@@ -162,6 +163,12 @@ session. Admission reads and fences the staged records, avoiding a placement-ver
 cycle. Secrets is the authoritative encrypted store; workloads consume generated projection references.
 The internal read operation selects a credential through its tenant-scoped managed owner, not an
 arbitrary Secret ID. PostgreSQL retains the existing role controls on its connection-string operation.
+
+`Secret.Management` is required aggregate state. `SecretFactory.Create` constructs an unmanaged Secret;
+`CreateManaged` constructs provider ownership together with its binding. `KubernetesSecretType` describes
+the native Secret format: the PostgreSQL owner projection uses `kubernetes.io/basic-auth`, while ordinary
+and remapped shared projections use `Opaque`. The provider contract represents this as
+`ManagedSecretKubernetesType`.
 
 Metadata exposes `managedBy` with owner type, resource ID and protected binding ID. Generic rotation and
 detaching that binding return `secrets.managed-by-provider`; use the owner operation. Same-scope sharing

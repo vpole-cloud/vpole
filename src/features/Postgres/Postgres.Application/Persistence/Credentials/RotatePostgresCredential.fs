@@ -29,7 +29,7 @@ type PostgresCredentialRotator(prepareSecret : PrepareManagedSecret) =
                         credential.Name,
                         Checked.(+) credential.Version 1L,
                         values,
-                        credential.ProjectionType,
+                        credential.KubernetesType,
                         cancellationToken)
                 match TypedResultInterop.toResult result with
                 | Ok prepared -> return PostgresSuccess prepared

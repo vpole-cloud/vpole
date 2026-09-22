@@ -9,6 +9,12 @@ internal static class SecretProjectionFilters
         Builders<SecretProjection>.Filter.Eq(x => x.TenantId, tenantId) &
         Builders<SecretProjection>.Filter.Eq(x => x.Id, id);
 
+    public static FilterDefinition<SecretProjection> ForSecret(
+        string tenantId,
+        string secretId) =>
+        Builders<SecretProjection>.Filter.Eq(x => x.TenantId, SecretIdentity.ObjectId(tenantId)) &
+        Builders<SecretProjection>.Filter.Eq(x => x.SecretId, SecretIdentity.ObjectId(secretId));
+
     public static FilterDefinition<SecretProjection> Revision(long revision) =>
         Builders<SecretProjection>.Filter.Eq(x => x.StorageRevision, revision);
 

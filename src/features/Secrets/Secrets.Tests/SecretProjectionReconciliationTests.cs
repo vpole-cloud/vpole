@@ -63,6 +63,36 @@ public sealed class SecretProjectionReconciliationTests
         Assert.All(fixture.Rows.Values, row => Assert.IsType<DeletedSecretProjection>(row.State));
     }
 
+    [Fact]
+    public async Task Failed_cleanup_remains_retryable_until_target_recovers()
+    {
+        var fixture = new Fixture();
+        await fixture.Run();
+        fixture.Secret = fixture.Secret.Detach("binding-a", DateTime.UtcNow);
+        fixture.Target.Unavailable.Add("target-a");
+        await fixture.Run();
+        Assert.IsType<FailedSecretProjection>(fixture.Rows["deployment-a"].State);
+        Assert.True(fixture.Target.Manifests.ContainsKey("deployment-a"));
+        fixture.Target.Unavailable.Clear();
+        await fixture.Run();
+        Assert.IsType<DeletedSecretProjection>(fixture.Rows["deployment-a"].State);
+        Assert.False(fixture.Target.Manifests.ContainsKey("deployment-a"));
+    }
+
+    [Fact]
+    public async Task Decryption_failure_is_safe_status_and_retry_recovers()
+    {
+        var fixture = new Fixture();
+        fixture.Encryption.Fail = true;
+        await fixture.Run();
+        Assert.Empty(fixture.Target.Manifests);
+        Assert.All(fixture.Rows.Values, row =>
+            Assert.Equal("DecryptionUnavailable", Assert.IsType<FailedSecretProjection>(row.State).FailureCode));
+        fixture.Encryption.Fail = false;
+        await fixture.Run();
+        Assert.All(fixture.Rows.Values, row => Assert.IsType<ReadySecretProjection>(row.State));
+    }
+
     private sealed class Fixture
     {
         public Secret Secret = SecretFactory.Create("secret", "tenant", "group", "scope", "credentials", "tests", ["password"], DateTime.UtcNow)
@@ -72,6 +102,7 @@ public sealed class SecretProjectionReconciliationTests
         public readonly HashSet<string> Removed = [];
         public readonly HashSet<string> ForeignScope = [];
         public readonly Target Target = new();
+        public readonly Encryption Encryption = new();
 
         public Task Run() => new SecretProjectionReconciler(
             (_, _, _) => Task.FromResult<Secret?>(Secret),
@@ -83,7 +114,7 @@ public sealed class SecretProjectionReconciliationTests
                 new(deployment, resource, "cell", "target-" + resource[^1], "namespace-" + resource[^1], 1, null!, "Pending", "Apply", ForeignScope.Contains(deployment) ? "foreign" : "scope")),
             (desired, claim, now, _) => Task.FromResult<SecretProjection?>(desired.Claim(claim, now)),
             (row, _) => { Rows[row.DeploymentId] = row; return Task.CompletedTask; },
-            new Encryption(), Target, TimeProvider.System).ReconcileAsync("tenant", "secret", default);
+            Encryption, Target, TimeProvider.System).ReconcileAsync("tenant", "secret", default);
     }
 
     private sealed class Target : ISecretProjectionTarget
@@ -92,29 +123,41 @@ public sealed class SecretProjectionReconciliationTests
         public readonly Dictionary<string, V1Secret> Manifests = [];
         public Action<SecretProjection>? AfterApply;
 
-        public async Task ApplyAsync(SecretProjection projection, Func<CancellationToken, Task<V1Secret>> createManifest, CancellationToken ct)
+        public async Task<Result<Unit, SecretProjectionTargetError>> ApplyAsync(
+        SecretProjection projection,
+        Func<CancellationToken, Task<Result<V1Secret, SecretProjectionTargetError>>> createManifest,
+        CancellationToken ct)
         {
             if (Unavailable.Contains(projection.DeploymentTargetId))
-                throw new SecretProjectionTargetUnavailableException();
-            var manifest = await createManifest(ct);
+                return new Err<SecretProjectionTargetError>(new SecretProjectionTargetUnavailable());
+            var prepared = await createManifest(ct);
+            if (prepared is Err<SecretProjectionTargetError> error)
+                return error;
+            var manifest = ((Ok<V1Secret>)prepared.Value).Value;
             Manifests[projection.DeploymentId] = manifest;
             AfterApply?.Invoke(projection);
             foreach (var bytes in manifest.Data.Values)
                 System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes);
+            return new Ok<Unit>(Unit.Value);
         }
 
-        public Task DeleteAsync(SecretProjection projection, CancellationToken ct)
+        public Task<Result<Unit, SecretProjectionTargetError>> DeleteAsync(SecretProjection projection, CancellationToken ct)
         {
+            if (Unavailable.Contains(projection.DeploymentTargetId))
+                return Task.FromResult<Result<Unit, SecretProjectionTargetError>>(new Err<SecretProjectionTargetError>(new SecretProjectionTargetUnavailable()));
             Manifests.Remove(projection.DeploymentId);
-            return Task.CompletedTask;
+            return Task.FromResult<Result<Unit, SecretProjectionTargetError>>(new Ok<Unit>(Unit.Value));
         }
     }
 
     private sealed class Encryption : IEnvelopeEncryptionService
     {
+        public bool Fail;
         public EnvelopeEncryptionKeyReference ActiveKey => throw new NotSupportedException();
         public ValueTask<Result<byte[], EnvelopeDecryptionFailed>> DecryptAsync(EncryptedValue value, EnvelopeEncryptionContext context, CancellationToken ct = default) =>
-            ValueTask.FromResult<Result<byte[], EnvelopeDecryptionFailed>>(new Ok<byte[]>(JsonSerializer.SerializeToUtf8Bytes(new { password = "private-value" })));
+            ValueTask.FromResult<Result<byte[], EnvelopeDecryptionFailed>>(Fail
+                ? new Err<EnvelopeDecryptionFailed>(new("sensitive internal detail"))
+                : new Ok<byte[]>(JsonSerializer.SerializeToUtf8Bytes(new { password = "private-value" })));
         public ValueTask<Result<EncryptedValue, EnvelopeEncryptionFailed>> EncryptAsync(ReadOnlyMemory<byte> value, EnvelopeEncryptionContext context, CancellationToken ct = default) => throw new NotSupportedException();
         public ValueTask<Result<EncryptedValue, EnvelopeEncryptionFailed>> EncryptStringAsync(string value, EnvelopeEncryptionContext context, CancellationToken ct = default) => throw new NotSupportedException();
         public ValueTask<Result<string, EnvelopeDecryptionFailed>> DecryptStringAsync(EncryptedValue value, EnvelopeEncryptionContext context, CancellationToken ct = default) => throw new NotSupportedException();

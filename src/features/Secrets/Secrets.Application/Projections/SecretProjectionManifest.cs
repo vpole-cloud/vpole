@@ -18,7 +18,7 @@ public static class SecretProjectionManifest
         {
             ApiVersion = "v1",
             Kind = "Secret",
-            Type = projection.ProjectionType == SecretProjectionType.BasicAuthentication ? "kubernetes.io/basic-auth" : "Opaque",
+            Type = projection.KubernetesType == KubernetesSecretType.BasicAuthentication ? "kubernetes.io/basic-auth" : "Opaque",
             Metadata = new V1ObjectMeta
             {
                 Name = projection.KubernetesName,

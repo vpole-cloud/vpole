@@ -15,7 +15,7 @@ internal static class TenantUpdates
     public static UpdateDefinition<Tenant> RemoveMember(string memberId) =>
         Builders<Tenant>.Update.PullFilter(
             tenant => tenant.Members,
-            member => member.Id == memberId);
+            TenantFilters.MemberById(memberId));
 
     public static UpdateDefinition<Tenant> CreateIfMissing(Tenant tenant) =>
         Builders<Tenant>.Update

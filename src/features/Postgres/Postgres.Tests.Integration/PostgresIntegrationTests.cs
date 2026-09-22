@@ -78,7 +78,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(1, credential.CurrentVersion);
         var version = await Versions.Find(item => item.SecretId == credential.Id).SingleAsync();
         Assert.NotEmpty(version.Value.Ciphertext);
-        Assert.Equal(SecretProjectionType.BasicAuthentication, Assert.IsType<ProviderManagedSecret>(credential.Management).ProjectionType);
+        Assert.Equal(KubernetesSecretType.BasicAuthentication, Assert.IsType<ProviderManagedSecret>(credential.Management).KubernetesType);
         Assert.Equal(savedCluster.Id, Assert.Single(credential.Bindings).ConsumerId);
         Assert.Equal(0, await DbContext.Database.GetCollection<BsonDocument>("PostgresCredentials").CountDocumentsAsync(new BsonDocument()));
 

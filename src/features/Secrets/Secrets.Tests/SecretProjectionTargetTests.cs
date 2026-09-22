@@ -11,6 +11,7 @@ using Pole.Features.Secrets.Application.Persistence;
 using Pole.Features.Secrets.Application.Projections;
 using Pole.Features.Secrets.Domain;
 using Xunit;
+using Pole.ResultType;
 
 namespace Pole.Features.Secrets.Tests;
 
@@ -21,18 +22,18 @@ public sealed class SecretProjectionTargetTests
     {
         using var fixture = new Fixture();
         var old = fixture.Projection;
-        await fixture.Target.ApplyAsync(old, fixture.Manifest("old"), default);
+        Assert.IsType<Ok<Unit>>((await fixture.Target.ApplyAsync(old, fixture.Manifest("old"), default)).Value);
         fixture.Api.DelayNextPut = true;
         var delayed = fixture.Target.ApplyAsync(old, fixture.Manifest("old-delayed"), default);
         await fixture.Api.PutDelayed.Task.WaitAsync(TimeSpan.FromSeconds(10));
         fixture.Secret = fixture.Secret.Rotate(["password"], DateTime.UtcNow);
-        await fixture.Target.ApplyAsync(fixture.Projection, fixture.Manifest("new"), default);
+        Assert.IsType<Ok<Unit>>((await fixture.Target.ApplyAsync(fixture.Projection, fixture.Manifest("new"), default)).Value);
         fixture.Api.ReleasePut.SetResult();
-        await Assert.ThrowsAsync<SecretProjectionTargetUnavailableException>(() => delayed);
+        Assert.IsType<SecretProjectionConcurrentWrite>(Assert.IsType<Err<SecretProjectionTargetError>>((await delayed).Value).Value.Value);
         Assert.Equal("new", Encoding.UTF8.GetString(fixture.Api.Current!.Data["password"]));
-        await Assert.ThrowsAsync<SecretProjectionTargetUnavailableException>(() => fixture.Target.ApplyAsync(old, _ => Task.FromResult(SecretProjectionManifest.Create(old, fixture.Binding, new Dictionary<string, string> { ["password"] = "stale" })), default));
+        Assert.IsType<SecretProjectionDesiredStateChanged>(Assert.IsType<Err<SecretProjectionTargetError>>((await fixture.Target.ApplyAsync(old, fixture.Manifest("stale"), default)).Value).Value.Value);
         fixture.Api.Current.Metadata.Annotations["pole.io/secret-revision"] = "999999999";
-        await fixture.Target.ApplyAsync(fixture.Projection, fixture.Manifest("repaired"), default);
+        Assert.IsType<Ok<Unit>>((await fixture.Target.ApplyAsync(fixture.Projection, fixture.Manifest("repaired"), default)).Value);
         Assert.Equal(fixture.Secret.Revision.ToString(), fixture.Api.Current.Metadata.Annotations["pole.io/secret-revision"]);
     }
 
@@ -41,11 +42,11 @@ public sealed class SecretProjectionTargetTests
     {
         using var fixture = new Fixture();
         var old = fixture.Projection;
-        await fixture.Target.ApplyAsync(old, fixture.Manifest("value"), default);
-        await fixture.Target.DeleteAsync(old, default);
+        Assert.IsType<Ok<Unit>>((await fixture.Target.ApplyAsync(old, fixture.Manifest("value"), default)).Value);
+        Assert.IsType<Ok<Unit>>((await fixture.Target.DeleteAsync(old, default)).Value);
         Assert.Null(fixture.Api.DeleteOptions);
         fixture.Secret = fixture.Secret.Detach(fixture.Binding.Id, DateTime.UtcNow);
-        await fixture.Target.DeleteAsync(old, default);
+        Assert.IsType<Ok<Unit>>((await fixture.Target.DeleteAsync(old, default)).Value);
         Assert.Equal("owned-uid", fixture.Api.DeleteOptions!.Preconditions.Uid);
         Assert.Equal("1", fixture.Api.DeleteOptions.Preconditions.ResourceVersion);
         Assert.Null(fixture.Api.Current);
@@ -56,21 +57,81 @@ public sealed class SecretProjectionTargetTests
     {
         using var fixture = new Fixture();
         fixture.Api.FailWrites = true;
-        var error = await Assert.ThrowsAsync<SecretProjectionTargetUnavailableException>(() => fixture.Target.ApplyAsync(fixture.Projection, fixture.Manifest("private-password"), default));
-        Assert.Equal(SecretProjectionTargetFailure.RequestRejected, error.Reason);
-        Assert.Null(error.InnerException);
+        var error = Assert.IsType<Err<SecretProjectionTargetError>>((await fixture.Target.ApplyAsync(fixture.Projection, fixture.Manifest("private-password"), default)).Value);
+        Assert.IsType<SecretProjectionRequestRejected>(error.Value.Value);
         Assert.DoesNotContain("private-password", error.ToString());
         fixture.Provider.Failure = new DeploymentTargetUnavailableException("target", DeploymentTargetUnavailableReason.Disabled);
-        await Assert.ThrowsAsync<SecretProjectionTargetUnavailableException>(() => fixture.Target.ApplyAsync(fixture.Projection, fixture.Manifest("value"), default));
+        Assert.IsType<SecretProjectionTargetDisabled>(Assert.IsType<Err<SecretProjectionTargetError>>((await fixture.Target.ApplyAsync(fixture.Projection, fixture.Manifest("value"), default)).Value).Value.Value);
         fixture.Provider.Failure = new InvalidOperationException("provider-bug");
         var bug = await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Target.ApplyAsync(fixture.Projection, fixture.Manifest("value"), default));
         Assert.Equal("provider-bug", bug.Message);
+    }
+
+    [Fact]
+    public async Task Foreign_ownership_and_failed_decryption_never_write_values()
+    {
+        using var fixture = new Fixture();
+        var initial = await fixture.Target.ApplyAsync(fixture.Projection, fixture.Manifest("initial"), default);
+        Assert.IsType<Ok<Unit>>(initial.Value);
+        fixture.Api.Current!.Metadata.Labels["pole.io/tenant-id"] = "other-tenant";
+        var prepared = false;
+        Task<Result<V1Secret, SecretProjectionTargetError>> Decrypt(CancellationToken ct)
+        {
+            prepared = true;
+            return Task.FromResult<Result<V1Secret, SecretProjectionTargetError>>(
+                new Err<SecretProjectionTargetError>(new SecretProjectionDecryptionUnavailable()));
+        }
+        var rejected = await fixture.Target.ApplyAsync(fixture.Projection, Decrypt, default);
+        Assert.IsType<SecretProjectionOwnershipConflict>(Assert.IsType<Err<SecretProjectionTargetError>>(rejected.Value).Value.Value);
+        Assert.False(prepared);
+        fixture.Api.Current.Metadata.Labels["pole.io/tenant-id"] = fixture.Secret.TenantId;
+        var failed = await fixture.Target.ApplyAsync(fixture.Projection, Decrypt, default);
+        Assert.IsType<SecretProjectionDecryptionUnavailable>(Assert.IsType<Err<SecretProjectionTargetError>>(failed.Value).Value.Value);
+        Assert.True(prepared);
+        Assert.Equal("1", fixture.Api.Current.Metadata.ResourceVersion);
+        Assert.Equal("initial", Encoding.UTF8.GetString(fixture.Api.Current.Data["password"]));
+    }
+
+    [Fact]
+    public async Task Cleanup_preserves_a_new_binding_for_the_same_consumer()
+    {
+        using var fixture = new Fixture();
+        var old = fixture.Projection;
+        Assert.IsType<Ok<Unit>>((await fixture.Target.ApplyAsync(old, fixture.Manifest("value"), default)).Value);
+        fixture.Secret = fixture.Secret.Detach(fixture.Binding.Id, DateTime.UtcNow)
+            .Bind(fixture.Binding with { Id = "new-binding" }, DateTime.UtcNow);
+        Assert.IsType<Ok<Unit>>((await fixture.Target.DeleteAsync(old, default)).Value);
+        Assert.Null(fixture.Api.DeleteOptions);
+        Assert.NotNull(fixture.Api.Current);
+    }
+
+    [Fact]
+    public async Task Caller_cancellation_propagates()
+    {
+        using var fixture = new Fixture();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        fixture.Provider.Failure = new OperationCanceledException(cancellation.Token);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            fixture.Target.ApplyAsync(fixture.Projection, fixture.Manifest("unused"), cancellation.Token));
+    }
+
+    [Fact]
+    public async Task Storage_timeout_propagates_instead_of_becoming_target_failure()
+    {
+        using var fixture = new Fixture();
+        fixture.StorageFailure = new TimeoutException("storage unavailable");
+        var failure = await Assert.ThrowsAsync<TimeoutException>(() =>
+            fixture.Target.ApplyAsync(fixture.Projection, fixture.Manifest("unused"), default));
+        Assert.Same(fixture.StorageFailure, failure);
+        Assert.Null(fixture.Api.Current);
     }
 
     private sealed class Fixture : IDisposable
     {
         public readonly SecretBinding Binding = SecretBinding.Create("binding", "pole/postgresql", "resource", new AllSecretDeployments(), []);
         public Secret Secret;
+        public Exception? StorageFailure;
         public readonly SecretApi Api = new();
         public readonly ClientProvider Provider;
         private readonly ServiceProvider services;
@@ -83,13 +144,14 @@ public sealed class SecretProjectionTargetTests
             Provider = new ClientProvider(new Kubernetes(new KubernetesClientConfiguration { Host = "http://kubernetes.test" }, Api));
             var collection = new ServiceCollection().AddSecretsFeature();
             collection.AddSingleton<IKubernetesClientProvider>(Provider);
-            collection.AddSingleton<LoadSecretById>((_, _, _) => Task.FromResult<Secret?>(Secret));
+            collection.AddSingleton<LoadSecretById>((_, _, _) => StorageFailure is null
+                ? Task.FromResult<Secret?>(Secret) : Task.FromException<Secret?>(StorageFailure));
             collection.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>((_, _, _, _, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
                 new("deployment", "resource", "cell", "target", "namespace", 1, null!, "Pending", "Apply", "scope")));
             services = collection.BuildServiceProvider();
         }
 
-        public Func<CancellationToken, Task<V1Secret>> Manifest(string password) => _ => Task.FromResult(SecretProjectionManifest.Create(Projection, Binding, new Dictionary<string, string> { ["password"] = password }));
+        public Func<CancellationToken, Task<Result<V1Secret, SecretProjectionTargetError>>> Manifest(string password) => _ => Task.FromResult<Result<V1Secret, SecretProjectionTargetError>>(new Ok<V1Secret>(SecretProjectionManifest.Create(Projection, Binding, new Dictionary<string, string> { ["password"] = password })));
         public void Dispose() { services.Dispose(); Provider.Client.Dispose(); }
     }
 

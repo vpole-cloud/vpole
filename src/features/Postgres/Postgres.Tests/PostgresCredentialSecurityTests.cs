@@ -23,7 +23,7 @@ public sealed class PostgresCredentialSecurityTests
             Assert.Equal(new ManagedSecretOwner("pole/postgresql", ClusterId), owner);
             Assert.Equal($"postgres-{ClusterId}-credentials", name);
             Assert.Equal(1, version);
-            Assert.Equal(ManagedSecretProjectionType.BasicAuthentication, type);
+            Assert.Equal(ManagedSecretKubernetesType.BasicAuthentication, type);
             Assert.Equal("database-user", values["username"]);
             Assert.Equal("private-password", values["password"]);
             return Task.FromResult<Result<PreparedManagedSecret, ManagedSecretEncryptionUnavailable>>(
@@ -45,7 +45,7 @@ public sealed class PostgresCredentialSecurityTests
             Assert.Equal(current.SecretId, id);
             Assert.Equal(current.Name, name);
             Assert.Equal(current.Version + 1, version);
-            Assert.Equal(current.ProjectionType, type);
+            Assert.Equal(current.KubernetesType, type);
             Assert.Equal(new ManagedSecretOwner("pole/postgresql", ClusterId), owner);
             Assert.Equal(current.Values["username"], values["username"]);
             Assert.Equal("rotated-password", values["password"]);
@@ -127,7 +127,7 @@ public sealed class PostgresCredentialSecurityTests
     }
 
     private static ManagedSecretValues Values() =>
-        new("secret-id", "managed-name", ManagedSecretProjectionType.BasicAuthentication, 4,
+        new("secret-id", "managed-name", ManagedSecretKubernetesType.BasicAuthentication, 4,
             ImmutableDictionary<string, string>.Empty.Add("username", "database-user").Add("password", "private-password"));
 
     private static PreparedManagedSecret Prepared(
@@ -136,7 +136,7 @@ public sealed class PostgresCredentialSecurityTests
         ManagedSecretOwner owner,
         string name,
         long version,
-        ManagedSecretProjectionType type) =>
+        ManagedSecretKubernetesType type) =>
         new(id, tenant, owner, name, type, version, ["username", "password"],
             []);
 
