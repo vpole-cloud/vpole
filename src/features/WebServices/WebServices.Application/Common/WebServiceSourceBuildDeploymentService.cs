@@ -42,12 +42,15 @@ public sealed class WebServiceSourceBuildDeploymentService(
                 new SourceBuildWebServiceDeleting(request.WebServiceId));
         }
 
-        var deployments = await loadResourceDeploymentSet(
+        var deploymentInventory = await loadResourceDeploymentSet(
             webService.TenantId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
             cancellationToken);
-        if (deployments.Count == 0)
+        var deployments = deploymentInventory
+            .Where(WebServiceDeploymentWorkflow.IsDesiredPlacement)
+            .ToArray();
+        if (deployments.Length == 0)
         {
             return new Err<SourceBuildWebServiceDeploymentError>(
                 new SourceBuildWebServiceHasNoActiveDeployments(request.WebServiceId));

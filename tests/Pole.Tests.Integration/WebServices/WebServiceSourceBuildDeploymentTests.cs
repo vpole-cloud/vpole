@@ -134,6 +134,30 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             .AnyAsync());
     }
 
+    [Fact]
+    public async Task SourceBuildDeployment_DoesNotReapplyRemovedTarget()
+    {
+        var webService = TestData.SeedWebService(ObjectId.GenerateNewId().ToString());
+        await Fixture.Database.WebServices().InsertOneAsync(webService);
+        var desired = CreatePlacement("507f1f77bcf86cd799439051", "507f1f77bcf86cd799439061");
+        var removed = CreatePlacement("507f1f77bcf86cd799439052", "507f1f77bcf86cd799439062") with
+        {
+            DesiredOperation = "Delete",
+            Status = "Pending"
+        };
+        var writer = new SuccessfulSetMutationWriter([desired]);
+        var service = CreateService([desired, removed], writer.RequestSetApplyAsync);
+
+        var result = (await service.DeployAsync(CreateRequest(webService.Id))).AssertSuccess();
+
+        Assert.Equal(desired.DeploymentId,
+            Assert.Single(writer.LastCommand!.Deployments).ResourceDeploymentId);
+        var release = await Fixture.Database.WebServiceReleases()
+            .Find(item => item.Id == result.ReleaseId).SingleAsync();
+        Assert.Equal(desired.DeploymentId,
+            Assert.Single(release.Deployments).ResourceDeploymentId);
+    }
+
     private WebServiceSourceBuildDeploymentService CreateService(
         IReadOnlyList<PlacementSummaryDto> deployments,
         RequestResourceDeploymentSetApply requestSetApply) =>

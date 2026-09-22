@@ -92,12 +92,15 @@ public sealed class UpdateWebServiceHandler(
             return Error(new WebServiceLifecycleMutationStateError(
                 new WebServiceUpdateUnavailable(webService.Id)));
 
-        var deployments = await loadResourceDeploymentSet(
+        var deploymentInventory = await loadResourceDeploymentSet(
             webService.TenantId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
             cancellationToken);
-        if (deployments.Count == 0)
+        var deployments = deploymentInventory
+            .Where(WebServiceDeploymentWorkflow.IsDesiredPlacement)
+            .ToArray();
+        if (deployments.Length == 0)
             return Error(new WebServiceLifecycleMutationStateError(
                 new WebServiceHasNoActiveDeployments(webService.Id)));
 
@@ -162,7 +165,9 @@ public sealed class UpdateWebServiceHandler(
                         return transaction.Abort(
                             Error(new UpdateWebServiceError(revisionError)));
                     }
-                    updatedDeployments = revisionDeployments;
+                    updatedDeployments = revisionDeployments
+                        .Where(WebServiceDeploymentWorkflow.IsDesiredPlacement)
+                        .ToArray();
                 }
 
                 var persisted = await persistUpdatedWebService(

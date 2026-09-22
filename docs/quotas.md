@@ -22,6 +22,31 @@ For example, `RedisQuotaProfile` combines the resolved per-instance CPU/memory r
 
 Quota types and profiles are discovered from an explicit list of feature assemblies passed to `AddQuotaFramework`. Discovery is intentionally bounded. `QuotaCatalog` fails fast for duplicate quota keys, duplicate profiles, unregistered profile keys, and values returned under undeclared keys.
 
+## Placement-aware accounting
+
+Policy and usage are keyed by tenant, not by namespace, RuntimeCell or ResourceGroup.
+A resource key identifies the logical resource. Its resource-count quota is charged once.
+For placement-backed resources, CPU, memory and workload instances sum the desired
+ResourceDeployments. Each placement
+uses its persisted ComputeProfile requests multiplied by its fixed replicas, or the shared
+maximum replica count when WebService autoscaling is enabled. Changing a ComputeProfile does
+not change existing usage until a resource explicitly adopts a new resolved snapshot.
+
+Adding a target reserves only its incremental impact. Updating a target compares the old and
+new aggregate vectors; a shared scaling change compares all desired target contributions.
+Removing a target releases that target's contribution in the same transaction that requests
+its deletion. Its retained `Delete`-desired or `Deleted` deployment record is no longer charged,
+even if Kubernetes cleanup has not completed. Pending and failed Apply-desired placements
+remain charged: desired Pole state, rather than live readiness or observed usage, is authoritative.
+Deleting the logical resource subsequently releases only its remaining desired placements and
+its one resource count. Repeated deletion must not release capacity owned by another resource.
+
+Logical-resource and physical-deployment revision fences validate the snapshots used to calculate
+a delta inside the mutation transaction. If a concurrent add, remove or update invalidates those
+snapshots, the transaction aborts its usage changes and the executor cancels any reservation.
+Retries must reload state before calculating a new delta. Kubernetes ResourceQuota and LimitRange
+are optional secondary safeguards outside this accounting path.
+
 ## Admission lifecycle
 
 Handlers call `IQuotaAdmissionExecutor` with:
