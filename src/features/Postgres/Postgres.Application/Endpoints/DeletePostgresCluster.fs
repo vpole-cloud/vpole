@@ -254,6 +254,9 @@ type FinalizePostgresClusterDeletionConsumer(
                     | PostgresError(PostgresClusterDeletionDeploymentPurgeConflict conflict) ->
                         raise (InvalidOperationException(
                             $"PostgreSQL deployment purge conflicted while finalizing '{conflict.ResourceId}'."))
+                    | PostgresError(PostgresClusterDeletionSecretConflict _) ->
+                        raise (InvalidOperationException(
+                            $"PostgreSQL managed Secret release conflicted while finalizing '{message.ResourceId}'."))
                     | PostgresError(PostgresClusterDeletionRegistrationConflict _) ->
                         raise (InvalidOperationException(
                             $"PostgreSQL resource registration conflicted while finalizing '{message.ResourceId}'."))

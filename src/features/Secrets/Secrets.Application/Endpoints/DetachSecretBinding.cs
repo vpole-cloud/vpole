@@ -14,7 +14,8 @@ namespace Pole.Features.Secrets.Application.Endpoints;
 
 public union DetachSecretBindingOutcome(
     SecretMetadata,
-    SecretMissing);
+    SecretMissing,
+    SecretManagedByProvider);
 
 public sealed record DetachSecretBindingRequest(
     [FromRoute] string Id,
@@ -41,6 +42,7 @@ public sealed class DetachSecretBindingHandler(RemoveSecretBinding persist)
         {
             Secret secret => SecretMetadata.From(secret),
             SecretMissing error => error,
+            SecretManagedByProvider error => error,
         };
 }
 
@@ -57,7 +59,8 @@ public static class DetachSecretBindingEndpoint
                 .ToHttpResult(outcome => outcome switch
                 {
                     SecretMetadata metadata => Results.Ok(metadata),
-                    SecretMissing error => problems.Map(error).ToHttpResult()
+                    SecretMissing error => problems.Map(error).ToHttpResult(),
+                    SecretManagedByProvider error => problems.Map(error).ToHttpResult()
                 }))
             .WithName("DetachSecretBinding");
 

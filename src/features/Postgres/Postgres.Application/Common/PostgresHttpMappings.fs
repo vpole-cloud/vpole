@@ -52,8 +52,6 @@ module PostgresHttpMappings =
             problem HttpStatusCode.Conflict "postgres.password.rotation-unavailable" "Credentials cannot be rotated while the PostgreSQL cluster is being deleted" clusterId
         | PostgresClusterPasswordRotationUnsupported clusterId ->
             problem HttpStatusCode.Conflict "postgres.password.rotation-unsupported" "Password rotation is not supported for StatefulSet PostgreSQL deployments" clusterId
-        | PostgresClusterCredentialNotFound clusterId ->
-            problem HttpStatusCode.NotFound "postgres.credentials.not-found" "PostgreSQL credentials were not found" clusterId
 
     let private mapDeleteState (error : DeletePostgresClusterStateError) =
         match error with
@@ -88,6 +86,10 @@ module PostgresHttpMappings =
             problem HttpStatusCode.ServiceUnavailable "postgres.credentials.protection-unavailable" "PostgreSQL credential protection is unavailable" clusterId
         | PostgresCredentialRotationConflict clusterId ->
             problem HttpStatusCode.Conflict "postgres.credentials.concurrent-change" "PostgreSQL credentials changed concurrently" clusterId
+        | PostgresCredentialReferenceRejected clusterId ->
+            problem HttpStatusCode.Conflict "postgres.credentials.reference-rejected" "PostgreSQL managed credential ownership or placement changed" clusterId
+        | PostgresCredentialValuesTooLarge clusterId ->
+            problem HttpStatusCode.BadRequest "postgres.credentials.values-too-large" "The combined UTF-8 credential values must not exceed 64 KiB" clusterId
 
     let private mapUpdateConflict (error : PostgresClusterUpdateConflict) =
         problem HttpStatusCode.Conflict "postgres.update.concurrent-change" "PostgreSQL cluster changed concurrently" error.ClusterId

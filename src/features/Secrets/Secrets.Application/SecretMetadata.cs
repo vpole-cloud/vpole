@@ -16,6 +16,8 @@ public sealed record SecretMetadata(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc)
 {
+    public SecretManagedOwnerMetadata? ManagedBy { get; init; }
+
     public static SecretMetadata From(Secret secret) => new(
         secret.Id,
         secret.TenantId,
@@ -28,5 +30,15 @@ public sealed record SecretMetadata(
         secret.Revision,
         secret.Lifecycle.ToString(),
         secret.CreatedAtUtc,
-        secret.UpdatedAtUtc);
+        secret.UpdatedAtUtc)
+    {
+        ManagedBy = secret.Management is ProviderManagedSecret owner
+            ? new(owner.ResourceType, owner.ResourceId, owner.BindingId)
+            : null
+    };
 }
+
+public sealed record SecretManagedOwnerMetadata(
+    string ResourceType,
+    string ResourceId,
+    string BindingId);

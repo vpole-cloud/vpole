@@ -1,3 +1,4 @@
+using Pole.Features.Secrets.Application;
 using System.Reflection;
 using Pole.ASP.Helpers;
 using Pole.Database;
@@ -61,7 +62,7 @@ Assembly[] serviceEventAssemblies = [
     typeof(Pole.Features.RedisServices.Events.RedisServiceCreatedEvent).Assembly,
     typeof(Pole.Features.Postgres.Events.PostgresClusterCreatedEvent).Assembly
 ];
-Assembly[] assemblies = [..PolePlatform.ApplicationAssemblies, ..serviceAssemblies];
+Assembly[] assemblies = [.. PolePlatform.ApplicationAssemblies, .. serviceAssemblies];
 
 builder.AddServiceDefaults();
 builder.AddMongoDBClient("pole-database");
@@ -79,8 +80,6 @@ builder.Services.AddPolePlatform(configuration, serviceAssemblies, serviceEventA
     .AddOpenApi();
 builder.Services.AddSingleton<IMigration>(new FeatureScopedMigration(
     "pole.redis", new RedisSchemaValidationMigration()));
-builder.Services.AddSingleton<IMigration>(new FeatureScopedMigration(
-    "pole.postgres", new PostgresCredentialMigration()));
 builder.Services.AddCors(options =>
 {
     var frontendOrigin = configuration["Cors:FrontendOrigin"] ?? "http://localhost:5173";
@@ -125,6 +124,7 @@ app.Services
     .ScheduleSourceBuildRecurringJobs()
     .ScheduleResourceGroupRecurringJobs()
     .ScheduleResourceDeploymentRecurringJobs()
+    .ScheduleSecretProjectionRecurringJobs()
     .ScheduleContainerRegistryRecurringJobs();
 
 app.MapGitHubCallbackEndpoints();

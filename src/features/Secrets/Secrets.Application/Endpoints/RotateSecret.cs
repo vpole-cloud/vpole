@@ -17,7 +17,8 @@ public union RotateSecretOutcome(
     SecretMissing,
     SecretVersionConflict,
     SecretMappedKeysRequired,
-    SecretEncryptionFailed);
+    SecretEncryptionFailed,
+    SecretManagedByProvider);
 
 public sealed record RotateSecretBody(
     long ExpectedVersion,
@@ -66,6 +67,7 @@ public sealed class RotateSecretHandler(PersistRotatedSecret persist)
             SecretVersionConflict error => error,
             SecretMappedKeysRequired error => error,
             SecretEncryptionFailed error => error,
+            SecretManagedByProvider error => error,
         };
 }
 
@@ -85,7 +87,8 @@ public static class RotateSecretEndpoint
                     SecretMissing error => problems.Map(error).ToHttpResult(),
                     SecretVersionConflict error => problems.Map(error).ToHttpResult(),
                     SecretMappedKeysRequired error => problems.Map(error).ToHttpResult(),
-                    SecretEncryptionFailed error => problems.Map(error).ToHttpResult()
+                    SecretEncryptionFailed error => problems.Map(error).ToHttpResult(),
+                    SecretManagedByProvider error => problems.Map(error).ToHttpResult()
                 }))
             .WithName("RotateSecret");
 

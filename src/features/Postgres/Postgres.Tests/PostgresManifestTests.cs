@@ -6,6 +6,7 @@ using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.Secrets.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.Postgres.Tests;
 using Xunit;
@@ -26,7 +27,7 @@ public sealed class PostgresManifestTests
         var clusterManifest = JsonSerializer.SerializeToNode(
             PostgresClusterKubernetesBuilder.buildCluster(
                 cluster,
-                "app_user",
+                ProjectedCredentials(),
                 "pole-data",
                 "fast-db",
                 Compute(),
@@ -77,38 +78,26 @@ public sealed class PostgresManifestTests
         Assert.Equal("dedicated", toleration["key"]!.GetValue<string>());
         Assert.Equal("database", toleration["value"]!.GetValue<string>());
         Assert.Equal("NoSchedule", toleration["effect"]!.GetValue<string>());
-        Assert.Equal(PostgresClusterKubernetesBuilder.buildSecretName(cluster.Id), secret["name"]!.GetValue<string>());
+        Assert.Equal(ProjectionName, secret["name"]!.GetValue<string>());
         Assert.Equal("ghcr.io/cloudnative-pg/postgresql:17", spec["imageName"]!.GetValue<string>());
         Assert.Equal(cluster.Id, bootstrap["database"]!.GetValue<string>());
         Assert.Equal("app_user", bootstrap["owner"]!.GetValue<string>());
-        Assert.Equal(PostgresClusterKubernetesBuilder.buildSecretName(cluster.Id), bootstrapSecret["name"]!.GetValue<string>());
+        Assert.Equal(ProjectionName, bootstrapSecret["name"]!.GetValue<string>());
         Assert.Equal(
             TestData.DefaultDeploymentTargetId,
             metadata["labels"]!["pole.io/deployment-target-id"]!.GetValue<string>());
     }
 
     [Fact]
-    public void BuildSecret_UsesProvidedCredentials()
+    public void WorkloadManifestsContainOnlyProviderProjectionReferences()
     {
-        var (cluster, _) = CreateOperatorSubject();
-
-        var secret = PostgresClusterKubernetesBuilder.buildSecret(
-            cluster,
-            new PostgresClusterCredentials("app_user", "super-secret"),
-            "pole-data",
-            Metadata());
-
-        Assert.Equal("v1", secret.ApiVersion);
-        Assert.Equal("Secret", secret.Kind);
-        Assert.Equal(PostgresClusterKubernetesBuilder.buildSecretName(cluster.Id), secret.Metadata.Name);
-        Assert.Equal("pole-data", secret.Metadata.NamespaceProperty);
-        Assert.Equal("kubernetes.io/basic-auth", secret.Type);
-        Assert.Equal("app_user", secret.StringData["username"]);
-        Assert.Equal("super-secret", secret.StringData["password"]);
-        Assert.Equal("Postgres", secret.Metadata.Labels["pole.io/resource-type"]);
-        Assert.Equal(
-            "pole/postgresql",
-            secret.Metadata.Annotations["pole.io/resource-type"]);
+        var (cluster, settings) = CreateOperatorSubject();
+        var manifest = PostgresClusterKubernetesBuilder.buildCluster(
+            cluster, ProjectedCredentials(), "pole-data", "fast-db", MinimalCompute(), Metadata(), settings);
+        var json = JsonSerializer.Serialize(manifest);
+        Assert.Contains(ProjectionName, json);
+        Assert.DoesNotContain("password", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(typeof(PostgresProjectedCredentials).GetProperties(), property => property.Name == "Password");
     }
 
     [Fact]
@@ -119,7 +108,7 @@ public sealed class PostgresManifestTests
         var manifest = JsonSerializer.SerializeToNode(
             PostgresClusterKubernetesBuilder.buildCluster(
                 cluster,
-                "app_user",
+                ProjectedCredentials(),
                 "pole-data",
                 "fast-db",
                 MinimalCompute(),
@@ -136,6 +125,7 @@ public sealed class PostgresManifestTests
 
         var statefulSet = PostgresStatefulSetKubernetesBuilder.buildStatefulSet(
             cluster,
+            Projection(),
             "pole-data",
             "fast-db",
             Compute(runtimeClassName: "kata"),
@@ -178,9 +168,9 @@ public sealed class PostgresManifestTests
         Assert.Equal("kata", statefulSet.Spec.Template.Spec.RuntimeClassName);
         Assert.NotNull(statefulSet.Spec.Template.Spec.Affinity.NodeAffinity);
         Assert.Single(statefulSet.Spec.Template.Spec.Tolerations);
-        Assert.Equal(PostgresClusterKubernetesBuilder.buildSecretName(cluster.Id), env["POSTGRES_USER"].ValueFrom.SecretKeyRef.Name);
+        Assert.Equal(ProjectionName, env["POSTGRES_USER"].ValueFrom.SecretKeyRef.Name);
         Assert.Equal("username", env["POSTGRES_USER"].ValueFrom.SecretKeyRef.Key);
-        Assert.Equal(PostgresClusterKubernetesBuilder.buildSecretName(cluster.Id), env["POSTGRES_PASSWORD"].ValueFrom.SecretKeyRef.Name);
+        Assert.Equal(ProjectionName, env["POSTGRES_PASSWORD"].ValueFrom.SecretKeyRef.Name);
         Assert.Equal("password", env["POSTGRES_PASSWORD"].ValueFrom.SecretKeyRef.Key);
         Assert.Equal(cluster.Id, env["POSTGRES_DB"].Value);
         var volumeClaim = statefulSet.Spec.VolumeClaimTemplates.Single();
@@ -238,6 +228,10 @@ public sealed class PostgresManifestTests
         Assert.Matches("^[a-z]([-a-z0-9]*[a-z0-9])?$", actual);
         Assert.InRange(actual.Length, 1, 63);
     }
+
+    private const string ProjectionName = "pole-secret-projection-deployment-a";
+    private static SecretProjectionReference Projection() => new("managed-secret", ProjectionName, 7);
+    private static PostgresProjectedCredentials ProjectedCredentials() => PostgresProjectedCredentials.NewOperatorCredentials("app_user", Projection());
 
     private static (PostgresCluster cluster, PostgresSettings settings) CreateOperatorSubject()
     {

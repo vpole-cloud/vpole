@@ -1,55 +1,38 @@
 namespace Pole.Features.Postgres.Application.Persistence.Credentials
 
-open System
+open System.Collections.Generic
 open System.Threading
 open System.Threading.Tasks
 open MongoDB.Bson
-open Pole.Encryption
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Persistence
-open Pole.Features.Postgres.Domain
+open Pole.Features.Secrets.Contracts
 
 type CreatePostgresCredential =
-    delegate of tenantId : string * clusterId : string * username : string * password : string * cancellationToken : CancellationToken -> Task<PostgresOutcome<PostgresCredential, PostgresCredentialError>>
+    delegate of
+        tenantId : string *
+        clusterId : string *
+        username : string *
+        password : string *
+        cancellationToken : CancellationToken -> Task<PostgresOutcome<PreparedManagedSecret, PostgresCredentialError>>
 
-type PostgresCredentialCreator(
-    encryption : IEnvelopeEncryptionService,
-    timeProvider : TimeProvider) =
-
-    let encrypt tenantId clusterId fieldName version value cancellationToken =
-        encryption.EncryptStringAsync(
-            value,
-            PostgresCredentialEncryption.context tenantId clusterId fieldName version,
-            cancellationToken).AsTask()
-
+type PostgresCredentialCreator(prepareSecret : PrepareManagedSecret) =
     member _.InvokeAsync(tenantId, clusterId, username, password, cancellationToken : CancellationToken) =
         task {
-            PostgresPersistenceGuards.credentialIdentity tenantId clusterId
-            if String.IsNullOrWhiteSpace username then
-                invalidArg "username" "PostgreSQL credential username is required."
-            if String.IsNullOrWhiteSpace password then
-                invalidArg "password" "PostgreSQL credential password is required."
-
-            let version = 1L
-            let! protectedUsername =
-                encrypt tenantId clusterId PostgresCredential.UsernameField version username cancellationToken
-            match TypedResultInterop.toResult protectedUsername with
-            | Error _ ->
-                return PostgresError(PostgresCredentialProtectionUnavailable clusterId)
-            | Ok encryptedUsername ->
-                let! protectedPassword =
-                    encrypt tenantId clusterId PostgresCredential.PasswordField version password cancellationToken
-                match TypedResultInterop.toResult protectedPassword with
-                | Error _ ->
-                    return PostgresError(PostgresCredentialProtectionUnavailable clusterId)
-                | Ok encryptedPassword ->
-                    let credential =
-                        PostgresCredential.Create(
-                            tenantId,
-                            clusterId,
-                            encryptedUsername,
-                            encryptedPassword,
-                            { Id = ObjectId.GenerateNewId().ToString()
-                              CreatedAtUtc = timeProvider.GetUtcNow().UtcDateTime })
-                    return PostgresSuccess credential
+            let values = Dictionary<string, string>()
+            values[PostgresManagedSecret.usernameKey] <- username
+            values[PostgresManagedSecret.passwordKey] <- password
+            let! prepared =
+                prepareSecret.Invoke(
+                    tenantId,
+                    ObjectId.GenerateNewId().ToString(),
+                    PostgresManagedSecret.owner clusterId,
+                    PostgresManagedSecret.name clusterId,
+                    1L,
+                    values,
+                    ManagedSecretProjectionType.BasicAuthentication,
+                    cancellationToken)
+            match TypedResultInterop.toResult prepared with
+            | Ok value -> return PostgresSuccess value
+            | Error _ -> return PostgresError(PostgresCredentialProtectionUnavailable clusterId)
         }

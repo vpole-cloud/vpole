@@ -23,6 +23,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Postgres.Application\Postgres.Application.fsproj" />
+    <ProjectReference Include="..\..\Secrets\Secrets.Application\Secrets.Application.csproj" />
+    <ProjectReference Include="..\..\Secrets\Secrets.Domain\Secrets.Domain.csproj" />
     <ProjectReference Include="..\Postgres.Domain\Postgres.Domain.fsproj" />
     <ProjectReference Include="..\Postgres.Events\Postgres.Events.fsproj" />
     <ProjectReference Include="..\..\..\api\Pole.Platform.Hosting\Pole.Platform.Hosting.csproj" />

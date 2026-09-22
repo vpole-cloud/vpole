@@ -16,7 +16,4 @@
         <Compile Include="PostgresCluster.fs" />
     </ItemGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\..\..\shared\Encryption\Encryption.csproj" />
-    </ItemGroup>
 </Project>

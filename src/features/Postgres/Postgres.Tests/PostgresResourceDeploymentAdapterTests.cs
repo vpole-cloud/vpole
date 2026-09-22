@@ -10,6 +10,8 @@ using Pole.Features.Postgres.Application.Persistence.Credentials;
 using Pole.Features.Postgres.Application.Persistence.Reads;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.Secrets.Contracts;
+using Pole.ResultType;
 using Xunit;
 
 namespace Pole.Features.Postgres.Tests;
@@ -27,7 +29,8 @@ public sealed class PostgresResourceDeploymentAdapterTests
         var provider = new RecordingKubernetesClientProvider(kubernetes);
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
             new LoadPostgresClusterById(reader.LoadAsync),
-            new ResolvePostgresClusterCredentials(credentials.ResolveAsync),
+            new ReadManagedSecretKey(credentials.ReadAsync),
+            ProjectionReady,
             manager,
             provider);
 
@@ -42,7 +45,7 @@ public sealed class PostgresResourceDeploymentAdapterTests
         Assert.Equal(5432, endpoint.Port);
         Assert.Equal([TargetId], provider.RequestedTargetIds);
         Assert.Equal([(TenantId, ResourceId)], reader.Requests);
-        Assert.Equal([(TenantId, ResourceId)], credentials.ResolveRequests);
+        Assert.Empty(credentials.ResolveRequests);
 
         var apply = Assert.Single(manager.ApplyRequests);
         Assert.Same(kubernetes, apply.Kubernetes);
@@ -53,6 +56,35 @@ public sealed class PostgresResourceDeploymentAdapterTests
         Assert.Equal(1024, apply.Compute.Limits.MemoryMi);
         Assert.Equal(TargetId, apply.Metadata.DeploymentTargetId);
         Assert.Equal(7, apply.Metadata.Generation);
+        Assert.Equal("provider-generated-secret", apply.Credentials.Projection.KubernetesName);
+        Assert.IsType<PostgresProjectedCredentials.StatefulSetCredentials>(apply.Credentials);
+    }
+
+    [Fact]
+    public async Task OperatorReadsOnlyUsernameAfterProjectionIsReady()
+    {
+        var reader = new RecordingReader(CreateCluster(PostgresDeploymentMode.Operator));
+        var credentials = new RecordingCredentialService();
+        var manager = new RecordingDeploymentManager();
+        using var kubernetes = CreateKubernetes();
+        var projectionReady = false;
+        IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
+            new LoadPostgresClusterById(reader.LoadAsync),
+            (tenant, owner, key, ct) =>
+            {
+                Assert.True(projectionReady);
+                return credentials.ReadAsync(tenant, owner, key, ct);
+            },
+            (tenant, owner, deployment, ct) =>
+            {
+                projectionReady = true;
+                return ProjectionReady(tenant, owner, deployment, ct);
+            }, manager, new RecordingKubernetesClientProvider(kubernetes));
+
+        Assert.IsType<ResourceDeploymentAdapterResult.Succeeded>(await subject.ApplyAsync(CreateContext()));
+        Assert.Equal([(TenantId, ResourceId)], credentials.ResolveRequests);
+        var applied = Assert.Single(manager.ApplyRequests);
+        Assert.Equal("postgres", Assert.IsType<PostgresProjectedCredentials.OperatorCredentials>(applied.Credentials).username);
     }
 
     [Fact]
@@ -65,7 +97,8 @@ public sealed class PostgresResourceDeploymentAdapterTests
         var provider = new RecordingKubernetesClientProvider(kubernetes);
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
             new LoadPostgresClusterById(reader.LoadAsync),
-            new ResolvePostgresClusterCredentials(credentials.ResolveAsync),
+            new ReadManagedSecretKey(credentials.ReadAsync),
+            ProjectionReady,
             manager,
             provider);
 
@@ -89,8 +122,9 @@ public sealed class PostgresResourceDeploymentAdapterTests
         var provider = new RecordingKubernetesClientProvider(kubernetes);
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
             new LoadPostgresClusterById(reader.LoadAsync),
-            new ResolvePostgresClusterCredentials(
-                new RecordingCredentialService().ResolveAsync),
+            new ReadManagedSecretKey(
+                new RecordingCredentialService().ReadAsync),
+            ProjectionReady,
             manager,
             provider);
 
@@ -114,8 +148,9 @@ public sealed class PostgresResourceDeploymentAdapterTests
         var provider = new RecordingKubernetesClientProvider(kubernetes);
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
             new LoadPostgresClusterById(reader.LoadAsync),
-            new ResolvePostgresClusterCredentials(
-                new RecordingCredentialService().ResolveAsync),
+            new ReadManagedSecretKey(
+                new RecordingCredentialService().ReadAsync),
+            ProjectionReady,
             new RecordingDeploymentManager(),
             provider);
 
@@ -126,6 +161,43 @@ public sealed class PostgresResourceDeploymentAdapterTests
         Assert.False(failed.Retryable);
         Assert.Empty(reader.Requests);
         Assert.Empty(provider.RequestedTargetIds);
+    }
+
+    [Fact]
+    public async Task Apply_WithoutReadyProjection_IsRetryableAndDoesNotCallWorkloadManager()
+    {
+        var manager = new RecordingDeploymentManager();
+        using var kubernetes = CreateKubernetes();
+        var provider = new RecordingKubernetesClientProvider(kubernetes);
+        IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
+            new LoadPostgresClusterById(new RecordingReader(CreateCluster(PostgresDeploymentMode.StatefulSet)).LoadAsync),
+            new ReadManagedSecretKey(new RecordingCredentialService().ReadAsync),
+            (tenant, owner, deployment, ct) =>
+            {
+                Assert.Equal(TenantId, tenant);
+                Assert.Equal(new ManagedSecretOwner("pole/postgresql", ResourceId), owner);
+                Assert.Equal(DeploymentId, deployment);
+                return Task.FromResult<Result<SecretProjectionReference, ManagedSecretUnavailable>>(
+                    new Err<ManagedSecretUnavailable>(new ManagedSecretUnavailable()));
+            }, manager, provider);
+        var result = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(await subject.ApplyAsync(CreateContext()));
+        Assert.True(result.Retryable);
+        Assert.Equal("PostgresSecretProjectionUnavailable", result.FailureCode);
+        Assert.Empty(manager.ApplyRequests);
+        Assert.Empty(provider.RequestedTargetIds);
+    }
+
+    private static Task<Result<SecretProjectionReference, ManagedSecretUnavailable>> ProjectionReady(
+        string tenantId,
+        ManagedSecretOwner owner,
+        string deploymentId,
+        CancellationToken ct)
+    {
+        Assert.Equal(TenantId, tenantId);
+        Assert.Equal(new ManagedSecretOwner("pole/postgresql", ResourceId), owner);
+        Assert.Equal(DeploymentId, deploymentId);
+        return Task.FromResult<Result<SecretProjectionReference, ManagedSecretUnavailable>>(
+            new Ok<SecretProjectionReference>(new("secret-id", "provider-generated-secret", 3)));
     }
 
     private static ResourceDeploymentReconciliationContext CreateContext(
@@ -210,16 +282,16 @@ public sealed class PostgresResourceDeploymentAdapterTests
     {
         public List<(string TenantId, string ClusterId)> ResolveRequests { get; } = [];
 
-        public Task<PostgresOutcome<PostgresClusterCredentials, PostgresCredentialError>> ResolveAsync(
+        public Task<Result<string, ManagedSecretError>> ReadAsync(
             string tenantId,
-            string clusterId,
+            ManagedSecretOwner owner,
+            string key,
             CancellationToken cancellationToken)
         {
-            ResolveRequests.Add((tenantId, clusterId));
-            PostgresOutcome<PostgresClusterCredentials, PostgresCredentialError> result =
-                PostgresOutcome<PostgresClusterCredentials, PostgresCredentialError>
-                    .NewPostgresSuccess(new PostgresClusterCredentials("postgres", "secret"));
-            return Task.FromResult(result);
+            Assert.Equal("username", key);
+            Assert.Equal("pole/postgresql", owner.ResourceType);
+            ResolveRequests.Add((tenantId, owner.ResourceId));
+            return Task.FromResult<Result<string, ManagedSecretError>>(new Ok<string>("postgres"));
         }
     }
 
@@ -250,7 +322,7 @@ public sealed class PostgresResourceDeploymentAdapterTests
         public Task ApplyAsync(
             IKubernetes kubernetes,
             PostgresCluster cluster,
-            PostgresClusterCredentials credentials,
+            PostgresProjectedCredentials credentials,
             string namespaceName,
             string storageClassName,
             KubernetesComputeConfiguration compute,
@@ -287,7 +359,7 @@ public sealed class PostgresResourceDeploymentAdapterTests
     private sealed record ApplyRequest(
         IKubernetes Kubernetes,
         PostgresCluster Cluster,
-        PostgresClusterCredentials Credentials,
+        PostgresProjectedCredentials Credentials,
         string NamespaceName,
         string StorageClassName,
         KubernetesComputeConfiguration Compute,

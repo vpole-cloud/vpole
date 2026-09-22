@@ -3,7 +3,6 @@ namespace Pole.Features.Postgres.Domain
 open System
 open MongoDB.Bson
 open MongoDB.Bson.Serialization.Attributes
-open Pole.Encryption
 
 type PostgresDeploymentMode =
     | Operator = 0
@@ -111,60 +110,6 @@ and CreatePostgresClusterOptions =
     { Id : string option
       Instances : int
       Storage : int }
-
-type PostgresCredential =
-    { [<BsonId>]
-      [<BsonRepresentation(BsonType.ObjectId)>]
-      Id : string
-      [<BsonRepresentation(BsonType.ObjectId)>]
-      PostgresClusterId : string
-      [<BsonRepresentation(BsonType.ObjectId)>]
-      TenantId : string
-      EncryptedUsername : EncryptedValue
-      EncryptedPassword : EncryptedValue
-      Version : int64
-      CreatedAtUtc : DateTime
-      UpdatedAtUtc : DateTime }
-
-    static member CollectionName = "PostgresCredentials"
-    static member ObjectType = "postgres-credential"
-    static member UsernameField = "username"
-    static member PasswordField = "password"
-
-    static member Create(
-        tenantId : string,
-        postgresClusterId : string,
-        encryptedUsername : EncryptedValue,
-        encryptedPassword : EncryptedValue,
-        options : CreatePostgresCredentialOptions) =
-        { Id = options.Id
-          PostgresClusterId = postgresClusterId
-          TenantId = tenantId
-          EncryptedUsername = encryptedUsername
-          EncryptedPassword = encryptedPassword
-          Version = 1L
-          CreatedAtUtc = options.CreatedAtUtc
-          UpdatedAtUtc = options.CreatedAtUtc }
-
-    member this.Rotate(
-        encryptedUsername : EncryptedValue,
-        encryptedPassword : EncryptedValue,
-        updatedAtUtc : DateTime) =
-        let nextVersion =
-            if this.Version = Int64.MaxValue then
-                raise (OverflowException("PostgreSQL credential version overflowed."))
-            else
-                this.Version + 1L
-
-        { this with
-            EncryptedUsername = encryptedUsername
-            EncryptedPassword = encryptedPassword
-            Version = nextVersion
-            UpdatedAtUtc = updatedAtUtc }
-
-and CreatePostgresCredentialOptions =
-    { Id : string
-      CreatedAtUtc : DateTime }
 
 [<RequireQualifiedAccess>]
 module PostgresCluster =

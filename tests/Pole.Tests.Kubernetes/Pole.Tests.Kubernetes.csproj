@@ -17,6 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../src/features/Secrets/Secrets.Application/Secrets.Application.csproj" />
     <ProjectReference Include="../../src/api/Pole.Testing/Pole.Testing.csproj" />
     <ProjectReference Include="../../src/features/ResourceDeployments/ResourceDeployments.Contracts/ResourceDeployments.Contracts.csproj" />
     <ProjectReference Include="../../src/features/WebServices/WebServices.Application/WebServices.Application.csproj" />

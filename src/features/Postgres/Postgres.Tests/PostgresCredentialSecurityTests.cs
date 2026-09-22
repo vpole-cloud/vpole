@@ -1,121 +1,144 @@
-using System.Security.Cryptography;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
+using System.Collections.Immutable;
 using MongoDB.Bson;
-using Pole.Encryption;
-using Pole.Features.Postgres.Domain;
+using Microsoft.FSharp.Core;
+using Pole.Features.Postgres.Application.Common;
+using Pole.Features.Postgres.Application.Endpoints;
+using Pole.Features.Postgres.Application.Persistence;
+using Pole.Features.Postgres.Application.Persistence.Credentials;
+using Pole.Features.Secrets.Contracts;
 using Pole.ResultType;
-using Pole.Features.Postgres.Tests;
 using Xunit;
 
 namespace Pole.Features.Postgres.Tests;
 
 public sealed class PostgresCredentialSecurityTests
 {
+    [Fact]
+    public async Task Create_DelegatesTenantOwnerAndBasicAuthenticationValuesToSecrets()
+    {
+        var creator = new PostgresCredentialCreator((tenant, id, owner, name, version, values, type, ct) =>
+        {
+            Assert.Equal(TestData.TenantId, tenant);
+            Assert.True(ObjectId.TryParse(id, out _));
+            Assert.Equal(new ManagedSecretOwner("pole/postgresql", ClusterId), owner);
+            Assert.Equal($"postgres-{ClusterId}-credentials", name);
+            Assert.Equal(1, version);
+            Assert.Equal(ManagedSecretProjectionType.BasicAuthentication, type);
+            Assert.Equal("database-user", values["username"]);
+            Assert.Equal("private-password", values["password"]);
+            return Task.FromResult<Result<PreparedManagedSecret, ManagedSecretEncryptionUnavailable>>(
+                new Ok<PreparedManagedSecret>(Prepared(tenant, id, owner, name, version, type)));
+        });
+
+        var result = await creator.InvokeAsync(TestData.TenantId, ClusterId, "database-user", "private-password", default);
+
+        Assert.True(result.IsPostgresSuccess);
+    }
+
+    [Fact]
+    public async Task Rotation_PreservesSecretIdentityOwnerTypeAndUsernameAndAdvancesVersion()
+    {
+        var current = Values();
+        var rotator = new PostgresCredentialRotator((tenant, id, owner, name, version, values, type, ct) =>
+        {
+            Assert.Equal(TestData.TenantId, tenant);
+            Assert.Equal(current.SecretId, id);
+            Assert.Equal(current.Name, name);
+            Assert.Equal(current.Version + 1, version);
+            Assert.Equal(current.ProjectionType, type);
+            Assert.Equal(new ManagedSecretOwner("pole/postgresql", ClusterId), owner);
+            Assert.Equal(current.Values["username"], values["username"]);
+            Assert.Equal("rotated-password", values["password"]);
+            return Task.FromResult<Result<PreparedManagedSecret, ManagedSecretEncryptionUnavailable>>(
+                new Ok<PreparedManagedSecret>(Prepared(tenant, id, owner, name, version, type)));
+        });
+
+        var result = await rotator.InvokeAsync(TestData.TenantId, ClusterId, current, "rotated-password", default);
+
+        Assert.True(result.IsPostgresSuccess);
+        Assert.Equal("private-password", current.Values["password"]);
+    }
+
+    [Fact]
+    public async Task ProviderFailureBecomesSafeCredentialProtectionFailure()
+    {
+        var creator = new PostgresCredentialCreator((_, _, _, _, _, _, _, _) =>
+            Task.FromResult<Result<PreparedManagedSecret, ManagedSecretEncryptionUnavailable>>(
+                new Err<ManagedSecretEncryptionUnavailable>(new ManagedSecretEncryptionUnavailable())));
+        var result = await creator.InvokeAsync(TestData.TenantId, ClusterId, "database-user", "private-password", default);
+        Assert.True(result.IsPostgresError);
+        Assert.DoesNotContain("private-password", result.ToString());
+    }
+
+    [Fact]
+    public async Task CredentialReadsAddressTheManagedOwnerWithinTheRequestedTenant()
+    {
+        var loader = new ManagedLoadPostgresCredential((tenant, owner, ct) =>
+        {
+            Assert.Equal(TestData.TenantId, tenant);
+            Assert.Equal(new ManagedSecretOwner("pole/postgresql", ClusterId), owner);
+            return Task.FromResult<Result<ManagedSecretValues, ManagedSecretError>>(new Ok<ManagedSecretValues>(Values()));
+        });
+        var resolver = new ManagedResolvePostgresClusterCredentials(new LoadPostgresCredential(loader.InvokeAsync));
+        var result = await resolver.InvokeAsync(TestData.TenantId, ClusterId, default);
+        var credentials = Assert.IsType<PostgresOutcome<PostgresClusterCredentials, PostgresCredentialError>.PostgresSuccess>(result).Item;
+        Assert.Equal("database-user", credentials.Username);
+        Assert.Equal("private-password", credentials.Password);
+        Assert.DoesNotContain("private-password", credentials.ToString());
+        Assert.DoesNotContain("private-password", Values().ToString());
+        Assert.DoesNotContain("private-password", new UpdatePostgresClusterPasswordRequestBody("private-password").ToString());
+    }
+
+    [Fact]
+    public void CreateBodyAndPasswordBodyNeverRenderThePassword()
+    {
+        var body = new CreatePostgresClusterRequestBody("db", ClusterId, 17, FSharpOption<int>.None,
+            FSharpOption<int>.None, TestData.DefaultStorageProfileId, FSharpOption<string>.None,
+            "database-user", "private-password", FSharpOption<Pole.Features.ResourceDeployments.Contracts.PlacementRequest>.None);
+        Assert.DoesNotContain("private-password", body.ToString());
+        Assert.DoesNotContain("private-password", new UpdatePostgresClusterPasswordRequestBody("private-password").ToString());
+    }
+
     [Theory]
-    [InlineData("tenant")]
-    [InlineData("cluster")]
-    [InlineData("field")]
-    [InlineData("version")]
-    public async Task EncryptionContext_RejectsIdentitySubstitution(
-        string changedIdentity)
+    [InlineData(32767, true)]
+    [InlineData(32768, false)]
+    public void CreateValidationMeasuresCombinedUtf8Bytes(int characters, bool valid)
     {
-        using var settings = new TemporaryEncryptionConfiguration();
-        using var services = new ServiceCollection().AddEnvelopeEncryption(settings.Configuration).BuildServiceProvider();
-        var encryption = services.GetRequiredService<IEnvelopeEncryptionService>();
-        var tenantId = ObjectId.GenerateNewId().ToString();
-        var clusterId = ObjectId.GenerateNewId().ToString();
-        var originalContext = Context(
-            tenantId,
-            clusterId,
-            PostgresCredential.PasswordField,
-            1);
-        var encryptedResult = await encryption.EncryptStringAsync(
-            "never-store-plaintext",
-            originalContext);
-        Assert.True(
-            encryptedResult.TryGetValue(out var encrypted, out var encryptFailure),
-            encryptFailure?.Message);
-
-        var changedContext = changedIdentity switch
-        {
-            "tenant" => Context(
-                ObjectId.GenerateNewId().ToString(),
-                clusterId,
-                PostgresCredential.PasswordField,
-                1),
-            "cluster" => Context(
-                tenantId,
-                ObjectId.GenerateNewId().ToString(),
-                PostgresCredential.PasswordField,
-                1),
-            "field" => Context(
-                tenantId,
-                clusterId,
-                PostgresCredential.UsernameField,
-                1),
-            "version" => Context(
-                tenantId,
-                clusterId,
-                PostgresCredential.PasswordField,
-                2),
-            _ => throw new ArgumentOutOfRangeException(nameof(changedIdentity))
-        };
-
-        var decrypted = await encryption.DecryptStringAsync(
-            encrypted!,
-            changedContext);
-
-        Assert.False(decrypted.TryGetValue(out _, out _));
+        var body = new CreatePostgresClusterRequestBody("db", ClusterId, 17, FSharpOption<int>.None,
+            FSharpOption<int>.None, TestData.DefaultStorageProfileId, FSharpOption<string>.None,
+            "u", new string('é', characters), FSharpOption<Pole.Features.ResourceDeployments.Contracts.PlacementRequest>.None);
+        var result = new CreatePostgresClusterValidator(new PostgresSettings()).Validate(
+            new CreatePostgresClusterRequest(body, TestData.TenantId));
+        Assert.Equal(valid, result.IsValid);
     }
 
-    private static EnvelopeEncryptionContext Context(
-        string tenantId,
-        string clusterId,
-        string field,
-        long version) =>
-        EnvelopeEncryptionContext.ForTenant(
-            tenantId,
-            PostgresCredential.ObjectType,
-            clusterId,
-            field,
-            version);
-
-    private sealed class TemporaryEncryptionConfiguration : IDisposable
+    [Fact]
+    public async Task RotationRejectsCombinedByteLimitBeforeCallingEncryptionProvider()
     {
-        private readonly string _directory = Path.Combine(
-            Path.GetTempPath(),
-            "pole-postgres-tests",
-            Guid.NewGuid().ToString("N"));
-
-        public IConfiguration Configuration { get; }
-
-        public TemporaryEncryptionConfiguration()
-        {
-            Directory.CreateDirectory(_directory);
-            var path = Path.Combine(_directory, "test.key");
-            var key = RandomNumberGenerator.GetBytes(32);
-            try
-            {
-                File.WriteAllText(path, Convert.ToBase64String(key));
-            }
-            finally
-            {
-                CryptographicOperations.ZeroMemory(key);
-            }
-
-            Configuration = new ConfigurationBuilder().AddInMemoryCollection(
-                new Dictionary<string, string?>
-                {
-                    ["EnvelopeEncryption:ActiveProviderId"] = "local-key-file",
-                    ["EnvelopeEncryption:LocalKeyFile:ActiveKeyId"] = "test",
-                    ["EnvelopeEncryption:LocalKeyFile:ActiveKeyVersion"] = "1",
-                    ["EnvelopeEncryption:LocalKeyFile:Keys:0:Id"] = "test",
-                    ["EnvelopeEncryption:LocalKeyFile:Keys:0:Version"] = "1",
-                    ["EnvelopeEncryption:LocalKeyFile:Keys:0:Path"] = path
-                }).Build();
-        }
-
-        public void Dispose() => Directory.Delete(_directory, recursive: true);
+        var rotator = new PostgresCredentialRotator((_, _, _, _, _, _, _, _) =>
+            throw new Xunit.Sdk.XunitException("Oversized credentials must not reach encryption."));
+        var password = new string('é', 32768);
+        var request = new UpdatePostgresClusterPasswordRequest(ClusterId,
+            new UpdatePostgresClusterPasswordRequestBody(password), TestData.TenantId);
+        Assert.True(new UpdatePostgresClusterPasswordRequestValidator().Validate(request).IsValid);
+        var result = await rotator.InvokeAsync(TestData.TenantId, ClusterId, Values(), password, default);
+        var rejected = Assert.IsType<PostgresOutcome<PreparedManagedSecret, PostgresCredentialError>.PostgresError>(result).Item;
+        Assert.IsType<PostgresCredentialError.PostgresCredentialValuesTooLarge>(rejected);
     }
+
+    private static ManagedSecretValues Values() =>
+        new("secret-id", "managed-name", ManagedSecretProjectionType.BasicAuthentication, 4,
+            ImmutableDictionary<string, string>.Empty.Add("username", "database-user").Add("password", "private-password"));
+
+    private static PreparedManagedSecret Prepared(
+        string tenant,
+        string id,
+        ManagedSecretOwner owner,
+        string name,
+        long version,
+        ManagedSecretProjectionType type) =>
+        new(id, tenant, owner, name, type, version, ["username", "password"],
+            []);
+
+    private const string ClusterId = "507f1f77bcf86cd799439022";
 }

@@ -55,26 +55,6 @@ module PostgresPersistenceGuards =
         | :? ActivePostgresClusterLifecycle, :? DeletingPostgresClusterLifecycle -> ()
         | _ -> invalidOp "PostgreSQL deletion must transition an active cluster to deleting."
 
-    let credentialIdentity tenantId clusterId =
-        identity tenantId clusterId
-
-    let credential (credential : PostgresCredential) =
-        if isNull (box credential) then
-            nullArg "credential"
-
-        credentialIdentity credential.TenantId credential.PostgresClusterId
-        ensureObjectId "credential.Id" credential.Id
-        if credential.Version < 1L then
-            invalidArg "credential" "PostgreSQL credential version must be positive."
-
-    let sameCredentialIdentity (current : PostgresCredential) (replacement : PostgresCredential) =
-        credential current
-        credential replacement
-        if current.Id <> replacement.Id ||
-           current.TenantId <> replacement.TenantId ||
-           current.PostgresClusterId <> replacement.PostgresClusterId then
-            invalidOp "A PostgreSQL credential replacement must preserve identity."
-
     let transaction (session : IClientSessionHandle) operation =
         if isNull (box session) then
             nullArg "session"

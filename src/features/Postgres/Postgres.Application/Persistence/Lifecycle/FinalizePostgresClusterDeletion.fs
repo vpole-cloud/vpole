@@ -12,19 +12,22 @@ open Pole.Features.Postgres.Application.Persistence
 open Pole.Features.Postgres.Domain
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.ResourceGroups.Contracts
+open Pole.Features.Secrets.Contracts
+open Pole.Features.Postgres.Application.Persistence.Credentials
 open Pole.ResultType
 
 type PostgresClusterDeletionFinalizationError =
     | PostgresClusterDeletionFinalizationConflict of clusterId : string
     | PostgresClusterDeletionDeploymentPurgeConflict of ResourceDeploymentFinalizationConflict
     | PostgresClusterDeletionRegistrationConflict of ResourceRegistrationMutationError
+    | PostgresClusterDeletionSecretConflict of PostgresCredentialError
 
 type FinalizePostgresClusterDeletion =
     delegate of tenantId : string * clusterId : string * cancellationToken : CancellationToken -> Task<PostgresOutcome<unit, PostgresClusterDeletionFinalizationError>>
 
 type MongoFinalizePostgresClusterDeletion(
     clusters : IMongoCollection<PostgresCluster>,
-    credentials : IMongoCollection<PostgresCredential>,
+    releaseSecret : ReleaseManagedSecret,
     getDeploymentReadiness : GetResourceDeploymentFinalizationReadiness,
     purgeDeployments : PurgeDeletedResourceDeployments,
     resourceRegistrar : IResourceRegistrar,
@@ -58,62 +61,69 @@ type MongoFinalizePostgresClusterDeletion(
                             if readiness <> ResourceDeploymentFinalizationReadiness.Ready then
                                 return transaction.Commit(PostgresSuccess ())
                             else
-                                let! deleted =
-                                    clusters.DeleteOneAsync(
+                                let! released =
+                                    releaseSecret.Invoke(
+                                        tenantId,
+                                        PostgresManagedSecret.owner clusterId,
                                         transaction.Session,
-                                        PostgresFilters.deletingAtRevision cluster,
-                                        cancellationToken = transactionCancellationToken)
-                                if deleted.DeletedCount <> 1L then
-                                    return
-                                        transaction.Abort(
-                                            PostgresError(
-                                                PostgresClusterDeletionFinalizationConflict clusterId))
-                                else
-                                    let! registrationResult =
-                                        resourceRegistrar.UnregisterAsync(
-                                            tenantId,
-                                            cluster.GroupId,
-                                            PostgresResourceDeployment.ResourceType,
-                                            clusterId,
+                                        transactionCancellationToken)
+                                match TypedResultInterop.toResult released with
+                                | Error error ->
+                                    return transaction.Abort(PostgresError(
+                                        PostgresClusterDeletionSecretConflict(
+                                            PostgresCredentialErrors.fromManaged clusterId error)))
+                                | Ok _ ->
+                                    let! deleted =
+                                        clusters.DeleteOneAsync(
                                             transaction.Session,
-                                            transactionCancellationToken)
-
-                                    match TypedResultInterop.toResult registrationResult with
-                                    | Error error ->
+                                            PostgresFilters.deletingAtRevision cluster,
+                                            cancellationToken = transactionCancellationToken)
+                                    if deleted.DeletedCount <> 1L then
                                         return
                                             transaction.Abort(
                                                 PostgresError(
-                                                    PostgresClusterDeletionRegistrationConflict error))
-                                    | Ok _ ->
-                                        let! _ =
-                                            credentials.DeleteOneAsync(
-                                                transaction.Session,
-                                                PostgresFilters.credentialForDeletedCluster tenantId clusterId,
-                                                cancellationToken = transactionCancellationToken)
-                                        let! purged =
-                                            purgeDeployments.Invoke(
+                                                    PostgresClusterDeletionFinalizationConflict clusterId))
+                                    else
+                                        let! registrationResult =
+                                            resourceRegistrar.UnregisterAsync(
                                                 tenantId,
+                                                cluster.GroupId,
                                                 PostgresResourceDeployment.ResourceType,
                                                 clusterId,
                                                 transaction.Session,
                                                 transactionCancellationToken)
-                                        let mutable ignored = Unchecked.defaultof<Unit>
-                                        let mutable purgeConflict = Unchecked.defaultof<ResourceDeploymentFinalizationConflict>
-                                        if TypedResultExtensions.TryGetValue(
-                                            purged,
-                                            &ignored,
-                                            &purgeConflict) then
-                                            let writes : IReadOnlyCollection<OutboxWrite> =
-                                                [| OutboxWrite.Create(PostgresClusterEvents.deleted cluster) |]
-                                            do! storeOutboxWrites.Invoke(
-                                                transaction.Session,
-                                                writes,
-                                                transactionCancellationToken)
-                                            return transaction.Commit(PostgresSuccess ())
-                                        else
+
+                                        match TypedResultInterop.toResult registrationResult with
+                                        | Error error ->
                                             return
                                                 transaction.Abort(
                                                     PostgresError(
-                                                        PostgresClusterDeletionDeploymentPurgeConflict purgeConflict))
+                                                        PostgresClusterDeletionRegistrationConflict error))
+                                        | Ok _ ->
+                                            let! purged =
+                                                purgeDeployments.Invoke(
+                                                    tenantId,
+                                                    PostgresResourceDeployment.ResourceType,
+                                                    clusterId,
+                                                    transaction.Session,
+                                                    transactionCancellationToken)
+                                            let mutable ignored = Unchecked.defaultof<Unit>
+                                            let mutable purgeConflict = Unchecked.defaultof<ResourceDeploymentFinalizationConflict>
+                                            if TypedResultExtensions.TryGetValue(
+                                                purged,
+                                                &ignored,
+                                                &purgeConflict) then
+                                                let writes : IReadOnlyCollection<OutboxWrite> =
+                                                    [| OutboxWrite.Create(PostgresClusterEvents.deleted cluster) |]
+                                                do! storeOutboxWrites.Invoke(
+                                                    transaction.Session,
+                                                    writes,
+                                                    transactionCancellationToken)
+                                                return transaction.Commit(PostgresSuccess ())
+                                            else
+                                                return
+                                                    transaction.Abort(
+                                                        PostgresError(
+                                                            PostgresClusterDeletionDeploymentPurgeConflict purgeConflict))
                     }),
             cancellationToken)

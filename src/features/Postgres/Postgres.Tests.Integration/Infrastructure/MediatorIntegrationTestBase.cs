@@ -61,10 +61,9 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
             [typeof(PostgresClusterCreatedEvent).Assembly],
             []);
         services.AddPostgresFeature(configuration);
-        services.AddSingleton<IMigration>(new FeatureScopedMigration(
-            "pole.postgres", new PostgresCredentialMigration()));
         services.AddTestDeploymentTargets();
         ReplaceTenantAuthorizationWithFake(services);
+        ConfigureServices(services);
         _serviceProvider = services.BuildServiceProvider(validateScopes: true);
         await _serviceProvider.InitializePolePlatformAsync();
 
@@ -74,6 +73,8 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
         await DbContext.Tenants.InsertOneAsync(TenantFactory.Create("Test tenant", PostgresTestData.TenantId));
         _scope = _serviceProvider.CreateScope();
     }
+
+    protected virtual void ConfigureServices(IServiceCollection services) { }
 
     public virtual Task DisposeAsync()
     {

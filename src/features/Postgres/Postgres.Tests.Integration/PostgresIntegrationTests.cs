@@ -16,6 +16,8 @@ using Pole.Features.Postgres.Application.Persistence.Reads;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.ResultType;
+using Pole.Features.Secrets.Domain;
+using Pole.Features.Secrets.Contracts;
 using Pole.Features.Postgres.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -24,9 +26,9 @@ namespace Pole.Features.Postgres.Tests.Integration;
 public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
-    private IMongoCollection<PostgresCredential> Credentials =>
-        DbContext.Database.GetCollection<PostgresCredential>(
-            PostgresCredential.CollectionName);
+    private IMongoCollection<Secret> Credentials => DbContext.Database.GetCollection<Secret>("Secrets");
+    private IMongoCollection<SecretVersion> Versions => DbContext.Database.GetCollection<SecretVersion>("SecretVersions");
+    private static FilterDefinition<Secret> ForCluster(string id) => Builders<Secret>.Filter.Eq("Management.ResourceId", id);
 
     [Fact]
     public void FeatureRegistration_ResolvesPostgresCapabilities()
@@ -71,13 +73,14 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.IsType<ActivePostgresClusterLifecycle>(savedCluster.Lifecycle);
 
         var credential = await Credentials
-            .Find(item =>
-                item.TenantId == PostgresTestData.TenantId &&
-                item.PostgresClusterId == savedCluster.Id)
+            .Find(ForCluster(savedCluster.Id) & Builders<Secret>.Filter.Eq(item => item.TenantId, PostgresTestData.TenantId))
             .SingleAsync();
-        Assert.Equal(1, credential.Version);
-        Assert.NotEmpty(credential.EncryptedUsername.Ciphertext);
-        Assert.NotEmpty(credential.EncryptedPassword.Ciphertext);
+        Assert.Equal(1, credential.CurrentVersion);
+        var version = await Versions.Find(item => item.SecretId == credential.Id).SingleAsync();
+        Assert.NotEmpty(version.Value.Ciphertext);
+        Assert.Equal(SecretProjectionType.BasicAuthentication, Assert.IsType<ProviderManagedSecret>(credential.Management).ProjectionType);
+        Assert.Equal(savedCluster.Id, Assert.Single(credential.Bindings).ConsumerId);
+        Assert.Equal(0, await DbContext.Database.GetCollection<BsonDocument>("PostgresCredentials").CountDocumentsAsync(new BsonDocument()));
 
         var deployment = await DbContext.ResourceDeployments
             .Find(item =>
@@ -100,7 +103,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(resourceGroup.Id, registration.ResourceGroupId);
 
         var persistedDocuments = await DbContext.Database
-            .GetCollection<BsonDocument>(PostgresCredential.CollectionName)
+            .GetCollection<BsonDocument>("SecretVersions")
             .Find(FilterDefinition<BsonDocument>.Empty)
             .ToListAsync();
         var outboxDocuments = await DbContext.OutboxMessages
@@ -334,7 +337,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var (cluster, deployment) = await CreateClusterAsync();
         var before = await Credentials
-            .Find(item => item.PostgresClusterId == cluster.Id)
+            .Find(ForCluster(cluster.Id))
             .SingleAsync();
 
         var result = await Mediator.Send(
@@ -352,30 +355,70 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             2,
             response.Placement.DesiredGeneration);
         var after = await Credentials
-            .Find(item => item.PostgresClusterId == cluster.Id)
+            .Find(ForCluster(cluster.Id))
             .SingleAsync();
-        Assert.Equal(2, after.Version);
-        Assert.False(
-            before.EncryptedUsername.Ciphertext.SequenceEqual(
-                after.EncryptedUsername.Ciphertext));
-        Assert.False(
-            before.EncryptedPassword.Ciphertext.SequenceEqual(
-                after.EncryptedPassword.Ciphertext));
+        Assert.Equal(2, after.CurrentVersion);
+        var immutableBefore = await Versions.Find(item => item.SecretId == before.Id && item.Version == 1).SingleAsync();
+        var rotatedVersion = await Versions.Find(item => item.SecretId == before.Id && item.Version == 2).SingleAsync();
+        Assert.False(immutableBefore.Value.Ciphertext.SequenceEqual(rotatedVersion.Value.Ciphertext));
+        Assert.Equal(2, await Versions.CountDocumentsAsync(item => item.SecretId == before.Id));
+        var managedValues = (await Services.GetRequiredService<ReadManagedSecret>()(
+            PostgresTestData.TenantId, new ManagedSecretOwner("pole/postgresql", cluster.Id), default));
+        var values = Assert.IsType<Ok<ManagedSecretValues>>(managedValues.Value).Value;
+        Assert.Equal("postgres", values.Values["username"]);
+        Assert.Equal("rotated-secret", values.Values["password"]);
         var updatedDeployment = await DbContext.ResourceDeployments
             .Find(item => item.Id == deployment.Id)
             .SingleAsync();
         Assert.Equal(2, updatedDeployment.DesiredGeneration);
 
         var rawCredential = await DbContext.Database
-            .GetCollection<BsonDocument>(PostgresCredential.CollectionName)
+            .GetCollection<BsonDocument>("SecretVersions")
             .Find(Builders<BsonDocument>.Filter.Eq(
-                "PostgresClusterId",
-                new ObjectId(cluster.Id)))
+                "SecretId", before.Id) & Builders<BsonDocument>.Filter.Eq("Version", 2))
             .SingleAsync();
         Assert.DoesNotContain(
             "rotated-secret",
             rawCredential.ToJson(),
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OversizedCombinedRotationLeavesSecretVersionDeploymentAndOutboxUnchanged()
+    {
+        var (cluster, deployment) = await CreateClusterAsync();
+        var before = await Credentials.Find(ForCluster(cluster.Id)).SingleAsync();
+        var outboxCount = await DbContext.OutboxMessages.CountDocumentsAsync(_ => true);
+        var result = await Mediator.Send(new UpdatePostgresClusterPasswordRequest(cluster.Id,
+            new UpdatePostgresClusterPasswordRequestBody(new string('é', 32768)), PostgresTestData.TenantId));
+        var rejected = Assert.IsType<UpdatePostgresClusterPasswordOutcome.UpdatePostgresClusterPasswordRejected>(result.AssertSuccess()).Item;
+        var credentialError = Assert.IsType<UpdatePostgresClusterPasswordError.PasswordCredential>(rejected).Item;
+        Assert.IsType<PostgresCredentialError.PostgresCredentialValuesTooLarge>(credentialError);
+        var after = await Credentials.Find(ForCluster(cluster.Id)).SingleAsync();
+        Assert.Equal(before.Id, after.Id);
+        Assert.Equal(before.CurrentVersion, after.CurrentVersion);
+        Assert.Equal(before.Revision, after.Revision);
+        Assert.Equal(1, await Versions.CountDocumentsAsync(version => version.SecretId == before.Id));
+        Assert.Equal(deployment.DesiredGeneration,
+            (await DbContext.ResourceDeployments.Find(item => item.Id == deployment.Id).SingleAsync()).DesiredGeneration);
+        Assert.Equal(outboxCount, await DbContext.OutboxMessages.CountDocumentsAsync(_ => true));
+    }
+
+    [Fact]
+    public async Task StatefulSetPasswordRotationIsRejectedWithoutChangingManagedSecret()
+    {
+        Services.GetRequiredService<PostgresSettings>().DefaultDeploymentMode = PostgresDeploymentMode.StatefulSet;
+        var (cluster, deployment) = await CreateClusterAsync();
+        var before = await Credentials.Find(ForCluster(cluster.Id)).SingleAsync();
+        var result = await Mediator.Send(new UpdatePostgresClusterPasswordRequest(cluster.Id,
+            new UpdatePostgresClusterPasswordRequestBody("new-password"), PostgresTestData.TenantId));
+        var rejected = Assert.IsType<UpdatePostgresClusterPasswordOutcome.UpdatePostgresClusterPasswordRejected>(result.AssertSuccess()).Item;
+        var state = Assert.IsType<UpdatePostgresClusterPasswordError.PasswordState>(rejected).Item;
+        Assert.IsType<UpdatePostgresClusterPasswordStateError.PostgresClusterPasswordRotationUnsupported>(state);
+        Assert.Equal(before.CurrentVersion, (await Credentials.Find(ForCluster(cluster.Id)).SingleAsync()).CurrentVersion);
+        Assert.Equal(1, await Versions.CountDocumentsAsync(version => version.SecretId == before.Id));
+        Assert.Equal(deployment.DesiredGeneration,
+            (await DbContext.ResourceDeployments.Find(item => item.Id == deployment.Id).SingleAsync()).DesiredGeneration);
     }
 
     [Fact]
@@ -430,8 +473,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
                 .SingleAsync()).DesiredOperation);
         Assert.Equal(
             1,
-            await Credentials.CountDocumentsAsync(
-                item => item.PostgresClusterId == cluster.Id));
+            await Credentials.CountDocumentsAsync(ForCluster(cluster.Id)));
     }
 
     [Fact]
@@ -477,8 +519,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.True(foreignTenantResult.IsPostgresSuccess);
         Assert.Equal(1L, await DbContext.Postgres.CountDocumentsAsync(
             candidate => candidate.Id == cluster.Id));
-        Assert.Equal(1L, await Credentials.CountDocumentsAsync(
-            candidate => candidate.PostgresClusterId == cluster.Id));
+        Assert.Equal(1L, await Credentials.CountDocumentsAsync(ForCluster(cluster.Id)));
         Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
             "pole.postgres/v1/postgres-cluster-deleted"));
 
@@ -495,8 +536,8 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.True(repeated.IsPostgresSuccess);
         Assert.Equal(0L, await DbContext.Postgres.CountDocumentsAsync(
             candidate => candidate.Id == cluster.Id));
-        Assert.Equal(0L, await Credentials.CountDocumentsAsync(
-            candidate => candidate.PostgresClusterId == cluster.Id));
+        Assert.Equal(0L, await Credentials.CountDocumentsAsync(ForCluster(cluster.Id)));
+        Assert.Equal(0L, await Versions.CountDocumentsAsync(_ => true));
         Assert.Equal(0L, await DbContext.ResourceDeployments.CountDocumentsAsync(
             candidate =>
                 candidate.TenantId == PostgresTestData.TenantId &&

@@ -83,6 +83,8 @@ public sealed record Secret(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc)
 {
+    public SecretManagement Management { get; init; } = new UnmanagedSecret();
+
     public const int MaximumBindings = 256;
 
     public Secret Rotate(
@@ -124,6 +126,8 @@ public sealed record Secret(
         DateTime now) => this with
         {
             Bindings = Bindings.Where(x => x.Id != bindingId).ToImmutableArray(),
+            Management = Management is ProviderManagedSecret owner && owner.BindingId == bindingId
+                ? new UnmanagedSecret() : Management,
             Revision = checked(Revision + 1),
             UpdatedAtUtc = now
         };

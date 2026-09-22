@@ -151,6 +151,7 @@
     <Project Path="tests/Pole.Tests.E2E/Pole.Tests.E2E.csproj" />
   </Folder>
   <Folder Name="/features/Secrets/">
+    <Project Path="src/features/Secrets/Secrets.Contracts/Secrets.Contracts.csproj" />
     <Project Path="src/features/Secrets/Secrets.Domain/Secrets.Domain.csproj" />
     <Project Path="src/features/Secrets/Secrets.Tests/Secrets.Tests.csproj" />
     <Project Path="src/features/Secrets/Secrets.Events/Secrets.Events.csproj" />

@@ -1,81 +1,37 @@
 namespace Pole.Features.Postgres.Application.Persistence.Credentials
 
-open System
 open System.Threading
 open System.Threading.Tasks
-open Pole.Encryption
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Persistence
-open Pole.Features.Postgres.Domain
+open Pole.Features.Secrets.Contracts
 
 type RotatePostgresCredential =
-    delegate of credential : PostgresCredential * password : string * cancellationToken : CancellationToken -> Task<PostgresOutcome<PostgresCredential, PostgresCredentialError>>
+    delegate of
+        tenantId : string *
+        clusterId : string *
+        credential : ManagedSecretValues *
+        password : string *
+        cancellationToken : CancellationToken -> Task<PostgresOutcome<PreparedManagedSecret, PostgresCredentialError>>
 
-type PostgresCredentialRotator(
-    encryption : IEnvelopeEncryptionService,
-    timeProvider : TimeProvider) =
-
-    let decrypt (credential : PostgresCredential) fieldName encryptedValue cancellationToken =
-        encryption.DecryptStringAsync(
-            encryptedValue,
-            PostgresCredentialEncryption.context
-                credential.TenantId
-                credential.PostgresClusterId
-                fieldName
-                credential.Version,
-            cancellationToken).AsTask()
-
-    let encrypt tenantId clusterId fieldName version value cancellationToken =
-        encryption.EncryptStringAsync(
-            value,
-            PostgresCredentialEncryption.context tenantId clusterId fieldName version,
-            cancellationToken).AsTask()
-
-    member _.InvokeAsync(credential, password, cancellationToken : CancellationToken) =
+type PostgresCredentialRotator(prepareSecret : PrepareManagedSecret) =
+    member _.InvokeAsync(tenantId, clusterId, credential : ManagedSecretValues, password, cancellationToken : CancellationToken) =
         task {
-            PostgresPersistenceGuards.credential credential
-            if String.IsNullOrWhiteSpace password then
-                invalidArg "password" "PostgreSQL credential password is required."
-
-            let! plaintextUsername =
-                decrypt credential PostgresCredential.UsernameField credential.EncryptedUsername cancellationToken
-            match TypedResultInterop.toResult plaintextUsername with
-            | Error _ ->
-                return PostgresError(PostgresCredentialProtectionUnavailable credential.PostgresClusterId)
-            | Ok username ->
-                let nextVersion =
-                    if credential.Version = Int64.MaxValue then
-                        raise (OverflowException("PostgreSQL credential version overflowed."))
-                    else
-                        credential.Version + 1L
-                let! protectedUsername =
-                    encrypt
-                        credential.TenantId
-                        credential.PostgresClusterId
-                        PostgresCredential.UsernameField
-                        nextVersion
-                        username
-                        cancellationToken
-                match TypedResultInterop.toResult protectedUsername with
-                | Error _ ->
-                    return PostgresError(PostgresCredentialProtectionUnavailable credential.PostgresClusterId)
-                | Ok encryptedUsername ->
-                    let! protectedPassword =
-                        encrypt
-                            credential.TenantId
-                            credential.PostgresClusterId
-                            PostgresCredential.PasswordField
-                            nextVersion
-                            password
-                            cancellationToken
-                    match TypedResultInterop.toResult protectedPassword with
-                    | Error _ ->
-                        return PostgresError(PostgresCredentialProtectionUnavailable credential.PostgresClusterId)
-                    | Ok encryptedPassword ->
-                        return
-                            credential.Rotate(
-                                encryptedUsername,
-                                encryptedPassword,
-                                timeProvider.GetUtcNow().UtcDateTime)
-                            |> PostgresSuccess
+            let values = credential.Values.SetItem(PostgresManagedSecret.passwordKey, password)
+            if PostgresManagedSecret.totalValueBytes values.Values > PostgresManagedSecret.maximumValueBytes then
+                return PostgresError(PostgresCredentialValuesTooLarge clusterId)
+            else
+                let! result =
+                    prepareSecret.Invoke(
+                        tenantId,
+                        credential.SecretId,
+                        PostgresManagedSecret.owner clusterId,
+                        credential.Name,
+                        Checked.(+) credential.Version 1L,
+                        values,
+                        credential.ProjectionType,
+                        cancellationToken)
+                match TypedResultInterop.toResult result with
+                | Ok prepared -> return PostgresSuccess prepared
+                | Error _ -> return PostgresError(PostgresCredentialProtectionUnavailable clusterId)
         }
