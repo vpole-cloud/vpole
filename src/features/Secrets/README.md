@@ -7,8 +7,9 @@ and isolation scope. Workload specifications never receive native Kubernetes Sec
 ## Ownership and storage
 
 `Secrets.Domain` owns metadata, binding and version records. `Secrets.Application` owns APIs,
-validation, Mongo persistence, indexes and cleanup consumers. `Secrets.Events` publishes only IDs,
-version/revision numbers and change kinds. There is no value-reveal or runtime decryption contract.
+validation, Mongo persistence, indexes, projection reconciliation and cleanup consumers. `Secrets.Events`
+publishes only IDs, version/revision numbers and change kinds. `Secrets.Contracts` exposes narrow
+managed-owner credential operations and a generated projection reference; there is no HTTP value-reveal API.
 
 The `Secrets` collection contains metadata and bindings; `SecretVersions` contains separate immutable
 encrypted value documents. Each JSON key/value map uses the existing envelope encryption service
@@ -41,6 +42,7 @@ ciphertext, wrapped keys or encrypted version documents.
 | POST | `/{id}/bindings` | Attach one consumer with a deployment selection and optional key mapping |
 | DELETE | `/{id}/bindings/{bindingId}` | Idempotently detach exactly one binding |
 | GET | `/{id}/usage` | Bindings plus currently affected deployment IDs |
+| GET | `/{id}/projections` | Per-deployment desired/applied version, health, last attempt and safe failure code |
 
 Create returns metadata (201), other mutations return metadata (200), and deletion returns 204. Missing Secret IDs return
 404; stale rotation, duplicate names/consumer bindings, used-key removal and bound deletion return
@@ -82,7 +84,8 @@ Clients can identify the correction needed without parsing a generic conflict me
 2. Bind validates the registered consumer in the same group and tenant, then validates live
    deployments belonging to that consumer and scope. Group and deployment write fences serialize
    admission with unregistration, scope deletion and deployment deletion. A consumer without any
-   live deployment is rejected until its placement exists.
+   live deployment is rejected until its placement exists. Provider-managed creation joins the caller
+   transaction after registration and pending placement are staged, so it needs no running workload.
 3. Rotation checks the expected current version, preserves explicitly mapped keys, and increments
    the version. An aggregate write conflict serializes rotation with binding and deletion. Every
    version has its own encrypted envelope; a rotation never overwrites an earlier version.
@@ -110,14 +113,84 @@ Configure and back up the shared encryption key ring before use; see
 rewrap endpoint yet: retain old KEKs for retained immutable versions and backups. Value rotation
 creates a new encrypted version but does not eliminate older-key references in history.
 
-Kubernetes projection, workload injection, ordinary reveal APIs, cross-scope sharing, frontend UI
-and platform credentials are outside this slice. Successful rotation changes the logical Secret;
-it does not restart workloads or materialize Kubernetes objects yet.
+Ordinary reveal APIs, cross-scope sharing, frontend UI and platform credentials remain outside this
+feature. A successful logical rotation creates desired runtime state; it does not itself prove that
+an application has consumed a new credential or restart workloads.
+
+## Kubernetes projection flow
+
+Each authorized `(Secret, ResourceDeployment)` has one deterministic native name and durable
+`SecretProjections` row. Separate consumers of the same Secret get independent objects, even in the
+same namespace. The exact tenant/type/resource/deployment contract resolves the persisted RuntimeCell,
+target and namespace; no ambient/default client or caller-supplied native name selects placement.
+Bindings select deployments and map permitted keys. Native labels and annotations contain identities
+and desired version/revision only, never values. The protected managed credential binding can request
+`kubernetes.io/basic-auth`; other shared bindings remain `Opaque` so key remapping is supported.
+
+Reference-only Secret events trigger reconciliation. A minute-based recovery job discovers new dynamic
+placements, retries failures and repairs deleted objects or ordinary data/annotation drift. Discovery
+uses bounded pages. Every projection has its own lease, storage revision, desired/applied version,
+last attempt and explicit state. A failed target retains its previous applied version and cannot roll
+back another target. The target adapter returns `Result<Unit, SecretProjectionTargetError>` for expected availability,
+ownership, concurrency and SDK failures; reconciliation stores explicit safe failure codes. Database
+and unexpected programming failures, as well as caller cancellation, propagate. SDK request/response exceptions are discarded without
+retaining an inner exception because they may contain plaintext HTTP bodies.
+
+The writer resolves the target, reads current metadata and rechecks authoritative bindings/revision
+before decrypting immediately for the target write. Temporary UTF-8 plaintext and manifest byte buffers
+are cleared afterward. Replacements use Kubernetes resourceVersion; deletion uses UID and resourceVersion
+preconditions. A stale claim cannot complete another worker's status or overwrite a newer Mongo revision.
+Authority is read from Pole, not trusted from tamperable version annotations. Ownership-label conflicts
+are reported rather than overwriting an unrelated native object.
+
+Removing a binding, deployment or Secret leaves the persisted projection location available for cleanup.
+A stale event always re-reads current authority. Checks after apply remove a projection revoked during
+the write. A Mongo transaction cannot atomically revoke an in-flight Kubernetes request: revocation and
+drift repair converge asynchronously. Deleted rows are retained and audited every 30 minutes after the
+source disappears, because a delayed old create might finish after another worker's deletion. Active
+sources and unsuccessful cleanup continue on the normal recovery cadence. Tombstones are not discarded
+based on an assumed request timeout. UID/resourceVersion checks and current binding checks protect a
+new authorized object from an old cleanup worker.
+
+Kubernetes Secret data is plaintext to Kubernetes and authorized pods, despite base64 transport encoding.
+Configuring etcd encryption and Kubernetes access controls remains the cluster operator's responsibility.
+
+## Managed credentials and PostgreSQL
+
+PostgreSQL is the first adopter. Its create transaction stages the registered PostgreSQL resource and
+ResourceDeployment, then creates the encrypted managed Secret and protected owner binding in that same
+session. Admission reads and fences the staged records, avoiding a placement-versus-credential startup
+cycle. Secrets is the authoritative encrypted store; workloads consume generated projection references.
+The internal read operation selects a credential through its tenant-scoped managed owner, not an
+arbitrary Secret ID. PostgreSQL retains the existing role controls on its connection-string operation.
+
+`Secret.Management` is required aggregate state. `SecretFactory.Create` constructs an unmanaged Secret;
+`CreateManaged` constructs provider ownership together with its binding. `KubernetesSecretType` describes
+the native Secret format: the PostgreSQL owner projection uses `kubernetes.io/basic-auth`, while ordinary
+and remapped shared projections use `Opaque`. The provider contract represents this as
+`ManagedSecretKubernetesType`.
+
+Metadata exposes `managedBy` with owner type, resource ID and protected binding ID. Generic rotation and
+detaching that binding return `secrets.managed-by-provider`; use the owner operation. Same-scope sharing
+through additional bindings is allowed, and those bindings may be detached normally. Provider deletion
+removes its binding atomically. If other consumers remain, the Secret and encrypted versions are retained
+and management is cleared: it becomes an ordinary tenant Secret with the same immutable identity/name.
+If no consumers remain, the transaction unregisters and deletes the Secret and versions. Secret writes
+serialize deletion with concurrent sharing, so a committed binding cannot be orphaned. The generic
+resource-unregistered cleanup also clears management when it removes an owner binding, retaining the
+ordinary Secret rather than leaving an uneditable credential if an owner uses that fallback path.
+
+Projection readiness means that Kubernetes accepted the desired Secret version. It does not mean a
+running database has adopted that password. PostgreSQL StatefulSet password rotation remains rejected;
+changing an environment-backed native Secret does not rotate a database on an existing volume. The
+owning PostgreSQL workflow defines operator-mode behavior; generic Secret writes cannot bypass it.
 
 ## Verification
 
-`Secrets.Tests` covers binding/rotation invariants, safe representations and request validation.
+`Secrets.Tests` covers binding/rotation invariants, safe representations, generated manifests, target
+SDK fencing/redaction, reconciliation failure isolation and request validation.
 `Pole.Tests.Integration/Secrets` covers real Mongo transactions, encrypted immutable storage, tenant
 and role authorization, write-only HTTP responses, pagination, same-scope ownership, shared cleanup,
-retained-secret deletion guards, transaction rollback, competing mutations and dynamic selections.
+retained-secret deletion guards, transaction rollback, competing mutations, managed-owner lifecycle,
+projection claim fencing, status authorization and dynamic selections.
 Resource registration, isolation-scope and deployment schema suites cover the modified providers.

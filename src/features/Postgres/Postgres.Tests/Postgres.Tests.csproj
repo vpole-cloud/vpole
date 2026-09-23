@@ -25,7 +25,6 @@
     <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
     <ProjectReference Include="..\..\Quotas\Quotas.Application\Quotas.Application.csproj" />
     <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
-    <ProjectReference Include="..\..\..\shared\Encryption\Encryption.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -7,6 +7,9 @@ namespace Pole.Features.Tenants.Application.Persistence;
 
 internal static class TenantFilters
 {
+    public static FilterDefinition<TenantMember> MemberById(string memberId) =>
+        Builders<TenantMember>.Filter.Eq(member => member.Id, memberId);
+
     public static FilterDefinition<Tenant> ById(string tenantId) =>
         Builders<Tenant>.Filter.Eq(tenant => tenant.Id, tenantId);
 

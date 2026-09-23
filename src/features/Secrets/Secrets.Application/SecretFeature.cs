@@ -1,3 +1,4 @@
+using Hangfire;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -5,6 +6,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
 using Pole.Features.Secrets.Application.Endpoints;
 using Pole.Features.Secrets.Application.Persistence;
+using Pole.Features.Secrets.Application.Managed;
+using Pole.Features.Secrets.Application.Projections;
+using Pole.Features.Secrets.Contracts;
 
 namespace Pole.Features.Secrets.Application;
 
@@ -13,8 +17,24 @@ public static class SecretFeature
     public static IServiceCollection AddSecretsFeature(this IServiceCollection services)
     {
         services.AddSecretPersistence();
+        services.AddScoped<EnvelopePrepareManagedSecret>();
+        services.AddScoped<PrepareManagedSecret>(sp => sp.GetRequiredService<EnvelopePrepareManagedSecret>().InvokeAsync);
+        services.AddScoped<EnvelopeReadManagedSecretKey>();
+        services.AddScoped<ReadManagedSecretKey>(sp => sp.GetRequiredService<EnvelopeReadManagedSecretKey>().InvokeAsync);
+        services.AddScoped<EnvelopeReadManagedSecret>();
+        services.AddScoped<ReadManagedSecret>(sp => sp.GetRequiredService<EnvelopeReadManagedSecret>().InvokeAsync);
+        services.AddScoped<ReconcileManagedSecretProjection>();
+        services.AddScoped<EnsureManagedSecretProjection>(sp => sp.GetRequiredService<ReconcileManagedSecretProjection>().InvokeAsync);
+        services.AddScoped<SecretProjectionReconciler>();
+        services.AddScoped<SecretProjectionRecoveryJob>();
+        services.AddScoped<ISecretProjectionTarget, KubernetesSecretProjectionTarget>();
         services.AddHttpProblemMappings(
         [
+            HttpProblemMapping.For<SecretManagedByProvider>(_ => new(
+                409,
+                PoleProblemTypeId.FromCode("secrets.managed-by-provider"),
+                "Change the managed credential through its owning resource",
+                "secrets.managed-by-provider")),
             HttpProblemMapping.For<SecretMissing>(_ => new(
                 404,
                 PoleProblemTypeId.FromCode("secrets.not-found"),
@@ -69,6 +89,15 @@ public static class SecretFeature
         return services;
     }
 
+    public static IServiceProvider ScheduleSecretProjectionRecurringJobs(this IServiceProvider services)
+    {
+        RecurringJob.AddOrUpdate<SecretProjectionRecoveryJob>(
+            "reconcile-secret-projections",
+            job => job.RecoverAsync(CancellationToken.None),
+            Cron.Minutely);
+        return services;
+    }
+
     public static IEndpointRouteBuilder MapSecretEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGroup("/secrets")
@@ -80,7 +109,8 @@ public static class SecretFeature
             .MapDeleteSecretEndpoint()
             .MapBindSecretEndpoint()
             .MapDetachSecretBindingEndpoint()
-            .MapGetSecretUsageEndpoint();
+            .MapGetSecretUsageEndpoint()
+            .MapGetSecretProjectionsEndpoint();
 
         return app;
     }

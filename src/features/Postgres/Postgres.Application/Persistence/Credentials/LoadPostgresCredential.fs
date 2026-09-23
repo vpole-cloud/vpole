@@ -2,20 +2,21 @@ namespace Pole.Features.Postgres.Application.Persistence.Credentials
 
 open System.Threading
 open System.Threading.Tasks
-open MongoDB.Driver
+open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Persistence
-open Pole.Features.Postgres.Domain
+open Pole.Features.Secrets.Contracts
 
 type LoadPostgresCredential =
-    delegate of tenantId : string * clusterId : string * cancellationToken : CancellationToken -> Task<PostgresCredential option>
+    delegate of
+        tenantId : string *
+        clusterId : string *
+        cancellationToken : CancellationToken -> Task<PostgresOutcome<ManagedSecretValues, PostgresCredentialError>>
 
-type MongoLoadPostgresCredential(credentials : IMongoCollection<PostgresCredential>) =
+type ManagedLoadPostgresCredential(readSecret : ReadManagedSecret) =
     member _.InvokeAsync(tenantId, clusterId, cancellationToken : CancellationToken) =
         task {
-            PostgresPersistenceGuards.credentialIdentity tenantId clusterId
-            let! credential =
-                credentials
-                    .Find(PostgresFilters.credentialByCluster tenantId clusterId)
-                    .FirstOrDefaultAsync(cancellationToken)
-            return if isNull (box credential) then None else Some credential
+            let! result = readSecret.Invoke(tenantId, PostgresManagedSecret.owner clusterId, cancellationToken)
+            match TypedResultInterop.toResult result with
+            | Ok values -> return PostgresSuccess values
+            | Error error -> return PostgresError(PostgresCredentialErrors.fromManaged clusterId error)
         }

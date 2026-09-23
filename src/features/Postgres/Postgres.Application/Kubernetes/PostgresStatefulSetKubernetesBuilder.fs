@@ -4,6 +4,7 @@ open System.Collections.Generic
 open k8s.Models
 open Pole.Features.Core.Kubernetes
 open Pole.Features.Postgres.Domain
+open Pole.Features.Secrets.Contracts
 open Pole.Features.Postgres.Application.Common
 
 [<RequireQualifiedAccess>]
@@ -21,6 +22,7 @@ module PostgresStatefulSetKubernetesBuilder =
 
     let buildStatefulSet
         (cluster : PostgresCluster)
+        (projection : SecretProjectionReference)
         (namespaceName : string)
         (storageClassName : string)
         (compute : KubernetesComputeConfiguration)
@@ -28,7 +30,7 @@ module PostgresStatefulSetKubernetesBuilder =
         (settings : PostgresSettings) =
         let labels = PostgresClusterKubernetesBuilder.buildLabels cluster metadata
         let annotations = PostgresClusterKubernetesBuilder.buildAnnotations ()
-        let secretName = PostgresClusterKubernetesBuilder.buildSecretName cluster.Id
+        let secretName = projection.KubernetesName
         let databaseName = PostgresClusterKubernetesBuilder.buildDatabaseName cluster.Id
         let image = PostgresSettings.buildImageReference settings.StatefulSetImage cluster.Spec.Version
         let podSpec =

@@ -20,13 +20,6 @@ module PostgresPersistenceRegistration =
                     .GetRequiredService<IMongoDatabase>()
                     .GetCollection<PostgresCluster>("Postgres")))
         |> ignore
-        services.TryAddSingleton<IMongoCollection<PostgresCredential>>(
-            Func<IServiceProvider, IMongoCollection<PostgresCredential>>(fun serviceProvider ->
-                serviceProvider
-                    .GetRequiredService<IMongoDatabase>()
-                    .GetCollection<PostgresCredential>(PostgresCredential.CollectionName)))
-        |> ignore
-
         services.AddScoped<MongoLoadPostgresClusterById>() |> ignore
         services.AddScoped<LoadPostgresClusterById>(
             Func<IServiceProvider, LoadPostgresClusterById>(fun serviceProvider ->
@@ -47,9 +40,9 @@ module PostgresPersistenceRegistration =
         services.AddScoped<PersistCreatedPostgresCluster>(
             Func<IServiceProvider, PersistCreatedPostgresCluster>(fun serviceProvider ->
                 PersistCreatedPostgresCluster(
-                    fun session cluster credential cancellationToken ->
+                    fun session cluster cancellationToken ->
                         serviceProvider.GetRequiredService<MongoPersistCreatedPostgresCluster>()
-                            .InvokeAsync(session, cluster, credential, cancellationToken))))
+                            .InvokeAsync(session, cluster, cancellationToken))))
         |> ignore
         services.AddScoped<MongoPersistUpdatedPostgresCluster>() |> ignore
         services.AddScoped<PersistUpdatedPostgresCluster>(
@@ -83,36 +76,36 @@ module PostgresPersistenceRegistration =
                         serviceProvider.GetRequiredService<PostgresCredentialCreator>()
                             .InvokeAsync(tenantId, clusterId, username, password, cancellationToken))))
         |> ignore
-        services.AddScoped<MongoLoadPostgresCredential>() |> ignore
+        services.AddScoped<ManagedLoadPostgresCredential>() |> ignore
         services.AddScoped<LoadPostgresCredential>(
             Func<IServiceProvider, LoadPostgresCredential>(fun serviceProvider ->
                 LoadPostgresCredential(
                     fun tenantId clusterId cancellationToken ->
-                        serviceProvider.GetRequiredService<MongoLoadPostgresCredential>()
+                        serviceProvider.GetRequiredService<ManagedLoadPostgresCredential>()
                             .InvokeAsync(tenantId, clusterId, cancellationToken))))
         |> ignore
         services.AddScoped<PostgresCredentialRotator>() |> ignore
         services.AddScoped<RotatePostgresCredential>(
             Func<IServiceProvider, RotatePostgresCredential>(fun serviceProvider ->
                 RotatePostgresCredential(
-                    fun credential password cancellationToken ->
+                    fun tenantId clusterId credential password cancellationToken ->
                         serviceProvider.GetRequiredService<PostgresCredentialRotator>()
-                            .InvokeAsync(credential, password, cancellationToken))))
+                            .InvokeAsync(tenantId, clusterId, credential, password, cancellationToken))))
         |> ignore
-        services.AddScoped<MongoPersistRotatedPostgresCredential>() |> ignore
+        services.AddScoped<ManagedPersistRotatedPostgresCredential>() |> ignore
         services.AddScoped<PersistRotatedPostgresCredential>(
             Func<IServiceProvider, PersistRotatedPostgresCredential>(fun serviceProvider ->
                 PersistRotatedPostgresCredential(
                     fun session current replacement cancellationToken ->
-                        serviceProvider.GetRequiredService<MongoPersistRotatedPostgresCredential>()
+                        serviceProvider.GetRequiredService<ManagedPersistRotatedPostgresCredential>()
                             .InvokeAsync(session, current, replacement, cancellationToken))))
         |> ignore
-        services.AddScoped<MongoResolvePostgresClusterCredentials>() |> ignore
+        services.AddScoped<ManagedResolvePostgresClusterCredentials>() |> ignore
         services.AddScoped<ResolvePostgresClusterCredentials>(
             Func<IServiceProvider, ResolvePostgresClusterCredentials>(fun serviceProvider ->
                 ResolvePostgresClusterCredentials(
                     fun tenantId clusterId cancellationToken ->
-                        serviceProvider.GetRequiredService<MongoResolvePostgresClusterCredentials>()
+                        serviceProvider.GetRequiredService<ManagedResolvePostgresClusterCredentials>()
                             .InvokeAsync(tenantId, clusterId, cancellationToken))))
         |> ignore
 

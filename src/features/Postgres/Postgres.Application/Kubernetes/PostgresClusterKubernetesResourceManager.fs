@@ -15,7 +15,7 @@ type IPostgresClusterDeploymentManager =
     abstract member ApplyAsync :
         kubernetes : IKubernetes *
         cluster : PostgresCluster *
-        credentials : PostgresClusterCredentials *
+        credentials : PostgresProjectedCredentials *
         namespaceName : string *
         storageClassName : string *
         compute : KubernetesComputeConfiguration *
@@ -31,38 +31,6 @@ type IPostgresClusterDeploymentManager =
 
 [<RequireQualifiedAccess>]
 module private PostgresKubernetesApply =
-    let secret
-        (kubernetes : IKubernetes)
-        (manifest : V1Secret)
-        namespaceName
-        cancellationToken =
-        task {
-            try
-                let! _ =
-                    kubernetes.CoreV1.CreateNamespacedSecretAsync(
-                        manifest,
-                        namespaceName,
-                        cancellationToken = cancellationToken)
-                return ()
-            with
-            | :? HttpOperationException as ex
-                when not (isNull ex.Response) &&
-                     ex.Response.StatusCode = HttpStatusCode.Conflict ->
-                let! current =
-                    kubernetes.CoreV1.ReadNamespacedSecretAsync(
-                        manifest.Metadata.Name,
-                        namespaceName,
-                        cancellationToken = cancellationToken)
-                manifest.Metadata.ResourceVersion <- current.Metadata.ResourceVersion
-                let! _ =
-                    kubernetes.CoreV1.ReplaceNamespacedSecretAsync(
-                        manifest,
-                        manifest.Metadata.Name,
-                        namespaceName,
-                        cancellationToken = cancellationToken)
-                return ()
-        }
-
     let service
         (kubernetes : IKubernetes)
         (manifest : V1Service)
@@ -182,14 +150,6 @@ type PostgresClusterDeploymentManager(settings : PostgresSettings) =
     let dataPersistentVolumeClaimName clusterId =
         $"postgres-data-{clusterId}-0"
 
-    let deleteSecret (kubernetes : IKubernetes) clusterId namespaceName cancellationToken =
-        KubernetesExtensions.DeleteIfExistsAsync(fun () ->
-            kubernetes.CoreV1.DeleteNamespacedSecretAsync(
-                PostgresClusterKubernetesBuilder.buildSecretName clusterId,
-                namespaceName,
-                cancellationToken = cancellationToken)
-            :> Task)
-
     interface IPostgresClusterDeploymentManager with
         member _.ApplyAsync(
             kubernetes,
@@ -201,17 +161,6 @@ type PostgresClusterDeploymentManager(settings : PostgresSettings) =
             metadata,
             cancellationToken) =
             task {
-                do!
-                    PostgresKubernetesApply.secret
-                        kubernetes
-                        (PostgresClusterKubernetesBuilder.buildSecret
-                            cluster
-                            credentials
-                            namespaceName
-                            metadata)
-                        namespaceName
-                        cancellationToken
-
                 match cluster.Spec.DeploymentMode with
                 | PostgresDeploymentMode.Operator ->
                     do!
@@ -219,7 +168,7 @@ type PostgresClusterDeploymentManager(settings : PostgresSettings) =
                             kubernetes
                             (PostgresClusterKubernetesBuilder.buildCluster
                                 cluster
-                                credentials.Username
+                                credentials
                                 namespaceName
                                 storageClassName
                                 compute
@@ -252,6 +201,7 @@ type PostgresClusterDeploymentManager(settings : PostgresSettings) =
                             kubernetes
                             (PostgresStatefulSetKubernetesBuilder.buildStatefulSet
                                 cluster
+                                credentials.Projection
                                 namespaceName
                                 storageClassName
                                 compute
@@ -311,5 +261,4 @@ type PostgresClusterDeploymentManager(settings : PostgresSettings) =
                 | mode ->
                     invalidOp $"Unsupported PostgreSQL deployment mode '{mode}'."
 
-                do! deleteSecret kubernetes clusterId namespaceName cancellationToken
             }

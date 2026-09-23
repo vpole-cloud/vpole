@@ -26,10 +26,10 @@ namespace Pole.Features.Postgres.Tests.Integration;
 public sealed class PostgresFeatureHostTests(MongoReplicaSetFixture fixture)
 {
     [Fact]
-    public async Task StaticFeatureHost_EnforcesTenantAndRunsScopedMigration()
+    public async Task StaticFeatureHost_EnforcesTenantAndUsesManagedSecretsWithoutAFeatureMigration()
     {
         await fixture.ResetDatabaseAsync();
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?>
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Postgres:SupportedVersions:From"] = "16",
             ["Postgres:SupportedVersions:To"] = "18"
@@ -40,7 +40,7 @@ public sealed class PostgresFeatureHostTests(MongoReplicaSetFixture fixture)
             typeof(PostgresClusterCreatedEvent).Assembly,
             (services, settings) => services.AddPostgresFeature(settings),
             endpoints => endpoints.MapPostgresClusterEndpoints(),
-            new FeatureScopedMigration("pole.postgres", new PostgresCredentialMigration()),
+            null,
             services =>
         {
             services.AddSingleton(fixture.Client);
@@ -51,7 +51,7 @@ public sealed class PostgresFeatureHostTests(MongoReplicaSetFixture fixture)
             services.AddSingleton<DiscoverKubernetesStorageClassNames>(storage.GetStorageClassNamesAsync);
             services.AddSingleton<DiscoverKubernetesPersistentVolumes>(storage.GetPersistentVolumesAsync);
             services.AddSingleton<DiscoverKubernetesPersistentVolumeClaims>(storage.GetPersistentVolumeClaimsAsync);
-            });
+        });
         await host.SeedTenantAsync();
         using var client = host.GetClient();
         const string route = "/api/v1/postgres/";
@@ -89,7 +89,7 @@ public sealed class PostgresFeatureHostTests(MongoReplicaSetFixture fixture)
         var outbox = await fixture.Database.GetCollection<BsonDocument>("OutboxMessages")
             .Find(new BsonDocument("EventType", eventName)).ToListAsync();
         Assert.Single(outbox);
-        var credentials = await fixture.Database.GetCollection<BsonDocument>("PostgresCredentials")
+        var credentials = await fixture.Database.GetCollection<BsonDocument>("SecretVersions")
             .Find(new BsonDocument()).ToListAsync();
         Assert.Single(credentials);
         Assert.DoesNotContain("postgres-secret", credentials[0].ToJson());
@@ -99,13 +99,14 @@ public sealed class PostgresFeatureHostTests(MongoReplicaSetFixture fixture)
         await host.Services.GetRequiredService<EnsurePendingOutboxEventsRegistered>().InvokeAsync();
         var history = await fixture.Database.GetCollection<BsonDocument>("__migrations")
             .Find(new BsonDocument("_id", new BsonRegularExpression("^pole.postgres/"))).ToListAsync();
-        Assert.Single(history);
+        Assert.Empty(history);
+        Assert.Equal(0, await fixture.Database.GetCollection<BsonDocument>("PostgresCredentials").CountDocumentsAsync(new BsonDocument()));
         host.Services.GetRequiredService<TestDeploymentTargetLookup>().RejectNewWorkloads = true;
         using var rejected = await client.PostAsJsonAsync(route,
             PostgresTestData.CreatePostgresClusterRequest(group.Id, "rejected-postgres").Body);
         Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
         Assert.Equal(1, await store.Postgres.CountDocumentsAsync(new BsonDocument()));
-        Assert.Equal(1, await fixture.Database.GetCollection<BsonDocument>("PostgresCredentials")
+        Assert.Equal(1, await fixture.Database.GetCollection<BsonDocument>("SecretVersions")
             .CountDocumentsAsync(new BsonDocument()));
     }
 }

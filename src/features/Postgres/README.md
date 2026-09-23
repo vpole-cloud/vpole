@@ -11,7 +11,7 @@ modes: a native Kubernetes StatefulSet and the CloudNativePG operator.
 ## Workload model
 
 `PostgresCluster` stores the logical database configuration, version, topology, storage choice,
-and credential state. Kubernetes placement and its resolved infrastructure configuration are
+and lifecycle state. Credentials are managed by the [Secrets feature](../Secrets/README.md). Kubernetes placement and its resolved infrastructure configuration are
 stored in `ResourceDeployment`.
 
 Create resolves the default or requested `ComputeProfile` for the active tenant and target. The
@@ -28,8 +28,43 @@ API does not support runtime class, an incompatible operator-mode request is rej
 
 Mongo persistence and outbox events remain feature-owned. Kubernetes reconciliation routes every
 operation through the deployment's persisted target, namespace, storage, and compute snapshot.
-Credentials are encrypted at rest and password rotation keeps the logical resource, deployment
-generation, and durable reconciliation request consistent.
+PostgreSQL has no separate credential collection or Kubernetes Secret writer. The Secrets feature
+owns encrypted immutable versions, explicit bindings, per-deployment runtime projections and their
+cleanup. PostgreSQL calls its provider-owned contracts and retains only transient credential values
+when needed for the authorized connection-string operation or operator bootstrap username.
+
+## Credential lifecycle
+
+Creation prepares one encrypted managed Secret with `username` and `password` keys and the explicit
+basic-auth projection type. Combined credential values are limited to 64 KiB of UTF-8 data;
+rotation includes the retained username when validating this limit. Within the existing quota transaction PostgreSQL stages its logical
+resource, registration and ResourceDeployment, then asks Secrets to create the owner binding against
+that staged placement. The namespace or workload need not be ready. A failure aborts the resource,
+Secret, deployment, quota changes and outbox records together.
+
+Reconciliation requests the managed projection for the exact tenant, owner and ResourceDeployment.
+Secrets applies its generated native Secret to the persisted target and RuntimeCell namespace.
+Only after that projection is ready does PostgreSQL apply the workload using the returned reference;
+its Kubernetes manager never receives a password or creates/deletes Secrets. StatefulSet reconciliation
+reads no plaintext values. Operator reconciliation asks Secrets for only the bootstrap username after
+projection readiness, immediately before workload apply. A missing projection
+returns a retryable deployment failure. Each projection has its own desired/applied version and
+failure status in Secrets; a Kubernetes Secret remains a runtime copy, not the authoritative value.
+
+The password endpoint reads the managed version and prepares a replacement preserving the username.
+Rotation and the ResourceDeployment apply request commit in one Mongo transaction with an expected
+Secret version. Operator-mode rotation remains supported. StatefulSet-mode rotation is rejected:
+changing a native Secret does not update the password in an already initialized PostgreSQL database.
+Generic Secret mutation cannot bypass the owning PostgreSQL rotation policy.
+
+Final owner deletion releases its managed Secret in the same transaction as resource finalization.
+If no other consumer remains, Secrets removes the encrypted value and metadata. A Secret still bound
+to another consumer remains as an ordinary tenant Secret, with its other projections intact.
+Connection-string reads continue to require a tenant write role and resolve credentials through the
+owning PostgreSQL identity; callers never supply a native Kubernetes Secret name.
+
+Native Kubernetes Secret values are readable by authorized Kubernetes clients and consuming pods.
+Encryption of target etcd storage is the cluster operator's responsibility.
 
 Related documentation:
 

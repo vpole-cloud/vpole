@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Domain;
+using Pole.Features.Secrets.Contracts;
 
 namespace Pole.Features.Secrets.Application.Persistence;
 
@@ -11,6 +12,25 @@ internal static class SecretPersistenceRegistration
     {
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>().GetCollection<Secret>("Secrets"));
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>().GetCollection<SecretVersion>("SecretVersions"));
+        services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>().GetCollection<SecretProjection>("SecretProjections"));
+        services.AddScoped<MongoClaimSecretProjection>();
+        services.AddScoped<ClaimSecretProjection>(sp => sp.GetRequiredService<MongoClaimSecretProjection>().InvokeAsync);
+        services.AddScoped<MongoCompleteSecretProjection>();
+        services.AddScoped<CompleteSecretProjection>(sp => sp.GetRequiredService<MongoCompleteSecretProjection>().InvokeAsync);
+        services.AddScoped<MongoLoadSecretProjections>();
+        services.AddScoped<LoadSecretProjections>(sp => sp.GetRequiredService<MongoLoadSecretProjections>().InvokeAsync);
+        services.AddScoped<MongoLoadSecretVersion>();
+        services.AddScoped<LoadSecretVersion>(sp => sp.GetRequiredService<MongoLoadSecretVersion>().InvokeAsync);
+        services.AddScoped<MongoLoadSecretProjectionCandidates>();
+        services.AddScoped<LoadSecretProjectionCandidates>(sp => sp.GetRequiredService<MongoLoadSecretProjectionCandidates>().InvokeAsync);
+        services.AddScoped<MongoCreateBoundManagedSecret>();
+        services.AddScoped<CreateBoundManagedSecret>(sp => sp.GetRequiredService<MongoCreateBoundManagedSecret>().InvokeAsync);
+        services.AddScoped<MongoRotateManagedSecret>();
+        services.AddScoped<RotateManagedSecret>(sp => sp.GetRequiredService<MongoRotateManagedSecret>().InvokeAsync);
+        services.AddScoped<MongoReleaseManagedSecret>();
+        services.AddScoped<ReleaseManagedSecret>(sp => sp.GetRequiredService<MongoReleaseManagedSecret>().InvokeAsync);
+        services.AddScoped<MongoLoadManagedSecret>();
+        services.AddScoped<LoadManagedSecret>(sp => sp.GetRequiredService<MongoLoadManagedSecret>().InvokeAsync);
         services.AddScoped<MongoLoadSecretById>();
         services.AddScoped<LoadSecretById>(sp => sp.GetRequiredService<MongoLoadSecretById>().InvokeAsync);
         services.AddScoped<MongoLoadSecretPage>();

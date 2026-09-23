@@ -39,6 +39,12 @@ internal static class SecretFilters
             x => x.SecretId,
             SecretIdentity.ObjectId(id));
 
+    internal static FilterDefinition<SecretVersion> Version(
+        string tenantId,
+        string secretId,
+        long version) =>
+        Versions(tenantId, secretId) & Builders<SecretVersion>.Filter.Eq(x => x.Version, version);
+
     internal static FilterDefinition<Secret> Consumer(
         string tenantId,
         string groupId,

@@ -62,6 +62,7 @@ The repository compiler diagnostics complement review:
 - `POLE006`: one concrete endpoint-handler contract per endpoint file.
 - `POLE007`: each parameter of multi-parameter positional records, record structs,
   unions and delegates starts on its own line; architecture tests cover all sources.
+- `POLE008` rejects inline Mongo filter lambdas in runtime persistence operations; use named `*Filters` helpers. It resolves driver filter arguments semantically, so ordinary collection predicates remain allowed.
 - `.editorconfig` and `dotnet format whitespace` verify changed C# source formatting.
 
 Rules use compiler symbols rather than treating every `Store`, array or `Status`

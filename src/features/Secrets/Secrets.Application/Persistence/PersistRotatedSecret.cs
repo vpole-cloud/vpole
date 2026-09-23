@@ -18,7 +18,8 @@ public union PersistRotatedSecretResult(
     SecretMissing,
     SecretVersionConflict,
     SecretMappedKeysRequired,
-    SecretEncryptionFailed);
+    SecretEncryptionFailed,
+    SecretManagedByProvider);
 
 internal sealed class MongoPersistRotatedSecret(
     IMongoCollection<Secret> secrets,
@@ -41,6 +42,8 @@ internal sealed class MongoPersistRotatedSecret(
                 .FirstOrDefaultAsync(token);
             if (current is null)
                 return tx.Abort(new SecretMissing());
+            if (current.Management is ProviderManagedSecret)
+                return tx.Abort(new SecretManagedByProvider());
             if (current.CurrentVersion != expectedVersion)
                 return tx.Abort(new SecretVersionConflict());
             if (current.Bindings.Any(x => x.KeyMappings.Keys.Except(values.Keys).Any()))

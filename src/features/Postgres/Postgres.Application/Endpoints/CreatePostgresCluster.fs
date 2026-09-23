@@ -23,6 +23,7 @@ open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.ResourceGroups.Contracts
 open Pole.Features.Shared.Models
 open Pole.Features.StorageProfiles.Contracts
+open Pole.Features.Secrets.Contracts
 open Pole.Mediator
 open Pole.Validation
 open Pole.Workloads
@@ -38,6 +39,8 @@ type CreatePostgresClusterRequestBody =
       Username : string
       Password : string
       Placement : PlacementRequest option }
+
+    override _.ToString() = "CreatePostgresClusterRequestBody([REDACTED])"
 
 type CreatePostgresClusterStateError =
     | PostgresClusterComputeRuntimeClassUnsupported of deploymentTargetId : string
@@ -77,7 +80,7 @@ type CreatePostgresClusterRequest =
 
 type private CreatePostgresClusterPlan =
     { Cluster : PostgresCluster
-      Credential : PostgresCredential
+      Credential : PreparedManagedSecret
       DeploymentId : string
       IsolationScopeId : string option
       Target : ResolvedResourceDeploymentTarget
@@ -229,6 +232,7 @@ module private CreatePostgresClusterWorkflow =
         (persistCreatedCluster : PersistCreatedPostgresCluster)
         (resourceRegistrar : IResourceRegistrar)
         (createResourceDeployment : CreateResourceDeployment)
+        (createBoundSecret : CreateBoundManagedSecret)
         (plan : CreatePostgresClusterPlan)
         cancellationToken =
         quotaAdmissionExecutor.ExecuteOutcomeAsync<
@@ -245,7 +249,6 @@ module private CreatePostgresClusterWorkflow =
                         persistCreatedCluster.Invoke(
                             transaction.Session,
                             plan.Cluster,
-                            plan.Credential,
                             ct)
 
                     let! registrationResult =
@@ -287,10 +290,24 @@ module private CreatePostgresClusterWorkflow =
                                 transaction.Abort(
                                     CreatePostgresClusterRejected(CreateDeployment error))
                         | Ok deployment ->
-                            return
-                                transaction.Commit(
-                                    PostgresClusterDto.create plan.Cluster deployment
-                                    |> PostgresClusterCreated)
+                            let! secretResult =
+                                createBoundSecret.Invoke(
+                                    plan.Credential,
+                                    plan.Cluster.GroupId,
+                                    deployment.IsolationScopeId,
+                                    deployment.DeploymentId,
+                                    transaction.Session,
+                                    ct)
+                            match TypedResultInterop.toResult secretResult with
+                            | Error error ->
+                                return transaction.Abort(
+                                    CreatePostgresClusterRejected(
+                                        CreateCredential(PostgresCredentialErrors.fromManaged plan.Cluster.Id error)))
+                            | Ok _ ->
+                                return
+                                    transaction.Commit(
+                                        PostgresClusterDto.create plan.Cluster deployment
+                                        |> PostgresClusterCreated)
                 }),
             cancellationToken)
 
@@ -303,7 +320,8 @@ type CreatePostgresClusterHandler(
     quotaAdmissionExecutor : IQuotaAdmissionExecutor,
     admitDeploymentTarget : AdmitDeploymentTargetForNewWorkload,
     resolveComputeProfile : ResolveComputeProfile,
-    createResourceDeployment : CreateResourceDeployment) =
+    createResourceDeployment : CreateResourceDeployment,
+    createBoundSecret : CreateBoundManagedSecret) =
 
     interface IMediatorOutcomeHandler<CreatePostgresClusterRequest, CreatePostgresClusterOutcome> with
         member _.HandleAsync(request, cancellationToken) =
@@ -327,6 +345,7 @@ type CreatePostgresClusterHandler(
                             persistCreatedCluster
                             resourceRegistrar
                             createResourceDeployment
+                            createBoundSecret
                             plan
                             cancellationToken
             }
@@ -348,6 +367,12 @@ type CreatePostgresClusterValidator(settings : PostgresSettings) as this =
         |> ignore
         this.RuleFor(_.Body.Username).NotEmpty().WithMessage("Username is required.") |> ignore
         this.RuleFor(_.Body.Password).NotEmpty().WithMessage("Password is required.") |> ignore
+        this.RuleFor(_.Body)
+            .Must(fun body ->
+                PostgresManagedSecret.totalValueBytes [body.Username; body.Password] <=
+                    PostgresManagedSecret.maximumValueBytes)
+            .WithMessage("The combined UTF-8 credential values must not exceed 64 KiB.")
+        |> ignore
         this.RuleFor(_.Body.Instances)
             .Must(fun instances -> Option.forall (fun value -> value > 0) instances)
             .WithMessage("Instances must be greater than zero.")

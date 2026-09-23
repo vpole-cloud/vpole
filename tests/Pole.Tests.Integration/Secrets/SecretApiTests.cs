@@ -13,6 +13,7 @@ using Pole.Features.ResourceGroups.Events;
 using Pole.Features.Secrets.Application.Endpoints;
 using Pole.Features.Secrets.Application.Persistence;
 using Pole.Features.Secrets.Application;
+using Pole.Features.Secrets.Domain;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Tests.Integration.Infrastructure;
@@ -24,6 +25,36 @@ namespace Pole.Tests.Integration.Secrets;
 public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
+    [Fact]
+    public async Task Projection_status_is_tenant_scoped_reference_only_and_canonicalizes_ids()
+    {
+        var group = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var response = await Client.PostAsJsonAsync("/api/v1/secrets/", new
+        {
+            resourceGroupId = group.Id,
+            isolationScopeId = group.DefaultIsolationScopeId,
+            name = "projection-status",
+            purpose = "status",
+            values = new { password = "private-status-value" }
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var metadata = (await response.Content.ReadFromJsonAsync<SecretMetadata>())!;
+        var secret = await Fixture.Database.GetCollection<Secret>("Secrets").Find(x => x.Id == metadata.Id).SingleAsync();
+        var projection = SecretProjectionFactory.Create(secret,
+            SecretBinding.Create(ObjectId.GenerateNewId().ToString(), "pole/web-service", ObjectId.GenerateNewId().ToString(), new AllSecretDeployments(), []),
+            ObjectId.GenerateNewId().ToString(), "cell", "target", "private-namespace").Failed("ProjectionUnavailable");
+        await Fixture.Database.GetCollection<SecretProjection>("SecretProjections").InsertOneAsync(projection);
+        var body = await Client.GetStringAsync($"/api/v1/secrets/{metadata.Id.ToUpperInvariant()}/projections");
+        var status = Assert.Single(JsonSerializer.Deserialize<SecretProjectionStatusDto[]>(body, new JsonSerializerOptions(JsonSerializerDefaults.Web))!);
+        Assert.Equal("Failed", status.Health);
+        Assert.Equal("ProjectionUnavailable", status.FailureCode);
+        Assert.Equal(projection.DeploymentId, status.ResourceDeploymentId);
+        Assert.DoesNotContain("private-status-value", body);
+        Assert.DoesNotContain("private-namespace", body);
+        Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync($"/api/v1/secrets/{metadata.Id}/projections")).StatusCode);
+    }
+
     [Fact]
     public async Task WriteOnlyApiReturnsMetadata_ValidatesInput_AndPaginates()
     {

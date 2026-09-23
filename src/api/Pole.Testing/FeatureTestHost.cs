@@ -37,7 +37,7 @@ public sealed class FeatureTestHost : IAsyncDisposable
         Assembly eventAssembly,
         Action<IServiceCollection, IConfiguration> addFeature,
         Action<IEndpointRouteBuilder> mapFeatureEndpoints,
-        FeatureScopedMigration migration,
+        FeatureScopedMigration? migration = null,
         Action<IServiceCollection>? configureServices = null,
         CancellationToken cancellationToken = default)
     {
@@ -62,7 +62,8 @@ public sealed class FeatureTestHost : IAsyncDisposable
                 [applicationAssembly],
                 [eventAssembly],
                 []);
-            builder.Services.AddSingleton<IMigration>(migration);
+            if (migration is not null)
+                builder.Services.AddSingleton<IMigration>(migration);
             builder.Services.AddMassTransit(bus =>
             {
                 bus.AddConsumers(PolePlatform.ApplicationAssemblies.Append(applicationAssembly).Distinct().ToArray());

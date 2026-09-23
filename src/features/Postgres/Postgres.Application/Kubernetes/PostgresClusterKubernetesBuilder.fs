@@ -18,7 +18,6 @@ type PostgresResourceDeploymentMetadata =
 module PostgresClusterKubernetesBuilder =
     let buildResourceName (clusterId : string) = $"pg-{clusterId}"
 
-    let buildSecretName (clusterId : string) = $"{buildResourceName clusterId}-secret"
     let buildReadWriteServiceName (clusterId : string) = $"{buildResourceName clusterId}-rw"
     let buildDatabaseName (clusterId : string) = clusterId
 
@@ -72,13 +71,17 @@ module PostgresClusterKubernetesBuilder =
 
     let buildCluster
         (cluster : PostgresCluster)
-        (username : string)
+        (credentials : PostgresProjectedCredentials)
         (namespaceName : string)
         (storageClassName : string)
         (compute : KubernetesComputeConfiguration)
         (metadata : PostgresResourceDeploymentMetadata)
         (settings : PostgresSettings) =
-        let clusterSecretName = buildSecretName cluster.Id
+        let clusterSecretName = credentials.Projection.KubernetesName
+        let username =
+            match credentials with
+            | OperatorCredentials(username, _) -> username
+            | StatefulSetCredentials _ -> invalidArg "credentials" "Operator bootstrap requires its managed username."
         let image = PostgresSettings.buildImageReference settings.OperatorImage cluster.Spec.Version
         let spec = Dictionary<string, obj>()
         spec["instances"] <- cluster.Spec.Instances
@@ -120,25 +123,3 @@ module PostgresClusterKubernetesBuilder =
                 |}
             spec = spec
         |}
-
-    let buildSecret
-        (cluster : PostgresCluster)
-        (credentials : PostgresClusterCredentials)
-        (namespaceName : string)
-        (metadata : PostgresResourceDeploymentMetadata) =
-        let secret = V1Secret()
-        secret.ApiVersion <- "v1"
-        secret.Kind <- "Secret"
-        secret.Metadata <-
-            V1ObjectMeta(
-                Name = buildSecretName cluster.Id,
-                NamespaceProperty = namespaceName,
-                Labels = buildLabels cluster metadata,
-                Annotations = buildAnnotations ())
-        secret.Type <- "kubernetes.io/basic-auth"
-        secret.StringData <-
-            dict [
-                "username", credentials.Username
-                "password", credentials.Password
-            ]
-        secret

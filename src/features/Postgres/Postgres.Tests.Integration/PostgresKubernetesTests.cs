@@ -1,6 +1,7 @@
 using k8s;
 using k8s.Autorest;
 using System.Net;
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.FSharp.Core;
 using MongoDB.Bson;
@@ -25,16 +26,18 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
     : KubernetesIntegrationTestBase(fixture)
 {
     [KubernetesFact("cnpg")]
-    public async Task OperatorCreateAsync_CreatesSecretAndClusterCustomResource()
+    public async Task OperatorCreateAsync_ConsumesManagedProjectionAndCreatesClusterCustomResource()
     {
         var cluster = BuildOperatorCluster();
         IPostgresClusterDeploymentManager manager =
             new PostgresClusterDeploymentManager(CreateSettings());
+        using var projection = new ManagedProjectionFixture(Kubernetes, cluster, NamespaceName);
+        await projection.ApplyAsync("initial-secret");
 
         await manager.ApplyAsync(
             Kubernetes,
             cluster,
-            Credentials("initial-secret"),
+            projection.Credentials,
             NamespaceName,
             Target.StorageClassName,
             Compute(),
@@ -42,7 +45,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
             CancellationToken.None);
 
         var secret = await Kubernetes.CoreV1.ReadNamespacedSecretAsync(
-            PostgresClusterKubernetesBuilder.buildSecretName(cluster.Id),
+            projection.Projection.KubernetesName,
             NamespaceName);
         var clusterResource = await Kubernetes.CustomObjects.GetNamespacedCustomObjectAsync(
             group: "postgresql.cnpg.io",
@@ -62,11 +65,13 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
         var cluster = BuildOperatorCluster();
         IPostgresClusterDeploymentManager manager =
             new PostgresClusterDeploymentManager(CreateSettings());
+        using var projection = new ManagedProjectionFixture(Kubernetes, cluster, NamespaceName);
+        await projection.ApplyAsync("initial-secret");
 
         await manager.ApplyAsync(
             Kubernetes,
             cluster,
-            Credentials("initial-secret"),
+            projection.Credentials,
             NamespaceName,
             Target.StorageClassName,
             Compute(),
@@ -82,25 +87,28 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
     }
 
     [KubernetesFact("cnpg")]
-    public async Task UpdatePasswordAsync_RewritesSecret()
+    public async Task ManagedProjectionRotation_RewritesSecretBeforeWorkloadReapply()
     {
         var cluster = BuildOperatorCluster();
         IPostgresClusterDeploymentManager manager =
             new PostgresClusterDeploymentManager(CreateSettings());
+        using var projection = new ManagedProjectionFixture(Kubernetes, cluster, NamespaceName);
+        await projection.ApplyAsync("initial-secret");
 
         await manager.ApplyAsync(
             Kubernetes,
             cluster,
-            Credentials("initial-secret"),
+            projection.Credentials,
             NamespaceName,
             Target.StorageClassName,
             Compute(),
             Metadata(),
             CancellationToken.None);
+        await projection.ApplyAsync("rotated-secret");
         await manager.ApplyAsync(
             Kubernetes,
             cluster,
-            Credentials("rotated-secret"),
+            projection.Credentials,
             NamespaceName,
             Target.StorageClassName,
             Compute(),
@@ -108,7 +116,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
             CancellationToken.None);
 
         var secret = await Kubernetes.CoreV1.ReadNamespacedSecretAsync(
-            PostgresClusterKubernetesBuilder.buildSecretName(cluster.Id),
+            projection.Projection.KubernetesName,
             NamespaceName);
 
         Assert.Equal("postgres-user", System.Text.Encoding.UTF8.GetString(secret.Data["username"]));
@@ -116,16 +124,18 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
     }
 
     [KubernetesFact("cnpg")]
-    public async Task OperatorDeleteAsync_RemovesSecretAndCluster()
+    public async Task OperatorDeleteAsync_LeavesProjectionForItsProviderAndRemovesCluster()
     {
         var cluster = BuildOperatorCluster();
         IPostgresClusterDeploymentManager manager =
             new PostgresClusterDeploymentManager(CreateSettings());
+        using var projection = new ManagedProjectionFixture(Kubernetes, cluster, NamespaceName);
+        await projection.ApplyAsync("initial-secret");
 
         await manager.ApplyAsync(
             Kubernetes,
             cluster,
-            Credentials("initial-secret"),
+            projection.Credentials,
             NamespaceName,
             Target.StorageClassName,
             Compute(),
@@ -138,8 +148,10 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
             cluster.Spec.DeploymentMode,
             CancellationToken.None);
 
+        Assert.NotNull(await Kubernetes.CoreV1.ReadNamespacedSecretAsync(projection.Projection.KubernetesName, NamespaceName));
+        await projection.ReleaseAsync();
         await AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedSecretAsync(
-            PostgresClusterKubernetesBuilder.buildSecretName(cluster.Id),
+            projection.Projection.KubernetesName,
             NamespaceName));
         await AssertResourceDeletedAsync(() => Kubernetes.CustomObjects.GetNamespacedCustomObjectAsync(
             group: "postgresql.cnpg.io",
@@ -155,11 +167,13 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
         var cluster = BuildStatefulSetCluster();
         IPostgresClusterDeploymentManager manager =
             new PostgresClusterDeploymentManager(CreateSettings());
+        using var projection = new ManagedProjectionFixture(Kubernetes, cluster, NamespaceName);
+        await projection.ApplyAsync("initial-secret");
 
         await manager.ApplyAsync(
             Kubernetes,
             cluster,
-            Credentials("initial-secret"),
+            projection.Credentials,
             NamespaceName,
             Target.StorageClassName,
             Compute(),
@@ -174,16 +188,18 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
     }
 
     [KubernetesFact]
-    public async Task StatefulSetDeleteAsync_RemovesResources()
+    public async Task StatefulSetDeleteAsync_LeavesProjectionForItsProviderAndRemovesResources()
     {
         var cluster = BuildStatefulSetCluster();
         IPostgresClusterDeploymentManager manager =
             new PostgresClusterDeploymentManager(CreateSettings());
+        using var projection = new ManagedProjectionFixture(Kubernetes, cluster, NamespaceName);
+        await projection.ApplyAsync("initial-secret");
 
         await manager.ApplyAsync(
             Kubernetes,
             cluster,
-            Credentials("initial-secret"),
+            projection.Credentials,
             NamespaceName,
             Target.StorageClassName,
             Compute(),
@@ -196,8 +212,10 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
             cluster.Spec.DeploymentMode,
             CancellationToken.None);
 
+        Assert.NotNull(await Kubernetes.CoreV1.ReadNamespacedSecretAsync(projection.Projection.KubernetesName, NamespaceName));
+        await projection.ReleaseAsync();
         await AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedSecretAsync(
-            PostgresClusterKubernetesBuilder.buildSecretName(cluster.Id),
+            projection.Projection.KubernetesName,
             NamespaceName));
         await AssertResourceDeletedAsync(() => Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(
             PostgresClusterKubernetesBuilder.buildResourceName(cluster.Id),
@@ -231,9 +249,6 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
                 1,
                 5));
 
-    private static PostgresClusterCredentials Credentials(string password) =>
-        new("postgres-user", password);
-
     private static PostgresResourceDeploymentMetadata Metadata() =>
         new(
             "507f1f77bcf86cd799439044",
@@ -263,10 +278,10 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
 
     private async Task WaitForClusterReadyAsync(string clusterId, int expectedReadyInstances, int timeoutSeconds = 180)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+        var elapsed = Stopwatch.StartNew();
         string? lastStatus = null;
 
-        while (DateTime.UtcNow < deadline)
+        while (elapsed.Elapsed < TimeSpan.FromSeconds(timeoutSeconds))
         {
             var clusterResource = await Kubernetes.CustomObjects.GetNamespacedCustomObjectAsync(
                 group: "postgresql.cnpg.io",
@@ -295,9 +310,9 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
 
     private async Task WaitForStatefulSetReadyAsync(string statefulSetName, int timeoutSeconds = 180)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+        var elapsed = Stopwatch.StartNew();
 
-        while (DateTime.UtcNow < deadline)
+        while (elapsed.Elapsed < TimeSpan.FromSeconds(timeoutSeconds))
         {
             var statefulSet = await Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(statefulSetName, NamespaceName);
             var readyReplicas = statefulSet.Status?.ReadyReplicas ?? 0;
@@ -315,10 +330,10 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
 
     private async Task<object?> ExecuteSimpleSqlAsync(PostgresCluster cluster, int timeoutSeconds = 60)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+        var elapsed = Stopwatch.StartNew();
         Exception? lastError = null;
 
-        while (DateTime.UtcNow < deadline)
+        while (elapsed.Elapsed < TimeSpan.FromSeconds(timeoutSeconds))
         {
             try
             {
@@ -348,9 +363,9 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
 
     private static async Task AssertResourceDeletedAsync<T>(Func<Task<T>> readCall, int timeoutSeconds = 30)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+        var elapsed = Stopwatch.StartNew();
 
-        while (DateTime.UtcNow < deadline)
+        while (elapsed.Elapsed < TimeSpan.FromSeconds(timeoutSeconds))
         {
             try
             {

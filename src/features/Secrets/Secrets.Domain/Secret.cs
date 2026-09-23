@@ -80,6 +80,7 @@ public sealed record Secret(
     [property: BsonRepresentation(BsonType.String)]
     SecretLifecycle Lifecycle,
     ImmutableArray<SecretBinding> Bindings,
+    SecretManagement Management,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc)
 {
@@ -124,6 +125,8 @@ public sealed record Secret(
         DateTime now) => this with
         {
             Bindings = Bindings.Where(x => x.Id != bindingId).ToImmutableArray(),
+            Management = Management is ProviderManagedSecret owner && owner.BindingId == bindingId
+                ? new UnmanagedSecret() : Management,
             Revision = checked(Revision + 1),
             UpdatedAtUtc = now
         };
@@ -139,6 +142,33 @@ public static class SecretFactory
         string name,
         string purpose,
         IEnumerable<string> keys,
+        DateTime now) =>
+        CreateCore(id, tenantId, resourceGroupId, isolationScopeId, name, purpose, keys, new UnmanagedSecret(), now);
+
+    public static Secret CreateManaged(
+        string id,
+        string tenantId,
+        string resourceGroupId,
+        string isolationScopeId,
+        string name,
+        string purpose,
+        IEnumerable<string> keys,
+        SecretBinding ownerBinding,
+        KubernetesSecretType kubernetesType,
+        DateTime now) =>
+        CreateCore(id, tenantId, resourceGroupId, isolationScopeId, name, purpose, keys,
+            new ProviderManagedSecret(ownerBinding.ConsumerType, ownerBinding.ConsumerId, ownerBinding.Id, kubernetesType), now)
+            .Bind(ownerBinding, now);
+
+    private static Secret CreateCore(
+        string id,
+        string tenantId,
+        string resourceGroupId,
+        string isolationScopeId,
+        string name,
+        string purpose,
+        IEnumerable<string> keys,
+        SecretManagement management,
         DateTime now) => new(
             id,
             tenantId,
@@ -152,6 +182,7 @@ public static class SecretFactory
             1,
             SecretLifecycle.Active,
             [],
+            management,
             now,
             now);
 }

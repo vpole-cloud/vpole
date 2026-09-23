@@ -16,11 +16,14 @@ open Pole.Features.Postgres.Application.Persistence
 open Pole.Features.Postgres.Application.Persistence.Credentials
 open Pole.Features.Postgres.Application.Persistence.Reads
 open Pole.Features.ResourceDeployments.Contracts
+open Pole.Features.Secrets.Contracts
 open Pole.Mediator
 open Pole.Validation
 
 type UpdatePostgresClusterPasswordRequestBody =
     { Password : string }
+
+    override _.ToString() = "UpdatePostgresClusterPasswordRequestBody([REDACTED])"
 
 type UpdatePostgresClusterPasswordResponse =
     { Id : string
@@ -30,7 +33,6 @@ type UpdatePostgresClusterPasswordStateError =
     | PostgresClusterPasswordNotFound of clusterId : string
     | PostgresClusterPasswordRotationUnavailable of clusterId : string
     | PostgresClusterPasswordRotationUnsupported of clusterId : string
-    | PostgresClusterCredentialNotFound of clusterId : string
 
 type UpdatePostgresClusterPasswordError =
     | PasswordState of UpdatePostgresClusterPasswordStateError
@@ -62,8 +64,8 @@ type UpdatePostgresClusterPasswordRequest =
 
 type private UpdatePostgresClusterPasswordPlan =
     { Cluster : PostgresCluster
-      Credential : PostgresCredential
-      ReplacementCredential : PostgresCredential
+      Credential : ManagedSecretValues
+      ReplacementCredential : PreparedManagedSecret
       CurrentCompute : CurrentResourceDeploymentComputeDto }
 
 type private UpdatePostgresClusterPasswordPreparation =
@@ -127,15 +129,13 @@ module private UpdatePostgresClusterPasswordWorkflow =
                             cancellationToken)
 
                     match credential with
-                    | None ->
-                        return
-                            Completed(
-                                UpdatePostgresClusterPasswordRejected(
-                                    PasswordState(
-                                        PostgresClusterCredentialNotFound cluster.Id)))
-                    | Some credential ->
+                    | PostgresError error ->
+                        return Completed(UpdatePostgresClusterPasswordRejected(PasswordCredential error))
+                    | PostgresSuccess credential ->
                         let! rotated =
                             rotateCredential.Invoke(
+                                cluster.TenantId,
+                                cluster.Id,
                                 credential,
                                 request.Body.Password,
                                 cancellationToken)
@@ -239,7 +239,11 @@ type UpdatePostgresClusterPasswordRequestValidator() as this =
     inherit AbstractValidator<UpdatePostgresClusterPasswordRequest>()
     do
         this.RuleFor(_.ClusterId).MongoObjectId("PostgreSQL cluster ID") |> ignore
-        this.RuleFor(_.Body.Password).NotEmpty() |> ignore
+        this.RuleFor(_.Body.Password)
+            .NotEmpty()
+            .Must(fun password -> PostgresManagedSecret.valueBytes password <= PostgresManagedSecret.maximumValueBytes)
+            .WithMessage("The UTF-8 password must not exceed 64 KiB.")
+        |> ignore
 
 [<AbstractClass; Sealed>]
 type UpdatePostgresClusterPassword =

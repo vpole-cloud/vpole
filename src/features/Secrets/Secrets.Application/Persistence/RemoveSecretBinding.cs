@@ -13,7 +13,8 @@ public delegate Task<RemoveSecretBindingResult> RemoveSecretBinding(
 
 public union RemoveSecretBindingResult(
     Secret,
-    SecretMissing);
+    SecretMissing,
+    SecretManagedByProvider);
 
 internal sealed class MongoRemoveSecretBinding(
     IMongoCollection<Secret> secrets,
@@ -35,6 +36,8 @@ internal sealed class MongoRemoveSecretBinding(
                 .FirstOrDefaultAsync(token);
             if (current is null)
                 return tx.Abort(new SecretMissing());
+            if (current.Management is ProviderManagedSecret owner && owner.BindingId == bindingId)
+                return tx.Abort(new SecretManagedByProvider());
             if (current.Bindings.All(x => x.Id != bindingId))
                 return tx.Commit(current);
 

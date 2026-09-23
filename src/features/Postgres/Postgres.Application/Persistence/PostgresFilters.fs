@@ -8,7 +8,6 @@ open Pole.Features.Postgres.Domain
 [<RequireQualifiedAccess>]
 module PostgresFilters =
     let private clusters = Builders<PostgresCluster>.Filter
-    let private credentials = Builders<PostgresCredential>.Filter
 
     let visibleToTenant (tenantId : string) : FilterDefinition<PostgresCluster> =
         clusters.ForTenant tenantId
@@ -43,17 +42,3 @@ module PostgresFilters =
 
     let forList tenantId : FilterDefinition<PostgresCluster> =
         visibleToTenant tenantId
-
-    let credentialByCluster tenantId clusterId : FilterDefinition<PostgresCredential> =
-        credentials.And(
-            credentials.Eq((fun (credential : PostgresCredential) -> credential.TenantId), tenantId),
-            credentials.Eq((fun (credential : PostgresCredential) -> credential.PostgresClusterId), clusterId))
-
-    let credentialAtVersion (credential : PostgresCredential) : FilterDefinition<PostgresCredential> =
-        credentials.And(
-            credentialByCluster credential.TenantId credential.PostgresClusterId,
-            credentials.Eq((fun (candidate : PostgresCredential) -> candidate.Id), credential.Id),
-            credentials.Eq((fun (candidate : PostgresCredential) -> candidate.Version), credential.Version))
-
-    let credentialForDeletedCluster tenantId clusterId : FilterDefinition<PostgresCredential> =
-        credentialByCluster tenantId clusterId

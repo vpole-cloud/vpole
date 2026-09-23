@@ -11,23 +11,20 @@ open Pole.Features.Postgres.Application.Persistence
 open Pole.Features.Postgres.Domain
 
 type PersistCreatedPostgresCluster =
-    delegate of session : IClientSessionHandle * cluster : PostgresCluster * credential : PostgresCredential * cancellationToken : CancellationToken -> Task
+    delegate of
+        session : IClientSessionHandle *
+        cluster : PostgresCluster *
+        cancellationToken : CancellationToken -> Task
 
 type MongoPersistCreatedPostgresCluster(
     clusters : IMongoCollection<PostgresCluster>,
-    credentials : IMongoCollection<PostgresCredential>,
     storeOutboxWrites : StoreOutboxWrites) =
 
-    member _.InvokeAsync(session, cluster, credential, cancellationToken : CancellationToken) =
+    member _.InvokeAsync(session, cluster, cancellationToken : CancellationToken) =
         task {
             PostgresPersistenceGuards.transaction session "PostgreSQL creation"
             PostgresPersistenceGuards.cluster cluster
-            PostgresPersistenceGuards.credential credential
-            if cluster.TenantId <> credential.TenantId || cluster.Id <> credential.PostgresClusterId then
-                invalidOp "A PostgreSQL credential must belong to the cluster being created."
-
             do! clusters.InsertOneAsync(session, cluster, cancellationToken = cancellationToken)
-            do! credentials.InsertOneAsync(session, credential, cancellationToken = cancellationToken)
             let writes : IReadOnlyCollection<OutboxWrite> =
                 [| OutboxWrite.Create(PostgresClusterEvents.created cluster) |]
             do! storeOutboxWrites.Invoke(session, writes, cancellationToken)
