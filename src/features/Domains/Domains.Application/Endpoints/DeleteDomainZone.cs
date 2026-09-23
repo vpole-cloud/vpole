@@ -36,16 +36,16 @@ public static class DeleteDomainZone
     private static IResult ToHttpResult(
         DeleteDomainZoneOutcome outcome,
         IHttpProblemMapper httpProblems) => outcome switch
-    {
-        ManagedDomainZoneDeleted => Results.NoContent(),
-        DeleteManagedDomainZoneError error =>
-            httpProblems.Map(error).ToHttpResult()
-    };
+        {
+            ManagedDomainZoneDeleted => Results.NoContent(),
+            DeleteManagedDomainZoneError error =>
+                httpProblems.Map(error).ToHttpResult()
+        };
 }
 
 public sealed record DeleteDomainZoneRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<DeleteDomainZoneOutcome>, ITenantWriteOperation;
 
 public union DeleteDomainZoneOutcome(

@@ -13,7 +13,6 @@ type PostgresClusterEndpoints =
         endpoints.MapGroup("/postgres")
             .WithDisplayName("Postgres Cluster Endpoints")
             .WithTags("postgres")
-            .WithMetadata(TenantEndpointMetadata())
             .MapCreatePostgresClusterEndpoint()
             .MapGetSupportedPostgresVersionsEndpoint()
             .MapGetPostgresClustersEndpoint()

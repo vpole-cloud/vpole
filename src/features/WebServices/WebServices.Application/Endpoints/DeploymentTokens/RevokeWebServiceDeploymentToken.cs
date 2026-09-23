@@ -14,7 +14,7 @@ namespace Pole.Features.WebServices.Application.Endpoints.DeploymentTokens;
 public sealed record RevokeWebServiceDeploymentTokenRequest(
     [FromRoute] string Id,
     [FromRoute] string TokenId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
+    [FromTenantHeader] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default
 ) : IMediatorRequest<RevokeWebServiceDeploymentTokenOutcome>, ITenantWriteOperation;
 

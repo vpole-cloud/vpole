@@ -46,7 +46,7 @@ public static class RedeployWebService
 
 public sealed record RedeployWebServiceRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
+    [FromTenantHeader] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default,
     [FromClaim(Claims.Email)] ClaimValue<string?> ActorEmail = default)
     : IMediatorRequest<RedeployWebServiceOutcome>, ITenantWriteOperation;

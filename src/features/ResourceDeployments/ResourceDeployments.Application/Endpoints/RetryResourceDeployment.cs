@@ -42,7 +42,7 @@ public delegate Task<Result<ResourceDeploymentDto, RetryResourceDeploymentError>
 
 public sealed record RetryResourceDeploymentRequest(
     [FromRoute] string DeploymentId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<RetryResourceDeploymentOutcome>, ITenantWriteOperation;
 
 public sealed class RetryResourceDeploymentHandler(

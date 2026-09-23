@@ -45,29 +45,67 @@ X-Pole-Tenant-ID: <tenant-id>
 Authorization: Bearer <access-token>
 ```
 
-The tenant middleware runs after authentication and before endpoint execution. It applies to:
+The API composition roots call `RequireTenantContext()` on their `/api/v1` route groups.
+All descendant endpoints require the tenant header by default, including newly added endpoints.
+Platform administration, tenant/member management and user registration explicitly opt out with
+`WithoutTenantContext()`. This only disables header resolution, not authentication or authorization.
+Technical endpoints and callbacks outside the API group do not inherit this requirement.
+The middleware runs after authentication/authorization and before request binding. It has no
+route-prefix list. The underlying metadata has three modes:
 
-* `/api/v1/resource-groups`
-* `/api/v1/web-services`
-* `/api/v1/redis-services`
-* `/api/v1/postgres`
-* `/api/v1/resource-deployments`
-* `/api/v1/domain-names`
-* `/api/v1/search`
+| Mode | Header absent | Header present |
+| --- | --- | --- |
+| `Required` (default) | 400 validation problem | Resolve and authorize the selection |
+| `Optional` | Continue without an active context | Resolve and authorize the selection |
+| `None` | Continue without an active context | Ignore the header; it is not an active selection for this operation |
 
-For those routes, the middleware:
+Resolution requires authentication, exactly one ObjectId header, an existing tenant, and tenant
+membership or the platform-admin claim. Missing, blank, malformed, repeated, or comma-joined
+headers return the same structured 400 validation problem before ASP.NET binds endpoint arguments.
+An unknown tenant returns 404; an unjoined tenant returns 403. Uppercase ObjectIds are accepted and
+canonicalized to the persisted tenant identity before binding. Unexpected Mongo failures retain the
+standard infrastructure exception path.
 
-1. Reads `X-Pole-Tenant-ID`.
-2. Loads the tenant from Mongo.
-3. Looks for the current Keycloak subject in the tenant member list.
-4. Allows platform admins even when they are not tenant members.
-5. Stores a `TenantContext` with tenant id, tenant name, role, and platform-admin status.
+Use `[FromTenantHeader]` in C# or `[<Pole.ASP.Helpers.FromTenantHeader>]` in F# for the request's
+active selection. This is an ASP.NET header-binding attribute with one centrally owned header name;
+it is not a service locator or an ambient-context binder. Middleware validates and canonicalizes the
+header first. `ITenantReadOperation`, `ITenantWriteOperation`, and `ITenantCreateOperation` retain
+the active `TenantId` and role requirements. The Mediator rejects an absent resolved context or a
+request whose tenant differs from that context, even for platform admins. Programmatic callers
+must establish the context explicitly; a supplied tenant string and admin claim are not a substitute.
 
-If the header is missing, every request marked with `ITenantReadOperation` or
-`ITenantWriteOperation` fails validation. This also applies to platform
-administrators: elevated authorization bypasses tenant membership checks, but
-it does not select a tenant. A platform administrator must provide
-`X-Pole-Tenant-ID` when using a normal tenant-owned resource endpoint.
+`RequireTenantContext()` also installs `ValidateTenantContextDeclarations`. This bounded endpoint
+convention inspects mapped handler parameter types and rejects an `ITenantOperation` request whose
+effective context requirement is missing, optional or disabled. It covers C# lambdas and F#
+`MapMethod` handlers, including nested group overrides. New API roots must install the default too.
+
+### One tenant per operation
+
+Every operation has one tenant identity with a defined source:
+
+- Ordinary resource requests bind `TenantId` from the header. Middleware resolves membership and
+  Mediator checks the request against that verified context before enforcing read/write roles.
+- Platform quota-policy requests bind `TenantId` from the route. `IPlatformTenantOperation`
+  requires an authenticated platform administrator; no tenant header or membership is needed.
+- Member-management requests bind `TenantId` from the route. `ITenantMemberOperation` uses the
+  existing Viewer/Admin/Owner checks in `TenantMemberAuthorizationBehavior`; last-owner invariants
+  remain in the member mutation.
+
+Route-scoped operations ignore the tenant header, including stale or malformed values. They do
+not carry an additional active/target tenant pair. Platform administration needs no active tenant;
+any call to an ordinary resource endpoint still follows that endpoint's normal header contract.
+Persistence remains explicitly tenant-filtered and each operation retains its validation and
+resource invariants. No administration UI or tenant-switching workflow is introduced here.
+
+### Anonymous deployment credentials
+
+The WebService image-tag endpoint explicitly declares `TenantCredentialMetadata("pole_ci_")` and
+`AllowAnonymous`. Only that declared destination may defer active-context resolution when the
+request presents a single bearer header with that prefix. This selects the credential flow; it does
+not authenticate the token. The feature validates its hash, revocation, resource, allowed operation,
+and any supplied tenant assertion. Invalid tokens never acquire tenant membership. Other anonymous
+endpoints and normal tenant endpoints cannot use this exception. Authenticated user calls to the
+image-tag endpoint still resolve the required active context and enforce the write role.
 
 Global fleet operations must use an explicit platform endpoint and must not be
 implemented by treating a missing tenant id as an empty MongoDB filter. Internal
@@ -180,8 +218,9 @@ For a new tenant-owned feature:
 
 1. Add `TenantId` to the domain document.
 2. Add `TenantId` to create/update/delete events through `EventCore.Create(tenantId)`.
-3. Add a non-nullable `[FromHeader(Name = TenantHeaders.TenantId)]` member to
-   request models.
+3. Map resource endpoints under the API group with `RequireTenantContext()` and add a non-nullable
+   `[FromTenantHeader]` member to request models. Route-scoped administration/member endpoints
+   explicitly use `WithoutTenantContext()` and retain their operation-specific authorization.
 4. Implement the correct tenant marker interface on request models.
 5. Validate all cross-resource references with both id and tenant id.
 6. Filter reads, updates, deletes, and consumer lookups by tenant id.

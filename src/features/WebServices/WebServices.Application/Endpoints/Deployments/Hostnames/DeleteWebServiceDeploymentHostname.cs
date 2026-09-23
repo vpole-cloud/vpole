@@ -51,7 +51,7 @@ public sealed record DeleteWebServiceDeploymentHostnameRequest(
     [FromRoute] string Id,
     [FromRoute] string DeploymentId,
     [FromRoute] string BindingId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<DeleteWebServiceDeploymentHostnameOutcome>, ITenantWriteOperation;
 
 public union DeleteWebServiceDeploymentHostnameOutcome(

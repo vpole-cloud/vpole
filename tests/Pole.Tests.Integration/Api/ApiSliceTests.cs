@@ -20,6 +20,18 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
     [Fact]
+    public async Task MemberTargetUsesRouteMembershipIndependentlyOfTheActiveHeader()
+    {
+        Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
+        Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, "malformed-active-selection");
+        var response = await Client.GetAsync($"/api/v1/tenants/{TestData.TenantId}/members");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var forbidden = await Client.GetAsync("/api/v1/tenants/507f1f77bcf86cd799439099/members");
+        Assert.Equal(HttpStatusCode.NotFound, forbidden.StatusCode);
+    }
+
+    [Fact]
     public async Task CreateUser_ReturnsCreatedForPlatformAdmin()
     {
         Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");

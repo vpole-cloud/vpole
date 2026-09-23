@@ -11,7 +11,7 @@ using Pole.Mediator;
 namespace Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
 
 public sealed record GetSourceBuildConfigurationsRequest(
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetSourceBuildConfigurationsOutcome>, ITenantReadOperation;
 
 public union GetSourceBuildConfigurationsOutcome(IReadOnlyList<SourceBuildConfigurationDto>);

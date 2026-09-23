@@ -19,7 +19,7 @@ public union DetachSecretBindingOutcome(
 public sealed record DetachSecretBindingRequest(
     [FromRoute] string Id,
     [FromRoute] string BindingId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<DetachSecretBindingOutcome>, ITenantWriteOperation;
 
 public sealed class DetachSecretBindingValidator : AbstractValidator<DetachSecretBindingRequest>

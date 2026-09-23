@@ -36,7 +36,7 @@ public static class GetTenantQuotaUsage
 }
 
 public sealed record GetTenantQuotaUsageRequest(
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetTenantQuotaUsageOutcome>, ITenantReadOperation;
 
 public union GetTenantQuotaUsageOutcome(TenantQuotaUsageDto);

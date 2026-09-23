@@ -23,7 +23,7 @@ public static class MapApi
 {
     public static IEndpointRouteBuilder MapPolePlatformEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1")
+        var group = app.MapGroup("/api/v1").RequireTenantContext()
             .RequireAuthorization();
 
         group.MapSecretEndpoints()
@@ -43,6 +43,7 @@ public static class MapApi
             .MapDomainZoneEndpoints();
 
         group.MapGroup("/platform/compute-profiles")
+            .WithoutTenantContext()
             .WithTags("PlatformComputeProfiles")
             .RequireAuthorization(Policy.Admin)
             .MapGetComputeProfilesEndpoint()

@@ -13,6 +13,7 @@ public static class DeploymentTargetEndpoints
         public IEndpointRouteBuilder MapDeploymentTargetEndpoints()
         {
             app.MapGroup("/platform/deployment-targets")
+                .WithoutTenantContext()
                 .WithTags("PlatformDeploymentTargets")
                 .RequireAuthorization(Policy.Admin)
                 .MapGetDeploymentTargetsEndpoint()
@@ -30,6 +31,7 @@ public static class DeploymentTargetEndpoints
         public IEndpointRouteBuilder MapDeploymentTargetEncryptionEndpoints()
         {
             app.MapGroup("/platform/encryption")
+                .WithoutTenantContext()
                 .WithTags("PlatformEncryption")
                 .MapRewrapDeploymentTargetCredentialsEndpoint();
             return app;

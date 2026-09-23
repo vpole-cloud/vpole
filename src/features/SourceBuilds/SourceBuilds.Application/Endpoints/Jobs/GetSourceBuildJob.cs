@@ -14,7 +14,7 @@ namespace Pole.Features.SourceBuilds.Application.Endpoints.Jobs;
 
 public sealed record GetSourceBuildJobRequest(
     [FromRoute] string BuildJobId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetSourceBuildJobOutcome>, ITenantReadOperation;
 
 public union GetSourceBuildJobOutcome(

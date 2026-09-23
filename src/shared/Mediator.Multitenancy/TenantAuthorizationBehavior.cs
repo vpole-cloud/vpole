@@ -17,6 +17,14 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
         RequestHandlerDelegate<TResponse> next,
         CancellationToken cancellationToken)
     {
+        var user = httpContextAccessor.HttpContext?.User;
+        if (request is IPlatformTenantOperation &&
+            (user?.Identity?.IsAuthenticated != true ||
+             user.Claims.Any(claim => claim.Type == Claims.Roles && claim.Value == Roles.Admin) != true))
+        {
+            return new PipelineRejected(new TenantPlatformAdminRequired());
+        }
+
         var isRead = request is ITenantReadOperation;
         var isWrite = request is ITenantWriteOperation;
 
@@ -45,15 +53,13 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
         }
 
         var tenantContext = tenantContextAccessor.Current;
-        var httpContext = httpContextAccessor.HttpContext;
-        var isPlatformAdmin = tenantContext?.IsPlatformAdmin == true || httpContext?.User.Roles.Contains(Roles.Admin) is true;
-
         if (tenantContext is null)
-        {
-            if (!isPlatformAdmin)
-                return new TenantPlatformAdminRequired();
+            return new TenantContextRequired();
 
-            return null;
+        if (request is ITenantOperation scoped &&
+            !string.Equals(scoped.TenantId, tenantContext.TenantId, StringComparison.Ordinal))
+        {
+            return new TenantContextMismatch();
         }
 
         if (!tenantContext.IsPlatformAdmin)

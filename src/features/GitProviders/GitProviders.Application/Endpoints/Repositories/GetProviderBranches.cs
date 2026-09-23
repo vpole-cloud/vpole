@@ -18,7 +18,7 @@ namespace Pole.Features.GitProviders.Application.Endpoints.Repositories;
 public sealed record GetProviderBranchesRequest(
     [FromRoute] string ConnectionId,
     [FromRoute] string RepositoryId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
+    [FromTenantHeader] string TenantId,
     [FromQuery] int Page = 1,
     [FromQuery] int PageSize = 100)
     : IMediatorRequest<GetProviderBranchesOutcome>, ITenantReadOperation;

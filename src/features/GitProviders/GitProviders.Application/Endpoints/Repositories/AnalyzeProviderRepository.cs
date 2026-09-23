@@ -16,7 +16,7 @@ namespace Pole.Features.GitProviders.Application.Endpoints.Repositories;
 public sealed record AnalyzeProviderRepositoryRequest(
     [FromRoute] string ConnectionId,
     [FromRoute] string RepositoryId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
+    [FromTenantHeader] string TenantId,
     [FromBody] AnalyzeRepositoryRequestBody Body)
     : IMediatorRequest<AnalyzeProviderRepositoryOutcome>, ITenantReadOperation;
 

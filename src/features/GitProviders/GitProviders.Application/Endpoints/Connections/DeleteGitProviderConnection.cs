@@ -14,7 +14,7 @@ namespace Pole.Features.GitProviders.Application.Endpoints.Connections;
 
 public sealed record DeleteGitProviderConnectionRequest(
     [FromRoute] string ConnectionId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<DeleteGitProviderConnectionOutcome>, ITenantWriteOperation;
 
 public union DeleteGitProviderConnectionOutcome(

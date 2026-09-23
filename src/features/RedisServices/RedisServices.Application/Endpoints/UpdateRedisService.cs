@@ -72,7 +72,7 @@ public union UpdateRedisServiceOutcome(
 public sealed record UpdateRedisServiceRequest(
     [FromRoute] string Id,
     [FromBody] UpdateRedisServiceRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
+    [FromTenantHeader] string TenantId
 ) : IMediatorRequest<UpdateRedisServiceOutcome>, ITenantWriteOperation;
 
 public sealed record UpdateRedisServiceRequestBody(

@@ -11,7 +11,7 @@ using Pole.Mediator;
 namespace Pole.Features.GitProviders.Application.Endpoints.SourceRepositories;
 
 public sealed record GetSourceRepositoriesRequest(
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetSourceRepositoriesOutcome>, ITenantReadOperation;
 
 public union GetSourceRepositoriesOutcome(IReadOnlyList<SourceRepositoryDto>);

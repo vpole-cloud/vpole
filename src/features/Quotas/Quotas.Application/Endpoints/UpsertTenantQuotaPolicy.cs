@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Application.Persistence;
 using Pole.Features.Quotas.Application.Persistence.Policies;
@@ -38,7 +39,7 @@ public static class UpsertTenantQuotaPolicy
 public sealed record UpsertTenantQuotaPolicyRequest(
     [FromRoute] string TenantId,
     [FromBody] UpsertTenantQuotaPolicyRequestBody Body)
-    : IMediatorRequest<UpsertTenantQuotaPolicyOutcome>;
+    : IMediatorRequest<UpsertTenantQuotaPolicyOutcome>, IPlatformTenantOperation;
 
 public union UpsertTenantQuotaPolicyOutcome(TenantQuotaPolicyDto);
 

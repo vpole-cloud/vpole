@@ -37,12 +37,12 @@ public static class CreateResourceGroup
 
         return app;
     }
-    
+
 }
 
 public sealed record CreateResourceGroupRequest(
     [FromBody] CreateResourceGroupRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
+    [FromTenantHeader] string TenantId
 ) : IMediatorRequest<CreateResourceGroupOutcome>, ITenantCreateOperation;
 
 public union CreateResourceGroupOutcome(ResourceGroupDto);

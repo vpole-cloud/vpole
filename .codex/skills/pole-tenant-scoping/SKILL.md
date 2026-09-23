@@ -12,7 +12,8 @@ Read `docs/multitenancy.md`, the owning feature README, and the nearest tenant-s
 ## Core Rules
 
 - Preserve `TenantId` on tenant-owned domain documents, contract snapshots, search projections, events, and outbox records.
-- Accept the active tenant through `[FromHeader(Name = TenantHeaders.TenantId)]` in C# or `[<FromHeader(Name = TenantHeaders.TenantId)>]` in F#.
+- Inherit required tenant context from the API root via `RequireTenantContext()`; bind the selection with `[FromTenantHeader]` in C# or `[<Pole.ASP.Helpers.FromTenantHeader>]` in F#. Middleware resolves/canonicalizes it before binding; Mediator rejects missing context and mismatches, including for platform admins.
+- Use one `TenantId` per operation, from either header or route as defined in `docs/multitenancy.md`. Platform administration and member management explicitly use `WithoutTenantContext()` and authorize the route tenant without consuming the header. Do not add route-prefix or token-path checks to middleware.
 - Mark mediator requests with `ITenantReadOperation`, `ITenantWriteOperation`, or `ITenantCreateOperation`. Create operations require a concrete tenant id.
 - Combine resource identity filters with tenant filters. Prefer `Builders<T>.Filter.ForTenant(request.TenantId)` plus the resource-specific predicate.
 - Resolve cross-feature references through provider-owned tenant-aware Contracts; never read another feature's collection directly.

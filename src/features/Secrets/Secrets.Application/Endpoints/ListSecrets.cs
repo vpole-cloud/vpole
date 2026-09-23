@@ -22,7 +22,7 @@ public sealed record SecretPage(
 public sealed record ListSecretsRequest(
     [FromQuery] string? After,
     [FromQuery] int? PageSize,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<ListSecretsOutcome>, ITenantReadOperation;
 
 public sealed class ListSecretsValidator : AbstractValidator<ListSecretsRequest>

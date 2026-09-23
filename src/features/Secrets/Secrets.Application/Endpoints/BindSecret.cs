@@ -33,7 +33,7 @@ public sealed record BindSecretBody(
 public sealed record BindSecretRequest(
     [FromRoute] string Id,
     [FromBody] BindSecretBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<BindSecretOutcome>, ITenantWriteOperation;
 
 public sealed class BindSecretValidator : AbstractValidator<BindSecretRequest>

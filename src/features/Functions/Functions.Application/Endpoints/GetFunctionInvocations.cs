@@ -57,7 +57,7 @@ public sealed record FunctionInvocationDto(
 public sealed record GetFunctionInvocationsRequest(
     [FromRoute] string Id,
     [FromQuery] int Take,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetFunctionInvocationsOutcome>, ITenantReadOperation;
 
 public union GetFunctionInvocationsOutcome(

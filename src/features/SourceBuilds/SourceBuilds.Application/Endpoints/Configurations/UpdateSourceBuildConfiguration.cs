@@ -17,7 +17,7 @@ namespace Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
 public sealed record UpdateSourceBuildConfigurationRequest(
     [FromRoute] string ConfigurationId,
     [FromBody] UpdateSourceBuildConfigurationBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<UpdateSourceBuildConfigurationOutcome>, ITenantWriteOperation;
 
 public sealed record UpdateSourceBuildConfigurationBody(SourceBuildRecipeDto Recipe);

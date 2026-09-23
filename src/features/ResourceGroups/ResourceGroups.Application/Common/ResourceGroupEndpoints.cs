@@ -22,9 +22,9 @@ public static class ResourceGroupEndpoints
                 .MapRuntimeCellEndpoints()
                 .MapUpdateResourceGroupEndpoint()
                 .MapDeleteResourceGroupEndpoints();
-                
+
             return app;
         }
     }
-    
+
 }

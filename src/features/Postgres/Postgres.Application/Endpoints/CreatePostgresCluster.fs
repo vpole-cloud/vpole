@@ -69,7 +69,7 @@ type CreatePostgresClusterOutcome =
 
 type CreatePostgresClusterRequest =
     { [<FromBody>] Body : CreatePostgresClusterRequestBody
-      [<FromHeader(Name = TenantHeaders.TenantId)>]
+      [<Pole.ASP.Helpers.FromTenantHeader>]
       TenantId : string }
         interface IMediatorRequest<CreatePostgresClusterOutcome>
         interface ITenantCreateOperation with

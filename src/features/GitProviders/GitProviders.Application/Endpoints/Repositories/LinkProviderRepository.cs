@@ -18,7 +18,7 @@ namespace Pole.Features.GitProviders.Application.Endpoints.Repositories;
 public sealed record LinkProviderRepositoryRequest(
     [FromRoute] string ConnectionId,
     [FromRoute] string RepositoryId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
+    [FromTenantHeader] string TenantId,
     [FromBody] LinkSourceRepositoryRequestBody Body)
     : IMediatorRequest<LinkProviderRepositoryOutcome>, ITenantWriteOperation;
 

@@ -16,7 +16,7 @@ namespace Pole.Features.GitProviders.Application.Endpoints.SourceRepositories;
 
 public sealed record DeleteSourceRepositoryRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<DeleteSourceRepositoryOutcome>, ITenantWriteOperation;
 
 public union DeleteSourceRepositoryError(

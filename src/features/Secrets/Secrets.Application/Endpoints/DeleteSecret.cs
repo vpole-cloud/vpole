@@ -23,7 +23,7 @@ public union DeleteSecretOutcome(
 
 public sealed record DeleteSecretRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<DeleteSecretOutcome>, ITenantWriteOperation;
 
 public sealed class DeleteSecretValidator : AbstractValidator<DeleteSecretRequest>

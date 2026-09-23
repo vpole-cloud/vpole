@@ -16,7 +16,7 @@ namespace Pole.Features.WebServices.Application.Endpoints.DeploymentTokens;
 public sealed record CreateWebServiceDeploymentTokenRequest(
     [FromRoute] string Id,
     [FromBody] CreateWebServiceDeploymentTokenRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
+    [FromTenantHeader] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default,
     [FromClaim(Claims.Email)] ClaimValue<string?> ActorEmail = default
 ) : IMediatorRequest<CreateWebServiceDeploymentTokenOutcome>, ITenantWriteOperation;

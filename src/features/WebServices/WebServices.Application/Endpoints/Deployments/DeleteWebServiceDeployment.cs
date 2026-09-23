@@ -51,7 +51,7 @@ public static class DeleteWebServiceDeployment
 public sealed record DeleteWebServiceDeploymentRequest(
     [FromRoute] string Id,
     [FromRoute] string DeploymentId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<DeleteWebServiceDeploymentOutcome>, ITenantWriteOperation;
 
 public union DeleteWebServiceDeploymentOutcome(

@@ -76,7 +76,7 @@ public union GetWebServicesOutcome(PaginatedResponse<WebServiceDto>);
 public record GetWebServicesRequest
     : PaginatedRequest, IMediatorRequest<GetWebServicesOutcome>, ITenantReadOperation
 {
-    [FromHeader(Name = TenantHeaders.TenantId)] public string TenantId { get; init; } = string.Empty;
+    [FromTenantHeader] public string TenantId { get; init; } = string.Empty;
     [FromQuery] public string? ResourceGroupId { get; init; }
     [FromQuery] public string? Search { get; init; }
 }

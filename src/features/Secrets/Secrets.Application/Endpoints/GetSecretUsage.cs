@@ -21,7 +21,7 @@ public union GetSecretUsageOutcome(
 
 public sealed record GetSecretUsageRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetSecretUsageOutcome>, ITenantReadOperation;
 
 public sealed class GetSecretUsageValidator : AbstractValidator<GetSecretUsageRequest>

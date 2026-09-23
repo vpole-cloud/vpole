@@ -13,3 +13,9 @@ public sealed record TenantPlatformAdminRequired : IMediatorRejection;
 public sealed record TenantRoleRequired(
     TenantRole MinimumRole)
     : IMediatorRejection;
+
+/// <summary>A tenant-owned operation requires a resolved active tenant, including for admins.</summary>
+public sealed record TenantContextRequired : IMediatorRejection;
+
+/// <summary>The operation cannot use a tenant different from its resolved active selection.</summary>
+public sealed record TenantContextMismatch : IMediatorRejection;

@@ -19,7 +19,7 @@ namespace Pole.Features.ResourceGroups.Application.Endpoints;
 public sealed record GetIsolationScopeRequest(
     [FromRoute] string ResourceGroupId,
     [FromRoute] string ScopeId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetIsolationScopeOutcome>, ITenantReadOperation;
 
 public union GetIsolationScopeOutcome(

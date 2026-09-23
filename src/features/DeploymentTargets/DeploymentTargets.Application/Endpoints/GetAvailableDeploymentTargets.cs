@@ -22,7 +22,7 @@ public sealed record GetAvailableDeploymentTargetsRequest(
     [FromQuery] string ResourceType,
     [FromQuery] bool RequiresPublicIngress,
     [FromQuery] string? IsolationScopeId,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetAvailableDeploymentTargetsOutcome>,
         ITenantReadOperation;
 

@@ -204,7 +204,7 @@ public sealed class CreateRedisServiceHandler(
 
 public sealed record CreateRedisServiceRequest(
     [FromBody] CreateRedisServiceRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
+    [FromTenantHeader] string TenantId
 ) : IMediatorRequest<CreateRedisServiceOutcome>, ITenantCreateOperation;
 
 public sealed record CreateRedisServiceRequestBody(

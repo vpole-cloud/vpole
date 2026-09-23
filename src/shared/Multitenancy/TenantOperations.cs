@@ -16,6 +16,12 @@ public interface ITenantWriteOperation : ITenantOperation;
 
 public interface ITenantCreateOperation : ITenantWriteOperation;
 
+/// <summary>An administrator operates on the route tenant without a tenant header.</summary>
+public interface IPlatformTenantOperation
+{
+    string TenantId { get; }
+}
+
 public interface ITenantMemberOperation
 {
     string TenantId { get; }

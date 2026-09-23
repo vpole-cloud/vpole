@@ -96,7 +96,7 @@ public sealed class DeleteRedisServiceHandler(
                 : new DeleteRedisServiceOutcome(
                     new DeleteRedisServiceResponse(request.Id, deletingPlacement));
         }
-        
+
         var currentComputeResult = await loadDeploymentCompute(
             redis.TenantId,
             RedisResourceDeployment.ResourceType,
@@ -188,7 +188,7 @@ public sealed class FinalizeRedisServiceDeletionConsumer(
 
 public sealed record DeleteRedisServiceRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId
+    [FromTenantHeader] string TenantId
 ) : IMediatorRequest<DeleteRedisServiceOutcome>, ITenantWriteOperation;
 
 public sealed record DeleteRedisServiceResponse(

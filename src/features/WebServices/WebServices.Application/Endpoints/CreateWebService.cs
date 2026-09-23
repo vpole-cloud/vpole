@@ -398,7 +398,7 @@ public sealed class CreateWebServiceHandler(
 
 public sealed record CreateWebServiceRequest(
     [FromBody] CreateWebServiceRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
+    [FromTenantHeader] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue<string> ActorUserId,
     [FromClaim(Claims.Email)] ClaimValue<string> ActorEmail)
     : IMediatorRequest<CreateWebServiceOutcome>, ITenantCreateOperation;

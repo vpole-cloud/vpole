@@ -35,7 +35,7 @@ public static class GetFunctionApps
 public sealed record GetFunctionAppsRequest
     : PaginatedRequest, IMediatorRequest<GetFunctionAppsOutcome>, ITenantReadOperation
 {
-    [FromHeader(Name = TenantHeaders.TenantId)] public string TenantId { get; init; } = string.Empty;
+    [FromTenantHeader] public string TenantId { get; init; } = string.Empty;
     [FromQuery] public string? Search { get; init; }
     [FromQuery] public string? ResourceGroupId { get; init; }
 }

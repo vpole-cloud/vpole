@@ -37,7 +37,7 @@ public static class GetFunctionRevisions
 
 public sealed record GetFunctionRevisionsRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<GetFunctionRevisionsOutcome>, ITenantReadOperation;
 
 public union GetFunctionRevisionsOutcome(

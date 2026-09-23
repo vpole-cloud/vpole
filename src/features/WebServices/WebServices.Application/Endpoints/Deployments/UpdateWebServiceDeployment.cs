@@ -52,7 +52,7 @@ public sealed record UpdateWebServiceDeploymentRequest(
     [FromRoute] string Id,
     [FromRoute] string DeploymentId,
     [FromBody] UpdateWebServiceDeploymentBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<UpdateWebServiceDeploymentOutcome>, ITenantWriteOperation;
 public sealed record UpdateWebServiceDeploymentBody(
     int FixedReplicas,

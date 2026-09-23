@@ -51,7 +51,7 @@ public sealed record AddWebServiceDeploymentHostnameRequest(
     [FromRoute] string Id,
     [FromRoute] string DeploymentId,
     [FromBody] AddWebServiceDeploymentHostnameBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
+    [FromTenantHeader] string TenantId)
     : IMediatorRequest<AddWebServiceDeploymentHostnameOutcome>, ITenantWriteOperation;
 
 public sealed record AddWebServiceDeploymentHostnameBody(

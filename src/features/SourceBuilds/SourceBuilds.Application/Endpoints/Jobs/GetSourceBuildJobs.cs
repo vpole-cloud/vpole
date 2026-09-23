@@ -15,7 +15,7 @@ using Pole.Validation;
 namespace Pole.Features.SourceBuilds.Application.Endpoints.Jobs;
 
 public sealed record GetSourceBuildJobsRequest(
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId,
+    [FromTenantHeader] string TenantId,
     [FromQuery] string? ConfigurationId = null,
     [FromQuery] string? WebServiceId = null,
     [FromQuery] int PageNumber = 1,

@@ -40,6 +40,7 @@ public static class UpdateWebServiceImageTag
             })
             .WithName("UpdateWebServiceImageTag")
             .AllowAnonymous()
+            .WithMetadata(new TenantCredentialMetadata(WebServiceDeploymentTokenFactory.RawTokenPrefix))
             .Produces<UpdateWebServiceImageTagResponse>(StatusCodes.Status202Accepted);
 
         return app;
@@ -49,7 +50,7 @@ public static class UpdateWebServiceImageTag
 public sealed record UpdateWebServiceImageTagRequest(
     [FromRoute] string Id,
     [FromBody] UpdateWebServiceImageTagRequestBody Body,
-    [FromHeader(Name = TenantHeaders.TenantId)] string? TenantId = null,
+    [FromTenantHeader] string? TenantId = null,
     [FromHeader(Name = "Authorization")] string? Authorization = null,
     [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default,
     [FromClaim(Claims.Email)] ClaimValue<string?> ActorEmail = default

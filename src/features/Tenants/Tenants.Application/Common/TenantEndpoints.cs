@@ -14,6 +14,7 @@ public static class TenantEndpoints
     public static IEndpointRouteBuilder MapTenantEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGroup(Route)
+            .WithoutTenantContext()
             .WithTags("Tenants")
             .RequireAuthorization()
             .MapGetTenantsEndpoint()

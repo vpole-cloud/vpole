@@ -54,7 +54,7 @@ type DeletePostgresClusterOutcome =
 type DeletePostgresClusterRequest =
     { [<FromRoute>]
       ClusterId : string
-      [<FromHeader(Name = TenantHeaders.TenantId)>]
+      [<Pole.ASP.Helpers.FromTenantHeader>]
       TenantId : string }
     interface IMediatorRequest<DeletePostgresClusterOutcome>
     interface ITenantWriteOperation with

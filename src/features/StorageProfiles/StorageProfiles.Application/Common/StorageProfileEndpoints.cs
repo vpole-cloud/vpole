@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Pole.ASP.Helpers;
 using Pole.Features.StorageProfiles.Application.Endpoints;
 using Pole.Features.StorageProfiles.Application.Endpoints.KubernetesInventory;
 
@@ -16,6 +17,7 @@ public static class StorageProfileEndpoints
         public IEndpointRouteBuilder MapStorageProfileEndpoints()
         {
             app.MapGroup(PlatformRoute)
+                .WithoutTenantContext()
                 .WithTags("PlatformStorage")
                 .MapGetStorageProfilesEndpoint()
                 .MapCreateStorageProfileEndpoint()
