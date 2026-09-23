@@ -12,11 +12,16 @@ CPU, memory, extended resources, and Kubernetes scheduling are resolved from a
 `ResourceDeployment` snapshot. Create uses the default profile when no ID is supplied. Update
 without an ID preserves the snapshot; an explicit ID adopts the latest eligible profile revision.
 Rollback preserves the currently deployed compute policy. Quota admission measures resolved
-requests across every active target deployment and its admitted replica count. Generated
-Kubernetes Deployments consume only the persisted physical snapshot.
+requests across every desired target deployment and its admitted replica count. A target stops
+consuming quota when deletion is requested, even while its deployment record remains for cleanup;
+pending and failed desired targets still consume quota. See
+[tenant quotas](../../../docs/quotas.md#placement-aware-accounting). Generated Kubernetes Deployments
+consume only the persisted physical snapshot.
 
 Shared desired-state changes advance one logical resource revision and transactionally fan out to
-the full deployment set. Reconciliation then proceeds independently per physical generation.
+the desired deployment set. Update, rollback, redeploy, image-tag and source-build releases exclude
+targets already being removed; inventory and finalization still retain those targets for cleanup.
+Reconciliation then proceeds independently per physical generation.
 Release entries identify the exact deployment, resource revision, generation, and operation they
 track, allowing an aggregate release to report success, failure, or partial failure without a
 completion from one target masking the state of another.

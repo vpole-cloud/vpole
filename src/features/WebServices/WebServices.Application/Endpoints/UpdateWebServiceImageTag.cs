@@ -111,12 +111,15 @@ public sealed class UpdateWebServiceImageTagHandler(
             return Error(new WebServiceImageTagStateError(
                 new WebServiceUpdateUnavailable(webService.Id)));
 
-        var deployments = await loadResourceDeploymentSet(
+        var deploymentInventory = await loadResourceDeploymentSet(
             webService.TenantId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
             cancellationToken);
-        if (deployments.Count == 0)
+        var deployments = deploymentInventory
+            .Where(WebServiceDeploymentWorkflow.IsDesiredPlacement)
+            .ToArray();
+        if (deployments.Length == 0)
             return Error(new WebServiceImageTagStateError(
                 new WebServiceHasNoActiveDeployments(webService.Id)));
 

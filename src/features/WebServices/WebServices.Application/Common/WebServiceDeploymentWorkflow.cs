@@ -13,6 +13,10 @@ namespace Pole.Features.WebServices.Application.Common;
 /// </summary>
 internal static class WebServiceDeploymentWorkflow
 {
+    public static bool IsDesiredPlacement(PlacementSummaryDto deployment) =>
+        !string.Equals(deployment.DesiredOperation, "Delete", StringComparison.Ordinal) &&
+        !string.Equals(deployment.Status, "Deleted", StringComparison.Ordinal);
+
     public static WebServiceQuotaInput ToQuotaInput(
         IEnumerable<PlacementSummaryDto> deployments,
         WebServiceSpec spec)
@@ -20,8 +24,9 @@ internal static class WebServiceDeploymentWorkflow
         ArgumentNullException.ThrowIfNull(deployments);
         ArgumentNullException.ThrowIfNull(spec);
 
-        return WebServiceQuotaInput.Create(deployments.Select(deployment =>
-            WebServiceDeploymentQuotaInput.Create(
+        return WebServiceQuotaInput.Create(deployments
+            .Where(IsDesiredPlacement)
+            .Select(deployment => WebServiceDeploymentQuotaInput.Create(
                 deployment.Compute.Requests.CpuMillis,
                 deployment.Compute.Requests.MemoryMi,
                 spec.Autoscaling?.MaxReplicas ?? deployment.FixedReplicas)));
@@ -52,6 +57,7 @@ internal static class WebServiceDeploymentWorkflow
         ArgumentNullException.ThrowIfNull(compute);
 
         var deployments = currentDeployments
+            .Where(IsDesiredPlacement)
             .Select(deployment => WebServiceDeploymentQuotaInput.Create(
                 deployment.Compute.Requests.CpuMillis,
                 deployment.Compute.Requests.MemoryMi,

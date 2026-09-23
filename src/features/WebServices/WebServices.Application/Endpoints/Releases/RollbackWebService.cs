@@ -98,12 +98,15 @@ public sealed class RollbackWebServiceHandler(
                     webService.Id,
                     request.Body.TargetRevision)));
 
-        var deployments = await loadResourceDeploymentSet(
+        var deploymentInventory = await loadResourceDeploymentSet(
             webService.TenantId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
             cancellationToken);
-        if (deployments.Count == 0)
+        var deployments = deploymentInventory
+            .Where(WebServiceDeploymentWorkflow.IsDesiredPlacement)
+            .ToArray();
+        if (deployments.Length == 0)
             return Error(new RollbackWebServiceStateError(
                 new WebServiceHasNoActiveDeployments(webService.Id)));
 
