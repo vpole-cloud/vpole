@@ -35,8 +35,8 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
         var identity = await loadTenantIdentity(tenantId, cancellationToken);
         var tenant = identity switch
         {
-            Ok<TenantIdentitySnapshot> success => success.Value,
-            Err<TenantIdentityNotFound> => null
+            TenantIdentitySnapshot success => success,
+            TenantIdentityNotFound => null
         };
         if (tenant is null)
         {

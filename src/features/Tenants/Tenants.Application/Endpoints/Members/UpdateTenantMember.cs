@@ -7,7 +7,8 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Persistence.Members;
 using Pole.Mediator;
-using Pole.ResultType;
+using Pole.Features.Tenants.Domain;
+using static Pole.Features.Tenants.Application.TenantMemberAuthorizationHttpProblemMappings;
 
 namespace Pole.Features.Tenants.Application.Endpoints.Members;
 
@@ -22,11 +23,11 @@ public sealed record UpdateTenantMemberRequest(
 
 public sealed record UpdateTenantMemberRequestBody(TenantRole Role);
 
-public union UpdateTenantMemberError(TenantMemberMutationError);
-
 public union UpdateTenantMemberOutcome(
     TenantMemberDto,
-    UpdateTenantMemberError);
+    TenantNotFound,
+    TenantMemberNotFound,
+    TenantLastOwner);
 
 public sealed class UpdateTenantMemberHandler(
     PersistUpdatedTenantMemberRole persistUpdatedTenantMemberRole)
@@ -42,10 +43,13 @@ public sealed class UpdateTenantMemberHandler(
                 request.MemberId,
                 request.Body.Role),
             cancellationToken);
-        return TypedResultCompositionExtensions.Match(
-            persisted,
-            updated => new UpdateTenantMemberOutcome(updated.ToDto()),
-            error => new UpdateTenantMemberOutcome(new UpdateTenantMemberError(error)));
+        return persisted switch
+        {
+            TenantMember updated => updated.ToDto(),
+            TenantNotFound error => error,
+            TenantMemberNotFound error => error,
+            TenantLastOwner error => error
+        };
     }
 }
 
@@ -55,7 +59,6 @@ public static class UpdateTenantMemberEndpoint
     {
         app.MapPut("/{TenantId}/members/{MemberId}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] UpdateTenantMemberRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -63,7 +66,9 @@ public static class UpdateTenantMemberEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     TenantMemberDto member => Results.Ok(member),
-                    UpdateTenantMemberError error => httpProblems.Map(error).ToHttpResult()
+                    TenantNotFound error => MapTenantNotFound(error),
+                    TenantMemberNotFound error => MapMemberNotFound(error),
+                    TenantLastOwner error => MapLastOwner(error)
                 });
             })
             .WithName("UpdateTenantMember")

@@ -26,10 +26,10 @@ public sealed class MongoComputeProfileTenantAccessValidator(
         var result = await ensureTenantsExist(selected.TenantIds, cancellationToken);
         return result switch
         {
-            Ok<Unit> => new Ok<Unit>(Unit.Value),
-            Err<TenantSetNotFound> error =>
+            TenantsExist => new Ok<Unit>(Unit.Value),
+            TenantSetNotFound error =>
                 new Err<SelectedComputeProfileTenantsNotFound>(
-                    new SelectedComputeProfileTenantsNotFound(error.Value.TenantIds))
+                    new SelectedComputeProfileTenantsNotFound(error.TenantIds))
         };
     }
 }

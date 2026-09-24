@@ -438,17 +438,10 @@ public sealed class HttpProblemMapperTests
     [Fact]
     public void TenantMemberMutationErrorsHaveStableProblemMappings()
     {
-        var mapper = new HttpProblemMapper(
-            TenantMemberAuthorizationHttpProblemMappings.All);
-
-        AddTenantMemberError duplicateError = new(
-            new TenantMemberAdditionError(
-                new TenantMemberAlreadyExists("tenant-1", "user-1")));
-        DeleteTenantMemberError lastOwnerError = new(
-            new TenantMemberMutationError(
-                new TenantLastOwner("tenant-1", "member-1")));
-        var duplicate = mapper.Map(duplicateError);
-        var lastOwner = mapper.Map(lastOwnerError);
+        var duplicate = TenantMemberAuthorizationHttpProblemMappings.MapMemberAlreadyExists(
+            new TenantMemberAlreadyExists("tenant-1", "user-1"));
+        var lastOwner = TenantMemberAuthorizationHttpProblemMappings.MapLastOwner(
+            new TenantLastOwner("tenant-1", "member-1"));
 
         Assert.Equal((int)HttpStatusCode.Conflict, duplicate.StatusCode);
         Assert.Equal("tenants.member.already-exists", duplicate.Code);

@@ -32,8 +32,8 @@ public sealed class ComputeProfileProductionDiTests(MongoReplicaSetFixture fixtu
         services.AddSingleton<IKubernetesClientProvider>(
             new FixedKubernetesClientProvider(null!));
         services.AddSingleton<EnsureTenantsExist>(
-            (_, _) => Task.FromResult<Result<Unit, TenantSetNotFound>>(
-                new Ok<Unit>(Unit.Value)));
+            (_, _) => Task.FromResult<EnsureTenantsExistOutcome>(
+                new TenantsExist()));
         services.AddSingleton<AdmitDeploymentTargetForWorkload>(
             (_, _) => Task.FromException<Result<
                 DeploymentTargetLookupDto,

@@ -59,10 +59,14 @@ Contract operations return contract representations, not domain aggregates.
 provider-owned synchronous contract errors. It depends on `Feature.Contracts` and the shared HTTP
 mapping abstraction; the Contracts project never depends on it. The provider Application may
 reference its own companion so `Add<Feature>Feature` can register a complete set of defaults. A
-consuming Application continues to reference only the provider Contracts and never references a
-foreign HTTP-mapping companion.
+consuming Application may also reference the provider's `Contracts.HttpMapping` companion to
+call its typed HTTP mapping methods. Domain, Contracts, Events, and Runtime projects must not
+reference a foreign HTTP-mapping companion.
 
-Contract HTTP mappings define provider-owned defaults. A consuming HTTP boundary may supply an
+Contract HTTP mappings define provider-owned defaults. Closed endpoint outcomes call these
+methods explicitly from an exhaustive switch. A consuming endpoint can override a case by calling
+its own mapping method in that branch. Existing dynamic mappings remain supported during migration;
+a consuming HTTP boundary using that mechanism may supply an
 explicit local `HttpProblemMappingSet` override when its endpoint gives a contract error different
 HTTP semantics; the mapper checks that set before the provider default. Overrides are not global
 registrations. Global duplicate registrations and order-dependent "last registration wins"
@@ -72,7 +76,7 @@ non-exhaustive switch diagnostics as build errors in the companion project.
 HTTP mappings for feature-local Application errors stay in that feature's Application project.
 They are not cross-feature contracts, so they do not justify another companion project. Keep the
 mapping methods separate from endpoint methods. Closed endpoint outcomes may call these typed
-methods directly from an exhaustive switch; `Users` is the initial implementation of this pattern.
+methods directly from an exhaustive switch; `Users` and `Tenants` implement this pattern.
 Such mappings need no dynamic registration. Existing dynamic mappings are registered from the
 feature's `Add<Feature>Feature` composition method. Apply the same exhaustive-switch rule to closed
 local error unions. Open pipeline/plugin rejections continue to use the dynamic mapper.
@@ -143,7 +147,8 @@ integration-event mapping, consumers, and infrastructure adapters.
 
 Application may reference its own Domain, Contracts, and Events. It may reference another
 feature's Contracts for synchronous capabilities and another feature's Events to consume its
-published facts. It may also reference the provider's dependency-leaf Primitives when those types
+published facts. Its HTTP endpoints may call typed methods in another feature's Contracts.HttpMapping.
+It may also reference the provider's dependency-leaf Primitives when those types
 are exposed by that Contract. It must not reference another feature's Domain or Application.
 
 The normal synchronous dependency direction is:
@@ -185,7 +190,7 @@ provider edge and leaves the platform persistence implementation extensible.
 | Contracts | Own Primitives | Domain, Events, Application, another feature's Contracts/Primitives |
 | Contracts.HttpMapping | Own Contracts; shared HTTP mapping abstraction | Domain, Events, Application, another feature project |
 | Events | Own Primitives | Domain, Contracts, Application, another feature |
-| Application | Own Primitives/Domain/Contracts/Contracts.HttpMapping/Events; foreign Contracts/Events; contract-exposed foreign Primitives | Foreign Domain/Application/Contracts.HttpMapping |
+| Application | Own Primitives/Domain/Contracts/Contracts.HttpMapping/Events; foreign Contracts/Contracts.HttpMapping/Events; contract-exposed foreign Primitives | Foreign Domain/Application |
 | Pole.Server | Application projects required for composition | None imposed by this policy |
 | Tests | Projects required by the test boundary | None imposed by this policy |
 

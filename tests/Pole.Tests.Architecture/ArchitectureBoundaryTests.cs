@@ -76,6 +76,27 @@ public sealed class ArchitectureBoundaryTests
         "AddUsersFeature"
     ];
 
+    [Theory]
+    [InlineData("Users")]
+    [InlineData("Tenants")]
+    public void MigratedFeatures_UseNamedOutcomesAndDirectEndpointMappings(string feature)
+    {
+        var sources = ArchitectureSources.ProductionCSharp()
+            .Where(source => source.RelativePath.StartsWith($"src/features/{feature}/", StringComparison.Ordinal))
+            .ToArray();
+        Assert.NotEmpty(sources);
+        var violations = sources.SelectMany(source => source.Root.DescendantNodes()
+            .OfType<SimpleNameSyntax>()
+            .Where(name =>
+                name is GenericNameSyntax && name.Identifier.ValueText is "Result" or "Ok" or "Err" ||
+                source.RelativePath.Contains("/Endpoints/", StringComparison.Ordinal) &&
+                name.Identifier.ValueText == "IHttpProblemMapper")
+            .Select(name => ArchitectureSources.Describe(source, name,
+                "migrated features use named outcomes and direct endpoint HTTP mappings")))
+            .ToArray();
+        AssertNoViolations(violations);
+    }
+
     [Fact]
     public void ProductionSources_DoNotReferenceRemovedMongoContexts()
     {

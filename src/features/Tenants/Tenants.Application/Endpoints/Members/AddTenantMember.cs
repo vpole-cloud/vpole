@@ -9,7 +9,7 @@ using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Persistence.Members;
 using Pole.Features.Tenants.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
+using static Pole.Features.Tenants.Application.TenantMemberAuthorizationHttpProblemMappings;
 
 namespace Pole.Features.Tenants.Application.Endpoints.Members;
 
@@ -27,11 +27,10 @@ public sealed record AddTenantMemberRequestBody(
     string Email,
     TenantRole Role);
 
-public union AddTenantMemberError(TenantMemberAdditionError);
-
 public union AddTenantMemberOutcome(
     TenantMemberDto,
-    AddTenantMemberError);
+    TenantNotFound,
+    TenantMemberAlreadyExists);
 
 public sealed class AddTenantMemberHandler(
     PersistAddedTenantMember persistAddedTenantMember)
@@ -47,10 +46,12 @@ public sealed class AddTenantMemberHandler(
             request.Body.Email,
             request.Body.Role);
         var persisted = await persistAddedTenantMember(member, cancellationToken);
-        return TypedResultCompositionExtensions.Match(
-            persisted,
-            added => new AddTenantMemberOutcome(added.ToDto()),
-            error => new AddTenantMemberOutcome(new AddTenantMemberError(error)));
+        return persisted switch
+        {
+            TenantMember added => added.ToDto(),
+            TenantNotFound error => error,
+            TenantMemberAlreadyExists error => error
+        };
     }
 }
 
@@ -71,7 +72,6 @@ public static class AddTenantMemberEndpoint
     {
         app.MapPost("/{TenantId}/members", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] AddTenantMemberRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -81,7 +81,8 @@ public static class AddTenantMemberEndpoint
                     TenantMemberDto member => Results.Created(
                         $"/api/v1/tenants/{member.TenantId}/members/{member.Id}",
                         member),
-                    AddTenantMemberError error => httpProblems.Map(error).ToHttpResult()
+                    TenantNotFound error => MapTenantNotFound(error),
+                    TenantMemberAlreadyExists error => MapMemberAlreadyExists(error)
                 });
             })
             .WithName("AddTenantMember")

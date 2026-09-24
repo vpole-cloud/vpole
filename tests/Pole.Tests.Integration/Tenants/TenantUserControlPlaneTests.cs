@@ -20,7 +20,6 @@ using Pole.Features.Tenants.Application.Endpoints.Members;
 using Pole.Features.Tenants.Application.Persistence.Members;
 using Pole.Features.Tenants.Application.Persistence.Tenants;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -285,7 +284,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var result = await behavior.Handle(
             request,
             () => Task.FromResult<MediatorResult<DeleteTenantMemberOutcome>>(
-                new DeleteTenantMemberOutcome(missingMemberId)),
+                new DeleteTenantMemberOutcome(new TenantMemberRemoved(missingMemberId))),
             CancellationToken.None);
 
         var rejection = Assert.IsType<TenantMemberNotFound>(
@@ -318,7 +317,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var result = await behavior.Handle(
             request,
             () => Task.FromResult<MediatorResult<DeleteTenantMemberOutcome>>(
-                new DeleteTenantMemberOutcome(owner.Id)),
+                new DeleteTenantMemberOutcome(new TenantMemberRemoved(owner.Id))),
             CancellationToken.None);
 
         var rejection = Assert.IsType<TenantRoleRequired>(
@@ -367,9 +366,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             new UpdateTenantMemberRequestBody(TenantRole.Admin)));
 
         Assert.True(
-            result is UpdateTenantMemberError error &&
-            error is TenantMemberMutationError mutation &&
-            mutation is TenantLastOwner);
+            result is TenantLastOwner);
     }
 
     [Fact]
@@ -414,9 +411,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             owner.Id));
 
         Assert.True(
-            result is DeleteTenantMemberError error &&
-            error is TenantMemberMutationError mutation &&
-            mutation is TenantLastOwner);
+            result is TenantLastOwner);
     }
 
     [Fact]
@@ -441,10 +436,56 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             tenant.Id,
             firstOwner.Id));
 
-        Assert.True(result is string deletedMemberId && deletedMemberId == firstOwner.Id);
+        Assert.True(result is TenantMemberRemoved removed && removed.MemberId == firstOwner.Id);
         var stored = await fixture.DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync();
         Assert.DoesNotContain(stored.Members, member => member.Id == firstOwner.Id);
         Assert.Single(stored.Members, member => member.Role == TenantRole.Owner);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task ConcurrentOwnerMutations_PreserveOneOwner(bool removeFirst, bool removeSecond)
+    {
+        var tenant = await InsertTenantAsync(TenantRole.Owner);
+        var first = tenant.Members.Single();
+        var second = TenantFactory.CreateMember(
+            tenant.Id, "owner-2", "owner-2@example.com", TenantRole.Owner);
+        tenant = tenant with { Members = tenant.Members.Add(second) };
+        await fixture.DbContext.Tenants.ReplaceOneAsync(stored => stored.Id == tenant.Id, tenant);
+        using var scope = Services.CreateScope();
+        var update = scope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>();
+        var remove = scope.ServiceProvider.GetRequiredService<PersistRemovedTenantMember>();
+
+        var successes = await Task.WhenAll(Mutate(first.Id, removeFirst), Mutate(second.Id, removeSecond));
+
+        Assert.Single(successes, succeeded => succeeded);
+        var stored = await fixture.DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync();
+        Assert.Single(stored.Members, member => member.Role == TenantRole.Owner);
+
+        async Task<bool> Mutate(string memberId, bool delete)
+        {
+            if (delete)
+            {
+                return await remove(new RemoveTenantMember(tenant.Id, memberId)) switch
+                {
+                    TenantMemberRemoved => true,
+                    TenantLastOwner => false,
+                    TenantNotFound => throw new Xunit.Sdk.XunitException("Tenant unexpectedly missing."),
+                    TenantMemberNotFound => throw new Xunit.Sdk.XunitException("Member unexpectedly missing.")
+                };
+            }
+
+            return await update(new UpdateTenantMemberRole(tenant.Id, memberId, TenantRole.Member)) switch
+            {
+                TenantMember => true,
+                TenantLastOwner => false,
+                TenantNotFound => throw new Xunit.Sdk.XunitException("Tenant unexpectedly missing."),
+                TenantMemberNotFound => throw new Xunit.Sdk.XunitException("Member unexpectedly missing.")
+            };
+        }
     }
 
     private async Task<Tenant> InsertTenantAsync(

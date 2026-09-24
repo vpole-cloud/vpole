@@ -423,14 +423,10 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
     }
 
     private static LoadTenantIdentity FixedTenantIdentityLookup(string tenantId) =>
-        (requestedTenantId, _) => Task.FromResult<Result<
-            TenantIdentitySnapshot,
-            TenantIdentityNotFound>>(
+        (requestedTenantId, _) => Task.FromResult<LoadTenantIdentityOutcome>(
             string.Equals(requestedTenantId, tenantId, StringComparison.Ordinal)
-                ? new Ok<TenantIdentitySnapshot>(
-                    new TenantIdentitySnapshot(tenantId, "Acme Corporation"))
-                : new Err<TenantIdentityNotFound>(
-                    new TenantIdentityNotFound(requestedTenantId)));
+                ? new TenantIdentitySnapshot(tenantId, "Acme Corporation")
+                : new TenantIdentityNotFound(requestedTenantId));
 
     private sealed class RecordingTargetCoordinator
     {

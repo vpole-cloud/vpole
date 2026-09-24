@@ -6,7 +6,7 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Persistence.Members;
 using Pole.Mediator;
-using Pole.ResultType;
+using static Pole.Features.Tenants.Application.TenantMemberAuthorizationHttpProblemMappings;
 
 namespace Pole.Features.Tenants.Application.Endpoints.Members;
 
@@ -15,11 +15,11 @@ public sealed record DeleteTenantMemberRequest(
     [FromRoute] string MemberId
 ) : IMediatorRequest<DeleteTenantMemberOutcome>, ITenantMemberTargetOperation;
 
-public union DeleteTenantMemberError(TenantMemberMutationError);
-
 public union DeleteTenantMemberOutcome(
-    string,
-    DeleteTenantMemberError);
+    TenantMemberRemoved,
+    TenantNotFound,
+    TenantMemberNotFound,
+    TenantLastOwner);
 
 public sealed class DeleteTenantMemberHandler(
     PersistRemovedTenantMember persistRemovedTenantMember)
@@ -32,9 +32,13 @@ public sealed class DeleteTenantMemberHandler(
         var persisted = await persistRemovedTenantMember(
             new RemoveTenantMember(request.TenantId, request.MemberId),
             cancellationToken);
-        return persisted.Match(
-            _ => new DeleteTenantMemberOutcome(request.MemberId),
-            error => new DeleteTenantMemberOutcome(new DeleteTenantMemberError(error)));
+        return persisted switch
+        {
+            TenantMemberRemoved removed => removed,
+            TenantNotFound error => error,
+            TenantMemberNotFound error => error,
+            TenantLastOwner error => error
+        };
     }
 }
 
@@ -44,15 +48,16 @@ public static class DeleteTenantMemberEndpoint
     {
         app.MapDelete("/{TenantId}/members/{MemberId}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] DeleteTenantMemberRequest request,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(outcome => outcome switch
                 {
-                    string => Results.NoContent(),
-                    DeleteTenantMemberError error => httpProblems.Map(error).ToHttpResult()
+                    TenantMemberRemoved => Results.NoContent(),
+                    TenantNotFound error => MapTenantNotFound(error),
+                    TenantMemberNotFound error => MapMemberNotFound(error),
+                    TenantLastOwner error => MapLastOwner(error)
                 });
             })
             .WithName("DeleteTenantMember")

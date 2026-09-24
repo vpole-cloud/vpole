@@ -14,6 +14,26 @@ public sealed class ModuleBoundaryArchitectureTests
     private static readonly IReadOnlyList<DocumentedSourceException>
         TemporaryIntegrationEventPlacementAllowlist = [];
 
+    [Theory]
+    [InlineData("Application", true)]
+    [InlineData("Domain", false)]
+    [InlineData("Contracts", false)]
+    [InlineData("Events", false)]
+    [InlineData("Runtime", false)]
+    [InlineData("Primitives", false)]
+    [InlineData("ContractHttpMapping", false)]
+    public void ForeignHttpMappingCompanions_AreAvailableOnlyToApplication(
+        string sourceRole,
+        bool expected)
+    {
+        var source = new ProjectNode("Consumer", "Consumer.Project",
+            Enum.Parse<ProjectRole>(sourceRole), string.Empty);
+        var target = new ProjectNode("Provider", "Provider.Contracts.HttpMapping",
+            ProjectRole.ContractHttpMapping, string.Empty);
+
+        Assert.Equal(expected, IsAllowed(source, target));
+    }
+
     [Fact]
     public void ReusableHostingAndTesting_DoNotDependOnConcreteServicesOrTheServer()
     {
@@ -298,6 +318,7 @@ public sealed class ModuleBoundaryArchitectureTests
                     ProjectRole.Events,
             ProjectRole.Application =>
                 target.Role is ProjectRole.Contracts or
+                    ProjectRole.ContractHttpMapping or
                     ProjectRole.Events ||
                 target.Role is ProjectRole.Primitives &&
                     ReferencesProviderContract(source, target.Feature),
