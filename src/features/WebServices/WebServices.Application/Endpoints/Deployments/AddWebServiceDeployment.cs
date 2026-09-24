@@ -193,11 +193,13 @@ public sealed class AddWebServiceDeploymentHandler(
         var computeResult = await resolveComputeProfiles(
             CreateComputeResolutionRequest(request, target.DeploymentTargetId),
             cancellationToken);
-        return computeResult.TryGetValue(out var computes, out var computeError)
-            ? new Ok<ResolvedAddition>(
-                new ResolvedAddition(target, computes.Single()))
-            : new Err<AddWebServiceDeploymentError>(
-                new AddWebServiceDeploymentError(computeError));
+        return computeResult switch
+        {
+            IReadOnlyList<ResolvedComputeProfile> computes => new Ok<ResolvedAddition>(
+                new ResolvedAddition(target, computes.Single())),
+            ComputeProfileResolutionError error => new Err<AddWebServiceDeploymentError>(
+                new AddWebServiceDeploymentError(error))
+        };
     }
 
     private static Result<

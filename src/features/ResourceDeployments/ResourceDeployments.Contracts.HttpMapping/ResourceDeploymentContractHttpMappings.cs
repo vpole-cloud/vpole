@@ -22,11 +22,7 @@ public static class ResourceDeploymentContractHttpMappings
                 "Isolation scope has unfinished resource deployments",
                 ("resourceGroupId", error.ResourceGroupId),
                 ("isolationScopeId", error.IsolationScopeId))),
-            HttpProblemMapping.For<ComputeProfileReferencedByResourceDeployment>(error => Problem(
-                HttpStatusCode.Conflict,
-                "resource-deployments.compute-profile-referenced",
-                "Compute profile is referenced by a resource deployment",
-                ("computeProfileId", error.ComputeProfileId))),
+            HttpProblemMapping.For<ComputeProfileReferencedByResourceDeployment>(MapComputeProfileReferenced),
             HttpProblemMapping.For<ResourceDeploymentFinalizationConflict>(error => Problem(
                 HttpStatusCode.Conflict,
                 "resource-deployments.finalization-conflict",
@@ -34,6 +30,13 @@ public static class ResourceDeploymentContractHttpMappings
                 ("resourceId", error.ResourceId))),
             HttpProblemMapping.For<AdvanceResourceDeploymentRevisionError>(MapRevisionError)
         ]);
+
+    public static HttpProblem MapComputeProfileReferenced(
+        ComputeProfileReferencedByResourceDeployment error) => Problem(
+                HttpStatusCode.Conflict,
+                "resource-deployments.compute-profile-referenced",
+                "Compute profile is referenced by a resource deployment",
+                ("computeProfileId", error.ComputeProfileId));
 
     private static HttpProblem MapDeploymentError(
         CreateResourceDeploymentError error) => error switch

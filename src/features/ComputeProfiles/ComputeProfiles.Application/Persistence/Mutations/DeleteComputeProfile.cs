@@ -13,16 +13,6 @@ namespace Pole.Features.ComputeProfiles.Application.Persistence.Mutations;
 
 public sealed record DefaultComputeProfileCannotBeDeleted(string ComputeProfileId);
 
-public union DeleteComputeProfileStateError(
-    ComputeProfileNotFound,
-    ComputeProfileRevisionConflict,
-    DefaultComputeProfileCannotBeDeleted,
-    DeploymentTargetReferenceChangeRejected);
-
-public union DeleteComputeProfileError(
-    DeleteComputeProfileStateError,
-    ComputeProfileReferencedByResourceDeployment);
-
 public sealed record ComputeProfileDeleted(string ComputeProfileId);
 
 public delegate Task<DeleteComputeProfileOutcome> DeleteComputeProfile(
@@ -47,18 +37,18 @@ internal sealed class MongoDeleteComputeProfile(
                 .FirstOrDefaultAsync(ct);
             if (profile is null)
             {
-                return transaction.Abort(StateError(
-                    new ComputeProfileNotFound(computeProfileId)));
+                return transaction.Abort(
+                    new ComputeProfileNotFound(computeProfileId));
             }
             if (profile.Revision != expectedRevision)
             {
-                return transaction.Abort(StateError(
-                    new ComputeProfileRevisionConflict(computeProfileId)));
+                return transaction.Abort(
+                    new ComputeProfileRevisionConflict(computeProfileId));
             }
             if (profile.IsDefault)
             {
-                return transaction.Abort(StateError(
-                    new DefaultComputeProfileCannotBeDeleted(computeProfileId)));
+                return transaction.Abort(
+                    new DefaultComputeProfileCannotBeDeleted(computeProfileId));
             }
 
             var unreferenced = await ensureResourceDeploymentUnreferenced(
@@ -67,7 +57,7 @@ internal sealed class MongoDeleteComputeProfile(
                 ct);
             if (!unreferenced.TryGetValue(out _, out var referenceError))
             {
-                return transaction.Abort(ProviderError(referenceError));
+                return transaction.Abort(referenceError);
             }
 
             var deleted = await computeProfiles.DeleteOneAsync(
@@ -76,8 +66,8 @@ internal sealed class MongoDeleteComputeProfile(
                 cancellationToken: ct);
             if (deleted.DeletedCount != 1)
             {
-                return transaction.Abort(StateError(
-                    new ComputeProfileRevisionConflict(computeProfileId)));
+                return transaction.Abort(
+                    new ComputeProfileRevisionConflict(computeProfileId));
             }
 
             var references = await ComputeProfileTargetReferences.ApplyChangesAsync(
@@ -91,15 +81,8 @@ internal sealed class MongoDeleteComputeProfile(
             {
                 Ok<Unit> => transaction.Commit(new ComputeProfileDeleted(computeProfileId)),
                 Err<DeploymentTargetReferenceChangeRejected> error => transaction.Abort(
-                    StateError(error.Value))
+                    error.Value)
             };
         }, cancellationToken);
 
-    private static DeleteComputeProfileOutcome StateError(
-        DeleteComputeProfileStateError error) =>
-        new(new DeleteComputeProfileError(error));
-
-    private static DeleteComputeProfileOutcome ProviderError(
-        ComputeProfileReferencedByResourceDeployment error) =>
-        new(new DeleteComputeProfileError(error));
 }

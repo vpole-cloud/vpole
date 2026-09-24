@@ -215,11 +215,13 @@ public sealed class UpdateWebServiceDeploymentHandler(
                     current.DeploymentTargetId,
                     request.Body.ComputeProfileId)]),
             cancellationToken);
-        return resolved.TryGetValue(out var profiles, out var failure)
-            ? new Ok<ReplacementComputeResolution>(
+        return resolved switch
+        {
+            IReadOnlyList<ResolvedComputeProfile> profiles => new Ok<ReplacementComputeResolution>(
                 new ReplacementComputeResolution(
-                    profiles.Single().ToResourceDeploymentConfiguration()))
-            : new Err<ComputeProfileResolutionError>(failure);
+                    profiles.Single().ToResourceDeploymentConfiguration())),
+            ComputeProfileResolutionError error => new Err<ComputeProfileResolutionError>(error)
+        };
     }
 
     private sealed record ReplacementComputeResolution(

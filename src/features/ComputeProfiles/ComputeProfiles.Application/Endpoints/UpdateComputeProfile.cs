@@ -5,14 +5,18 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Application.Common;
-using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.ComputeProfiles.Application.Persistence.Mutations;
 using Pole.Features.ComputeProfiles.Application.Persistence.Reads;
+using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.ComputeProfiles.Application.Validation;
 using Pole.Features.ComputeProfiles.Contracts;
+using Pole.Features.ComputeProfiles.Domain;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.ComputeProfiles.Application.Common.ComputeProfileHttpMappings;
+using static Pole.Features.ComputeProfiles.Contracts.HttpMapping.ComputeProfileContractHttpMappings;
+using static Pole.Features.DeploymentTargets.Contracts.HttpMapping.DeploymentTargetContractHttpMappings;
 
 namespace Pole.Features.ComputeProfiles.Application.Endpoints;
 
@@ -45,15 +49,14 @@ public sealed record UpdateComputeProfileRequest(
     [FromBody] UpdateComputeProfileRequestBody Body)
     : IMediatorRequest<UpdateComputeProfileOutcome>;
 
-public union UpdateComputeProfileError(
-    ComputeProfileNotFound,
-    ComputeProfileRevisionConflict,
-    ComputeProfileMutationValidationError,
-    PersistUpdatedComputeProfileError);
-
 public union UpdateComputeProfileOutcome(
     ComputeProfileDto,
-    UpdateComputeProfileError);
+    ComputeProfileNotFound,
+    ComputeProfileRevisionConflict,
+    SelectedComputeProfileTenantsNotFound,
+    ComputeProfileTargetMappingsInvalid,
+    DefaultComputeProfileCannotBeDemoted,
+    DeploymentTargetReferenceChangeRejected);
 
 public sealed class UpdateComputeProfileHandler(
     LoadComputeProfileById loadComputeProfileById,
@@ -72,13 +75,11 @@ public sealed class UpdateComputeProfileHandler(
             cancellationToken);
         if (current is null)
         {
-            return new UpdateComputeProfileError(
-                new ComputeProfileNotFound(request.ComputeProfileId));
+            return new ComputeProfileNotFound(request.ComputeProfileId);
         }
         if (current.Revision != request.Body.Revision)
         {
-            return new UpdateComputeProfileError(
-                new ComputeProfileRevisionConflict(request.ComputeProfileId));
+            return new ComputeProfileRevisionConflict(request.ComputeProfileId);
         }
 
         var updatedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
@@ -91,27 +92,29 @@ public sealed class UpdateComputeProfileHandler(
         var tenantValidation = await validateTenantAccess(
             replacement.TenantAccess,
             cancellationToken);
-        if (tenantValidation is Err<SelectedComputeProfileTenantsNotFound> tenantError)
+        if (tenantValidation is SelectedComputeProfileTenantsNotFound tenantError)
         {
-            return new UpdateComputeProfileError(
-                new ComputeProfileMutationValidationError(tenantError.Value));
+            return tenantError;
         }
         var targetValidation = await validateTargetMappings(
             replacement,
             cancellationToken);
-        if (targetValidation is Err<ComputeProfileTargetMappingsInvalid> targetError)
+        if (targetValidation is ComputeProfileTargetMappingsInvalid targetError)
         {
-            return new UpdateComputeProfileError(
-                new ComputeProfileMutationValidationError(targetError.Value));
+            return targetError;
         }
 
         var persisted = await persistUpdatedComputeProfile(
             current,
             replacement,
             cancellationToken);
-        return persisted.Match(
-            UpdateComputeProfileOutcome (updated) => updated.ToDto(),
-            UpdateComputeProfileOutcome (error) => new UpdateComputeProfileError(error));
+        return persisted switch
+        {
+            ComputeProfile profile => profile.ToDto(),
+            ComputeProfileRevisionConflict error => error,
+            DefaultComputeProfileCannotBeDemoted error => error,
+            DeploymentTargetReferenceChangeRejected error => error
+        };
     }
 }
 
@@ -142,7 +145,6 @@ public static class UpdateComputeProfileEndpoint
     {
         app.MapPut("/{computeProfileId}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] UpdateComputeProfileRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -150,7 +152,12 @@ public static class UpdateComputeProfileEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     ComputeProfileDto profile => Results.Ok(profile),
-                    UpdateComputeProfileError error => httpProblems.Map(error).ToHttpResult()
+                    ComputeProfileNotFound error => MapNotFound(error),
+                    ComputeProfileRevisionConflict error => MapRevisionConflict(error),
+                    SelectedComputeProfileTenantsNotFound error => MapSelectedTenantsNotFound(error),
+                    ComputeProfileTargetMappingsInvalid error => MapTargetMappingsInvalid(error),
+                    DefaultComputeProfileCannotBeDemoted error => MapDefaultDemotionRejected(error),
+                    DeploymentTargetReferenceChangeRejected error => MapReferenceChangeRejected(error)
                 });
             })
             .WithName("UpdateComputeProfile")

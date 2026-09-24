@@ -4,10 +4,18 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
-using Pole.Features.ComputeProfiles.Application.Persistence;
+using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Persistence.Mutations;
+using Pole.Features.ComputeProfiles.Application.Persistence;
+using Pole.Features.ComputeProfiles.Contracts;
+using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Mediator;
 using Pole.Validation;
+using static Pole.Features.ComputeProfiles.Application.Common.ComputeProfileHttpMappings;
+using static Pole.Features.ComputeProfiles.Contracts.HttpMapping.ComputeProfileContractHttpMappings;
+using static Pole.Features.DeploymentTargets.Contracts.HttpMapping.DeploymentTargetContractHttpMappings;
+using static Pole.Features.ResourceDeployments.Contracts.HttpMapping.ResourceDeploymentContractHttpMappings;
 
 namespace Pole.Features.ComputeProfiles.Application.Endpoints;
 
@@ -18,7 +26,11 @@ public sealed record DeleteComputeProfileRequest(
 
 public union DeleteComputeProfileOutcome(
     ComputeProfileDeleted,
-    DeleteComputeProfileError);
+    ComputeProfileNotFound,
+    ComputeProfileRevisionConflict,
+    DefaultComputeProfileCannotBeDeleted,
+    DeploymentTargetReferenceChangeRejected,
+    ComputeProfileReferencedByResourceDeployment);
 
 public sealed class DeleteComputeProfileHandler(
     DeleteComputeProfile deleteComputeProfile)
@@ -51,7 +63,6 @@ public static class DeleteComputeProfileEndpoint
     {
         app.MapDelete("/{computeProfileId}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] DeleteComputeProfileRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -59,8 +70,11 @@ public static class DeleteComputeProfileEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     ComputeProfileDeleted => Results.NoContent(),
-                    DeleteComputeProfileError error =>
-                        httpProblems.Map(error).ToHttpResult()
+                    ComputeProfileNotFound error => MapNotFound(error),
+                    ComputeProfileRevisionConflict error => MapRevisionConflict(error),
+                    DefaultComputeProfileCannotBeDeleted error => MapDefaultDeletionRejected(error),
+                    DeploymentTargetReferenceChangeRejected error => MapReferenceChangeRejected(error),
+                    ComputeProfileReferencedByResourceDeployment error => MapComputeProfileReferenced(error)
                 });
             })
             .WithName("DeleteComputeProfile")

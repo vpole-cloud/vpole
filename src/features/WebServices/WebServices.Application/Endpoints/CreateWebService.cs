@@ -116,9 +116,10 @@ public sealed class CreateWebServiceHandler(
                     target.Target.DeploymentTargetId,
                     target.Request.ComputeProfileId)).ToArray()),
             cancellationToken);
-        if (!computeResult.TryGetValue(out var computes, out var computeError))
+        if (computeResult is ComputeProfileResolutionError computeError)
             return Error(new CreateWebServiceError(computeError));
 
+        var computes = (IReadOnlyList<ResolvedComputeProfile>)computeResult.Value;
         var computeByTarget = computes.ToDictionary(
             compute => compute.DeploymentTargetId,
             StringComparer.Ordinal);

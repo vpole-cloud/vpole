@@ -10,3 +10,12 @@ module TypedResultInterop =
         let succeeded, value, error =
             Pole.ResultType.TypedResultExtensions.TryGetValue(result)
         if succeeded then Ok value else Error error
+
+    let computeProfile
+        (result : Pole.Features.ComputeProfiles.Contracts.ResolveComputeProfileOutcome)
+        : Result<Pole.Features.ComputeProfiles.Contracts.ResolvedComputeProfile,
+                 Pole.Features.ComputeProfiles.Contracts.ComputeProfileResolutionError> =
+        match result.Value with
+        | :? Pole.Features.ComputeProfiles.Contracts.ResolvedComputeProfile as value -> Ok value
+        | :? Pole.Features.ComputeProfiles.Contracts.ComputeProfileResolutionError as error -> Error error
+        | value -> invalidOp $"Unexpected compute profile outcome: {value}"

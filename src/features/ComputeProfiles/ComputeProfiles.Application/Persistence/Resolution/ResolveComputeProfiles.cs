@@ -4,16 +4,13 @@ using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Application.Persistence.Reads;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence.Resolution;
 
 internal sealed class MongoResolveComputeProfiles(
     IMongoCollection<ComputeProfile> computeProfiles)
 {
-    public async Task<Result<
-        IReadOnlyList<ResolvedComputeProfile>,
-        ComputeProfileResolutionError>> InvokeAsync(
+    public async Task<ResolveComputeProfilesOutcome> InvokeAsync(
         ComputeProfileBatchResolutionRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -42,13 +39,12 @@ internal sealed class MongoResolveComputeProfiles(
                 : profilesById.GetValueOrDefault(target.ComputeProfileId.Trim());
             if (profile is null)
             {
-                return new Err<ComputeProfileResolutionError>(
-                    string.IsNullOrWhiteSpace(target.ComputeProfileId)
-                        ? new ComputeProfileResolutionError(
-                            new DefaultComputeProfileNotConfigured())
-                        : new ComputeProfileResolutionError(
-                            new ComputeProfileNotFound(
-                                target.ComputeProfileId.Trim())));
+                return string.IsNullOrWhiteSpace(target.ComputeProfileId)
+                    ? new ComputeProfileResolutionError(
+                        new DefaultComputeProfileNotConfigured())
+                    : new ComputeProfileResolutionError(
+                        new ComputeProfileNotFound(
+                            target.ComputeProfileId.Trim()));
             }
 
             var availability = ValidateAvailability(
@@ -58,8 +54,7 @@ internal sealed class MongoResolveComputeProfiles(
                 target.DeploymentTargetId);
             if (availability is not null)
             {
-                return new Err<ComputeProfileResolutionError>(
-                    new ComputeProfileResolutionError(availability));
+                return new ComputeProfileResolutionError(availability);
             }
 
             var mapping = profile.TargetMappings.Single(mapping =>
@@ -70,7 +65,7 @@ internal sealed class MongoResolveComputeProfiles(
             resolved.Add(ToResolved(profile, mapping));
         }
 
-        return new Ok<IReadOnlyList<ResolvedComputeProfile>>(resolved);
+        return resolved;
     }
 
     internal static ComputeProfileUnavailable? ValidateAvailability(

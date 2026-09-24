@@ -93,12 +93,12 @@ public sealed class CreateRedisServiceHandler(
                 request.TenantId,
                 RedisResourceDeployment.ResourceType),
             cancellationToken);
-        if (!computeProfileResult.TryGetValue(
-                out var computeProfile,
-                out var computeProfileError))
+        if (computeProfileResult is ComputeProfileResolutionError computeProfileError)
         {
             return Error(new CreateRedisServiceError(computeProfileError));
         }
+
+        var computeProfile = (ResolvedComputeProfile)computeProfileResult.Value;
 
         var storageProfileResult = await resolveStorageProfile(
             new StorageProfileResolutionRequest(

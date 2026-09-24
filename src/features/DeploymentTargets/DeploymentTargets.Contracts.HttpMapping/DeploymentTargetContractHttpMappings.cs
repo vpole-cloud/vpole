@@ -114,7 +114,7 @@ public static class DeploymentTargetContractHttpMappings
             unavailable.DeploymentTargetId)
     };
 
-    private static HttpProblem MapReferenceChangeRejected(
+    public static HttpProblem MapReferenceChangeRejected(
         DeploymentTargetReferenceChangeRejected rejected) =>
         new(
             (int)HttpStatusCode.Conflict,

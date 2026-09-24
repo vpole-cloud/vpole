@@ -188,18 +188,10 @@ public sealed class HttpProblemMapperTests
 
 
     [Fact]
-    public void DeleteComputeProfileOutcomeUsesTheComputeProfileApplicationMapping()
+    public void ComputeProfileReferenceProblemCanBeMappedDirectly()
     {
-        var mapper = new HttpProblemMapper(
-        [
-            .. ComputeProfileHttpMappings.All,
-            .. ResourceDeploymentContractHttpMappings.All
-        ]);
-        DeleteComputeProfileError error =
-            new(new ComputeProfileReferencedByResourceDeployment("compute-1"));
-        DeleteComputeProfileOutcome outcome = new(error);
-
-        var problem = mapper.Map(outcome);
+        var problem = ResourceDeploymentContractHttpMappings.MapComputeProfileReferenced(
+            new ComputeProfileReferencedByResourceDeployment("compute-1"));
 
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
         Assert.Equal("resource-deployments.compute-profile-referenced", problem.Code);
@@ -207,20 +199,12 @@ public sealed class HttpProblemMapperTests
     }
 
     [Fact]
-    public void CreateComputeProfileOutcomeUnwrapsTargetReferenceProviderError()
+    public void TargetReferenceProblemCanBeMappedDirectly()
     {
-        var mapper = new HttpProblemMapper(
-        [
-            .. ComputeProfileHttpMappings.All,
-            .. DeploymentTargetContractHttpMappings.All
-        ]);
-        CreateComputeProfileError error = new(
-            new PersistCreatedComputeProfileError(
-                new DeploymentTargetReferenceChangeRejected(
-                    new DeploymentTargetReferenceOwner("compute-profile", "profile-1"),
-                    ["target-1"])));
-
-        var problem = mapper.Map(error);
+        var problem = DeploymentTargetContractHttpMappings.MapReferenceChangeRejected(
+            new DeploymentTargetReferenceChangeRejected(
+                new DeploymentTargetReferenceOwner("compute-profile", "profile-1"),
+                ["target-1"]));
 
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
         Assert.Equal("deployment-targets.reference-change-rejected", problem.Code);

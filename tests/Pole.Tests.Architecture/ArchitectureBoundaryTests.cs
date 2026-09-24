@@ -98,6 +98,27 @@ public sealed class ArchitectureBoundaryTests
     }
 
     [Fact]
+    public void ComputeProfiles_ContractsAndEndpointsUseNamedOutcomesAndDirectMappings()
+    {
+        var sources = ArchitectureSources.ProductionCSharp()
+            .Where(source => source.RelativePath.StartsWith(
+                "src/features/ComputeProfiles/", StringComparison.Ordinal))
+            .Where(source => source.RelativePath.Contains("/ComputeProfiles.Contracts/", StringComparison.Ordinal) ||
+                source.RelativePath.Contains("/Endpoints/", StringComparison.Ordinal))
+            .ToArray();
+        Assert.NotEmpty(sources);
+        var violations = sources.SelectMany(source => source.Root.DescendantNodes()
+            .OfType<SimpleNameSyntax>()
+            .Where(name =>
+                name is GenericNameSyntax && name.Identifier.ValueText is "Result" or "Ok" or "Err" ||
+                name.Identifier.ValueText == "IHttpProblemMapper")
+            .Select(name => ArchitectureSources.Describe(source, name,
+                "compute-profile contracts and endpoints use named outcomes and direct HTTP mappings")))
+            .ToArray();
+        AssertNoViolations(violations);
+    }
+
+    [Fact]
     public void ProductionSources_DoNotReferenceRemovedMongoContexts()
     {
         var csharpViolations = ArchitectureSources.ProductionCSharp()

@@ -105,7 +105,7 @@ module private UpdatePostgresClusterWorkflow =
                             PostgresResourceDeployment.ResourceType),
                         cancellationToken)
 
-                match TypedResultInterop.toResult computeResult with
+                match TypedResultInterop.computeProfile computeResult with
                 | Error error -> return Error(UpdateCompute error)
                 | Ok compute
                     when cluster.Spec.DeploymentMode = PostgresDeploymentMode.Operator &&

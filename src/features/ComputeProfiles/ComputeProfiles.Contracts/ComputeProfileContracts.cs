@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using MongoDB.Driver;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.ComputeProfiles.Contracts;
@@ -57,9 +56,7 @@ public sealed record ComputeProfileResolutionRequest(
     string TenantId,
     ResourceTypeId ResourceType);
 
-public delegate Task<Result<
-    ResolvedComputeProfile,
-    ComputeProfileResolutionError>> ResolveComputeProfile(
+public delegate Task<ResolveComputeProfileOutcome> ResolveComputeProfile(
     ComputeProfileResolutionRequest request,
     CancellationToken cancellationToken = default);
 
@@ -97,9 +94,7 @@ public union ComputeProfileResolutionError(
     ComputeProfileNotFound,
     ComputeProfileUnavailable);
 
-public delegate Task<Result<
-    IReadOnlyList<ResolvedComputeProfile>,
-    ComputeProfileResolutionError>> ResolveComputeProfiles(
+public delegate Task<ResolveComputeProfilesOutcome> ResolveComputeProfiles(
     ComputeProfileBatchResolutionRequest request,
     CancellationToken cancellationToken = default);
 
@@ -116,8 +111,22 @@ public sealed record ComputeProfileResolutionFenceRejected(
 /// <summary>
 /// Fences all resolved profiles inside the caller's MongoDB transaction.
 /// </summary>
-public delegate Task<Result<Unit, ComputeProfileResolutionFenceRejected>>
+public delegate Task<FenceResolvedComputeProfilesOutcome>
     FenceResolvedComputeProfiles(
         IReadOnlyList<ComputeProfileResolutionFenceRequest> requests,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
+
+public union ResolveComputeProfileOutcome(
+    ResolvedComputeProfile,
+    ComputeProfileResolutionError);
+
+public union ResolveComputeProfilesOutcome(
+    IReadOnlyList<ResolvedComputeProfile>,
+    ComputeProfileResolutionError);
+
+public sealed record ComputeProfilesFenced;
+
+public union FenceResolvedComputeProfilesOutcome(
+    ComputeProfilesFenced,
+    ComputeProfileResolutionFenceRejected);

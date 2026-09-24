@@ -14,7 +14,7 @@ public static class ComputeProfileContractHttpMappings
                 MapResolutionFenceRejected)
         ]);
 
-    private static HttpProblem MapResolutionError(
+    public static HttpProblem MapResolutionError(
         ComputeProfileResolutionError error) => error switch
         {
             DefaultComputeProfileNotConfigured => Problem(
@@ -30,13 +30,13 @@ public static class ComputeProfileContractHttpMappings
                 ("reason", ReasonCode(unavailable.Reason)))
         };
 
-    private static HttpProblem MapNotFound(ComputeProfileNotFound notFound) => Problem(
+    public static HttpProblem MapNotFound(ComputeProfileNotFound notFound) => Problem(
         HttpStatusCode.NotFound,
         "compute-profiles.not-found",
         "Compute profile not found",
         ("computeProfileId", notFound.ComputeProfileId));
 
-    private static HttpProblem MapResolutionFenceRejected(
+    public static HttpProblem MapResolutionFenceRejected(
         ComputeProfileResolutionFenceRejected rejected) => Problem(
         HttpStatusCode.Conflict,
         "compute-profiles.resolution-fence.rejected",

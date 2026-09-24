@@ -2,14 +2,13 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence.Resolution;
 
 internal sealed class MongoFenceResolvedComputeProfile(
     IMongoCollection<ComputeProfile> computeProfiles)
 {
-    public async Task<Result<Unit, ComputeProfileResolutionFenceRejected>> InvokeAsync(
+    public async Task<FenceResolvedComputeProfilesOutcome> InvokeAsync(
         IReadOnlyList<ComputeProfileResolutionFenceRequest> requests,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -65,7 +64,7 @@ internal sealed class MongoFenceResolvedComputeProfile(
             new BulkWriteOptions { IsOrdered = true },
             cancellationToken);
         return fenced.ModifiedCount == writes.Length
-            ? new Ok<Unit>(Unit.Value)
+            ? new ComputeProfilesFenced()
             : Rejected(requests);
     }
 
@@ -114,15 +113,14 @@ internal sealed class MongoFenceResolvedComputeProfile(
         }
     }
 
-    private static Result<Unit, ComputeProfileResolutionFenceRejected> Rejected(
+    private static FenceResolvedComputeProfilesOutcome Rejected(
         IReadOnlyList<ComputeProfileResolutionFenceRequest> requests) =>
-        new Err<ComputeProfileResolutionFenceRejected>(
-            new ComputeProfileResolutionFenceRejected(
-                requests
-                    .Select(request => request.ComputeProfileId)
-                    .Distinct(StringComparer.Ordinal)
-                    .Order(StringComparer.Ordinal)
-                    .ToArray()));
+        new ComputeProfileResolutionFenceRejected(
+            requests
+                .Select(request => request.ComputeProfileId)
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .ToArray());
 
     private static void EnsureTransaction(IClientSessionHandle session)
     {

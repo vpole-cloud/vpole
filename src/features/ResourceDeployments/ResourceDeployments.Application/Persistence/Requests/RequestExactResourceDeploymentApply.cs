@@ -96,7 +96,7 @@ internal sealed class MongoRequestExactResourceDeploymentApply(
                     request.ResourceType)],
                 session,
                 cancellationToken);
-            if (computeFence is Err<ComputeProfileResolutionFenceRejected>)
+            if (computeFence is ComputeProfileResolutionFenceRejected)
             {
                 return ResourceDeploymentMutationSupport.Error<PlacementSummaryDto>(
                     new ResourceDeploymentComputeConfigurationChanged(

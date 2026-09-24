@@ -186,9 +186,10 @@ public sealed class CreateFunctionAppHandler(
                 request.TenantId,
                 FunctionResourceDeployment.ResourceType),
             cancellationToken);
-        if (!computeResult.TryGetValue(out var compute, out var computeError))
+        if (computeResult is ComputeProfileResolutionError computeError)
             return new CreateFunctionAppError(computeError);
 
+        var compute = (ResolvedComputeProfile)computeResult.Value;
         var createOptions = FunctionAppFactory.DefaultCreateOptions;
         var deploymentId = ObjectId.GenerateNewId().ToString();
         var admittedQuota = FunctionQuotaAllocation.FromRevision(spec.ToRevisionSpec());

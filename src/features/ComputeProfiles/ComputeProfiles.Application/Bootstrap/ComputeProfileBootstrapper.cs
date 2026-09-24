@@ -66,7 +66,7 @@ public sealed class ComputeProfileBootstrapper(
         try
         {
             var persisted = await persistCreated(profile, cancellationToken);
-            if (persisted is Ok<ComputeProfile>)
+            if (persisted is ComputeProfile)
             {
                 logger.LogInformation(
                     "Bootstrapped default compute profile {ComputeProfileId} for deployment target {DeploymentTargetId}.",

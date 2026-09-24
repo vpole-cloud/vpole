@@ -1,14 +1,11 @@
 using Pole.Features.ComputeProfiles.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence.Resolution;
 
 internal sealed class MongoResolveComputeProfile(
     MongoResolveComputeProfiles batchResolver)
 {
-    public async Task<Result<
-        ResolvedComputeProfile,
-        ComputeProfileResolutionError>> InvokeAsync(
+    public async Task<ResolveComputeProfileOutcome> InvokeAsync(
         ComputeProfileResolutionRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -23,9 +20,9 @@ internal sealed class MongoResolveComputeProfile(
             cancellationToken);
         return result switch
         {
-            Ok<IReadOnlyList<ResolvedComputeProfile>> profiles =>
-                new Ok<ResolvedComputeProfile>(profiles.Value.Single()),
-            Err<ComputeProfileResolutionError> error => error
+            IReadOnlyList<ResolvedComputeProfile> profiles =>
+                profiles.Single(),
+            ComputeProfileResolutionError error => error
         };
     }
 }

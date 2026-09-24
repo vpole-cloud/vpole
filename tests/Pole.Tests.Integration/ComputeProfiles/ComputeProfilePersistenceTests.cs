@@ -42,8 +42,8 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
             isDefault: true,
             displayName: "Second default");
 
-        (await persist(first)).AssertSuccess();
-        (await persist(second)).AssertSuccess();
+        Assert.IsType<ComputeProfile>((await persist(first)).Value);
+        Assert.IsType<ComputeProfile>((await persist(second)).Value);
 
         var persisted = await fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
@@ -78,11 +78,12 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
         using var host = new ComputeProfilePersistenceTestHost(fixture);
         var create = host.GetRequiredService<PersistCreatedComputeProfile>();
         var update = host.GetRequiredService<PersistUpdatedComputeProfile>();
-        var current = (await create(ComputeProfileTestData.CreateProfile(firstTarget.Id)))
-            .AssertSuccess();
+        var currentOutcome = await create(ComputeProfileTestData.CreateProfile(firstTarget.Id));
+        var current = Assert.IsType<ComputeProfile>(currentOutcome.Value);
         var replacement = Reconfigure(current, secondTarget.Id, "Moved");
 
-        var updated = (await update(current, replacement)).AssertSuccess();
+        var updatedOutcome = await update(current, replacement);
+        var updated = Assert.IsType<ComputeProfile>(updatedOutcome.Value);
 
         var references = await fixture.DbContext.DeploymentTargetReferences
             .Find(ComputeProfileReferences(current.Id))
@@ -92,7 +93,7 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
 
         var staleReplacement = Reconfigure(current, secondTarget.Id, "Stale");
         var stale = await update(current, staleReplacement);
-        Assert.IsType<ComputeProfileRevisionConflict>(stale.AssertError().Value);
+        Assert.IsType<ComputeProfileRevisionConflict>(stale.Value);
         var persisted = await fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
             .Find(ComputeProfileById(current.Id))
@@ -121,8 +122,7 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
 
         var result = await host.GetRequiredService<PersistCreatedComputeProfile>()(profile);
 
-        var error = result.AssertError();
-        Assert.IsType<DeploymentTargetReferenceChangeRejected>(error.Value);
+        Assert.IsType<DeploymentTargetReferenceChangeRejected>(result.Value);
         Assert.Equal(0, await fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
             .CountDocumentsAsync(ComputeProfileById(profile.Id)));
@@ -140,13 +140,15 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
         var create = host.GetRequiredService<PersistCreatedComputeProfile>();
         var update = host.GetRequiredService<PersistUpdatedComputeProfile>();
         var delete = host.GetRequiredService<DeleteComputeProfile>();
-        var defaultProfile = (await create(ComputeProfileTestData.CreateProfile(
+        var defaultProfileOutcome = await create(ComputeProfileTestData.CreateProfile(
             target.Id,
             isDefault: true,
-            displayName: "Default"))).AssertSuccess();
-        var other = (await create(ComputeProfileTestData.CreateProfile(
+            displayName: "Default"));
+        var defaultProfile = Assert.IsType<ComputeProfile>(defaultProfileOutcome.Value);
+        var otherOutcome = await create(ComputeProfileTestData.CreateProfile(
             target.Id,
-            displayName: "Other"))).AssertSuccess();
+            displayName: "Other"));
+        var other = Assert.IsType<ComputeProfile>(otherOutcome.Value);
 
         var demotion = defaultProfile.Reconfigure(
             defaultProfile.DisplayName,
@@ -161,11 +163,11 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
             isDefault: false,
             defaultProfile.UpdatedAtUtc.AddMinutes(1));
         Assert.IsType<DefaultComputeProfileCannotBeDemoted>(
-            (await update(defaultProfile, demotion)).AssertError().Value);
+            (await update(defaultProfile, demotion)).Value);
 
         var defaultDelete = await delete(defaultProfile.Id, defaultProfile.Revision);
-        AssertDeleteError<DefaultComputeProfileCannotBeDeleted>(defaultDelete);
-        AssertDeleteSuccess(await delete(other.Id, other.Revision));
+        Assert.IsType<DefaultComputeProfileCannotBeDeleted>(defaultDelete.Value);
+        Assert.IsType<ComputeProfileDeleted>((await delete(other.Id, other.Revision)).Value);
 
         Assert.Equal(0, await fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
@@ -183,8 +185,9 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
         var target = ComputeProfileTestData.CreateTarget();
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         using var host = new ComputeProfilePersistenceTestHost(fixture);
-        var profile = (await host.GetRequiredService<PersistCreatedComputeProfile>()(
-            ComputeProfileTestData.CreateProfile(target.Id))).AssertSuccess();
+        var profileOutcome = await host.GetRequiredService<PersistCreatedComputeProfile>()(
+            ComputeProfileTestData.CreateProfile(target.Id));
+        var profile = Assert.IsType<ComputeProfile>(profileOutcome.Value);
         await fixture.Database.GetCollection<MongoDB.Bson.BsonDocument>("ResourceDeployments")
             .InsertOneAsync(new MongoDB.Bson.BsonDocument
             {
@@ -201,7 +204,7 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
             profile.Id,
             profile.Revision);
 
-        AssertDeleteError<ComputeProfileReferencedByResourceDeployment>(result);
+        Assert.IsType<ComputeProfileReferencedByResourceDeployment>(result.Value);
         Assert.Equal(1, await fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
             .CountDocumentsAsync(ComputeProfileById(profile.Id)));
@@ -216,14 +219,15 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
         var target = ComputeProfileTestData.CreateTarget();
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         using var host = new ComputeProfilePersistenceTestHost(fixture);
-        var profile = (await host.GetRequiredService<PersistCreatedComputeProfile>()(
-            ComputeProfileTestData.CreateProfile(target.Id))).AssertSuccess();
+        var profileOutcome = await host.GetRequiredService<PersistCreatedComputeProfile>()(
+            ComputeProfileTestData.CreateProfile(target.Id));
+        var profile = Assert.IsType<ComputeProfile>(profileOutcome.Value);
 
         var result = await host.GetRequiredService<DeleteComputeProfile>()(
             profile.Id,
             profile.Revision + 1);
 
-        AssertDeleteError<ComputeProfileRevisionConflict>(result);
+        Assert.IsType<ComputeProfileRevisionConflict>(result.Value);
         Assert.Equal(1, await fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
             .CountDocumentsAsync(ComputeProfileById(profile.Id)));
@@ -276,29 +280,4 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
                     reference => reference.OwnerId,
                     computeProfileId));
     }
-
-    private static TError AssertDeleteError<TError>(DeleteComputeProfileOutcome outcome)
-        where TError : notnull
-    {
-        var error = outcome switch
-        {
-            ComputeProfileDeleted => throw new Xunit.Sdk.XunitException(
-                "Expected a delete error, but the compute profile was deleted."),
-            DeleteComputeProfileError deleteError => deleteError.Value
-        };
-        var leafError = error is DeleteComputeProfileStateError stateError
-            ? stateError.Value
-            : error;
-        return Assert.IsType<TError>(leafError);
-    }
-
-    private static ComputeProfileDeleted AssertDeleteSuccess(
-        DeleteComputeProfileOutcome outcome) =>
-        outcome switch
-        {
-            ComputeProfileDeleted deleted => deleted,
-            DeleteComputeProfileError error => throw new Xunit.Sdk.XunitException(
-                $"Expected a deleted compute profile, but received " +
-                $"'{error.Value.GetType().Name}'.")
-        };
 }

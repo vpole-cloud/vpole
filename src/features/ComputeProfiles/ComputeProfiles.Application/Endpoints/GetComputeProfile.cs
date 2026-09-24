@@ -9,7 +9,7 @@ using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.ComputeProfiles.Application.Persistence.Reads;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Mediator;
-using Pole.ResultType;
+using static Pole.Features.ComputeProfiles.Contracts.HttpMapping.ComputeProfileContractHttpMappings;
 using Pole.Validation;
 
 namespace Pole.Features.ComputeProfiles.Application.Endpoints;
@@ -54,7 +54,6 @@ public static class GetComputeProfileEndpoint
     {
         app.MapGet("/{computeProfileId}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetComputeProfileRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -62,7 +61,7 @@ public static class GetComputeProfileEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     ComputeProfileDto profile => Results.Ok(profile),
-                    ComputeProfileNotFound notFound => httpProblems.Map(notFound).ToHttpResult()
+                    ComputeProfileNotFound notFound => MapNotFound(notFound)
                 });
             })
             .WithName("GetComputeProfile")

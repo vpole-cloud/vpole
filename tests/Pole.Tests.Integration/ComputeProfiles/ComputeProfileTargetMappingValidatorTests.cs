@@ -28,7 +28,7 @@ public sealed class ComputeProfileTargetMappingValidatorTests
 
         var result = await validator.InvokeAsync(CreateProfile(runtimeClassName: "kata"));
 
-        _ = result.AssertSuccess();
+        Assert.IsType<ComputeProfileTargetMappingsValid>(result.Value);
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public sealed class ComputeProfileTargetMappingValidatorTests
 
         var result = await validator.InvokeAsync(CreateProfile(runtimeClassName: "kata"));
 
-        var error = result.AssertError();
+        var error = Assert.IsType<ComputeProfileTargetMappingsInvalid>(result.Value);
         Assert.Contains("TargetMappings[0].Scheduling", error.Errors.Keys);
     }
 
@@ -61,7 +61,7 @@ public sealed class ComputeProfileTargetMappingValidatorTests
 
         var result = await validator.InvokeAsync(CreateProfile(runtimeClassName: "kata"));
 
-        var error = result.AssertError();
+        var error = Assert.IsType<ComputeProfileTargetMappingsInvalid>(result.Value);
         Assert.Contains("TargetMappings[0].RuntimeClassName", error.Errors.Keys);
         Assert.DoesNotContain(
             "provider-secret",
@@ -78,7 +78,7 @@ public sealed class ComputeProfileTargetMappingValidatorTests
 
         var result = await validator.InvokeAsync(CreateProfile(runtimeClassName: null));
 
-        var error = result.AssertError();
+        var error = Assert.IsType<ComputeProfileTargetMappingsInvalid>(result.Value);
         Assert.Contains("TargetMappings[0].DeploymentTargetId", error.Errors.Keys);
     }
 

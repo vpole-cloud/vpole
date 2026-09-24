@@ -713,7 +713,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         public int FenceManyCallCount { get; private set; }
         public int LastBatchCount { get; private set; }
 
-        public Task<Result<Unit, ComputeProfileResolutionFenceRejected>> InvokeAsync(
+        public Task<FenceResolvedComputeProfilesOutcome> InvokeAsync(
             IReadOnlyList<ComputeProfileResolutionFenceRequest> requests,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
@@ -723,8 +723,8 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
             else
                 CallCount++;
             LastBatchCount = requests.Count;
-            return Task.FromResult<Result<Unit, ComputeProfileResolutionFenceRejected>>(
-                new Ok<Unit>(Unit.Value));
+            return Task.FromResult<FenceResolvedComputeProfilesOutcome>(
+                new ComputeProfilesFenced());
         }
     }
 

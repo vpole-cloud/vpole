@@ -145,12 +145,12 @@ public sealed class UpdateRedisServiceHandler(
                     redis.TenantId,
                     RedisResourceDeployment.ResourceType),
                 cancellationToken);
-            if (!computeResult.TryGetValue(
-                    out replacementCompute,
-                out var computeError))
+            if (computeResult is ComputeProfileResolutionError computeError)
             {
                 return Error(new UpdateRedisServiceError(computeError));
             }
+
+            replacementCompute = (ResolvedComputeProfile)computeResult.Value;
         }
 
         var currentQuotaInput = RedisQuotaInput.Create(

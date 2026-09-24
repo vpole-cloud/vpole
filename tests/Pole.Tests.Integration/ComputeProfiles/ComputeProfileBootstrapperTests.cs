@@ -27,9 +27,7 @@ public sealed class ComputeProfileBootstrapperTests
             {
                 persistCount++;
                 durableDefault = profile;
-                return Task.FromResult<Result<
-                    ComputeProfile,
-                    PersistCreatedComputeProfileError>>(new Ok<ComputeProfile>(profile));
+                return Task.FromResult<PersistCreatedComputeProfileOutcome>(profile);
             });
         services.AddScoped<LookupDefaultDeploymentTarget>(_ =>
             cancellationToken => Task.FromResult<Result<

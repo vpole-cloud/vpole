@@ -110,7 +110,7 @@ internal sealed class MongoCreateResourceDeploymentSet(
             computeFenceRequests,
             session,
             cancellationToken);
-        if (computeFence is Err<ComputeProfileResolutionFenceRejected>)
+        if (computeFence is ComputeProfileResolutionFenceRejected)
         {
             return new Err<CreateResourceDeploymentError>(
                 new CreateResourceDeploymentError(

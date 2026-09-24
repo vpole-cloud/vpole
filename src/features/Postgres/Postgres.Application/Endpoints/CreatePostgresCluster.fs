@@ -153,7 +153,7 @@ module private CreatePostgresClusterWorkflow =
                             PostgresResourceDeployment.ResourceType),
                         cancellationToken)
 
-                match TypedResultInterop.toResult computeProfileResult with
+                match TypedResultInterop.computeProfile computeProfileResult with
                 | Error error ->
                     return Completed(CreatePostgresClusterRejected(CreateCompute error))
                 | Ok computeProfile

@@ -6,11 +6,14 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Application.Common;
-using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.ComputeProfiles.Application.Persistence.Mutations;
+using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.ComputeProfiles.Application.Validation;
+using Pole.Features.ComputeProfiles.Domain;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Mediator;
-using Pole.ResultType;
+using static Pole.Features.ComputeProfiles.Application.Common.ComputeProfileHttpMappings;
+using static Pole.Features.DeploymentTargets.Contracts.HttpMapping.DeploymentTargetContractHttpMappings;
 
 namespace Pole.Features.ComputeProfiles.Application.Endpoints;
 
@@ -41,13 +44,11 @@ public sealed record CreateComputeProfileRequest(
     [FromBody] CreateComputeProfileRequestBody Body)
     : IMediatorRequest<CreateComputeProfileOutcome>;
 
-public union CreateComputeProfileError(
-    ComputeProfileMutationValidationError,
-    PersistCreatedComputeProfileError);
-
 public union CreateComputeProfileOutcome(
     ComputeProfileDto,
-    CreateComputeProfileError);
+    SelectedComputeProfileTenantsNotFound,
+    ComputeProfileTargetMappingsInvalid,
+    DeploymentTargetReferenceChangeRejected);
 
 public sealed class CreateComputeProfileHandler(
     ValidateComputeProfileTenantAccess validateTenantAccess,
@@ -67,22 +68,22 @@ public sealed class CreateComputeProfileHandler(
         var tenantValidation = await validateTenantAccess(
             profile.TenantAccess,
             cancellationToken);
-        if (tenantValidation is Err<SelectedComputeProfileTenantsNotFound> tenantError)
+        if (tenantValidation is SelectedComputeProfileTenantsNotFound tenantError)
         {
-            return new CreateComputeProfileError(
-                new ComputeProfileMutationValidationError(tenantError.Value));
+            return tenantError;
         }
         var targetValidation = await validateTargetMappings(profile, cancellationToken);
-        if (targetValidation is Err<ComputeProfileTargetMappingsInvalid> targetError)
+        if (targetValidation is ComputeProfileTargetMappingsInvalid targetError)
         {
-            return new CreateComputeProfileError(
-                new ComputeProfileMutationValidationError(targetError.Value));
+            return targetError;
         }
 
         var persisted = await persistCreatedComputeProfile(profile, cancellationToken);
-        return persisted.Match(
-            CreateComputeProfileOutcome (created) => created.ToDto(),
-            CreateComputeProfileOutcome (error) => new CreateComputeProfileError(error));
+        return persisted switch
+        {
+            ComputeProfile created => created.ToDto(),
+            DeploymentTargetReferenceChangeRejected error => error
+        };
     }
 }
 
@@ -105,7 +106,6 @@ public static class CreateComputeProfileEndpoint
     {
         app.MapPost("/", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] CreateComputeProfileRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -115,7 +115,9 @@ public static class CreateComputeProfileEndpoint
                     ComputeProfileDto profile => Results.Created(
                         $"/api/v1/platform/compute-profiles/{profile.Id}",
                         profile),
-                    CreateComputeProfileError error => httpProblems.Map(error).ToHttpResult()
+                    SelectedComputeProfileTenantsNotFound error => MapSelectedTenantsNotFound(error),
+                    ComputeProfileTargetMappingsInvalid error => MapTargetMappingsInvalid(error),
+                    DeploymentTargetReferenceChangeRejected error => MapReferenceChangeRejected(error)
                 });
             })
             .WithName("CreateComputeProfile")
