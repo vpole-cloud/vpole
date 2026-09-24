@@ -5,7 +5,6 @@ using Pole.Dns;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.Domains.Application.Persistence.HostnameBindings;
 
@@ -19,9 +18,7 @@ internal sealed class MongoCreateGeneratedHostnameBindings(
     private readonly IMongoCollection<HostnameBinding> bindings =
         database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
 
-    public async Task<Result<
-        IReadOnlyList<HostnameBindingSnapshot>,
-        GeneratedHostnameBindingError>> InvokeAsync(
+    public async Task<CreateGeneratedHostnameBindingsOutcome> InvokeAsync(
         IReadOnlyList<CreateGeneratedHostnameBindingRequest> requests,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -45,9 +42,8 @@ internal sealed class MongoCreateGeneratedHostnameBindings(
         {
             var missingZoneId = zoneIds.First(
                 zoneId => !zonesById.ContainsKey(CanonicalObjectId(zoneId)));
-            return new Err<GeneratedHostnameBindingError>(
-                new GeneratedHostnameBindingError(
-                    new GeneratedHostnameBindingZoneNotFound(missingZoneId)));
+            return new GeneratedHostnameBindingError(
+                    new GeneratedHostnameBindingZoneNotFound(missingZoneId));
         }
 
         var candidates = new List<HostnameBinding>(requests.Count);
@@ -59,11 +55,10 @@ internal sealed class MongoCreateGeneratedHostnameBindings(
                     request.DeploymentTargetId,
                     StringComparison.Ordinal))
             {
-                return new Err<GeneratedHostnameBindingError>(
-                    new GeneratedHostnameBindingError(
+                return new GeneratedHostnameBindingError(
                         new GeneratedHostnameBindingTargetMismatch(
                             zone.Id,
-                            request.DeploymentTargetId)));
+                            request.DeploymentTargetId));
             }
 
             candidates.Add(HostnameBindingFactory.CreateGenerated(
@@ -102,17 +97,16 @@ internal sealed class MongoCreateGeneratedHostnameBindings(
             .Limit(1)
             .AnyAsync(cancellationToken);
         if (existingConflict)
-            return GeneratedBindingConflict(candidates);
+            return new GeneratedHostnameBindingError(new GeneratedHostnameBindingConflict(hostnames));
 
         if (!await cleanup.TryAdvanceZoneRevisionsAsync(
                 persistedZones,
                 session,
                 cancellationToken))
         {
-            return new Err<GeneratedHostnameBindingError>(
-                new GeneratedHostnameBindingError(
+            return new GeneratedHostnameBindingError(
                     new GeneratedHostnameBindingZoneChanged(
-                        persistedZones.Select(zone => zone.Id).ToArray())));
+                        persistedZones.Select(zone => zone.Id).ToArray()));
         }
 
         try
@@ -126,23 +120,16 @@ internal sealed class MongoCreateGeneratedHostnameBindings(
         catch (MongoWriteException exception) when (
             exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
         {
-            return GeneratedBindingConflict(candidates);
+            return new GeneratedHostnameBindingError(new GeneratedHostnameBindingConflict(hostnames));
         }
         catch (MongoBulkWriteException<HostnameBinding> exception) when (
             exception.WriteErrors.Any(error => error.Category == ServerErrorCategory.DuplicateKey))
         {
-            return GeneratedBindingConflict(candidates);
+            return new GeneratedHostnameBindingError(new GeneratedHostnameBindingConflict(hostnames));
         }
 
-        return new Ok<IReadOnlyList<HostnameBindingSnapshot>>(
-            candidates.Select(DomainContractMappings.ToSnapshot).ToArray());
+        return candidates.Select(DomainContractMappings.ToSnapshot).ToArray();
     }
-
-    private static Err<GeneratedHostnameBindingError> GeneratedBindingConflict(
-        IReadOnlyList<HostnameBinding> bindings) =>
-        new(new GeneratedHostnameBindingError(
-            new GeneratedHostnameBindingConflict(
-                bindings.Select(binding => binding.Hostname).ToArray())));
 
     private static void EnsureRequestSet(
         IReadOnlyList<CreateGeneratedHostnameBindingRequest> requests)

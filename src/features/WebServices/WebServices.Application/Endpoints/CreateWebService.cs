@@ -78,8 +78,8 @@ public sealed class CreateWebServiceHandler(
     ListEligiblePublicIngressDeploymentTargetsForNewWorkload listEligibleTargets,
     ResolveComputeProfiles resolveComputeProfiles,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    GetOrCreateGeneratedDomainZonesOutcome getOrCreateGeneratedDomainZones,
-    CreateGeneratedHostnameBindingsOutcome createGeneratedHostnameBindings,
+    GetOrCreateGeneratedDomainZones getOrCreateGeneratedDomainZones,
+    CreateGeneratedHostnameBindings createGeneratedHostnameBindings,
     CreateResourceDeploymentSet createResourceDeploymentSet,
     IResourceRegistrar resourceRegistrar,
     PersistCreatedWebService persistCreatedWebService,
@@ -241,8 +241,10 @@ public sealed class CreateWebServiceHandler(
             zoneRequests,
             session,
             cancellationToken);
-        if (!zonesResult.TryGetValue(out var zones, out var zonesError))
+        if (zonesResult is GeneratedDomainZoneError zonesError)
             return new Err<CreateWebServiceError>(new CreateWebServiceError(zonesError));
+
+        var zones = (IReadOnlyList<TenantDomainZoneSnapshot>)zonesResult.Value;
 
         var bindingRequests = new CreateGeneratedHostnameBindingRequest[deployments.Length];
         for (var index = 0; index < deployments.Length; index++)
@@ -262,8 +264,10 @@ public sealed class CreateWebServiceHandler(
             bindingRequests,
             session,
             cancellationToken);
-        if (!bindingsResult.TryGetValue(out var bindings, out var bindingsError))
+        if (bindingsResult is GeneratedHostnameBindingError bindingsError)
             return new Err<CreateWebServiceError>(new CreateWebServiceError(bindingsError));
+
+        var bindings = (IReadOnlyList<HostnameBindingSnapshot>)bindingsResult.Value;
 
         var requests = new List<CreateResourceDeploymentRequest>(deployments.Length);
         for (var index = 0; index < deployments.Length; index++)

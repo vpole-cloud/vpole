@@ -20,7 +20,7 @@ internal sealed class MongoHostnameBindingCleanup(
     private readonly IMongoCollection<HostnameBinding> bindings =
         database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
 
-    internal async Task<Result<Unit, HostnameBindingCleanupError>> DeleteAsync(
+    internal async Task<CleanupHostnameBindingsOutcome> DeleteAsync(
         string tenantId,
         FilterDefinition<HostnameBinding> bindingFilter,
         IClientSessionHandle session,
@@ -29,7 +29,7 @@ internal sealed class MongoHostnameBindingCleanup(
         var persistedBindings = await bindings.Find(session, bindingFilter)
             .ToListAsync(cancellationToken);
         if (persistedBindings.Count == 0)
-            return new Ok<Unit>(Unit.Value);
+            return new HostnameBindingsCleanedUp();
 
         var zoneIds = persistedBindings
             .Select(binding => binding.TenantDomainZoneId)
@@ -41,16 +41,14 @@ internal sealed class MongoHostnameBindingCleanup(
             .ToListAsync(cancellationToken);
         if (persistedZones.Count != zoneIds.Length)
         {
-            return new Err<HostnameBindingCleanupError>(
-                new HostnameBindingCleanupError(
-                    new HostnameBindingCleanupZoneUnavailable(zoneIds)));
+            return new HostnameBindingCleanupError(
+                    new HostnameBindingCleanupZoneUnavailable(zoneIds));
         }
 
         if (!await TryAdvanceZoneRevisionsAsync(persistedZones, session, cancellationToken))
         {
-            return new Err<HostnameBindingCleanupError>(
-                new HostnameBindingCleanupError(
-                    new HostnameBindingCleanupZoneChanged(zoneIds)));
+            return new HostnameBindingCleanupError(
+                    new HostnameBindingCleanupZoneChanged(zoneIds));
         }
 
         var deleted = await bindings.DeleteManyAsync(
@@ -59,9 +57,8 @@ internal sealed class MongoHostnameBindingCleanup(
             cancellationToken: cancellationToken);
         if (!deleted.IsAcknowledged || deleted.DeletedCount != persistedBindings.Count)
         {
-            return new Err<HostnameBindingCleanupError>(
-                new HostnameBindingCleanupError(
-                    new HostnameBindingCleanupBindingsChanged()));
+            return new HostnameBindingCleanupError(
+                    new HostnameBindingCleanupBindingsChanged());
         }
 
         return await ReleaseGeneratedZonesWithoutBindingsAsync(
@@ -98,7 +95,7 @@ internal sealed class MongoHostnameBindingCleanup(
         return update.ModifiedCount == distinctZones.Length;
     }
 
-    internal async Task<Result<Unit, HostnameBindingCleanupError>>
+    internal async Task<CleanupHostnameBindingsOutcome>
         ReleaseGeneratedZonesWithoutBindingsAsync(
             IReadOnlyCollection<TenantDomainZone> candidateZones,
             IClientSessionHandle session,
@@ -109,7 +106,7 @@ internal sealed class MongoHostnameBindingCleanup(
             .DistinctBy(zone => zone.Id, StringComparer.Ordinal)
             .ToArray();
         if (generatedZones.Length == 0)
-            return new Ok<Unit>(Unit.Value);
+            return new HostnameBindingsCleanedUp();
 
         var generatedZoneIds = generatedZones.Select(zone => zone.Id).ToArray();
         var referencedZoneIds = await bindings.Find(
@@ -122,7 +119,7 @@ internal sealed class MongoHostnameBindingCleanup(
             .Where(zone => !referenced.Contains(zone.Id))
             .ToArray();
         if (releasable.Length == 0)
-            return new Ok<Unit>(Unit.Value);
+            return new HostnameBindingsCleanedUp();
 
         var deletion = await zones.DeleteManyAsync(
             session,
@@ -130,10 +127,9 @@ internal sealed class MongoHostnameBindingCleanup(
             cancellationToken: cancellationToken);
         if (deletion.DeletedCount != releasable.Length)
         {
-            return new Err<HostnameBindingCleanupError>(
-                new HostnameBindingCleanupError(
+            return new HostnameBindingCleanupError(
                     new HostnameBindingCleanupZoneChanged(
-                        releasable.Select(zone => zone.Id).ToArray())));
+                        releasable.Select(zone => zone.Id).ToArray()));
         }
 
         foreach (var zone in releasable)
@@ -148,15 +144,14 @@ internal sealed class MongoHostnameBindingCleanup(
                 cancellationToken);
             if (unregistered is Err<DeploymentTargetReferenceChangeRejected>)
             {
-                return new Err<HostnameBindingCleanupError>(
-                    new HostnameBindingCleanupError(
+                return new HostnameBindingCleanupError(
                         new HostnameBindingCleanupReferenceRemovalRejected(
                             zone.Id,
-                            zone.DeploymentTargetId)));
+                            zone.DeploymentTargetId));
             }
         }
 
-        return new Ok<Unit>(Unit.Value);
+        return new HostnameBindingsCleanedUp();
     }
 
     internal TenantDomainZone WithAdvancedRevision(TenantDomainZone zone) =>

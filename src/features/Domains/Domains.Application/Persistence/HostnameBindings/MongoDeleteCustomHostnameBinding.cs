@@ -3,7 +3,6 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.Domains.Application.Persistence.HostnameBindings;
 
@@ -16,7 +15,7 @@ internal sealed class MongoDeleteCustomHostnameBinding(
     private readonly IMongoCollection<HostnameBinding> bindings =
         database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
 
-    public async Task<Result<Unit, CustomHostnameBindingError>> InvokeAsync(
+    public async Task<DeleteCustomHostnameBindingOutcome> InvokeAsync(
         DeleteCustomHostnameBindingRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -27,16 +26,14 @@ internal sealed class MongoDeleteCustomHostnameBinding(
         var binding = await bindings.Find(session, filter).FirstOrDefaultAsync(cancellationToken);
         if (binding is null)
         {
-            return new Err<CustomHostnameBindingError>(
-                new CustomHostnameBindingError(
-                    new CustomHostnameBindingNotFound(request.BindingId)));
+            return new CustomHostnameBindingError(
+                    new CustomHostnameBindingNotFound(request.BindingId));
         }
 
         if (binding.Kind == HostnameBindingKind.Generated)
         {
-            return new Err<CustomHostnameBindingError>(
-                new CustomHostnameBindingError(
-                    new GeneratedHostnameBindingDeletionRejected(binding.Id)));
+            return new CustomHostnameBindingError(
+                    new GeneratedHostnameBindingDeletionRejected(binding.Id));
         }
 
         var zone = await zones.Find(
@@ -45,32 +42,33 @@ internal sealed class MongoDeleteCustomHostnameBinding(
             .FirstOrDefaultAsync(cancellationToken);
         if (zone is null)
         {
-            return new Err<CustomHostnameBindingError>(
-                new CustomHostnameBindingError(
-                    new CustomHostnameBindingZoneUnavailable(binding.TenantDomainZoneId)));
+            return new CustomHostnameBindingError(
+                    new CustomHostnameBindingZoneUnavailable(binding.TenantDomainZoneId));
         }
 
         if (!await cleanup.TryAdvanceZoneRevisionsAsync([zone], session, cancellationToken))
         {
-            return new Err<CustomHostnameBindingError>(
-                new CustomHostnameBindingError(
-                    new CustomHostnameBindingZoneChanged([zone.Id])));
+            return new CustomHostnameBindingError(
+                    new CustomHostnameBindingZoneChanged([zone.Id]));
         }
 
         var deleted = await bindings.DeleteOneAsync(session, filter, cancellationToken: cancellationToken);
         if (deleted.DeletedCount != 1)
         {
-            return new Err<CustomHostnameBindingError>(
-                new CustomHostnameBindingError(
-                    new CustomHostnameBindingDeletionConflict(binding.Id)));
+            return new CustomHostnameBindingError(
+                    new CustomHostnameBindingDeletionConflict(binding.Id));
         }
 
         var released = await cleanup.ReleaseGeneratedZonesWithoutBindingsAsync(
             [cleanup.WithAdvancedRevision(zone)],
             session,
             cancellationToken);
-        return released.MapError(_ => new CustomHostnameBindingError(
-            new CustomHostnameBindingZoneChanged([zone.Id])));
+        return released switch
+        {
+            HostnameBindingsCleanedUp => new CustomHostnameBindingDeleted(),
+            HostnameBindingCleanupError => new CustomHostnameBindingError(
+                new CustomHostnameBindingZoneChanged([zone.Id]))
+        };
     }
 
     private static void EnsureRequest(DeleteCustomHostnameBindingRequest request)

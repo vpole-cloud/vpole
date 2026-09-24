@@ -65,7 +65,7 @@ public union AddWebServiceDeploymentHostnameOutcome(
 public sealed class AddWebServiceDeploymentHostnameHandler(
     LoadWebServiceById loadWebService,
     LoadExactResourceDeployment loadExactResourceDeployment,
-    CreateCustomHostnameBindingOutcome createCustomHostnameBinding,
+    CreateCustomHostnameBinding createCustomHostnameBinding,
     LoadHostnameBindingsForDeploymentInTransaction
         loadHostnameBindingsForDeploymentInTransaction,
     RequestExactResourceDeploymentApply requestExactResourceDeploymentApply,
@@ -135,7 +135,7 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
                 request.Body.RelativeName),
             transaction.Session,
             cancellationToken);
-        if (!created.TryGetValue(out _, out var createdError))
+        if (created is CustomHostnameBindingError createdError)
             return Abort(transaction, new WebServiceDeploymentHostnameError(createdError));
 
         return await ApplyBindingSnapshotAsync(

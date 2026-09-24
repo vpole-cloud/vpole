@@ -230,7 +230,7 @@ public sealed class HttpProblemMapperTests
         var mapper = CreateMapper();
         DeploymentTargetDomainReservationAdmissionError contractError =
             new DeploymentTargetDisabled("target-2");
-        CreateDomainZoneError consumerError = contractError;
+        CreateDomainZoneOutcome consumerError = contractError;
 
         var problem = mapper.Map(consumerError);
 
@@ -243,14 +243,10 @@ public sealed class HttpProblemMapperTests
     }
 
     [Fact]
-    public void NestedConsumerUnionUsesTheApplicationMapping()
+    public void ManagedDomainZoneConflictMapsDirectly()
     {
-        var mapper = CreateMapper();
-        CreateManagedDomainZoneError applicationError =
-            new ManagedDomainZoneAlreadyReserved("app.example.test");
-        CreateDomainZoneError consumerError = applicationError;
-
-        var problem = mapper.Map(consumerError);
+        var problem = DomainHttpMappings.MapManagedDomainZoneAlreadyReserved(
+            new ManagedDomainZoneAlreadyReserved("app.example.test"));
 
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
         Assert.Equal(
@@ -261,13 +257,10 @@ public sealed class HttpProblemMapperTests
     }
 
     [Fact]
-    public void ApplicationUnionMappingPreservesStructuredExtensions()
+    public void DomainZoneReferencesMapDirectlyWithStructuredExtensions()
     {
-        var mapper = CreateMapper();
-        DeleteManagedDomainZoneError error =
-            new DomainZoneHasHostnameBindings("zone-1", 3);
-
-        var problem = mapper.Map(error);
+        var problem = DomainHttpMappings.MapDomainZoneHasHostnameBindings(
+            new DomainZoneHasHostnameBindings("zone-1", 3));
 
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
         Assert.Equal("domains.zone.delete.has-hostname-bindings", problem.Code);
@@ -294,7 +287,7 @@ public sealed class HttpProblemMapperTests
         ]);
         DeploymentTargetDomainReservationAdmissionError contractError =
             new DeploymentTargetNotFound("target-3");
-        CreateDomainZoneError consumerError = contractError;
+        CreateDomainZoneOutcome consumerError = contractError;
 
         var problem = mapper.Map(consumerError, overrides);
 
@@ -330,13 +323,13 @@ public sealed class HttpProblemMapperTests
         var mapper = new HttpProblemMapper([]);
         DeploymentTargetDomainReservationAdmissionError contractError =
             new DeploymentTargetNotFound("target-4");
-        CreateDomainZoneError consumerError = contractError;
+        CreateDomainZoneOutcome consumerError = contractError;
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
             mapper.Map(consumerError));
 
         Assert.Contains(
-            typeof(CreateDomainZoneError).FullName!,
+            typeof(CreateDomainZoneOutcome).FullName!,
             exception.Message,
             StringComparison.Ordinal);
         Assert.Contains(

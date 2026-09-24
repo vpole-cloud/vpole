@@ -97,8 +97,8 @@ public sealed class AddWebServiceDeploymentHandler(
     LoadResourceDeploymentSet loadResourceDeploymentSet,
     AdmitDeploymentTargetPublicIngressForNewWorkload admitPublicIngress,
     ResolveComputeProfiles resolveComputeProfiles,
-    GetOrCreateGeneratedDomainZoneOutcome getOrCreateGeneratedDomainZone,
-    CreateGeneratedHostnameBindingOutcome createGeneratedHostnameBinding,
+    GetOrCreateGeneratedDomainZone getOrCreateGeneratedDomainZone,
+    CreateGeneratedHostnameBinding createGeneratedHostnameBinding,
     CreateResourceDeploymentSet createDeployments,
     AdvanceResourceDeploymentRevision advanceResourceDeploymentRevision,
     PersistUpdatedWebServiceOutcome persistUpdatedWebService,
@@ -273,19 +273,23 @@ public sealed class AddWebServiceDeploymentHandler(
             CreateGeneratedZoneRequest(current, placement),
             transaction.Session,
             cancellationToken);
-        if (!zoneResult.TryGetValue(out var zone, out var zoneError))
+        if (zoneResult is GeneratedDomainZoneError zoneError)
             return Abort(
                 transaction,
                 new AddWebServiceDeploymentError(zoneError));
+
+        var zone = (TenantDomainZoneSnapshot)zoneResult.Value;
 
         var bindingResult = await createGeneratedHostnameBinding(
             CreateGeneratedBindingRequest(current, placement, zone.Id, deploymentId),
             transaction.Session,
             cancellationToken);
-        if (!bindingResult.TryGetValue(out var binding, out var bindingError))
+        if (bindingResult is GeneratedHostnameBindingError bindingError)
             return Abort(
                 transaction,
                 new AddWebServiceDeploymentError(bindingError));
+
+        var binding = (HostnameBindingSnapshot)bindingResult.Value;
 
         var createdResult = await createDeployments(
             CreateDeploymentSetRequest(

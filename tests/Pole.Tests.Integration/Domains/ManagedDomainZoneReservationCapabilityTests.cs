@@ -32,7 +32,7 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
         var coordinator = new TargetCoordinator();
         var result = await CreateReservationAsync(coordinator);
 
-        Assert.True(result.TryGetValue(out var zone, out _));
+        var zone = Assert.IsType<TenantDomainZoneSnapshot>(result.Value);
         Assert.Equal("api.apps.example.test", zone.Domain);
         Assert.Equal(
             1L,
@@ -49,17 +49,11 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
         var tenantId = ObjectId.GenerateNewId().ToString();
         var targetId = ObjectId.GenerateNewId().ToString();
         var first = await CreateReservationAsync(coordinator, tenantId, targetId);
-        Assert.True(first.TryGetValue(out _, out _));
+        Assert.IsType<TenantDomainZoneSnapshot>(first.Value);
 
         var duplicate = await CreateReservationAsync(coordinator, tenantId, targetId);
 
-        Assert.False(duplicate.TryGetValue(out _, out var error));
-        var conflict = error switch
-        {
-            ManagedDomainZoneAlreadyReserved value => value,
-            _ => throw new Xunit.Sdk.XunitException(
-                $"Expected {nameof(ManagedDomainZoneAlreadyReserved)}.")
-        };
+        var conflict = Assert.IsType<ManagedDomainZoneAlreadyReserved>(duplicate.Value);
         Assert.Equal("api.apps.example.test", conflict.Domain);
         Assert.Equal(
             1L,
@@ -75,8 +69,7 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
 
         var result = await CreateReservationAsync(coordinator);
 
-        Assert.False(result.TryGetValue(out _, out var error));
-        Assert.True(error is ManagedDomainZoneReferenceRejected);
+        Assert.IsType<ManagedDomainZoneReferenceRejected>(result.Value);
         Assert.Equal(
             0L,
             await fixture.Database
@@ -92,8 +85,7 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
 
         var result = await CreateReservationAsync(coordinator);
 
-        Assert.False(result.TryGetValue(out _, out var error));
-        Assert.True(error is ManagedDomainZoneDeploymentTargetChanged);
+        Assert.IsType<ManagedDomainZoneDeploymentTargetChanged>(result.Value);
         Assert.Equal(
             0L,
             await fixture.Database
@@ -110,7 +102,7 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
             label: "invalid.label"));
     }
 
-    private async Task<Result<TenantDomainZoneSnapshot, CreateManagedDomainZoneError>>
+    private async Task<CreateManagedDomainZoneOutcome>
         CreateReservationAsync(
             TargetCoordinator coordinator,
             string? tenantId = null,
@@ -126,9 +118,7 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
         tenantId ??= ObjectId.GenerateNewId().ToString();
         targetId ??= ObjectId.GenerateNewId().ToString();
 
-        return await transaction.InvokeOutcomeAsync<Result<
-            TenantDomainZoneSnapshot,
-            CreateManagedDomainZoneError>>(
+        return await transaction.InvokeOutcomeAsync<CreateManagedDomainZoneOutcome>(
             async (context, cancellationToken) =>
             {
                 var result = await reservation.InvokeAsync(
@@ -140,7 +130,7 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
                     context.Session,
                     cancellationToken);
 
-                return result.TryGetValue(out _, out _)
+                return result is TenantDomainZoneSnapshot
                     ? context.Commit(result)
                     : context.Abort(result);
             });

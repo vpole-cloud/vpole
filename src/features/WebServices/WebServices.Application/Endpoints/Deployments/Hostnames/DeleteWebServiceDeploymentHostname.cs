@@ -61,7 +61,7 @@ public union DeleteWebServiceDeploymentHostnameOutcome(
 public sealed class DeleteWebServiceDeploymentHostnameHandler(
     LoadWebServiceById loadWebService,
     LoadExactResourceDeployment loadExactResourceDeployment,
-    DeleteCustomHostnameBindingOutcome deleteCustomHostnameBinding,
+    DeleteCustomHostnameBinding deleteCustomHostnameBinding,
     LoadHostnameBindingsForDeploymentInTransaction
         loadHostnameBindingsForDeploymentInTransaction,
     RequestExactResourceDeploymentApply requestExactResourceDeploymentApply,
@@ -129,7 +129,7 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
                 request.BindingId),
             transaction.Session,
             cancellationToken);
-        if (!deleted.TryGetValue(out _, out var deletedError))
+        if (deleted is CustomHostnameBindingError deletedError)
             return Abort(transaction, new WebServiceDeploymentHostnameError(deletedError));
 
         var currentBindings = await loadHostnameBindingsForDeploymentInTransaction(

@@ -98,7 +98,7 @@ internal sealed class MongoCompleteWebServiceDeployment(
                     var bindings = await deleteHostnameBindingsForDeployment(
                         tenantId, WebServiceResourceDeployment.ResourceType, webServiceId,
                         completion.ResourceDeploymentId, transaction.Session, ct);
-                    if (!bindings.TryGetValue(out _, out var bindingCleanupError))
+                    if (bindings is HostnameBindingCleanupError bindingCleanupError)
                     {
                         return transaction.Abort(new WebServiceFinalizationError(bindingCleanupError));
                     }

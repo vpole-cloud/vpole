@@ -172,7 +172,7 @@ public static class DeploymentTargetContractHttpMappings
             unavailable.DeploymentTargetId)
     };
 
-    private static HttpProblem MapDomainReservationAdmissionError(
+    public static HttpProblem MapDomainReservationAdmissionError(
         DeploymentTargetDomainReservationAdmissionError error) => error switch
     {
         DeploymentTargetNotFound notFound => ForTarget(

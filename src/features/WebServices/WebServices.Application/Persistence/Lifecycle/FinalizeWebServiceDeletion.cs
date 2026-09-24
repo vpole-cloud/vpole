@@ -79,7 +79,7 @@ internal sealed class MongoFinalizeWebServiceDeletion(
                 webServiceId,
                 transaction.Session,
                 ct);
-            if (!bindingCleanup.TryGetValue(out _, out var bindingCleanupError))
+            if (bindingCleanup is HostnameBindingCleanupError bindingCleanupError)
             {
                 return transaction.Abort(new WebServiceFinalizationError(bindingCleanupError));
             }

@@ -98,13 +98,15 @@ public sealed class ArchitectureBoundaryTests
         AssertNoViolations(violations);
     }
 
-    [Fact]
-    public void ComputeProfiles_ContractsAndEndpointsUseNamedOutcomesAndDirectMappings()
+    [Theory]
+    [InlineData("ComputeProfiles")]
+    [InlineData("Domains")]
+    public void FeatureContractsAndEndpoints_UseNamedOutcomesAndDirectMappings(string feature)
     {
         var sources = ArchitectureSources.ProductionCSharp()
             .Where(source => source.RelativePath.StartsWith(
-                "src/features/ComputeProfiles/", StringComparison.Ordinal))
-            .Where(source => source.RelativePath.Contains("/ComputeProfiles.Contracts/", StringComparison.Ordinal) ||
+                $"src/features/{feature}/", StringComparison.Ordinal))
+            .Where(source => source.RelativePath.Contains($"/{feature}.Contracts/", StringComparison.Ordinal) ||
                 source.RelativePath.Contains("/Endpoints/", StringComparison.Ordinal))
             .ToArray();
         Assert.NotEmpty(sources);
@@ -114,7 +116,7 @@ public sealed class ArchitectureBoundaryTests
                 name is GenericNameSyntax && name.Identifier.ValueText is "Result" or "Ok" or "Err" ||
                 name.Identifier.ValueText == "IHttpProblemMapper")
             .Select(name => ArchitectureSources.Describe(source, name,
-                "compute-profile contracts and endpoints use named outcomes and direct HTTP mappings")))
+                "feature contracts and endpoints use named outcomes and direct HTTP mappings")))
             .ToArray();
         AssertNoViolations(violations);
     }

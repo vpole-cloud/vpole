@@ -2,11 +2,14 @@ using MongoDB.Driver;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.Domains.Application.Persistence.DomainZones;
 
-public delegate Task<Result<TenantDomainZoneSnapshot, DomainZoneNotFound>>
+public union LoadTenantDomainZoneOutcome(
+    TenantDomainZoneSnapshot,
+    DomainZoneNotFound);
+
+public delegate Task<LoadTenantDomainZoneOutcome>
     LoadTenantDomainZone(
         string tenantId,
         string zoneId,
@@ -17,7 +20,7 @@ internal sealed class MongoLoadTenantDomainZone(IMongoDatabase database)
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
 
-    public async Task<Result<TenantDomainZoneSnapshot, DomainZoneNotFound>> InvokeAsync(
+    public async Task<LoadTenantDomainZoneOutcome> InvokeAsync(
         string tenantId,
         string zoneId,
         CancellationToken cancellationToken = default)
@@ -25,7 +28,7 @@ internal sealed class MongoLoadTenantDomainZone(IMongoDatabase database)
         var zone = await zones.Find(DomainFilters.ZoneById(tenantId, zoneId))
             .FirstOrDefaultAsync(cancellationToken);
         return zone is null
-            ? new Err<DomainZoneNotFound>(new DomainZoneNotFound(zoneId))
-            : new Ok<TenantDomainZoneSnapshot>(zone.ToSnapshot());
+            ? new DomainZoneNotFound(zoneId)
+            : zone.ToSnapshot();
     }
 }
