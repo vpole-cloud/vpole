@@ -1,22 +1,21 @@
 using k8s;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.StorageProfiles.Application.Common;
-using Pole.ResultType;
 
 namespace Pole.Features.StorageProfiles.Application.Discovery;
 
-public delegate Task<Result<
+public union DiscoverKubernetesPersistentVolumesOutcome(
     IReadOnlyCollection<KubernetesPersistentVolumeDto>,
-    KubernetesStorageDiscoveryUnavailable>> DiscoverKubernetesPersistentVolumes(
+    KubernetesStorageDiscoveryUnavailable);
+
+public delegate Task<DiscoverKubernetesPersistentVolumesOutcome> DiscoverKubernetesPersistentVolumes(
     string deploymentTargetId,
     CancellationToken cancellationToken = default);
 
 internal sealed class KubernetesDiscoverPersistentVolumes(
     IKubernetesClientProvider kubernetesClientProvider)
 {
-    public async Task<Result<
-        IReadOnlyCollection<KubernetesPersistentVolumeDto>,
-        KubernetesStorageDiscoveryUnavailable>> InvokeAsync(
+    public async Task<DiscoverKubernetesPersistentVolumesOutcome> InvokeAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
@@ -24,15 +23,16 @@ internal sealed class KubernetesDiscoverPersistentVolumes(
             kubernetesClientProvider,
             deploymentTargetId,
             cancellationToken);
-        if (!resolved.TryGetValue(out var kubernetes, out var error))
-            return new Err<KubernetesStorageDiscoveryUnavailable>(error);
+        if (resolved is KubernetesStorageDiscoveryUnavailable error)
+            return error;
+
+        var kubernetes = (IKubernetes)resolved.Value;
 
         var persistentVolumes = await kubernetes.CoreV1.ListPersistentVolumeAsync(
             cancellationToken: cancellationToken);
-        return new Ok<IReadOnlyCollection<KubernetesPersistentVolumeDto>>(
-            persistentVolumes.Items
+        return persistentVolumes.Items
                 .OrderBy(volume => volume.Metadata.Name, StringComparer.Ordinal)
                 .Select(KubernetesStorageDiscovery.MapPersistentVolume)
-                .ToArray());
+                .ToArray();
     }
 }

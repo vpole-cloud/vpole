@@ -1,22 +1,21 @@
 using k8s;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.StorageProfiles.Application.Common;
-using Pole.ResultType;
 
 namespace Pole.Features.StorageProfiles.Application.Discovery;
 
-public delegate Task<Result<
+public union DiscoverKubernetesPersistentVolumeClaimsOutcome(
     IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>,
-    KubernetesStorageDiscoveryUnavailable>> DiscoverKubernetesPersistentVolumeClaims(
+    KubernetesStorageDiscoveryUnavailable);
+
+public delegate Task<DiscoverKubernetesPersistentVolumeClaimsOutcome> DiscoverKubernetesPersistentVolumeClaims(
     string deploymentTargetId,
     CancellationToken cancellationToken = default);
 
 internal sealed class KubernetesDiscoverPersistentVolumeClaims(
     IKubernetesClientProvider kubernetesClientProvider)
 {
-    public async Task<Result<
-        IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>,
-        KubernetesStorageDiscoveryUnavailable>> InvokeAsync(
+    public async Task<DiscoverKubernetesPersistentVolumeClaimsOutcome> InvokeAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
@@ -24,17 +23,18 @@ internal sealed class KubernetesDiscoverPersistentVolumeClaims(
             kubernetesClientProvider,
             deploymentTargetId,
             cancellationToken);
-        if (!resolved.TryGetValue(out var kubernetes, out var error))
-            return new Err<KubernetesStorageDiscoveryUnavailable>(error);
+        if (resolved is KubernetesStorageDiscoveryUnavailable error)
+            return error;
+
+        var kubernetes = (IKubernetes)resolved.Value;
 
         var persistentVolumeClaims =
             await kubernetes.CoreV1.ListPersistentVolumeClaimForAllNamespacesAsync(
                 cancellationToken: cancellationToken);
-        return new Ok<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>(
-            persistentVolumeClaims.Items
+        return persistentVolumeClaims.Items
                 .OrderBy(claim => claim.Metadata.NamespaceProperty, StringComparer.Ordinal)
                 .ThenBy(claim => claim.Metadata.Name, StringComparer.Ordinal)
                 .Select(KubernetesStorageDiscovery.MapPersistentVolumeClaim)
-                .ToArray());
+                .ToArray();
     }
 }

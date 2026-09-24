@@ -1,5 +1,4 @@
 using FluentValidation;
-using Pole.Validation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Persistence;
 using Pole.Features.StorageProfiles.Application.Persistence.Mutations;
 using Pole.Features.StorageProfiles.Application.Persistence.Reads;
@@ -14,7 +14,8 @@ using Pole.Features.StorageProfiles.Application.Validation;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
+using Pole.Validation;
+using static Pole.Features.StorageProfiles.Application.Common.StorageProfileHttpMappings;
 
 namespace Pole.Features.StorageProfiles.Application.Endpoints;
 
@@ -47,14 +48,12 @@ public sealed record UpdateStorageProfileRequest(
     [FromBody] UpdateStorageProfileRequestBody Body)
     : IMediatorRequest<UpdateStorageProfileOutcome>;
 
-public union UpdateStorageProfileError(
-    StorageProfileNotFound,
-    StorageProfileRevisionConflict,
-    StorageProfileMutationValidationError);
-
 public union UpdateStorageProfileOutcome(
     StorageProfileDto,
-    UpdateStorageProfileError);
+    StorageProfileNotFound,
+    StorageProfileRevisionConflict,
+    StorageProfileTargetMappingsInvalid,
+    KubernetesStorageDiscoveryUnavailable);
 
 public sealed class UpdateStorageProfileHandler(
     LoadStorageProfileById loadStorageProfileById,
@@ -69,9 +68,9 @@ public sealed class UpdateStorageProfileHandler(
     {
         var existing = await loadStorageProfileById(request.Id, cancellationToken);
         if (existing is null)
-            return new UpdateStorageProfileError(new StorageProfileNotFound(request.Id));
+            return new StorageProfileNotFound(request.Id);
         if (existing.Revision != request.Body.Revision)
-            return new UpdateStorageProfileError(new StorageProfileRevisionConflict(request.Id));
+            return new StorageProfileRevisionConflict(request.Id);
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
         if (now < existing.UpdatedAtUtc)
@@ -81,18 +80,23 @@ public sealed class UpdateStorageProfileHandler(
             return existing.ToDto();
 
         var targetValidation = await validateTargetMappings(updated, cancellationToken);
-        if (targetValidation is Err<StorageProfileMutationValidationError> error)
+        switch (targetValidation)
         {
-            return new UpdateStorageProfileError(error.Value);
+            case StorageProfileTargetMappingsInvalid error:
+                return error;
+            case KubernetesStorageDiscoveryUnavailable error:
+                return error;
         }
 
         var persisted = await persistUpdatedStorageProfile(
             existing,
             updated,
             cancellationToken);
-        return persisted.Match(
-            UpdateStorageProfileOutcome (profile) => profile.ToDto(),
-            UpdateStorageProfileOutcome (error) => new UpdateStorageProfileError(error));
+        return persisted switch
+        {
+            StorageProfile profile => profile.ToDto(),
+            StorageProfileRevisionConflict error => error
+        };
     }
 }
 
@@ -124,7 +128,6 @@ public static class UpdateStorageProfileEndpoint
     {
         app.MapPut("/profiles/{Id}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] UpdateStorageProfileRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -132,7 +135,10 @@ public static class UpdateStorageProfileEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     StorageProfileDto profile => Results.Ok(profile),
-                    UpdateStorageProfileError error => httpProblems.Map(error).ToHttpResult()
+                    StorageProfileNotFound error => MapNotFound(error),
+                    StorageProfileRevisionConflict error => MapRevisionConflict(error),
+                    StorageProfileTargetMappingsInvalid error => MapTargetMappingsInvalid(error),
+                    KubernetesStorageDiscoveryUnavailable error => MapDiscoveryUnavailable(error)
                 });
             })
             .WithName("UpdateStorageProfile")

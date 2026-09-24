@@ -1,5 +1,4 @@
 using FluentValidation;
-using Pole.Validation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -12,8 +11,9 @@ using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Persistence;
 using Pole.Features.StorageProfiles.Application.Persistence.Reads;
 using Pole.Mediator;
-using Pole.ResultType;
+using Pole.Validation;
 using Pole.Workloads;
+using static Pole.Features.StorageProfiles.Application.Common.StorageProfileHttpMappings;
 
 namespace Pole.Features.StorageProfiles.Application.Endpoints;
 
@@ -43,11 +43,12 @@ public sealed class GetAvailableStorageProfilesHandler(
         var storageClassesResult = await discoverStorageClassNames(
             deploymentTargetId,
             cancellationToken);
-        if (!storageClassesResult.TryGetValue(out var knownStorageClassNames, out var error))
+        if (storageClassesResult is KubernetesStorageDiscoveryUnavailable error)
         {
             return error;
         }
 
+        var knownStorageClassNames = (IReadOnlySet<string>)storageClassesResult.Value;
         var profiles = await loadAvailableStorageProfiles(
             new StorageProfileAvailabilityQuery(
                 request.TenantId,
@@ -90,7 +91,6 @@ public static class GetAvailableStorageProfilesEndpoint
         app.MapGet("/", async (
                 [AsParameters] GetAvailableStorageProfilesRequest request,
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 CancellationToken cancellationToken) =>
             {
                 var result = await mediator.Send(request, cancellationToken);
@@ -98,7 +98,7 @@ public static class GetAvailableStorageProfilesEndpoint
                 {
                     IReadOnlyCollection<StorageProfileDto> profiles => Results.Ok(profiles),
                     KubernetesStorageDiscoveryUnavailable error =>
-                        httpProblems.Map(error).ToHttpResult()
+                        MapDiscoveryUnavailable(error)
                 });
             })
             .WithName("GetAvailableStorageProfiles")

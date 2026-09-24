@@ -4,7 +4,6 @@ using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Persistence.Reads;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.StorageProfiles.Application.Persistence.Resolution;
 
@@ -12,7 +11,7 @@ internal sealed class MongoResolveStorageProfile(
     IMongoCollection<StorageProfile> storageProfiles,
     DiscoverKubernetesStorageClassNames discoverStorageClassNames)
 {
-    public async Task<Result<ResolvedStorageProfile, StorageProfileResolutionError>> InvokeAsync(
+    public async Task<ResolveStorageProfileOutcome> InvokeAsync(
         StorageProfileResolutionRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -23,27 +22,27 @@ internal sealed class MongoResolveStorageProfile(
             .FirstOrDefaultAsync(cancellationToken);
         if (profile is null)
         {
-            return new Err<StorageProfileResolutionError>(
+            return new StorageProfileResolutionError(
                 new StorageProfileNotFound(request.StorageProfileId));
         }
         if (!profile.IsEnabled)
         {
-            return new Err<StorageProfileResolutionError>(
+            return new StorageProfileResolutionError(
                 new StorageProfileDisabled(profile.Id));
         }
         if (!MongoLoadAvailableStorageProfiles.AllowsTenant(profile, request.TenantId))
         {
-            return new Err<StorageProfileResolutionError>(
+            return new StorageProfileResolutionError(
                 new StorageProfileTenantAccessDenied(profile.Id, request.TenantId));
         }
         if (!profile.AllowedResourceTypes.Contains(request.ResourceType.Value))
         {
-            return new Err<StorageProfileResolutionError>(
+            return new StorageProfileResolutionError(
                 new StorageProfileResourceTypeNotAllowed(profile.Id, request.ResourceType));
         }
         if (!AllowsSize(profile, request.SizeGb))
         {
-            return new Err<StorageProfileResolutionError>(
+            return new StorageProfileResolutionError(
                 new StorageProfileSizeNotAllowed(profile.Id, request.SizeGb));
         }
 
@@ -54,7 +53,7 @@ internal sealed class MongoResolveStorageProfile(
                 StringComparison.Ordinal));
         if (targetMapping is null)
         {
-            return new Err<StorageProfileResolutionError>(
+            return new StorageProfileResolutionError(
                 new StorageProfileDeploymentTargetNotConfigured(
                     profile.Id,
                     request.DeploymentTargetId));
@@ -63,28 +62,29 @@ internal sealed class MongoResolveStorageProfile(
         var storageClasses = await discoverStorageClassNames(
             request.DeploymentTargetId,
             cancellationToken);
-        if (!storageClasses.TryGetValue(out var names, out _))
+        if (storageClasses is KubernetesStorageDiscoveryUnavailable)
         {
-            return new Err<StorageProfileResolutionError>(
+            return new StorageProfileResolutionError(
                 new StorageProfileDiscoveryUnavailable(request.DeploymentTargetId));
         }
+        var names = (IReadOnlySet<string>)storageClasses.Value;
         if (!names.Contains(targetMapping.StorageClassName))
         {
-            return new Err<StorageProfileResolutionError>(
+            return new StorageProfileResolutionError(
                 new StorageProfileStorageClassUnavailable(
                     profile.Id,
                     request.DeploymentTargetId,
                     targetMapping.StorageClassName));
         }
 
-        return new Ok<ResolvedStorageProfile>(new ResolvedStorageProfile(
+        return new ResolvedStorageProfile(
             profile.Id,
             profile.Revision,
             request.DeploymentTargetId,
             profile.DisplayName,
             targetMapping.StorageClassName,
             profile.MediaType,
-            profile.PerformanceTier));
+            profile.PerformanceTier);
     }
 
     private static bool AllowsSize(StorageProfile profile, int sizeGb) =>

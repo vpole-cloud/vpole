@@ -108,9 +108,10 @@ public sealed class CreateRedisServiceHandler(
                 RedisResourceDeployment.ResourceType,
                 request.Body.Spec.Storage.SizeGb),
             cancellationToken);
-        if (!storageProfileResult.TryGetValue(out var storageProfile, out var storageProfileError))
+        if (storageProfileResult is StorageProfileResolutionError storageProfileError)
             return Error(new CreateRedisServiceError(storageProfileError));
 
+        var storageProfile = (ResolvedStorageProfile)storageProfileResult.Value;
         var createOptions = RedisFactory.DefaultCreateOptions with
         {
             Tags = request.Body.Tags

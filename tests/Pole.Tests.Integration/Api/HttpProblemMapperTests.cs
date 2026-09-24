@@ -51,17 +51,12 @@ public sealed class HttpProblemMapperTests
     [Fact]
     public void StorageProfileCreateOutcomeMapsTargetValidationErrors()
     {
-        var mapper = new HttpProblemMapper(StorageProfileHttpMappings.All);
-        CreateStorageProfileError error = new(
-            new StorageProfileMutationValidationError(
-                new StorageProfileTargetMappingsInvalid(
-                    new Dictionary<string, string[]>
-                    {
-                        ["Body.TargetMappings[0].StorageClassName"] =
-                            ["Storage class was not found."]
-                    })));
-
-        var problem = mapper.Map(error);
+        var problem = StorageProfileHttpMappings.MapTargetMappingsInvalid(
+            new StorageProfileTargetMappingsInvalid(
+                new Dictionary<string, string[]>
+                {
+                    ["Body.TargetMappings[0].StorageClassName"] = ["Storage class was not found."]
+                }));
 
         Assert.Equal((int)HttpStatusCode.UnprocessableEntity, problem.StatusCode);
         Assert.Equal("storage-profiles.target-mappings.invalid", problem.Code);
@@ -74,9 +69,7 @@ public sealed class HttpProblemMapperTests
     [Fact]
     public void StorageProfileDiscoveryOutcomeUsesSanitizedUnavailableProblem()
     {
-        var mapper = new HttpProblemMapper(StorageProfileHttpMappings.All);
-
-        var problem = mapper.Map(
+        var problem = StorageProfileHttpMappings.MapDiscoveryUnavailable(
             new KubernetesStorageDiscoveryUnavailable("target-1"));
 
         Assert.Equal((int)HttpStatusCode.ServiceUnavailable, problem.StatusCode);

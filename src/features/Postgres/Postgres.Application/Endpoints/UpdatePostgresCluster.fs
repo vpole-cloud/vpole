@@ -191,7 +191,7 @@ module private UpdatePostgresClusterWorkflow =
                                     updatedStorage),
                                 cancellationToken)
 
-                        match TypedResultInterop.toResult storageProfileResult with
+                        match TypedResultInterop.storageProfile storageProfileResult with
                         | Error error ->
                             return
                                 Completed(

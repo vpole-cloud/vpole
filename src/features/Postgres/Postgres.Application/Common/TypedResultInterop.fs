@@ -19,3 +19,12 @@ module TypedResultInterop =
         | :? Pole.Features.ComputeProfiles.Contracts.ResolvedComputeProfile as value -> Ok value
         | :? Pole.Features.ComputeProfiles.Contracts.ComputeProfileResolutionError as error -> Error error
         | value -> invalidOp $"Unexpected compute profile outcome: {value}"
+
+    let storageProfile
+        (result : Pole.Features.StorageProfiles.Contracts.ResolveStorageProfileOutcome)
+        : Result<Pole.Features.StorageProfiles.Contracts.ResolvedStorageProfile,
+                 Pole.Features.StorageProfiles.Contracts.StorageProfileResolutionError> =
+        match result.Value with
+        | :? Pole.Features.StorageProfiles.Contracts.ResolvedStorageProfile as value -> Ok value
+        | :? Pole.Features.StorageProfiles.Contracts.StorageProfileResolutionError as error -> Error error
+        | value -> invalidOp $"Unexpected storage profile outcome: {value}"

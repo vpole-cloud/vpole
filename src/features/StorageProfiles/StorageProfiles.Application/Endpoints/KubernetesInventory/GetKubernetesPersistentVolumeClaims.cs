@@ -7,8 +7,8 @@ using Pole.ASP.Helpers;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.StorageProfiles.Application.Common.StorageProfileHttpMappings;
 
 namespace Pole.Features.StorageProfiles.Application.Endpoints.KubernetesInventory;
 
@@ -35,10 +35,10 @@ public sealed class GetKubernetesPersistentVolumeClaimsHandler(
             cancellationToken);
         return discovered switch
         {
-            Ok<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>> persistentVolumeClaims =>
-                new GetKubernetesPersistentVolumeClaimsOutcome(persistentVolumeClaims.Value),
-            Err<KubernetesStorageDiscoveryUnavailable> error =>
-                new GetKubernetesPersistentVolumeClaimsOutcome(error.Value)
+            IReadOnlyCollection<KubernetesPersistentVolumeClaimDto> persistentVolumeClaims =>
+                persistentVolumeClaims,
+            KubernetesStorageDiscoveryUnavailable error =>
+                error
         };
     }
 }
@@ -57,7 +57,6 @@ public static class GetKubernetesPersistentVolumeClaimsEndpoint
     {
         app.MapGet("/persistent-volume-claims", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetKubernetesPersistentVolumeClaimsRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -67,7 +66,7 @@ public static class GetKubernetesPersistentVolumeClaimsEndpoint
                     IReadOnlyCollection<KubernetesPersistentVolumeClaimDto> persistentVolumeClaims =>
                         Results.Ok(persistentVolumeClaims),
                     KubernetesStorageDiscoveryUnavailable error =>
-                        httpProblems.Map(error).ToHttpResult()
+                        MapDiscoveryUnavailable(error)
                 });
             })
             .WithName("GetKubernetesPersistentVolumeClaims")

@@ -79,6 +79,7 @@ public sealed class ArchitectureBoundaryTests
     [Theory]
     [InlineData("Users")]
     [InlineData("Tenants")]
+    [InlineData("StorageProfiles")]
     public void MigratedFeatures_UseNamedOutcomesAndDirectEndpointMappings(string feature)
     {
         var sources = ArchitectureSources.ProductionCSharp()

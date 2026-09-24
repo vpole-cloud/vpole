@@ -1,22 +1,21 @@
 using k8s;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.StorageProfiles.Application.Common;
-using Pole.ResultType;
 
 namespace Pole.Features.StorageProfiles.Application.Discovery;
 
-public delegate Task<Result<
+public union DiscoverKubernetesStorageClassesOutcome(
     IReadOnlyCollection<KubernetesStorageClassDto>,
-    KubernetesStorageDiscoveryUnavailable>> DiscoverKubernetesStorageClasses(
+    KubernetesStorageDiscoveryUnavailable);
+
+public delegate Task<DiscoverKubernetesStorageClassesOutcome> DiscoverKubernetesStorageClasses(
     string deploymentTargetId,
     CancellationToken cancellationToken = default);
 
 internal sealed class KubernetesDiscoverStorageClasses(
     IKubernetesClientProvider kubernetesClientProvider)
 {
-    public async Task<Result<
-        IReadOnlyCollection<KubernetesStorageClassDto>,
-        KubernetesStorageDiscoveryUnavailable>> InvokeAsync(
+    public async Task<DiscoverKubernetesStorageClassesOutcome> InvokeAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
@@ -24,15 +23,16 @@ internal sealed class KubernetesDiscoverStorageClasses(
             kubernetesClientProvider,
             deploymentTargetId,
             cancellationToken);
-        if (!resolved.TryGetValue(out var kubernetes, out var error))
-            return new Err<KubernetesStorageDiscoveryUnavailable>(error);
+        if (resolved is KubernetesStorageDiscoveryUnavailable error)
+            return error;
+
+        var kubernetes = (IKubernetes)resolved.Value;
 
         var storageClasses = await kubernetes.StorageV1.ListStorageClassAsync(
             cancellationToken: cancellationToken);
-        return new Ok<IReadOnlyCollection<KubernetesStorageClassDto>>(
-            storageClasses.Items
+        return storageClasses.Items
                 .OrderBy(storageClass => storageClass.Metadata.Name, StringComparer.Ordinal)
                 .Select(KubernetesStorageDiscovery.MapStorageClass)
-                .ToArray());
+                .ToArray();
     }
 }

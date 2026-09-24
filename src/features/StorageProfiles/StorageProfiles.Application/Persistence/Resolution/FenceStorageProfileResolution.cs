@@ -2,14 +2,13 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.StorageProfiles.Application.Persistence.Resolution;
 
 internal sealed class MongoFenceStorageProfileResolution(
     IMongoCollection<StorageProfile> storageProfiles)
 {
-    public async Task<Result<Unit, StorageProfileResolutionFenceRejected>> InvokeAsync(
+    public async Task<FenceStorageProfileResolutionOutcome> InvokeAsync(
         StorageProfileResolutionFenceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -24,9 +23,8 @@ internal sealed class MongoFenceStorageProfileResolution(
             Builders<StorageProfile>.Update.Inc(profile => profile.ResolutionFence, 1),
             cancellationToken: cancellationToken);
         return fenced.ModifiedCount == 1
-            ? new Ok<Unit>(Unit.Value)
-            : new Err<StorageProfileResolutionFenceRejected>(
-                new StorageProfileResolutionFenceRejected(request.StorageProfileId));
+            ? new StorageProfileResolutionFenced()
+            : new StorageProfileResolutionFenceRejected(request.StorageProfileId);
     }
 
     private static void EnsureValidRequest(StorageProfileResolutionFenceRequest request)

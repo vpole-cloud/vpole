@@ -177,7 +177,7 @@ module private CreatePostgresClusterWorkflow =
                                 requestedStorage),
                             cancellationToken)
 
-                    match TypedResultInterop.toResult storageProfileResult with
+                    match TypedResultInterop.storageProfile storageProfileResult with
                     | Error error ->
                         return Completed(CreatePostgresClusterRejected(CreateStorage error))
                     | Ok storageProfile ->

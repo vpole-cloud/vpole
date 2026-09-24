@@ -3,9 +3,12 @@ using k8s.Models;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.StorageProfiles.Application.Discovery;
+
+internal union ResolveStorageDiscoveryClientOutcome(
+    IKubernetes,
+    KubernetesStorageDiscoveryUnavailable);
 
 internal static class KubernetesStorageDiscovery
 {
@@ -15,7 +18,7 @@ internal static class KubernetesStorageDiscovery
         "storageclass.beta.kubernetes.io/is-default-class"
     ];
 
-    public static async Task<Result<IKubernetes, KubernetesStorageDiscoveryUnavailable>>
+    public static async Task<ResolveStorageDiscoveryClientOutcome>
         ResolveAsync(
             IKubernetesClientProvider kubernetesClientProvider,
             string deploymentTargetId,
@@ -23,14 +26,13 @@ internal static class KubernetesStorageDiscovery
     {
         try
         {
-            return new Ok<IKubernetes>(await kubernetesClientProvider.GetAsync(
+            return await kubernetesClientProvider.GetAsync(
                 deploymentTargetId,
-                cancellationToken));
+                cancellationToken);
         }
         catch (DeploymentTargetUnavailableException)
         {
-            return new Err<KubernetesStorageDiscoveryUnavailable>(
-                new KubernetesStorageDiscoveryUnavailable(deploymentTargetId));
+            return new KubernetesStorageDiscoveryUnavailable(deploymentTargetId);
         }
     }
 

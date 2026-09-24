@@ -8,7 +8,6 @@ using Pole.Features.StorageProfiles.Application.Persistence.Reads;
 using Pole.Features.StorageProfiles.Application.Persistence.Resolution;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.StorageProfiles.Application.Persistence;
 
@@ -43,13 +42,9 @@ public static class StorageProfilePersistenceRegistration
             serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<StorageProfile>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<Result<
-            StorageProfile,
-            StorageProfileRevisionConflict>>>(serviceProvider => serviceProvider
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistUpdatedStorageProfileOutcome>>(serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<Result<
-                    StorageProfile,
-                    StorageProfileRevisionConflict>>);
+                .InvokeOutcomeAsync<PersistUpdatedStorageProfileOutcome>);
         return services;
     }
 

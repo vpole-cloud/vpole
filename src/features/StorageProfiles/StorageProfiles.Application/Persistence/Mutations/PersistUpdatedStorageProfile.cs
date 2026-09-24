@@ -3,11 +3,14 @@ using Pole.Database;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Persistence.Defaults;
 using Pole.Features.StorageProfiles.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.StorageProfiles.Application.Persistence.Mutations;
 
-public delegate Task<Result<StorageProfile, StorageProfileRevisionConflict>>
+public union PersistUpdatedStorageProfileOutcome(
+    StorageProfile,
+    StorageProfileRevisionConflict);
+
+public delegate Task<PersistUpdatedStorageProfileOutcome>
     PersistUpdatedStorageProfile(
         StorageProfile current,
         StorageProfile replacement,
@@ -15,10 +18,10 @@ public delegate Task<Result<StorageProfile, StorageProfileRevisionConflict>>
 
 internal sealed class MongoPersistUpdatedStorageProfile(
     IMongoCollection<StorageProfile> storageProfiles,
-    RunMongoOutcomeTransaction<Result<StorageProfile, StorageProfileRevisionConflict>>
+    RunMongoOutcomeTransaction<PersistUpdatedStorageProfileOutcome>
         runMongoTransaction)
 {
-    public Task<Result<StorageProfile, StorageProfileRevisionConflict>> InvokeAsync(
+    public Task<PersistUpdatedStorageProfileOutcome> InvokeAsync(
         StorageProfile current,
         StorageProfile replacement,
         CancellationToken cancellationToken = default)
@@ -42,8 +45,8 @@ internal sealed class MongoPersistUpdatedStorageProfile(
                 replacement,
                 cancellationToken: ct);
             return replacementWrite.ModifiedCount == 1
-                ? transaction.Commit(new Ok<StorageProfile>(replacement))
-                : transaction.AbortError(new StorageProfileRevisionConflict(current.Id));
+                ? transaction.Commit(replacement)
+                : transaction.Abort(new StorageProfileRevisionConflict(current.Id));
         }, cancellationToken);
     }
 

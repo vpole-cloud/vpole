@@ -198,6 +198,24 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("/api/v1/platform/storage/storage-classes?")]
+    [InlineData("/api/v1/platform/storage/persistent-volumes?")]
+    [InlineData("/api/v1/platform/storage/persistent-volume-claims?")]
+    [InlineData("/api/v1/storage-profiles/?resourceType=third-party/widget&")]
+    public async Task StorageDiscovery_ReturnsUnavailableProblemForUnknownTarget(string route)
+    {
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+        const string targetId = "507f1f77bcf86cd799439097";
+
+        var response = await Client.GetAsync($"{route}deploymentTargetId={targetId}");
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("storage-profiles.discovery-unavailable", problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal(targetId, problem.RootElement.GetProperty("deploymentTargetId").GetString());
+    }
+
     [Fact]
     public async Task CreateStorageProfile_ReturnsCreated_ForPlatformAdmin()
     {

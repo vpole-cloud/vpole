@@ -1,6 +1,5 @@
 using MongoDB.Driver;
 using Pole.Features.StorageProfiles.Primitives;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.StorageProfiles.Contracts;
@@ -92,7 +91,7 @@ public union StorageProfileResolutionError(
 /// a workload deployment. Structural request violations throw; expected
 /// availability and policy decisions are represented by the closed error union.
 /// </summary>
-public delegate Task<Result<ResolvedStorageProfile, StorageProfileResolutionError>>
+public delegate Task<ResolveStorageProfileOutcome>
     ResolveStorageProfile(
         StorageProfileResolutionRequest request,
         CancellationToken cancellationToken = default);
@@ -105,7 +104,7 @@ public sealed record StorageProfileResolutionFenceRequest(
 
 public sealed record StorageProfileResolutionFenceRejected(string StorageProfileId);
 
-public delegate Task<Result<Unit, StorageProfileResolutionFenceRejected>>
+public delegate Task<FenceStorageProfileResolutionOutcome>
     FenceStorageProfileResolution(
         StorageProfileResolutionFenceRequest request,
         IClientSessionHandle session,
@@ -119,3 +118,13 @@ public static class PoleStorageLabels
     public const string ResourceId = "pole.io/resource-id";
     public const string ResourceName = "pole.io/resource-name";
 }
+
+public union ResolveStorageProfileOutcome(
+    ResolvedStorageProfile,
+    StorageProfileResolutionError);
+
+public sealed record StorageProfileResolutionFenced;
+
+public union FenceStorageProfileResolutionOutcome(
+    StorageProfileResolutionFenced,
+    StorageProfileResolutionFenceRejected);

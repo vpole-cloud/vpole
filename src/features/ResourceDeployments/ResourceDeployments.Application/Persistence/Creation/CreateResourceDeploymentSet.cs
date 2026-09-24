@@ -133,7 +133,7 @@ internal sealed class MongoCreateResourceDeploymentSet(
                 storage,
                 session,
                 cancellationToken);
-            if (storageFence is Err<StorageProfileResolutionFenceRejected>)
+            if (storageFence is StorageProfileResolutionFenceRejected)
             {
                 return new Err<CreateResourceDeploymentError>(
                     new CreateResourceDeploymentError(
