@@ -7,7 +7,6 @@ using Pole.Features.Quotas.Application.Persistence;
 using Pole.Features.Quotas.Application.Persistence.Reservations;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Domain;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -44,11 +43,11 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
                 QuotaResourceKey.Create("test", "race-2")));
 
         var successful = outcomes
-            .Select(outcome => outcome.TryGetValue(out var lease, out _) ? lease : null)
-            .Where(lease => lease is not null)
+            .Select(outcome => outcome.Value)
+            .OfType<QuotaReservationLease>()
             .ToArray();
         Assert.Single(successful);
-        Assert.Single(outcomes, outcome => !outcome.TryGetValue(out _, out _));
+        Assert.Single(outcomes, outcome => outcome is QuotaExceeded);
 
         var activeReservations = await QuotaReservations
             .Find(reservation => reservation.TenantId == TestData.TenantId)
@@ -56,7 +55,7 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.Single(activeReservations, reservation => reservation.State is ActiveQuotaReservationState);
 
         var cancel = Services.GetRequiredService<CancelQuotaReservation>();
-        await cancel(successful[0]!.ReservationId);
+        await cancel(successful[0].ReservationId);
     }
 
     [Fact]
@@ -73,15 +72,14 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
             TestData.TenantId,
             requested,
             QuotaResourceKey.Create("test", "first"));
-        Assert.True(first.TryGetValue(out var lease, out _));
+        var lease = Assert.IsType<QuotaReservationLease>(first.Value);
 
         var second = await reserve(
             TestData.TenantId,
             requested,
             QuotaResourceKey.Create("test", "second"));
 
-        Assert.False(second.TryGetValue(out _, out var error));
-        var exceeded = Assert.IsType<QuotaExceeded>(error.Value);
+        var exceeded = Assert.IsType<QuotaExceeded>(second.Value);
         Assert.Equal(CpuQuota.QuotaKey, exceeded.Quota);
         Assert.Equal(1, exceeded.Limit);
         Assert.Equal(1, exceeded.Requested);
@@ -105,6 +103,70 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.Equal("tenantId", exception.ParamName);
     }
 
+
+    [Fact]
+    public async Task CommitReservation_ChargesUsageOnceAcrossRepeatedCommits()
+    {
+        var reserve = Services.GetRequiredService<ReserveQuotaReservation>();
+        var commit = Services.GetRequiredService<CommitQuotaReservation>();
+        var reserved = await reserve(
+            TestData.TenantId,
+            QuotaDelta.From(CpuQuota.QuotaKey, 2),
+            QuotaResourceKey.Create("test", "idempotent-commit"));
+        var lease = Assert.IsType<QuotaReservationLease>(reserved.Value);
+
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            using var session = await Fixture.Client.StartSessionAsync();
+            session.StartTransaction();
+            var result = await commit(lease.ReservationId, session);
+            Assert.IsType<QuotaReservationCommitted>(result.Value);
+            await session.CommitTransactionAsync();
+        }
+
+        var usage = await GetUsageAsync(TestData.TenantId);
+        Assert.Equal(2, QuotaValues.GetValue(usage.Values, CpuQuota.QuotaKey));
+        var persisted = await QuotaReservations.Find(item => item.Id == lease.ReservationId).SingleAsync();
+        Assert.IsType<CommittedQuotaReservationState>(persisted.State);
+    }
+
+    [Theory]
+    [InlineData("missing", typeof(QuotaReservationNotFound))]
+    [InlineData("cancelled", typeof(QuotaReservationCancelled))]
+    [InlineData("expired", typeof(QuotaReservationExpired))]
+    public async Task CommitReservation_RejectsUnavailableReservationWithoutUsage(
+        string state,
+        Type expectedError)
+    {
+        var now = DateTimeOffset.FromUnixTimeMilliseconds(
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()).UtcDateTime;
+        var reservation = QuotaDomainFactory.CreateReservation(
+            TestData.TenantId,
+            QuotaDelta.From(CpuQuota.QuotaKey, 2),
+            QuotaResourceKey.Create("test", "rejected-commit"),
+            now.AddHours(-2),
+            TimeSpan.FromHours(1),
+            TimeSpan.FromDays(1));
+        if (state == "cancelled")
+            reservation = reservation with { State = QuotaDomainFactory.CancelReservation(now, TimeSpan.FromDays(1)) };
+        if (state != "missing")
+            await QuotaReservations.InsertOneAsync(reservation);
+
+        var commit = Services.GetRequiredService<CommitQuotaReservation>();
+        using var session = await Fixture.Client.StartSessionAsync();
+        session.StartTransaction();
+        var result = await commit(reservation.Id, session);
+        Assert.IsType(expectedError, result.Value);
+        Assert.False(await QuotaUsages.Find(session, usage => usage.TenantId == TestData.TenantId).AnyAsync());
+        await session.AbortTransactionAsync();
+
+        Assert.False(await QuotaUsages.Find(usage => usage.TenantId == TestData.TenantId).AnyAsync());
+        if (state != "missing")
+        {
+            var persisted = await QuotaReservations.Find(item => item.Id == reservation.Id).SingleAsync();
+            Assert.Equal(reservation.State, persisted.State);
+        }
+    }
 
     private async Task SeedPolicyAsync(string tenantId, IEnumerable<QuotaValue> limits)
     {

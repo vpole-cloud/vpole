@@ -18,7 +18,6 @@
     <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
     <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
     <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
-    <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
   </ItemGroup>
 
   <ItemGroup>

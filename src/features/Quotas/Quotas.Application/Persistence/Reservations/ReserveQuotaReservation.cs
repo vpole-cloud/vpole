@@ -3,11 +3,15 @@ using Pole.Database;
 using Pole.Features.Quotas.Application.Persistence.Usage;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.Quotas.Application.Persistence.Reservations;
 
-public delegate Task<Result<QuotaReservationLease, QuotaReservationError>> ReserveQuotaReservation(
+public union ReserveQuotaReservationOutcome(
+    QuotaReservationLease,
+    QuotaExceeded,
+    QuotaReservationConflict);
+
+public delegate Task<ReserveQuotaReservationOutcome> ReserveQuotaReservation(
     string tenantId,
     QuotaDelta delta,
     QuotaResourceKey resourceKey,
@@ -23,7 +27,7 @@ internal sealed class MongoReserveQuotaReservation(
 {
     private const int InitialUpsertRetryCount = 3;
 
-    public async Task<Result<QuotaReservationLease, QuotaReservationError>> InvokeAsync(
+    public async Task<ReserveQuotaReservationOutcome> InvokeAsync(
         string tenantId,
         QuotaDelta delta,
         QuotaResourceKey resourceKey,
@@ -35,9 +39,7 @@ internal sealed class MongoReserveQuotaReservation(
         {
             try
             {
-                return await runMongoTransaction.InvokeOutcomeAsync<Result<
-                    QuotaReservationLease,
-                    QuotaReservationError>>(async (transaction, ct) =>
+                return await runMongoTransaction.InvokeOutcomeAsync<ReserveQuotaReservationOutcome>(async (transaction, ct) =>
                 {
                     var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
                     var usage = await MongoQuotaUsage.TouchAsync(
@@ -58,8 +60,7 @@ internal sealed class MongoReserveQuotaReservation(
                     var denial = GetAdmissionDenial(policy, usage, activeReservations, delta);
                     if (denial is not null)
                     {
-                        return transaction.Abort(new Err<QuotaReservationError>(
-                            new QuotaReservationError(denial)));
+                        return transaction.Abort(denial);
                     }
 
                     var reservation = QuotaDomainFactory.CreateReservation(
@@ -75,13 +76,12 @@ internal sealed class MongoReserveQuotaReservation(
                         cancellationToken: ct);
 
                     var activeState = (ActiveQuotaReservationState)reservation.State;
-                    return transaction.Commit(new Ok<QuotaReservationLease>(
-                        new QuotaReservationLease(
-                            reservation.Id,
-                            reservation.TenantId,
-                            QuotaDelta.Create(reservation.Delta),
-                            activeState.ExpiresAtUtc,
-                            reservation.ResourceKey)));
+                    return transaction.Commit(new QuotaReservationLease(
+                        reservation.Id,
+                        reservation.TenantId,
+                        QuotaDelta.Create(reservation.Delta),
+                        activeState.ExpiresAtUtc,
+                        reservation.ResourceKey));
                 }, cancellationToken);
             }
             catch (MongoWriteException exception) when (
@@ -92,9 +92,7 @@ internal sealed class MongoReserveQuotaReservation(
             }
         }
 
-        return new Err<QuotaReservationError>(
-            new QuotaReservationError(
-                new QuotaReservationConflict(tenantId, resourceKey)));
+        return new QuotaReservationConflict(tenantId, resourceKey);
     }
 
     private static QuotaExceeded? GetAdmissionDenial(

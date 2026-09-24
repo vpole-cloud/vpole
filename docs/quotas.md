@@ -63,16 +63,16 @@ WebService creation reserves quota before entering the transaction callback;
 generated DNS reservations, resource deployments, the logical resource, and
 their outbox writes are then persisted in that caller-owned transaction.
 
-`MongoQuotaAdmissionService` owns only low-level reservation and committed-usage persistence. Feature handlers must not call it directly.
+Feature-owned persistence capabilities handle reservation and committed-usage updates. Resource handlers use `IQuotaAdmissionExecutor` instead of calling those capabilities directly.
 
-Reservation admission exposes a provider-owned `Result<QuotaReservationLease,
-QuotaReservationError>`. Invalid requests, exceeded quotas, and reservation
-conflicts are distinct union cases; `QuotaExceeded` carries the quota key,
-limit, requested delta, and current reserved-plus-committed usage. The optional
-`Quotas.Contracts.HttpMapping` companion supplies stable default ProblemDetails
-representations without coupling `Quotas.Contracts` to HTTP. Legacy
-`IQuotaAdmissionExecutor` consumers are adapted in one place while feature
-handlers migrate to typed outcomes.
+Reservation persistence returns `ReserveQuotaReservationOutcome` with a lease,
+`QuotaExceeded`, or `QuotaReservationConflict`. Commit persistence returns
+`CommitQuotaReservationOutcome` with committed, missing, cancelled, or expired cases.
+Invalid requests remain argument exceptions. `QuotaExceeded` carries the quota key,
+limit, requested delta, and current reserved-plus-committed usage. The executor maps
+these concrete failures to the provider-owned `QuotaExecutionError` contract.
+The optional `Quotas.Contracts.HttpMapping` companion supplies stable default
+ProblemDetails representations for consumers without coupling contracts to HTTP.
 
 ## Reservation states and cleanup
 

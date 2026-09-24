@@ -80,6 +80,7 @@ public sealed class ArchitectureBoundaryTests
     [InlineData("Users")]
     [InlineData("Tenants")]
     [InlineData("StorageProfiles")]
+    [InlineData("Quotas")]
     public void MigratedFeatures_UseNamedOutcomesAndDirectEndpointMappings(string feature)
     {
         var sources = ArchitectureSources.ProductionCSharp()
