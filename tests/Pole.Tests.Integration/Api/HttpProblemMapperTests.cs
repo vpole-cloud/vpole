@@ -462,19 +462,13 @@ public sealed class HttpProblemMapperTests
     [Fact]
     public void CreateUserErrorsHaveStableProblemMappings()
     {
-        var mapper = new HttpProblemMapper(UserHttpProblemMappings.All);
-        CreateUserError existingEmail = new(
-            new CreateUserPersistenceError(
-                new UserEmailAlreadyExists("ada@example.com")));
-        CreateUserError existingIdentity = new(
-            new CreateUserPersistenceError(
-                new UserIdentityAlreadyExists("keycloak-user-1")));
-        CreateUserError identityFailure = new(
-            new IdentityUserCreationFailed());
+        var existingEmail = new UserEmailAlreadyExists("ada@example.com");
+        var existingIdentity = new UserIdentityAlreadyExists("keycloak-user-1");
+        var identityFailure = new IdentityUserCreationFailed();
 
-        var conflict = mapper.Map(existingEmail);
-        var identityConflict = mapper.Map(existingIdentity);
-        var unavailable = mapper.Map(identityFailure);
+        var conflict = UserHttpProblemMappings.MapUserEmailAlreadyExists(existingEmail);
+        var identityConflict = UserHttpProblemMappings.MapUserIdentityAlreadyExists(existingIdentity);
+        var unavailable = UserHttpProblemMappings.MapIdentityUserCreationFailed(identityFailure);
 
         Assert.Equal((int)HttpStatusCode.Conflict, conflict.StatusCode);
         Assert.Equal("users.email.already-exists", conflict.Code);

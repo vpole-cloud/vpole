@@ -12,7 +12,7 @@ using Pole.Features.Users.Application.Identity;
 using Pole.Features.Users.Application.Persistence;
 using Pole.Features.Users.Application.Persistence.Users;
 using Pole.Mediator;
-using Pole.ResultType;
+using static Pole.Features.Users.Application.UserHttpProblemMappings;
 
 namespace Pole.Features.Users.Application.Endpoints;
 
@@ -22,7 +22,6 @@ public static class CreateUser
     {
         app.MapPost("/", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] CreateUserRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -30,7 +29,9 @@ public static class CreateUser
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     UserDto user => Results.Created($"/api/v1/users/{user.Id}", user),
-                    CreateUserError error => httpProblems.Map(error).ToHttpResult()
+                    UserEmailAlreadyExists error => MapUserEmailAlreadyExists(error),
+                    UserIdentityAlreadyExists error => MapUserIdentityAlreadyExists(error),
+                    IdentityUserCreationFailed error => MapIdentityUserCreationFailed(error)
                 });
             })
         .WithName("CreateUser")
@@ -52,13 +53,11 @@ public sealed record CreateUserRequestBody(
     string? FirstName,
     string? LastName);
 
-public union CreateUserError(
-    CreateUserPersistenceError,
-    IdentityUserCreationFailed);
-
 public union CreateUserOutcome(
     UserDto,
-    CreateUserError);
+    UserEmailAlreadyExists,
+    UserIdentityAlreadyExists,
+    IdentityUserCreationFailed);
 
 public sealed class CreateUserHandler(
     EnsureUserEmailAvailable ensureUserEmailAvailable,
@@ -74,39 +73,59 @@ public sealed class CreateUserHandler(
     {
         var email = NormalizeEmail(request.Body.Email);
         var available = await ensureUserEmailAvailable(email, cancellationToken);
-        if (available is Err<CreateUserPersistenceError> existing)
-            return new CreateUserOutcome(new CreateUserError(existing.Value));
+        if (available is UserEmailAlreadyExists existing)
+            return existing;
 
         var identityUser = await identityProvider.CreateUserAsync(
             new CreateIdentityUser(email, request.Body.FirstName, request.Body.LastName),
             cancellationToken);
-        var identityResult = TypedResultExtensions.TryGetValue(identityUser);
-        if (!identityResult.Succeeded)
-            return new CreateUserOutcome(new CreateUserError(identityResult.Error!));
-        var keycloakUserId = identityResult.Value!;
+        return identityUser switch
+        {
+            IdentityUserCreated created => await PersistAsync(request, email, created.UserId, cancellationToken),
+            IdentityUserCreationFailed error => error
+        };
+    }
 
+    private async Task<CreateUserOutcome> PersistAsync(
+        CreateUserRequest request,
+        string email,
+        string keycloakUserId,
+        CancellationToken cancellationToken)
+    {
         var defaultTenantId = ObjectId.GenerateNewId().ToString();
         var defaultTenantName = CreateDefaultTenantName(email);
-        var user = new PoleUser(
-            Id: keycloakUserId,
-            Email: email,
-            FirstName: request.Body.FirstName,
-            LastName: request.Body.LastName,
-            DefaultTenantId: defaultTenantId,
-            CreatedAtUtc: timeProvider.GetUtcNow().UtcDateTime);
+        var user = PoleUserFactory.Create(
+            id: keycloakUserId,
+            email: email,
+            firstName: request.Body.FirstName,
+            lastName: request.Body.LastName,
+            defaultTenantId: defaultTenantId,
+            createdAtUtc: timeProvider.GetUtcNow().UtcDateTime);
 
         var persisted = await persistCreatedUser(
             new PersistCreatedUserRequest(user, defaultTenantName),
             cancellationToken);
-        var persistenceResult = TypedResultExtensions.TryGetValue(persisted);
-        if (persistenceResult.Succeeded)
-            return user.ToDto();
+        return persisted switch
+        {
+            UserPersisted => user.ToDto(),
+            CreateUserPersistenceError error => await CompensateAsync(keycloakUserId, error, cancellationToken)
+        };
+    }
 
+    private async Task<CreateUserOutcome> CompensateAsync(
+        string keycloakUserId,
+        CreateUserPersistenceError error,
+        CancellationToken cancellationToken)
+    {
         var cleanupSucceeded = await identityProvider.DeleteUserAsync(keycloakUserId, cancellationToken);
         if (!cleanupSucceeded)
             logger.LogError("Failed to delete Keycloak user {UserId} after Mongo user creation rollback.", keycloakUserId);
 
-        return new CreateUserOutcome(new CreateUserError(persistenceResult.Error!));
+        return error switch
+        {
+            UserEmailAlreadyExists conflict => conflict,
+            UserIdentityAlreadyExists conflict => conflict
+        };
     }
 
     private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();

@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Pole.ASP.Helpers;
 using Pole.Features.Users.Application.Identity;
 using Pole.Features.Users.Application.Persistence;
 using Pole.Features.Users.Application.Persistence.Users;
@@ -16,7 +15,6 @@ public static class UserFeature
     {
         services.Configure<KeycloakOptions>(configuration.GetSection(KeycloakOptions.SectionName));
         services.AddHttpClient<IIdentityProvider, KeycloakIdentityProvider>();
-        services.AddHttpProblemMappings(UserHttpProblemMappings.All);
 
         services.TryAddScoped<MongoEnsureUserEmailAvailable>();
         services.TryAddScoped<EnsureUserEmailAvailable>(provider => provider

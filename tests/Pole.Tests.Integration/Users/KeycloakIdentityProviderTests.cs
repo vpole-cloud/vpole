@@ -1,5 +1,4 @@
 using Pole.Features.Users.Application.Identity;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -56,7 +55,7 @@ public sealed class KeycloakIdentityProviderTests(KeycloakContainerFixture fixtu
                 new CreateIdentityUser(email, "Grace", "Hopper"),
                 CancellationToken.None);
 
-            Assert.True(duplicate is Err<IdentityUserCreationFailed>);
+            Assert.True(duplicate is IdentityUserCreationFailed);
         }
         finally
         {
@@ -100,15 +99,15 @@ public sealed class KeycloakIdentityProviderTests(KeycloakContainerFixture fixtu
             CancellationToken.None);
         var user = await fixture.FindUserByUsernameAsync(email);
 
-        Assert.True(result is Err<IdentityUserCreationFailed>);
+        Assert.True(result is IdentityUserCreationFailed);
         Assert.Null(user);
     }
 
-    private static string AssertCreated(Result<string, IdentityUserCreationFailed> result) =>
+    private static string AssertCreated(CreateIdentityUserOutcome result) =>
         result switch
         {
-            Ok<string> success => success.Value,
-            Err<IdentityUserCreationFailed> => throw new Xunit.Sdk.XunitException(
+            IdentityUserCreated success => success.UserId,
+            IdentityUserCreationFailed => throw new Xunit.Sdk.XunitException(
                 "Expected Keycloak user creation to succeed.")
         };
 

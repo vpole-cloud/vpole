@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Http;
 
 namespace Pole.ASP.Helpers;
 
-public sealed record HttpProblem
+public sealed record HttpProblem : IResult
 {
     public HttpProblem(
         int statusCode,
@@ -54,6 +54,9 @@ public sealed record HttpProblem
     public string Code { get; }
     public string? Detail { get; }
     public IReadOnlyDictionary<string, object> Extensions { get; }
+
+    public Task ExecuteAsync(HttpContext httpContext) =>
+        ToHttpResult().ExecuteAsync(httpContext);
 
     public IResult ToHttpResult()
     {

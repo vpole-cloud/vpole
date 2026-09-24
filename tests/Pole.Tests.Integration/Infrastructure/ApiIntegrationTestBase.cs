@@ -59,7 +59,7 @@ public abstract class ApiIntegrationTestBase : IAsyncLifetime
         };
 
         await Fixture.DbContext.Tenants.InsertOneAsync(tenant);
-        await Fixture.DbContext.Users.InsertOneAsync(new PoleUser(
+        await Fixture.DbContext.Users.InsertOneAsync(PoleUserFactory.Create(
             TestData.UserId,
             TestData.UserEmail,
             null,

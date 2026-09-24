@@ -47,6 +47,25 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task CreateUser_DuplicateEmailReturnsTypedConflict()
+    {
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+        var request = new CreateUserRequestBody("duplicate-user@example.test", "New", "User");
+        using var created = await Client.PostAsJsonAsync("/api/v1/users/", request);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+
+        using var response = await Client.PostAsJsonAsync("/api/v1/users/", request);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("users.email.already-exists", problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal("tag:pole.dev,2026:problem:users.email.already-exists",
+            problem.RootElement.GetProperty("type").GetString());
+        Assert.Equal(request.Email, problem.RootElement.GetProperty("email").GetString());
+    }
+
+    [Fact]
     public async Task CreateResourceGroup_ReturnsCreated()
     {
         var response = await Client.PostAsJsonAsync("/api/v1/resource-groups/", TestData.CreateResourceGroupRequest().Body);

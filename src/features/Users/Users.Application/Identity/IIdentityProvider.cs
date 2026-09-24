@@ -1,5 +1,3 @@
-using Pole.ResultType;
-
 namespace Pole.Features.Users.Application.Identity;
 
 public sealed record CreateIdentityUser(
@@ -9,9 +7,15 @@ public sealed record CreateIdentityUser(
 
 public sealed record IdentityUserCreationFailed;
 
+public sealed record IdentityUserCreated(string UserId);
+
+public union CreateIdentityUserOutcome(
+    IdentityUserCreated,
+    IdentityUserCreationFailed);
+
 public interface IIdentityProvider
 {
-    Task<Result<string, IdentityUserCreationFailed>> CreateUserAsync(
+    Task<CreateIdentityUserOutcome> CreateUserAsync(
         CreateIdentityUser user,
         CancellationToken cancellationToken);
     Task<bool> DeleteUserAsync(string userId, CancellationToken cancellationToken);

@@ -71,8 +71,11 @@ non-exhaustive switch diagnostics as build errors in the companion project.
 
 HTTP mappings for feature-local Application errors stay in that feature's Application project.
 They are not cross-feature contracts, so they do not justify another companion project. Keep the
-mapping separate from endpoint methods, register it from the feature's `Add<Feature>Feature`
-composition method, and apply the same exhaustive-switch rule to closed local error unions.
+mapping methods separate from endpoint methods. Closed endpoint outcomes may call these typed
+methods directly from an exhaustive switch; `Users` is the initial implementation of this pattern.
+Such mappings need no dynamic registration. Existing dynamic mappings are registered from the
+feature's `Add<Feature>Feature` composition method. Apply the same exhaustive-switch rule to closed
+local error unions. Open pipeline/plugin rejections continue to use the dynamic mapper.
 
 Core Pole problem types use stable, non-dereferenceable identifiers derived from their codes:
 `tag:pole.dev,2026:problem:<code>`. The tag authority is part of the public contract and never
