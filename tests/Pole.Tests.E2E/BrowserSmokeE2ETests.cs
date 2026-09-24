@@ -30,7 +30,9 @@ public sealed class BrowserSmokeE2ETests(PoleE2EFixture fixture)
         {
             await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
             {
-                ViewportSize = new ViewportSize { Width = width, Height = height }
+                ViewportSize = new ViewportSize { Width = width, Height = height },
+                // Keycloak's local HTTPS endpoint uses an untrusted development certificate.
+                IgnoreHTTPSErrors = true
             });
             var page = await context.NewPageAsync();
             await page.GotoAsync(fixture.FrontendBaseAddress.ToString(), new PageGotoOptions

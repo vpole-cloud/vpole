@@ -135,6 +135,10 @@ if (e2eEnabled)
 else
 {
     api
+        // Local launch settings bind these same host ports directly; Aspire cannot proxy them.
+        .WithEndpoint("http", endpoint => endpoint.IsProxied = false)
+        .WithEndpoint("functions-public", endpoint => endpoint.IsProxied = false)
+        .WithEndpoint("functions-internal", endpoint => endpoint.IsProxied = false)
         .WaitFor(keycloak)
         .WaitFor(mongoServer)
         .WaitFor(mongoReplicaSet)
