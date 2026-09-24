@@ -8,7 +8,6 @@ using Pole.Features.RedisServices.Application.Persistence.Lifecycle;
 using Pole.Features.RedisServices.Application.Search;
 using Pole.Features.Search.Contracts;
 using Pole.Features.Quotas.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.RedisServices.Application;
 
@@ -19,17 +18,16 @@ public static class RedisServicesFeatureRegistration
     {
         services.AddSingleton<SearchSourceType>(RedisServiceSearchProjection.SourceType);
         services.AddRedisPersistence();
-        services.AddRedisHttpMappings();
         services.TryAddSingleton<RedisServiceCountQuota>();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<Quota, RedisServiceCountQuota>());
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IQuotaProfile, RedisQuotaProfile>());
         services.TryAddScoped<RunMongoOutcomeTransaction<
-            Result<Unit, RedisDeletionFinalizationConflict>>>(serviceProvider =>
+            FinalizeRedisDeletionOutcome>>(serviceProvider =>
             serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<Result<Unit, RedisDeletionFinalizationConflict>>);
+                .InvokeOutcomeAsync<FinalizeRedisDeletionOutcome>);
         services.TryAddScoped<RedisResourceDeploymentAdapter>();
         services.TryAddSingleton(RedisResourceDeploymentAdapterRegistration.Descriptor);
         return services;

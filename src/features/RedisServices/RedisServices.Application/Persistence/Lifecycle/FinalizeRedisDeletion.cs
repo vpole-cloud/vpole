@@ -10,7 +10,13 @@ namespace Pole.Features.RedisServices.Application.Persistence.Lifecycle;
 
 public sealed record RedisDeletionFinalizationConflict(string RedisId);
 
-public delegate Task<Result<Unit, RedisDeletionFinalizationConflict>> FinalizeRedisDeletion(
+public sealed record RedisDeletionFinalized;
+
+public union FinalizeRedisDeletionOutcome(
+    RedisDeletionFinalized,
+    RedisDeletionFinalizationConflict);
+
+public delegate Task<FinalizeRedisDeletionOutcome> FinalizeRedisDeletion(
     string tenantId,
     string redisId,
     CancellationToken cancellationToken = default);
@@ -20,11 +26,11 @@ internal sealed class MongoFinalizeRedisDeletion(
     GetResourceDeploymentFinalizationReadiness getDeploymentReadiness,
     PurgeDeletedResourceDeployments purgeDeployments,
     IResourceRegistrar resourceRegistrar,
-    RunMongoOutcomeTransaction<Result<Unit, RedisDeletionFinalizationConflict>>
+    RunMongoOutcomeTransaction<FinalizeRedisDeletionOutcome>
         runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites)
 {
-    public Task<Result<Unit, RedisDeletionFinalizationConflict>> InvokeAsync(
+    public Task<FinalizeRedisDeletionOutcome> InvokeAsync(
         string tenantId,
         string redisId,
         CancellationToken cancellationToken = default) =>
@@ -38,7 +44,7 @@ internal sealed class MongoFinalizeRedisDeletion(
                 .Find(transaction.Session, redisFilter)
                 .FirstOrDefaultAsync(transactionCancellationToken);
             if (redis is null)
-                return transaction.Commit(new Ok<Unit>(Unit.Value));
+                return transaction.Commit(new RedisDeletionFinalized());
 
             var readiness = await getDeploymentReadiness(
                 tenantId,
@@ -48,7 +54,7 @@ internal sealed class MongoFinalizeRedisDeletion(
                 transactionCancellationToken);
             if (readiness is not ResourceDeploymentFinalizationReadiness.Ready)
             {
-                return transaction.Commit(new Ok<Unit>(Unit.Value));
+                return transaction.Commit(new RedisDeletionFinalized());
             }
 
             var deleted = await redisServices.DeleteOneAsync(
@@ -57,8 +63,7 @@ internal sealed class MongoFinalizeRedisDeletion(
                 cancellationToken: transactionCancellationToken);
             if (deleted.DeletedCount != 1)
             {
-                return transaction.Abort(new Err<RedisDeletionFinalizationConflict>(
-                    new RedisDeletionFinalizationConflict(redisId)));
+                return transaction.Abort(new RedisDeletionFinalizationConflict(redisId));
             }
 
             var registration = await resourceRegistrar.UnregisterAsync(
@@ -70,8 +75,7 @@ internal sealed class MongoFinalizeRedisDeletion(
                 transactionCancellationToken);
             if (!registration.TryGetValue(out _, out _))
             {
-                return transaction.Abort(new Err<RedisDeletionFinalizationConflict>(
-                    new RedisDeletionFinalizationConflict(redisId)));
+                return transaction.Abort(new RedisDeletionFinalizationConflict(redisId));
             }
 
             var purge = await purgeDeployments(
@@ -82,13 +86,12 @@ internal sealed class MongoFinalizeRedisDeletion(
                 transactionCancellationToken);
             if (!purge.TryGetValue(out _, out _))
             {
-                return transaction.Abort(new Err<RedisDeletionFinalizationConflict>(
-                    new RedisDeletionFinalizationConflict(redisId)));
+                return transaction.Abort(new RedisDeletionFinalizationConflict(redisId));
             }
             await storeOutboxWrites(
                 transaction.Session,
                 [OutboxWrite.Create(redis.ToDeleteEvent())],
                 transactionCancellationToken);
-            return transaction.Commit(new Ok<Unit>(Unit.Value));
+            return transaction.Commit(new RedisDeletionFinalized());
         }, cancellationToken);
 }

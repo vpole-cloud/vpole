@@ -1,13 +1,18 @@
 using MongoDB.Driver;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.RedisServices.Application.Persistence.Mutations;
 
 public sealed record RedisUpdateConflict(string RedisId);
 
-public delegate Task<Result<Unit, RedisUpdateConflict>> PersistUpdatedRedis(
+public sealed record RedisUpdated;
+
+public union PersistUpdatedRedisOutcome(
+    RedisUpdated,
+    RedisUpdateConflict);
+
+public delegate Task<PersistUpdatedRedisOutcome> PersistUpdatedRedis(
     IClientSessionHandle session,
     Redis current,
     Redis replacement,
@@ -17,7 +22,7 @@ internal sealed class MongoPersistUpdatedRedis(
     IMongoCollection<Redis> redisServices,
     StoreOutboxWrites storeOutboxWrites)
 {
-    public async Task<Result<Unit, RedisUpdateConflict>> InvokeAsync(
+    public async Task<PersistUpdatedRedisOutcome> InvokeAsync(
         IClientSessionHandle session,
         Redis current,
         Redis replacement,
@@ -33,13 +38,13 @@ internal sealed class MongoPersistUpdatedRedis(
             cancellationToken: cancellationToken);
         if (replace.ModifiedCount != 1)
         {
-            return new Err<RedisUpdateConflict>(new RedisUpdateConflict(current.Id));
+            return new RedisUpdateConflict(current.Id);
         }
 
         await storeOutboxWrites(
             session,
             [OutboxWrite.Create(current.ToUpdateEvent(replacement))],
             cancellationToken);
-        return new Ok<Unit>(Unit.Value);
+        return new RedisUpdated();
     }
 }

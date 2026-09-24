@@ -18,6 +18,10 @@ using Pole.Features.RedisServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.RedisServices.Application.Common.RedisHttpMappings;
+using static Pole.Features.ResourceDeployments.Contracts.HttpMapping.ResourceDeploymentContractHttpMappings;
+using static Pole.Features.Quotas.Contracts.HttpMapping.QuotaContractHttpMappings;
+using ComputeHttpMappings = Pole.Features.ComputeProfiles.Contracts.HttpMapping.ComputeProfileContractHttpMappings;
 
 namespace Pole.Features.RedisServices.Application.Endpoints;
 
@@ -29,14 +33,20 @@ public static class UpdateRedisService
         {
             app.MapPut("/{Id}", async (
                     IMediator mediator,
-                    IHttpProblemMapper httpProblems,
                     [AsParameters] UpdateRedisServiceRequest request,
                     CancellationToken cancellationToken) =>
                     (await mediator.Send(request, cancellationToken))
                     .ToHttpResult(outcome => outcome switch
                     {
                         UpdateRedisServiceResponse response => Results.Accepted(value: response),
-                        UpdateRedisServiceError error => httpProblems.Map(error).ToHttpResult()
+                        RedisServiceNotFound error => MapNotFound(error),
+                        RedisUpdateUnavailable error => MapUpdateUnavailable(error),
+                        RedisStorageProfileChangeNotAllowed error => MapStorageProfileChangeNotAllowed(error),
+                        RedisUpdateConflict error => MapUpdateConflict(error),
+                        LoadCurrentResourceDeploymentComputeError error => MapComputeError(error),
+                        ComputeProfileResolutionError error => ComputeHttpMappings.MapResolutionError(error),
+                        ResourceDeploymentMutationError error => MapMutationError(error),
+                        QuotaExecutionError error => MapExecutionError(error)
                     }))
                 .WithName("UpdateRedisService")
                 .Produces<UpdateRedisServiceResponse>(StatusCodes.Status202Accepted);
@@ -52,22 +62,16 @@ public sealed record RedisUpdateUnavailable(string RedisId);
 
 public sealed record RedisStorageProfileChangeNotAllowed(string RedisId);
 
-public union RedisUpdateStateError(
+public union UpdateRedisServiceOutcome(
+    UpdateRedisServiceResponse,
     RedisServiceNotFound,
     RedisUpdateUnavailable,
-    RedisStorageProfileChangeNotAllowed);
-
-public union UpdateRedisServiceError(
-    RedisUpdateStateError,
+    RedisStorageProfileChangeNotAllowed,
     LoadCurrentResourceDeploymentComputeError,
     ComputeProfileResolutionError,
     RedisUpdateConflict,
     ResourceDeploymentMutationError,
     QuotaExecutionError);
-
-public union UpdateRedisServiceOutcome(
-    UpdateRedisServiceResponse,
-    UpdateRedisServiceError);
 
 public sealed record UpdateRedisServiceRequest(
     [FromRoute] string Id,
@@ -104,12 +108,10 @@ public sealed class UpdateRedisServiceHandler(
             cancellationToken);
 
         if (redis is null)
-            return Error(new UpdateRedisServiceError(
-                new RedisUpdateStateError(new RedisServiceNotFound(request.Id))));
+            return new RedisServiceNotFound(request.Id);
         if (redis.Lifecycle is not ActiveRedisLifecycle)
         {
-            return Error(new UpdateRedisServiceError(
-                new RedisUpdateStateError(new RedisUpdateUnavailable(redis.Id))));
+            return new RedisUpdateUnavailable(redis.Id);
         }
 
         if (!string.Equals(
@@ -117,9 +119,7 @@ public sealed class UpdateRedisServiceHandler(
                 redis.Spec.Storage.StorageProfileId,
                 StringComparison.Ordinal))
         {
-            return Error(new UpdateRedisServiceError(
-                new RedisUpdateStateError(
-                    new RedisStorageProfileChangeNotAllowed(redis.Id))));
+            return new RedisStorageProfileChangeNotAllowed(redis.Id);
         }
 
         var nextSpec = request.Body.Spec.ToDomain();
@@ -132,7 +132,7 @@ public sealed class UpdateRedisServiceHandler(
                 out var currentCompute,
                 out var currentComputeError))
         {
-            return Error(new UpdateRedisServiceError(currentComputeError));
+            return currentComputeError;
         }
 
         ResolvedComputeProfile? replacementCompute = null;
@@ -147,7 +147,7 @@ public sealed class UpdateRedisServiceHandler(
                 cancellationToken);
             if (computeResult is ComputeProfileResolutionError computeError)
             {
-                return Error(new UpdateRedisServiceError(computeError));
+                return computeError;
             }
 
             replacementCompute = (ResolvedComputeProfile)computeResult.Value;
@@ -171,7 +171,7 @@ public sealed class UpdateRedisServiceHandler(
             new UpdateQuotaMutation<RedisQuotaInput>(
                 currentQuotaInput,
                 nextQuotaInput),
-            quotaError => Error(new UpdateRedisServiceError(quotaError)),
+            quotaError => quotaError,
             async (transaction, transactionCancellationToken) =>
             {
                 var updatedRedis = redis.UpdateDesiredState(
@@ -182,10 +182,9 @@ public sealed class UpdateRedisServiceHandler(
                     redis,
                     updatedRedis,
                     transactionCancellationToken);
-                if (!persistenceResult.TryGetValue(out _, out var persistenceError))
+                if (persistenceResult is RedisUpdateConflict persistenceError)
                 {
-                    return transaction.Abort(Error(new UpdateRedisServiceError(
-                        persistenceError)));
+                    return transaction.Abort(persistenceError);
                 }
 
                 var deploymentResult = await requestDeploymentApply(
@@ -201,8 +200,7 @@ public sealed class UpdateRedisServiceHandler(
                         out var deployment,
                         out var deploymentError))
                 {
-                    return transaction.Abort(Error(new UpdateRedisServiceError(
-                        deploymentError)));
+                    return transaction.Abort(deploymentError);
                 }
 
                 return transaction.Commit(new UpdateRedisServiceOutcome(
@@ -210,8 +208,6 @@ public sealed class UpdateRedisServiceHandler(
             },
             cancellationToken);
     }
-
-    private static UpdateRedisServiceOutcome Error(UpdateRedisServiceError error) => new(error);
 }
 
 public sealed class UpdateRedisServiceValidator : AbstractValidator<UpdateRedisServiceRequest>

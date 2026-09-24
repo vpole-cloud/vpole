@@ -14,6 +14,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\StorageProfiles.Contracts.HttpMapping\StorageProfiles.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
       <ProjectReference Include="..\StorageProfiles.Domain\StorageProfiles.Domain.csproj" />
       <ProjectReference Include="..\StorageProfiles.Primitives\StorageProfiles.Primitives.csproj" />

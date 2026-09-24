@@ -11,6 +11,7 @@ using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Application.Persistence.Reads;
 using Pole.Mediator;
 using Pole.Validation;
+using static Pole.Features.RedisServices.Application.Common.RedisHttpMappings;
 
 namespace Pole.Features.RedisServices.Application.Endpoints;
 
@@ -22,14 +23,13 @@ public static class GetRedisServiceById
     {
         app.MapGet(Route, async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetRedisServiceByIdRequest request,
                 CancellationToken cancellationToken) =>
                 (await mediator.Send(request, cancellationToken))
                 .ToHttpResult(outcome => outcome switch
                 {
                     RedisDto redis => Results.Ok(redis),
-                    RedisServiceNotFound notFound => httpProblems.Map(notFound).ToHttpResult()
+                    RedisServiceNotFound notFound => MapNotFound(notFound)
                 }))
             .WithName("GetRedisServiceById")
             .WithDescription("Gets a Redis service by its ID.")

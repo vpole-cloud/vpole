@@ -102,6 +102,7 @@ public sealed class ArchitectureBoundaryTests
     [Theory]
     [InlineData("ComputeProfiles")]
     [InlineData("Domains")]
+    [InlineData("RedisServices")]
     public void FeatureContractsAndEndpoints_UseNamedOutcomesAndDirectMappings(string feature)
     {
         var sources = ArchitectureSources.ProductionCSharp()
@@ -118,6 +119,24 @@ public sealed class ArchitectureBoundaryTests
                 name.Identifier.ValueText == "IHttpProblemMapper")
             .Select(name => ArchitectureSources.Describe(source, name,
                 "feature contracts and endpoints use named outcomes and direct HTTP mappings")))
+            .ToArray();
+        AssertNoViolations(violations);
+    }
+
+    [Fact]
+    public void RedisApplication_UsesNamedOutcomes()
+    {
+        var sources = ArchitectureSources.ProductionCSharp()
+            .Where(source => source.RelativePath.StartsWith(
+                "src/features/RedisServices/RedisServices.Application/",
+                StringComparison.Ordinal))
+            .ToArray();
+        Assert.NotEmpty(sources);
+        var violations = sources.SelectMany(source => source.Root.DescendantNodes()
+            .OfType<GenericNameSyntax>()
+            .Where(name => name.Identifier.ValueText is "Result" or "Ok" or "Err")
+            .Select(name => ArchitectureSources.Describe(source, name,
+                "Redis application uses named outcomes")))
             .ToArray();
         AssertNoViolations(violations);
     }

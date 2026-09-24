@@ -67,7 +67,7 @@ public static class DeploymentTargetContractHttpMappings
             unavailable.DeploymentTargetId)
     };
 
-    private static HttpProblem MapNewWorkloadAdmissionError(
+    public static HttpProblem MapNewWorkloadAdmissionError(
         DeploymentTargetNewWorkloadAdmissionError error) => error switch
     {
         DeploymentTargetWorkloadAdmissionError workload =>

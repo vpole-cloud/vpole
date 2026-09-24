@@ -38,7 +38,7 @@ public static class ResourceDeploymentContractHttpMappings
                 "Compute profile is referenced by a resource deployment",
                 ("computeProfileId", error.ComputeProfileId));
 
-    private static HttpProblem MapDeploymentError(
+    public static HttpProblem MapDeploymentError(
         CreateResourceDeploymentError error) => error switch
         {
             ResourceDeploymentTargetConfigurationChanged changed => Problem(
@@ -73,7 +73,7 @@ public static class ResourceDeploymentContractHttpMappings
                 ("deploymentTargetId", deleting.DeploymentTargetId))
         };
 
-    private static HttpProblem MapMutationError(
+    public static HttpProblem MapMutationError(
         ResourceDeploymentMutationError error) => error switch
         {
             ResourceDeploymentMutationNotFound notFound => Problem(
@@ -125,7 +125,7 @@ public static class ResourceDeploymentContractHttpMappings
                 ("computeProfileIds", changed.ComputeProfileIds))
         };
 
-    private static HttpProblem MapComputeError(
+    public static HttpProblem MapComputeError(
         LoadCurrentResourceDeploymentComputeError error) => error switch
         {
             CurrentResourceDeploymentComputeNotFound notFound => Problem(

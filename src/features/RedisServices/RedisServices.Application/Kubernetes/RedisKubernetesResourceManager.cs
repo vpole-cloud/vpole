@@ -2,11 +2,16 @@ using System.Net;
 using k8s;
 using k8s.Autorest;
 using Pole.Features.Core.Kubernetes;
-using Pole.ResultType;
 
 namespace Pole.Features.RedisServices.Application.Kubernetes;
 
 public sealed record RedisKubernetesApplyFailed(string Message);
+
+public sealed record RedisKubernetesApplied;
+
+public union RedisKubernetesApplyOutcome(
+    RedisKubernetesApplied,
+    RedisKubernetesApplyFailed);
 
 public static class RedisKubernetesResourceManager
 {
@@ -52,7 +57,7 @@ public static class RedisKubernetesResourceManager
             cancellationToken: cancellationToken);
     }
 
-    public static async Task<Result<Unit, RedisKubernetesApplyFailed>> ApplyAsync(
+    public static async Task<RedisKubernetesApplyOutcome> ApplyAsync(
         IKubernetes kubernetes,
         RedisInKubernetes redis,
         RedisResourceDeploymentMetadata deploymentMetadata,
@@ -108,7 +113,7 @@ public static class RedisKubernetesResourceManager
                         cancellationToken: cancellationToken);
                 });
 
-            return new Ok<Unit>(Unit.Value);
+            return new RedisKubernetesApplied();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -116,9 +121,8 @@ public static class RedisKubernetesResourceManager
         }
         catch (Exception)
         {
-            return new Err<RedisKubernetesApplyFailed>(
-                new RedisKubernetesApplyFailed(
-                    $"Unable to apply Redis in Kubernetes while {stage}."));
+            return new RedisKubernetesApplyFailed(
+                $"Unable to apply Redis in Kubernetes while {stage}.");
         }
     }
 

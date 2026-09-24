@@ -23,10 +23,12 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceGroups.Contracts.HttpMapping;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Endpoints;
 using Pole.Features.StorageProfiles.Contracts;
+using Pole.Features.StorageProfiles.Contracts.HttpMapping;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.Tenants;
@@ -77,6 +79,38 @@ public sealed class HttpProblemMapperTests
         Assert.Equal("target-1", problem.Extensions["deploymentTargetId"]);
     }
 
+
+    [Fact]
+    public void StorageResolutionContractMappingPreservesSizeDetails()
+    {
+        StorageProfileResolutionError error = new StorageProfileSizeNotAllowed("storage-1", 32);
+
+        var direct = StorageProfileContractHttpMappings.MapResolutionError(error);
+        var registered = new HttpProblemMapper(StorageProfileHttpMappings.All).Map(error);
+
+        Assert.Equal((int)HttpStatusCode.UnprocessableEntity, direct.StatusCode);
+        Assert.Equal("storage-profiles.size-not-allowed", direct.Code);
+        Assert.Equal("storage-1", direct.Extensions["storageProfileId"]);
+        Assert.Equal(32, direct.Extensions["sizeGb"]);
+        Assert.Equal(direct.Code, registered.Code);
+    }
+
+    [Fact]
+    public void ResourceRegistrationContractMappingPreservesIdentityDetails()
+    {
+        ResourceRegistrationMutationError error = new ResourceRegistrationIdentityConflict(
+            Pole.Workloads.ResourceTypeId.Create("pole/redis"),
+            "resource-1");
+
+        var direct = ResourceGroupContractHttpMappings.MapRegistrationMutationError(error);
+        var registered = new HttpProblemMapper(ResourceGroupHttpMappings.All).Map(error);
+
+        Assert.Equal((int)HttpStatusCode.Conflict, direct.StatusCode);
+        Assert.Equal("resource-groups.resource-registration.identity-conflict", direct.Code);
+        Assert.Equal("pole/redis", direct.Extensions["resourceTypeId"]);
+        Assert.Equal("resource-1", direct.Extensions["resourceId"]);
+        Assert.Equal(direct.Code, registered.Code);
+    }
 
     [Fact]
     public void NewWorkloadAdmissionMappingIncludesSelectionDetails()
@@ -671,8 +705,10 @@ public sealed class HttpProblemMapperTests
             new QuotaReservationExpired("reservation-1"));
 
         var problem = mapper.Map(error);
+        var direct = QuotaContractHttpMappings.MapExecutionError(error);
 
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
+        Assert.Equal(problem.Code, direct.Code);
         Assert.Equal("quotas.reservation.commit-expired", problem.Code);
         Assert.Equal(
             PoleProblemTypeId.FromCode(problem.Code),

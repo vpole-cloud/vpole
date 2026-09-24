@@ -5,7 +5,6 @@ using Pole.Features.RedisServices.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.RedisServices.Application.Persistence.Reads;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.RedisServices.Application.Kubernetes;
 
@@ -62,7 +61,7 @@ public sealed class RedisResourceDeploymentAdapter(
             inKubernetes,
             metadata,
             cancellationToken);
-        if (applyResult is Err<RedisKubernetesApplyFailed>)
+        if (applyResult is RedisKubernetesApplyFailed)
         {
             return ResourceDeploymentAdapterResult.Failed.Create(
                 "KubernetesApplyFailed",
