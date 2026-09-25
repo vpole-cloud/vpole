@@ -2,7 +2,6 @@ using Pole.Features.ContainerRegistries.Application.Persistence;
 using Pole.Features.ContainerRegistries.Application.Persistence.Credentials;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ContainerRegistries.Application.Security;
 
@@ -14,7 +13,11 @@ public sealed record ResolvedRegistryCredential(
     public override string ToString() => "ResolvedRegistryCredential([REDACTED])";
 }
 
-public delegate Task<Result<ResolvedRegistryCredential, RegistryCredentialUnavailable>>
+public union ResolveRegistryCredentialOutcome(
+    ResolvedRegistryCredential,
+    RegistryCredentialUnavailable);
+
+public delegate Task<ResolveRegistryCredentialOutcome>
     ResolveRegistryCredential(
         string tenantId,
         string registryProjectId,
@@ -26,7 +29,7 @@ public sealed class RegistryCredentialResolver(
     UnprotectRegistryCredentialSecret unprotectSecret,
     TimeProvider timeProvider)
 {
-    public async Task<Result<ResolvedRegistryCredential, RegistryCredentialUnavailable>> InvokeAsync(
+    public async Task<ResolveRegistryCredentialOutcome> InvokeAsync(
         string tenantId,
         string registryProjectId,
         RegistryCredentialPurpose purpose,
@@ -36,17 +39,17 @@ public sealed class RegistryCredentialResolver(
         if (credential is null ||
             credential.ExpiresAtUtc is { } expiresAt && expiresAt <= timeProvider.GetUtcNow().UtcDateTime)
         {
-            return new Err<RegistryCredentialUnavailable>(new(registryProjectId));
+            return new RegistryCredentialUnavailable(registryProjectId);
         }
 
         var secret = await unprotectSecret(credential, cancellationToken);
         return secret switch
         {
-            Ok<string> value => new Ok<ResolvedRegistryCredential>(new(
+            string value => new ResolvedRegistryCredential(
                 credential.Username,
-                value.Value,
-                credential.ExpiresAtUtc)),
-            Err<RegistryCredentialUnavailable> error => new Err<RegistryCredentialUnavailable>(error.Value)
+                value,
+                credential.ExpiresAtUtc),
+            RegistryCredentialUnavailable error => error
         };
     }
 }

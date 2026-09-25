@@ -4,15 +4,24 @@ using Pole.Features.ContainerRegistries.Application.Persistence.Projects;
 using Pole.Features.ContainerRegistries.Application.Security;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ContainerRegistries.Application.Provisioning;
 
-public delegate Task<Result<RegistryProject, EnsureTenantContainerRegistryProjectError>>
+public union EnsureTenantContainerRegistryProjectOutcome(
+    RegistryProject,
+    TenantContainerRegistryProvisioningConflict,
+    ContainerRegistryProviderError,
+    RegistryCredentialProtectionFailed);
+
+public delegate Task<EnsureTenantContainerRegistryProjectOutcome>
     EnsureTenantContainerRegistryProject(
         string tenantId,
         string initiatedByUserId,
         CancellationToken cancellationToken = default);
+
+internal union CreateRegistryCredentialOutcome(
+    RegistryCredential,
+    RegistryCredentialProtectionFailed);
 
 public sealed class ContainerRegistryProvisioningService(
     RegistryProvisioningPersistence persistence,
@@ -23,18 +32,17 @@ public sealed class ContainerRegistryProvisioningService(
 {
     private const long InitialSecretVersion = 1;
 
-    public async Task<Result<RegistryProject, EnsureTenantContainerRegistryProjectError>> InvokeAsync(
+    public async Task<EnsureTenantContainerRegistryProjectOutcome> InvokeAsync(
         string tenantId,
         string initiatedByUserId,
         CancellationToken cancellationToken = default)
     {
         var claim = await persistence.ClaimProvisioningAsync(tenantId, initiatedByUserId, cancellationToken);
-        var claimed = TypedResultExtensions.TryGetValue(claim);
-        if (!claimed.Succeeded)
-            return new Err<EnsureTenantContainerRegistryProjectError>(new(claimed.Error!));
-        var project = claimed.Value!;
+        if (claim.Value is TenantContainerRegistryProvisioningConflict claimError)
+            return claimError;
+        var project = (RegistryProject)claim.Value;
         if (project.State is ReadyRegistryProject)
-            return new Ok<RegistryProject>(project);
+            return project;
 
         var provisioning = (ProvisioningRegistryProject)project.State;
         var names = RegistryRobotNames.ForAttempt(provisioning.AttemptId);
@@ -43,7 +51,7 @@ public sealed class ContainerRegistryProvisioningService(
             null, null,
             provisioning.StartedAtUtc + RegistryProvisioningCleanupPolicy.NameVerificationHorizon);
 
-        Result<ProvisionedRegistryProject, ContainerRegistryProviderError> provisioned;
+        ProvisionRegistryProjectOutcome provisioned;
         try
         {
             provisioned = await registryClient.ProvisionProjectAsync(
@@ -55,13 +63,12 @@ public sealed class ContainerRegistryProvisioningService(
             await CompensateFailureAsync(project.Id, nameOnlyAttempt, InterruptedFailure());
             throw;
         }
-        var provisionedProject = TypedResultExtensions.TryGetValue(provisioned);
-        if (!provisionedProject.Succeeded)
+        if (provisioned.Value is ContainerRegistryProviderError providerError)
         {
-            await CompensateFailureAsync(project.Id, nameOnlyAttempt, ProviderFailure(provisionedProject.Error!));
-            return new Err<EnsureTenantContainerRegistryProjectError>(new(provisionedProject.Error!));
+            await CompensateFailureAsync(project.Id, nameOnlyAttempt, ProviderFailure(providerError));
+            return providerError;
         }
-        var remoteProject = provisionedProject.Value!;
+        var remoteProject = (ProvisionedRegistryProject)provisioned.Value;
         var attempt = new RegistryProvisioningAttempt(
             provisioning.AttemptId, project.Name, remoteProject.ExternalProjectId, names.Build, names.Pull,
             remoteProject.BuildCredential.ExternalRobotId, remoteProject.PullCredential.ExternalRobotId, null);
@@ -78,30 +85,28 @@ public sealed class ContainerRegistryProvisioningService(
                     now),
                 tenantId,
                 cancellationToken);
-            if (remoteRecorded is Err<TenantContainerRegistryProvisioningConflict> remoteConflict)
+            if (remoteRecorded.Value is TenantContainerRegistryProvisioningConflict remoteConflict)
             {
                 await CompensateFailureAsync(project.Id, attempt, ConcurrentFailure());
-                return new Err<EnsureTenantContainerRegistryProjectError>(new(remoteConflict.Value));
+                return remoteConflict;
             }
 
             var build = await CreateCredentialAsync(
                 project, RegistryCredentialPurpose.BuildPushPull, remoteProject.BuildCredential, now, cancellationToken);
-            var protectedBuildResult = TypedResultExtensions.TryGetValue(build);
-            if (!protectedBuildResult.Succeeded)
+            if (build.Value is RegistryCredentialProtectionFailed buildFailure)
             {
                 await CompensateFailureAsync(project.Id, attempt, CredentialFailure());
-                return new Err<EnsureTenantContainerRegistryProjectError>(new(protectedBuildResult.Error!));
+                return buildFailure;
             }
-            var protectedBuild = protectedBuildResult.Value!;
+            var protectedBuild = (RegistryCredential)build.Value;
             var pull = await CreateCredentialAsync(
                 project, RegistryCredentialPurpose.RuntimePull, remoteProject.PullCredential, now, cancellationToken);
-            var protectedPullResult = TypedResultExtensions.TryGetValue(pull);
-            if (!protectedPullResult.Succeeded)
+            if (pull.Value is RegistryCredentialProtectionFailed pullFailure)
             {
                 await CompensateFailureAsync(project.Id, attempt, CredentialFailure());
-                return new Err<EnsureTenantContainerRegistryProjectError>(new(protectedPullResult.Error!));
+                return pullFailure;
             }
-            var protectedPull = protectedPullResult.Value!;
+            var protectedPull = (RegistryCredential)pull.Value;
 
             var persistedAt = timeProvider.GetUtcNow().UtcDateTime;
             var ready = new ReadyRegistryProject(
@@ -109,7 +114,7 @@ public sealed class ContainerRegistryProvisioningService(
                 protectedBuild.Id,
                 protectedPull.Id,
                 persistedAt);
-            Result<RegistryProject, TenantContainerRegistryProvisioningConflict> persisted;
+            PersistReadyRegistryProjectOutcome persisted;
             try
             {
                 persisted = await persistence.PersistReadyAsync(
@@ -124,16 +129,15 @@ public sealed class ContainerRegistryProvisioningService(
             {
                 var committed = await ResolveUnknownCommitAsync(project.Id, attempt, ready);
                 if (committed is not null)
-                    return new Ok<RegistryProject>(committed);
+                    return committed;
                 throw;
             }
-            var persistedProject = TypedResultExtensions.TryGetValue(persisted);
-            if (!persistedProject.Succeeded)
+            if (persisted.Value is TenantContainerRegistryProvisioningConflict persistError)
             {
                 await CompensateFailureAsync(project.Id, attempt, ConcurrentFailure());
-                return new Err<EnsureTenantContainerRegistryProjectError>(new(persistedProject.Error!));
+                return persistError;
             }
-            return new Ok<RegistryProject>(persistedProject.Value!);
+            return (RegistryProject)persisted.Value;
         }
         catch
         {
@@ -142,7 +146,7 @@ public sealed class ContainerRegistryProvisioningService(
         }
     }
 
-    private async ValueTask<Result<RegistryCredential, RegistryCredentialProtectionFailed>> CreateCredentialAsync(
+    private async ValueTask<CreateRegistryCredentialOutcome> CreateCredentialAsync(
         RegistryProject project,
         RegistryCredentialPurpose purpose,
         RegistryRobotCredential credential,
@@ -158,7 +162,7 @@ public sealed class ContainerRegistryProvisioningService(
             cancellationToken);
         return encrypted switch
         {
-            Ok<Pole.Encryption.EncryptedValue> success => new Ok<RegistryCredential>(
+            Pole.Encryption.EncryptedValue success =>
                 RegistryCredentialFactory.Create(
                     project.TenantId,
                     project.Id,
@@ -166,11 +170,10 @@ public sealed class ContainerRegistryProvisioningService(
                     credential.ExternalRobotId,
                     credential.Username,
                     InitialSecretVersion,
-                    success.Value,
+                    success,
                     credential.ExpiresAtUtc,
-                    new RegistryCredentialFactory.CreateOptions(credentialId, now))),
-            Err<RegistryCredentialProtectionFailed> error =>
-                new Err<RegistryCredentialProtectionFailed>(error.Value)
+                    new RegistryCredentialFactory.CreateOptions(credentialId, now)),
+            RegistryCredentialProtectionFailed error => error
         };
     }
 

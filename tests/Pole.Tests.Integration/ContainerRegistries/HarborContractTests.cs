@@ -30,14 +30,13 @@ public sealed class HarborContractTests(HarborContractFixture fixture)
         resources.Defer($"delete Harbor project '{projectName}'", async token =>
         {
             var cleanup = await client.DeleteProjectAsync(projectName, token);
-            Assert.True(TypedResultExtensions.TryGetValue(cleanup).Succeeded);
+            Assert.IsType<RegistryProjectDeleted>(cleanup.Value);
         });
 
         var result = await client.ProvisionProjectAsync(
             new RegistryProjectProvisioningRequest("contract-test", projectName, attemptId));
 
-        if (!result.TryGetValue(out var created, out var failure))
-            Assert.Fail(failure.ToString());
+        var created = Assert.IsType<ProvisionedRegistryProject>(result.Value);
         Assert.Equal(projectName, created.ProjectName);
         Assert.False(string.IsNullOrWhiteSpace(created.BuildCredential.Username));
         Assert.False(string.IsNullOrWhiteSpace(created.BuildCredential.Secret));
@@ -65,13 +64,12 @@ public sealed class HarborContractTests(HarborContractFixture fixture)
         {
             var cleanup = await registryClient.DeleteProjectAsync(projectName, token);
             if (completed)
-                Assert.True(TypedResultExtensions.TryGetValue(cleanup).Succeeded);
+                Assert.IsType<RegistryProjectDeleted>(cleanup.Value);
         });
 
         var projectResult = await registryClient.ProvisionProjectAsync(
             new RegistryProjectProvisioningRequest("buildkit-contract-test", projectName, attemptId));
-        if (!projectResult.TryGetValue(out var provisioned, out var provisioningFailure))
-            Assert.Fail(provisioningFailure.ToString());
+        var provisioned = Assert.IsType<ProvisionedRegistryProject>(projectResult.Value);
 
         var processRunner = new ProcessRunner();
         var buildKit = new BuildKitClient(

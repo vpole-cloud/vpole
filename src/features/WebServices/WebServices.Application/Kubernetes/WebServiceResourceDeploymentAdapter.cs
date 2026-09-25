@@ -182,15 +182,13 @@ public sealed class WebServiceResourceDeploymentAdapter(
         var access = await resolveRuntimeRegistryAccess(
             context.Deployment.TenantId,
             cancellationToken);
-        if (access is not Ok<RuntimeRegistryAccess> success)
+        if (access.Value is not RuntimeRegistryAccess registryAccess)
         {
             return ResourceDeploymentAdapterResult.Failed.Create(
                 "RegistryCredentialUnavailable",
                 "The web service registry credential is unavailable.",
                 retryable: true);
         }
-        var registryAccess = success.Value;
-
         if (!string.Equals(
                 webService.Spec.Image.SecretName,
                 registryAccess.KubernetesSecretName,

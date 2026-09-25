@@ -4,14 +4,18 @@ using Pole.ResultType;
 
 namespace Pole.Features.ContainerRegistries.Application.Security;
 
-public delegate ValueTask<Result<string, RegistryCredentialUnavailable>>
+public union UnprotectRegistryCredentialOutcome(
+    string,
+    RegistryCredentialUnavailable);
+
+public delegate ValueTask<UnprotectRegistryCredentialOutcome>
     UnprotectRegistryCredentialSecret(
         RegistryCredential credential,
         CancellationToken cancellationToken = default);
 
 public sealed class EnvelopeUnprotectRegistryCredentialSecret(Pole.Encryption.IEnvelopeEncryptionService encryption)
 {
-    public async ValueTask<Result<string, RegistryCredentialUnavailable>> InvokeAsync(
+    public async ValueTask<UnprotectRegistryCredentialOutcome> InvokeAsync(
         RegistryCredential credential,
         CancellationToken cancellationToken = default)
     {
@@ -23,7 +27,7 @@ public sealed class EnvelopeUnprotectRegistryCredentialSecret(Pole.Encryption.IE
                 credential.SecretVersion),
             cancellationToken);
         return result.TryGetValue(out var secret, out _)
-            ? new Ok<string>(secret)
-            : new Err<RegistryCredentialUnavailable>(new(credential.RegistryProjectId));
+            ? secret
+            : new RegistryCredentialUnavailable(credential.RegistryProjectId);
     }
 }

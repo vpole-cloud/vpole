@@ -158,9 +158,8 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             "web-services/service-1",
             "build-1");
 
-        var crossTenantResult = TypedResultExtensions.TryGetValue(crossTenant);
-        Assert.False(crossTenantResult.Succeeded);
-        Assert.IsType<TenantContainerRegistryProjectNotFound>(crossTenantResult.Error!.Value);
+        var crossTenantError = Assert.IsType<GetTenantRegistryArtifactError>(crossTenant.Value);
+        Assert.IsType<TenantContainerRegistryProjectNotFound>(crossTenantError.Value);
         Assert.Equal(0, registryClient.ArtifactCalls);
 
         var artifact = await service.InvokeAsync(
@@ -169,9 +168,7 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             "web-services/service-1",
             "build-1");
 
-        var foundResult = TypedResultExtensions.TryGetValue(artifact);
-        Assert.True(foundResult.Succeeded);
-        var found = foundResult.Value!;
+        var found = Assert.IsType<RegistryArtifact>(artifact.Value);
         Assert.Equal("sha256:digest", found.Digest);
         Assert.Equal(1, registryClient.ArtifactCalls);
         Assert.Equal(project.Name, registryClient.ProjectName);
@@ -209,7 +206,7 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
         public int ArtifactCalls { get; private set; }
         public string? ProjectName { get; private set; }
 
-        public Task<Result<RegistryArtifact, ContainerRegistryArtifactLookupError>> GetArtifactAsync(
+        public Task<GetRegistryArtifactOutcome> GetArtifactAsync(
             string projectName,
             string repositoryName,
             string reference,
@@ -217,21 +214,21 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
         {
             ArtifactCalls++;
             ProjectName = projectName;
-            return Task.FromResult<Result<RegistryArtifact, ContainerRegistryArtifactLookupError>>(
-                new Ok<RegistryArtifact>(new RegistryArtifact(repositoryName, reference, "sha256:digest", 100)));
+            return Task.FromResult<GetRegistryArtifactOutcome>(
+                new RegistryArtifact(repositoryName, reference, "sha256:digest", 100));
         }
 
-        public Task<Result<ProvisionedRegistryProject, ContainerRegistryProviderError>> ProvisionProjectAsync(
+        public Task<ProvisionRegistryProjectOutcome> ProvisionProjectAsync(
             RegistryProjectProvisioningRequest request,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<Result<RegistryRobotCleanupResult, ContainerRegistryProviderError>> DeleteRobotCredentialsAsync(
+        public Task<DeleteRegistryRobotCredentialsOutcome> DeleteRobotCredentialsAsync(
             IReadOnlyCollection<RegistryRobotCleanupTarget> targets,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<Result<Unit, ContainerRegistryProviderError>> DeleteProjectAsync(
+        public Task<DeleteRegistryProjectOutcome> DeleteProjectAsync(
             string externalProjectId,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();

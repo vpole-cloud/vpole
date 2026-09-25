@@ -260,7 +260,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         }
     }
 
-    private static Task<Result<RuntimeRegistryAccess, ResolveRuntimeRegistryAccessError>>
+    private static Task<ResolveRuntimeRegistryAccessOutcome>
         UnexpectedRegistryAccess(
             string tenantId,
             CancellationToken cancellationToken = default) =>

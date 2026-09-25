@@ -7,7 +7,7 @@ using Pole.ASP.Helpers;
 using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Application.Security;
 using Pole.Mediator;
-using Pole.ResultType;
+using static Pole.Features.ContainerRegistries.Application.Common.ContainerRegistryHttpMappings;
 
 namespace Pole.Features.ContainerRegistries.Application.Endpoints;
 
@@ -61,12 +61,9 @@ public sealed class RewrapRegistryCredentialsHandler(
             cancellationToken);
         return result switch
         {
-            Ok<RegistryCredentialRewrapSummary> success => success.Value,
-            Err<RegistryCredentialRewrapError> error => error.Value switch
-            {
-                RegistryCredentialRewrapRejected rejected => rejected,
-                RegistryCredentialRewrapFailed failed => failed
-            }
+            RegistryCredentialRewrapSummary summary => summary,
+            RegistryCredentialRewrapRejected rejected => rejected,
+            RegistryCredentialRewrapFailed failed => failed
         };
     }
 }
@@ -77,7 +74,6 @@ public static class RewrapRegistryCredentials
     {
         app.MapPost("/container-registry-credentials/rewrap", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [FromBody] RewrapRegistryCredentialsRequestBody body,
                 CancellationToken cancellationToken) =>
             {
@@ -86,8 +82,8 @@ public static class RewrapRegistryCredentials
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     RegistryCredentialRewrapSummary summary => Results.Ok(summary),
-                    RegistryCredentialRewrapRejected rejected => httpProblems.Map(rejected).ToHttpResult(),
-                    RegistryCredentialRewrapFailed failed => httpProblems.Map(failed).ToHttpResult()
+                    RegistryCredentialRewrapRejected rejected => MapRewrapRejected(rejected).ToHttpResult(),
+                    RegistryCredentialRewrapFailed failed => MapRewrapFailed(failed).ToHttpResult()
                 });
             })
             .WithName("RewrapRegistryCredentials")

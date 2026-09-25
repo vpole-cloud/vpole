@@ -107,20 +107,20 @@ public sealed class SourceBuildJobExecutor(
                     actorUserId,
                     repositoryName,
                     tag);
-                var registryAccess = TypedResultExtensions.TryGetValue(registryAccessResult);
-                if (!registryAccess.Succeeded)
+                if (registryAccessResult.Value is PrepareRegistryBuildPushError accessError)
                 {
-                    await FailAsync(job, SourceBuildPhase.Building, registryAccess.Error!);
+                    await FailAsync(job, SourceBuildPhase.Building, accessError);
                     return;
                 }
+                var registryAccess = (RegistryBuildAccess)registryAccessResult.Value;
 
                 var imageResult = await buildContainerImage(
                     new BuildKitBuildRequest(
                         workspaceValue.SourcePath,
                         job.Recipe.Dockerfile,
-                        registryAccess.Value!.Target,
-                        registryAccess.Value.Username,
-                        registryAccess.Value.Secret));
+                        registryAccess.Target,
+                        registryAccess.Username,
+                        registryAccess.Secret));
                 var image = TypedResultExtensions.TryGetValue(imageResult);
                 if (!image.Succeeded)
                 {
@@ -137,18 +137,18 @@ public sealed class SourceBuildJobExecutor(
 
                 var artifactResult = await getTenantRegistryArtifact(
                     job.TenantId,
-                    registryAccess.Value.RegistryProjectId,
+                    registryAccess.RegistryProjectId,
                     repositoryName,
                     tag);
-                var artifact = TypedResultExtensions.TryGetValue(artifactResult);
-                if (!artifact.Succeeded)
+                if (artifactResult.Value is GetTenantRegistryArtifactError artifactError)
                 {
-                    await FailAsync(job, SourceBuildPhase.Pushing, artifact.Error!);
+                    await FailAsync(job, SourceBuildPhase.Pushing, artifactError);
                     return;
                 }
+                var artifact = (RegistryArtifact)artifactResult.Value;
 
                 if (!string.Equals(
-                        artifact.Value!.Digest,
+                        artifact.Digest,
                         image.Value.Digest,
                         StringComparison.OrdinalIgnoreCase))
                 {
@@ -171,11 +171,11 @@ public sealed class SourceBuildJobExecutor(
                         trigger?.UserId,
                         trigger?.Email,
                         new SourceBuildDeploymentImage(
-                            registryAccess.Value.Target.RegistryHost,
-                            $"{registryAccess.Value.Target.ProjectName}/{registryAccess.Value.Target.RepositoryName}",
-                            registryAccess.Value.Target.Tag,
-                            artifact.Value.Digest,
-                            registryAccess.Value.KubernetesPullSecretName)));
+                            registryAccess.Target.RegistryHost,
+                            $"{registryAccess.Target.ProjectName}/{registryAccess.Target.RepositoryName}",
+                            registryAccess.Target.Tag,
+                            artifact.Digest,
+                            registryAccess.KubernetesPullSecretName)));
                 var deployment = TypedResultExtensions.TryGetValue(deploymentResult);
                 if (!deployment.Succeeded)
                 {
@@ -184,7 +184,7 @@ public sealed class SourceBuildJobExecutor(
                 }
 
                 var deploying = job.StartDeploying(
-                    artifact.Value.Digest,
+                    artifact.Digest,
                     deployment.Value!.ReleaseId,
                     timeProvider.GetUtcNow().UtcDateTime);
                 await tryPersistSourceBuildJob(job, deploying);
