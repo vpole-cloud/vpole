@@ -181,7 +181,7 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
         public string? ExternalRepositoryId { get; private set; }
         public string? CommitSha { get; private set; }
 
-        public Task<Result<Unit, GitProviderRepositoryAccessError>> InvokeAsync(
+        public Task<DownloadProviderRepositoryArchiveOutcome> InvokeAsync(
             GitProviderConnection connection,
             string repositoryId,
             string commitSha,
@@ -192,8 +192,8 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             ConnectionId = connection.Id;
             ExternalRepositoryId = repositoryId;
             CommitSha = commitSha;
-            return Task.FromResult<Result<Unit, GitProviderRepositoryAccessError>>(
-                new Ok<Unit>(Unit.Value));
+            return Task.FromResult<DownloadProviderRepositoryArchiveOutcome>(
+                new ProviderRepositoryArchiveDownloaded());
         }
     }
 

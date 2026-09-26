@@ -83,6 +83,7 @@ public sealed class ArchitectureBoundaryTests
     [InlineData("Quotas")]
     [InlineData("ContainerRegistries")]
     [InlineData("SourceBuilds")]
+    [InlineData("GitProviders")]
     public void MigratedFeatures_UseNamedOutcomesAndDirectEndpointMappings(string feature)
     {
         var sources = ArchitectureSources.ProductionCSharp()

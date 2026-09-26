@@ -1,17 +1,20 @@
 using MongoDB.Driver;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Application.Persistence.Repositories;
 
-public delegate Task<Result<SourceRepository, SourceRepositoryAlreadyLinked>> PersistLinkedSourceRepository(
+public union PersistLinkedSourceRepositoryOutcome(
+    SourceRepository,
+    SourceRepositoryAlreadyLinked);
+
+public delegate Task<PersistLinkedSourceRepositoryOutcome> PersistLinkedSourceRepository(
     SourceRepository repository,
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoPersistLinkedSourceRepository(IMongoDatabase database)
 {
-    public async Task<Result<SourceRepository, SourceRepositoryAlreadyLinked>> InvokeAsync(
+    public async Task<PersistLinkedSourceRepositoryOutcome> InvokeAsync(
         SourceRepository repository,
         CancellationToken cancellationToken = default)
     {
@@ -20,17 +23,16 @@ internal sealed class MongoPersistLinkedSourceRepository(IMongoDatabase database
             await database
                 .GetCollection<SourceRepository>("SourceRepositories")
                 .InsertOneAsync(repository, cancellationToken: cancellationToken);
-            return new Ok<SourceRepository>(repository);
+            return repository;
         }
         catch (MongoWriteException exception) when (
             exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
         {
-            return new Err<SourceRepositoryAlreadyLinked>(
-                new SourceRepositoryAlreadyLinked(
+            return new SourceRepositoryAlreadyLinked(
                     repository.ConnectionId,
                     repository.ExternalRepositoryId,
                     repository.Branch,
-                    repository.CandidateKey));
+                    repository.CandidateKey);
         }
     }
 }

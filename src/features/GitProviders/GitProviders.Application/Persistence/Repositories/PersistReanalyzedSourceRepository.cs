@@ -1,11 +1,14 @@
 using MongoDB.Driver;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Application.Persistence.Repositories;
 
-public delegate Task<Result<SourceRepository, SourceRepositoryNotFound>> PersistReanalyzedSourceRepository(
+public union PersistReanalyzedSourceRepositoryOutcome(
+    SourceRepository,
+    SourceRepositoryNotFound);
+
+public delegate Task<PersistReanalyzedSourceRepositoryOutcome> PersistReanalyzedSourceRepository(
     SourceRepository repository,
     ProviderRepository providerRepository,
     SourceRepositoryAnalysis analysis,
@@ -15,7 +18,7 @@ public delegate Task<Result<SourceRepository, SourceRepositoryNotFound>> Persist
 
 internal sealed class MongoPersistReanalyzedSourceRepository(IMongoDatabase database)
 {
-    public async Task<Result<SourceRepository, SourceRepositoryNotFound>> InvokeAsync(
+    public async Task<PersistReanalyzedSourceRepositoryOutcome> InvokeAsync(
         SourceRepository repository,
         ProviderRepository providerRepository,
         SourceRepositoryAnalysis analysis,
@@ -41,7 +44,7 @@ internal sealed class MongoPersistReanalyzedSourceRepository(IMongoDatabase data
                 },
                 cancellationToken);
         return updated is null
-            ? new Err<SourceRepositoryNotFound>(new SourceRepositoryNotFound(repository.Id))
-            : new Ok<SourceRepository>(updated);
+            ? new SourceRepositoryNotFound(repository.Id)
+            : updated;
     }
 }

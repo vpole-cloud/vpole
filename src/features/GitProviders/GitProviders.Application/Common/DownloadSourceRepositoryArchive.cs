@@ -3,7 +3,6 @@ using Pole.Features.GitProviders.Application.Persistence.Connections;
 using Pole.Features.GitProviders.Application.Persistence.Repositories;
 using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Application.Common;
 
@@ -46,9 +45,9 @@ public sealed class SourceRepositoryArchiveDownloader(
             cancellationToken);
         return downloaded switch
         {
-            Ok<Unit> => new SourceRepositoryArchiveDownloaded(),
-            Err<GitProviderRepositoryAccessError> error =>
-                new DownloadSourceRepositoryArchiveError(error.Value)
+            ProviderRepositoryArchiveDownloaded => new SourceRepositoryArchiveDownloaded(),
+            GitProviderRepositoryAccessError error =>
+                new DownloadSourceRepositoryArchiveError(error)
         };
     }
 }

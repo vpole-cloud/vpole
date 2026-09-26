@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.DataProtection;
-using Pole.ASP.Helpers;
 using Pole.Features.GitProviders.Application.Analysis;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
@@ -26,7 +25,6 @@ public static class GitProviderApplicationRegistration
             configuration.GetSection(GitHubAppOptions.SectionName));
         services.TryAddSingleton(serviceProvider =>
             serviceProvider.GetRequiredService<IOptions<GitHubAppOptions>>().Value);
-        services.AddHttpProblemMappings(GitProviderHttpMappings.All);
         services.AddMemoryCache();
         services.AddDataProtection().SetApplicationName("Pole");
         services.TryAddSingleton(TimeProvider.System);

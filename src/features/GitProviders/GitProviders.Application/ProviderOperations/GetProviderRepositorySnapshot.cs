@@ -2,11 +2,14 @@ using Microsoft.Extensions.Logging;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Application.ProviderOperations;
 
-public delegate Task<Result<RepositorySourceSnapshot, GitProviderRepositoryAccessError>>
+public union GetProviderRepositorySnapshotOutcome(
+    RepositorySourceSnapshot,
+    GitProviderRepositoryAccessError);
+
+public delegate Task<GetProviderRepositorySnapshotOutcome>
     GetProviderRepositorySnapshot(
         GitProviderConnection connection,
         string repositoryId,
@@ -17,12 +20,13 @@ internal sealed class GitHubGetProviderRepositorySnapshot(
     IGitHubAppClient gitHubClient,
     ILogger<GitHubGetProviderRepositorySnapshot> logger)
 {
-    public Task<Result<RepositorySourceSnapshot, GitProviderRepositoryAccessError>> InvokeAsync(
+    public async Task<GetProviderRepositorySnapshotOutcome> InvokeAsync(
         GitProviderConnection connection,
         string repositoryId,
         string branch,
-        CancellationToken cancellationToken = default) =>
-        GitProviderOperation.ExecuteAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await GitProviderOperation.ExecuteAsync(
             connection,
             () => gitHubClient.GetRepositorySnapshotAsync(
                 connection.ExternalInstallationId,
@@ -30,4 +34,10 @@ internal sealed class GitHubGetProviderRepositorySnapshot(
                 branch,
                 cancellationToken),
             logger);
+        return result switch
+        {
+            RepositorySourceSnapshot snapshot => snapshot,
+            GitProviderRepositoryAccessError error => error
+        };
+    }
 }

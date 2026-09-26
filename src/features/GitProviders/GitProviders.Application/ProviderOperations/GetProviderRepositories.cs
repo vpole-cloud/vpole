@@ -2,11 +2,14 @@ using Microsoft.Extensions.Logging;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Application.ProviderOperations;
 
-public delegate Task<Result<ProviderPage<ProviderRepository>, GitProviderRepositoryAccessError>>
+public union GetProviderRepositoriesOutcome(
+    ProviderPage<ProviderRepository>,
+    GitProviderRepositoryAccessError);
+
+public delegate Task<GetProviderRepositoriesOutcome>
     GetProviderRepositories(
         GitProviderConnection connection,
         int page,
@@ -17,12 +20,13 @@ internal sealed class GitHubGetProviderRepositories(
     IGitHubAppClient gitHubClient,
     ILogger<GitHubGetProviderRepositories> logger)
 {
-    public Task<Result<ProviderPage<ProviderRepository>, GitProviderRepositoryAccessError>> InvokeAsync(
+    public async Task<GetProviderRepositoriesOutcome> InvokeAsync(
         GitProviderConnection connection,
         int page,
         int pageSize,
-        CancellationToken cancellationToken = default) =>
-        GitProviderOperation.ExecuteAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await GitProviderOperation.ExecuteAsync(
             connection,
             () => gitHubClient.GetRepositoriesAsync(
                 connection.ExternalInstallationId,
@@ -30,4 +34,10 @@ internal sealed class GitHubGetProviderRepositories(
                 pageSize,
                 cancellationToken),
             logger);
+        return result switch
+        {
+            ProviderPage<ProviderRepository> repositoryPage => repositoryPage,
+            GitProviderRepositoryAccessError error => error
+        };
+    }
 }

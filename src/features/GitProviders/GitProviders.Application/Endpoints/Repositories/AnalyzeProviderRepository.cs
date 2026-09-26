@@ -8,8 +8,8 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.GitProviders.Application.Common.GitProviderHttpMappings;
 
 namespace Pole.Features.GitProviders.Application.Endpoints.Repositories;
 
@@ -20,12 +20,9 @@ public sealed record AnalyzeProviderRepositoryRequest(
     [FromBody] AnalyzeRepositoryRequestBody Body)
     : IMediatorRequest<AnalyzeProviderRepositoryOutcome>, ITenantReadOperation;
 
-public union AnalyzeProviderRepositoryEndpointError(
-    AnalyzeProviderRepositoryError);
-
 public union AnalyzeProviderRepositoryOutcome(
     RepositoryAnalysisDto,
-    AnalyzeProviderRepositoryEndpointError);
+    AnalyzeProviderRepositoryError);
 
 public sealed class AnalyzeProviderRepositoryHandler(
     AnalyzeProviderRepository analyzeProviderRepository)
@@ -43,9 +40,8 @@ public sealed class AnalyzeProviderRepositoryHandler(
             cancellationToken);
         return analyzed switch
         {
-            Ok<AnalyzedProviderRepository> success => success.Value.Analysis.ToDto(success.Value.Repository),
-            Err<AnalyzeProviderRepositoryError> error =>
-                new AnalyzeProviderRepositoryEndpointError(error.Value)
+            AnalyzedProviderRepository success => success.Analysis.ToDto(success.Repository),
+            AnalyzeProviderRepositoryError error => error
         };
     }
 }
@@ -68,7 +64,6 @@ public static class AnalyzeProviderRepositoryEndpoint
     {
         app.MapPost("/{ConnectionId}/repositories/{RepositoryId}/analysis", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] AnalyzeProviderRepositoryRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -76,8 +71,7 @@ public static class AnalyzeProviderRepositoryEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     RepositoryAnalysisDto analysis => Results.Ok(analysis),
-                    AnalyzeProviderRepositoryEndpointError error =>
-                        httpProblems.Map(error).ToHttpResult()
+                    AnalyzeProviderRepositoryError error => MapAnalyzeError(error)
                 });
             })
             .WithName("AnalyzeProviderRepository")

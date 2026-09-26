@@ -1,18 +1,23 @@
 using MongoDB.Driver;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Application.Persistence.Repositories;
 
-public delegate Task<Result<Unit, SourceRepositoryNotFound>> DeleteSourceRepository(
+public sealed record SourceRepositoryDeleted;
+
+public union PersistDeletedSourceRepositoryOutcome(
+    SourceRepositoryDeleted,
+    SourceRepositoryNotFound);
+
+public delegate Task<PersistDeletedSourceRepositoryOutcome> DeleteSourceRepository(
     string tenantId,
     string sourceRepositoryId,
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoDeleteSourceRepository(IMongoDatabase database)
 {
-    public async Task<Result<Unit, SourceRepositoryNotFound>> InvokeAsync(
+    public async Task<PersistDeletedSourceRepositoryOutcome> InvokeAsync(
         string tenantId,
         string sourceRepositoryId,
         CancellationToken cancellationToken = default)
@@ -23,7 +28,7 @@ internal sealed class MongoDeleteSourceRepository(IMongoDatabase database)
                 GitProviderFilters.SourceRepositoryByTenantAndId(tenantId, sourceRepositoryId),
                 cancellationToken);
         return deleted.DeletedCount == 0
-            ? new Err<SourceRepositoryNotFound>(new SourceRepositoryNotFound(sourceRepositoryId))
-            : new Ok<Unit>(Unit.Value);
+            ? new SourceRepositoryNotFound(sourceRepositoryId)
+            : new SourceRepositoryDeleted();
     }
 }

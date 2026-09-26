@@ -10,8 +10,8 @@ using Pole.Features.GitProviders.Application.Persistence.Repositories;
 using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.GitProviders.Application.Common.GitProviderHttpMappings;
 
 namespace Pole.Features.GitProviders.Application.Endpoints.Repositories;
 
@@ -22,14 +22,11 @@ public sealed record LinkProviderRepositoryRequest(
     [FromBody] LinkSourceRepositoryRequestBody Body)
     : IMediatorRequest<LinkProviderRepositoryOutcome>, ITenantWriteOperation;
 
-public union LinkProviderRepositoryError(
+public union LinkProviderRepositoryOutcome(
+    SourceRepositoryDto,
     AnalyzeProviderRepositoryError,
     SourceRepositoryBuildPlanNotFound,
     SourceRepositoryAlreadyLinked);
-
-public union LinkProviderRepositoryOutcome(
-    SourceRepositoryDto,
-    LinkProviderRepositoryError);
 
 public sealed class LinkProviderRepositoryHandler(
     AnalyzeProviderRepository analyzeProviderRepository,
@@ -48,11 +45,10 @@ public sealed class LinkProviderRepositoryHandler(
             cancellationToken);
         return analyzed switch
         {
-            Err<AnalyzeProviderRepositoryError> error =>
-                new LinkProviderRepositoryError(error.Value),
-            Ok<AnalyzedProviderRepository> success => await PersistAsync(
+            AnalyzeProviderRepositoryError error => error,
+            AnalyzedProviderRepository success => await PersistAsync(
                 request,
-                success.Value,
+                success,
                 persistLinkedSourceRepository,
                 cancellationToken)
         };
@@ -68,8 +64,7 @@ public sealed class LinkProviderRepositoryHandler(
             string.Equals(candidate.CandidateKey, request.Body.CandidateKey, StringComparison.Ordinal));
         if (selectedPlan is null)
         {
-            return new LinkProviderRepositoryError(
-                new SourceRepositoryBuildPlanNotFound(request.Body.CandidateKey));
+            return new SourceRepositoryBuildPlanNotFound(request.Body.CandidateKey);
         }
 
         var sourceRepository = SourceRepositoryFactory.Create(
@@ -81,8 +76,8 @@ public sealed class LinkProviderRepositoryHandler(
             cancellationToken);
         return inserted switch
         {
-            Ok<SourceRepository> success => success.Value.ToDto(),
-            Err<SourceRepositoryAlreadyLinked> error => new LinkProviderRepositoryError(error.Value)
+            SourceRepository success => success.ToDto(),
+            SourceRepositoryAlreadyLinked error => error
         };
     }
 }
@@ -106,7 +101,6 @@ public static class LinkProviderRepositoryEndpoint
     {
         app.MapPost("/{ConnectionId}/repositories/{RepositoryId}/links", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] LinkProviderRepositoryRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -116,7 +110,9 @@ public static class LinkProviderRepositoryEndpoint
                     SourceRepositoryDto repository => Results.Created(
                         $"/api/v1/source-repositories/{repository.Id}",
                         repository),
-                    LinkProviderRepositoryError error => httpProblems.Map(error).ToHttpResult()
+                    AnalyzeProviderRepositoryError error => MapAnalyzeError(error),
+                    SourceRepositoryBuildPlanNotFound error => MapBuildPlanNotFound(error),
+                    SourceRepositoryAlreadyLinked error => MapSourceRepositoryAlreadyLinked(error)
                 });
             })
             .WithName("LinkProviderRepository")

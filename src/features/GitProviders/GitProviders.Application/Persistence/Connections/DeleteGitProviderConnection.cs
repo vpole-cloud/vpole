@@ -1,22 +1,24 @@
 using MongoDB.Driver;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Application.Persistence.Connections;
 
-public union DeleteGitProviderConnectionError(
+public sealed record GitProviderConnectionDeleted;
+
+public union PersistDeletedGitProviderConnectionOutcome(
+    GitProviderConnectionDeleted,
     GitProviderConnectionNotFound,
     GitProviderConnectionHasSourceRepositories);
 
-public delegate Task<Result<Unit, DeleteGitProviderConnectionError>> DeleteGitProviderConnection(
+public delegate Task<PersistDeletedGitProviderConnectionOutcome> DeleteGitProviderConnection(
     string tenantId,
     string connectionId,
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoDeleteGitProviderConnection(IMongoDatabase database)
 {
-    public async Task<Result<Unit, DeleteGitProviderConnectionError>> InvokeAsync(
+    public async Task<PersistDeletedGitProviderConnectionOutcome> InvokeAsync(
         string tenantId,
         string connectionId,
         CancellationToken cancellationToken = default)
@@ -25,8 +27,7 @@ internal sealed class MongoDeleteGitProviderConnection(IMongoDatabase database)
         var connectionFilter = GitProviderFilters.ConnectionByTenantAndId(tenantId, connectionId);
         if (!await connections.Find(connectionFilter).AnyAsync(cancellationToken))
         {
-            return new Err<DeleteGitProviderConnectionError>(
-                new(new GitProviderConnectionNotFound(connectionId)));
+            return new GitProviderConnectionNotFound(connectionId);
         }
 
         var repositories = database.GetCollection<SourceRepository>("SourceRepositories");
@@ -34,14 +35,12 @@ internal sealed class MongoDeleteGitProviderConnection(IMongoDatabase database)
                 .Find(GitProviderFilters.SourceRepositoriesByTenantAndConnection(tenantId, connectionId))
                 .AnyAsync(cancellationToken))
         {
-            return new Err<DeleteGitProviderConnectionError>(
-                new(new GitProviderConnectionHasSourceRepositories(connectionId)));
+            return new GitProviderConnectionHasSourceRepositories(connectionId);
         }
 
         var deleted = await connections.DeleteOneAsync(connectionFilter, cancellationToken);
         return deleted.DeletedCount == 0
-            ? new Err<DeleteGitProviderConnectionError>(
-                new(new GitProviderConnectionNotFound(connectionId)))
-            : new Ok<Unit>(Unit.Value);
+            ? new GitProviderConnectionNotFound(connectionId)
+            : new GitProviderConnectionDeleted();
     }
 }

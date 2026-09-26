@@ -5,10 +5,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.Persistence.Connections;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.GitProviders.Application.Common.GitProviderHttpMappings;
 
 namespace Pole.Features.GitProviders.Application.Endpoints.Connections;
 
@@ -19,7 +20,8 @@ public sealed record DeleteGitProviderConnectionRequest(
 
 public union DeleteGitProviderConnectionOutcome(
     string,
-    DeleteGitProviderConnectionError);
+    GitProviderConnectionNotFound,
+    GitProviderConnectionHasSourceRepositories);
 
 public sealed class DeleteGitProviderConnectionRequestValidator
     : AbstractValidator<DeleteGitProviderConnectionRequest>
@@ -42,8 +44,9 @@ public sealed class DeleteGitProviderConnectionHandler(
             cancellationToken);
         return deleted switch
         {
-            Ok<Unit> => request.ConnectionId,
-            Err<DeleteGitProviderConnectionError> error => error.Value
+            GitProviderConnectionDeleted => request.ConnectionId,
+            GitProviderConnectionNotFound error => error,
+            GitProviderConnectionHasSourceRepositories error => error
         };
     }
 }
@@ -53,7 +56,6 @@ public static class DeleteGitProviderConnectionEndpoint
     public static IEndpointRouteBuilder MapDeleteGitProviderConnectionEndpoint(this IEndpointRouteBuilder app)
     {
         app.MapDelete("/{ConnectionId}", async (IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] DeleteGitProviderConnectionRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -61,7 +63,8 @@ public static class DeleteGitProviderConnectionEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     string _ => Results.NoContent(),
-                    DeleteGitProviderConnectionError error => httpProblems.Map(error).ToHttpResult()
+                    GitProviderConnectionNotFound error => MapConnectionNotFound(error),
+                    GitProviderConnectionHasSourceRepositories error => MapConnectionHasSourceRepositories(error)
                 });
             })
             .WithName("DeleteGitProviderConnection")

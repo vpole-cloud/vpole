@@ -1,47 +1,41 @@
 using System.Net;
 using Pole.ASP.Helpers;
 using Pole.Features.GitProviders.Contracts;
-using Pole.Features.GitProviders.Contracts.HttpMapping;
+using Pole.Features.GitProviders.Application.ProviderOperations;
 
 namespace Pole.Features.GitProviders.Application.Common;
 
 public static class GitProviderHttpMappings
 {
-    public static IReadOnlyList<HttpProblemMapping> All { get; } =
-        Array.AsReadOnly<HttpProblemMapping>(
-        [
-            HttpProblemMapping.For<GitHubIntegrationNotConfigured>(MapGitHubIntegrationNotConfigured),
-            HttpProblemMapping.For<GitProviderConnectionNotFound>(MapConnectionNotFound),
-            HttpProblemMapping.For<GitProviderConnectionHasSourceRepositories>(
-                MapConnectionHasSourceRepositories),
-            HttpProblemMapping.For<SourceRepositoryNotFound>(MapSourceRepositoryNotFound),
-            HttpProblemMapping.For<SourceRepositoryAlreadyLinked>(MapSourceRepositoryAlreadyLinked),
-            HttpProblemMapping.For<SourceRepositoryBuildPlanNotFound>(MapBuildPlanNotFound),
-            HttpProblemMapping.For<SourceRepositorySelectedBuildPlanUnavailable>(
-                MapSelectedBuildPlanUnavailable),
-            HttpProblemMapping.For<SourceRepositoryHasBuildConfiguration>(
-                MapSourceRepositoryHasBuildConfiguration),
-            HttpProblemMapping.For<SourceRepositoryBuildNotFound>(
-                GitProviderContractHttpMappings.MapSourceRepositoryBuildNotFound),
-            HttpProblemMapping.For<RepositorySourceSnapshotTooLarge>(MapSnapshotTooLarge),
-            HttpProblemMapping.For<GitProviderUnsupported>(MapProviderUnsupported),
-            HttpProblemMapping.For<GitProviderUnavailable>(MapProviderUnavailable)
-        ]);
+    public static HttpProblem MapAnalyzeError(AnalyzeProviderRepositoryError error) =>
+        error.Value switch
+        {
+            GitProviderConnectionNotFound notFound => MapConnectionNotFound(notFound),
+            GitProviderRepositoryAccessError accessError => MapRepositoryAccessError(accessError),
+            RepositorySourceSnapshotTooLarge tooLarge => MapSnapshotTooLarge(tooLarge)
+        };
 
-    private static HttpProblem MapGitHubIntegrationNotConfigured(GitHubIntegrationNotConfigured _) =>
+    public static HttpProblem MapRepositoryAccessError(GitProviderRepositoryAccessError error) =>
+        error.Value switch
+        {
+            GitProviderUnsupported unsupported => MapProviderUnsupported(unsupported),
+            GitProviderUnavailable unavailable => MapProviderUnavailable(unavailable)
+        };
+
+    public static HttpProblem MapGitHubIntegrationNotConfigured(GitHubIntegrationNotConfigured _) =>
         Problem(
             HttpStatusCode.Conflict,
             "git-providers.github.not-configured",
             "GitHub App integration is not configured");
 
-    private static HttpProblem MapConnectionNotFound(GitProviderConnectionNotFound notFound) =>
+    public static HttpProblem MapConnectionNotFound(GitProviderConnectionNotFound notFound) =>
         Problem(
             HttpStatusCode.NotFound,
             "git-providers.connections.not-found",
             "Git provider connection not found",
             ("connectionId", notFound.ConnectionId));
 
-    private static HttpProblem MapConnectionHasSourceRepositories(
+    public static HttpProblem MapConnectionHasSourceRepositories(
         GitProviderConnectionHasSourceRepositories conflict) =>
         Problem(
             HttpStatusCode.Conflict,
@@ -49,14 +43,14 @@ public static class GitProviderHttpMappings
             "Unlink source repositories before deleting this provider connection",
             ("connectionId", conflict.ConnectionId));
 
-    private static HttpProblem MapSourceRepositoryNotFound(SourceRepositoryNotFound notFound) =>
+    public static HttpProblem MapSourceRepositoryNotFound(SourceRepositoryNotFound notFound) =>
         Problem(
             HttpStatusCode.NotFound,
             "git-providers.source-repositories.not-found",
             "Source repository not found",
             ("sourceRepositoryId", notFound.SourceRepositoryId));
 
-    private static HttpProblem MapSourceRepositoryAlreadyLinked(SourceRepositoryAlreadyLinked conflict) =>
+    public static HttpProblem MapSourceRepositoryAlreadyLinked(SourceRepositoryAlreadyLinked conflict) =>
         Problem(
             HttpStatusCode.Conflict,
             "git-providers.source-repositories.already-linked",
@@ -66,14 +60,14 @@ public static class GitProviderHttpMappings
             ("branch", conflict.Branch),
             ("candidateKey", conflict.CandidateKey));
 
-    private static HttpProblem MapBuildPlanNotFound(SourceRepositoryBuildPlanNotFound notFound) =>
+    public static HttpProblem MapBuildPlanNotFound(SourceRepositoryBuildPlanNotFound notFound) =>
         Problem(
             HttpStatusCode.UnprocessableEntity,
             "git-providers.source-repositories.build-plan-not-found",
             "The selected build-plan candidate was not found in the latest analysis",
             ("candidateKey", notFound.CandidateKey));
 
-    private static HttpProblem MapSelectedBuildPlanUnavailable(
+    public static HttpProblem MapSelectedBuildPlanUnavailable(
         SourceRepositorySelectedBuildPlanUnavailable unavailable) =>
         Problem(
             HttpStatusCode.Conflict,
@@ -82,7 +76,7 @@ public static class GitProviderHttpMappings
             ("sourceRepositoryId", unavailable.SourceRepositoryId),
             ("candidateKey", unavailable.CandidateKey));
 
-    private static HttpProblem MapSourceRepositoryHasBuildConfiguration(
+    public static HttpProblem MapSourceRepositoryHasBuildConfiguration(
         SourceRepositoryHasBuildConfiguration conflict) =>
         Problem(
             HttpStatusCode.Conflict,
@@ -90,20 +84,20 @@ public static class GitProviderHttpMappings
             "Delete the source build configuration before unlinking this repository",
             ("sourceRepositoryId", conflict.SourceRepositoryId));
 
-    private static HttpProblem MapSnapshotTooLarge(RepositorySourceSnapshotTooLarge _) =>
+    public static HttpProblem MapSnapshotTooLarge(RepositorySourceSnapshotTooLarge _) =>
         Problem(
             HttpStatusCode.UnprocessableEntity,
             "git-providers.repository-analysis.snapshot-too-large",
             "The repository tree is too large for automatic analysis");
 
-    private static HttpProblem MapProviderUnsupported(GitProviderUnsupported unsupported) =>
+    public static HttpProblem MapProviderUnsupported(GitProviderUnsupported unsupported) =>
         Problem(
             HttpStatusCode.UnprocessableEntity,
             "git-providers.provider.unsupported",
             "The git provider connection is not supported",
             ("provider", unsupported.Provider));
 
-    private static HttpProblem MapProviderUnavailable(GitProviderUnavailable unavailable) =>
+    public static HttpProblem MapProviderUnavailable(GitProviderUnavailable unavailable) =>
         Problem(
             HttpStatusCode.BadGateway,
             "git-providers.provider.unavailable",
