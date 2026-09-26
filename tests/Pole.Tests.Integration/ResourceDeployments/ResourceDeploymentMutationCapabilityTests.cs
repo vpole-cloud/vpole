@@ -63,10 +63,10 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         await InsertAsync(runtimeCell, deployment);
         var mutations = CreateMutations();
 
-        var result = await RunTypedTransactionAsync((session, cancellationToken) =>
+        var result = await RunMutationAsync((session, cancellationToken) =>
             mutations.Apply(CreateCommand(), session, cancellationToken));
 
-        var summary = result.AssertSuccess();
+        var summary = Assert.IsType<PlacementSummaryDto>(result.Value);
         Assert.Equal(2, summary.DesiredGeneration);
         var updated = await LoadDeploymentAsync();
         Assert.Equal(deployment.ResolvedPlacement, updated.ResolvedPlacement);
@@ -88,10 +88,10 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         await InsertAsync(runtimeCell, deployment);
         var mutations = CreateMutations();
 
-        var result = await RunTypedTransactionAsync((session, cancellationToken) =>
+        var result = await RunMutationAsync((session, cancellationToken) =>
             mutations.Apply(CreateCommand(), session, cancellationToken));
 
-        _ = result.AssertSuccess();
+        _ = Assert.IsType<PlacementSummaryDto>(result.Value);
         var updated = await LoadDeploymentAsync();
         var waiting = Assert.IsType<WaitingForRuntimeCellResourceDeploymentState>(
             updated.State);
@@ -109,10 +109,10 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         await InsertAsync(runtimeCell, deployment);
         var mutations = CreateMutations();
 
-        var result = await RunTypedTransactionAsync((session, cancellationToken) =>
+        var result = await RunMutationAsync((session, cancellationToken) =>
             mutations.Deletion(CreateCommand(), session, cancellationToken));
 
-        var summary = result.AssertSuccess();
+        var summary = Assert.IsType<PlacementSummaryDto>(result.Value);
         Assert.Equal(2, summary.DesiredGeneration);
         var updated = await LoadDeploymentAsync();
         Assert.Equal(ResourceDeploymentOperation.Delete, updated.DesiredOperation);
@@ -150,7 +150,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         await InsertAsync(runtimeCell, failed);
         var mutations = CreateMutations();
 
-        var mismatch = await RunTypedTransactionAsync((session, cancellationToken) =>
+        var mismatch = await RunMutationAsync((session, cancellationToken) =>
             mutations.Retry(
                     new ResourceDeploymentExactRetryRequest(
                         TenantId,
@@ -162,9 +162,9 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
                     session,
                     cancellationToken));
 
-        Assert.IsType<ResourceDeploymentRetryUnavailable>(mismatch.AssertFailure().Value);
+        Assert.IsType<ResourceDeploymentRetryUnavailable>(Assert.IsType<ResourceDeploymentMutationError>(mismatch.Value).Value);
 
-        var result = await RunTypedTransactionAsync((session, cancellationToken) =>
+        var result = await RunMutationAsync((session, cancellationToken) =>
             mutations.Retry(
                     new ResourceDeploymentExactRetryRequest(
                         TenantId,
@@ -176,7 +176,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
                     session,
                     cancellationToken));
 
-        var summary = result.AssertSuccess();
+        var summary = Assert.IsType<PlacementSummaryDto>(result.Value);
         Assert.Equal(1, summary.DesiredGeneration);
         Assert.Equal(failed.Revision + 1, summary.DeploymentRevision);
         var retried = await LoadDeploymentAsync();
@@ -199,13 +199,13 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         await InsertAsync(runtimeCell, deployment);
         var mutations = CreateMutations();
 
-        var result = await RunTypedTransactionAsync((session, cancellationToken) =>
+        var result = await RunMutationAsync((session, cancellationToken) =>
             mutations.Apply(
                 CreateCommand() with { TenantId = OtherTenantId },
                 session,
                 cancellationToken));
 
-        Assert.IsType<ResourceDeploymentMutationNotFound>(result.AssertFailure().Value);
+        Assert.IsType<ResourceDeploymentMutationNotFound>(Assert.IsType<ResourceDeploymentMutationError>(result.Value).Value);
         var saved = await fixture.DbContext.ResourceDeployments
             .Find(item => item.Id == DeploymentId)
             .SingleAsync();
@@ -224,7 +224,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
                 CreateCommand(),
                 session);
 
-            Assert.False(result.TryGetValue(out _, out var error));
+            var error = Assert.IsType<ResourceDeploymentMutationError>(result.Value);
             var notFound = Assert.IsType<ResourceDeploymentMutationNotFound>(
                 error.Value);
             Assert.Equal(ResourceId, notFound.ResourceId);
@@ -249,13 +249,13 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
             requestsCpuMillis: 500,
             requestsMemoryMi: 512);
 
-        var result = await RunTypedTransactionAsync((session, cancellationToken) =>
+        var result = await RunMutationAsync((session, cancellationToken) =>
             mutations.Apply(
                 CreateCommand() with { ReplacementCompute = replacement },
                 session,
                 cancellationToken));
 
-        _ = result.AssertSuccess();
+        _ = Assert.IsType<PlacementSummaryDto>(result.Value);
         var updated = await LoadDeploymentAsync();
         Assert.Equal(1, fence.CallCount);
         Assert.Equal(2, updated.ResolvedPlacement.Compute.ComputeProfileRevision);
@@ -271,7 +271,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         var fence = new RecordingComputeProfileFence();
         var mutations = CreateMutations(fence);
 
-        var result = await RunTypedTransactionAsync((session, cancellationToken) =>
+        var result = await RunMutationAsync((session, cancellationToken) =>
             mutations.Apply(
                     CreateCommand() with
                     {
@@ -287,7 +287,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
                     cancellationToken));
 
         Assert.IsType<ResourceDeploymentComputeConfigurationChanged>(
-            result.AssertFailure().Value);
+            Assert.IsType<ResourceDeploymentMutationError>(result.Value).Value);
         Assert.Equal(0, fence.CallCount);
         var saved = await fixture.DbContext.ResourceDeployments
             .Find(item => item.Id == DeploymentId)
@@ -309,7 +309,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
             TestResourceType,
             ResourceId);
 
-        Assert.True(result.TryGetValue(out var compute, out var error), error.ToString());
+        var compute = Assert.IsType<CurrentResourceDeploymentComputeDto>(result.Value);
         Assert.Equal(TargetId, compute.DeploymentTargetId);
         Assert.Equal(
             ResourceDeploymentTestData.ComputeProfileId,
@@ -335,7 +335,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
                         CreateCommand(),
                         transaction.Session,
                         cancellationToken);
-                    _ = mutation.AssertSuccess();
+                    _ = Assert.IsType<PlacementSummaryDto>(mutation.Value);
                     return transaction.Abort(
                         new PlacementMutationRejected(
                             "The logical resource write failed."));
@@ -372,7 +372,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         var fence = new RecordingComputeProfileFence();
         var mutations = CreateMutations(fence, placementLookup);
 
-        var result = await RunTypedTransactionAsync(
+        var result = await RunSetMutationAsync(
             (session, cancellationToken) => mutations.SetApply(
                 new ResourceDeploymentSetApplyRequest(
                     TenantId,
@@ -402,7 +402,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
                 session,
                 cancellationToken));
 
-        var summaries = result.AssertSuccess();
+        var summaries = Assert.IsType<MutatedResourceDeployments>(result.Value).Placements;
         Assert.Equal([DeploymentId, secondDeploymentId], summaries.Select(item => item.DeploymentId));
         Assert.Equal(1, placementLookup.FindManyCallCount);
         Assert.Equal(0, placementLookup.FindCallCount);
@@ -433,7 +433,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
             [first.Deployment, second.Deployment]);
         var mutations = CreateMutations();
 
-        var result = await RunTypedTransactionAsync(
+        var result = await RunSetMutationAsync(
             (session, cancellationToken) => mutations.SetDeletion(
                 new ResourceDeploymentSetDeletionRequest(
                     TenantId,
@@ -457,7 +457,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
                 session,
                 cancellationToken));
 
-        var summaries = result.AssertSuccess();
+        var summaries = Assert.IsType<MutatedResourceDeployments>(result.Value).Placements;
         Assert.Equal([secondDeploymentId, DeploymentId], summaries.Select(item => item.DeploymentId));
         Assert.All(summaries, summary => Assert.Equal(2, summary.ResourceRevision));
         Assert.Equal(
@@ -465,7 +465,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
             await fixture.DbContext.CountOutboxMessagesAsync(
                 "pole.resource-deployments/v1/resource-deployment-deletion-requested"));
 
-        var retry = await RunTypedTransactionAsync(
+        var retry = await RunSetMutationAsync(
             (session, cancellationToken) => mutations.SetDeletion(
                 new ResourceDeploymentSetDeletionRequest(
                     TenantId,
@@ -480,7 +480,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
                 session,
                 cancellationToken));
 
-        _ = retry.AssertSuccess();
+        _ = Assert.IsType<MutatedResourceDeployments>(retry.Value);
         Assert.Equal(
             2L,
             await fixture.DbContext.CountOutboxMessagesAsync(
@@ -582,21 +582,29 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         RequestResourceDeploymentSetApply SetApply,
         RequestResourceDeploymentSetDeletion SetDeletion);
 
-    private Task<Result<T, TError>> RunTypedTransactionAsync<T, TError>(
-        Func<
-            IClientSessionHandle,
-            CancellationToken,
-            Task<Result<T, TError>>> operation)
-        where T : notnull
-        where TError : notnull =>
-        new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<Result<T, TError>>(
+    private Task<ResourceDeploymentMutationOutcome> RunMutationAsync(
+        Func<IClientSessionHandle, CancellationToken, Task<ResourceDeploymentMutationOutcome>> operation) =>
+        new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<ResourceDeploymentMutationOutcome>(
             async (transaction, cancellationToken) =>
             {
                 var result = await operation(transaction.Session, cancellationToken);
                 return result switch
                 {
-                    Ok<T> => transaction.Commit(result),
-                    Err<TError> => transaction.Abort(result)
+                    PlacementSummaryDto => transaction.Commit(result),
+                    ResourceDeploymentMutationError => transaction.Abort(result)
+                };
+            });
+
+    private Task<ResourceDeploymentSetMutationOutcome> RunSetMutationAsync(
+        Func<IClientSessionHandle, CancellationToken, Task<ResourceDeploymentSetMutationOutcome>> operation) =>
+        new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<ResourceDeploymentSetMutationOutcome>(
+            async (transaction, cancellationToken) =>
+            {
+                var result = await operation(transaction.Session, cancellationToken);
+                return result switch
+                {
+                    MutatedResourceDeployments => transaction.Commit(result),
+                    ResourceDeploymentMutationError => transaction.Abort(result)
                 };
             });
 

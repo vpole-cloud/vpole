@@ -38,7 +38,7 @@ internal sealed class MongoCreateBoundManagedSecret(
         if (await admitScope(prepared.TenantId, resourceGroupId, isolationScopeId,
                 new(consumerType, prepared.Owner.ResourceId), session, ct) is ResourceScopeReferenceUnavailable ||
             await admitDeployments(prepared.TenantId, resourceGroupId, isolationScopeId, consumerType,
-                prepared.Owner.ResourceId, false, [deploymentId], session, ct) is Err<ResourceDeploymentReferenceUnavailable>)
+                prepared.Owner.ResourceId, false, [deploymentId], session, ct) is ResourceDeploymentReferenceUnavailable)
             return new Err<ManagedSecretError>(new ManagedSecretReferenceRejected());
         var now = clock.GetUtcNow().UtcDateTime;
         var binding = SecretBinding.Create(ObjectId.GenerateNewId().ToString(), prepared.Owner.ResourceType,

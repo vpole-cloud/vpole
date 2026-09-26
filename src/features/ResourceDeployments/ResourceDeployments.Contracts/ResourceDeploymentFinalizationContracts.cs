@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Contracts;
@@ -15,6 +14,11 @@ public sealed record ResourceDeploymentFinalizationConflict(
     string ResourceId,
     string? ResourceDeploymentId = null);
 
+public sealed record ResourceDeploymentsPurged;
+public union PurgeResourceDeploymentsOutcome(
+    ResourceDeploymentsPurged,
+    ResourceDeploymentFinalizationConflict);
+
 public delegate Task<ResourceDeploymentFinalizationReadiness>
     GetResourceDeploymentFinalizationReadiness(
         string tenantId,
@@ -23,7 +27,7 @@ public delegate Task<ResourceDeploymentFinalizationReadiness>
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<Unit, ResourceDeploymentFinalizationConflict>>
+public delegate Task<PurgeResourceDeploymentsOutcome>
     PurgeDeletedResourceDeployments(
     string tenantId,
     ResourceTypeId resourceType,
@@ -40,7 +44,7 @@ public delegate Task<ResourceDeploymentFinalizationReadiness>
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<Unit, ResourceDeploymentFinalizationConflict>>
+public delegate Task<PurgeResourceDeploymentsOutcome>
     PurgeExactDeletedResourceDeployment(
     string tenantId,
     ResourceTypeId resourceType,

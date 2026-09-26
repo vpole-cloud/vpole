@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using MongoDB.Driver;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Contracts;
@@ -131,14 +130,33 @@ public union LoadCurrentResourceDeploymentComputeError(
     CurrentResourceDeploymentComputeNotFound,
     CurrentResourceDeploymentComputeCardinalityConflict);
 
-public delegate Task<Result<Unit, ResourceGroupHasUnfinishedDeployments>>
+public union LoadCurrentResourceDeploymentComputeOutcome(
+    CurrentResourceDeploymentComputeDto,
+    LoadCurrentResourceDeploymentComputeError);
+
+public sealed record ResourceGroupDeploymentsSettled;
+public union EnsureResourceGroupDeploymentsSettledOutcome(
+    ResourceGroupDeploymentsSettled,
+    ResourceGroupHasUnfinishedDeployments);
+
+public sealed record IsolationScopeDeploymentsSettled;
+public union EnsureIsolationScopeDeploymentsSettledOutcome(
+    IsolationScopeDeploymentsSettled,
+    IsolationScopeHasUnfinishedDeployments);
+
+public sealed record ComputeProfileUnreferenced;
+public union EnsureComputeProfileUnreferencedOutcome(
+    ComputeProfileUnreferenced,
+    ComputeProfileReferencedByResourceDeployment);
+
+public delegate Task<EnsureResourceGroupDeploymentsSettledOutcome>
     EnsureNoUnfinishedResourceGroupDeployments(
     string tenantId,
     string resourceGroupId,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
-public delegate Task<Result<Unit, IsolationScopeHasUnfinishedDeployments>>
+public delegate Task<EnsureIsolationScopeDeploymentsSettledOutcome>
     EnsureNoUnfinishedIsolationScopeDeployments(
     string tenantId,
     string resourceGroupId,
@@ -146,7 +164,7 @@ public delegate Task<Result<Unit, IsolationScopeHasUnfinishedDeployments>>
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
-public delegate Task<Result<Unit, ComputeProfileReferencedByResourceDeployment>>
+public delegate Task<EnsureComputeProfileUnreferencedOutcome>
     EnsureComputeProfileUnreferenced(
     string computeProfileId,
     IClientSessionHandle session,
@@ -165,9 +183,7 @@ public delegate Task<IReadOnlyDictionary<string, PlacementSummaryDto>>
         IReadOnlyCollection<string> resourceIds,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<
-    CurrentResourceDeploymentComputeDto,
-    LoadCurrentResourceDeploymentComputeError>>
+public delegate Task<LoadCurrentResourceDeploymentComputeOutcome>
     LoadCurrentResourceDeploymentCompute(
         string tenantId,
         ResourceTypeId resourceType,

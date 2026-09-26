@@ -2,7 +2,6 @@ using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Requests;
 
@@ -10,9 +9,7 @@ internal sealed class MongoAdvanceResourceDeploymentRevision(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     TimeProvider timeProvider)
 {
-    public async Task<Result<
-        IReadOnlyList<PlacementSummaryDto>,
-        AdvanceResourceDeploymentRevisionError>> InvokeAsync(
+    public async Task<AdvanceResourceDeploymentRevisionOutcome> InvokeAsync(
         ResourceDeploymentResourceRevisionRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -32,9 +29,8 @@ internal sealed class MongoAdvanceResourceDeploymentRevision(
             .ToListAsync(cancellationToken);
         if (current.Count == 0)
         {
-            return new Err<AdvanceResourceDeploymentRevisionError>(
-                new AdvanceResourceDeploymentRevisionError(
-                    new ResourceDeploymentsNotFound(request.ResourceId)));
+            return new AdvanceResourceDeploymentRevisionError(
+                new ResourceDeploymentsNotFound(request.ResourceId));
         }
 
         var active = current
@@ -42,9 +38,8 @@ internal sealed class MongoAdvanceResourceDeploymentRevision(
             .ToArray();
         if (active.Length == 0)
         {
-            return new Err<AdvanceResourceDeploymentRevisionError>(
-                new AdvanceResourceDeploymentRevisionError(
-                    new ResourceDeploymentsHaveNoActivePlacement(request.ResourceId)));
+            return new AdvanceResourceDeploymentRevisionError(
+                new ResourceDeploymentsHaveNoActivePlacement(request.ResourceId));
         }
 
         var updatedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
@@ -61,15 +56,14 @@ internal sealed class MongoAdvanceResourceDeploymentRevision(
                     cancellationToken: cancellationToken);
                 if (replacement.ModifiedCount != 1)
                 {
-                    return new Err<AdvanceResourceDeploymentRevisionError>(
-                        new AdvanceResourceDeploymentRevisionError(
-                            new ResourceDeploymentRevisionConflict(request.ResourceId)));
+                    return new AdvanceResourceDeploymentRevisionError(
+                        new ResourceDeploymentRevisionConflict(request.ResourceId));
                 }
             }
 
             results.Add(updated.ToPlacementSummaryDto());
         }
 
-        return new Ok<IReadOnlyList<PlacementSummaryDto>>(results);
+        return new MutatedResourceDeployments(results);
     }
 }

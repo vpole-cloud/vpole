@@ -78,12 +78,13 @@ public sealed class WebServiceSourceBuildDeploymentService(
                         WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
                 session,
                 ct);
-            if (!deploymentResult.TryGetValue(out var updatedDeployments, out var deploymentFailure))
+            if (deploymentResult is ResourceDeploymentMutationError deploymentFailure)
             {
                 DeploySourceBuildWebServiceOutcome rejected = new SourceBuildWebServiceDeploymentError(
                     ToDeploymentError(request.WebServiceId, deploymentFailure));
                 return transaction.Abort(rejected);
             }
+            var updatedDeployments = ((MutatedResourceDeployments)deploymentResult.Value).Placements;
 
             var updatedEvent = updatedWebService.ToUpdatedEvent(
                 WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments));

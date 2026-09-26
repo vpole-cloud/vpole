@@ -1,12 +1,15 @@
 using MongoDB.Driver;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Contracts;
 
 public sealed record ResourceDeploymentReferenceUnavailable;
+public sealed record ResourceDeploymentReferencesAdmitted;
+public union AdmitResourceDeploymentReferencesOutcome(
+    ResourceDeploymentReferencesAdmitted,
+    ResourceDeploymentReferenceUnavailable);
 
-public delegate Task<Result<Unit, ResourceDeploymentReferenceUnavailable>> AdmitResourceDeploymentReferences(
+public delegate Task<AdmitResourceDeploymentReferencesOutcome> AdmitResourceDeploymentReferences(
     string tenantId,
     string resourceGroupId,
     string isolationScopeId,

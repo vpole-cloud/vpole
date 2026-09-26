@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Contracts;
@@ -52,13 +51,22 @@ public union ResourceDeploymentMutationError(
     ResourceDeploymentRetryUnavailable,
     ResourceDeploymentComputeConfigurationChanged);
 
-public delegate Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+public union ResourceDeploymentMutationOutcome(
+    PlacementSummaryDto,
+    ResourceDeploymentMutationError);
+
+public sealed record MutatedResourceDeployments(IReadOnlyList<PlacementSummaryDto> Placements);
+public union ResourceDeploymentSetMutationOutcome(
+    MutatedResourceDeployments,
+    ResourceDeploymentMutationError);
+
+public delegate Task<ResourceDeploymentMutationOutcome>
     RequestResourceDeploymentApply(
     ResourceDeploymentMutationRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
-public delegate Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+public delegate Task<ResourceDeploymentMutationOutcome>
     RequestResourceDeploymentDeletion(
     ResourceDeploymentMutationRequest request,
     IClientSessionHandle session,
@@ -100,7 +108,7 @@ public sealed record ResourceDeploymentExactRetryRequest(
 /// Retries one exact failed physical deployment inside the caller-owned
 /// transaction so the logical resource mutation and retry outbox commit together.
 /// </summary>
-public delegate Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+public delegate Task<ResourceDeploymentMutationOutcome>
     RetryExactResourceDeployment(
     ResourceDeploymentExactRetryRequest request,
     IClientSessionHandle session,
@@ -133,37 +141,35 @@ public sealed record ResourceDeploymentSetDeletionRequest(
     long ResourceRevision,
     IReadOnlyList<ResourceDeploymentSetDeletionItem> Deployments);
 
-public delegate Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+public delegate Task<ResourceDeploymentMutationOutcome>
     RequestExactResourceDeploymentApply(
     ResourceDeploymentExactMutationRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
-public delegate Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+public delegate Task<ResourceDeploymentMutationOutcome>
     RequestExactResourceDeploymentDeletion(
     ResourceDeploymentExactMutationRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
-public delegate Task<Result<
-    IReadOnlyList<PlacementSummaryDto>,
-    ResourceDeploymentMutationError>>
+public delegate Task<ResourceDeploymentSetMutationOutcome>
     RequestResourceDeploymentSetApply(
         ResourceDeploymentSetApplyRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<
-    IReadOnlyList<PlacementSummaryDto>,
-    ResourceDeploymentMutationError>>
+public delegate Task<ResourceDeploymentSetMutationOutcome>
     RequestResourceDeploymentSetDeletion(
         ResourceDeploymentSetDeletionRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<
-    IReadOnlyList<PlacementSummaryDto>,
-    AdvanceResourceDeploymentRevisionError>> AdvanceResourceDeploymentRevision(
+public union AdvanceResourceDeploymentRevisionOutcome(
+    MutatedResourceDeployments,
+    AdvanceResourceDeploymentRevisionError);
+
+public delegate Task<AdvanceResourceDeploymentRevisionOutcome> AdvanceResourceDeploymentRevision(
     ResourceDeploymentResourceRevisionRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);

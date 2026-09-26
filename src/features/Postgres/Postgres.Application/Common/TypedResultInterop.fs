@@ -46,3 +46,30 @@ module TypedResultInterop =
         | :? Pole.Features.ResourceGroups.Contracts.ResourceUnregistered as value -> Ok value
         | :? Pole.Features.ResourceGroups.Contracts.ResourceRegistrationMutationError as error -> Error error
         | value -> invalidOp $"Unexpected resource unregistration outcome: {value}"
+
+    let createResourceDeployment
+        (result : Pole.Features.ResourceDeployments.Contracts.CreateResourceDeploymentOutcome)
+        : Result<Pole.Features.ResourceDeployments.Contracts.PlacementSummaryDto,
+                 Pole.Features.ResourceDeployments.Contracts.CreateResourceDeploymentError> =
+        match result.Value with
+        | :? Pole.Features.ResourceDeployments.Contracts.PlacementSummaryDto as value -> Ok value
+        | :? Pole.Features.ResourceDeployments.Contracts.CreateResourceDeploymentError as error -> Error error
+        | value -> invalidOp $"Unexpected resource deployment creation outcome: {value}"
+
+    let currentResourceDeploymentCompute
+        (result : Pole.Features.ResourceDeployments.Contracts.LoadCurrentResourceDeploymentComputeOutcome)
+        : Result<Pole.Features.ResourceDeployments.Contracts.CurrentResourceDeploymentComputeDto,
+                 Pole.Features.ResourceDeployments.Contracts.LoadCurrentResourceDeploymentComputeError> =
+        match result.Value with
+        | :? Pole.Features.ResourceDeployments.Contracts.CurrentResourceDeploymentComputeDto as value -> Ok value
+        | :? Pole.Features.ResourceDeployments.Contracts.LoadCurrentResourceDeploymentComputeError as error -> Error error
+        | value -> invalidOp $"Unexpected resource deployment compute outcome: {value}"
+
+    let resourceDeploymentMutation
+        (result : Pole.Features.ResourceDeployments.Contracts.ResourceDeploymentMutationOutcome)
+        : Result<Pole.Features.ResourceDeployments.Contracts.PlacementSummaryDto,
+                 Pole.Features.ResourceDeployments.Contracts.ResourceDeploymentMutationError> =
+        match result.Value with
+        | :? Pole.Features.ResourceDeployments.Contracts.PlacementSummaryDto as value -> Ok value
+        | :? Pole.Features.ResourceDeployments.Contracts.ResourceDeploymentMutationError as error -> Error error
+        | value -> invalidOp $"Unexpected resource deployment mutation outcome: {value}"

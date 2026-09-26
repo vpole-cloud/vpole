@@ -144,7 +144,7 @@ public sealed class DeleteFunctionAppHandler(
                         ResourceRevision: app.NextRevisionNumber),
                     transaction.Session,
                     ct);
-                if (!deploymentResult.TryGetValue(out _, out var deploymentError))
+                if (deploymentResult is ResourceDeploymentMutationError deploymentError)
                 {
                     return transaction.Abort(
                         new DeleteFunctionAppError(deploymentError));

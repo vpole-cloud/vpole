@@ -107,12 +107,8 @@ type MongoFinalizePostgresClusterDeletion(
                                                     clusterId,
                                                     transaction.Session,
                                                     transactionCancellationToken)
-                                            let mutable ignored = Unchecked.defaultof<Unit>
-                                            let mutable purgeConflict = Unchecked.defaultof<ResourceDeploymentFinalizationConflict>
-                                            if TypedResultExtensions.TryGetValue(
-                                                purged,
-                                                &ignored,
-                                                &purgeConflict) then
+                                            match purged.Value with
+                                            | :? ResourceDeploymentsPurged ->
                                                 let writes : IReadOnlyCollection<OutboxWrite> =
                                                     [| OutboxWrite.Create(PostgresClusterEvents.deleted cluster) |]
                                                 do! storeOutboxWrites.Invoke(
@@ -120,10 +116,12 @@ type MongoFinalizePostgresClusterDeletion(
                                                     writes,
                                                     transactionCancellationToken)
                                                 return transaction.Commit(PostgresSuccess ())
-                                            else
+                                            | :? ResourceDeploymentFinalizationConflict as purgeConflict ->
                                                 return
                                                     transaction.Abort(
                                                         PostgresError(
                                                             PostgresClusterDeletionDeploymentPurgeConflict purgeConflict))
+                                            | value ->
+                                                return invalidOp $"Unexpected resource deployment purge outcome: {value}"
                     }),
             cancellationToken)

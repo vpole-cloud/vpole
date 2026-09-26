@@ -44,9 +44,8 @@ public sealed class ComputeProfileProductionDiTests(MongoReplicaSetFixture fixtu
                 Unit,
                 DeploymentTargetReferenceChangeRejected>>(new Ok<Unit>(Unit.Value)));
         services.AddSingleton<EnsureComputeProfileUnreferenced>(
-            (_, _, _) => Task.FromResult<Result<
-                Unit,
-                ComputeProfileReferencedByResourceDeployment>>(new Ok<Unit>(Unit.Value)));
+            (_, _, _) => Task.FromResult<EnsureComputeProfileUnreferencedOutcome>(
+                new ComputeProfileUnreferenced()));
         services.AddComputeProfilesFeature();
 
         Assert.DoesNotContain(services, descriptor =>

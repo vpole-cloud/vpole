@@ -93,7 +93,7 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
                 resourceDeploymentId,
                 transaction.Session,
                 ct);
-            if (purge is Err<ResourceDeploymentFinalizationConflict>)
+            if (purge is ResourceDeploymentFinalizationConflict)
                 return transaction.Abort(Conflict(functionAppId));
 
             return transaction.Commit(Finalized());

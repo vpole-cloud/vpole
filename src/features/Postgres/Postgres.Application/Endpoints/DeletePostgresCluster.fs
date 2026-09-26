@@ -120,7 +120,7 @@ module private DeletePostgresClusterWorkflow =
                         cluster.Id,
                         cancellationToken)
 
-                match TypedResultInterop.toResult currentComputeResult with
+                match TypedResultInterop.currentResourceDeploymentCompute currentComputeResult with
                 | Error error ->
                     return
                         Completed(
@@ -184,7 +184,7 @@ module private DeletePostgresClusterWorkflow =
                                 transaction.Session,
                                 transactionCancellationToken)
 
-                        match TypedResultInterop.toResult deploymentResult with
+                        match TypedResultInterop.resourceDeploymentMutation deploymentResult with
                         | Error error ->
                             return
                                 transaction.Abort(

@@ -1,14 +1,13 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Validation;
 
 internal sealed class MongoEnsureNoUnfinishedIsolationScopeDeployments(
     IMongoCollection<ResourceDeployment> resourceDeployments)
 {
-    public async Task<Result<Unit, IsolationScopeHasUnfinishedDeployments>> InvokeAsync(
+    public async Task<EnsureIsolationScopeDeploymentsSettledOutcome> InvokeAsync(
         string tenantId,
         string resourceGroupId,
         string isolationScopeId,
@@ -28,8 +27,7 @@ internal sealed class MongoEnsureNoUnfinishedIsolationScopeDeployments(
             .Limit(1)
             .AnyAsync(cancellationToken);
         return hasUnfinished
-            ? new Err<IsolationScopeHasUnfinishedDeployments>(
-                new IsolationScopeHasUnfinishedDeployments(resourceGroupId, isolationScopeId))
-            : new Ok<Unit>(Unit.Value);
+            ? new IsolationScopeHasUnfinishedDeployments(resourceGroupId, isolationScopeId)
+            : new IsolationScopeDeploymentsSettled();
     }
 }

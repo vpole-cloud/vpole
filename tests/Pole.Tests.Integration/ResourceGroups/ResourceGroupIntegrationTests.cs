@@ -263,7 +263,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
 
         public void Release() => _release.TrySetResult();
 
-        public async Task<Result<Unit, ResourceGroupHasUnfinishedDeployments>> InvokeAsync(
+        public async Task<EnsureResourceGroupDeploymentsSettledOutcome> InvokeAsync(
             string tenantId,
             string resourceGroupId,
             IClientSessionHandle session,
@@ -278,7 +278,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
                 await _release.Task.WaitAsync(cancellationToken);
             }
 
-            return new Ok<Unit>(Unit.Value);
+            return new ResourceGroupDeploymentsSettled();
         }
     }
 }

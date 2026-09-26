@@ -129,7 +129,7 @@ public sealed class RetryWebServiceDeploymentHandler(
                 operation),
             transaction.Session,
             cancellationToken);
-        if (!retried.TryGetValue(out _, out var failure))
+        if (retried is ResourceDeploymentMutationError failure)
             return transaction.Abort(Error(
                 new RetryWebServiceDeploymentError(failure)));
 
@@ -141,9 +141,10 @@ public sealed class RetryWebServiceDeploymentHandler(
                 updated.ActiveRevision),
             transaction.Session,
             cancellationToken);
-        if (!stamped.TryGetValue(out var deployments, out var revisionFailure))
+        if (stamped is AdvanceResourceDeploymentRevisionError revisionFailure)
             return transaction.Abort(Error(
                 new RetryWebServiceDeploymentError(revisionFailure)));
+        var deployments = ((MutatedResourceDeployments)stamped.Value).Placements;
 
         var retriedDeployment = deployments.Single(item =>
             item.DeploymentId == request.DeploymentId);

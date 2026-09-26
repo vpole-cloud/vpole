@@ -238,12 +238,11 @@ public sealed class CreateFunctionAppHandler(
                         ResourcePlacementCapability.SingleTarget),
                     transaction.Session,
                     ct);
-                if (!deploymentResult.TryGetValue(
-                        out var placement,
-                        out var deploymentError))
+                if (deploymentResult is CreateResourceDeploymentError deploymentError)
                 {
                     return transaction.Abort(new CreateFunctionAppError(deploymentError));
                 }
+                var placement = (PlacementSummaryDto)deploymentResult.Value;
 
                 var created = FunctionAppFactory.Create(
                     request.TenantId,

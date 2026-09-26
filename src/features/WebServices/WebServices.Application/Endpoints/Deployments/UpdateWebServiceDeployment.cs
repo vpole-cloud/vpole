@@ -148,9 +148,10 @@ public sealed class UpdateWebServiceDeploymentHandler(
                         fixedReplicas: request.Body.FixedReplicas),
                     transaction.Session,
                     token);
-                if (!result.TryGetValue(out var changed, out var failure))
+                if (result is ResourceDeploymentMutationError failure)
                     return transaction.Abort(Error(
                         new UpdateWebServiceDeploymentError(failure)));
+                var changed = (PlacementSummaryDto)result.Value;
 
                 var advanced = await advanceResourceDeploymentRevision(
                     new ResourceDeploymentResourceRevisionRequest(
@@ -160,9 +161,10 @@ public sealed class UpdateWebServiceDeploymentHandler(
                         updated.ActiveRevision),
                     transaction.Session,
                     token);
-                if (!advanced.TryGetValue(out var snapshots, out var revisionFailure))
+                if (advanced is AdvanceResourceDeploymentRevisionError revisionFailure)
                     return transaction.Abort(Error(
                         new UpdateWebServiceDeploymentError(revisionFailure)));
+                var snapshots = ((MutatedResourceDeployments)advanced.Value).Placements;
 
                 var saved = await persistWebService(
                     transaction.Session,

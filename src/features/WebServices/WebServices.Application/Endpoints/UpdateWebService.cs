@@ -139,13 +139,12 @@ public sealed class UpdateWebServiceHandler(
                                 WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
                         transaction.Session,
                         ct);
-                    if (!deploymentsResult.TryGetValue(
-                            out var physicalDeployments,
-                            out var deploymentError))
+                    if (deploymentsResult is ResourceDeploymentMutationError deploymentError)
                     {
                         return transaction.Abort(
                             Error(new UpdateWebServiceError(deploymentError)));
                     }
+                    var physicalDeployments = ((MutatedResourceDeployments)deploymentsResult.Value).Placements;
                     updatedDeployments = physicalDeployments;
                 }
                 else
@@ -158,13 +157,12 @@ public sealed class UpdateWebServiceHandler(
                             nextWebService.ActiveRevision),
                         transaction.Session,
                         ct);
-                    if (!deploymentsResult.TryGetValue(
-                            out var revisionDeployments,
-                            out var revisionError))
+                    if (deploymentsResult is AdvanceResourceDeploymentRevisionError revisionError)
                     {
                         return transaction.Abort(
                             Error(new UpdateWebServiceError(revisionError)));
                     }
+                    var revisionDeployments = ((MutatedResourceDeployments)deploymentsResult.Value).Placements;
                     updatedDeployments = revisionDeployments
                         .Where(WebServiceDeploymentWorkflow.IsDesiredPlacement)
                         .ToArray();

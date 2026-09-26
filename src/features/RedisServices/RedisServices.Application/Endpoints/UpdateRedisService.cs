@@ -128,12 +128,11 @@ public sealed class UpdateRedisServiceHandler(
             RedisResourceDeployment.ResourceType,
             redis.Id,
             cancellationToken);
-        if (!currentComputeResult.TryGetValue(
-                out var currentCompute,
-                out var currentComputeError))
+        if (currentComputeResult is LoadCurrentResourceDeploymentComputeError currentComputeError)
         {
             return currentComputeError;
         }
+        var currentCompute = (CurrentResourceDeploymentComputeDto)currentComputeResult.Value;
 
         ResolvedComputeProfile? replacementCompute = null;
         if (!string.IsNullOrWhiteSpace(request.Body.ComputeProfileId))
@@ -196,12 +195,11 @@ public sealed class UpdateRedisServiceHandler(
                         replacementCompute?.ToResourceDeploymentConfiguration()),
                     transaction.Session,
                     transactionCancellationToken);
-                if (!deploymentResult.TryGetValue(
-                        out var deployment,
-                        out var deploymentError))
+                if (deploymentResult is ResourceDeploymentMutationError deploymentError)
                 {
                     return transaction.Abort(deploymentError);
                 }
+                var deployment = (PlacementSummaryDto)deploymentResult.Value;
 
                 return transaction.Commit(new UpdateRedisServiceOutcome(
                     new UpdateRedisServiceResponse(redis.Id, deployment)));

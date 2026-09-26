@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using MongoDB.Driver;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Contracts;
@@ -73,15 +72,22 @@ public union CreateResourceDeploymentError(
     ResourcePlacementUnavailable,
     ResourcePlacementDeleting);
 
-public delegate Task<Result<PlacementSummaryDto, CreateResourceDeploymentError>>
+public union CreateResourceDeploymentOutcome(
+    PlacementSummaryDto,
+    CreateResourceDeploymentError);
+
+public sealed record CreatedResourceDeployments(IReadOnlyList<PlacementSummaryDto> Placements);
+public union CreateResourceDeploymentSetOutcome(
+    CreatedResourceDeployments,
+    CreateResourceDeploymentError);
+
+public delegate Task<CreateResourceDeploymentOutcome>
     CreateResourceDeployment(
     CreateResourceDeploymentRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
-public delegate Task<Result<
-    IReadOnlyList<PlacementSummaryDto>,
-    CreateResourceDeploymentError>> CreateResourceDeploymentSet(
+public delegate Task<CreateResourceDeploymentSetOutcome> CreateResourceDeploymentSet(
     CreateResourceDeploymentSetRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);

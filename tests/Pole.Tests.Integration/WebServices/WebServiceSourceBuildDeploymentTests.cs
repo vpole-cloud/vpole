@@ -218,19 +218,15 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
         public int ApplyCallCount { get; private set; }
         public ResourceDeploymentSetApplyRequest? LastCommand { get; private set; }
 
-        public Task<Result<
-            IReadOnlyList<PlacementSummaryDto>,
-            ResourceDeploymentMutationError>> RequestSetApplyAsync(
+        public Task<ResourceDeploymentSetMutationOutcome> RequestSetApplyAsync(
             ResourceDeploymentSetApplyRequest command,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
             ApplyCallCount++;
             LastCommand = command;
-            return Task.FromResult<Result<
-                IReadOnlyList<PlacementSummaryDto>,
-                ResourceDeploymentMutationError>>(
-                new Ok<IReadOnlyList<PlacementSummaryDto>>(
+            return Task.FromResult<ResourceDeploymentSetMutationOutcome>(
+                new MutatedResourceDeployments(
                     deployments.Select(item => item with
                     {
                         DesiredGeneration = item.DesiredGeneration + 1,
@@ -242,16 +238,11 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
 
     private sealed class RejectedSetMutationWriter(ResourceDeploymentMutationError error)
     {
-        public Task<Result<
-            IReadOnlyList<PlacementSummaryDto>,
-            ResourceDeploymentMutationError>> RequestSetApplyAsync(
+        public Task<ResourceDeploymentSetMutationOutcome> RequestSetApplyAsync(
             ResourceDeploymentSetApplyRequest command,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<
-                IReadOnlyList<PlacementSummaryDto>,
-                ResourceDeploymentMutationError>>(
-                new Err<ResourceDeploymentMutationError>(error));
+            Task.FromResult<ResourceDeploymentSetMutationOutcome>(error);
     }
 
     private sealed class FixedSetQueryService(IReadOnlyList<PlacementSummaryDto> deployments)

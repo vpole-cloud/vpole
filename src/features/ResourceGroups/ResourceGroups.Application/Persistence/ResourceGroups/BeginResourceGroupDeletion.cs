@@ -79,7 +79,7 @@ internal sealed class MongoBeginResourceGroupDeletion(
                 resourceGroupId,
                 transaction.Session,
                 ct);
-            if (deploymentGuard is Err<ResourceGroupHasUnfinishedDeployments>)
+            if (deploymentGuard is ResourceGroupHasUnfinishedDeployments)
             {
                 return transaction.Abort(new BeginResourceGroupDeletionOutcome(
                     new ResourceGroupDeletionError(

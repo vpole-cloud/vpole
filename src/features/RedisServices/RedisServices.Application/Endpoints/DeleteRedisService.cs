@@ -100,12 +100,11 @@ public sealed class DeleteRedisServiceHandler(
             RedisResourceDeployment.ResourceType,
             redis.Id,
             cancellationToken);
-        if (!currentComputeResult.TryGetValue(
-                out var currentCompute,
-                out var currentComputeError))
+        if (currentComputeResult is LoadCurrentResourceDeploymentComputeError currentComputeError)
         {
             return currentComputeError;
         }
+        var currentCompute = (CurrentResourceDeploymentComputeDto)currentComputeResult.Value;
 
         var quotaInput = RedisQuotaInput.Create(
             currentCompute.Compute.Requests.CpuMillis,
@@ -139,12 +138,11 @@ public sealed class DeleteRedisServiceHandler(
                         currentCompute.Compute.Profile),
                     transaction.Session,
                     transactionCancellationToken);
-                if (!deploymentResult.TryGetValue(
-                        out var deployment,
-                        out var deploymentError))
+                if (deploymentResult is ResourceDeploymentMutationError deploymentError)
                 {
                     return transaction.Abort(deploymentError);
                 }
+                var deployment = (PlacementSummaryDto)deploymentResult.Value;
 
                 return transaction.Commit(new DeleteRedisServiceOutcome(
                     new DeleteRedisServiceResponse(request.Id, deployment)));

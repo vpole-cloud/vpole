@@ -132,9 +132,10 @@ public sealed class RollbackWebServiceHandler(
                             WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
                     transaction.Session,
                     ct);
-                if (!applied.TryGetValue(out var updatedDeployments, out var applyFailure))
+                if (applied is ResourceDeploymentMutationError applyFailure)
                     return transaction.Abort(Error(
                         new RollbackWebServiceError(applyFailure)));
+                var updatedDeployments = ((MutatedResourceDeployments)applied.Value).Placements;
 
                 var persisted = await persistUpdatedWebService(
                     transaction.Session,

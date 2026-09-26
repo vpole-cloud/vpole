@@ -3,7 +3,6 @@ using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Reconciliation;
 
@@ -12,7 +11,7 @@ internal sealed class ResourceDeploymentRetryPersistence(
     StoreOutboxWrites storeOutboxWrites,
     TimeProvider timeProvider)
 {
-    public async Task<Result<ResourceDeploymentDto, RetryResourceDeploymentError>>
+    public async Task<RetryResourceDeploymentOutcome>
         RetryAsync(
             string tenantId,
             string deploymentId,
@@ -33,18 +32,16 @@ internal sealed class ResourceDeploymentRetryPersistence(
             .FirstOrDefaultAsync(cancellationToken);
         if (current is null)
         {
-            return new Err<RetryResourceDeploymentError>(
-                new RetryResourceDeploymentError(
-                    new ResourceDeploymentNotFound(deploymentId)));
+            return new RetryResourceDeploymentError(
+                new ResourceDeploymentNotFound(deploymentId));
         }
         if (current.State is not FailedResourceDeploymentState
             {
                 Retryable: true
             })
         {
-            return new Err<RetryResourceDeploymentError>(
-                new RetryResourceDeploymentError(
-                    new ResourceDeploymentNotRetryable(deploymentId)));
+            return new RetryResourceDeploymentError(
+                new ResourceDeploymentNotRetryable(deploymentId));
         }
 
         var retried = current.Retry(timeProvider.GetUtcNow().UtcDateTime);
@@ -55,15 +52,14 @@ internal sealed class ResourceDeploymentRetryPersistence(
             cancellationToken: cancellationToken);
         if (replacement.ModifiedCount != 1)
         {
-            return new Err<RetryResourceDeploymentError>(
-                new RetryResourceDeploymentError(
-                    new ResourceDeploymentRetryConflict(deploymentId)));
+            return new RetryResourceDeploymentError(
+                new ResourceDeploymentRetryConflict(deploymentId));
         }
 
         await storeOutboxWrites(
             session,
             [retried.ToCurrentRequestWrite()],
             cancellationToken);
-        return new Ok<ResourceDeploymentDto>(retried.ToDto());
+        return retried.ToDto();
     }
 }

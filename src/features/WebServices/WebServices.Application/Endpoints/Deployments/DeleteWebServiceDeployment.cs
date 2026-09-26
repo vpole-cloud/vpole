@@ -148,9 +148,10 @@ public sealed class DeleteWebServiceDeploymentHandler(
                         ResourceRevision: updated.ActiveRevision),
                     transaction.Session,
                     token);
-                if (!deleted.TryGetValue(out var result, out var failure))
+                if (deleted is ResourceDeploymentMutationError failure)
                     return transaction.Abort(Error(
                         new DeleteWebServiceDeploymentError(failure)));
+                var result = (PlacementSummaryDto)deleted.Value;
 
                 var stamped = await advanceResourceDeploymentRevision(
                     new ResourceDeploymentResourceRevisionRequest(
@@ -160,9 +161,10 @@ public sealed class DeleteWebServiceDeploymentHandler(
                         updated.ActiveRevision),
                     transaction.Session,
                     token);
-                if (!stamped.TryGetValue(out var snapshots, out var revisionFailure))
+                if (stamped is AdvanceResourceDeploymentRevisionError revisionFailure)
                     return transaction.Abort(Error(
                         new DeleteWebServiceDeploymentError(revisionFailure)));
+                var snapshots = ((MutatedResourceDeployments)stamped.Value).Placements;
 
                 var retainedSnapshots = snapshots.Where(item =>
                     item.DeploymentId != current.DeploymentId).ToArray();

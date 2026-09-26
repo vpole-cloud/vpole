@@ -72,7 +72,7 @@ internal sealed class MongoFinalizeResourceGroupDeletion(
                 isolationScopeId,
                 transaction.Session,
                 ct);
-            if (deploymentGuard is Err<IsolationScopeHasUnfinishedDeployments>)
+            if (deploymentGuard is IsolationScopeHasUnfinishedDeployments)
                 return transaction.Commit(Unit.Value);
 
             var fence = await resourceGroups.UpdateOneAsync(

@@ -4,7 +4,6 @@ using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Requests;
 
@@ -15,7 +14,7 @@ internal sealed class MongoRequestResourceDeploymentApply(
     FenceResolvedComputeProfiles fenceResolvedComputeProfiles,
     TimeProvider timeProvider)
 {
-    public async Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>> InvokeAsync(
+    public async Task<ResourceDeploymentMutationOutcome> InvokeAsync(
         ResourceDeploymentMutationRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -30,18 +29,19 @@ internal sealed class MongoRequestResourceDeploymentApply(
             request,
             session,
             cancellationToken);
-        if (!loaded.TryGetValue(out var current, out var loadFailure))
-            return new Err<ResourceDeploymentMutationError>(loadFailure);
+        if (loaded is ResourceDeploymentMutationError loadFailure)
+            return loadFailure;
+        var current = (ResourceDeployment)loaded.Value;
         var computeExpectation = ResourceDeploymentMutationSupport.EnsureExpectedCompute(
             request.ResourceId,
             request.ExpectedCompute,
             current);
         if (computeExpectation is not null)
-            return new Err<ResourceDeploymentMutationError>(computeExpectation.Value);
+            return computeExpectation.Value;
         if (current.DesiredOperation == ResourceDeploymentOperation.Delete ||
             current.State is DeletedResourceDeploymentState)
         {
-            return ResourceDeploymentMutationSupport.Error<PlacementSummaryDto>(
+            return new ResourceDeploymentMutationError(
                 new ResourceDeploymentPendingDeletion(request.ResourceId));
         }
 
@@ -60,7 +60,7 @@ internal sealed class MongoRequestResourceDeploymentApply(
                 current.ResolvedPlacement.KubernetesNamespace,
                 StringComparison.Ordinal))
         {
-            return ResourceDeploymentMutationSupport.Error<PlacementSummaryDto>(
+            return new ResourceDeploymentMutationError(
                 new ResourceDeploymentPlacementUnavailable(request.ResourceId));
         }
 
@@ -72,7 +72,7 @@ internal sealed class MongoRequestResourceDeploymentApply(
                     current.ResolvedPlacement.DeploymentTargetId,
                     StringComparison.Ordinal))
             {
-                return ResourceDeploymentMutationSupport.Error<PlacementSummaryDto>(
+                return new ResourceDeploymentMutationError(
                     new ResourceDeploymentReplacementTargetMismatch(request.ResourceId));
             }
 
@@ -87,7 +87,7 @@ internal sealed class MongoRequestResourceDeploymentApply(
                 cancellationToken);
             if (computeFence is ComputeProfileResolutionFenceRejected)
             {
-                return ResourceDeploymentMutationSupport.Error<PlacementSummaryDto>(
+                return new ResourceDeploymentMutationError(
                     new ResourceDeploymentComputeConfigurationChanged(
                         [request.ReplacementCompute.ComputeProfileId]));
             }

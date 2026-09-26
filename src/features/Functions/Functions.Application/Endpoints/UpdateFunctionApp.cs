@@ -224,8 +224,9 @@ public sealed class UpdateFunctionAppHandler(
                 ResourceRevision: candidate.RevisionNumber),
             transaction.Session,
             cancellationToken);
-        if (!deploymentResult.TryGetValue(out var placement, out var deploymentError))
+        if (deploymentResult is ResourceDeploymentMutationError deploymentError)
             return transaction.Abort(new UpdateFunctionAppError(deploymentError));
+        var placement = (PlacementSummaryDto)deploymentResult.Value;
 
         return transaction.Commit(new UpdateFunctionAppResponse(
             current.Id,

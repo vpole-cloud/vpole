@@ -8,8 +8,8 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 
 namespace Pole.Features.ResourceDeployments.Application.Endpoints;
@@ -33,7 +33,7 @@ public union RetryResourceDeploymentOutcome(
 /// Retries one deployment inside a caller-owned transaction so the state
 /// mutation and reconciliation outbox write commit atomically.
 /// </summary>
-public delegate Task<Result<ResourceDeploymentDto, RetryResourceDeploymentError>>
+public delegate Task<RetryResourceDeploymentOutcome>
     RetryResourceDeployment(
         string tenantId,
         string deploymentId,
@@ -64,9 +64,11 @@ public sealed class RetryResourceDeploymentHandler(
                     request.DeploymentId,
                     transaction.Session,
                     ct);
-                return result.TryGetValue(out var deployment, out var error)
-                    ? transaction.Commit(deployment)
-                    : Abort(transaction, error);
+                return result switch
+                {
+                    ResourceDeploymentDto deployment => transaction.Commit(deployment),
+                    RetryResourceDeploymentError error => Abort(transaction, error)
+                };
             },
             cancellationToken);
 
@@ -94,7 +96,6 @@ public static class RetryResourceDeploymentEndpoint
     {
         app.MapPost("/{DeploymentId}/retry", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] RetryResourceDeploymentRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -105,7 +106,7 @@ public static class RetryResourceDeploymentEndpoint
                         ResourceDeploymentDto deployment =>
                             Results.Accepted(value: deployment),
                         RetryResourceDeploymentError error =>
-                            httpProblems.Map(error).ToHttpResult()
+                            ResourceDeploymentHttpMappings.MapRetryError(error)
                     });
             })
             .WithName("RetryResourceDeployment")

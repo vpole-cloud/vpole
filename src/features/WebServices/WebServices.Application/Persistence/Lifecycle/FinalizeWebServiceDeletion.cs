@@ -90,9 +90,9 @@ internal sealed class MongoFinalizeWebServiceDeletion(
                 webServiceId,
                 transaction.Session,
                 ct);
-            if (purge is Err<ResourceDeploymentFinalizationConflict> conflict)
+            if (purge is ResourceDeploymentFinalizationConflict conflict)
             {
-                return transaction.Abort(new WebServiceFinalizationError(conflict.Value));
+                return transaction.Abort(new WebServiceFinalizationError(conflict));
             }
             await storeOutboxWrites(
                 transaction.Session,

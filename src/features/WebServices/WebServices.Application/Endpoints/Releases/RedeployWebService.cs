@@ -108,9 +108,10 @@ public sealed class RedeployWebServiceHandler(
                         WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
                 transaction.Session,
                 ct);
-            if (!deploymentsResult.TryGetValue(out var updatedDeployments, out var deploymentsFailure))
+            if (deploymentsResult is ResourceDeploymentMutationError deploymentsFailure)
                 return transaction.Abort(Error(
                     new RedeployWebServiceError(deploymentsFailure)));
+            var updatedDeployments = ((MutatedResourceDeployments)deploymentsResult.Value).Placements;
 
             var persisted = await persistUpdatedWebService(
                 transaction.Session,

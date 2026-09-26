@@ -115,7 +115,7 @@ module private UpdatePostgresClusterPasswordWorkflow =
                         cluster.Id,
                         cancellationToken)
 
-                match TypedResultInterop.toResult currentComputeResult with
+                match TypedResultInterop.currentResourceDeploymentCompute currentComputeResult with
                 | Error error ->
                     return
                         Completed(
@@ -188,7 +188,7 @@ module private UpdatePostgresClusterPasswordWorkflow =
                                 transaction.Session,
                                 ct)
 
-                        match TypedResultInterop.toResult deploymentResult with
+                        match TypedResultInterop.resourceDeploymentMutation deploymentResult with
                         | Error error ->
                             return
                                 transaction.Abort(

@@ -2,7 +2,6 @@ using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Reconciliation;
 
@@ -11,7 +10,7 @@ internal sealed class MongoRetryExactResourceDeployment(
     StoreOutboxWrites storeOutboxWrites,
     TimeProvider timeProvider)
 {
-    public async Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>> InvokeAsync(
+    public async Task<ResourceDeploymentMutationOutcome> InvokeAsync(
         ResourceDeploymentExactRetryRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -31,14 +30,14 @@ internal sealed class MongoRetryExactResourceDeployment(
             .FirstOrDefaultAsync(cancellationToken);
         if (current is null)
         {
-            return ResourceDeploymentMutationSupport.Error<PlacementSummaryDto>(
+            return new ResourceDeploymentMutationError(
                 new ResourceDeploymentMutationNotFound(
                     request.ResourceId,
                     request.ResourceDeploymentId));
         }
         if (current.Revision != request.ExpectedDeploymentRevision)
         {
-            return ResourceDeploymentMutationSupport.Error<PlacementSummaryDto>(
+            return new ResourceDeploymentMutationError(
                 new ResourceDeploymentChanged(request.ResourceId, request.ResourceDeploymentId));
         }
         if (current.State is not FailedResourceDeploymentState { Retryable: true } failed ||
@@ -46,7 +45,7 @@ internal sealed class MongoRetryExactResourceDeployment(
                 request.ExpectedOperation,
                 failed.Operation))
         {
-            return ResourceDeploymentMutationSupport.Error<PlacementSummaryDto>(
+            return new ResourceDeploymentMutationError(
                 new ResourceDeploymentRetryUnavailable(
                     request.ResourceId,
                     request.ResourceDeploymentId));
@@ -60,7 +59,7 @@ internal sealed class MongoRetryExactResourceDeployment(
             cancellationToken: cancellationToken);
         if (replacement.ModifiedCount != 1)
         {
-            return ResourceDeploymentMutationSupport.Error<PlacementSummaryDto>(
+            return new ResourceDeploymentMutationError(
                 new ResourceDeploymentChanged(
                     request.ResourceId,
                     request.ResourceDeploymentId));
@@ -70,6 +69,6 @@ internal sealed class MongoRetryExactResourceDeployment(
             session,
             [retried.ToCurrentRequestWrite()],
             cancellationToken);
-        return new Ok<PlacementSummaryDto>(retried.ToPlacementSummaryDto());
+        return retried.ToPlacementSummaryDto();
     }
 }

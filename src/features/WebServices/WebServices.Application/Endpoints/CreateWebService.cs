@@ -335,8 +335,9 @@ public sealed class CreateWebServiceHandler(
             new CreateResourceDeploymentSetRequest(deploymentRequests),
             transaction.Session,
             cancellationToken);
-        if (!deploymentsResult.TryGetValue(out var deployments, out var deploymentsError))
+        if (deploymentsResult is CreateResourceDeploymentError deploymentsError)
             return Abort(transaction, new CreateWebServiceError(deploymentsError));
+        var deployments = ((CreatedResourceDeployments)deploymentsResult.Value).Placements;
 
         var eventCore = EventCore.Create(webService.TenantId);
         var createdEvent = webService.ToCreateEvent(

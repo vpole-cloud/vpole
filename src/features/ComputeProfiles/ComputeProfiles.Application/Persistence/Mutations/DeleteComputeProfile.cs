@@ -55,7 +55,7 @@ internal sealed class MongoDeleteComputeProfile(
                 computeProfileId,
                 transaction.Session,
                 ct);
-            if (!unreferenced.TryGetValue(out _, out var referenceError))
+            if (unreferenced is ComputeProfileReferencedByResourceDeployment referenceError)
             {
                 return transaction.Abort(referenceError);
             }

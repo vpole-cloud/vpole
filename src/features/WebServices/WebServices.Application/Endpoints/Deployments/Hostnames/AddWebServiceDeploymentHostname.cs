@@ -173,8 +173,9 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
                     snapshots.Select(binding => binding.Hostname))),
             transaction.Session,
             cancellationToken);
-        if (!applied.TryGetValue(out var changed, out var failure))
+        if (applied is ResourceDeploymentMutationError failure)
             return Abort(transaction, new WebServiceDeploymentHostnameError(failure));
+        var changed = (PlacementSummaryDto)applied.Value;
 
         var advanced = await advanceResourceDeploymentRevision(
             new ResourceDeploymentResourceRevisionRequest(
@@ -184,8 +185,9 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
                 updated.ActiveRevision),
             transaction.Session,
             cancellationToken);
-        if (!advanced.TryGetValue(out var deployments, out var revisionError))
+        if (advanced is AdvanceResourceDeploymentRevisionError revisionError)
             return Abort(transaction, new WebServiceDeploymentHostnameError(revisionError));
+        var deployments = ((MutatedResourceDeployments)advanced.Value).Placements;
 
         var persisted = await persistWebService(
             transaction.Session,

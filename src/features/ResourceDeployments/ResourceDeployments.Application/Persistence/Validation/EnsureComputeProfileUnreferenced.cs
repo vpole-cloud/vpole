@@ -1,14 +1,13 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Validation;
 
 internal sealed class MongoEnsureComputeProfileUnreferenced(
     IMongoCollection<ResourceDeployment> resourceDeployments)
 {
-    public async Task<Result<Unit, ComputeProfileReferencedByResourceDeployment>> InvokeAsync(
+    public async Task<EnsureComputeProfileUnreferencedOutcome> InvokeAsync(
         string computeProfileId,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -25,8 +24,7 @@ internal sealed class MongoEnsureComputeProfileUnreferenced(
             .Limit(1)
             .AnyAsync(cancellationToken);
         return referenced
-            ? new Err<ComputeProfileReferencedByResourceDeployment>(
-                new ComputeProfileReferencedByResourceDeployment(computeProfileId))
-            : new Ok<Unit>(Unit.Value);
+            ? new ComputeProfileReferencedByResourceDeployment(computeProfileId)
+            : new ComputeProfileUnreferenced();
     }
 }

@@ -284,7 +284,7 @@ module private CreatePostgresClusterWorkflow =
                                 transaction.Session,
                                 ct)
 
-                        match TypedResultInterop.toResult deploymentResult with
+                        match TypedResultInterop.createResourceDeployment deploymentResult with
                         | Error error ->
                             return
                                 transaction.Abort(

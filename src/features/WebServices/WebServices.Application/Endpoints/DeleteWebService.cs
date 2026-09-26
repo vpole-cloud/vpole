@@ -132,13 +132,12 @@ public sealed class DeleteWebServiceHandler(
                             deployment.Compute.Profile)).ToArray()),
                     transaction.Session,
                     transactionCancellationToken);
-                if (!deploymentResult.TryGetValue(
-                        out var updatedDeployments,
-                        out var deploymentError))
+                if (deploymentResult is ResourceDeploymentMutationError deploymentError)
                 {
                     return transaction.Abort(
                         Error(new DeleteWebServiceError(deploymentError)));
                 }
+                var updatedDeployments = ((MutatedResourceDeployments)deploymentResult.Value).Placements;
 
                 return transaction.Commit(new DeleteWebServiceOutcome(
                     new DeleteWebServiceResponse(

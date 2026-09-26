@@ -65,7 +65,7 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
                     cancellationToken);
             });
 
-        Assert.False(result.TryGetValue(out _, out var error));
+        var error = Assert.IsType<ResourceDeploymentFinalizationConflict>(result.Value);
         Assert.Equal(ResourceId, error.ResourceId);
         Assert.Equal(
             2,
@@ -107,7 +107,7 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
                     cancellationToken);
             });
 
-        Assert.True(result.TryGetValue(out _, out _));
+        Assert.IsType<ResourceDeploymentsPurged>(result.Value);
         Assert.Equal(
             0,
             await fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
@@ -150,7 +150,7 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
                     cancellationToken);
             });
 
-        Assert.True(result.TryGetValue(out _, out _));
+        Assert.IsType<ResourceDeploymentsPurged>(result.Value);
         Assert.Equal(
             1,
             await fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
@@ -161,12 +161,12 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
         Assert.IsNotType<DeletedResourceDeploymentState>(remaining.State);
     }
 
-    private async Task<Result<Unit, ResourceDeploymentFinalizationConflict>>
+    private async Task<PurgeResourceDeploymentsOutcome>
         RunTypedTransactionAsync(
             Func<
                 IClientSessionHandle,
                 CancellationToken,
-                Task<Result<Unit, ResourceDeploymentFinalizationConflict>>> operation)
+                Task<PurgeResourceDeploymentsOutcome>> operation)
     {
         using var session = await fixture.DbContext.Client.StartSessionAsync();
         return await session.WithTransactionAsync(operation);

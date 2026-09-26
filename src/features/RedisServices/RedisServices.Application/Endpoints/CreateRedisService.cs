@@ -180,12 +180,11 @@ public sealed class CreateRedisServiceHandler(
                         ResourcePlacementCapability.SingleTarget),
                     transaction.Session,
                     transactionCancellationToken);
-                if (!deploymentResult.TryGetValue(
-                        out var deployment,
-                        out var deploymentError))
+                if (deploymentResult is CreateResourceDeploymentError deploymentError)
                 {
                     return transaction.Abort(deploymentError);
                 }
+                var deployment = (PlacementSummaryDto)deploymentResult.Value;
 
                 return transaction.Commit(new CreateRedisServiceOutcome(
                     new CreateRedisServiceResponse(newRedis.Id, deployment)));

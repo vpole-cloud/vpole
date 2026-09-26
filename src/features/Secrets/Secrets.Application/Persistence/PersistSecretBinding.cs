@@ -69,7 +69,7 @@ internal sealed class MongoPersistSecretBinding(
                     binding.Selection is AllSecretDeployments,
                     binding.Selection is SelectedSecretDeployments selected ? selected.DeploymentIds.ToArray() : [],
                     tx.Session,
-                    token) is Err<ResourceDeploymentReferenceUnavailable>)
+                    token) is ResourceDeploymentReferenceUnavailable)
                 return tx.Abort(new SecretReferenceRejected());
 
             var bound = current.Bind(binding, clock.GetUtcNow().UtcDateTime);

@@ -1,13 +1,12 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Creation;
 
 internal sealed class MongoCreateResourceDeployment(
     CreateResourceDeploymentSet createResourceDeploymentSet)
 {
-    public async Task<Result<PlacementSummaryDto, CreateResourceDeploymentError>> InvokeAsync(
+    public async Task<CreateResourceDeploymentOutcome> InvokeAsync(
         CreateResourceDeploymentRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -17,8 +16,10 @@ internal sealed class MongoCreateResourceDeployment(
             new CreateResourceDeploymentSetRequest([request]),
             session,
             cancellationToken);
-        return result.TryGetValue(out var deployments, out var error)
-            ? new Ok<PlacementSummaryDto>(deployments.Single())
-            : new Err<CreateResourceDeploymentError>(error);
+        return result switch
+        {
+            CreatedResourceDeployments created => created.Placements.Single(),
+            CreateResourceDeploymentError error => error
+        };
     }
 }

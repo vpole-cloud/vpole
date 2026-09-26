@@ -300,19 +300,21 @@ public sealed class AddWebServiceDeploymentHandler(
                 deploymentId),
             transaction.Session,
             cancellationToken);
-        if (!createdResult.TryGetValue(out var created, out var createdError))
+        if (createdResult is CreateResourceDeploymentError createdError)
             return Abort(
                 transaction,
                 new AddWebServiceDeploymentError(createdError));
+        var created = ((CreatedResourceDeployments)createdResult.Value).Placements;
 
         var advancedResult = await advanceResourceDeploymentRevision(
             CreateResourceRevisionRequest(updated),
             transaction.Session,
             cancellationToken);
-        if (!advancedResult.TryGetValue(out var deployments, out var advancedError))
+        if (advancedResult is AdvanceResourceDeploymentRevisionError advancedError)
             return Abort(
                 transaction,
                 new AddWebServiceDeploymentError(advancedError));
+        var deployments = ((MutatedResourceDeployments)advancedResult.Value).Placements;
 
         var persisted = await persistUpdatedWebService(
             transaction.Session,

@@ -105,9 +105,9 @@ internal sealed class MongoCompleteWebServiceDeployment(
                     var purge = await purgeExactDeletedResourceDeployment(
                         tenantId, WebServiceResourceDeployment.ResourceType, webServiceId,
                         completion.ResourceDeploymentId, transaction.Session, ct);
-                    if (purge is Err<ResourceDeploymentFinalizationConflict> conflict)
+                    if (purge is ResourceDeploymentFinalizationConflict conflict)
                     {
-                        return transaction.Abort(new WebServiceFinalizationError(conflict.Value));
+                        return transaction.Abort(new WebServiceFinalizationError(conflict));
                     }
                 }
             }
