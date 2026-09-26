@@ -41,6 +41,8 @@
         <Compile Include="Kubernetes\PostgresStatefulSetKubernetesBuilder.fs" />
         <Compile Include="Kubernetes\PostgresClusterKubernetesResourceManager.fs" />
         <Compile Include="Kubernetes\PostgresResourceDeploymentAdapter.fs" />
+        <Compile Include="Endpoints\PostgresEndpointErrors.fs" />
+        <Compile Include="Common\PostgresHttpMappings.fs" />
         <Compile Include="Endpoints\CreatePostgresCluster.fs" />
         <Compile Include="Endpoints\DeletePostgresCluster.fs" />
         <Compile Include="Endpoints\UpdatePostgresCluster.fs" />
@@ -50,7 +52,6 @@
         <Compile Include="Endpoints\GetPostgresClusterById.fs" />
         <Compile Include="Endpoints\GetPostgresClusters.fs" />
         <Compile Include="Endpoints\AllPostgresEndpoints.fs" />
-        <Compile Include="Common\PostgresHttpMappings.fs" />
         <Compile Include="PostgresFeatureRegistration.fs" />
     </ItemGroup>
 
@@ -67,14 +68,20 @@
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
+      <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts.HttpMapping\DeploymentTargets.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
+      <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts.HttpMapping\StorageProfiles.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj" />
+      <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Contracts.HttpMapping\ComputeProfiles.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
+      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts.HttpMapping\ResourceDeployments.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
+      <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts.HttpMapping\ResourceGroups.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\Secrets\Secrets.Contracts\Secrets.Contracts.csproj" />
       <ProjectReference Include="..\..\Search\Search.Contracts\Search.Contracts.csproj" />
       <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
+      <ProjectReference Include="..\..\Quotas\Quotas.Contracts.HttpMapping\Quotas.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\Quotas\Quotas.Primitives\Quotas.Primitives.csproj" />
       <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
       <ProjectReference Include="..\Postgres.Domain\Postgres.Domain.fsproj" />

@@ -42,30 +42,6 @@ type CreatePostgresClusterRequestBody =
 
     override _.ToString() = "CreatePostgresClusterRequestBody([REDACTED])"
 
-type CreatePostgresClusterStateError =
-    | PostgresClusterComputeRuntimeClassUnsupported of deploymentTargetId : string
-
-type CreatePostgresClusterError =
-    | CreateState of CreatePostgresClusterStateError
-    | CreateTarget of DeploymentTargetNewWorkloadAdmissionError
-    | CreateCompute of ComputeProfileResolutionError
-    | CreateStorage of StorageProfileResolutionError
-    | CreateCredential of PostgresCredentialError
-    | CreateDeployment of CreateResourceDeploymentError
-    | CreateRegistration of ResourceRegistrationMutationError
-    | CreateQuota of QuotaExecutionError
-    interface IUnion with
-        member this.Value =
-            match this with
-            | CreateState error -> box error
-            | CreateTarget error -> box error
-            | CreateCompute error -> box error
-            | CreateStorage error -> box error
-            | CreateCredential error -> box error
-            | CreateDeployment error -> box error
-            | CreateRegistration error -> box error
-            | CreateQuota error -> box error
-
 type CreatePostgresClusterOutcome =
     | PostgresClusterCreated of PostgresClusterDto
     | CreatePostgresClusterRejected of CreatePostgresClusterError
@@ -163,7 +139,7 @@ module private CreatePostgresClusterWorkflow =
                         Completed(
                             CreatePostgresClusterRejected(
                                 CreateState(
-                                    PostgresClusterComputeRuntimeClassUnsupported target.Id)))
+                                    CreatePostgresClusterStateError.PostgresClusterComputeRuntimeClassUnsupported target.Id)))
                 | Ok computeProfile ->
                     let requestedStorage =
                         defaultArg request.Body.Storage PostgresCluster.DefaultStorage
@@ -423,7 +399,6 @@ type CreatePostgresCluster =
     static member Handle(
         [<AsParameters>] request : CreatePostgresClusterRequest,
         [<FromServices>] mediator : IMediator,
-        [<FromServices>] httpProblems : IHttpProblemMapper,
         cancellationToken : System.Threading.CancellationToken) =
         task {
             let! result = mediator.Send(request, cancellationToken)
@@ -432,5 +407,5 @@ type CreatePostgresCluster =
                     match outcome with
                     | PostgresClusterCreated value -> Results.Accepted(value = value)
                     | CreatePostgresClusterRejected error ->
-                        httpProblems.Map(error).ToHttpResult())
+                        (PostgresHttpMappings.mapCreateError error).ToHttpResult())
         }

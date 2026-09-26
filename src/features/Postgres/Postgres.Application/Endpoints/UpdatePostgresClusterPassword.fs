@@ -29,24 +29,6 @@ type UpdatePostgresClusterPasswordResponse =
     { Id : string
       Placement : PlacementSummaryDto }
 
-type UpdatePostgresClusterPasswordStateError =
-    | PostgresClusterPasswordNotFound of clusterId : string
-    | PostgresClusterPasswordRotationUnavailable of clusterId : string
-    | PostgresClusterPasswordRotationUnsupported of clusterId : string
-
-type UpdatePostgresClusterPasswordError =
-    | PasswordState of UpdatePostgresClusterPasswordStateError
-    | PasswordCompute of LoadCurrentResourceDeploymentComputeError
-    | PasswordCredential of PostgresCredentialError
-    | PasswordDeployment of ResourceDeploymentMutationError
-    interface IUnion with
-        member this.Value =
-            match this with
-            | PasswordState error -> box error
-            | PasswordCompute error -> box error
-            | PasswordCredential error -> box error
-            | PasswordDeployment error -> box error
-
 type UpdatePostgresClusterPasswordOutcome =
     | PostgresClusterPasswordUpdated of UpdatePostgresClusterPasswordResponse
     | UpdatePostgresClusterPasswordRejected of UpdatePostgresClusterPasswordError
@@ -261,7 +243,6 @@ type UpdatePostgresClusterPassword =
     static member Handle(
         [<AsParameters>] request : UpdatePostgresClusterPasswordRequest,
         [<FromServices>] mediator : IMediator,
-        [<FromServices>] httpProblems : IHttpProblemMapper,
         cancellationToken : System.Threading.CancellationToken) =
         task {
             let! result = mediator.Send(request, cancellationToken)
@@ -270,5 +251,5 @@ type UpdatePostgresClusterPassword =
                     match outcome with
                     | PostgresClusterPasswordUpdated value -> Results.Accepted(value = value)
                     | UpdatePostgresClusterPasswordRejected error ->
-                        httpProblems.Map(error).ToHttpResult())
+                        (PostgresHttpMappings.mapPasswordError error).ToHttpResult())
         }

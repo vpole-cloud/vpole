@@ -51,10 +51,6 @@ type PostgresFeatureRegistration =
             ServiceDescriptor.Singleton<IQuotaProfile, PostgresQuotaProfile>())
         |> ignore
         PostgresPersistenceRegistration.addPostgresPersistence services |> ignore
-        HttpProblemMappingServiceCollectionExtensions.AddHttpProblemMappings(
-            services,
-            PostgresHttpMappings.all)
-        |> ignore
         services.TryAddScoped<RunMongoOutcomeTransaction<UpdatePostgresClusterPasswordOutcome>>(
             Func<IServiceProvider, RunMongoOutcomeTransaction<UpdatePostgresClusterPasswordOutcome>>(
                 fun serviceProvider ->
