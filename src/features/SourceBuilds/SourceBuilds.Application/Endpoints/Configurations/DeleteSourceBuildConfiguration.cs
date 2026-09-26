@@ -5,10 +5,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.SourceBuilds.Application.Common.SourceBuildHttpMappings;
 
 namespace Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
 
@@ -21,7 +22,8 @@ public sealed record SourceBuildConfigurationDeleted(string ConfigurationId);
 
 public union DeleteSourceBuildConfigurationOutcome(
     SourceBuildConfigurationDeleted,
-    DeleteSourceBuildConfigurationError);
+    SourceBuildConfigurationNotFound,
+    SourceBuildConfigurationHasActiveJobs);
 
 public sealed class DeleteSourceBuildConfigurationHandler(
     DeleteSourceBuildConfiguration deleteSourceBuildConfiguration)
@@ -39,8 +41,10 @@ public sealed class DeleteSourceBuildConfigurationHandler(
             cancellationToken);
         return deleted switch
         {
-            Ok<Unit> => new SourceBuildConfigurationDeleted(request.ConfigurationId),
-            Err<DeleteSourceBuildConfigurationError> error => error.Value
+            SourceBuildConfigurationRemovalRecorded =>
+                new SourceBuildConfigurationDeleted(request.ConfigurationId),
+            SourceBuildConfigurationNotFound error => error,
+            SourceBuildConfigurationHasActiveJobs error => error
         };
     }
 }
@@ -59,7 +63,6 @@ public static class DeleteSourceBuildConfigurationEndpoint
     {
         app.MapDelete("/{ConfigurationId}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] DeleteSourceBuildConfigurationRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -67,8 +70,8 @@ public static class DeleteSourceBuildConfigurationEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     SourceBuildConfigurationDeleted => Results.NoContent(),
-                    DeleteSourceBuildConfigurationError error =>
-                        httpProblems.Map(error).ToHttpResult()
+                    SourceBuildConfigurationNotFound error => MapConfigurationNotFound(error),
+                    SourceBuildConfigurationHasActiveJobs error => MapConfigurationHasActiveJobs(error)
                 });
             })
             .WithName("DeleteSourceBuildConfiguration")

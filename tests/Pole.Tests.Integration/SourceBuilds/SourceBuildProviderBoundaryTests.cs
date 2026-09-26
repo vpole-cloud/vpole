@@ -92,16 +92,13 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             repository.Id);
         var snapshot = await finder.InvokeAsync(TestData.TenantId, repository.Id);
 
-        var missing = TypedResultExtensions.TryGetValue(crossTenant);
-        Assert.False(missing.Succeeded);
-        Assert.IsType<SourceRepositoryBuildNotFound>(missing.Error!.Value);
-        var found = TypedResultExtensions.TryGetValue(snapshot);
-        Assert.True(found.Succeeded);
-        Assert.Equal(repository.Id, found.Value!.Id);
-        Assert.Equal(repository.CandidateKey, found.Value.CandidateKey);
-        Assert.Equal(SourceRepositoryBuildPlanKind.DotNet, found.Value.SelectedPlan.Kind);
-        Assert.Equal(plan.Commands, found.Value.SelectedPlan.Commands);
-        Assert.Equal(plan.DockerfilePreview, found.Value.SelectedPlan.Dockerfile);
+        Assert.IsType<SourceRepositoryBuildNotFound>(crossTenant.Value);
+        var found = Assert.IsType<SourceRepositoryBuildSnapshot>(snapshot.Value);
+        Assert.Equal(repository.Id, found.Id);
+        Assert.Equal(repository.CandidateKey, found.CandidateKey);
+        Assert.Equal(SourceRepositoryBuildPlanKind.DotNet, found.SelectedPlan.Kind);
+        Assert.Equal(plan.Commands, found.SelectedPlan.Commands);
+        Assert.Equal(plan.DockerfilePreview, found.SelectedPlan.Dockerfile);
 
         await using var destination = new MemoryStream();
         var crossTenantDownload = await archive.InvokeAsync(
@@ -109,9 +106,8 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             repository.Id,
             "exact-commit",
             destination);
-        var missingDownload = TypedResultExtensions.TryGetValue(crossTenantDownload);
-        Assert.False(missingDownload.Succeeded);
-        Assert.IsType<SourceRepositoryBuildNotFound>(missingDownload.Error!.Value);
+        var missingDownload = Assert.IsType<DownloadSourceRepositoryArchiveError>(crossTenantDownload.Value);
+        Assert.IsType<SourceRepositoryBuildNotFound>(missingDownload.Value);
         Assert.Equal(0, archiveDownloader.DownloadCalls);
 
         var download = await archive.InvokeAsync(
@@ -119,7 +115,7 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             repository.Id,
             "exact-commit",
             destination);
-        Assert.True(TypedResultExtensions.TryGetValue(download).Succeeded);
+        Assert.IsType<SourceRepositoryArchiveDownloaded>(download.Value);
         Assert.Equal(1, archiveDownloader.DownloadCalls);
         Assert.Equal(connection.Id, archiveDownloader.ConnectionId);
         Assert.Equal(repository.ExternalRepositoryId, archiveDownloader.ExternalRepositoryId);

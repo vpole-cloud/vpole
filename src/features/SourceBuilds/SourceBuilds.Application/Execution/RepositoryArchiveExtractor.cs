@@ -1,12 +1,17 @@
 using System.Formats.Tar;
 using System.IO.Compression;
-using Pole.ResultType;
 
 namespace Pole.Features.SourceBuilds.Application.Execution;
 
 public sealed record SourceBuildRepositoryArchiveInvalid(string Message);
 
-public delegate Task<Result<Unit, SourceBuildRepositoryArchiveInvalid>>
+public sealed record SourceBuildRepositoryArchiveExtracted;
+
+public union ExtractRepositoryArchiveOutcome(
+    SourceBuildRepositoryArchiveExtracted,
+    SourceBuildRepositoryArchiveInvalid);
+
+public delegate Task<ExtractRepositoryArchiveOutcome>
     ExtractRepositoryArchive(
         Stream archive,
         string destinationPath,
@@ -16,7 +21,7 @@ public delegate Task<Result<Unit, SourceBuildRepositoryArchiveInvalid>>
 
 public sealed class RepositoryArchiveExtractor
 {
-    public async Task<Result<Unit, SourceBuildRepositoryArchiveInvalid>> InvokeAsync(
+    public async Task<ExtractRepositoryArchiveOutcome> InvokeAsync(
         Stream archive,
         string destinationPath,
         long maxExtractedBytes,
@@ -80,7 +85,7 @@ public sealed class RepositoryArchiveExtractor
 
             return archiveRoot is null
                 ? InvalidArchive("Repository archive is empty.")
-                : new Ok<Unit>(Unit.Value);
+                : new SourceBuildRepositoryArchiveExtracted();
         }
         catch (Exception exception) when (exception is InvalidDataException or OverflowException)
         {
@@ -107,6 +112,6 @@ public sealed class RepositoryArchiveExtractor
     private static StringComparison PathComparison =>
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-    private static Err<SourceBuildRepositoryArchiveInvalid> InvalidArchive(string message) =>
-        new(new SourceBuildRepositoryArchiveInvalid(message));
+    private static ExtractRepositoryArchiveOutcome InvalidArchive(string message) =>
+        new SourceBuildRepositoryArchiveInvalid(message);
 }

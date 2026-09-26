@@ -3,7 +3,6 @@ using Pole.Features.ContainerRegistries.Application.Harbor;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Execution;
-using Pole.ResultType;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json;
 using Pole.Testing;
@@ -95,11 +94,9 @@ public sealed class HarborContractTests(HarborContractFixture fixture)
             provisioned.BuildCredential.Username,
             provisioned.BuildCredential.Secret));
 
-        var build = TypedResultExtensions.TryGetValue(buildResult);
-        if (!build.Succeeded)
-            Assert.Fail(build.Error.ToString());
-        Assert.Equal(target.Reference, build.Value!.Reference);
-        Assert.StartsWith("sha256:", build.Value.Digest, StringComparison.Ordinal);
+        var build = Assert.IsType<BuiltContainerImage>(buildResult.Value);
+        Assert.Equal(target.Reference, build.Reference);
+        Assert.StartsWith("sha256:", build.Digest, StringComparison.Ordinal);
         completed = true;
     }
 

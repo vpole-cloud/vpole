@@ -4,7 +4,6 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
-using Pole.ResultType;
 
 namespace Pole.Features.SourceBuilds.Application.Execution;
 
@@ -37,7 +36,11 @@ public union BuildContainerImageError(
     BuildKitUnavailable,
     BuildKitBuildRejected);
 
-public delegate Task<Result<BuiltContainerImage, BuildContainerImageError>>
+public union BuildContainerImageOutcome(
+    BuiltContainerImage,
+    BuildContainerImageError);
+
+public delegate Task<BuildContainerImageOutcome>
     BuildContainerImage(
         BuildKitBuildRequest request,
         CancellationToken cancellationToken = default);
@@ -47,13 +50,13 @@ public sealed class BuildKitClient(
     BuildKitOptions options,
     ILogger<BuildKitClient> logger)
 {
-    public async Task<Result<BuiltContainerImage, BuildContainerImageError>> InvokeAsync(
+    public async Task<BuildContainerImageOutcome> InvokeAsync(
         BuildKitBuildRequest request,
         CancellationToken cancellationToken = default)
     {
         if (!options.IsConfigured)
         {
-            return new Err<BuildContainerImageError>(new(new BuildKitNotConfigured()));
+            return new BuildContainerImageError(new BuildKitNotConfigured());
         }
 
         var operationRoot = Path.Combine(
@@ -108,12 +111,11 @@ public sealed class BuildKitClient(
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                return new Err<BuildContainerImageError>(
-                    new(new BuildKitTimedOut(options.TimeoutMinutes)));
+                return new BuildContainerImageError(new BuildKitTimedOut(options.TimeoutMinutes));
             }
             catch (Exception exception) when (exception is Win32Exception or IOException)
             {
-                return new Err<BuildContainerImageError>(new(new BuildKitUnavailable()));
+                return new BuildContainerImageError(new BuildKitUnavailable());
             }
 
             if (process.ExitCode != 0)
@@ -123,19 +125,17 @@ public sealed class BuildKitClient(
                     "[buildkit-build-failed] buildctl exited with code {ExitCode}. {Diagnostic}",
                     process.ExitCode,
                     classification);
-                return new Err<BuildContainerImageError>(
-                    new(new BuildKitBuildRejected(classification)));
+                return new BuildContainerImageError(new BuildKitBuildRejected(classification));
             }
 
             var digest = await ReadDigestAsync(metadataPath, cancellationToken);
             if (digest is null)
             {
-                return new Err<BuildContainerImageError>(
-                    new(new BuildKitBuildRejected("BuildKit did not return a valid image digest.")));
+                return new BuildContainerImageError(
+                    new BuildKitBuildRejected("BuildKit did not return a valid image digest."));
             }
 
-            return new Ok<BuiltContainerImage>(
-                new BuiltContainerImage(request.Target.Reference, digest));
+            return new BuiltContainerImage(request.Target.Reference, digest);
         }
         finally
         {

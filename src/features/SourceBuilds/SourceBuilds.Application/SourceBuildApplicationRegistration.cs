@@ -4,9 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
-using Pole.ASP.Helpers;
-using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Execution;
+using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.SourceBuilds.Application.Persistence;
 using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
@@ -29,7 +28,6 @@ public static class SourceBuildApplicationRegistration
         services.Configure<BuildKitOptions>(configuration.GetSection(BuildKitOptions.SectionName));
         services.TryAddSingleton(provider =>
             provider.GetRequiredService<IOptions<BuildKitOptions>>().Value);
-        services.AddHttpProblemMappings(SourceBuildHttpMappings.All);
         services.TryAddSingleton(TimeProvider.System);
 
         services.TryAddSingleton(provider => provider

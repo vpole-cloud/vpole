@@ -44,7 +44,7 @@ public static class WebServicesFeatureRegistration
                 .GetRequiredService<WebServiceSourceBuildDeploymentService>()
                 .DeployAsync);
         services.AddOutcomeTransaction<
-            Result<SourceBuildDeploymentResult, SourceBuildWebServiceDeploymentError>>();
+            DeploySourceBuildWebServiceOutcome>();
         services.TryAddScoped<WebServiceResourceDeploymentAdapter>();
         services.AddSingleton(WebServiceResourceDeploymentAdapterRegistration.Descriptor);
         return services;

@@ -2,15 +2,17 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 
-public union DeleteSourceBuildConfigurationError(
+public sealed record SourceBuildConfigurationRemovalRecorded;
+
+public union PersistDeletedSourceBuildConfigurationOutcome(
+    SourceBuildConfigurationRemovalRecorded,
     SourceBuildConfigurationNotFound,
     SourceBuildConfigurationHasActiveJobs);
 
-public delegate Task<Result<Unit, DeleteSourceBuildConfigurationError>>
+public delegate Task<PersistDeletedSourceBuildConfigurationOutcome>
     DeleteSourceBuildConfiguration(
         string tenantId,
         string configurationId,
@@ -21,11 +23,11 @@ internal sealed class MongoDeleteSourceBuildConfiguration(
     IMongoCollection<SourceBuildJob> jobs,
     MongoRunTransaction transactions)
 {
-    public Task<Result<Unit, DeleteSourceBuildConfigurationError>> InvokeAsync(
+    public Task<PersistDeletedSourceBuildConfigurationOutcome> InvokeAsync(
         string tenantId,
         string configurationId,
         CancellationToken cancellationToken = default) =>
-        transactions.InvokeOutcomeAsync<Result<Unit, DeleteSourceBuildConfigurationError>>(async (transaction, ct) =>
+        transactions.InvokeOutcomeAsync<PersistDeletedSourceBuildConfigurationOutcome>(async (transaction, ct) =>
         {
             var hasActiveJobs = await jobs
                 .Find(transaction.Session,
@@ -33,17 +35,20 @@ internal sealed class MongoDeleteSourceBuildConfiguration(
                 .AnyAsync(ct);
             if (hasActiveJobs)
             {
-                return transaction.Abort(new Err<DeleteSourceBuildConfigurationError>(
-                    new(new SourceBuildConfigurationHasActiveJobs(configurationId))));
+                PersistDeletedSourceBuildConfigurationOutcome rejected =
+                    new SourceBuildConfigurationHasActiveJobs(configurationId);
+                return transaction.Abort(rejected);
             }
 
             var deleted = await configurations.DeleteOneAsync(
                 transaction.Session,
                 SourceBuildConfigurationFilters.ById(tenantId, configurationId),
                 cancellationToken: ct);
+            PersistDeletedSourceBuildConfigurationOutcome outcome = deleted.DeletedCount == 1
+                ? new SourceBuildConfigurationRemovalRecorded()
+                : new SourceBuildConfigurationNotFound(configurationId);
             return deleted.DeletedCount == 1
-                ? transaction.Commit(new Ok<Unit>(Unit.Value))
-                : transaction.Abort(new Err<DeleteSourceBuildConfigurationError>(
-                    new(new SourceBuildConfigurationNotFound(configurationId))));
+                ? transaction.Commit(outcome)
+                : transaction.Abort(outcome);
         }, cancellationToken);
 }

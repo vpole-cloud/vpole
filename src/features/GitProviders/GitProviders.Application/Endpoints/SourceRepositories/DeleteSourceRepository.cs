@@ -49,10 +49,10 @@ public sealed class DeleteSourceRepositoryHandler(
             cancellationToken);
         return configurationGuard switch
         {
-            Err<SourceBuildSourceRepositoryConfigurationExists> =>
+            SourceBuildSourceRepositoryConfigurationExists =>
                 new DeleteSourceRepositoryError(
                     new SourceRepositoryHasBuildConfiguration(request.Id)),
-            Ok<Unit> => await DeleteAsync(
+            NoSourceRepositoryBuildConfiguration => await DeleteAsync(
                 request,
                 deleteSourceRepository,
                 cancellationToken)

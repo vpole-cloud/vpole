@@ -54,14 +54,13 @@ public sealed class SourceBuildJobExecutor(
                 job.SourceRepositoryId,
                 job.CommitSha,
                 job.Id);
-            var workspace = TypedResultExtensions.TryGetValue(workspaceResult);
-            if (!workspace.Succeeded)
+            if (workspaceResult is CreateSourceBuildWorkspaceError workspaceError)
             {
-                await FailAsync(job, SourceBuildPhase.Cloning, workspace.Error!);
+                await FailAsync(job, SourceBuildPhase.Cloning, workspaceError);
                 return;
             }
 
-            var workspaceValue = workspace.Value!;
+            var workspaceValue = (SourceBuildWorkspace)workspaceResult.Value;
             await using (workspaceValue)
             {
                 var analyzing = job.StartAnalyzing(timeProvider.GetUtcNow().UtcDateTime);
@@ -121,15 +120,15 @@ public sealed class SourceBuildJobExecutor(
                         registryAccess.Target,
                         registryAccess.Username,
                         registryAccess.Secret));
-                var image = TypedResultExtensions.TryGetValue(imageResult);
-                if (!image.Succeeded)
+                if (imageResult is BuildContainerImageError imageError)
                 {
-                    await FailAsync(job, SourceBuildPhase.Building, image.Error!);
+                    await FailAsync(job, SourceBuildPhase.Building, imageError);
                     return;
                 }
+                var image = (BuiltContainerImage)imageResult.Value;
 
                 var pushing = job.StartPushing(
-                    image.Value!.Reference,
+                    image.Reference,
                     timeProvider.GetUtcNow().UtcDateTime);
                 if (!await tryPersistSourceBuildJob(job, pushing))
                     return;
@@ -149,7 +148,7 @@ public sealed class SourceBuildJobExecutor(
 
                 if (!string.Equals(
                         artifact.Digest,
-                        image.Value.Digest,
+                        image.Digest,
                         StringComparison.OrdinalIgnoreCase))
                 {
                     await FailAsync(
@@ -176,16 +175,16 @@ public sealed class SourceBuildJobExecutor(
                             registryAccess.Target.Tag,
                             artifact.Digest,
                             registryAccess.KubernetesPullSecretName)));
-                var deployment = TypedResultExtensions.TryGetValue(deploymentResult);
-                if (!deployment.Succeeded)
+                if (deploymentResult is SourceBuildWebServiceDeploymentError deploymentError)
                 {
-                    await FailAsync(job, SourceBuildPhase.Deploying, deployment.Error!);
+                    await FailAsync(job, SourceBuildPhase.Deploying, deploymentError);
                     return;
                 }
+                var deployment = (SourceBuildDeploymentResult)deploymentResult.Value;
 
                 var deploying = job.StartDeploying(
                     artifact.Digest,
-                    deployment.Value!.ReleaseId,
+                    deployment.ReleaseId,
                     timeProvider.GetUtcNow().UtcDateTime);
                 await tryPersistSourceBuildJob(job, deploying);
             }

@@ -9,8 +9,8 @@ using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.SourceBuilds.Application.Common.SourceBuildHttpMappings;
 
 namespace Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
 
@@ -22,14 +22,11 @@ public sealed record UpdateSourceBuildConfigurationRequest(
 
 public sealed record UpdateSourceBuildConfigurationBody(SourceBuildRecipeDto Recipe);
 
-public union UpdateSourceBuildConfigurationError(
+public union UpdateSourceBuildConfigurationOutcome(
+    SourceBuildConfigurationDto,
     SourceBuildConfigurationNotFound,
     SourceBuildConfigurationRecipeCandidateChanged,
     SourceBuildConfigurationUpdateConflict);
-
-public union UpdateSourceBuildConfigurationOutcome(
-    SourceBuildConfigurationDto,
-    UpdateSourceBuildConfigurationError);
 
 public sealed class UpdateSourceBuildConfigurationHandler(
     LoadSourceBuildConfiguration loadSourceBuildConfiguration,
@@ -49,16 +46,14 @@ public sealed class UpdateSourceBuildConfigurationHandler(
             cancellationToken);
         if (existing is null)
         {
-            return new UpdateSourceBuildConfigurationError(
-                new SourceBuildConfigurationNotFound(request.ConfigurationId));
+            return new SourceBuildConfigurationNotFound(request.ConfigurationId);
         }
         if (!string.Equals(
                 existing.Recipe.CandidateKey,
                 request.Body.Recipe.CandidateKey,
                 StringComparison.Ordinal))
         {
-            return new UpdateSourceBuildConfigurationError(
-                new SourceBuildConfigurationRecipeCandidateChanged(existing.Id));
+            return new SourceBuildConfigurationRecipeCandidateChanged(existing.Id);
         }
 
         var updated = await updateSourceBuildConfiguration(
@@ -68,14 +63,9 @@ public sealed class UpdateSourceBuildConfigurationHandler(
             cancellationToken);
         return updated switch
         {
-            Ok<SourceBuildConfiguration> success => success.Value.ToDto(),
-            Err<PersistUpdatedSourceBuildConfigurationError> error => error.Value switch
-            {
-                SourceBuildConfigurationNotFound notFound =>
-                    new UpdateSourceBuildConfigurationError(notFound),
-                SourceBuildConfigurationUpdateConflict conflict =>
-                    new UpdateSourceBuildConfigurationError(conflict)
-            }
+            SourceBuildConfiguration success => success.ToDto(),
+            SourceBuildConfigurationNotFound notFound => notFound,
+            SourceBuildConfigurationUpdateConflict conflict => conflict
         };
     }
 }
@@ -108,7 +98,6 @@ public static class UpdateSourceBuildConfigurationEndpoint
     {
         app.MapPut("/{ConfigurationId}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] UpdateSourceBuildConfigurationRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -116,8 +105,9 @@ public static class UpdateSourceBuildConfigurationEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     SourceBuildConfigurationDto configuration => Results.Ok(configuration),
-                    UpdateSourceBuildConfigurationError error =>
-                        httpProblems.Map(error).ToHttpResult()
+                    SourceBuildConfigurationNotFound error => MapConfigurationNotFound(error),
+                    SourceBuildConfigurationRecipeCandidateChanged error => MapRecipeCandidateChanged(error),
+                    SourceBuildConfigurationUpdateConflict error => MapConfigurationUpdateConflict(error)
                 });
             })
             .WithName("UpdateSourceBuildConfiguration")

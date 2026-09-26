@@ -117,7 +117,7 @@ public sealed class DeleteWebServiceHandler(
                     request.Id,
                     transaction.Session,
                     transactionCancellationToken);
-                if (!buildGuard.TryGetValue(out _, out var buildError))
+                if (buildGuard is SourceBuildWebServiceHasActiveJobs buildError)
                     return transaction.Abort(Error(new DeleteWebServiceError(buildError)));
 
                 var deploymentResult = await requestResourceDeploymentSetDeletion(

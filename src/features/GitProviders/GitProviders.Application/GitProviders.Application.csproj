@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\GitProviders.Contracts\GitProviders.Contracts.csproj" />
+    <ProjectReference Include="..\GitProviders.Contracts.HttpMapping\GitProviders.Contracts.HttpMapping.csproj" />
     <ProjectReference Include="..\GitProviders.Domain\GitProviders.Domain.csproj" />
     <ProjectReference Include="..\..\SourceBuilds\SourceBuilds.Contracts\SourceBuilds.Contracts.csproj" />
     <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />

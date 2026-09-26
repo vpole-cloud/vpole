@@ -1,15 +1,15 @@
 using MongoDB.Driver;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 
-public union PersistUpdatedSourceBuildConfigurationError(
+public union PersistUpdatedSourceBuildConfigurationOutcome(
+    SourceBuildConfiguration,
     SourceBuildConfigurationNotFound,
     SourceBuildConfigurationUpdateConflict);
 
-public delegate Task<Result<SourceBuildConfiguration, PersistUpdatedSourceBuildConfigurationError>>
+public delegate Task<PersistUpdatedSourceBuildConfigurationOutcome>
     UpdateSourceBuildConfiguration(
         SourceBuildConfiguration current,
         SourceBuildRecipe recipe,
@@ -19,7 +19,7 @@ public delegate Task<Result<SourceBuildConfiguration, PersistUpdatedSourceBuildC
 internal sealed class MongoUpdateSourceBuildConfiguration(
     IMongoCollection<SourceBuildConfiguration> configurations)
 {
-    public async Task<Result<SourceBuildConfiguration, PersistUpdatedSourceBuildConfigurationError>>
+    public async Task<PersistUpdatedSourceBuildConfigurationOutcome>
         InvokeAsync(
             SourceBuildConfiguration current,
             SourceBuildRecipe recipe,
@@ -37,15 +37,13 @@ internal sealed class MongoUpdateSourceBuildConfiguration(
             },
             cancellationToken);
         if (updated is not null)
-            return new Ok<SourceBuildConfiguration>(updated);
+            return updated;
 
         var exists = await configurations
             .Find(SourceBuildConfigurationFilters.ById(current.TenantId, current.Id))
             .AnyAsync(cancellationToken);
         return exists
-            ? new Err<PersistUpdatedSourceBuildConfigurationError>(
-                new(new SourceBuildConfigurationUpdateConflict(current.Id)))
-            : new Err<PersistUpdatedSourceBuildConfigurationError>(
-                new(new SourceBuildConfigurationNotFound(current.Id)));
+            ? new SourceBuildConfigurationUpdateConflict(current.Id)
+            : new SourceBuildConfigurationNotFound(current.Id);
     }
 }

@@ -15,14 +15,13 @@ public sealed class WebServiceSourceBuildDeploymentService(
     LoadWebServiceById loadWebServiceById,
     PersistUpdatedWebServiceOutcome persistUpdatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
-    RunMongoOutcomeTransaction<
-        Result<SourceBuildDeploymentResult, SourceBuildWebServiceDeploymentError>>
+    RunMongoOutcomeTransaction<DeploySourceBuildWebServiceOutcome>
         runMongoTransaction,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
     RequestResourceDeploymentSetApply requestResourceDeploymentSetApply,
     TimeProvider timeProvider)
 {
-    public async Task<Result<SourceBuildDeploymentResult, SourceBuildWebServiceDeploymentError>>
+    public async Task<DeploySourceBuildWebServiceOutcome>
         DeployAsync(
         SourceBuildDeploymentRequest request,
         CancellationToken cancellationToken = default)
@@ -33,12 +32,12 @@ public sealed class WebServiceSourceBuildDeploymentService(
             cancellationToken);
         if (webService is null)
         {
-            return new Err<SourceBuildWebServiceDeploymentError>(
+            return new SourceBuildWebServiceDeploymentError(
                 new SourceBuildWebServiceNotFound(request.WebServiceId));
         }
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
         {
-            return new Err<SourceBuildWebServiceDeploymentError>(
+            return new SourceBuildWebServiceDeploymentError(
                 new SourceBuildWebServiceDeleting(request.WebServiceId));
         }
 
@@ -52,7 +51,7 @@ public sealed class WebServiceSourceBuildDeploymentService(
             .ToArray();
         if (deployments.Length == 0)
         {
-            return new Err<SourceBuildWebServiceDeploymentError>(
+            return new SourceBuildWebServiceDeploymentError(
                 new SourceBuildWebServiceHasNoActiveDeployments(request.WebServiceId));
         }
 
@@ -81,9 +80,9 @@ public sealed class WebServiceSourceBuildDeploymentService(
                 ct);
             if (!deploymentResult.TryGetValue(out var updatedDeployments, out var deploymentFailure))
             {
-                return transaction.Abort(
-                    new Err<SourceBuildWebServiceDeploymentError>(
-                        ToDeploymentError(request.WebServiceId, deploymentFailure)));
+                DeploySourceBuildWebServiceOutcome rejected = new SourceBuildWebServiceDeploymentError(
+                    ToDeploymentError(request.WebServiceId, deploymentFailure));
+                return transaction.Abort(rejected);
             }
 
             var updatedEvent = updatedWebService.ToUpdatedEvent(
@@ -96,10 +95,9 @@ public sealed class WebServiceSourceBuildDeploymentService(
                 ct);
             if (update is Err<WebServiceUpdateConflict> updateConflict)
             {
-                return transaction.Abort(
-                    new Err<SourceBuildWebServiceDeploymentError>(
-                        new SourceBuildWebServiceUpdateConflict(
-                            updateConflict.Value.WebServiceId)));
+                DeploySourceBuildWebServiceOutcome rejected = new SourceBuildWebServiceDeploymentError(
+                    new SourceBuildWebServiceUpdateConflict(updateConflict.Value.WebServiceId));
+                return transaction.Abort(rejected);
             }
 
             var release = WebServiceReleaseFactory.CreatePending(
@@ -127,10 +125,10 @@ public sealed class WebServiceSourceBuildDeploymentService(
                 session,
                 release,
                 ct);
-            return transaction.Commit(
-                new Ok<SourceBuildDeploymentResult>(new SourceBuildDeploymentResult(
-                    release.Id,
-                    updatedWebService.ActiveRevision)));
+            DeploySourceBuildWebServiceOutcome accepted = new SourceBuildDeploymentResult(
+                release.Id,
+                updatedWebService.ActiveRevision);
+            return transaction.Commit(accepted);
         }, cancellationToken);
     }
 
