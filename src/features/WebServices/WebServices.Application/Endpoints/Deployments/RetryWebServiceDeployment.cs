@@ -18,6 +18,8 @@ using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints.Deployments;
 
 public static class RetryWebServiceDeployment
@@ -28,7 +30,6 @@ public static class RetryWebServiceDeployment
         {
             app.MapPost("/{Id}/deployments/{DeploymentId}/retry", async (
                     IMediator mediator,
-                    IHttpProblemMapper httpProblems,
                     [AsParameters] RetryWebServiceDeploymentRequest request,
                     CancellationToken cancellationToken) =>
                 (await mediator.Send(request, cancellationToken))
@@ -37,7 +38,7 @@ public static class RetryWebServiceDeployment
                         PlacementSummaryDto value =>
                             Results.Accepted(value: value),
                         RetryWebServiceDeploymentError error =>
-                            httpProblems.Map(error).ToHttpResult()
+                            MapError(error)
                     }))
                 .WithName("RetryWebServiceDeployment")
                 .Produces<PlacementSummaryDto>(StatusCodes.Status202Accepted);

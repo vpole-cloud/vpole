@@ -18,6 +18,8 @@ using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints.Deployments.Hostnames;
 
 public static class DeleteWebServiceDeploymentHostname
@@ -30,7 +32,6 @@ public static class DeleteWebServiceDeploymentHostname
                     "/{Id}/deployments/{DeploymentId}/hostnames/{BindingId}",
                     async (
                         IMediator mediator,
-                        IHttpProblemMapper httpProblems,
                         [AsParameters] DeleteWebServiceDeploymentHostnameRequest request,
                         CancellationToken cancellationToken) =>
                         (await mediator.Send(request, cancellationToken))
@@ -38,7 +39,7 @@ public static class DeleteWebServiceDeploymentHostname
                         {
                             PlacementSummaryDto value => Results.Accepted(value: value),
                             WebServiceDeploymentHostnameError error =>
-                                httpProblems.Map(error).ToHttpResult()
+                                MapError(error)
                         }))
                 .WithName("DeleteWebServiceDeploymentHostname")
                 .Produces<PlacementSummaryDto>(StatusCodes.Status202Accepted);

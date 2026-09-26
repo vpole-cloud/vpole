@@ -16,6 +16,8 @@ using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints.Releases;
 
 public static class RollbackWebService
@@ -26,7 +28,6 @@ public static class RollbackWebService
         {
             app.MapPost("/{Id}/rollback", async (
                     IMediator mediator,
-                    IHttpProblemMapper httpProblems,
                     [AsParameters] RollbackWebServiceRequest request,
                     CancellationToken cancellationToken) =>
                 (await mediator.Send(request, cancellationToken)).ToHttpResult(
@@ -35,7 +36,7 @@ public static class RollbackWebService
                         RollbackWebServiceResponse value =>
                             Results.Accepted(value: value),
                         RollbackWebServiceError error =>
-                            httpProblems.Map(error).ToHttpResult()
+                            MapError(error)
                     }))
                 .WithName("RollbackWebService")
                 .Produces<RollbackWebServiceResponse>(StatusCodes.Status202Accepted);

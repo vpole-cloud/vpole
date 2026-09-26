@@ -173,18 +173,13 @@ public sealed class HttpProblemMapperTests
     }
 
     [Fact]
-    public void WebServiceOutcomeUnwrapsProviderOwnedComputeError()
+    public void WebServiceOutcomeMapsProviderOwnedComputeError()
     {
-        var mapper = new HttpProblemMapper(
-        [
-            .. WebServiceHttpMappings.All,
-            .. ComputeProfileContractHttpMappings.All
-        ]);
         AddWebServiceDeploymentError error = new(
             new ComputeProfileResolutionError(
                 new ComputeProfileNotFound("compute-1")));
 
-        var problem = mapper.Map(error);
+        var problem = WebServiceHttpMappings.MapError(error);
 
         Assert.Equal((int)HttpStatusCode.NotFound, problem.StatusCode);
         Assert.Equal("compute-profiles.not-found", problem.Code);
@@ -192,18 +187,13 @@ public sealed class HttpProblemMapperTests
     }
 
     [Fact]
-    public void WebServiceOutcomeUnwrapsProviderOwnedResourceGroupError()
+    public void WebServiceOutcomeMapsProviderOwnedResourceGroupError()
     {
-        var mapper = new HttpProblemMapper(
-        [
-            .. WebServiceHttpMappings.All,
-            .. ResourceGroupHttpMappings.All
-        ]);
         CreateWebServiceError error = new(
             new ResourceGroupOwnershipError(
                 new ResourceGroupOwnershipDeleting("resource-group-1")));
 
-        var problem = mapper.Map(error);
+        var problem = WebServiceHttpMappings.MapError(error);
 
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
         Assert.Equal("resource-groups.deleting", problem.Code);

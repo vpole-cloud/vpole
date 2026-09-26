@@ -9,6 +9,8 @@ using Pole.Features.WebServices.Application.Persistence.Tokens;
 using Pole.Mediator;
 using Pole.ResultType;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints.DeploymentTokens;
 
 public sealed record RevokeWebServiceDeploymentTokenRequest(
@@ -64,7 +66,6 @@ public static class RevokeWebServiceDeploymentTokenEndpoint
     {
         app.MapDelete("/{Id}/deployment-tokens/{TokenId}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] RevokeWebServiceDeploymentTokenRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -73,7 +74,7 @@ public static class RevokeWebServiceDeploymentTokenEndpoint
                 {
                     RevokeWebServiceDeploymentTokenResponse => Results.NoContent(),
                     WebServiceDeploymentTokenNotFound error =>
-                        httpProblems.Map(error).ToHttpResult()
+                        MapError(error)
                 });
             })
             .WithName("RevokeWebServiceDeploymentToken")

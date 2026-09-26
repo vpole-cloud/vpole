@@ -18,6 +18,8 @@ using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints.Deployments;
 
 public static class UpdateWebServiceDeployment
@@ -30,7 +32,6 @@ public static class UpdateWebServiceDeployment
                     "/{Id}/deployments/{DeploymentId}",
                     async (
                         IMediator mediator,
-                        IHttpProblemMapper httpProblems,
                         [AsParameters] UpdateWebServiceDeploymentRequest request,
                         CancellationToken cancellationToken) =>
                         (await mediator.Send(request, cancellationToken))
@@ -39,7 +40,7 @@ public static class UpdateWebServiceDeployment
                             PlacementSummaryDto value =>
                                 Results.Accepted(value: value),
                             UpdateWebServiceDeploymentError error =>
-                                httpProblems.Map(error).ToHttpResult()
+                                MapError(error)
                         }))
                 .WithName("UpdateWebServiceDeployment")
                 .Produces<PlacementSummaryDto>(StatusCodes.Status202Accepted);

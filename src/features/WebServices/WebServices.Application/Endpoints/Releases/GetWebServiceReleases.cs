@@ -10,6 +10,8 @@ using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence.Releases;
 using Pole.Mediator;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints.Releases;
 
 public static class GetWebServiceReleases
@@ -18,7 +20,6 @@ public static class GetWebServiceReleases
     {
         app.MapGet("/{Id}/releases", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetWebServiceReleasesRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -26,7 +27,7 @@ public static class GetWebServiceReleases
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     WebServiceReleaseHistoryDto value => Results.Ok(value),
-                    WebServiceNotFound error => httpProblems.Map(error).ToHttpResult()
+                    WebServiceNotFound error => MapError(error)
                 });
             })
             .WithName("GetWebServiceReleases")

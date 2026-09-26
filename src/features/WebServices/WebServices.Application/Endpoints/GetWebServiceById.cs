@@ -12,6 +12,8 @@ using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints;
 
 public static class GetWebServiceById
@@ -22,14 +24,13 @@ public static class GetWebServiceById
     {
         app.MapGet(Route, async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetWebServiceByIdRequest request) =>
             {
                 var result = await mediator.Send(request);
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     WebServiceDto value => Results.Ok(value),
-                    WebServiceNotFound error => httpProblems.Map(error).ToHttpResult()
+                    WebServiceNotFound error => MapError(error)
                 });
             })
             .WithName("GetWebServiceById")

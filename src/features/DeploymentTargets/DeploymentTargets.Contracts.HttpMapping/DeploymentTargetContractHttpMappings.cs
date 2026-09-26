@@ -131,7 +131,7 @@ public static class DeploymentTargetContractHttpMappings
                 ["ownerId"] = rejected.Owner.Id
             });
 
-    private static HttpProblem MapPublicIngressAdmissionError(
+    public static HttpProblem MapPublicIngressAdmissionError(
         DeploymentTargetPublicIngressAdmissionError error) => error switch
     {
         DeploymentTargetNotFound notFound => ForTarget(

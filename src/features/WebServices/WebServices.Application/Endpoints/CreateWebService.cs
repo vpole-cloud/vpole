@@ -25,6 +25,8 @@ using Pole.ResultType;
 using Pole.Validation;
 using Pole.Workloads;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints;
 
 public static class CreateWebService
@@ -35,14 +37,13 @@ public static class CreateWebService
         {
             app.MapPost("/", async (
                     IMediator mediator,
-                    IHttpProblemMapper httpProblems,
                     [AsParameters] CreateWebServiceRequest request,
                     CancellationToken cancellationToken) =>
                     (await mediator.Send(request, cancellationToken))
                     .ToHttpResult(outcome => outcome switch
                     {
                         CreateWebServiceResponse value => Results.Accepted(value: value),
-                        CreateWebServiceError error => httpProblems.Map(error).ToHttpResult()
+                        CreateWebServiceError error => MapError(error)
                     }))
                 .WithName("CreateWebService")
                 .Produces<CreateWebServiceResponse>(StatusCodes.Status202Accepted);

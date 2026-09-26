@@ -17,6 +17,8 @@ using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints;
 
 public static class UpdateWebServiceImageTag
@@ -25,7 +27,6 @@ public static class UpdateWebServiceImageTag
     {
         app.MapPatch("/{Id}/image-tag", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] UpdateWebServiceImageTagRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -35,7 +36,7 @@ public static class UpdateWebServiceImageTag
                     UpdateWebServiceImageTagResponse response =>
                         Results.Accepted(value: response),
                     UpdateWebServiceImageTagError error =>
-                        httpProblems.Map(error).ToHttpResult()
+                        MapError(error)
                 });
             })
             .WithName("UpdateWebServiceImageTag")

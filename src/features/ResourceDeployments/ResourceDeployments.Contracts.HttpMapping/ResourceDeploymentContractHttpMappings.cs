@@ -140,7 +140,7 @@ public static class ResourceDeploymentContractHttpMappings
                 ("resourceId", conflict.ResourceId))
         };
 
-    private static HttpProblem MapRevisionError(
+    public static HttpProblem MapRevisionError(
         AdvanceResourceDeploymentRevisionError error) => error switch
         {
             ResourceDeploymentsNotFound notFound => Problem(

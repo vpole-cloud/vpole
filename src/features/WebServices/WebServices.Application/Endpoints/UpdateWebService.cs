@@ -17,6 +17,8 @@ using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints;
 
 public static class UpdateWebService
@@ -27,7 +29,6 @@ public static class UpdateWebService
         {
             app.MapPut("/{Id}", async (
                     IMediator mediator,
-                    IHttpProblemMapper httpProblems,
                     [AsParameters] UpdateWebServiceRequest request,
                     CancellationToken cancellationToken) =>
                 {
@@ -37,7 +38,7 @@ public static class UpdateWebService
                         UpdateWebServiceResponse value =>
                             Results.Accepted(value: value),
                         UpdateWebServiceError error =>
-                            httpProblems.Map(error).ToHttpResult()
+                            MapError(error)
                     });
                 })
                 .WithName("UpdateWebService")

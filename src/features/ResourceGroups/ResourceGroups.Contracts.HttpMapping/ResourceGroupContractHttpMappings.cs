@@ -5,6 +5,20 @@ namespace Pole.Features.ResourceGroups.Contracts.HttpMapping;
 
 public static class ResourceGroupContractHttpMappings
 {
+    public static HttpProblem MapOwnershipError(ResourceGroupOwnershipError error) => error switch
+    {
+        ResourceGroupOwnershipNotFound notFound => Problem(
+            HttpStatusCode.NotFound,
+            "resource-groups.not-found",
+            "Resource group not found",
+            ("resourceGroupId", notFound.ResourceGroupId)),
+        ResourceGroupOwnershipDeleting deleting => Problem(
+            HttpStatusCode.Conflict,
+            "resource-groups.deleting",
+            "Resource group is being deleted",
+            ("resourceGroupId", deleting.ResourceGroupId))
+    };
+
     public static IReadOnlyList<HttpProblemMapping> All { get; } =
         Array.AsReadOnly<HttpProblemMapping>(
         [HttpProblemMapping.For<ResourceRegistrationMutationError>(MapRegistrationMutationError)]);

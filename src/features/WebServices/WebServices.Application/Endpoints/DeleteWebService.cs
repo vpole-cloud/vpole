@@ -17,6 +17,8 @@ using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints;
 
 public static class DeleteWebService
@@ -26,7 +28,6 @@ public static class DeleteWebService
     {
         app.MapDelete(Route, async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] DeleteWebServiceRequest request,
                 CancellationToken ct) =>
             {
@@ -34,7 +35,7 @@ public static class DeleteWebService
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     DeleteWebServiceResponse value => Results.Accepted(value: value),
-                    DeleteWebServiceError error => httpProblems.Map(error).ToHttpResult()
+                    DeleteWebServiceError error => MapError(error)
                 });
             })
             .WithName("DeleteWebService")
