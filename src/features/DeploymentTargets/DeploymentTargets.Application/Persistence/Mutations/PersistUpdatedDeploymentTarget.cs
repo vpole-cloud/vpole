@@ -61,7 +61,8 @@ internal sealed class MongoPersistUpdatedDeploymentTarget(
                 : persisted;
         }
 
-        return await runMongoTransaction(async (transaction, ct) => {
+        return await runMongoTransaction(async (transaction, ct) =>
+        {
             var references = await ensureNoPublicBaseDomainReferences(
                 current.Id,
                 transaction.Session,

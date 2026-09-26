@@ -77,7 +77,8 @@ public sealed class UpdateDeploymentTargetNetworkPolicyValidator
     {
         RuleFor(request => request.Id).MongoObjectId("Deployment target ID");
         RuleFor(request => request.Body).NotNull();
-        When(request => request.Body is not null, () => {
+        When(request => request.Body is not null, () =>
+        {
             RuleFor(request => request.Body.Enforcement).IsInEnum();
             RuleFor(request => request.Body.Revision).GreaterThan(0);
         });
@@ -92,7 +93,8 @@ public static class UpdateDeploymentTargetNetworkPolicyEndpoint
         app.MapPut("/{Id}/network-policy", async (
             IMediator mediator,
             [AsParameters] UpdateDeploymentTargetNetworkPolicyRequest request,
-            CancellationToken cancellationToken) => {
+            CancellationToken cancellationToken) =>
+        {
             var result = await mediator.Send(request, cancellationToken);
             return result.ToHttpResult(outcome => outcome switch
             {

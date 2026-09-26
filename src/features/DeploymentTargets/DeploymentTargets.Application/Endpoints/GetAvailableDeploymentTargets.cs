@@ -74,13 +74,14 @@ public static class GetAvailableDeploymentTargetsEndpoint
         app.MapGet("/available", async (
                 IMediator mediator,
                 [AsParameters] GetAvailableDeploymentTargetsRequest request,
-                CancellationToken cancellationToken) => {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
-                {
-                    IReadOnlyCollection<AvailableDeploymentTargetDto> targets => Results.Ok(targets)
-                });
-            })
+                CancellationToken cancellationToken) =>
+        {
+            var result = await mediator.Send(request, cancellationToken);
+            return result.ToHttpResult(outcome => outcome switch
+            {
+                IReadOnlyCollection<AvailableDeploymentTargetDto> targets => Results.Ok(targets)
+            });
+        })
             .WithName("GetAvailableDeploymentTargets")
             .Produces<IReadOnlyCollection<AvailableDeploymentTargetDto>>();
         return app;

@@ -31,7 +31,8 @@ internal sealed class MongoPersistCreatedDeploymentTarget(
         ArgumentNullException.ThrowIfNull(deploymentTarget);
         try
         {
-            return await runMongoTransaction(async (transaction, ct) => {
+            return await runMongoTransaction(async (transaction, ct) =>
+            {
                 var admitted = await ensureNoOverlappingPublicBaseDomain(
                     deploymentTarget.Id,
                     deploymentTarget.WorkloadConfiguration.Ingress?.PublicBaseDomain,

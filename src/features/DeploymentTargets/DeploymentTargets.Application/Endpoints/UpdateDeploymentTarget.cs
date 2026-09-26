@@ -132,18 +132,19 @@ public static class UpdateDeploymentTargetEndpoint
         app.MapPut("/{Id}", async (
                 IMediator mediator,
                 [AsParameters] UpdateDeploymentTargetRequest request,
-                CancellationToken cancellationToken) => {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
-                {
-                    DeploymentTargetDto target => Results.Ok(target),
-                    DeploymentTargetNotFound error => DeploymentTargetHttpMappings.Map(error),
-                    DeploymentTargetRevisionConflict error => DeploymentTargetHttpMappings.Map(error),
-                    DeploymentTargetDeletionRejected error => DeploymentTargetHttpMappings.Map(error),
-                    DeploymentTargetPublicBaseDomainReferenced error => DeploymentTargetHttpMappings.Map(error),
-                    DeploymentTargetPublicBaseDomainConflict error => DeploymentTargetHttpMappings.Map(error)
-                });
-            })
+                CancellationToken cancellationToken) =>
+        {
+            var result = await mediator.Send(request, cancellationToken);
+            return result.ToHttpResult(outcome => outcome switch
+            {
+                DeploymentTargetDto target => Results.Ok(target),
+                DeploymentTargetNotFound error => DeploymentTargetHttpMappings.Map(error),
+                DeploymentTargetRevisionConflict error => DeploymentTargetHttpMappings.Map(error),
+                DeploymentTargetDeletionRejected error => DeploymentTargetHttpMappings.Map(error),
+                DeploymentTargetPublicBaseDomainReferenced error => DeploymentTargetHttpMappings.Map(error),
+                DeploymentTargetPublicBaseDomainConflict error => DeploymentTargetHttpMappings.Map(error)
+            });
+        })
             .WithName("UpdateDeploymentTarget")
             .Produces<DeploymentTargetDto>()
             .ProducesProblem(StatusCodes.Status404NotFound)

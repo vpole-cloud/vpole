@@ -83,7 +83,8 @@ internal sealed class MongoDeleteDeploymentTarget(
         if (references is DeploymentTargetHasDurableReferences referenceError)
             return Error(referenceError);
 
-        return await runMongoTransaction(async (transaction, ct) => {
+        return await runMongoTransaction(async (transaction, ct) =>
+        {
             var current = await deploymentTargets
                 .Find(transaction.Session, DeploymentTargetFilters.AtDeletionFence(fencedTarget))
                 .FirstOrDefaultAsync(ct);

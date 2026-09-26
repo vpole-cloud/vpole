@@ -106,9 +106,9 @@ public sealed class RotateDeploymentTargetCredentialsHandler(
     }
 
     private static DeploymentTargetConnectionRejected ConnectionValidationFailure(string safeMessage) => new(new Dictionary<string, string[]>
-        {
-            ["Body.Connection"] = [safeMessage]
-        });
+    {
+        ["Body.Connection"] = [safeMessage]
+    });
 
 }
 
@@ -145,16 +145,17 @@ public static class RotateDeploymentTargetCredentialsEndpoint
         app.MapPut("/{Id}/credentials", async (
                 IMediator mediator,
                 [AsParameters] RotateDeploymentTargetCredentialsRequest request,
-                CancellationToken cancellationToken) => {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
-                {
-                    DeploymentTargetDto target => Results.Ok(target),
-                    DeploymentTargetNotFound error => DeploymentTargetHttpMappings.Map(error),
-                    DeploymentTargetRevisionConflict error => DeploymentTargetHttpMappings.Map(error),
-                    DeploymentTargetConnectionRejected error => DeploymentTargetHttpMappings.Map(error)
-                });
-            })
+                CancellationToken cancellationToken) =>
+        {
+            var result = await mediator.Send(request, cancellationToken);
+            return result.ToHttpResult(outcome => outcome switch
+            {
+                DeploymentTargetDto target => Results.Ok(target),
+                DeploymentTargetNotFound error => DeploymentTargetHttpMappings.Map(error),
+                DeploymentTargetRevisionConflict error => DeploymentTargetHttpMappings.Map(error),
+                DeploymentTargetConnectionRejected error => DeploymentTargetHttpMappings.Map(error)
+            });
+        })
             .WithName("RotateDeploymentTargetCredentials")
             .Produces<DeploymentTargetDto>()
             .ProducesProblem(StatusCodes.Status404NotFound)

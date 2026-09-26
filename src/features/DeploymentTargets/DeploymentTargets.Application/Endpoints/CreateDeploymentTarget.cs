@@ -89,9 +89,9 @@ public sealed class CreateDeploymentTargetHandler(
     }
 
     private static DeploymentTargetConnectionRejected ConnectionValidationFailure(string safeMessage) => new(new Dictionary<string, string[]>
-        {
-            ["Body.Connection"] = [safeMessage]
-        });
+    {
+        ["Body.Connection"] = [safeMessage]
+    });
 
 }
 
@@ -131,18 +131,19 @@ public static class CreateDeploymentTargetEndpoint
         app.MapPost("/", async (
                 IMediator mediator,
                 [AsParameters] CreateDeploymentTargetRequest request,
-                CancellationToken cancellationToken) => {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
-                {
-                    DeploymentTargetDto target => Results.Created(
-                        $"/api/v1/platform/deployment-targets/{target.Id}",
-                        target),
-                    DeploymentTargetConnectionRejected error => DeploymentTargetHttpMappings.Map(error),
-                    DeploymentTargetPublicBaseDomainConflict error => DeploymentTargetHttpMappings.Map(error),
-                    DeploymentTargetIdentityConflict error => DeploymentTargetHttpMappings.Map(error)
-                });
-            })
+                CancellationToken cancellationToken) =>
+        {
+            var result = await mediator.Send(request, cancellationToken);
+            return result.ToHttpResult(outcome => outcome switch
+            {
+                DeploymentTargetDto target => Results.Created(
+                    $"/api/v1/platform/deployment-targets/{target.Id}",
+                    target),
+                DeploymentTargetConnectionRejected error => DeploymentTargetHttpMappings.Map(error),
+                DeploymentTargetPublicBaseDomainConflict error => DeploymentTargetHttpMappings.Map(error),
+                DeploymentTargetIdentityConflict error => DeploymentTargetHttpMappings.Map(error)
+            });
+        })
             .WithName("CreateDeploymentTarget")
             .Produces<DeploymentTargetDto>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status409Conflict)

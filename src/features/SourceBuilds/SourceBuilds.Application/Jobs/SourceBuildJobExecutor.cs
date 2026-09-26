@@ -327,19 +327,19 @@ public sealed class SourceBuildJobExecutor(
 
     private static (string Code, string Message) DownloadFailure(
         DownloadSourceRepositoryArchiveError error) => error switch
-    {
-        SourceRepositoryBuildNotFound =>
-            ("SourceRepositoryNotFound", "The linked source repository no longer exists."),
-        SourceRepositoryBuildConnectionNotFound =>
-            ("GitProviderConnectionNotFound", "The linked git provider connection no longer exists."),
-        GitProviderRepositoryAccessError provider => provider switch
         {
-            GitProviderUnsupported =>
-                ("GitProviderUnsupported", "The linked git provider is not supported."),
-            GitProviderUnavailable =>
-                ("GitProviderUnavailable", "The linked git provider is unavailable.")
-        }
-    };
+            SourceRepositoryBuildNotFound =>
+                ("SourceRepositoryNotFound", "The linked source repository no longer exists."),
+            SourceRepositoryBuildConnectionNotFound =>
+                ("GitProviderConnectionNotFound", "The linked git provider connection no longer exists."),
+            GitProviderRepositoryAccessError provider => provider switch
+            {
+                GitProviderUnsupported =>
+                    ("GitProviderUnsupported", "The linked git provider is not supported."),
+                GitProviderUnavailable =>
+                    ("GitProviderUnavailable", "The linked git provider is unavailable.")
+            }
+        };
 
     private static string DeploymentRejectionCode(SourceBuildResourceDeploymentRejection error) =>
         error switch

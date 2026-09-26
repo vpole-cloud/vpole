@@ -56,14 +56,15 @@ public static class DeleteDeploymentTargetEndpoint
         app.MapDelete("/{Id}", async (
                 IMediator mediator,
                 [AsParameters] DeleteDeploymentTargetRequest request,
-                CancellationToken cancellationToken) => {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
-                {
-                    DeploymentTargetDeleted => Results.NoContent(),
-                    DeleteDeploymentTargetError error => DeploymentTargetHttpMappings.Map(error)
-                });
-            })
+                CancellationToken cancellationToken) =>
+        {
+            var result = await mediator.Send(request, cancellationToken);
+            return result.ToHttpResult(outcome => outcome switch
+            {
+                DeploymentTargetDeleted => Results.NoContent(),
+                DeleteDeploymentTargetError error => DeploymentTargetHttpMappings.Map(error)
+            });
+        })
             .WithName("DeleteDeploymentTarget")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound)

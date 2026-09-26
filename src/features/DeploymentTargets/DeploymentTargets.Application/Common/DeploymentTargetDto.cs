@@ -90,9 +90,9 @@ public static class DeploymentTargetDtoExtensions
             isDefault,
             target.CreatedAtUtc,
             target.UpdatedAtUtc)
-        {
-            NetworkPolicy = target.ToNetworkPolicyDto()
-        };
+    {
+        NetworkPolicy = target.ToNetworkPolicyDto()
+    };
 
     public static DeploymentTargetLookupDto ToLookupDto(this DeploymentTarget target) => new(
             target.Id,
@@ -113,9 +113,9 @@ public static class DeploymentTargetDtoExtensions
             target.AcceptsWorkloads,
             target.DeletionRequestedAtUtc is not null,
             target.Health.Status.ToString())
-        {
-            NetworkPolicy = target.ToNetworkPolicyDto()
-        };
+    {
+        NetworkPolicy = target.ToNetworkPolicyDto()
+    };
 
     public static AvailableDeploymentTargetDto ToAvailableDto(this DeploymentTarget target) => new(
             target.Id,
@@ -123,9 +123,9 @@ public static class DeploymentTargetDtoExtensions
             target.WorkloadConfiguration.Revision,
             target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null,
             target.WorkloadConfiguration.Ingress?.PublicBaseDomain)
-        {
-            NetworkPolicy = target.ToNetworkPolicyDto()
-        };
+    {
+        NetworkPolicy = target.ToNetworkPolicyDto()
+    };
 
     public static DeploymentTargetNetworkPolicyDto ToNetworkPolicyDto(this DeploymentTarget target)
     {

@@ -78,15 +78,16 @@ public static class ValidateDeploymentTargetEndpoint
         app.MapPost("/{Id}/validate", async (
                 IMediator mediator,
                 [AsParameters] ValidateDeploymentTargetRequest request,
-                CancellationToken cancellationToken) => {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
-                {
-                    DeploymentTargetDto target => Results.Ok(target),
-                    DeploymentTargetNotFound error => DeploymentTargetHttpMappings.Map(error),
-                    DeploymentTargetRevisionConflict error => DeploymentTargetHttpMappings.Map(error)
-                });
-            })
+                CancellationToken cancellationToken) =>
+        {
+            var result = await mediator.Send(request, cancellationToken);
+            return result.ToHttpResult(outcome => outcome switch
+            {
+                DeploymentTargetDto target => Results.Ok(target),
+                DeploymentTargetNotFound error => DeploymentTargetHttpMappings.Map(error),
+                DeploymentTargetRevisionConflict error => DeploymentTargetHttpMappings.Map(error)
+            });
+        })
             .WithName("ValidateDeploymentTarget")
             .Produces<DeploymentTargetDto>()
             .ProducesProblem(StatusCodes.Status404NotFound)

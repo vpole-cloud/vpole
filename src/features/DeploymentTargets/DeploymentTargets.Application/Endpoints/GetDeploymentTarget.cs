@@ -53,14 +53,15 @@ public static class GetDeploymentTargetEndpoint
         app.MapGet("/{Id}", async (
                 IMediator mediator,
                 [AsParameters] GetDeploymentTargetRequest request,
-                CancellationToken cancellationToken) => {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
-                {
-                    DeploymentTargetDto target => Results.Ok(target),
-                    DeploymentTargetNotFound notFound => DeploymentTargetHttpMappings.Map(notFound)
-                });
-            })
+                CancellationToken cancellationToken) =>
+        {
+            var result = await mediator.Send(request, cancellationToken);
+            return result.ToHttpResult(outcome => outcome switch
+            {
+                DeploymentTargetDto target => Results.Ok(target),
+                DeploymentTargetNotFound notFound => DeploymentTargetHttpMappings.Map(notFound)
+            });
+        })
             .WithName("GetDeploymentTarget")
             .Produces<DeploymentTargetDto>()
             .ProducesProblem(StatusCodes.Status404NotFound);

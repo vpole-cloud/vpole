@@ -286,7 +286,8 @@ internal static class KubernetesClientSecurity
         IReadOnlyList<byte[]> trustedAuthorities)
     {
         var existingSetup = configuration.FirstMessageHandlerSetup;
-        configuration.FirstMessageHandlerSetup = handler => {
+        configuration.FirstMessageHandlerSetup = handler =>
+        {
             existingSetup?.Invoke(handler);
             handler.AllowAutoRedirect = false;
             handler.ConnectTimeout = ConnectTimeout;
@@ -300,7 +301,8 @@ internal static class KubernetesClientSecurity
 
     private static RemoteCertificateValidationCallback CreateStrictCertificateValidator(
         string expectedHost,
-        IReadOnlyList<byte[]> trustedAuthorities) => (_, certificate, presentedChain, _) => {
+        IReadOnlyList<byte[]> trustedAuthorities) => (_, certificate, presentedChain, _) =>
+        {
             if (certificate is null)
                 return false;
 

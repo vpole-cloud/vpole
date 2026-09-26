@@ -47,7 +47,7 @@ public sealed class RedisFeatureHostTests(MongoReplicaSetFixture fixture)
             services.AddSingleton<DiscoverKubernetesStorageClassNames>(storage.GetStorageClassNamesAsync);
             services.AddSingleton<DiscoverKubernetesPersistentVolumes>(storage.GetPersistentVolumesAsync);
             services.AddSingleton<DiscoverKubernetesPersistentVolumeClaims>(storage.GetPersistentVolumeClaimsAsync);
-            });
+        });
         await host.SeedTenantAsync();
         using var client = host.GetClient();
         const string route = "/api/v1/redis-services/";

@@ -20,9 +20,9 @@ internal static class ConnectionPayloadLimits
 internal static class ConnectionRejections
 {
     public static DeploymentTargetConnectionRejected Validation(string field, string message) => new(new Dictionary<string, string[]>
-        {
-            [field] = [message]
-        });
+    {
+        [field] = [message]
+    });
 }
 
 internal static class ConnectionValueValidation

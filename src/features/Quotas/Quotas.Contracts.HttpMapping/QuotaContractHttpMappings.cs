@@ -15,10 +15,10 @@ public static class QuotaContractHttpMappings
         ]);
 
     public static HttpProblem MapExecutionError(QuotaExecutionError error) => error switch
-        {
-            QuotaReservationError reservation => MapReservationError(reservation),
-            QuotaReservationCommitError commit => MapReservationCommitError(commit)
-        };
+    {
+        QuotaReservationError reservation => MapReservationError(reservation),
+        QuotaReservationCommitError commit => MapReservationCommitError(commit)
+    };
 
     public static HttpProblem MapReservationError(
         QuotaReservationError error) => error switch

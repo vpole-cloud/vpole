@@ -21,14 +21,15 @@ public static class RewrapDeploymentTargetCredentialsEndpoint
         app.MapPost("/deployment-target-credentials/rewrap", async (
                 IMediator mediator,
                 [AsParameters] RewrapDeploymentTargetCredentialsRequest request,
-                CancellationToken cancellationToken) => {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
-                {
-                    DeploymentTargetCredentialRewrapSummary summary => Results.Ok(summary),
-                    DeploymentTargetCredentialRewrapConflict error => DeploymentTargetHttpMappings.Map(error)
-                });
-            })
+                CancellationToken cancellationToken) =>
+        {
+            var result = await mediator.Send(request, cancellationToken);
+            return result.ToHttpResult(outcome => outcome switch
+            {
+                DeploymentTargetCredentialRewrapSummary summary => Results.Ok(summary),
+                DeploymentTargetCredentialRewrapConflict error => DeploymentTargetHttpMappings.Map(error)
+            });
+        })
             .WithName("RewrapDeploymentTargetCredentials")
             .RequireAuthorization(Policy.Admin)
             .Produces<DeploymentTargetCredentialRewrapSummary>()
