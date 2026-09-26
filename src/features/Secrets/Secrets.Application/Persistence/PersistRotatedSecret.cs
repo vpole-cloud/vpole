@@ -51,7 +51,7 @@ internal sealed class MongoPersistRotatedSecret(
 
             var rotated = current.Rotate(values.Keys.Order().ToArray(), clock.GetUtcNow().UtcDateTime);
             var encrypted = await encrypt(rotated, values, token);
-            if (encrypted is not Ok<SecretVersion> version)
+            if (encrypted is not SecretVersion version)
                 return tx.Abort(new SecretEncryptionFailed());
             // Acquire the aggregate write conflict before the immutable version insert. A competing
             // rotation retries its snapshot and returns a version conflict, never a duplicate-key 5xx.
@@ -62,7 +62,7 @@ internal sealed class MongoPersistRotatedSecret(
                 cancellationToken: token);
             await versions.InsertOneAsync(
                 tx.Session,
-                version.Value,
+                version,
                 cancellationToken: token);
             await publish(tx.Session, rotated, new SecretRotated(), token);
             return tx.Commit(rotated);

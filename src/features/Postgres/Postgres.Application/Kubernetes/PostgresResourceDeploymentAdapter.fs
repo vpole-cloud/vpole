@@ -71,13 +71,13 @@ type PostgresResourceDeploymentAdapter(
                                     PostgresManagedSecret.owner cluster.Id,
                                     deployment.Id,
                                     cancellationToken)
-                            match TypedResultInterop.toResult projectionResult with
-                            | Error _ ->
+                            match projectionResult.Value with
+                            | :? ManagedSecretUnavailable ->
                                 return ResourceDeploymentAdapterResult.Failed.Create(
                                     "PostgresSecretProjectionUnavailable",
                                     "The managed credential projection is not ready.",
                                     true) :> ResourceDeploymentAdapterResult
-                            | Ok projection ->
+                            | :? SecretProjectionReference as projection ->
                                 let storage = deployment.Placement.Storage
                                 let metadata =
                                     { DeploymentId = deployment.Id
@@ -100,8 +100,13 @@ type PostgresResourceDeploymentAdapter(
                                                 PostgresManagedSecret.owner cluster.Id,
                                                 PostgresManagedSecret.usernameKey,
                                                 cancellationToken)
-                                            return TypedResultInterop.toResult username
-                                                |> Result.map (fun value -> OperatorCredentials(value, projection))
+                                            return
+                                                match username.Value with
+                                                | :? ManagedSecretKey as key ->
+                                                    Ok(OperatorCredentials(key.Value, projection))
+                                                | :? ManagedSecretFailure ->
+                                                    Error()
+                                                | _ -> invalidOp "Unexpected managed Secret key outcome."
                                         | mode ->
                                             return invalidOp $"Unsupported PostgreSQL deployment mode '{mode}'."
                                     }
@@ -133,6 +138,8 @@ type PostgresResourceDeploymentAdapter(
                                                   5432,
                                                   "postgresql") ])
                                         :> ResourceDeploymentAdapterResult
+
+                            | _ -> return invalidOp "Unexpected managed Secret projection outcome."
 
             }
 

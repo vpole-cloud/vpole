@@ -3,7 +3,6 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Events;
-using Pole.ResultType;
 
 namespace Pole.Features.Secrets.Application.Persistence;
 
@@ -14,7 +13,7 @@ internal sealed class MongoReleaseManagedSecret(
     StoreSecretChange publish,
     TimeProvider clock)
 {
-    public async Task<Result<Unit, ManagedSecretError>> InvokeAsync(
+    public async Task<ManagedSecretMutationOutcome> InvokeAsync(
         string tenantId,
         ManagedSecretOwner owner,
         IClientSessionHandle session,
@@ -24,7 +23,7 @@ internal sealed class MongoReleaseManagedSecret(
             throw new InvalidOperationException("Managed Secret release requires the owner transaction.");
         var current = await secrets.Find(session, ManagedSecretFilters.Owner(tenantId, owner)).FirstOrDefaultAsync(ct);
         if (current is null)
-            return new Ok<Unit>(Unit.Value);
+            return new ManagedSecretMutationSucceeded();
         var management = (ProviderManagedSecret)current.Management;
         var released = current.Detach(management.BindingId, clock.GetUtcNow().UtcDateTime);
         if (!released.Bindings.IsEmpty)
@@ -36,11 +35,11 @@ internal sealed class MongoReleaseManagedSecret(
         {
             if (await registrar.UnregisterAsync(tenantId, current.ResourceGroupId, SecretResource.Type,
                     current.Id, session, ct) is ResourceRegistrationMutationError)
-                return new Err<ManagedSecretError>(new ManagedSecretReferenceRejected());
+                return new ManagedSecretReferenceRejected();
             await secrets.DeleteOneAsync(session, SecretFilters.Identity(tenantId, current.Id), cancellationToken: ct);
             await versions.DeleteManyAsync(session, SecretFilters.Versions(tenantId, current.Id), cancellationToken: ct);
             await publish(session, released, new SecretDeletedChange(), ct);
         }
-        return new Ok<Unit>(Unit.Value);
+        return new ManagedSecretMutationSucceeded();
     }
 }

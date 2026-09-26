@@ -18,7 +18,9 @@ type ManagedPersistRotatedPostgresCredential(rotateSecret : RotateManagedSecret)
     member _.InvokeAsync(session, current : ManagedSecretValues, replacement : PreparedManagedSecret, cancellationToken : CancellationToken) =
         task {
             let! result = rotateSecret.Invoke(replacement, current.Version, session, cancellationToken)
-            match TypedResultInterop.toResult result with
-            | Ok _ -> return PostgresSuccess ()
-            | Error error -> return PostgresError(PostgresCredentialErrors.fromManaged replacement.Owner.ResourceId error)
+            match result.Value with
+            | :? ManagedSecretMutationSucceeded -> return PostgresSuccess ()
+            | :? ManagedSecretFailure as error ->
+                return PostgresError(PostgresCredentialErrors.fromManaged replacement.Owner.ResourceId error)
+            | _ -> return invalidOp "Unexpected managed Secret rotation outcome."
         }

@@ -274,16 +274,17 @@ module private CreatePostgresClusterWorkflow =
                                     deployment.DeploymentId,
                                     transaction.Session,
                                     ct)
-                            match TypedResultInterop.toResult secretResult with
-                            | Error error ->
+                            match secretResult.Value with
+                            | :? ManagedSecretFailure as error ->
                                 return transaction.Abort(
                                     CreatePostgresClusterRejected(
                                         CreateCredential(PostgresCredentialErrors.fromManaged plan.Cluster.Id error)))
-                            | Ok _ ->
+                            | :? ManagedSecretMutationSucceeded ->
                                 return
                                     transaction.Commit(
                                         PostgresClusterDto.create plan.Cluster deployment
                                         |> PostgresClusterCreated)
+                            | _ -> return invalidOp "Unexpected managed Secret creation outcome."
                 }),
             cancellationToken)
 

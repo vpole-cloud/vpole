@@ -16,7 +16,9 @@ type ManagedLoadPostgresCredential(readSecret : ReadManagedSecret) =
     member _.InvokeAsync(tenantId, clusterId, cancellationToken : CancellationToken) =
         task {
             let! result = readSecret.Invoke(tenantId, PostgresManagedSecret.owner clusterId, cancellationToken)
-            match TypedResultInterop.toResult result with
-            | Ok values -> return PostgresSuccess values
-            | Error error -> return PostgresError(PostgresCredentialErrors.fromManaged clusterId error)
+            match result.Value with
+            | :? ManagedSecretValues as values -> return PostgresSuccess values
+            | :? ManagedSecretFailure as error ->
+                return PostgresError(PostgresCredentialErrors.fromManaged clusterId error)
+            | _ -> return invalidOp "Unexpected managed Secret read outcome."
         }

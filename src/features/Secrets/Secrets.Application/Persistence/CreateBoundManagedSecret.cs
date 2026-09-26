@@ -7,7 +7,6 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Events;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.Secrets.Application.Persistence;
@@ -21,7 +20,7 @@ internal sealed class MongoCreateBoundManagedSecret(
     StoreSecretChange publish,
     TimeProvider clock)
 {
-    public async Task<Result<Unit, ManagedSecretError>> InvokeAsync(
+    public async Task<ManagedSecretMutationOutcome> InvokeAsync(
         PreparedManagedSecret prepared,
         string resourceGroupId,
         string isolationScopeId,
@@ -39,7 +38,7 @@ internal sealed class MongoCreateBoundManagedSecret(
                 new(consumerType, prepared.Owner.ResourceId), session, ct) is ResourceScopeReferenceUnavailable ||
             await admitDeployments(prepared.TenantId, resourceGroupId, isolationScopeId, consumerType,
                 prepared.Owner.ResourceId, false, [deploymentId], session, ct) is ResourceDeploymentReferenceUnavailable)
-            return new Err<ManagedSecretError>(new ManagedSecretReferenceRejected());
+            return new ManagedSecretReferenceRejected();
         var now = clock.GetUtcNow().UtcDateTime;
         var binding = SecretBinding.Create(ObjectId.GenerateNewId().ToString(), prepared.Owner.ResourceType,
             prepared.Owner.ResourceId, new AllSecretDeployments(), []);
@@ -49,18 +48,18 @@ internal sealed class MongoCreateBoundManagedSecret(
                 ? KubernetesSecretType.BasicAuthentication : KubernetesSecretType.Opaque, now);
         if (await registrar.RegisterAsync(secret.TenantId, secret.ResourceGroupId,
                 new(SecretResource.Type, secret.Id, secret.Name), session, ct) is ResourceRegistrationMutationError)
-            return new Err<ManagedSecretError>(new ManagedSecretReferenceRejected());
+            return new ManagedSecretReferenceRejected();
         try
         {
             await secrets.InsertOneAsync(session, secret, cancellationToken: ct);
         }
         catch (MongoWriteException exception) when (exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
         {
-            return new Err<ManagedSecretError>(new ManagedSecretChanged());
+            return new ManagedSecretChanged();
         }
         await versions.InsertOneAsync(session, new SecretVersion($"{secret.Id}:1", secret.TenantId, secret.Id, 1,
             JsonSerializer.Deserialize<EncryptedValue>(prepared.EncryptedValues.AsSpan())!, now), cancellationToken: ct);
         await publish(session, secret, new SecretCreated(), ct);
-        return new Ok<Unit>(Unit.Value);
+        return new ManagedSecretMutationSucceeded();
     }
 }

@@ -24,10 +24,10 @@ public sealed class PostgresManagedSecretRollbackTests(MongoReplicaSetFixture fi
             return async (prepared, group, scope, deployment, session, ct) =>
             {
                 var written = await create(prepared, group, scope, deployment, session, ct);
-                Assert.IsType<Ok<Unit>>(written.Value);
+                Assert.IsType<ManagedSecretMutationSucceeded>(written.Value);
                 Assert.Equal(1, await Fixture.Database.GetCollection<Secret>("Secrets")
                     .CountDocumentsAsync(session, secret => secret.Id == prepared.SecretId, cancellationToken: ct));
-                return new Err<ManagedSecretError>(new ManagedSecretChanged());
+                return new ManagedSecretChanged();
             };
         });
     }

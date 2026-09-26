@@ -67,12 +67,12 @@ type MongoFinalizePostgresClusterDeletion(
                                         PostgresManagedSecret.owner clusterId,
                                         transaction.Session,
                                         transactionCancellationToken)
-                                match TypedResultInterop.toResult released with
-                                | Error error ->
+                                match released.Value with
+                                | :? ManagedSecretFailure as error ->
                                     return transaction.Abort(PostgresError(
                                         PostgresClusterDeletionSecretConflict(
                                             PostgresCredentialErrors.fromManaged clusterId error)))
-                                | Ok _ ->
+                                | :? ManagedSecretMutationSucceeded ->
                                     let! deleted =
                                         clusters.DeleteOneAsync(
                                             transaction.Session,
@@ -123,5 +123,6 @@ type MongoFinalizePostgresClusterDeletion(
                                                             PostgresClusterDeletionDeploymentPurgeConflict purgeConflict))
                                             | value ->
                                                 return invalidOp $"Unexpected resource deployment purge outcome: {value}"
+                                | _ -> return invalidOp "Unexpected managed Secret release outcome."
                     }),
             cancellationToken)

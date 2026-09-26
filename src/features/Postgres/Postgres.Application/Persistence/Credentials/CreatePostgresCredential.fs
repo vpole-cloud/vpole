@@ -32,7 +32,9 @@ type PostgresCredentialCreator(prepareSecret : PrepareManagedSecret) =
                     values,
                     ManagedSecretKubernetesType.BasicAuthentication,
                     cancellationToken)
-            match TypedResultInterop.toResult prepared with
-            | Ok value -> return PostgresSuccess value
-            | Error _ -> return PostgresError(PostgresCredentialProtectionUnavailable clusterId)
+            match prepared.Value with
+            | :? PreparedManagedSecret as value -> return PostgresSuccess value
+            | :? ManagedSecretEncryptionUnavailable ->
+                return PostgresError(PostgresCredentialProtectionUnavailable clusterId)
+            | _ -> return invalidOp "Unexpected managed Secret preparation outcome."
         }

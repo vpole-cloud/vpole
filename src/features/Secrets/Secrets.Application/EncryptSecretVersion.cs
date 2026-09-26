@@ -6,7 +6,11 @@ using Pole.ResultType;
 
 namespace Pole.Features.Secrets.Application;
 
-public delegate Task<Result<SecretVersion, SecretEncryptionFailed>> EncryptSecretVersion(
+public union EncryptSecretVersionOutcome(
+    SecretVersion,
+    SecretEncryptionFailed);
+
+public delegate Task<EncryptSecretVersionOutcome> EncryptSecretVersion(
     Secret secret,
     Dictionary<string, string> values,
     CancellationToken ct);
@@ -15,7 +19,7 @@ internal sealed class EnvelopeEncryptSecretVersion(
     IEnvelopeEncryptionService encryption,
     TimeProvider clock)
 {
-    public async Task<Result<SecretVersion, SecretEncryptionFailed>> InvokeAsync(
+    public async Task<EncryptSecretVersionOutcome> InvokeAsync(
         Secret secret,
         Dictionary<string, string> values,
         CancellationToken ct)
@@ -34,14 +38,14 @@ internal sealed class EnvelopeEncryptSecretVersion(
                 ct);
             return result switch
             {
-                Ok<EncryptedValue> encrypted => new Ok<SecretVersion>(new SecretVersion(
+                Ok<EncryptedValue> encrypted => new SecretVersion(
                     $"{secret.Id}:{secret.CurrentVersion}",
                     secret.TenantId,
                     secret.Id,
                     secret.CurrentVersion,
                     encrypted.Value,
-                    clock.GetUtcNow().UtcDateTime)),
-                Err<EnvelopeEncryptionFailed> => new Err<SecretEncryptionFailed>(new SecretEncryptionFailed())
+                    clock.GetUtcNow().UtcDateTime),
+                Err<EnvelopeEncryptionFailed> => new SecretEncryptionFailed()
             };
         }
         finally

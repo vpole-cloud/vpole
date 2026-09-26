@@ -26,8 +26,8 @@ public sealed class PostgresCredentialSecurityTests
             Assert.Equal(ManagedSecretKubernetesType.BasicAuthentication, type);
             Assert.Equal("database-user", values["username"]);
             Assert.Equal("private-password", values["password"]);
-            return Task.FromResult<Result<PreparedManagedSecret, ManagedSecretEncryptionUnavailable>>(
-                new Ok<PreparedManagedSecret>(Prepared(tenant, id, owner, name, version, type)));
+            return Task.FromResult<PrepareManagedSecretOutcome>(
+                Prepared(tenant, id, owner, name, version, type));
         });
 
         var result = await creator.InvokeAsync(TestData.TenantId, ClusterId, "database-user", "private-password", default);
@@ -49,8 +49,8 @@ public sealed class PostgresCredentialSecurityTests
             Assert.Equal(new ManagedSecretOwner("pole/postgresql", ClusterId), owner);
             Assert.Equal(current.Values["username"], values["username"]);
             Assert.Equal("rotated-password", values["password"]);
-            return Task.FromResult<Result<PreparedManagedSecret, ManagedSecretEncryptionUnavailable>>(
-                new Ok<PreparedManagedSecret>(Prepared(tenant, id, owner, name, version, type)));
+            return Task.FromResult<PrepareManagedSecretOutcome>(
+                Prepared(tenant, id, owner, name, version, type));
         });
 
         var result = await rotator.InvokeAsync(TestData.TenantId, ClusterId, current, "rotated-password", default);
@@ -63,8 +63,8 @@ public sealed class PostgresCredentialSecurityTests
     public async Task ProviderFailureBecomesSafeCredentialProtectionFailure()
     {
         var creator = new PostgresCredentialCreator((_, _, _, _, _, _, _, _) =>
-            Task.FromResult<Result<PreparedManagedSecret, ManagedSecretEncryptionUnavailable>>(
-                new Err<ManagedSecretEncryptionUnavailable>(new ManagedSecretEncryptionUnavailable())));
+            Task.FromResult<PrepareManagedSecretOutcome>(
+                new ManagedSecretEncryptionUnavailable()));
         var result = await creator.InvokeAsync(TestData.TenantId, ClusterId, "database-user", "private-password", default);
         Assert.True(result.IsPostgresError);
         Assert.DoesNotContain("private-password", result.ToString());
@@ -77,7 +77,7 @@ public sealed class PostgresCredentialSecurityTests
         {
             Assert.Equal(TestData.TenantId, tenant);
             Assert.Equal(new ManagedSecretOwner("pole/postgresql", ClusterId), owner);
-            return Task.FromResult<Result<ManagedSecretValues, ManagedSecretError>>(new Ok<ManagedSecretValues>(Values()));
+            return Task.FromResult<ReadManagedSecretOutcome>(Values());
         });
         var resolver = new ManagedResolvePostgresClusterCredentials(new LoadPostgresCredential(loader.InvokeAsync));
         var result = await resolver.InvokeAsync(TestData.TenantId, ClusterId, default);

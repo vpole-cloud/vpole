@@ -364,7 +364,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(2, await Versions.CountDocumentsAsync(item => item.SecretId == before.Id));
         var managedValues = (await Services.GetRequiredService<ReadManagedSecret>()(
             PostgresTestData.TenantId, new ManagedSecretOwner("pole/postgresql", cluster.Id), default));
-        var values = Assert.IsType<Ok<ManagedSecretValues>>(managedValues.Value).Value;
+        var values = Assert.IsType<ManagedSecretValues>(managedValues.Value);
         Assert.Equal("postgres", values.Values["username"]);
         Assert.Equal("rotated-secret", values.Values["password"]);
         var updatedDeployment = await DbContext.ResourceDeployments

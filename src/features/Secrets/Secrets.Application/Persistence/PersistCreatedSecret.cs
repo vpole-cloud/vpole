@@ -56,7 +56,7 @@ internal sealed class MongoPersistCreatedSecret(
             values.Keys,
             now);
         var encrypted = await encrypt(secret, values, ct);
-        if (encrypted is not Ok<SecretVersion> version)
+        if (encrypted is not SecretVersion version)
             return new SecretEncryptionFailed();
         return await transactions.InvokeOutcomeAsync<PersistCreatedSecretResult>(async (tx, token) =>
         {
@@ -81,7 +81,7 @@ internal sealed class MongoPersistCreatedSecret(
             }
             await versions.InsertOneAsync(
                 tx.Session,
-                version.Value,
+                version,
                 cancellationToken: token);
             await publish(tx.Session, secret, new SecretCreated(), token);
             return tx.Commit(secret);
