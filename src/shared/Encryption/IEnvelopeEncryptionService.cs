@@ -1,5 +1,3 @@
-using Pole.ResultType;
-
 namespace Pole.Encryption;
 
 public sealed record EnvelopeEncryptionKeyReference(
@@ -13,27 +11,27 @@ public interface IEnvelopeEncryptionService
 {
     EnvelopeEncryptionKeyReference ActiveKey { get; }
 
-    ValueTask<Result<EncryptedValue, EnvelopeEncryptionFailed>> EncryptAsync(
+    ValueTask<EnvelopeEncryptionOutcome> EncryptAsync(
         ReadOnlyMemory<byte> plaintext,
         EnvelopeEncryptionContext context,
         CancellationToken cancellationToken = default);
 
-    ValueTask<Result<byte[], EnvelopeDecryptionFailed>> DecryptAsync(
+    ValueTask<EnvelopeDecryptionOutcome> DecryptAsync(
         EncryptedValue encryptedValue,
         EnvelopeEncryptionContext context,
         CancellationToken cancellationToken = default);
 
-    ValueTask<Result<EncryptedValue, EnvelopeEncryptionFailed>> EncryptStringAsync(
+    ValueTask<EnvelopeEncryptionOutcome> EncryptStringAsync(
         string plaintext,
         EnvelopeEncryptionContext context,
         CancellationToken cancellationToken = default);
 
-    ValueTask<Result<string, EnvelopeDecryptionFailed>> DecryptStringAsync(
+    ValueTask<EnvelopeStringDecryptionOutcome> DecryptStringAsync(
         EncryptedValue encryptedValue,
         EnvelopeEncryptionContext context,
         CancellationToken cancellationToken = default);
 
-    ValueTask<Result<EncryptedValue, EnvelopeRewrapFailed>> RewrapAsync(
+    ValueTask<EnvelopeRewrapOutcome> RewrapAsync(
         EncryptedValue encryptedValue,
         EnvelopeEncryptionContext context,
         CancellationToken cancellationToken = default);

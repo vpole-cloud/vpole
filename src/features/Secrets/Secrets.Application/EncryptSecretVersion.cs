@@ -2,7 +2,6 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Pole.Encryption;
 using Pole.Features.Secrets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.Secrets.Application;
 
@@ -38,14 +37,14 @@ internal sealed class EnvelopeEncryptSecretVersion(
                 ct);
             return result switch
             {
-                Ok<EncryptedValue> encrypted => new SecretVersion(
+                EncryptedValue encrypted => new SecretVersion(
                     $"{secret.Id}:{secret.CurrentVersion}",
                     secret.TenantId,
                     secret.Id,
                     secret.CurrentVersion,
-                    encrypted.Value,
+                    encrypted,
                     clock.GetUtcNow().UtcDateTime),
-                Err<EnvelopeEncryptionFailed> => new SecretEncryptionFailed()
+                EnvelopeEncryptionFailed => new SecretEncryptionFailed()
             };
         }
         finally

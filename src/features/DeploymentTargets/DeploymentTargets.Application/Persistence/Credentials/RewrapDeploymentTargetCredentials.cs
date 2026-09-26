@@ -3,7 +3,6 @@ using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence.Credentials;
 
@@ -56,7 +55,7 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
                 cancellationToken.ThrowIfCancellationRequested();
                 cursor = target.Id;
 
-                Result<EncryptedValue, EnvelopeRewrapFailed> rewrapResult;
+                EnvelopeRewrapOutcome rewrapResult;
                 string encryptedField;
                 EncryptedValue currentEnvelope;
                 FilterDefinition<DeploymentTarget> casFilter;
@@ -103,7 +102,7 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
                             "A deployment-target credential has an unsupported stored connection kind.");
                 }
 
-                if (!rewrapResult.TryGetValue(out var rewrappedEnvelope, out _))
+                if (rewrapResult is not EncryptedValue rewrappedEnvelope)
                 {
                     throw new InvalidOperationException(
                         "A deployment-target credential could not be rewrapped by the active encryption provider.");

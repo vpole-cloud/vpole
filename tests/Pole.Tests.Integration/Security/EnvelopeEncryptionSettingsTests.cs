@@ -4,7 +4,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Pole.Encryption;
-using Pole.ResultType;
 using Xunit;
 
 namespace Pole.Tests.Integration.Security;
@@ -22,9 +21,9 @@ public sealed class EnvelopeEncryptionSettingsTests
         var service = host.Services.GetRequiredService<IEnvelopeEncryptionService>();
         var context = EnvelopeEncryptionContext.ForPlatform("test", "settings", "1", "value", 1);
         var encrypted = await service.EncryptStringAsync("configuration-round-trip", context);
-        Assert.True(encrypted.TryGetValue(out var value, out _));
+        var value = Assert.IsType<EncryptedValue>(encrypted.Value);
         var decrypted = await service.DecryptStringAsync(value, context);
-        Assert.True(decrypted.TryGetValue(out var plaintext, out _));
+        var plaintext = Assert.IsType<string>(decrypted.Value);
         Assert.Equal("configuration-round-trip", plaintext);
     }
 
@@ -173,14 +172,14 @@ public sealed class EnvelopeEncryptionSettingsTests
             "test-wrap",
             1);
 
-        public ValueTask<Result<WrappedDataEncryptionKey, DataEncryptionKeyWrappingFailed>> WrapKeyAsync(
+        public ValueTask<DataEncryptionKeyWrappingOutcome> WrapKeyAsync(
             KeyEncryptionKeyDescriptor key,
             ReadOnlyMemory<byte> dataEncryptionKey,
             ReadOnlyMemory<byte> associatedData,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public ValueTask<Result<byte[], DataEncryptionKeyUnwrappingFailed>> UnwrapKeyAsync(
+        public ValueTask<DataEncryptionKeyUnwrappingOutcome> UnwrapKeyAsync(
             KeyEncryptionKeyIdentity key,
             string algorithm,
             int algorithmVersion,

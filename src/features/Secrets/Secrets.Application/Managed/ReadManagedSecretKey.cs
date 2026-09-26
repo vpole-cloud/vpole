@@ -3,7 +3,6 @@ using System.Text.Json;
 using Pole.Encryption;
 using Pole.Features.Secrets.Application.Persistence;
 using Pole.Features.Secrets.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.Secrets.Application.Managed;
 
@@ -26,18 +25,18 @@ internal sealed class EnvelopeReadManagedSecretKey(
             return new ManagedSecretUnavailable();
         var result = await encryption.DecryptAsync(version.Value,
             EnvelopeEncryptionContext.ForTenant(secret.TenantId, "Secret", secret.Id, "values", version.Version), ct);
-        if (result is not Ok<byte[]> decrypted)
+        if (result is not byte[] decrypted)
             return new ManagedSecretEncryptionUnavailable();
         try
         {
-            using var document = JsonDocument.Parse(decrypted.Value);
+            using var document = JsonDocument.Parse(decrypted);
             return document.RootElement.TryGetProperty(key, out var value)
                 ? new ManagedSecretKey(value.GetString()!)
                 : new ManagedSecretUnavailable();
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(decrypted.Value);
+            CryptographicOperations.ZeroMemory(decrypted);
         }
     }
 }

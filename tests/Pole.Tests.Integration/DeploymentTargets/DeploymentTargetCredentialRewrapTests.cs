@@ -17,7 +17,6 @@ using Pole.Features.DeploymentTargets.Application.Persistence.References;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
-using static Pole.Tests.Integration.Infrastructure.ResultAssertions;
 using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;

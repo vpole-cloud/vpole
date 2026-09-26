@@ -177,15 +177,14 @@ public sealed class ArchitectureBoundaryTests
                     source,
                     name,
                     $"removed Result compatibility symbol '{name.Identifier.ValueText}' is forbidden")));
-        var singleGenericResultViolations = ArchitectureSources.RepositoryCSharp()
+        var genericResultViolations = ArchitectureSources.RepositoryCSharp()
             .SelectMany(source => source.Root.DescendantNodes()
                 .OfType<GenericNameSyntax>()
-                .Where(name => name.Identifier.ValueText == "Result" &&
-                               name.TypeArgumentList.Arguments.Count == 1)
+                .Where(name => name.Identifier.ValueText is "Result" or "Ok" or "Err")
                 .Select(name => ArchitectureSources.Describe(
                     source,
                     name,
-                    "legacy Result<T> is forbidden; use Result<T, TError> or a closed outcome union")));
+                    "generic Result, Ok and Err are forbidden; use a closed outcome union")));
 
         var fsharpSymbolViolations = FindFSharpSymbols(
             ArchitectureSources.RepositoryFSharp(),
@@ -200,10 +199,10 @@ public sealed class ArchitectureBoundaryTests
                 .Select(line => ArchitectureSources.Describe(
                     source,
                     line.Number,
-                    "legacy Result<T> is forbidden; use Result<T, TError> or a closed outcome union")));
+                    "legacy Result<T> is forbidden; use a closed outcome union")));
 
         AssertNoViolations(symbolViolations
-            .Concat(singleGenericResultViolations)
+            .Concat(genericResultViolations)
             .Concat(fsharpSymbolViolations)
             .Concat(fsharpSingleGenericResultViolations)
             .ToArray());

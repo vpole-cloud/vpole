@@ -1,7 +1,6 @@
 using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Application.Persistence;
 using Pole.Features.ContainerRegistries.Application.Persistence.Credentials;
-using Pole.ResultType;
 
 namespace Pole.Features.ContainerRegistries.Application.Security;
 
@@ -67,7 +66,7 @@ public sealed class RegistryCredentialRewrapService(
                         credential.Id,
                         credential.SecretVersion),
                     cancellationToken);
-                if (!rewrappedEnvelope.TryGetValue(out var envelope, out _) ||
+                if (rewrappedEnvelope is not EncryptedValue envelope ||
                     !ReferencesKey(envelope, expectedActiveKey))
                 {
                     return new RegistryCredentialRewrapFailed();

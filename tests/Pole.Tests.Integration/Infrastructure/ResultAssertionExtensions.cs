@@ -12,7 +12,6 @@ using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Application.Persistence.Deployments;
 using Pole.Features.WebServices.Application.Persistence.Lifecycle;
 using Pole.Mediator;
-using Pole.ResultType;
 using Xunit.Sdk;
 
 namespace Pole.Tests.Integration.Infrastructure;
@@ -229,46 +228,4 @@ public static class ResultAssertionExtensions
                     "Expected a request validation rejection, but the pipeline returned " +
                     $"'{reason.GetType().Name}'.")
             });
-
-    public static T AssertSuccess<T, TError>(this Result<T, TError> result)
-        where T : notnull
-        where TError : notnull =>
-        result switch
-        {
-            Ok<T> success => success.Value,
-            Err<TError> error => throw new XunitException(
-                $"Expected a successful result, but received " +
-                $"{error.Value.GetType().Name}: {error.Value}"),
-            _ => throw new XunitException(
-                $"Expected a successful result, but received unsupported result type " +
-                $"'{result.GetType().Name}'.")
-        };
-
-    public static TError AssertFailure<T, TError>(this Result<T, TError> result)
-        where T : notnull
-        where TError : notnull =>
-        result switch
-        {
-            Err<TError> error => error.Value,
-            Ok<T> success => throw new XunitException(
-                $"Expected a failed result, but received {success.GetType().Name}."),
-            _ => throw new XunitException(
-                $"Expected a failed result, but received unsupported result type " +
-                $"'{result.GetType().Name}'.")
-        };
-}
-
-/// <summary>
-/// Static-call facade for test code that reads more clearly with assertion functions than
-/// extension-method syntax. The assertion behavior remains centralized above.
-/// </summary>
-public static class ResultAssertions
-{
-    public static T AssertSuccess<T, TError>(Result<T, TError> result)
-        where T : notnull
-        where TError : notnull => result.AssertSuccess();
-
-    public static TError AssertFailure<T, TError>(Result<T, TError> result)
-        where T : notnull
-        where TError : notnull => result.AssertFailure();
 }

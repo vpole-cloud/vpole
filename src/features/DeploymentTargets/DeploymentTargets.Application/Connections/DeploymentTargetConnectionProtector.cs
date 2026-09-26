@@ -1,6 +1,5 @@
 using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Application.Common;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Connections;
 
@@ -41,9 +40,9 @@ internal sealed class DeploymentTargetConnectionProtector(
             var encrypted = await encryption.EncryptAsync(canonicalKubeconfig, context, cancellationToken);
             return encrypted switch
             {
-                Ok<EncryptedValue> success => success.Value,
-                Err<EnvelopeEncryptionFailed> failure => throw new InvalidOperationException(
-                    $"The deployment-target connection-protection service rejected encryption: {failure.Value.Message}")
+                EncryptedValue success => success,
+                EnvelopeEncryptionFailed failure => throw new InvalidOperationException(
+                    $"The deployment-target connection-protection service rejected encryption: {failure.Message}")
             };
         }
         catch (OperationCanceledException)
@@ -79,8 +78,8 @@ internal sealed class DeploymentTargetConnectionProtector(
             var decrypted = await encryption.DecryptAsync(encryptedKubeconfig, context, cancellationToken);
             return decrypted switch
             {
-                Ok<byte[]> success => success.Value,
-                Err<EnvelopeDecryptionFailed> => new StoredDeploymentTargetConnectionUnavailable()
+                byte[] success => success,
+                EnvelopeDecryptionFailed => new StoredDeploymentTargetConnectionUnavailable()
             };
         }
         catch (OperationCanceledException)
@@ -122,9 +121,9 @@ internal sealed class DeploymentTargetConnectionProtector(
                 cancellationToken);
             return encrypted switch
             {
-                Ok<EncryptedValue> success => success.Value,
-                Err<EnvelopeEncryptionFailed> failure => throw new InvalidOperationException(
-                    $"The deployment-target connection-protection service rejected encryption: {failure.Value.Message}")
+                EncryptedValue success => success,
+                EnvelopeEncryptionFailed failure => throw new InvalidOperationException(
+                    $"The deployment-target connection-protection service rejected encryption: {failure.Message}")
             };
         }
         catch (OperationCanceledException)
@@ -162,8 +161,8 @@ internal sealed class DeploymentTargetConnectionProtector(
             var decrypted = await encryption.DecryptAsync(encryptedCredential, context, cancellationToken);
             return decrypted switch
             {
-                Ok<byte[]> success => success.Value,
-                Err<EnvelopeDecryptionFailed> => new StoredDeploymentTargetConnectionUnavailable()
+                byte[] success => success,
+                EnvelopeDecryptionFailed => new StoredDeploymentTargetConnectionUnavailable()
             };
         }
         catch (OperationCanceledException)

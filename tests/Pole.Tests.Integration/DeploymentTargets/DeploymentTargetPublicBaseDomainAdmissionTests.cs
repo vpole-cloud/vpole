@@ -13,7 +13,6 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
-using static Pole.Tests.Integration.Infrastructure.ResultAssertions;
 using Pole.Workloads;
 using Xunit;
 

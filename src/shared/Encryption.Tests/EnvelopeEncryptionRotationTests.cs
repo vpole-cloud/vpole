@@ -1,4 +1,3 @@
-using Pole.ResultType;
 
 namespace Pole.Encryption.Tests;
 
@@ -19,11 +18,9 @@ public sealed class EnvelopeEncryptionRotationTests
         var rewrapResult = await transitionService.Service.RewrapAsync(
             original, EncryptionTestData.TenantContext());
 
-        Assert.True(
-            transitionDecryption.TryGetValue(out var plaintext, out var decryptionFailure),
-            decryptionFailure?.Message);
+        var plaintext = Assert.IsType<string>(transitionDecryption.Value);
         Assert.Equal("rotate me", plaintext);
-        Assert.True(rewrapResult.TryGetValue(out var rewrapped, out var rewrapFailure), rewrapFailure?.Message);
+        var rewrapped = Assert.IsType<EncryptedValue>(rewrapResult.Value);
         Assert.Equal(2, rewrapped.KeyEncryptionKeyVersion);
     }
 
@@ -40,16 +37,16 @@ public sealed class EnvelopeEncryptionRotationTests
 
         var result = await transition.Service.RewrapAsync(original, EncryptionTestData.TenantContext());
 
-        Assert.True(result.TryGetValue(out var rewrapped, out var rewrapFailure), rewrapFailure?.Message);
+        var rewrapped = Assert.IsType<EncryptedValue>(result.Value);
         Assert.True(original.Ciphertext.SequenceEqual(rewrapped.Ciphertext));
         Assert.True(original.Nonce.SequenceEqual(rewrapped.Nonce));
         Assert.True(original.AuthenticationTag.SequenceEqual(rewrapped.AuthenticationTag));
         Assert.False(original.WrappedDataEncryptionKey.SequenceEqual(rewrapped.WrappedDataEncryptionKey));
         var newOnlyResult = await newOnly.Service.DecryptStringAsync(rewrapped, EncryptionTestData.TenantContext());
-        Assert.True(newOnlyResult.TryGetValue(out var plaintext, out var newFailure), newFailure?.Message);
+        var plaintext = Assert.IsType<string>(newOnlyResult.Value);
         Assert.Equal("rotate me", plaintext);
         var oldOnlyResult = await oldOnly.Service.DecryptStringAsync(rewrapped, EncryptionTestData.TenantContext());
-        Assert.False(oldOnlyResult.TryGetValue(out _, out _));
+        Assert.IsType<EnvelopeDecryptionFailed>(oldOnlyResult.Value);
     }
 
     [Fact]
@@ -62,7 +59,7 @@ public sealed class EnvelopeEncryptionRotationTests
 
         var result = await encryption.Service.RewrapAsync(original, EncryptionTestData.TenantContext());
 
-        Assert.True(result.TryGetValue(out var rewrapped, out var failure), failure?.Message);
+        var rewrapped = Assert.IsType<EncryptedValue>(result.Value);
         Assert.Same(original, rewrapped);
     }
 
@@ -83,14 +80,14 @@ public sealed class EnvelopeEncryptionRotationTests
             tampered,
             EncryptionTestData.TenantContext());
 
-        Assert.True(rewrapResult.TryGetValue(out var rewrapped, out var failure), failure?.Message);
+        var rewrapped = Assert.IsType<EncryptedValue>(rewrapResult.Value);
         Assert.True(tampered.Ciphertext.SequenceEqual(rewrapped.Ciphertext));
         Assert.True(tampered.Nonce.SequenceEqual(rewrapped.Nonce));
         Assert.True(tampered.AuthenticationTag.SequenceEqual(rewrapped.AuthenticationTag));
         var decryptResult = await transition.Service.DecryptStringAsync(
             rewrapped,
             EncryptionTestData.TenantContext());
-        Assert.False(decryptResult.TryGetValue(out _, out _));
+        Assert.IsType<EnvelopeDecryptionFailed>(decryptResult.Value);
     }
 
     [Fact]
@@ -130,8 +127,7 @@ public sealed class EnvelopeEncryptionRotationTests
     private static async Task<EncryptedValue> EncryptAsync(EnvelopeEncryptionService service, string plaintext)
     {
         var result = await service.EncryptStringAsync(plaintext, EncryptionTestData.TenantContext());
-        Assert.True(result.TryGetValue(out var encrypted, out var failure), failure?.Message);
-        return encrypted;
+        return Assert.IsType<EncryptedValue>(result.Value);
     }
 
     private static async Task AssertDecryptsToAsync(
@@ -140,7 +136,7 @@ public sealed class EnvelopeEncryptionRotationTests
         string expected)
     {
         var result = await service.DecryptStringAsync(encrypted, EncryptionTestData.TenantContext());
-        Assert.True(result.TryGetValue(out var plaintext, out var failure), failure?.Message);
+        var plaintext = Assert.IsType<string>(result.Value);
         Assert.Equal(expected, plaintext);
     }
 }

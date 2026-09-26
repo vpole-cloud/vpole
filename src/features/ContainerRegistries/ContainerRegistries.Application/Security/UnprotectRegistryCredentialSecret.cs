@@ -1,6 +1,6 @@
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
-using Pole.ResultType;
+using Pole.Encryption;
 
 namespace Pole.Features.ContainerRegistries.Application.Security;
 
@@ -26,8 +26,10 @@ public sealed class EnvelopeUnprotectRegistryCredentialSecret(Pole.Encryption.IE
                 credential.Id,
                 credential.SecretVersion),
             cancellationToken);
-        return result.TryGetValue(out var secret, out _)
-            ? secret
-            : new RegistryCredentialUnavailable(credential.RegistryProjectId);
+        return result switch
+        {
+            string secret => secret,
+            EnvelopeDecryptionFailed => new RegistryCredentialUnavailable(credential.RegistryProjectId)
+        };
     }
 }

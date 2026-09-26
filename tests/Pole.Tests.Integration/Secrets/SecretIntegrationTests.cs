@@ -144,7 +144,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
         var decrypted = await Services.GetRequiredService<IEnvelopeEncryptionService>().DecryptAsync(
             first.Value,
             EnvelopeEncryptionContext.ForTenant(group.TenantId, "Secret", created.Id, "values", 1));
-        Assert.True(decrypted is Ok<byte[]>);
+        Assert.IsType<byte[]>(decrypted.Value);
         Assert.Null(await Services.GetRequiredService<LoadSecretById>()(Id(), created.Id, default));
         AssertError<SecretMissing>(await RotateAsync(Id(), created.Id, 1, Values(), default));
         var rotated = Metadata(await RotateAsync(

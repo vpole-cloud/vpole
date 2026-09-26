@@ -38,8 +38,8 @@ Domain validation checks business rules, aggregate invariants, or facts that dep
 Represent expected failures that callers must handle as explicit typed values rather than
 exceptions. Choose the result shape at the boundary that owns the decision:
 
-- New and migrated synchronous contracts use provider-owned, operation-specific outcome unions.
-  Existing `Result<T, TError>` contracts remain supported during incremental migration.
+- Synchronous contracts use provider-owned, operation-specific outcome unions, including
+  encryption operations.
 - A Mediator request handler owns a flat, closed application outcome containing its concrete
   successful results and expected failures. Avoid nesting error-only wrappers in endpoint outcomes.
 - Closed HTTP outcomes use an exhaustive switch calling typed mapping methods directly. Prefer

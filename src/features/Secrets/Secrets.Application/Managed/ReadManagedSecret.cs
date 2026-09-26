@@ -5,7 +5,6 @@ using Pole.Encryption;
 using Pole.Features.Secrets.Application.Persistence;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.Secrets.Application.Managed;
 
@@ -27,18 +26,18 @@ internal sealed class EnvelopeReadManagedSecret(
             return new ManagedSecretUnavailable();
         var result = await encryption.DecryptAsync(version.Value,
             EnvelopeEncryptionContext.ForTenant(secret.TenantId, "Secret", secret.Id, "values", version.Version), ct);
-        if (result is not Ok<byte[]> decrypted)
+        if (result is not byte[] decrypted)
             return new ManagedSecretEncryptionUnavailable();
         try
         {
-            var values = JsonSerializer.Deserialize<ImmutableDictionary<string, string>>(decrypted.Value)!;
+            var values = JsonSerializer.Deserialize<ImmutableDictionary<string, string>>(decrypted)!;
             return new ManagedSecretValues(secret.Id, secret.Name,
                 ((ProviderManagedSecret)secret.Management).KubernetesType == KubernetesSecretType.BasicAuthentication ? ManagedSecretKubernetesType.BasicAuthentication : ManagedSecretKubernetesType.Opaque,
                 secret.CurrentVersion, values);
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(decrypted.Value);
+            CryptographicOperations.ZeroMemory(decrypted);
         }
     }
 }

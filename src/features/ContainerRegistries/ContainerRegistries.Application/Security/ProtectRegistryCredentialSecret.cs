@@ -1,6 +1,5 @@
 using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.ContainerRegistries.Application.Security;
 
@@ -29,9 +28,11 @@ public sealed class EnvelopeProtectRegistryCredentialSecret(IEnvelopeEncryptionS
             secret,
             RegistryCredentialEncryptionContext.Create(tenantId, credentialId, secretVersion),
             cancellationToken);
-        return result.TryGetValue(out var encrypted, out _)
-            ? encrypted
-            : new RegistryCredentialProtectionFailed();
+        return result switch
+        {
+            EncryptedValue encrypted => encrypted,
+            EnvelopeEncryptionFailed => new RegistryCredentialProtectionFailed()
+        };
     }
 }
 

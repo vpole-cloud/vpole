@@ -5,7 +5,6 @@ using Pole.Encryption;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Secrets.Application.Persistence;
 using Pole.Features.Secrets.Domain;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.Secrets.Application.Projections;
@@ -102,16 +101,16 @@ public sealed class SecretProjectionReconciler(
         {
             var decrypted = await encryption.DecryptAsync(version.Value,
                 EnvelopeEncryptionContext.ForTenant(owned.TenantId, "Secret", owned.SecretId, "values", owned.DesiredVersion), token);
-            if (decrypted is not Ok<byte[]> plaintext)
+            if (decrypted is not byte[] plaintext)
                 return new SecretProjectionManifestOutcome(new SecretProjectionDecryptionUnavailable());
             try
             {
-                var values = JsonSerializer.Deserialize<Dictionary<string, string>>(plaintext.Value)!;
+                var values = JsonSerializer.Deserialize<Dictionary<string, string>>(plaintext)!;
                 return new SecretProjectionManifestOutcome(SecretProjectionManifest.Create(owned, binding, values));
             }
             finally
             {
-                CryptographicOperations.ZeroMemory(plaintext.Value);
+                CryptographicOperations.ZeroMemory(plaintext);
             }
         }, ct);
         if (applied.Value is SecretProjectionTargetFailure failure)
