@@ -11,18 +11,24 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ComputeProfiles.Contracts;
+using Pole.Features.ComputeProfiles.Contracts.HttpMapping;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Mutations;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
+using Pole.Features.Quotas.Contracts.HttpMapping;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceGroups.Contracts.HttpMapping;
 using Pole.Functions.Protocol;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 using Pole.Workloads;
+using static Pole.Features.Functions.Application.Common.FunctionAppHttpMappings;
 
 namespace Pole.Features.Functions.Application.Endpoints;
 
@@ -32,7 +38,6 @@ public static class CreateFunctionApp
     {
         app.MapPost("/", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] CreateFunctionAppRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -40,13 +45,29 @@ public static class CreateFunctionApp
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     CreateFunctionAppResponse response => Results.Accepted(value: response),
-                    CreateFunctionAppError error => httpProblems.Map(error).ToHttpResult()
+                    CreateFunctionAppError error => MapCreateError(error)
                 });
             })
             .WithName("CreateFunctionApp")
             .Produces<CreateFunctionAppResponse>(StatusCodes.Status202Accepted);
         return app;
     }
+
+    private static HttpProblem MapCreateError(CreateFunctionAppError error) =>
+        error.Value switch
+        {
+            FunctionAppDefaultDeploymentTargetUnavailable unavailable =>
+                MapDefaultDeploymentTargetUnavailable(unavailable),
+            DeploymentTargetNewWorkloadAdmissionError admission =>
+                DeploymentTargetContractHttpMappings.MapNewWorkloadAdmissionError(admission),
+            ComputeProfileResolutionError resolution =>
+                ComputeProfileContractHttpMappings.MapResolutionError(resolution),
+            CreateResourceDeploymentError deployment =>
+                ResourceDeploymentContractHttpMappings.MapDeploymentError(deployment),
+            ResourceRegistrationMutationError registration =>
+                ResourceGroupContractHttpMappings.MapRegistrationMutationError(registration),
+            QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
+        };
 }
 
 public sealed record CreateFunctionAppRequest(

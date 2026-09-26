@@ -10,6 +10,7 @@ using Pole.Features.Functions.Application.Persistence.Reads;
 using Pole.Features.Functions.Domain;
 using Pole.Mediator;
 using Pole.Validation;
+using static Pole.Features.Functions.Application.Common.FunctionAppHttpMappings;
 
 namespace Pole.Features.Functions.Application.Endpoints;
 
@@ -19,7 +20,6 @@ public static class GetFunctionInvocations
     {
         app.MapGet("/{Id}/invocations", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetFunctionInvocationsRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -27,7 +27,7 @@ public static class GetFunctionInvocations
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     IReadOnlyList<FunctionInvocationDto> invocations => Results.Ok(invocations),
-                    FunctionAppNotFound notFound => httpProblems.Map(notFound).ToHttpResult()
+                    FunctionAppNotFound notFound => MapNotFound(notFound)
                 });
             })
             .WithName("GetFunctionInvocations")

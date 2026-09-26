@@ -4,16 +4,16 @@ using Pole.Database;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence;
 using Pole.Features.Functions.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.Functions.Application.Persistence.Mutations;
 
 public sealed record FunctionAppRevisionChanged(string FunctionAppId);
 
-public union PersistFunctionAppRevisionError(
+public union PersistFunctionAppRevisionOutcome(
+    FunctionRevision,
     FunctionAppRevisionChanged);
 
-public delegate Task<Result<FunctionRevision, PersistFunctionAppRevisionError>>
+public delegate Task<PersistFunctionAppRevisionOutcome>
     PersistFunctionAppRevision(
         IClientSessionHandle session,
         FunctionApp current,
@@ -28,7 +28,7 @@ internal sealed class MongoPersistFunctionAppRevision(
     IMongoCollection<FunctionRevision> functionRevisions,
     StoreOutboxWrites storeOutboxWrites)
 {
-    public async Task<Result<FunctionRevision, PersistFunctionAppRevisionError>> InvokeAsync(
+    public async Task<PersistFunctionAppRevisionOutcome> InvokeAsync(
         IClientSessionHandle session,
         FunctionApp current,
         FunctionRevision candidate,
@@ -55,8 +55,7 @@ internal sealed class MongoPersistFunctionAppRevision(
             cancellationToken: cancellationToken);
         if (updated.MatchedCount != 1)
         {
-            return new Err<PersistFunctionAppRevisionError>(
-                new FunctionAppRevisionChanged(current.Id));
+            return new FunctionAppRevisionChanged(current.Id);
         }
 
         await functionRevisions.InsertOneAsync(
@@ -67,6 +66,6 @@ internal sealed class MongoPersistFunctionAppRevision(
             session,
             [OutboxWrite.Create(candidate.ToRevisionCreatedEvent(current))],
             cancellationToken);
-        return new Ok<FunctionRevision>(candidate);
+        return candidate;
     }
 }

@@ -7,3 +7,5 @@ public sealed record FunctionAppDefaultDeploymentTargetUnavailable;
 public sealed record FunctionAppHasPendingRevision(string FunctionAppId);
 
 public sealed record FunctionAppIsNotEnabled(string FunctionAppId);
+
+public sealed record FunctionAppResourceDeploymentMissing(string FunctionAppId);

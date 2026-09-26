@@ -11,7 +11,6 @@ using Pole.Features.Functions.Application.Persistence.Runtime.Provisioning;
 using Pole.Features.Functions.Application.Persistence.Runtime.Scaling;
 using Pole.Features.Functions.Application.Persistence.Runtime.Timers;
 using Pole.Features.Functions.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.Functions.Application.Persistence;
 
@@ -88,22 +87,18 @@ public static class FunctionAppPersistenceRegistration
         services.AddCapability<
             MongoLoadFunctionRevisionProvisioningSubject,
             LoadFunctionRevisionProvisioningSubject>(implementation => implementation.InvokeAsync);
-        services.AddSingleton<RunMongoOutcomeTransaction<Result<
-            FunctionInvocationManualRetry,
-            RetryFunctionInvocationError>>>(serviceProvider => serviceProvider
+        services.AddSingleton<RunMongoOutcomeTransaction<PersistRetriedFunctionInvocationOutcome>>(
+            serviceProvider => serviceProvider
             .GetRequiredService<MongoRunTransaction>()
-            .InvokeOutcomeAsync<Result<
-                FunctionInvocationManualRetry,
-                RetryFunctionInvocationError>>);
+            .InvokeOutcomeAsync<PersistRetriedFunctionInvocationOutcome>);
         services.AddSingleton<RunMongoOutcomeTransaction<FunctionRevisionLifecycleOutcome>>(
             serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<FunctionRevisionLifecycleOutcome>);
-        services.AddSingleton<RunMongoOutcomeTransaction<Result<
-            Unit,
-            FunctionAppDeletionFinalizationConflict>>>(serviceProvider => serviceProvider
+        services.AddSingleton<RunMongoOutcomeTransaction<FinalizeFunctionAppDeletionOutcome>>(
+            serviceProvider => serviceProvider
             .GetRequiredService<MongoRunTransaction>()
-            .InvokeOutcomeAsync<Result<Unit, FunctionAppDeletionFinalizationConflict>>);
+            .InvokeOutcomeAsync<FinalizeFunctionAppDeletionOutcome>);
         return services;
     }
 

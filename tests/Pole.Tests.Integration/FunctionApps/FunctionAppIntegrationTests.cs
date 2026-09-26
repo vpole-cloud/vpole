@@ -515,21 +515,21 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             deleted);
         var finalize = Services.GetRequiredService<FinalizeFunctionAppDeletion>();
 
-        Assert.True((await finalize(
+        Assert.IsType<FunctionAppDeletionFinalized>((await finalize(
             "507f1f77bcf86cd799439099",
             created.FunctionAppId,
-            deployment.Id)).TryGetValue(out _, out _));
+            deployment.Id)).Value);
         Assert.Equal(1L, await DbContext.FunctionApps.CountDocumentsAsync(
             item => item.Id == created.FunctionAppId));
 
-        Assert.True((await finalize(
+        Assert.IsType<FunctionAppDeletionFinalized>((await finalize(
             TestData.TenantId,
             created.FunctionAppId,
-            deployment.Id)).TryGetValue(out _, out _));
-        Assert.True((await finalize(
+            deployment.Id)).Value);
+        Assert.IsType<FunctionAppDeletionFinalized>((await finalize(
             TestData.TenantId,
             created.FunctionAppId,
-            deployment.Id)).TryGetValue(out _, out _));
+            deployment.Id)).Value);
 
         Assert.Equal(0L, await DbContext.FunctionApps.CountDocumentsAsync(
             item => item.Id == created.FunctionAppId));

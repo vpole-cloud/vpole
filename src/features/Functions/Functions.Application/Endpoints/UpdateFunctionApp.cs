@@ -14,10 +14,13 @@ using Pole.Features.Functions.Application.Persistence.Mutations;
 using Pole.Features.Functions.Application.Persistence.Reads;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
+using Pole.Features.Quotas.Contracts.HttpMapping;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.Functions.Application.Common.FunctionAppHttpMappings;
 
 namespace Pole.Features.Functions.Application.Endpoints;
 
@@ -27,7 +30,6 @@ public static class UpdateFunctionApp
     {
         app.MapPut("/{Id}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] UpdateFunctionAppRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -35,13 +37,26 @@ public static class UpdateFunctionApp
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     UpdateFunctionAppResponse response => Results.Accepted(value: response),
-                    UpdateFunctionAppError error => httpProblems.Map(error).ToHttpResult()
+                    UpdateFunctionAppError error => MapUpdateError(error)
                 });
             })
             .WithName("UpdateFunctionApp")
             .Produces<UpdateFunctionAppResponse>(StatusCodes.Status202Accepted);
         return app;
     }
+
+    private static HttpProblem MapUpdateError(UpdateFunctionAppError error) =>
+        error.Value switch
+        {
+            FunctionAppNotFound notFound => MapNotFound(notFound),
+            FunctionAppResourceDeploymentMissing missing => MapResourceDeploymentMissing(missing),
+            FunctionAppHasPendingRevision pending => MapPendingRevision(pending),
+            FunctionAppIsNotEnabled disabled => MapNotEnabled(disabled),
+            FunctionAppRevisionChanged changed => MapRevisionChanged(changed),
+            ResourceDeploymentMutationError deployment =>
+                ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
+            QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
+        };
 }
 
 public sealed record UpdateFunctionAppRequest(
@@ -60,14 +75,12 @@ public sealed record UpdateFunctionAppResponse(
     int RevisionNumber,
     PlacementSummaryDto Placement);
 
-public sealed record FunctionAppResourceDeploymentMissing(string FunctionAppId);
-
 public union UpdateFunctionAppError(
     FunctionAppNotFound,
     FunctionAppResourceDeploymentMissing,
     FunctionAppHasPendingRevision,
     FunctionAppIsNotEnabled,
-    PersistFunctionAppRevisionError,
+    FunctionAppRevisionChanged,
     ResourceDeploymentMutationError,
     QuotaExecutionError);
 
@@ -184,8 +197,10 @@ public sealed class UpdateFunctionAppHandler(
             tags,
             updatedAtUtc,
             cancellationToken);
-        if (!persisted.TryGetValue(out var revision, out var persistenceError))
+        if (persisted is FunctionAppRevisionChanged persistenceError)
             return transaction.Abort(new UpdateFunctionAppError(persistenceError));
+
+        var revision = (FunctionRevision)persisted.Value;
 
         var deploymentResult = await requestDeploymentApply(
             new ResourceDeploymentExactMutationRequest(

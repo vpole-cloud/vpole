@@ -106,6 +106,7 @@ public sealed class ArchitectureBoundaryTests
     [InlineData("ComputeProfiles")]
     [InlineData("Domains")]
     [InlineData("RedisServices")]
+    [InlineData("Functions")]
     public void FeatureContractsAndEndpoints_UseNamedOutcomesAndDirectMappings(string feature)
     {
         var sources = ArchitectureSources.ProductionCSharp()

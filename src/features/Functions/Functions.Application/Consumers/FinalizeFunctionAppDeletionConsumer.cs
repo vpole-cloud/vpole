@@ -2,7 +2,6 @@ using MassTransit;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Lifecycle;
 using Pole.Features.ResourceDeployments.Events;
-using Pole.ResultType;
 
 namespace Pole.Features.Functions.Application.Consumers;
 
@@ -26,7 +25,7 @@ public sealed class FinalizeFunctionAppDeletionConsumer(
             message.ResourceId,
             message.ResourceDeploymentId,
             context.CancellationToken);
-        if (!result.TryGetValue(out _, out var conflict))
+        if (result is FunctionAppDeletionFinalizationConflict conflict)
         {
             throw new InvalidOperationException(
                 $"Function App deletion finalization conflicted for '{conflict.FunctionAppId}'.");

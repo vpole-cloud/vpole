@@ -7,8 +7,8 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Functions.Application.Persistence.Mutations;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.Functions.Application.Common.FunctionAppHttpMappings;
 
 namespace Pole.Features.Functions.Application.Endpoints;
 
@@ -18,7 +18,6 @@ public static class RetryFunctionInvocation
     {
         app.MapPost("/{Id}/invocations/{InvocationId}:retry", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] RetryFunctionInvocationRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -26,7 +25,7 @@ public static class RetryFunctionInvocation
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     RetryFunctionInvocationResponse response => Results.Accepted(value: response),
-                    RetryFunctionInvocationError error => httpProblems.Map(error).ToHttpResult()
+                    RetryFunctionInvocationError error => MapRetryError(error)
                 });
             })
             .WithName("RetryFunctionInvocation")
@@ -64,14 +63,13 @@ public sealed class RetryFunctionInvocationHandler(
             request.InvocationId,
             timeProvider.GetUtcNow(),
             cancellationToken);
-        return retried.Match<
-            FunctionInvocationManualRetry,
-            RetryFunctionInvocationError,
-            RetryFunctionInvocationOutcome>(
-            value => new RetryFunctionInvocationResponse(
+        return retried switch
+        {
+            FunctionInvocationManualRetry value => new RetryFunctionInvocationResponse(
                 value.InvocationId,
                 value.NextAttemptNumber),
-            error => error);
+            RetryFunctionInvocationError error => error
+        };
     }
 }
 

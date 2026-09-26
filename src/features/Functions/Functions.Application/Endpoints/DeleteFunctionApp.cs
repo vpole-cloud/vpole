@@ -11,10 +11,13 @@ using Pole.Features.Functions.Application.Persistence.Lifecycle;
 using Pole.Features.Functions.Application.Persistence.Reads;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
+using Pole.Features.Quotas.Contracts.HttpMapping;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.Functions.Application.Common.FunctionAppHttpMappings;
 
 namespace Pole.Features.Functions.Application.Endpoints;
 
@@ -24,7 +27,6 @@ public static class DeleteFunctionApp
     {
         app.MapDelete("/{Id}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] DeleteFunctionAppRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -32,13 +34,24 @@ public static class DeleteFunctionApp
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     DeleteFunctionAppResponse response => Results.Accepted(value: response),
-                    DeleteFunctionAppError error => httpProblems.Map(error).ToHttpResult()
+                    DeleteFunctionAppError error => MapDeleteError(error)
                 });
             })
             .WithName("DeleteFunctionApp")
             .Produces<DeleteFunctionAppResponse>(StatusCodes.Status202Accepted);
         return app;
     }
+
+    private static HttpProblem MapDeleteError(DeleteFunctionAppError error) =>
+        error.Value switch
+        {
+            FunctionAppNotFound notFound => MapNotFound(notFound),
+            FunctionAppResourceDeploymentMissing missing => MapResourceDeploymentMissing(missing),
+            FunctionAppDeletionChanged changed => MapDeletionChanged(changed),
+            ResourceDeploymentMutationError deployment =>
+                ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
+            QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
+        };
 }
 
 public sealed record DeleteFunctionAppRequest(
@@ -51,7 +64,7 @@ public sealed record DeleteFunctionAppResponse(string FunctionAppId);
 public union DeleteFunctionAppError(
     FunctionAppNotFound,
     FunctionAppResourceDeploymentMissing,
-    BeginFunctionAppDeletionError,
+    FunctionAppDeletionChanged,
     ResourceDeploymentMutationError,
     QuotaExecutionError);
 
@@ -115,7 +128,7 @@ public sealed class DeleteFunctionAppHandler(
                     app,
                     timeProvider.GetUtcNow(),
                     ct);
-                if (!deleted.TryGetValue(out _, out var deletionError))
+                if (deleted is FunctionAppDeletionChanged deletionError)
                     return transaction.Abort(new DeleteFunctionAppError(deletionError));
 
                 var deploymentResult = await requestDeploymentDeletion(
