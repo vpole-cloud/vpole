@@ -10,6 +10,8 @@ using Pole.Features.Secrets.Domain;
 using Pole.Mediator;
 using Pole.Validation;
 
+using static Pole.Features.Secrets.Application.SecretHttpMappings;
+
 namespace Pole.Features.Secrets.Application.Endpoints;
 
 public union CreateSecretOutcome(
@@ -79,16 +81,15 @@ public static class CreateSecretEndpoint
     {
         app.MapPost("/", async (
                 IMediator mediator,
-                IHttpProblemMapper problems,
                 [AsParameters] CreateSecretRequest request,
                 CancellationToken ct) =>
                 (await mediator.Send(request, ct))
                 .ToHttpResult(outcome => outcome switch
                 {
                     SecretMetadata metadata => Results.Created($"/api/v1/secrets/{metadata.Id}", metadata),
-                    SecretNameAlreadyExists error => problems.Map(error).ToHttpResult(),
-                    SecretReferenceRejected error => problems.Map(error).ToHttpResult(),
-                    SecretEncryptionFailed error => problems.Map(error).ToHttpResult()
+                    SecretNameAlreadyExists error => MapNameAlreadyExists(error),
+                    SecretReferenceRejected error => MapReferenceRejected(error),
+                    SecretEncryptionFailed error => MapEncryptionFailed(error)
                 }))
             .WithName("CreateSecret");
 

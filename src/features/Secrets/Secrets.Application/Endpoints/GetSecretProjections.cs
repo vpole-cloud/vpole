@@ -10,6 +10,8 @@ using Pole.Features.Secrets.Domain;
 using Pole.Mediator;
 using Pole.Validation;
 
+using static Pole.Features.Secrets.Application.SecretHttpMappings;
+
 namespace Pole.Features.Secrets.Application.Endpoints;
 
 public sealed record SecretProjectionStatusDto(
@@ -75,13 +77,12 @@ public static class GetSecretProjectionsEndpoint
     {
         app.MapGet("/{Id}/projections", async (
                 IMediator mediator,
-                IHttpProblemMapper problems,
                 [AsParameters] GetSecretProjectionsRequest request,
                 CancellationToken ct) =>
                 (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     SecretProjectionStatusDto[] projections => Results.Ok(projections),
-                    SecretMissing missing => problems.Map(missing).ToHttpResult()
+                    SecretMissing missing => MapMissing(missing)
                 }))
             .WithName("GetSecretProjections");
         return app;

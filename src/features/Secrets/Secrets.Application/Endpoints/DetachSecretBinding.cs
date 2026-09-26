@@ -10,6 +10,8 @@ using Pole.Features.Secrets.Domain;
 using Pole.Mediator;
 using Pole.Validation;
 
+using static Pole.Features.Secrets.Application.SecretHttpMappings;
+
 namespace Pole.Features.Secrets.Application.Endpoints;
 
 public union DetachSecretBindingOutcome(
@@ -52,15 +54,14 @@ public static class DetachSecretBindingEndpoint
     {
         app.MapDelete("/{Id}/bindings/{BindingId}", async (
                 IMediator mediator,
-                IHttpProblemMapper problems,
                 [AsParameters] DetachSecretBindingRequest request,
                 CancellationToken ct) =>
                 (await mediator.Send(request, ct))
                 .ToHttpResult(outcome => outcome switch
                 {
                     SecretMetadata metadata => Results.Ok(metadata),
-                    SecretMissing error => problems.Map(error).ToHttpResult(),
-                    SecretManagedByProvider error => problems.Map(error).ToHttpResult()
+                    SecretMissing error => MapMissing(error),
+                    SecretManagedByProvider error => MapManagedByProvider(error)
                 }))
             .WithName("DetachSecretBinding");
 

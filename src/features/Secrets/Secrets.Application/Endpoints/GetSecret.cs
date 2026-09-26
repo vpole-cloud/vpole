@@ -9,6 +9,8 @@ using Pole.Features.Secrets.Application.Persistence;
 using Pole.Mediator;
 using Pole.Validation;
 
+using static Pole.Features.Secrets.Application.SecretHttpMappings;
+
 namespace Pole.Features.Secrets.Application.Endpoints;
 
 public union GetSecretOutcome(
@@ -46,14 +48,13 @@ public static class GetSecretEndpoint
     {
         app.MapGet("/{Id}", async (
                 IMediator mediator,
-                IHttpProblemMapper problems,
                 [AsParameters] GetSecretRequest request,
                 CancellationToken ct) =>
                 (await mediator.Send(request, ct))
                 .ToHttpResult(outcome => outcome switch
                 {
                     SecretMetadata metadata => Results.Ok(metadata),
-                    SecretMissing error => problems.Map(error).ToHttpResult()
+                    SecretMissing error => MapMissing(error)
                 }))
             .WithName("GetSecret");
 

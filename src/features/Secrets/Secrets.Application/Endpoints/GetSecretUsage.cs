@@ -13,6 +13,8 @@ using Pole.Mediator;
 using Pole.Validation;
 using Pole.Workloads;
 
+using static Pole.Features.Secrets.Application.SecretHttpMappings;
+
 namespace Pole.Features.Secrets.Application.Endpoints;
 
 public union GetSecretUsageOutcome(
@@ -71,14 +73,13 @@ public static class GetSecretUsageEndpoint
     {
         app.MapGet("/{Id}/usage", async (
                 IMediator mediator,
-                IHttpProblemMapper problems,
                 [AsParameters] GetSecretUsageRequest request,
                 CancellationToken ct) =>
                 (await mediator.Send(request, ct))
                 .ToHttpResult(outcome => outcome switch
                 {
                     SecretUsage[] usage => Results.Ok(usage),
-                    SecretMissing error => problems.Map(error).ToHttpResult()
+                    SecretMissing error => MapMissing(error)
                 }))
             .WithName("GetSecretUsage");
 
