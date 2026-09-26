@@ -14,7 +14,6 @@ using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Timers;
 using Pole.Functions.Protocol;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -629,17 +628,17 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
 
     private sealed class FixedPlacementResolver : IFunctionResourcePlacementResolver
     {
-        public Task<Result<FunctionResourcePlacement, FunctionResourcePlacementUnavailable>> ResolveAsync(
+        public Task<FunctionResourcePlacementOutcome> ResolveAsync(
             FunctionApp app,
             bool requireReady = true,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<FunctionResourcePlacement, FunctionResourcePlacementUnavailable>>(
-                new Ok<FunctionResourcePlacement>(new FunctionResourcePlacement(
+            Task.FromResult<FunctionResourcePlacementOutcome>(
+                new FunctionResourcePlacement(
                     app.Placement.ResourceDeploymentId,
                     app.Placement.RuntimeCellId,
                     app.Placement.DeploymentTargetId,
                     "pole-tenant-rg",
-                    "507f1f77bcf86cd799439044")));
+                    "507f1f77bcf86cd799439044"));
     }
 
     private sealed class SnapshotOrderEndpointSelector : IFunctionEndpointSelector
@@ -649,7 +648,7 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
 
     private sealed class UnexpectedActivator : IFunctionRevisionActivator
     {
-        public Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>> EnsureActiveAsync(
+        public Task<FunctionRevisionActivationOutcome> EnsureActiveAsync(
             FunctionRevisionInKubernetes subject,
             CancellationToken cancellationToken = default,
             bool forceScaleFence = false) =>
@@ -658,12 +657,12 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
 
     private sealed class FailingActivator : IFunctionRevisionActivator
     {
-        public Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>> EnsureActiveAsync(
+        public Task<FunctionRevisionActivationOutcome> EnsureActiveAsync(
             FunctionRevisionInKubernetes subject,
             CancellationToken cancellationToken = default,
             bool forceScaleFence = false) =>
-            Task.FromResult<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>>(
-                new Err<FunctionRevisionActivationError>(
+            Task.FromResult<FunctionRevisionActivationOutcome>(
+                new FunctionRevisionActivationError(
                     new FunctionActivationCoordinatorUnavailable(
                         "Function activation is temporarily unavailable.")));
     }

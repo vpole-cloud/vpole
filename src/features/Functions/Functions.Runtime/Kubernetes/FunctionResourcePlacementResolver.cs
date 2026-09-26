@@ -1,7 +1,6 @@
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.Functions.Runtime.Kubernetes;
 
@@ -14,9 +13,13 @@ public sealed record FunctionResourcePlacement(
     string KubernetesNamespace,
     string IsolationScopeId);
 
+public union FunctionResourcePlacementOutcome(
+    FunctionResourcePlacement,
+    FunctionResourcePlacementUnavailable);
+
 public interface IFunctionResourcePlacementResolver
 {
-    Task<Result<FunctionResourcePlacement, FunctionResourcePlacementUnavailable>> ResolveAsync(
+    Task<FunctionResourcePlacementOutcome> ResolveAsync(
         FunctionApp app,
         bool requireReady = true,
         CancellationToken cancellationToken = default);
@@ -26,7 +29,7 @@ public sealed class FunctionResourcePlacementResolver(
     LoadExactResourceDeploymentRuntimePlacement loadPlacement)
     : IFunctionResourcePlacementResolver
 {
-    public async Task<Result<FunctionResourcePlacement, FunctionResourcePlacementUnavailable>>
+    public async Task<FunctionResourcePlacementOutcome>
         ResolveAsync(
             FunctionApp app,
             bool requireReady = true,
@@ -50,15 +53,14 @@ public sealed class FunctionResourcePlacementResolver(
             !string.Equals(placement.DesiredOperation, "Apply", StringComparison.Ordinal) ||
             requireReady && !string.Equals(placement.Status, "Applied", StringComparison.Ordinal))
         {
-            return new Err<FunctionResourcePlacementUnavailable>(
-                new FunctionResourcePlacementUnavailable(app.Id));
+            return new FunctionResourcePlacementUnavailable(app.Id);
         }
 
-        return new Ok<FunctionResourcePlacement>(new FunctionResourcePlacement(
+        return new FunctionResourcePlacement(
             placement.DeploymentId,
             placement.RuntimeCellId,
             placement.DeploymentTargetId,
             placement.KubernetesNamespace,
-            placement.IsolationScopeId));
+            placement.IsolationScopeId);
     }
 }

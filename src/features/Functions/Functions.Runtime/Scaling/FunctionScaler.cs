@@ -11,7 +11,6 @@ using Pole.Features.Functions.Runtime.Coordination;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Functions.Protocol;
-using Pole.ResultType;
 
 namespace Pole.Features.Functions.Runtime.Scaling;
 
@@ -204,18 +203,22 @@ public sealed class FunctionScaler(
         }
 
         var resolvedPlacement = await placementResolver.ResolveAsync(target.App, cancellationToken: cancellationToken);
-        if (!resolvedPlacement.TryGetValue(out var placement, out _))
+        if (resolvedPlacement is FunctionResourcePlacementUnavailable)
             return;
 
-        var subject = new FunctionRevisionInKubernetes(target.App, target.Revision, placement!);
+        var placement = (FunctionResourcePlacement)resolvedPlacement.Value;
+
+        var subject = new FunctionRevisionInKubernetes(target.App, target.Revision, placement);
         var service = new FunctionServiceKey(
-            placement!.DeploymentTargetId,
+            placement.DeploymentTargetId,
             subject.Namespace,
             subject.ServiceName);
         var snapshot = endpointRegistry.GetSnapshot(service);
         var replicasResult = await kubernetesManager.ReadReplicaStateAsync(subject, cancellationToken);
-        if (!replicasResult.TryGetValue(out var replicas, out _))
+        if (replicasResult is FunctionRevisionKubernetesOperationError)
             return;
+
+        var replicas = (FunctionReplicaState)replicasResult.Value;
 
         if (await RecoverTransitionAsync(
                 target,
@@ -651,8 +654,10 @@ public sealed class FunctionScaler(
 
         var endpoints = endpointRegistry.GetSnapshot(service);
         var replicasResult = await kubernetesManager.ReadReplicaStateAsync(subject, cancellationToken);
-        if (!replicasResult.TryGetValue(out var replicas, out _))
+        if (replicasResult is FunctionRevisionKubernetesOperationError)
             return null;
+
+        var replicas = (FunctionReplicaState)replicasResult.Value;
 
         var coordination = await scalingCoordinator.GetSnapshotAsync(coordinationKey, cancellationToken);
         if (!state.ObserveCoordinator(coordination.CoordinatorIncarnation) ||
@@ -764,21 +769,21 @@ public sealed class FunctionScaler(
             lease.DesiredReplicas,
             lease.Generation,
             cancellationToken);
-        if (result is Err<FunctionRevisionKubernetesOperationError> failure)
+        if (result is FunctionRevisionKubernetesOperationError failure)
         {
             logger.LogWarning(
                 "[function-scaler-scale-failed] Failed to scale Function revision {RevisionId} to {Replicas}: {Message}",
                 target.Revision.Id,
                 lease.DesiredReplicas,
-                failure.Value.Message());
+                failure.Message());
 
-            if (failure.Value is not FunctionRevisionKubernetesOperationInvalid)
+            if (failure is not FunctionRevisionKubernetesOperationInvalid)
             {
                 // Kubernetes may have accepted the write even when the client observed a
                 // timeout or conflict. Only the fenced generation plus desired replicas can
                 // prove the command was applied; otherwise recovery owns the pending intent.
                 var observedResult = await kubernetesManager.ReadReplicaStateAsync(subject, cancellationToken);
-                if (observedResult.TryGetValue(out var observed, out _) &&
+                if (observedResult is FunctionReplicaState observed &&
                     observed.CoordinationGeneration == lease.Generation &&
                     observed.Desired == lease.DesiredReplicas)
                 {

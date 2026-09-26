@@ -13,7 +13,6 @@ using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Metering;
 using Pole.Functions.Protocol;
-using Pole.ResultType;
 using Xunit;
 
 namespace Pole.Features.Functions.Tests;
@@ -743,17 +742,17 @@ public sealed class FunctionHttpGatewayTests
 
     private sealed class FixedPlacementResolver : IFunctionResourcePlacementResolver
     {
-        public Task<Result<FunctionResourcePlacement, FunctionResourcePlacementUnavailable>> ResolveAsync(
+        public Task<FunctionResourcePlacementOutcome> ResolveAsync(
             FunctionApp app,
             bool requireReady = true,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<FunctionResourcePlacement, FunctionResourcePlacementUnavailable>>(
-                new Ok<FunctionResourcePlacement>(new FunctionResourcePlacement(
+            Task.FromResult<FunctionResourcePlacementOutcome>(
+                new FunctionResourcePlacement(
                     app.Placement.ResourceDeploymentId,
                     app.Placement.RuntimeCellId,
                     app.Placement.DeploymentTargetId,
                     "pole-tenant-rg",
-                    "507f1f77bcf86cd799439044")));
+                    "507f1f77bcf86cd799439044"));
     }
 
     private sealed class SnapshotOrderEndpointSelector : IFunctionEndpointSelector
@@ -766,15 +765,14 @@ public sealed class FunctionHttpGatewayTests
         public int Calls { get; private set; }
         public bool LastForceScaleFence { get; private set; }
 
-        public Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>> EnsureActiveAsync(
+        public Task<FunctionRevisionActivationOutcome> EnsureActiveAsync(
             FunctionRevisionInKubernetes subject,
             CancellationToken cancellationToken = default,
             bool forceScaleFence = false)
         {
             Calls++;
             LastForceScaleFence = forceScaleFence;
-            return Task.FromResult<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>>(
-                new Ok<FunctionEndpointSnapshot>(snapshot));
+            return Task.FromResult<FunctionRevisionActivationOutcome>(snapshot);
         }
     }
 
