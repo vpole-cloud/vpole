@@ -2,7 +2,6 @@ using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.Request;
 using Pole.Mediator;
-using Pole.ResultType;
 using Xunit.Sdk;
 
 namespace Pole.Features.RedisServices.Tests.Integration.Infrastructure;
@@ -27,9 +26,6 @@ public static class ResultAssertionExtensions
     public static RedisDto AssertSuccess(this GetRedisServiceByIdOutcome outcome) => outcome switch { RedisDto value => value, var error => Fail<RedisDto>(error) };
     public static RedisServiceNotFound AssertFailure(this GetRedisServiceByIdOutcome outcome) => outcome switch { RedisServiceNotFound value => value, var success => Fail<RedisServiceNotFound>(success) };
     public static PaginatedResponse<RedisDto> AssertSuccess(this GetRedisServicesOutcome outcome) => outcome switch { PaginatedResponse<RedisDto> value => value };
-
-    public static T AssertSuccess<T, TError>(this Result<T, TError> result) where T : notnull where TError : notnull => result switch { Ok<T> value => value.Value, Err<TError> error => Fail<T>(error.Value), _ => throw new XunitException("Unsupported result.") };
-    public static TError AssertFailure<T, TError>(this Result<T, TError> result) where T : notnull where TError : notnull => result switch { Err<TError> value => value.Value, Ok<T> success => Fail<TError>(success.Value), _ => throw new XunitException("Unsupported result.") };
 
     private static T Fail<T>(object value) => throw new XunitException($"Unexpected result: {System.Text.Json.JsonSerializer.Serialize(value, value.GetType())}");
 }
