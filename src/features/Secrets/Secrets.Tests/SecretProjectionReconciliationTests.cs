@@ -123,30 +123,30 @@ public sealed class SecretProjectionReconciliationTests
         public readonly Dictionary<string, V1Secret> Manifests = [];
         public Action<SecretProjection>? AfterApply;
 
-        public async Task<Result<Unit, SecretProjectionTargetError>> ApplyAsync(
+        public async Task<SecretProjectionTargetOutcome> ApplyAsync(
         SecretProjection projection,
-        Func<CancellationToken, Task<Result<V1Secret, SecretProjectionTargetError>>> createManifest,
+        Func<CancellationToken, Task<SecretProjectionManifestOutcome>> createManifest,
         CancellationToken ct)
         {
             if (Unavailable.Contains(projection.DeploymentTargetId))
-                return new Err<SecretProjectionTargetError>(new SecretProjectionTargetUnavailable());
+                return new SecretProjectionTargetUnavailable();
             var prepared = await createManifest(ct);
-            if (prepared is Err<SecretProjectionTargetError> error)
+            if (prepared.Value is SecretProjectionTargetFailure error)
                 return error;
-            var manifest = ((Ok<V1Secret>)prepared.Value).Value;
+            var manifest = (V1Secret)prepared.Value;
             Manifests[projection.DeploymentId] = manifest;
             AfterApply?.Invoke(projection);
             foreach (var bytes in manifest.Data.Values)
                 System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes);
-            return new Ok<Unit>(Unit.Value);
+            return new SecretProjectionTargetSucceeded();
         }
 
-        public Task<Result<Unit, SecretProjectionTargetError>> DeleteAsync(SecretProjection projection, CancellationToken ct)
+        public Task<SecretProjectionTargetOutcome> DeleteAsync(SecretProjection projection, CancellationToken ct)
         {
             if (Unavailable.Contains(projection.DeploymentTargetId))
-                return Task.FromResult<Result<Unit, SecretProjectionTargetError>>(new Err<SecretProjectionTargetError>(new SecretProjectionTargetUnavailable()));
+                return Task.FromResult<SecretProjectionTargetOutcome>(new SecretProjectionTargetUnavailable());
             Manifests.Remove(projection.DeploymentId);
-            return Task.FromResult<Result<Unit, SecretProjectionTargetError>>(new Ok<Unit>(Unit.Value));
+            return Task.FromResult<SecretProjectionTargetOutcome>(new SecretProjectionTargetSucceeded());
         }
     }
 

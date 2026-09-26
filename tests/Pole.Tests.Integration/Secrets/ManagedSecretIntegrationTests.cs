@@ -257,11 +257,11 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
 
     private sealed class UnusedTarget : ISecretProjectionTarget
     {
-        public Task<Result<Unit, SecretProjectionTargetError>> ApplyAsync(
+        public Task<SecretProjectionTargetOutcome> ApplyAsync(
             SecretProjection projection,
-            Func<CancellationToken, Task<Result<k8s.Models.V1Secret, SecretProjectionTargetError>>> createManifest,
+            Func<CancellationToken, Task<SecretProjectionManifestOutcome>> createManifest,
             CancellationToken ct) => throw new InvalidOperationException("Unexpected apply.");
-        public Task<Result<Unit, SecretProjectionTargetError>> DeleteAsync(SecretProjection projection, CancellationToken ct) => throw new InvalidOperationException("Unexpected delete.");
+        public Task<SecretProjectionTargetOutcome> DeleteAsync(SecretProjection projection, CancellationToken ct) => throw new InvalidOperationException("Unexpected delete.");
     }
 
     private async Task<ResourceDeployment> StageConsumer(ResourceGroup group, ManagedSecretOwner owner, IClientSessionHandle session)

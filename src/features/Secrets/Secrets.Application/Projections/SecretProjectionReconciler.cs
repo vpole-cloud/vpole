@@ -103,20 +103,20 @@ public sealed class SecretProjectionReconciler(
             var decrypted = await encryption.DecryptAsync(version.Value,
                 EnvelopeEncryptionContext.ForTenant(owned.TenantId, "Secret", owned.SecretId, "values", owned.DesiredVersion), token);
             if (decrypted is not Ok<byte[]> plaintext)
-                return new Err<SecretProjectionTargetError>(new SecretProjectionDecryptionUnavailable());
+                return new SecretProjectionManifestOutcome(new SecretProjectionDecryptionUnavailable());
             try
             {
                 var values = JsonSerializer.Deserialize<Dictionary<string, string>>(plaintext.Value)!;
-                return new Ok<V1Secret>(SecretProjectionManifest.Create(owned, binding, values));
+                return new SecretProjectionManifestOutcome(SecretProjectionManifest.Create(owned, binding, values));
             }
             finally
             {
                 CryptographicOperations.ZeroMemory(plaintext.Value);
             }
         }, ct);
-        if (applied is Err<SecretProjectionTargetError> failure)
+        if (applied.Value is SecretProjectionTargetFailure failure)
         {
-            await complete(owned.Failed(SecretProjectionTargetErrorCodes.Code(failure.Value)), ct);
+            await complete(owned.Failed(SecretProjectionTargetErrorCodes.Code(failure)), ct);
             return;
         }
         if (await CurrentBindingAsync(owned, ct) is null)
@@ -131,10 +131,10 @@ public sealed class SecretProjectionReconciler(
     private async Task DeleteAndCompleteAsync(SecretProjection owned, CancellationToken ct)
     {
         var deleted = await target.DeleteAsync(owned, ct);
-        await complete(deleted switch
+        await complete(deleted.Value switch
         {
-            Ok<Unit> => owned.Deleted(),
-            Err<SecretProjectionTargetError> failure => owned.Failed(SecretProjectionTargetErrorCodes.Code(failure.Value))
+            SecretProjectionTargetSucceeded => owned.Deleted(),
+            SecretProjectionTargetFailure failure => owned.Failed(SecretProjectionTargetErrorCodes.Code(failure))
         }, ct);
     }
 }

@@ -8,44 +8,61 @@ using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Application.Persistence;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Workloads;
-using Pole.ResultType;
 
 namespace Pole.Features.Secrets.Application.Projections;
 
 public interface ISecretProjectionTarget
 {
-    Task<Result<Unit, SecretProjectionTargetError>> ApplyAsync(
+    Task<SecretProjectionTargetOutcome> ApplyAsync(
         SecretProjection projection,
-        Func<CancellationToken, Task<Result<V1Secret, SecretProjectionTargetError>>> createManifest,
+        Func<CancellationToken, Task<SecretProjectionManifestOutcome>> createManifest,
         CancellationToken ct);
-    Task<Result<Unit, SecretProjectionTargetError>> DeleteAsync(SecretProjection projection, CancellationToken ct);
+    Task<SecretProjectionTargetOutcome> DeleteAsync(SecretProjection projection, CancellationToken ct);
 }
+
+internal union SecretProjectionClientOutcome(
+    IKubernetes,
+    SecretProjectionTargetFailure);
+
+internal sealed record SecretProjectionRead(V1Secret? Secret);
+
+internal union SecretProjectionReadOutcome(
+    SecretProjectionRead,
+    SecretProjectionTargetFailure);
 
 internal sealed class KubernetesSecretProjectionTarget(
     IKubernetesClientProvider clients,
     LoadSecretById loadSecret,
     LoadExactResourceDeploymentRuntimePlacement loadPlacement) : ISecretProjectionTarget
 {
-    private async Task<Result<IKubernetes, SecretProjectionTargetError>> GetClientAsync(string targetId, CancellationToken ct)
+    private async Task<SecretProjectionClientOutcome> GetClientAsync(string targetId, CancellationToken ct)
     {
         try
         {
-            return new Ok<IKubernetes>(await clients.GetAsync(targetId, ct));
+            return await clients.GetAsync(targetId, ct);
         }
         catch (DeploymentTargetUnavailableException exception)
         {
-            return new Err<SecretProjectionTargetError>(exception.Reason == DeploymentTargetUnavailableReason.Disabled
-                ? new SecretProjectionTargetDisabled() : new SecretProjectionTargetUnavailable());
+            return exception.Reason == DeploymentTargetUnavailableReason.Disabled
+                ? new SecretProjectionTargetDisabled() : new SecretProjectionTargetUnavailable();
         }
     }
 
-    private static async Task<Result<T, SecretProjectionTargetError>> ProtectKubernetesAsync<T>(
-        Func<Task<T>> operation,
-        CancellationToken ct) where T : notnull
+    private static SecretProjectionTargetFailure MapKubernetesFailure(HttpOperationException exception) =>
+        exception.Response?.StatusCode switch
+        {
+            HttpStatusCode.NotFound => new SecretProjectionNamespaceUnavailable(),
+            HttpStatusCode.Conflict => new SecretProjectionConcurrentWrite(),
+            _ => new SecretProjectionRequestRejected()
+        };
+
+    private static async Task<SecretProjectionReadOutcome> ProtectReadAsync(
+        Func<Task<SecretProjectionRead>> operation,
+        CancellationToken ct)
     {
         try
         {
-            return new Ok<T>(await operation());
+            return await operation();
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -53,48 +70,68 @@ internal sealed class KubernetesSecretProjectionTarget(
         }
         catch (HttpOperationException exception)
         {
-            // The SDK exception may own a decrypted HTTP body. Never retain it in the result.
-            return new Err<SecretProjectionTargetError>(exception.Response?.StatusCode switch
-            {
-                HttpStatusCode.NotFound => new SecretProjectionNamespaceUnavailable(),
-                HttpStatusCode.Conflict => new SecretProjectionConcurrentWrite(),
-                _ => new SecretProjectionRequestRejected()
-            });
+            // The SDK exception may own a decrypted HTTP body. Never retain it in the outcome.
+            return MapKubernetesFailure(exception);
         }
         catch (Exception exception) when (exception is HttpRequestException or TimeoutException ||
                                           exception is OperationCanceledException && !ct.IsCancellationRequested)
         {
-            return new Err<SecretProjectionTargetError>(new SecretProjectionTransportUnavailable());
+            return new SecretProjectionTransportUnavailable();
         }
     }
 
-    public async Task<Result<Unit, SecretProjectionTargetError>> ApplyAsync(
+    private static async Task<SecretProjectionTargetOutcome> ProtectWriteAsync(
+        Func<Task> operation,
+        CancellationToken ct)
+    {
+        try
+        {
+            await operation();
+            return new SecretProjectionTargetSucceeded();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (HttpOperationException exception)
+        {
+            // The SDK exception may own a decrypted HTTP body. Never retain it in the outcome.
+            return MapKubernetesFailure(exception);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TimeoutException ||
+                                          exception is OperationCanceledException && !ct.IsCancellationRequested)
+        {
+            return new SecretProjectionTransportUnavailable();
+        }
+    }
+
+    public async Task<SecretProjectionTargetOutcome> ApplyAsync(
         SecretProjection projection,
-        Func<CancellationToken, Task<Result<V1Secret, SecretProjectionTargetError>>> createManifest,
+        Func<CancellationToken, Task<SecretProjectionManifestOutcome>> createManifest,
         CancellationToken ct)
     {
         var resolved = await GetClientAsync(projection.DeploymentTargetId, ct);
-        if (resolved is Err<SecretProjectionTargetError> unavailable)
+        if (resolved.Value is SecretProjectionTargetFailure unavailable)
             return unavailable;
-        var client = ((Ok<IKubernetes>)resolved.Value).Value;
-        var read = await ProtectKubernetesAsync(() => ReadAsync(client, projection, ct), ct);
-        if (read is Err<SecretProjectionTargetError> readFailure)
+        var client = (IKubernetes)resolved.Value;
+        var read = await ProtectReadAsync(() => ReadAsync(client, projection, ct), ct);
+        if (read.Value is SecretProjectionTargetFailure readFailure)
             return readFailure;
-        var current = ((Ok<SecretRead>)read.Value).Value.Secret;
+        var current = ((SecretProjectionRead)read.Value).Secret;
         var authority = await loadSecret(projection.TenantId, projection.SecretId, ct);
         if (authority?.Revision != projection.DesiredRevision ||
             !authority.Bindings.Any(x => x.Id == projection.BindingId) ||
             !await HasAuthorizedConsumerAsync(authority, projection, ct))
-            return new Err<SecretProjectionTargetError>(new SecretProjectionDesiredStateChanged());
+            return new SecretProjectionDesiredStateChanged();
         if (current is not null && !IsOwned(current, projection))
-            return new Err<SecretProjectionTargetError>(new SecretProjectionOwnershipConflict());
+            return new SecretProjectionOwnershipConflict();
         var prepared = await createManifest(ct);
-        if (prepared is Err<SecretProjectionTargetError> failure)
+        if (prepared.Value is SecretProjectionTargetFailure failure)
             return failure;
-        var manifest = ((Ok<V1Secret>)prepared.Value).Value;
+        var manifest = (V1Secret)prepared.Value;
         try
         {
-            return await ProtectKubernetesAsync(async () =>
+            return await ProtectWriteAsync(async () =>
             {
                 if (current is null)
                     await client.CoreV1.CreateNamespacedSecretAsync(manifest, projection.KubernetesNamespace, cancellationToken: ct);
@@ -103,7 +140,6 @@ internal sealed class KubernetesSecretProjectionTarget(
                     manifest.Metadata.ResourceVersion = current.Metadata.ResourceVersion;
                     await client.CoreV1.ReplaceNamespacedSecretAsync(manifest, projection.KubernetesName, projection.KubernetesNamespace, cancellationToken: ct);
                 }
-                return Unit.Value;
             }, ct);
         }
         finally
@@ -113,25 +149,25 @@ internal sealed class KubernetesSecretProjectionTarget(
         }
     }
 
-    public async Task<Result<Unit, SecretProjectionTargetError>> DeleteAsync(SecretProjection projection, CancellationToken ct)
+    public async Task<SecretProjectionTargetOutcome> DeleteAsync(SecretProjection projection, CancellationToken ct)
     {
         var resolved = await GetClientAsync(projection.DeploymentTargetId, ct);
-        if (resolved is Err<SecretProjectionTargetError> unavailable)
+        if (resolved.Value is SecretProjectionTargetFailure unavailable)
             return unavailable;
-        var client = ((Ok<IKubernetes>)resolved.Value).Value;
-        var read = await ProtectKubernetesAsync(() => ReadAsync(client, projection, ct), ct);
-        if (read is Err<SecretProjectionTargetError> readFailure)
+        var client = (IKubernetes)resolved.Value;
+        var read = await ProtectReadAsync(() => ReadAsync(client, projection, ct), ct);
+        if (read.Value is SecretProjectionTargetFailure readFailure)
             return readFailure;
-        var current = ((Ok<SecretRead>)read.Value).Value.Secret;
+        var current = ((SecretProjectionRead)read.Value).Secret;
         if (current is null)
-            return new Ok<Unit>(Unit.Value);
+            return new SecretProjectionTargetSucceeded();
         if (!IsOwned(current, projection))
-            return new Err<SecretProjectionTargetError>(new SecretProjectionOwnershipConflict());
+            return new SecretProjectionOwnershipConflict();
         // Recheck authoritative bindings after the Kubernetes read. Metadata may itself be drifted.
         var authority = await loadSecret(projection.TenantId, projection.SecretId, ct);
         if (authority is not null && await HasAuthorizedConsumerAsync(authority, projection, ct))
-            return new Ok<Unit>(Unit.Value);
-        return await ProtectKubernetesAsync(async () =>
+            return new SecretProjectionTargetSucceeded();
+        return await ProtectWriteAsync(async () =>
         {
             await client.CoreV1.DeleteNamespacedSecretAsync(
                 projection.KubernetesName,
@@ -145,7 +181,6 @@ internal sealed class KubernetesSecretProjectionTarget(
                     }
                 },
                 cancellationToken: ct);
-            return Unit.Value;
         }, ct);
     }
 
@@ -170,9 +205,7 @@ internal sealed class KubernetesSecretProjectionTarget(
         MetadataValue(current.Metadata.Labels, "pole.io/secret-id") == projection.SecretId &&
         MetadataValue(current.Metadata.Labels, "pole.io/resource-deployment-id") == projection.DeploymentId;
 
-    private sealed record SecretRead(V1Secret? Secret);
-
-    private static async Task<SecretRead> ReadAsync(IKubernetes client, SecretProjection projection, CancellationToken ct)
+    private static async Task<SecretProjectionRead> ReadAsync(IKubernetes client, SecretProjection projection, CancellationToken ct)
     {
         try
         {
@@ -182,11 +215,11 @@ internal sealed class KubernetesSecretProjectionTarget(
                 foreach (var value in current.Data.Values)
                     CryptographicOperations.ZeroMemory(value);
             current.Data = null;
-            return new SecretRead(current);
+            return new SecretProjectionRead(current);
         }
         catch (HttpOperationException exception) when (exception.Response?.StatusCode == HttpStatusCode.NotFound)
         {
-            return new SecretRead(null);
+            return new SecretProjectionRead(null);
         }
     }
 }

@@ -131,7 +131,7 @@ Reference-only Secret events trigger reconciliation. A minute-based recovery job
 placements, retries failures and repairs deleted objects or ordinary data/annotation drift. Discovery
 uses bounded pages. Every projection has its own lease, storage revision, desired/applied version,
 last attempt and explicit state. A failed target retains its previous applied version and cannot roll
-back another target. The target adapter returns `Result<Unit, SecretProjectionTargetError>` for expected availability,
+back another target. The target adapter returns `SecretProjectionTargetOutcome` for expected availability,
 ownership, concurrency and SDK failures; reconciliation stores explicit safe failure codes. Database
 and unexpected programming failures, as well as caller cancellation, propagate. SDK request/response exceptions are discarded without
 retaining an inner exception because they may contain plaintext HTTP bodies.
