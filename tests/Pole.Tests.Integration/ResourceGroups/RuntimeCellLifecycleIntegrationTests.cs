@@ -287,15 +287,15 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         CancellationToken cancellationToken = default) =>
         Fixture.StoreOutboxWrites(session, writes, cancellationToken);
 
-    private static Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
+    private static Task<ApplyDeploymentTargetReferenceChangesOutcome>
         NoOpReferenceChanges(
             DeploymentTargetReferenceOwner owner,
             IReadOnlyCollection<string> addedDeploymentTargetIds,
             IReadOnlyCollection<string> removedDeploymentTargetIds,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default) =>
-        Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
-            new Ok<Unit>(Unit.Value));
+        Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
+            new DeploymentTargetReferencesChanged());
 
     private static RuntimeCellReconciliationRequestedEvent ReconciliationEvent(RuntimeCell cell) =>
         new(cell.Id, cell.DesiredGeneration)
@@ -337,7 +337,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
     {
         public int UnregisterCallCount { get; private set; }
 
-        public Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
+        public Task<ApplyDeploymentTargetReferenceChangesOutcome>
             ApplyChangesOutcomeAsync(
                 DeploymentTargetReferenceOwner owner,
                 IReadOnlyCollection<string> addedDeploymentTargetIds,
@@ -346,8 +346,8 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
                 CancellationToken cancellationToken = default)
         {
             UnregisterCallCount += removedDeploymentTargetIds.Count;
-            return Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
-                new Ok<Unit>(Unit.Value));
+            return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
+                new DeploymentTargetReferencesChanged());
         }
     }
 

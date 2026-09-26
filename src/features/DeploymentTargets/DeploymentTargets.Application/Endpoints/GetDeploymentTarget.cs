@@ -42,8 +42,7 @@ public sealed class GetDeploymentTargetHandler(
 public sealed class GetDeploymentTargetRequestValidator
     : AbstractValidator<GetDeploymentTargetRequest>
 {
-    public GetDeploymentTargetRequestValidator() =>
-        RuleFor(request => request.Id)
+    public GetDeploymentTargetRequestValidator() => RuleFor(request => request.Id)
             .MongoObjectId("Deployment target ID");
 }
 
@@ -53,15 +52,13 @@ public static class GetDeploymentTargetEndpoint
     {
         app.MapGet("/{Id}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetDeploymentTargetRequest request,
-                CancellationToken cancellationToken) =>
-            {
+                CancellationToken cancellationToken) => {
                 var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     DeploymentTargetDto target => Results.Ok(target),
-                    DeploymentTargetNotFound notFound => httpProblems.Map(notFound).ToHttpResult()
+                    DeploymentTargetNotFound notFound => DeploymentTargetHttpMappings.Map(notFound)
                 });
             })
             .WithName("GetDeploymentTarget")

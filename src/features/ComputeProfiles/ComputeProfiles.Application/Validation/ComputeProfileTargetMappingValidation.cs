@@ -58,7 +58,7 @@ public sealed class KubernetesComputeProfileTargetMappingValidator(
         var targetResult = await admitDeploymentTarget(
             mapping.DeploymentTargetId,
             cancellationToken);
-        if (targetResult is Err<DeploymentTargetWorkloadAdmissionError>)
+        if (targetResult is DeploymentTargetWorkloadAdmissionError)
         {
             return Invalid(
                 mappingIndex,

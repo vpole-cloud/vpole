@@ -57,8 +57,8 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
         var provider = new NoCallsKubernetesProvider();
         var manager = new FunctionRevisionKubernetesManager(
             provider,
-            (id, ct) => Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
-                new Ok<DeploymentTargetLookupDto>(target.ToLookupDto())),
+            (id, ct) => Task.FromResult<LookupDeploymentTargetOutcome>(
+                new LookupDeploymentTargetOutcome(target.ToLookupDto())),
             []);
         var loadPlacement = Services.GetRequiredService<LoadExactResourceDeploymentRuntimePlacement>();
         var resolver = new FunctionResourcePlacementResolver(async (tenant, type, resource, deployment, ct) =>

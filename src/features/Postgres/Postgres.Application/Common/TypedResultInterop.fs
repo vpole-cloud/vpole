@@ -73,3 +73,12 @@ module TypedResultInterop =
         | :? Pole.Features.ResourceDeployments.Contracts.PlacementSummaryDto as value -> Ok value
         | :? Pole.Features.ResourceDeployments.Contracts.ResourceDeploymentMutationError as error -> Error error
         | value -> invalidOp $"Unexpected resource deployment mutation outcome: {value}"
+
+    let targetAdmission
+        (result : Pole.Features.DeploymentTargets.Contracts.AdmitDeploymentTargetForNewWorkloadOutcome)
+        : Result<Pole.Features.DeploymentTargets.Contracts.DeploymentTargetLookupDto,
+                 Pole.Features.DeploymentTargets.Contracts.DeploymentTargetNewWorkloadAdmissionError> =
+        match result.Value with
+        | :? Pole.Features.DeploymentTargets.Contracts.DeploymentTargetLookupDto as value -> Ok value
+        | :? Pole.Features.DeploymentTargets.Contracts.DeploymentTargetNewWorkloadAdmissionError as error -> Error error
+        | value -> invalidOp $"Unexpected deployment target admission outcome: {value}"

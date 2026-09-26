@@ -84,7 +84,7 @@ public sealed class ResourceDeploymentReconciler(
             var targetResult = await lookupDeploymentTarget(
                 claimed.ResolvedPlacement.DeploymentTargetId,
                 cancellationToken);
-            if (!targetResult.TryGetValue(out var target, out _) ||
+            if (targetResult is not DeploymentTargetLookupDto target ||
                 !target.NetworkPolicy.AllowsWorkloads)
             {
                 await PersistFailureAsync(

@@ -30,10 +30,8 @@ public sealed class ComputeProfileBootstrapperTests
                 return Task.FromResult<PersistCreatedComputeProfileOutcome>(profile);
             });
         services.AddScoped<LookupDefaultDeploymentTarget>(_ =>
-            cancellationToken => Task.FromResult<Result<
-                DeploymentTargetLookupDto,
-                DefaultDeploymentTargetLookupError>>(
-                new Ok<DeploymentTargetLookupDto>(CreateTarget(DeploymentTargetId))));
+            cancellationToken => Task.FromResult<LookupDefaultDeploymentTargetOutcome>(
+                new LookupDefaultDeploymentTargetOutcome(CreateTarget(DeploymentTargetId))));
         await using var serviceProvider = services.BuildServiceProvider();
         var bootstrapper = new ComputeProfileBootstrapper(
             serviceProvider.GetRequiredService<IServiceScopeFactory>(),

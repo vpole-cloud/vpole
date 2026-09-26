@@ -54,7 +54,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
         var owner = CreateOwner();
 
         var deletion = deleteHandler.HandleAsync(new DeleteDeploymentTargetRequest(target.Id));
-        Result<Unit, DeploymentTargetReferenceChangeRejected> referenceWrite;
+        ApplyDeploymentTargetReferenceChangesOutcome referenceWrite;
         try
         {
             await deletionGuard.WaitUntilCheckedAsync().WaitAsync(TestTimeout);
@@ -69,7 +69,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
             deletionGuard.Release();
         }
 
-        _ = AssertFailure(referenceWrite);
+        Assert.IsType<DeploymentTargetReferenceChangeRejected>(referenceWrite.Value);
         Assert.Equal(0, await fixture.DbContext.DeploymentTargetReferences.CountDocumentsAsync(
             Builders<DeploymentTargetReference>.Filter.Empty));
         var deleted = AssertDeleted(await deletion.WaitAsync(TestTimeout));
@@ -90,7 +90,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
         var releaseReference = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var referenceWrite = new MongoRunTransaction(fixture.Client)
-            .InvokeOutcomeAsync<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
+            .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(
             async (transaction, ct) =>
         {
             var registered = await admission(
@@ -99,7 +99,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
                 [],
                 transaction.Session,
                 ct);
-            if (registered is Err<DeploymentTargetReferenceChangeRejected>)
+            if (registered is DeploymentTargetReferenceChangeRejected)
                 return transaction.Abort(registered);
 
             referenceStaged.TrySetResult();
@@ -121,7 +121,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
             releaseReference.TrySetResult();
         }
 
-        _ = AssertSuccess(await referenceWrite.WaitAsync(TestTimeout));
+        Assert.IsType<DeploymentTargetReferencesChanged>((await referenceWrite.WaitAsync(TestTimeout)).Value);
         Assert.NotNull(deletion);
         var deletionResult = await deletion.WaitAsync(TestTimeout);
         Assert.True(deletionResult is DeleteDeploymentTargetError);
@@ -184,7 +184,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
         var admission = CreateAdmission();
         var owner = CreateOwner();
         var created = await ApplyReferencesAsync(admission, owner, [target.Id], []);
-        _ = AssertSuccess(created);
+        Assert.IsType<DeploymentTargetReferencesChanged>((created).Value);
 
         var deleteHandler = CreateDeleteHandler(EnsureNoReferences);
         var vetoed = await deleteHandler.HandleAsync(new DeleteDeploymentTargetRequest(target.Id));
@@ -196,7 +196,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
         Assert.False(pending.AcceptsWorkloads);
 
         var removed = await ApplyReferencesAsync(admission, owner, [], [target.Id]);
-        _ = AssertSuccess(removed);
+        Assert.IsType<DeploymentTargetReferencesChanged>((removed).Value);
 
         var retried = AssertDeleted(
             await deleteHandler.HandleAsync(new DeleteDeploymentTargetRequest(target.Id)));
@@ -223,14 +223,14 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
             owner,
             [firstTarget.Id, secondTarget.Id],
             []);
-        _ = AssertSuccess(registered);
+        Assert.IsType<DeploymentTargetReferencesChanged>((registered).Value);
 
         var changed = await ApplyReferencesAsync(
             admission,
             owner,
             [thirdTarget.Id],
             [firstTarget.Id]);
-        _ = AssertSuccess(changed);
+        Assert.IsType<DeploymentTargetReferencesChanged>((changed).Value);
 
         var references = await fixture.DbContext.DeploymentTargetReferences
             .Find(reference =>
@@ -275,7 +275,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
             [eligibleTarget.Id, ineligibleTarget.Id],
             []);
 
-        _ = AssertFailure(result);
+        Assert.IsType<DeploymentTargetReferenceChangeRejected>(result.Value);
         Assert.Equal(0, await fixture.DbContext.DeploymentTargetReferences.CountDocumentsAsync(
             Builders<DeploymentTargetReference>.Filter.Empty));
         var persistedEligibleTarget = await fixture.DbContext.DeploymentTargets
@@ -303,14 +303,14 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
             fixture.DbContext.DeploymentTargetReferences,
             TimeProvider.System).InvokeAsync;
 
-    private Task<Result<Unit, DeploymentTargetHasDurableReferences>> EnsureNoReferences(
+    private Task<EnsureDeploymentTargetUnreferencedOutcome> EnsureNoReferences(
         string deploymentTargetId,
         CancellationToken cancellationToken) =>
         new MongoEnsureNoDeploymentTargetReferences(
                 fixture.DbContext.DeploymentTargetReferences)
             .InvokeAsync(deploymentTargetId, cancellationToken);
 
-    private async Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
+    private async Task<ApplyDeploymentTargetReferenceChangesOutcome>
         ApplyReferencesAsync(
             ApplyDeploymentTargetReferenceChanges admission,
             DeploymentTargetReferenceOwner owner,
@@ -318,7 +318,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
             IReadOnlyCollection<string> removedDeploymentTargetIds)
     {
         return await new MongoRunTransaction(fixture.Client)
-            .InvokeOutcomeAsync<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
+            .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(
                 async (transaction, cancellationToken) =>
                 {
                     var result = await admission(
@@ -327,7 +327,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
                         removedDeploymentTargetIds,
                         transaction.Session,
                         cancellationToken);
-                    return result is Ok<Unit>
+                    return result is DeploymentTargetReferencesChanged
                         ? transaction.Commit(result)
                         : transaction.Abort(result);
                 });
@@ -374,13 +374,13 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
 
         public void Release() => _release.TrySetResult();
 
-        public async Task<Result<Unit, DeploymentTargetHasDurableReferences>> InvokeAsync(
+        public async Task<EnsureDeploymentTargetUnreferencedOutcome> InvokeAsync(
             string deploymentTargetId,
             CancellationToken cancellationToken = default)
         {
             _checked.TrySetResult();
             await _release.Task.WaitAsync(cancellationToken);
-            return new Ok<Unit>(Unit.Value);
+            return new DeploymentTargetUnreferenced();
         }
     }
 

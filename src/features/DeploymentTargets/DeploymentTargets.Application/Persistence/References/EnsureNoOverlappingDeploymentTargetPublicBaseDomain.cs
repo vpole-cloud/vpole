@@ -2,11 +2,15 @@ using MongoDB.Driver;
 using Pole.Dns;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence.References;
 
-internal delegate Task<Result<Unit, DeploymentTargetPublicBaseDomainConflict>>
+internal sealed record DeploymentTargetPublicBaseDomainAvailable;
+internal union EnsureDeploymentTargetPublicBaseDomainAvailableOutcome(
+    DeploymentTargetPublicBaseDomainAvailable,
+    DeploymentTargetPublicBaseDomainConflict);
+
+internal delegate Task<EnsureDeploymentTargetPublicBaseDomainAvailableOutcome>
     EnsureNoOverlappingDeploymentTargetPublicBaseDomain(
         string deploymentTargetId,
         string? publicBaseDomain,
@@ -21,14 +25,14 @@ internal sealed class MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain(
     IMongoCollection<DeploymentTarget> deploymentTargets,
     IMongoCollection<DeploymentTargetPublicBaseDomainAdmissionFence> fences)
 {
-    public async Task<Result<Unit, DeploymentTargetPublicBaseDomainConflict>> InvokeAsync(
+    public async Task<EnsureDeploymentTargetPublicBaseDomainAvailableOutcome> InvokeAsync(
         string deploymentTargetId,
         string? publicBaseDomain,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         if (publicBaseDomain is null)
-            return new Ok<Unit>(Unit.Value);
+            return new DeploymentTargetPublicBaseDomainAvailable();
 
         var candidate = DnsName.Create(publicBaseDomain);
         await fences.UpdateOneAsync(
@@ -56,11 +60,10 @@ internal sealed class MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain(
             if (candidate.IsSameOrDescendantOf(otherDomain) ||
                 otherDomain.IsSameOrDescendantOf(candidate))
             {
-                return new Err<DeploymentTargetPublicBaseDomainConflict>(
-                    new DeploymentTargetPublicBaseDomainConflict(deploymentTargetId));
+                return new DeploymentTargetPublicBaseDomainConflict(deploymentTargetId);
             }
         }
 
-        return new Ok<Unit>(Unit.Value);
+        return new DeploymentTargetPublicBaseDomainAvailable();
     }
 }

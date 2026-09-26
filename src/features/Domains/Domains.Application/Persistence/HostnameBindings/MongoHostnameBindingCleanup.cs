@@ -142,7 +142,7 @@ internal sealed class MongoHostnameBindingCleanup(
                 [zone.DeploymentTargetId],
                 session,
                 cancellationToken);
-            if (unregistered is Err<DeploymentTargetReferenceChangeRejected>)
+            if (unregistered is DeploymentTargetReferenceChangeRejected)
             {
                 return new HostnameBindingCleanupError(
                         new HostnameBindingCleanupReferenceRemovalRejected(

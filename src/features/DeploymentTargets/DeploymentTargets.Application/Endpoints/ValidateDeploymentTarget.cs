@@ -15,7 +15,6 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 
@@ -56,9 +55,10 @@ public sealed class ValidateDeploymentTargetHandler(
             target,
             updated,
             cancellationToken);
-        if (!persistedResult.TryGetValue(out var persisted, out var persistenceError))
+        if (persistedResult is DeploymentTargetRevisionConflict persistenceError)
             return persistenceError;
 
+        var persisted = (DeploymentTarget)persistedResult.Value;
         var defaultId = await loadDefaultDeploymentTargetId(cancellationToken);
         return persisted.ToDto(persisted.Id == defaultId);
     }
@@ -67,8 +67,7 @@ public sealed class ValidateDeploymentTargetHandler(
 public sealed class ValidateDeploymentTargetRequestValidator
     : AbstractValidator<ValidateDeploymentTargetRequest>
 {
-    public ValidateDeploymentTargetRequestValidator() =>
-        RuleFor(request => request.Id)
+    public ValidateDeploymentTargetRequestValidator() => RuleFor(request => request.Id)
             .MongoObjectId("Deployment target ID");
 }
 
@@ -78,17 +77,14 @@ public static class ValidateDeploymentTargetEndpoint
     {
         app.MapPost("/{Id}/validate", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] ValidateDeploymentTargetRequest request,
-                CancellationToken cancellationToken) =>
-            {
+                CancellationToken cancellationToken) => {
                 var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     DeploymentTargetDto target => Results.Ok(target),
-                    DeploymentTargetNotFound
-                        or DeploymentTargetRevisionConflict =>
-                        httpProblems.Map(outcome).ToHttpResult()
+                    DeploymentTargetNotFound error => DeploymentTargetHttpMappings.Map(error),
+                    DeploymentTargetRevisionConflict error => DeploymentTargetHttpMappings.Map(error)
                 });
             })
             .WithName("ValidateDeploymentTarget")

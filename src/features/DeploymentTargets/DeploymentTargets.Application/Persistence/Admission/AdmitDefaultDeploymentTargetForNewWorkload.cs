@@ -1,7 +1,6 @@
 using Pole.Features.DeploymentTargets.Application.Persistence.Reads;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence.Admission;
 
@@ -9,9 +8,7 @@ internal sealed class MongoAdmitDefaultDeploymentTargetForNewWorkload(
     LoadDefaultDeploymentTargetId loadDefaultDeploymentTargetId,
     LoadDeploymentTargetById loadDeploymentTargetById)
 {
-    public async Task<Result<
-        DeploymentTargetLookupDto,
-        DefaultDeploymentTargetWorkloadAdmissionError>> InvokeAsync(
+    public async Task<AdmitDefaultDeploymentTargetForNewWorkloadOutcome> InvokeAsync(
         CancellationToken cancellationToken = default)
     {
         var target = await DeploymentTargetAdmissionSupport.LoadDefaultAsync(
@@ -20,13 +17,10 @@ internal sealed class MongoAdmitDefaultDeploymentTargetForNewWorkload(
             cancellationToken);
         return target switch
         {
-            Ok<DeploymentTarget> value =>
-                DeploymentTargetAdmissionSupport.AdmitDefaultForNewWorkload(value.Value),
-            Err<DefaultDeploymentTargetLookupError> error => error.Value switch
+            DeploymentTarget value => DeploymentTargetAdmissionSupport.AdmitDefaultForNewWorkload(value),
+            DefaultDeploymentTargetLookupError error => error.Value switch
             {
-                DefaultDeploymentTargetNotConfigured notConfigured =>
-                    new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
-                        new DefaultDeploymentTargetWorkloadAdmissionError(notConfigured))
+                DefaultDeploymentTargetNotConfigured notConfigured => new DefaultDeploymentTargetWorkloadAdmissionError(notConfigured)
             }
         };
     }

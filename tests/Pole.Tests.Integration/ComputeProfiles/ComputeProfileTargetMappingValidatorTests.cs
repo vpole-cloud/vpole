@@ -179,15 +179,11 @@ public sealed class ComputeProfileTargetMappingValidatorTests
                 DeploymentTargetUnavailableReason.ConnectionUnavailable));
     }
 
-    private static Task<Result<
-        DeploymentTargetLookupDto,
-        DeploymentTargetWorkloadAdmissionError>> AdmitTarget(
+    private static Task<AdmitDeploymentTargetForWorkloadOutcome> AdmitTarget(
         string deploymentTargetId,
         CancellationToken cancellationToken = default) =>
-        Task.FromResult<Result<
-            DeploymentTargetLookupDto,
-            DeploymentTargetWorkloadAdmissionError>>(
-            new Ok<DeploymentTargetLookupDto>(
+        Task.FromResult<AdmitDeploymentTargetForWorkloadOutcome>(
+            new AdmitDeploymentTargetForWorkloadOutcome(
                 new DeploymentTargetLookupDto(
                     deploymentTargetId,
                     "Test",
@@ -201,15 +197,11 @@ public sealed class ComputeProfileTargetMappingValidatorTests
                     DeletionRequested: false,
                     HealthStatus: "Healthy")));
 
-    private static Task<Result<
-        DeploymentTargetLookupDto,
-        DeploymentTargetWorkloadAdmissionError>> RejectTarget(
+    private static Task<AdmitDeploymentTargetForWorkloadOutcome> RejectTarget(
         string deploymentTargetId,
         CancellationToken cancellationToken = default) =>
-        Task.FromResult<Result<
-            DeploymentTargetLookupDto,
-            DeploymentTargetWorkloadAdmissionError>>(
-            new Err<DeploymentTargetWorkloadAdmissionError>(
+        Task.FromResult<AdmitDeploymentTargetForWorkloadOutcome>(
+            new AdmitDeploymentTargetForWorkloadOutcome(
                 new DeploymentTargetWorkloadAdmissionError(
                     new DeploymentTargetNewWorkloadsDisabled(deploymentTargetId))));
 

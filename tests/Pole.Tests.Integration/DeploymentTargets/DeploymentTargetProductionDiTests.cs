@@ -155,8 +155,8 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
         var functionFailure = await Assert.ThrowsAsync<TestProviderInfrastructureException>(
             () => new FunctionRevisionKubernetesManager(
                 provider,
-                (id, ct) => Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
-                    new Ok<DeploymentTargetLookupDto>(
+                (id, ct) => Task.FromResult<LookupDeploymentTargetOutcome>(
+                    new LookupDeploymentTargetOutcome(
                         DeploymentTargetNetworkPolicyTests.Target().AttestForTests().ToLookupDto())),
                 []).ApplyAsync(
                     new FunctionRevisionInKubernetes(

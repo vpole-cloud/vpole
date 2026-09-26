@@ -36,9 +36,9 @@ internal sealed class MongoPersistCreatedComputeProfile(
                 [],
                 transaction.Session,
                 ct);
-            if (references is Err<DeploymentTargetReferenceChangeRejected> error)
+            if (references is DeploymentTargetReferenceChangeRejected error)
             {
-                return transaction.Abort(error.Value);
+                return transaction.Abort(error);
             }
 
             if (profile.IsDefault)

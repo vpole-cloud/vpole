@@ -62,7 +62,7 @@ public sealed class ComputeProfileBootstrapPersistenceTests(MongoReplicaSetFixtu
         var persistedTarget = Assert.IsType<DeploymentTarget>(await loadTarget(target.Id));
         Assert.Equal(target.ReferenceFence + 1, persistedTarget.ReferenceFence);
         Assert.IsType<UnattestedNetworkPolicy>(persistedTarget.WorkloadConfiguration.NetworkPolicy);
-        Assert.False((await admission.InvokeAsync()).TryGetValue(out _, out _));
+        Assert.IsType<DefaultDeploymentTargetWorkloadAdmissionError>((await admission.InvokeAsync()).Value);
     }
     [Theory]
     [InlineData("runtime-cell", true, true, false)]
@@ -93,7 +93,7 @@ public sealed class ComputeProfileBootstrapPersistenceTests(MongoReplicaSetFixtu
             [],
             session);
 
-        Assert.IsType<Err<DeploymentTargetReferenceChangeRejected>>(result.Value);
+        Assert.IsType<DeploymentTargetReferenceChangeRejected>(result.Value);
         await session.AbortTransactionAsync();
         Assert.Equal(0, await fixture.DbContext.DeploymentTargetReferences.CountDocumentsAsync(
             Builders<DeploymentTargetReference>.Filter.Empty));

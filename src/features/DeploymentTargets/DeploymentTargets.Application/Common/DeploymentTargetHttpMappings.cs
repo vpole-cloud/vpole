@@ -1,84 +1,93 @@
 using System.Net;
+using Microsoft.AspNetCore.Http;
 using Pole.ASP.Helpers;
+using Pole.Features.DeploymentTargets.Application.Persistence.Mutations;
+using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 
 namespace Pole.Features.DeploymentTargets.Application.Common;
 
 public static class DeploymentTargetHttpMappings
 {
-    public static IReadOnlyList<HttpProblemMapping> All { get; } =
-        Array.AsReadOnly<HttpProblemMapping>(
-        [
-            HttpProblemMapping.For<DeploymentTargetRevisionConflict>(MapRevisionConflict),
-            HttpProblemMapping.For<DeploymentTargetDeletionRejected>(MapDeletionRejected),
-            HttpProblemMapping.For<DefaultDeploymentTargetDeletionRejected>(MapDefaultDeletion),
-            HttpProblemMapping.For<DeploymentTargetHasDurableReferences>(MapReferences),
-            HttpProblemMapping.For<DeploymentTargetPublicBaseDomainReferenced>(MapDomainReferences),
-            HttpProblemMapping.For<DeploymentTargetPublicBaseDomainConflict>(MapDomainConflict),
-            HttpProblemMapping.For<DeploymentTargetIdentityConflict>(MapIdentityConflict),
-            HttpProblemMapping.For<DeploymentTargetConnectionRejected>(MapConnectionRejected),
-            HttpProblemMapping.For<DeploymentTargetCredentialRewrapConflict>(MapCredentialRewrapConflict)
-        ]);
+    public static IResult Map(DeploymentTargetNotFound error) => DeploymentTargetContractHttpMappings.MapNotFound(error).ToHttpResult();
 
-    private static HttpProblem MapRevisionConflict(DeploymentTargetRevisionConflict error) =>
-        Problem(
+    public static IResult Map(DeploymentTargetRevisionConflict error) => MapRevisionConflict(error).ToHttpResult();
+
+    public static IResult Map(DeploymentTargetDeletionRejected error) => MapDeletionRejected(error).ToHttpResult();
+
+    public static IResult Map(DefaultDeploymentTargetDeletionRejected error) => MapDefaultDeletion(error).ToHttpResult();
+
+    public static IResult Map(DeploymentTargetHasDurableReferences error) => MapReferences(error).ToHttpResult();
+
+    public static IResult Map(DeploymentTargetPublicBaseDomainReferenced error) => MapDomainReferences(error).ToHttpResult();
+
+    public static IResult Map(DeploymentTargetPublicBaseDomainConflict error) => MapDomainConflict(error).ToHttpResult();
+
+    public static IResult Map(DeploymentTargetIdentityConflict error) => MapIdentityConflict(error).ToHttpResult();
+
+    public static IResult Map(DeploymentTargetConnectionRejected error) => MapConnectionRejected(error).ToHttpResult();
+
+    public static IResult Map(DeploymentTargetCredentialRewrapConflict error) => MapCredentialRewrapConflict(error).ToHttpResult();
+
+    public static IResult Map(DeleteDeploymentTargetError error) => error.Value switch
+    {
+        DeploymentTargetNotFound value => Map(value),
+        DeploymentTargetRevisionConflict value => Map(value),
+        DefaultDeploymentTargetDeletionRejected value => Map(value),
+        DeploymentTargetHasDurableReferences value => Map(value)
+    };
+
+    private static HttpProblem MapRevisionConflict(DeploymentTargetRevisionConflict error) => Problem(
             HttpStatusCode.Conflict,
             "deployment-targets.revision-conflict",
             "Deployment target changed",
             ("deploymentTargetId", error.DeploymentTargetId));
 
-    private static HttpProblem MapDeletionRejected(DeploymentTargetDeletionRejected error) =>
-        Problem(
+    private static HttpProblem MapDeletionRejected(DeploymentTargetDeletionRejected error) => Problem(
             HttpStatusCode.Conflict,
             "deployment-targets.deletion-pending",
             "Deployment target is pending deletion",
             ("deploymentTargetId", error.DeploymentTargetId));
 
-    private static HttpProblem MapDefaultDeletion(DefaultDeploymentTargetDeletionRejected error) =>
-        Problem(
+    private static HttpProblem MapDefaultDeletion(DefaultDeploymentTargetDeletionRejected error) => Problem(
             HttpStatusCode.Conflict,
             "deployment-targets.default-delete-forbidden",
             "The default deployment target cannot be deleted",
             ("deploymentTargetId", error.DeploymentTargetId));
 
-    private static HttpProblem MapReferences(DeploymentTargetHasDurableReferences error) =>
-        Problem(
+    private static HttpProblem MapReferences(DeploymentTargetHasDurableReferences error) => Problem(
             HttpStatusCode.Conflict,
             "deployment-targets.durable-references-exist",
             "Deployment target still has durable references",
             ("deploymentTargetId", error.DeploymentTargetId));
 
     private static HttpProblem MapDomainReferences(
-        DeploymentTargetPublicBaseDomainReferenced error) =>
-        Problem(
+        DeploymentTargetPublicBaseDomainReferenced error) => Problem(
             HttpStatusCode.Conflict,
             "deployment-targets.public-base-domain-referenced",
             "Deployment target public base domain is still referenced",
             ("deploymentTargetId", error.DeploymentTargetId));
 
     private static HttpProblem MapDomainConflict(
-        DeploymentTargetPublicBaseDomainConflict error) =>
-        Problem(
+        DeploymentTargetPublicBaseDomainConflict error) => Problem(
             HttpStatusCode.Conflict,
             "deployment-targets.public-base-domain-conflict",
             "Deployment target public base domain overlaps another target",
             ("deploymentTargetId", error.DeploymentTargetId));
 
-    private static HttpProblem MapIdentityConflict(DeploymentTargetIdentityConflict _) =>
-        Problem(
+    private static HttpProblem MapIdentityConflict(DeploymentTargetIdentityConflict _) => Problem(
             HttpStatusCode.Conflict,
             "deployment-targets.identity-conflict",
             "A deployment target with this Kubernetes cluster identity already exists");
 
-    private static HttpProblem MapConnectionRejected(DeploymentTargetConnectionRejected error) =>
-        Problem(
+    private static HttpProblem MapConnectionRejected(DeploymentTargetConnectionRejected error) => Problem(
             HttpStatusCode.UnprocessableEntity,
             "deployment-targets.connection-rejected",
             "Deployment target connection was rejected",
             ("errors", error.Errors));
 
     private static HttpProblem MapCredentialRewrapConflict(
-        DeploymentTargetCredentialRewrapConflict _) =>
-        Problem(
+        DeploymentTargetCredentialRewrapConflict _) => Problem(
             HttpStatusCode.Conflict,
             "deployment-targets.credential-rewrap-conflict",
             "Deployment-target credentials could not be rewrapped with the active key");
@@ -87,8 +96,7 @@ public static class DeploymentTargetHttpMappings
         HttpStatusCode status,
         string code,
         string title,
-        params (string Name, object Value)[] extensions) =>
-        new(
+        params (string Name, object Value)[] extensions) => new(
             (int)status,
             PoleProblemTypeId.FromCode(code),
             title,

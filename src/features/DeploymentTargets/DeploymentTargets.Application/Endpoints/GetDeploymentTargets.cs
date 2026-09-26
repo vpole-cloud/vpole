@@ -36,8 +36,7 @@ public static class GetDeploymentTargetsEndpoint
 {
     public static IEndpointRouteBuilder MapGetDeploymentTargetsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/", async (IMediator mediator, CancellationToken cancellationToken) =>
-            {
+        app.MapGet("/", async (IMediator mediator, CancellationToken cancellationToken) => {
                 var result = await mediator.Send(new GetDeploymentTargetsRequest(), cancellationToken);
                 return result.ToHttpResult(outcome => outcome switch
                 {

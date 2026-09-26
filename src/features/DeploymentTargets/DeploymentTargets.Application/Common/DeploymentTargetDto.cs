@@ -61,8 +61,7 @@ public sealed record DeploymentTargetIngressConfigurationDto(
 
 public static class DeploymentTargetDtoExtensions
 {
-    public static DeploymentTargetDto ToDto(this DeploymentTarget target, bool isDefault = false) =>
-        new(
+    public static DeploymentTargetDto ToDto(this DeploymentTarget target, bool isDefault = false) => new(
             target.Id,
             target.DisplayName,
             target.ClusterIdentity,
@@ -95,8 +94,7 @@ public static class DeploymentTargetDtoExtensions
             NetworkPolicy = target.ToNetworkPolicyDto()
         };
 
-    public static DeploymentTargetLookupDto ToLookupDto(this DeploymentTarget target) =>
-        new(
+    public static DeploymentTargetLookupDto ToLookupDto(this DeploymentTarget target) => new(
             target.Id,
             target.DisplayName,
             target.ClusterIdentity,
@@ -119,8 +117,7 @@ public static class DeploymentTargetDtoExtensions
             NetworkPolicy = target.ToNetworkPolicyDto()
         };
 
-    public static AvailableDeploymentTargetDto ToAvailableDto(this DeploymentTarget target) =>
-        new(
+    public static AvailableDeploymentTargetDto ToAvailableDto(this DeploymentTarget target) => new(
             target.Id,
             target.DisplayName,
             target.WorkloadConfiguration.Revision,
@@ -162,8 +159,7 @@ public static class DeploymentTargetDtoExtensions
     }
 
     private static DeploymentTargetCapabilitiesDto ToDto(
-        this DeploymentTargetCapabilities capabilities) =>
-        new(
+        this DeploymentTargetCapabilities capabilities) => new(
             capabilities.IsKnown,
             capabilities.ObservedAtUtc,
             capabilities.KubernetesVersion,

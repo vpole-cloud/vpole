@@ -8,8 +8,7 @@ internal sealed class MongoListEligiblePublicIngressDeploymentTargetsForNewWorkl
 {
     public async Task<IReadOnlyList<DeploymentTargetPublicIngressDto>> InvokeAsync(
         DeploymentTargetAdmissionRequest request,
-        CancellationToken cancellationToken = default) =>
-        (await loadEligibleDeploymentTargets(
+        CancellationToken cancellationToken = default) => (await loadEligibleDeploymentTargets(
             DeploymentTargetRequiredCapabilities.PublicIngress,
             cancellationToken))
         .Select(target => DeploymentTargetAdmissionSupport.ToPublicIngressDto(target.ToLookupDto()))

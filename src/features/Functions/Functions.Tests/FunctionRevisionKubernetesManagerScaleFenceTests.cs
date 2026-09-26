@@ -179,11 +179,11 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
             (id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementAttested),
             Array.Empty<IFunctionAgentTrustBundleProvider>());
 
-    private static Task<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>> LookupTarget(
+    private static Task<LookupDeploymentTargetOutcome> LookupTarget(
         string id,
         NetworkPolicyReadiness readiness) =>
-        Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
-            new Ok<DeploymentTargetLookupDto>(new(
+        Task.FromResult<LookupDeploymentTargetOutcome>(
+            new LookupDeploymentTargetOutcome(new DeploymentTargetLookupDto(
                 id,
                 "Target",
                 "cluster",

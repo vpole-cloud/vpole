@@ -68,7 +68,7 @@ internal sealed class MongoCreateManagedDomainZoneReservation(
                 expectedWorkloadConfigurationRevision)],
             session,
             cancellationToken);
-        if (fence is Err<DeploymentTargetWorkloadConfigurationFenceRejected>)
+        if (fence is DeploymentTargetWorkloadConfigurationFenceRejected)
         {
             return new ManagedDomainZoneDeploymentTargetChanged(deploymentTargetId);
         }
@@ -91,7 +91,7 @@ internal sealed class MongoCreateManagedDomainZoneReservation(
             [],
             session,
             cancellationToken);
-        return registered is Ok<Unit>
+        return registered is DeploymentTargetReferencesChanged
             ? zone.ToSnapshot()
             : new ManagedDomainZoneReferenceRejected(deploymentTargetId);
     }

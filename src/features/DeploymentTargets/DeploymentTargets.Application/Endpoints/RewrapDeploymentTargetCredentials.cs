@@ -20,16 +20,13 @@ public static class RewrapDeploymentTargetCredentialsEndpoint
     {
         app.MapPost("/deployment-target-credentials/rewrap", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] RewrapDeploymentTargetCredentialsRequest request,
-                CancellationToken cancellationToken) =>
-            {
+                CancellationToken cancellationToken) => {
                 var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     DeploymentTargetCredentialRewrapSummary summary => Results.Ok(summary),
-                    DeploymentTargetCredentialRewrapConflict error =>
-                        httpProblems.Map(error).ToHttpResult()
+                    DeploymentTargetCredentialRewrapConflict error => DeploymentTargetHttpMappings.Map(error)
                 });
             })
             .WithName("RewrapDeploymentTargetCredentials")
@@ -74,17 +71,18 @@ public sealed class RewrapDeploymentTargetCredentialsHandler(
                 request.Body.KeyWrapAlgorithm,
                 request.Body.KeyWrapAlgorithmVersion),
             cancellationToken);
-        return rewrapped.Match(
-            RewrapDeploymentTargetCredentialsOutcome (summary) => summary,
-            RewrapDeploymentTargetCredentialsOutcome (error) => error);
+        return rewrapped switch
+        {
+            DeploymentTargetCredentialRewrapSummary summary => summary,
+            DeploymentTargetCredentialRewrapConflict error => error
+        };
     }
 }
 
 public sealed class RewrapDeploymentTargetCredentialsRequestValidator
     : AbstractValidator<RewrapDeploymentTargetCredentialsRequest>
 {
-    public RewrapDeploymentTargetCredentialsRequestValidator() =>
-        RuleFor(request => request.Body)
+    public RewrapDeploymentTargetCredentialsRequestValidator() => RuleFor(request => request.Body)
             .NotNull()
             .SetValidator(new RewrapDeploymentTargetCredentialsRequestBodyValidator());
 }

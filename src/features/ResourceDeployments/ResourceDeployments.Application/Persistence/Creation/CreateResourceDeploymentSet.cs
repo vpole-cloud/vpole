@@ -85,7 +85,7 @@ internal sealed class MongoCreateResourceDeploymentSet(
             targetFenceRequests,
             session,
             cancellationToken);
-        if (targetFence is Err<DeploymentTargetWorkloadConfigurationFenceRejected>)
+        if (targetFence is DeploymentTargetWorkloadConfigurationFenceRejected)
         {
             return new CreateResourceDeploymentError(
                     new ResourceDeploymentTargetConfigurationChanged(

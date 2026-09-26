@@ -5,6 +5,9 @@ namespace Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 
 public static class DeploymentTargetContractHttpMappings
 {
+    public static HttpProblem MapNotFound(DeploymentTargetNotFound error) =>
+        MapLookupError(new DeploymentTargetLookupError(error));
+
     public static IReadOnlyList<HttpProblemMapping> All { get; } =
         Array.AsReadOnly<HttpProblemMapping>(
         [

@@ -88,7 +88,7 @@ internal sealed class MongoDeleteManagedDomainZone(
             [zone.DeploymentTargetId],
             session,
             cancellationToken);
-        return unregistered is Ok<Unit>
+        return unregistered is DeploymentTargetReferencesChanged
             ? new ManagedDomainZoneDeleted(zone.Id)
             : new ManagedDomainZoneReferenceRemovalRejected(
                     zone.Id,

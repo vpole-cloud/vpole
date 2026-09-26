@@ -110,8 +110,8 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         ApplyDeploymentTargetReferenceChanges rejectReferences =
             (owner, added, removed, session, cancellationToken) =>
-                Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
-                    new Err<DeploymentTargetReferenceChangeRejected>(
+                Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
+                    new ApplyDeploymentTargetReferenceChangesOutcome(
                         new DeploymentTargetReferenceChangeRejected(
                             owner,
                             added.Concat(removed).ToArray())));

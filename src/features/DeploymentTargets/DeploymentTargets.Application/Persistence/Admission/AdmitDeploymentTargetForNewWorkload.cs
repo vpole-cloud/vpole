@@ -1,6 +1,5 @@
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence.Admission;
 
@@ -8,9 +7,7 @@ internal sealed class MongoAdmitDeploymentTargetForNewWorkload(
     AdmitDeploymentTargetForWorkload admitDeploymentTargetForWorkload,
     LoadEligibleDeploymentTargets loadEligibleDeploymentTargets)
 {
-    public async Task<Result<
-        DeploymentTargetLookupDto,
-        DeploymentTargetNewWorkloadAdmissionError>> InvokeAsync(
+    public async Task<AdmitDeploymentTargetForNewWorkloadOutcome> InvokeAsync(
         DeploymentTargetAdmissionRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -19,21 +16,20 @@ internal sealed class MongoAdmitDeploymentTargetForNewWorkload(
             var resolved = await admitDeploymentTargetForWorkload(
                 request.ExplicitDeploymentTargetId,
                 cancellationToken);
-            if (!resolved.TryGetValue(out var target, out var admissionError))
+            if (resolved is DeploymentTargetWorkloadAdmissionError admissionError)
             {
-                return new Err<DeploymentTargetNewWorkloadAdmissionError>(
-                    new DeploymentTargetNewWorkloadAdmissionError(admissionError));
+                return new DeploymentTargetNewWorkloadAdmissionError(admissionError);
             }
+            var target = (DeploymentTargetLookupDto)resolved.Value;
 
             return DeploymentTargetAdmissionSupport.HasRequiredCapabilities(
                 target,
                 request.RequiredCapabilities)
-                ? new Ok<DeploymentTargetLookupDto>(target)
-                : new Err<DeploymentTargetNewWorkloadAdmissionError>(
-                    new DeploymentTargetNewWorkloadAdmissionError(
+                ? target
+                : new DeploymentTargetNewWorkloadAdmissionError(
                         new DeploymentTargetRequiredCapabilitiesUnavailable(
                             target.Id,
-                            request.RequiredCapabilities)));
+                            request.RequiredCapabilities));
         }
 
         var eligible = (await loadEligibleDeploymentTargets(
@@ -43,14 +39,12 @@ internal sealed class MongoAdmitDeploymentTargetForNewWorkload(
             .ToArray();
         return eligible.Length switch
         {
-            0 => new Err<DeploymentTargetNewWorkloadAdmissionError>(
-                new DeploymentTargetNewWorkloadAdmissionError(
-                    new NoDeploymentTargetAcceptsWorkloads())),
-            > 1 => new Err<DeploymentTargetNewWorkloadAdmissionError>(
-                new DeploymentTargetNewWorkloadAdmissionError(
+            0 => new DeploymentTargetNewWorkloadAdmissionError(
+                    new NoDeploymentTargetAcceptsWorkloads()),
+            > 1 => new DeploymentTargetNewWorkloadAdmissionError(
                     new DeploymentTargetWorkloadSelectionRequired(
-                        eligible.Select(target => target.Id).ToArray()))),
-            _ => new Ok<DeploymentTargetLookupDto>(eligible[0])
+                        eligible.Select(target => target.Id).ToArray())),
+            _ => eligible[0]
         };
     }
 }

@@ -1,13 +1,12 @@
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Persistence.Admission;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence.Reads;
 
 internal sealed class MongoLookupDeploymentTarget(LoadDeploymentTargetById loadDeploymentTargetById)
 {
-    public async Task<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>> InvokeAsync(
+    public async Task<LookupDeploymentTargetOutcome> InvokeAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
@@ -15,9 +14,8 @@ internal sealed class MongoLookupDeploymentTarget(LoadDeploymentTargetById loadD
             DeploymentTargetAdmissionSupport.NormalizeDeploymentTargetId(deploymentTargetId);
         var target = await loadDeploymentTargetById(normalizedDeploymentTargetId, cancellationToken);
         return target is null
-            ? new Err<DeploymentTargetLookupError>(
-                new DeploymentTargetLookupError(
-                    new DeploymentTargetNotFound(normalizedDeploymentTargetId)))
-            : new Ok<DeploymentTargetLookupDto>(target.ToLookupDto());
+            ? new DeploymentTargetLookupError(
+                new DeploymentTargetNotFound(normalizedDeploymentTargetId))
+            : target.ToLookupDto();
     }
 }

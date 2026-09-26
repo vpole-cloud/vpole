@@ -12,8 +12,8 @@ using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.DeploymentTargets.Application.Persistence.Mutations;
 using Pole.Features.DeploymentTargets.Application.Persistence.Reads;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.DeploymentTargets.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 
@@ -74,7 +74,7 @@ public sealed class UpdateDeploymentTargetHandler(
             target,
             updated,
             cancellationToken);
-        if (!persistedResult.TryGetValue(out var persisted, out var persistenceError))
+        if (persistedResult is PersistUpdatedDeploymentTargetError persistenceError)
         {
             return persistenceError switch
             {
@@ -84,6 +84,7 @@ public sealed class UpdateDeploymentTargetHandler(
             };
         }
 
+        var persisted = (DeploymentTarget)persistedResult.Value;
         if (!persisted.Enabled)
             invalidateDeploymentTargetKubernetesClient(target.Id);
         var defaultId = await loadDefaultDeploymentTargetId(cancellationToken);
@@ -130,20 +131,17 @@ public static class UpdateDeploymentTargetEndpoint
     {
         app.MapPut("/{Id}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] UpdateDeploymentTargetRequest request,
-                CancellationToken cancellationToken) =>
-            {
+                CancellationToken cancellationToken) => {
                 var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     DeploymentTargetDto target => Results.Ok(target),
-                    DeploymentTargetNotFound
-                        or DeploymentTargetRevisionConflict
-                        or DeploymentTargetDeletionRejected
-                        or DeploymentTargetPublicBaseDomainReferenced
-                        or DeploymentTargetPublicBaseDomainConflict =>
-                        httpProblems.Map(outcome).ToHttpResult()
+                    DeploymentTargetNotFound error => DeploymentTargetHttpMappings.Map(error),
+                    DeploymentTargetRevisionConflict error => DeploymentTargetHttpMappings.Map(error),
+                    DeploymentTargetDeletionRejected error => DeploymentTargetHttpMappings.Map(error),
+                    DeploymentTargetPublicBaseDomainReferenced error => DeploymentTargetHttpMappings.Map(error),
+                    DeploymentTargetPublicBaseDomainConflict error => DeploymentTargetHttpMappings.Map(error)
                 });
             })
             .WithName("UpdateDeploymentTarget")

@@ -79,9 +79,8 @@ internal sealed class MongoDeleteComputeProfile(
                 ct);
             return references switch
             {
-                Ok<Unit> => transaction.Commit(new ComputeProfileDeleted(computeProfileId)),
-                Err<DeploymentTargetReferenceChangeRejected> error => transaction.Abort(
-                    error.Value)
+                DeploymentTargetReferencesChanged => transaction.Commit(new ComputeProfileDeleted(computeProfileId)),
+                DeploymentTargetReferenceChangeRejected error => transaction.Abort(error)
             };
         }, cancellationToken);
 

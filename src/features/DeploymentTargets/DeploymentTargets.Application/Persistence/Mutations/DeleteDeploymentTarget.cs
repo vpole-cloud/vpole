@@ -4,7 +4,6 @@ using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Persistence.References;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence.Mutations;
 
@@ -81,11 +80,10 @@ internal sealed class MongoDeleteDeploymentTarget(
         var references = await ensureNoDeploymentTargetReferences(
             fencedTarget.Id,
             cancellationToken);
-        if (references is Err<DeploymentTargetHasDurableReferences> referenceError)
-            return Error(referenceError.Value);
+        if (references is DeploymentTargetHasDurableReferences referenceError)
+            return Error(referenceError);
 
-        return await runMongoTransaction(async (transaction, ct) =>
-        {
+        return await runMongoTransaction(async (transaction, ct) => {
             var current = await deploymentTargets
                 .Find(transaction.Session, DeploymentTargetFilters.AtDeletionFence(fencedTarget))
                 .FirstOrDefaultAsync(ct);
@@ -112,6 +110,5 @@ internal sealed class MongoDeleteDeploymentTarget(
         }, cancellationToken);
     }
 
-    private static DeleteDeploymentTargetPersistenceOutcome Error(DeleteDeploymentTargetError error) =>
-        new(error);
+    private static DeleteDeploymentTargetPersistenceOutcome Error(DeleteDeploymentTargetError error) => new(error);
 }

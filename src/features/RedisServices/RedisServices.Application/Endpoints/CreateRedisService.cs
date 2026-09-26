@@ -90,8 +90,9 @@ public sealed class CreateRedisServiceHandler(
                 request.Body.Placement?.DeploymentTargetId,
                 DeploymentTargetRequiredCapabilities.None),
             cancellationToken);
-        if (!targetResult.TryGetValue(out var target, out var targetError))
+        if (targetResult is DeploymentTargetNewWorkloadAdmissionError targetError)
             return targetError;
+        var target = (DeploymentTargetLookupDto)targetResult.Value;
 
         var computeProfileResult = await resolveComputeProfile(
             new ComputeProfileResolutionRequest(

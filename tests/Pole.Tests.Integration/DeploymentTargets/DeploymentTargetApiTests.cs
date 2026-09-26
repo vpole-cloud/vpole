@@ -150,7 +150,7 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
             .InvokeAsync(updated.Id);
         var failure = admission switch
         {
-            Err<DeploymentTargetWorkloadAdmissionError> error => error.Value,
+            DeploymentTargetWorkloadAdmissionError error => error,
             _ => throw new Xunit.Sdk.XunitException("Expected deployment-target admission failure.")
         };
         Assert.True(failure is DeploymentTargetNewWorkloadsDisabled);

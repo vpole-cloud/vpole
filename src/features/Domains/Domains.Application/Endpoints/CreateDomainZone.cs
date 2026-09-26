@@ -99,8 +99,9 @@ public sealed class CreateDomainZoneHandler(
             request.TenantId,
             request.Body.DeploymentTargetId,
             cancellationToken);
-        if (!admission.TryGetValue(out var publicIngress, out var admissionError))
+        if (admission is DeploymentTargetDomainReservationAdmissionError admissionError)
             return admissionError;
+        var publicIngress = (DeploymentTargetPublicIngressDto)admission.Value;
 
         return await runMongoTransaction(async (transaction, ct) =>
         {

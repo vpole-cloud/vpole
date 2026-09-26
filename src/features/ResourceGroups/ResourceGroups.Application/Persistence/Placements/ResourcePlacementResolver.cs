@@ -126,7 +126,7 @@ internal sealed class MongoResourcePlacementResolver(
             [],
             session,
             cancellationToken);
-        if (reference is Err<DeploymentTargetReferenceChangeRejected>)
+        if (reference is DeploymentTargetReferenceChangeRejected)
         {
             return new ResourceGroupPlacementError(
                     new ResourceGroupPlacementDeploymentTargetReferenceRejected(
@@ -240,7 +240,7 @@ internal sealed class MongoResourcePlacementResolver(
                 [],
                 session,
                 cancellationToken);
-            if (reference is Err<DeploymentTargetReferenceChangeRejected>)
+            if (reference is DeploymentTargetReferenceChangeRejected)
             {
                 return new ResourceGroupPlacementError(
                         new ResourceGroupPlacementDeploymentTargetReferenceRejected(
@@ -340,8 +340,8 @@ internal sealed class MongoResourcePlacementResolver(
             var defaultTarget = await lookupDefaultDeploymentTarget(cancellationToken);
             return defaultTarget switch
             {
-                Ok<DeploymentTargetLookupDto> success => new TargetResolution(success.Value, null),
-                Err<DefaultDeploymentTargetLookupError> => RejectedTarget(null)
+                DeploymentTargetLookupDto success => new TargetResolution(success, null),
+                DefaultDeploymentTargetLookupError => RejectedTarget(null)
             };
         }
 
@@ -349,8 +349,8 @@ internal sealed class MongoResourcePlacementResolver(
         var target = await lookupDeploymentTarget(requestedTargetId, cancellationToken);
         return target switch
         {
-            Ok<DeploymentTargetLookupDto> success => new TargetResolution(success.Value, null),
-            Err<DeploymentTargetLookupError> => RejectedTarget(requestedTargetId)
+            DeploymentTargetLookupDto success => new TargetResolution(success, null),
+            DeploymentTargetLookupError => RejectedTarget(requestedTargetId)
         };
     }
 
@@ -363,8 +363,8 @@ internal sealed class MongoResourcePlacementResolver(
             var defaultTarget = await admitDefaultDeploymentTarget(cancellationToken);
             return defaultTarget switch
             {
-                Ok<DeploymentTargetLookupDto> success => new TargetResolution(success.Value, null),
-                Err<DefaultDeploymentTargetWorkloadAdmissionError> => RejectedTarget(null)
+                DeploymentTargetLookupDto success => new TargetResolution(success, null),
+                DefaultDeploymentTargetWorkloadAdmissionError => RejectedTarget(null)
             };
         }
 
@@ -372,8 +372,8 @@ internal sealed class MongoResourcePlacementResolver(
         var target = await admitDeploymentTarget(requestedTargetId, cancellationToken);
         return target switch
         {
-            Ok<DeploymentTargetLookupDto> success => new TargetResolution(success.Value, null),
-            Err<DeploymentTargetWorkloadAdmissionError> => RejectedTarget(requestedTargetId)
+            DeploymentTargetLookupDto success => new TargetResolution(success, null),
+            DeploymentTargetWorkloadAdmissionError => RejectedTarget(requestedTargetId)
         };
     }
 

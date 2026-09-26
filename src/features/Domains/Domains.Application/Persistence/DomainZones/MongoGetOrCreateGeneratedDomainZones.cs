@@ -88,7 +88,7 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
                     .ToArray(),
                 session,
                 cancellationToken);
-            if (fence is Err<DeploymentTargetWorkloadConfigurationFenceRejected>)
+            if (fence is DeploymentTargetWorkloadConfigurationFenceRejected)
             {
                 return new GeneratedDomainZoneError(
                         new GeneratedDomainZoneTargetChanged(
@@ -124,7 +124,7 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
                     [],
                     session,
                     cancellationToken);
-                if (registered is Err<DeploymentTargetReferenceChangeRejected>)
+                if (registered is DeploymentTargetReferenceChangeRejected)
                 {
                     return new GeneratedDomainZoneError(
                             new GeneratedDomainZoneTargetChanged(

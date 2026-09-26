@@ -4,13 +4,21 @@ using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Connections;
 
+internal union ProtectDeploymentTargetCredentialOutcome(
+    EncryptedValue,
+    DeploymentTargetConnectionRejected);
+
+internal union UnprotectDeploymentTargetCredentialOutcome(
+    byte[],
+    StoredDeploymentTargetConnectionUnavailable);
+
 internal sealed class DeploymentTargetConnectionProtector(
     IEnvelopeEncryptionService encryption)
 {
     private const string KubeconfigValueName = "kubeconfig";
     private const string ServiceAccountCredentialValueName = "service-account-credential";
 
-    public async ValueTask<Result<EncryptedValue, DeploymentTargetConnectionRejected>> ProtectKubeconfigAsync(
+    public async ValueTask<ProtectDeploymentTargetCredentialOutcome> ProtectKubeconfigAsync(
         string deploymentTargetId,
         long connectionVersion,
         ReadOnlyMemory<byte> canonicalKubeconfig,
@@ -18,10 +26,9 @@ internal sealed class DeploymentTargetConnectionProtector(
     {
         if (canonicalKubeconfig.IsEmpty || canonicalKubeconfig.Length > ConnectionPayloadLimits.MaximumKubeconfigBytes)
         {
-            return new Err<DeploymentTargetConnectionRejected>(
-                ConnectionRejections.Validation(
+            return ConnectionRejections.Validation(
                     "kubeconfig",
-                    "The kubeconfig payload has an invalid size."));
+                    "The kubeconfig payload has an invalid size.");
         }
 
         var context = DeploymentTargetConnectionEncryptionContext.Create(
@@ -34,7 +41,7 @@ internal sealed class DeploymentTargetConnectionProtector(
             var encrypted = await encryption.EncryptAsync(canonicalKubeconfig, context, cancellationToken);
             return encrypted switch
             {
-                Ok<EncryptedValue> success => success,
+                Ok<EncryptedValue> success => success.Value,
                 Err<EnvelopeEncryptionFailed> failure => throw new InvalidOperationException(
                     $"The deployment-target connection-protection service rejected encryption: {failure.Value.Message}")
             };
@@ -51,7 +58,7 @@ internal sealed class DeploymentTargetConnectionProtector(
         }
     }
 
-    public async ValueTask<Result<byte[], StoredDeploymentTargetConnectionUnavailable>> UnprotectKubeconfigAsync(
+    public async ValueTask<UnprotectDeploymentTargetCredentialOutcome> UnprotectKubeconfigAsync(
         string deploymentTargetId,
         long connectionVersion,
         EncryptedValue encryptedKubeconfig,
@@ -59,7 +66,7 @@ internal sealed class DeploymentTargetConnectionProtector(
     {
         if (!HasBoundedCiphertext(encryptedKubeconfig, ConnectionPayloadLimits.MaximumKubeconfigBytes))
         {
-            return new Err<StoredDeploymentTargetConnectionUnavailable>(new());
+            return new StoredDeploymentTargetConnectionUnavailable();
         }
 
         var context = DeploymentTargetConnectionEncryptionContext.Create(
@@ -72,8 +79,8 @@ internal sealed class DeploymentTargetConnectionProtector(
             var decrypted = await encryption.DecryptAsync(encryptedKubeconfig, context, cancellationToken);
             return decrypted switch
             {
-                Ok<byte[]> success => success,
-                Err<EnvelopeDecryptionFailed> => new Err<StoredDeploymentTargetConnectionUnavailable>(new())
+                Ok<byte[]> success => success.Value,
+                Err<EnvelopeDecryptionFailed> => new StoredDeploymentTargetConnectionUnavailable()
             };
         }
         catch (OperationCanceledException)
@@ -88,7 +95,7 @@ internal sealed class DeploymentTargetConnectionProtector(
         }
     }
 
-    public async ValueTask<Result<EncryptedValue, DeploymentTargetConnectionRejected>> ProtectServiceAccountCredentialAsync(
+    public async ValueTask<ProtectDeploymentTargetCredentialOutcome> ProtectServiceAccountCredentialAsync(
         string deploymentTargetId,
         long connectionVersion,
         ReadOnlyMemory<byte> canonicalServiceAccountCredential,
@@ -97,9 +104,9 @@ internal sealed class DeploymentTargetConnectionProtector(
         if (canonicalServiceAccountCredential.IsEmpty ||
             canonicalServiceAccountCredential.Length > ConnectionPayloadLimits.MaximumServiceAccountCredentialBytes)
         {
-            return new Err<DeploymentTargetConnectionRejected>(ConnectionRejections.Validation(
+            return ConnectionRejections.Validation(
                 "serviceAccount",
-                "The service-account credential payload has an invalid size."));
+                "The service-account credential payload has an invalid size.");
         }
 
         var context = DeploymentTargetConnectionEncryptionContext.Create(
@@ -115,7 +122,7 @@ internal sealed class DeploymentTargetConnectionProtector(
                 cancellationToken);
             return encrypted switch
             {
-                Ok<EncryptedValue> success => success,
+                Ok<EncryptedValue> success => success.Value,
                 Err<EnvelopeEncryptionFailed> failure => throw new InvalidOperationException(
                     $"The deployment-target connection-protection service rejected encryption: {failure.Value.Message}")
             };
@@ -132,7 +139,7 @@ internal sealed class DeploymentTargetConnectionProtector(
         }
     }
 
-    public async ValueTask<Result<byte[], StoredDeploymentTargetConnectionUnavailable>> UnprotectServiceAccountCredentialAsync(
+    public async ValueTask<UnprotectDeploymentTargetCredentialOutcome> UnprotectServiceAccountCredentialAsync(
         string deploymentTargetId,
         long connectionVersion,
         EncryptedValue encryptedCredential,
@@ -142,7 +149,7 @@ internal sealed class DeploymentTargetConnectionProtector(
                 encryptedCredential,
                 ConnectionPayloadLimits.MaximumServiceAccountCredentialBytes))
         {
-            return new Err<StoredDeploymentTargetConnectionUnavailable>(new());
+            return new StoredDeploymentTargetConnectionUnavailable();
         }
 
         var context = DeploymentTargetConnectionEncryptionContext.Create(
@@ -155,8 +162,8 @@ internal sealed class DeploymentTargetConnectionProtector(
             var decrypted = await encryption.DecryptAsync(encryptedCredential, context, cancellationToken);
             return decrypted switch
             {
-                Ok<byte[]> success => success,
-                Err<EnvelopeDecryptionFailed> => new Err<StoredDeploymentTargetConnectionUnavailable>(new())
+                Ok<byte[]> success => success.Value,
+                Err<EnvelopeDecryptionFailed> => new StoredDeploymentTargetConnectionUnavailable()
             };
         }
         catch (OperationCanceledException)
@@ -171,8 +178,7 @@ internal sealed class DeploymentTargetConnectionProtector(
         }
     }
 
-    private static bool HasBoundedCiphertext(EncryptedValue? encryptedValue, int maximumBytes) =>
-        encryptedValue?.Ciphertext is { Length: > 0 } ciphertext &&
+    private static bool HasBoundedCiphertext(EncryptedValue? encryptedValue, int maximumBytes) => encryptedValue?.Ciphertext is { Length: > 0 } ciphertext &&
         ciphertext.Length <= maximumBytes;
 }
 
@@ -217,16 +223,14 @@ internal static class DeploymentTargetConnectionEncryptionContext
 
     public static EnvelopeEncryptionContext ForKubeconfig(
         string deploymentTargetId,
-        long connectionVersion) =>
-        DeploymentTargetConnectionEncryptionContext.Create(
+        long connectionVersion) => DeploymentTargetConnectionEncryptionContext.Create(
             deploymentTargetId,
             connectionVersion,
             KubeconfigValueName);
 
     public static EnvelopeEncryptionContext ForServiceAccount(
         string deploymentTargetId,
-        long connectionVersion) =>
-        DeploymentTargetConnectionEncryptionContext.Create(
+        long connectionVersion) => DeploymentTargetConnectionEncryptionContext.Create(
             deploymentTargetId,
             connectionVersion,
             ServiceAccountValueName);

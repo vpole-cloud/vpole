@@ -3,7 +3,6 @@ using Pole.Database;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Persistence.References;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence.Mutations;
 
@@ -12,7 +11,11 @@ public union PersistUpdatedDeploymentTargetError(
     DeploymentTargetPublicBaseDomainReferenced,
     DeploymentTargetPublicBaseDomainConflict);
 
-public delegate Task<Result<DeploymentTarget, PersistUpdatedDeploymentTargetError>>
+public union PersistUpdatedDeploymentTargetOutcome(
+    DeploymentTarget,
+    PersistUpdatedDeploymentTargetError);
+
+public delegate Task<PersistUpdatedDeploymentTargetOutcome>
     PersistUpdatedDeploymentTarget(
         DeploymentTarget current,
         DeploymentTarget replacement,
@@ -22,11 +25,9 @@ internal sealed class MongoPersistUpdatedDeploymentTarget(
     IMongoCollection<DeploymentTarget> deploymentTargets,
     EnsureNoDeploymentTargetPublicBaseDomainReferences ensureNoPublicBaseDomainReferences,
     EnsureNoOverlappingDeploymentTargetPublicBaseDomain ensureNoOverlappingPublicBaseDomain,
-    RunMongoOutcomeTransaction<Result<
-        DeploymentTarget,
-        PersistUpdatedDeploymentTargetError>> runMongoTransaction)
+    RunMongoOutcomeTransaction<PersistUpdatedDeploymentTargetOutcome> runMongoTransaction)
 {
-    public async Task<Result<DeploymentTarget, PersistUpdatedDeploymentTargetError>> InvokeAsync(
+    public async Task<PersistUpdatedDeploymentTargetOutcome> InvokeAsync(
         DeploymentTarget current,
         DeploymentTarget replacement,
         CancellationToken cancellationToken = default)
@@ -55,21 +56,19 @@ internal sealed class MongoPersistUpdatedDeploymentTarget(
                 },
                 cancellationToken);
             return persisted is null
-                ? new Err<PersistUpdatedDeploymentTargetError>(
-                    new PersistUpdatedDeploymentTargetError(
-                        new DeploymentTargetRevisionConflict(current.Id)))
-                : new Ok<DeploymentTarget>(persisted);
+                ? new PersistUpdatedDeploymentTargetError(
+                        new DeploymentTargetRevisionConflict(current.Id))
+                : persisted;
         }
 
-        return await runMongoTransaction(async (transaction, ct) =>
-        {
+        return await runMongoTransaction(async (transaction, ct) => {
             var references = await ensureNoPublicBaseDomainReferences(
                 current.Id,
                 transaction.Session,
                 ct);
-            if (!references.TryGetValue(out _, out var referenceError))
+            if (references is DeploymentTargetPublicBaseDomainReferenced referenceError)
             {
-                return transaction.AbortError(
+                return transaction.Abort(
                     new PersistUpdatedDeploymentTargetError(referenceError));
             }
 
@@ -78,9 +77,9 @@ internal sealed class MongoPersistUpdatedDeploymentTarget(
                 replacement.WorkloadConfiguration.Ingress?.PublicBaseDomain,
                 transaction.Session,
                 ct);
-            if (!overlap.TryGetValue(out _, out var overlapError))
+            if (overlap is DeploymentTargetPublicBaseDomainConflict overlapError)
             {
-                return transaction.AbortError(
+                return transaction.Abort(
                     new PersistUpdatedDeploymentTargetError(overlapError));
             }
 
@@ -94,16 +93,15 @@ internal sealed class MongoPersistUpdatedDeploymentTarget(
                 },
                 ct);
             return persisted is null
-                ? transaction.AbortError(
+                ? transaction.Abort(
                     new PersistUpdatedDeploymentTargetError(
                         new DeploymentTargetRevisionConflict(current.Id)))
-                : transaction.Commit(new Ok<DeploymentTarget>(persisted));
+                : transaction.Commit(persisted);
         }, cancellationToken);
     }
 
     private static UpdateDefinition<DeploymentTarget> ReplacementUpdate(
-        DeploymentTarget replacement) =>
-        Builders<DeploymentTarget>.Update.Combine(
+        DeploymentTarget replacement) => Builders<DeploymentTarget>.Update.Combine(
             Builders<DeploymentTarget>.Update.Set(item => item.DisplayName, replacement.DisplayName),
             Builders<DeploymentTarget>.Update.Set(item => item.Enabled, replacement.Enabled),
             Builders<DeploymentTarget>.Update.Set(

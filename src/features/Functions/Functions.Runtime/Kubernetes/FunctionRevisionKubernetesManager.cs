@@ -329,7 +329,7 @@ public sealed class FunctionRevisionKubernetesManager(
         CancellationToken cancellationToken)
     {
         var result = await lookupDeploymentTarget(targetId, cancellationToken);
-        return result.TryGetValue(out var target, out _) &&
+        return result is DeploymentTargetLookupDto target &&
             target.NetworkPolicy.AllowsWorkloads;
     }
 

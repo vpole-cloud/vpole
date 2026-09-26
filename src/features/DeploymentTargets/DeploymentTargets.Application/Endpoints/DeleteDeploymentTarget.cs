@@ -8,6 +8,7 @@ using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Persistence;
+using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Persistence.Mutations;
 using Pole.Mediator;
 
@@ -44,8 +45,7 @@ public sealed class DeleteDeploymentTargetHandler(
 public sealed class DeleteDeploymentTargetRequestValidator
     : AbstractValidator<DeleteDeploymentTargetRequest>
 {
-    public DeleteDeploymentTargetRequestValidator() =>
-        RuleFor(request => request.Id)
+    public DeleteDeploymentTargetRequestValidator() => RuleFor(request => request.Id)
             .MongoObjectId("Deployment target ID");
 }
 
@@ -55,15 +55,13 @@ public static class DeleteDeploymentTargetEndpoint
     {
         app.MapDelete("/{Id}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] DeleteDeploymentTargetRequest request,
-                CancellationToken cancellationToken) =>
-            {
+                CancellationToken cancellationToken) => {
                 var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     DeploymentTargetDeleted => Results.NoContent(),
-                    DeleteDeploymentTargetError error => httpProblems.Map(error).ToHttpResult()
+                    DeleteDeploymentTargetError error => DeploymentTargetHttpMappings.Map(error)
                 });
             })
             .WithName("DeleteDeploymentTarget")

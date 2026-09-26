@@ -180,11 +180,12 @@ public sealed class CreateFunctionAppHandler(
         CancellationToken cancellationToken = default)
     {
         var defaultTarget = await lookupDefaultDeploymentTarget(cancellationToken);
-        if (!defaultTarget.TryGetValue(out var configuredTarget, out _))
+        if (defaultTarget is DefaultDeploymentTargetLookupError)
         {
             return new CreateFunctionAppError(
                 new FunctionAppDefaultDeploymentTargetUnavailable());
         }
+        var configuredTarget = (DeploymentTargetLookupDto)defaultTarget.Value;
 
         var targetResult = await admitDeploymentTarget(
             new DeploymentTargetAdmissionRequest(
@@ -194,10 +195,11 @@ public sealed class CreateFunctionAppHandler(
                 configuredTarget.Id,
                 DeploymentTargetRequiredCapabilities.FunctionRuntimeConnectivity),
             cancellationToken);
-        if (!targetResult.TryGetValue(out var target, out var targetError))
+        if (targetResult is DeploymentTargetNewWorkloadAdmissionError targetError)
         {
             return new CreateFunctionAppError(targetError);
         }
+        var target = (DeploymentTargetLookupDto)targetResult.Value;
 
         var spec = request.Body.Spec.ToDomain();
         var computeResult = await resolveComputeProfile(

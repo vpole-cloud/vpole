@@ -6,14 +6,11 @@ namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 internal static class DeploymentTargetConnectionRequestBodyExtensions
 {
     public static DeploymentTargetConnectionInput ToInput(
-        this DeploymentTargetConnectionRequestBody body) =>
-        Enum.Parse<DeploymentTargetConnectionKind>(body.Kind, ignoreCase: true) switch
+        this DeploymentTargetConnectionRequestBody body) => Enum.Parse<DeploymentTargetConnectionKind>(body.Kind, ignoreCase: true) switch
         {
             DeploymentTargetConnectionKind.InCluster => new InClusterConnectionInput(),
-            DeploymentTargetConnectionKind.Kubeconfig =>
-                new KubeconfigConnectionInput(body.Kubeconfig!, body.ContextName),
-            DeploymentTargetConnectionKind.ServiceAccount =>
-                new ServiceAccountConnectionInput(
+            DeploymentTargetConnectionKind.Kubeconfig => new KubeconfigConnectionInput(body.Kubeconfig!, body.ContextName),
+            DeploymentTargetConnectionKind.ServiceAccount => new ServiceAccountConnectionInput(
                     body.ServerUrl!,
                     body.CertificateAuthorityData!,
                     body.Token!),

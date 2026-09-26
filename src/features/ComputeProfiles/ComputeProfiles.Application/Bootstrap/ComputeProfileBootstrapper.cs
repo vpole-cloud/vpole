@@ -31,7 +31,7 @@ public sealed class ComputeProfileBootstrapper(
         var lookupDefaultDeploymentTarget = scope.ServiceProvider
             .GetRequiredService<LookupDefaultDeploymentTarget>();
         var targetResult = await lookupDefaultDeploymentTarget(cancellationToken);
-        if (targetResult is not Ok<DeploymentTargetLookupDto> target)
+        if (targetResult is not DeploymentTargetLookupDto target)
         {
             throw new InvalidOperationException(
                 "The default compute profile cannot be bootstrapped because no default deployment target is configured.");
@@ -54,7 +54,7 @@ public sealed class ComputeProfileBootstrapper(
                 ResourceTypeId.Create("pole/function-app")
             ],
             AllTenantsComputeProfileAccess.Create(),
-            [ComputeProfileTargetMapping.Create(target.Value.Id)],
+            [ComputeProfileTargetMapping.Create(target.Id)],
             isEnabled: true,
             isDefault: true,
             new ComputeProfileFactory.CreateOptions(
@@ -71,7 +71,7 @@ public sealed class ComputeProfileBootstrapper(
                 logger.LogInformation(
                     "Bootstrapped default compute profile {ComputeProfileId} for deployment target {DeploymentTargetId}.",
                     profile.Id,
-                    target.Value.Id);
+                    target.Id);
                 return;
             }
         }

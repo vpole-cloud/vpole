@@ -232,12 +232,12 @@ public sealed class ResourceDeploymentTargetRoutingTests(
                 "pole.resource-deployments/v1/resource-deployment-failed"));
     }
 
-    private static Task<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>> LookupTarget(
+    private static Task<LookupDeploymentTargetOutcome> LookupTarget(
         string id,
         CancellationToken cancellationToken,
         NetworkPolicyReadiness readiness = NetworkPolicyReadiness.EnforcementAttested) =>
-        Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
-            new Ok<DeploymentTargetLookupDto>(DeploymentTargetNetworkPolicyTests.Target().ToLookupDto() with
+        Task.FromResult<LookupDeploymentTargetOutcome>(
+            new LookupDeploymentTargetOutcome(DeploymentTargetNetworkPolicyTests.Target().ToLookupDto() with
             {
                 Id = id,
                 NetworkPolicy = new(

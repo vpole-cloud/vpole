@@ -12,9 +12,11 @@ public sealed record DeploymentTargetCredentialRewrapSummary(
     long Rewrapped,
     long ConcurrentChanges);
 
-public delegate Task<Result<
+public union RewrapDeploymentTargetCredentialsPersistenceOutcome(
     DeploymentTargetCredentialRewrapSummary,
-    DeploymentTargetCredentialRewrapConflict>> RewrapDeploymentTargetCredentials(
+    DeploymentTargetCredentialRewrapConflict);
+
+public delegate Task<RewrapDeploymentTargetCredentialsPersistenceOutcome> RewrapDeploymentTargetCredentials(
     EnvelopeEncryptionKeyReference expectedActiveKey,
     CancellationToken cancellationToken = default);
 
@@ -24,17 +26,14 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
 {
     private const int BatchSize = 100;
 
-    public async Task<Result<
-        DeploymentTargetCredentialRewrapSummary,
-        DeploymentTargetCredentialRewrapConflict>> InvokeAsync(
+    public async Task<RewrapDeploymentTargetCredentialsPersistenceOutcome> InvokeAsync(
         EnvelopeEncryptionKeyReference expectedActiveKey,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(expectedActiveKey);
         if (expectedActiveKey != envelopeEncryption.ActiveKey)
         {
-            return new Err<DeploymentTargetCredentialRewrapConflict>(
-                new DeploymentTargetCredentialRewrapConflict());
+            return new DeploymentTargetCredentialRewrapConflict();
         }
 
         long examined = 0;
@@ -111,8 +110,7 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
                 }
                 if (!ReferencesKey(rewrappedEnvelope, expectedActiveKey))
                 {
-                    return new Err<DeploymentTargetCredentialRewrapConflict>(
-                        new DeploymentTargetCredentialRewrapConflict());
+                    return new DeploymentTargetCredentialRewrapConflict();
                 }
 
                 var update = await deploymentTargets.UpdateOneAsync(
@@ -131,17 +129,15 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
                 break;
         }
 
-        return new Ok<DeploymentTargetCredentialRewrapSummary>(
-            new DeploymentTargetCredentialRewrapSummary(
+        return new DeploymentTargetCredentialRewrapSummary(
                 examined,
                 rewrapped,
-                concurrentChanges));
+                concurrentChanges);
     }
 
     private static bool ReferencesKey(
         EncryptedValue envelope,
-        EnvelopeEncryptionKeyReference key) =>
-        string.Equals(envelope.KeyProviderId, key.ProviderId, StringComparison.Ordinal) &&
+        EnvelopeEncryptionKeyReference key) => string.Equals(envelope.KeyProviderId, key.ProviderId, StringComparison.Ordinal) &&
         string.Equals(envelope.KeyEncryptionKeyId, key.KeyId, StringComparison.Ordinal) &&
         envelope.KeyEncryptionKeyVersion == key.KeyVersion &&
         string.Equals(envelope.KeyWrapAlgorithm, key.KeyWrapAlgorithm, StringComparison.Ordinal) &&

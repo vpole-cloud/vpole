@@ -1,13 +1,16 @@
 using System.Security.Cryptography;
+using k8s;
+using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Connections;
 
-public delegate ValueTask<Result<
+public union PrepareDeploymentTargetConnectionOutcome(
     PreparedDeploymentTargetConnection,
-    DeploymentTargetConnectionRejected>>
+    DeploymentTargetConnectionRejected);
+
+public delegate ValueTask<PrepareDeploymentTargetConnectionOutcome>
     PrepareDeploymentTargetConnection(
         string deploymentTargetId,
         long connectionVersion,
@@ -17,9 +20,7 @@ public delegate ValueTask<Result<
 internal sealed class DeploymentTargetConnectionPreparer(
     DeploymentTargetConnectionProtector protector)
 {
-    public async ValueTask<Result<
-        PreparedDeploymentTargetConnection,
-        DeploymentTargetConnectionRejected>> InvokeAsync(
+    public async ValueTask<PrepareDeploymentTargetConnectionOutcome> InvokeAsync(
         string deploymentTargetId,
         long connectionVersion,
         DeploymentTargetConnectionInput input,
@@ -28,10 +29,9 @@ internal sealed class DeploymentTargetConnectionPreparer(
         EnsureValidOwner(deploymentTargetId, connectionVersion);
         if (input is null)
         {
-            return new Err<DeploymentTargetConnectionRejected>(
-                ConnectionRejections.Validation(
+            return ConnectionRejections.Validation(
                     "connection",
-                    "A deployment-target connection is required."));
+                    "A deployment-target connection is required.");
         }
 
         return input switch
@@ -47,30 +47,27 @@ internal sealed class DeploymentTargetConnectionPreparer(
                 connectionVersion,
                 serviceAccount,
                 cancellationToken),
-            _ => new Err<DeploymentTargetConnectionRejected>(
-                ConnectionRejections.Validation(
+            _ => ConnectionRejections.Validation(
                     "connection",
-                    "The deployment-target connection kind is unsupported."))
+                    "The deployment-target connection kind is unsupported.")
         };
     }
 
-    private static Result<PreparedDeploymentTargetConnection, DeploymentTargetConnectionRejected> PrepareInCluster(
+    private static PrepareDeploymentTargetConnectionOutcome PrepareInCluster(
         long connectionVersion,
         CancellationToken cancellationToken)
     {
         var clientResult = KubernetesClientSecurity.CreateInClusterForCandidate(cancellationToken);
-        if (!clientResult.TryGetValue(out var client, out var failure))
-            return new Err<DeploymentTargetConnectionRejected>(failure);
+        if (clientResult is DeploymentTargetConnectionRejected failure)
+            return failure;
+        var client = (IKubernetes)clientResult.Value;
 
-        return new Ok<PreparedDeploymentTargetConnection>(
-            new PreparedDeploymentTargetConnection(
+        return new PreparedDeploymentTargetConnection(
                 DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
-                client));
+                client);
     }
 
-    private async ValueTask<Result<
-        PreparedDeploymentTargetConnection,
-        DeploymentTargetConnectionRejected>> PrepareKubeconfigAsync(
+    private async ValueTask<PrepareDeploymentTargetConnectionOutcome> PrepareKubeconfigAsync(
         string deploymentTargetId,
         long connectionVersion,
         KubeconfigConnectionInput input,
@@ -80,14 +77,16 @@ internal sealed class DeploymentTargetConnectionPreparer(
             input.Kubeconfig,
             input.ContextName,
             cancellationToken);
-        if (!canonicalResult.TryGetValue(out var canonical, out var canonicalFailure))
-            return new Err<DeploymentTargetConnectionRejected>(canonicalFailure);
+        if (canonicalResult is DeploymentTargetConnectionRejected canonicalFailure)
+            return canonicalFailure;
+        var canonical = (CanonicalKubeconfigCredential)canonicalResult.Value;
 
         var clientResult = KubernetesClientSecurity.CreateForCandidate(
             canonical,
             cancellationToken);
-        if (!clientResult.TryGetValue(out var client, out var clientFailure))
-            return new Err<DeploymentTargetConnectionRejected>(clientFailure);
+        if (clientResult is DeploymentTargetConnectionRejected clientFailure)
+            return clientFailure;
+        var client = (IKubernetes)clientResult.Value;
 
         byte[] serialized;
         try
@@ -109,19 +108,19 @@ internal sealed class DeploymentTargetConnectionPreparer(
                 connectionVersion,
                 serialized,
                 cancellationToken);
-            if (!encryptedResult.TryGetValue(out var encrypted, out var encryptionFailure))
+            if (encryptedResult is DeploymentTargetConnectionRejected encryptionFailure)
             {
                 client.Dispose();
-                return new Err<DeploymentTargetConnectionRejected>(encryptionFailure);
+                return encryptionFailure;
             }
+            var encrypted = (EncryptedValue)encryptedResult.Value;
 
             var persisted = DeploymentTargetConnectionFactory.CreateKubeconfig(
                 connectionVersion,
                 canonical.ContextName,
                 canonical.ServerUrl,
                 encrypted);
-            return new Ok<PreparedDeploymentTargetConnection>(
-                new PreparedDeploymentTargetConnection(persisted, client));
+            return new PreparedDeploymentTargetConnection(persisted, client);
         }
         catch (OperationCanceledException)
         {
@@ -141,9 +140,7 @@ internal sealed class DeploymentTargetConnectionPreparer(
         }
     }
 
-    private async ValueTask<Result<
-        PreparedDeploymentTargetConnection,
-        DeploymentTargetConnectionRejected>> PrepareServiceAccountAsync(
+    private async ValueTask<PrepareDeploymentTargetConnectionOutcome> PrepareServiceAccountAsync(
         string deploymentTargetId,
         long connectionVersion,
         ServiceAccountConnectionInput input,
@@ -154,14 +151,16 @@ internal sealed class DeploymentTargetConnectionPreparer(
             input.ServerUrl,
             input.CertificateAuthorityData,
             input.Token);
-        if (!canonicalResult.TryGetValue(out var canonical, out var canonicalFailure))
-            return new Err<DeploymentTargetConnectionRejected>(canonicalFailure);
+        if (canonicalResult is DeploymentTargetConnectionRejected canonicalFailure)
+            return canonicalFailure;
+        var canonical = (CanonicalKubeconfigCredential)canonicalResult.Value;
 
         var clientResult = KubernetesClientSecurity.CreateForCandidate(
             canonical,
             cancellationToken);
-        if (!clientResult.TryGetValue(out var client, out var clientFailure))
-            return new Err<DeploymentTargetConnectionRejected>(clientFailure);
+        if (clientResult is DeploymentTargetConnectionRejected clientFailure)
+            return clientFailure;
+        var client = (IKubernetes)clientResult.Value;
 
         byte[] serialized;
         try
@@ -183,19 +182,19 @@ internal sealed class DeploymentTargetConnectionPreparer(
                 connectionVersion,
                 serialized,
                 cancellationToken);
-            if (!encryptedResult.TryGetValue(out var encrypted, out var encryptionFailure))
+            if (encryptedResult is DeploymentTargetConnectionRejected encryptionFailure)
             {
                 client.Dispose();
-                return new Err<DeploymentTargetConnectionRejected>(encryptionFailure);
+                return encryptionFailure;
             }
+            var encrypted = (EncryptedValue)encryptedResult.Value;
 
             var persisted = DeploymentTargetConnectionFactory.CreateServiceAccount(
                 connectionVersion,
                 canonical.ServerUrl,
                 canonical.CertificateAuthorityData,
                 encrypted);
-            return new Ok<PreparedDeploymentTargetConnection>(
-                new PreparedDeploymentTargetConnection(persisted, client));
+            return new PreparedDeploymentTargetConnection(persisted, client);
         }
         catch (OperationCanceledException)
         {

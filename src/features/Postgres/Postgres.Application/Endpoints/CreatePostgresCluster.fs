@@ -140,7 +140,7 @@ module private CreatePostgresClusterWorkflow =
                         DeploymentTargetRequiredCapabilities.None),
                     cancellationToken)
 
-            match TypedResultInterop.toResult targetResult with
+            match TypedResultInterop.targetAdmission targetResult with
             | Error error ->
                 return Completed(CreatePostgresClusterRejected(CreateTarget error))
             | Ok target ->

@@ -434,9 +434,7 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
         public List<(string TargetId, DeploymentTargetReferenceOwner Owner)> Registrations { get; } = [];
         public List<(string TargetId, DeploymentTargetReferenceOwner Owner)> Unregistrations { get; } = [];
 
-        public Task<Result<
-            Unit,
-            DeploymentTargetWorkloadConfigurationFenceRejected>> FenceManyOutcomeAsync(
+        public Task<FenceDeploymentTargetWorkloadConfigurationsOutcome> FenceManyOutcomeAsync(
             IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
@@ -444,13 +442,11 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
             Assert.True(session.IsInTransaction);
             FenceBatchCalls++;
             Fences.AddRange(requests);
-            return Task.FromResult<Result<
-                Unit,
-                DeploymentTargetWorkloadConfigurationFenceRejected>>(
-                new Ok<Unit>(Unit.Value));
+            return Task.FromResult<FenceDeploymentTargetWorkloadConfigurationsOutcome>(
+                new DeploymentTargetWorkloadConfigurationsFenced());
         }
 
-        public Task<Result<Unit, DeploymentTargetReferenceChangeRejected>> ApplyChangesOutcomeAsync(
+        public Task<ApplyDeploymentTargetReferenceChangesOutcome> ApplyChangesOutcomeAsync(
             DeploymentTargetReferenceOwner owner,
             IReadOnlyCollection<string> addedDeploymentTargetIds,
             IReadOnlyCollection<string> removedDeploymentTargetIds,
@@ -462,14 +458,14 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
             Unregistrations.AddRange(removedDeploymentTargetIds.Select(id => (id, owner)));
             if (RejectReferenceRemoval && removedDeploymentTargetIds.Count > 0)
             {
-                return Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
-                    new Err<DeploymentTargetReferenceChangeRejected>(
+                return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
+                    new ApplyDeploymentTargetReferenceChangesOutcome(
                         new DeploymentTargetReferenceChangeRejected(
                             owner,
                             removedDeploymentTargetIds.ToArray())));
             }
-            return Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
-                new Ok<Unit>(Unit.Value));
+            return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
+                new DeploymentTargetReferencesChanged());
         }
     }
 }

@@ -1,7 +1,6 @@
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Validation;
 
@@ -18,7 +17,7 @@ public sealed class DeploymentTargetValidationService(
             target.Id,
             target.Connection,
             cancellationToken);
-        if (!clientResult.TryGetValue(out var client, out _))
+        if (clientResult is StoredDeploymentTargetConnectionUnavailable)
         {
             return DegradedObservation(
                 target,
@@ -26,6 +25,7 @@ public sealed class DeploymentTargetValidationService(
                 "The stored Kubernetes connection could not be loaded.");
         }
 
+        var client = (k8s.IKubernetes)clientResult.Value;
         DeploymentTargetProbeObservation observation;
         using (client)
         {
@@ -51,8 +51,7 @@ public sealed class DeploymentTargetValidationService(
     private DeploymentTargetProbeObservation DegradedObservation(
         DeploymentTarget target,
         string failureCode,
-        string failureMessage) =>
-        new(
+        string failureMessage) => new(
             ClusterIdentity: null,
             DeploymentTargetHealth.Degraded(
                 target.Connection.Version,

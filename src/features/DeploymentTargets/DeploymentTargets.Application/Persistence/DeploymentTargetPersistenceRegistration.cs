@@ -11,7 +11,6 @@ using Pole.Features.DeploymentTargets.Application.Persistence.Reads;
 using Pole.Features.DeploymentTargets.Application.Persistence.References;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence;
 
@@ -130,22 +129,12 @@ public static class DeploymentTargetPersistenceRegistration
             .GetRequiredService<MongoEnsureBootstrapDefaultDeploymentTarget>()
             .InvokeAsync);
 
-        services.TryAddSingleton<RunMongoOutcomeTransaction<Result<
-            DeploymentTarget,
-            PersistCreatedDeploymentTargetError>>>(serviceProvider =>
-            serviceProvider
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistCreatedDeploymentTargetOutcome>>(serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<Result<
-                    DeploymentTarget,
-                    PersistCreatedDeploymentTargetError>>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<Result<
-            DeploymentTarget,
-            PersistUpdatedDeploymentTargetError>>>(serviceProvider =>
-            serviceProvider
+                .InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistUpdatedDeploymentTargetOutcome>>(serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<Result<
-                    DeploymentTarget,
-                    PersistUpdatedDeploymentTargetError>>);
+                .InvokeOutcomeAsync<PersistUpdatedDeploymentTargetOutcome>);
         services.TryAddSingleton<RunMongoOutcomeTransaction<DeleteDeploymentTargetPersistenceOutcome>>(
             serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
@@ -164,8 +153,7 @@ public static class DeploymentTargetPersistenceRegistration
         where TDelegate : Delegate
     {
         services.AddScoped<TImplementation>();
-        services.AddScoped(serviceProvider =>
-            bind(serviceProvider.GetRequiredService<TImplementation>()));
+        services.AddScoped(serviceProvider => bind(serviceProvider.GetRequiredService<TImplementation>()));
     }
 
     private static void AddSingletonCapability<TImplementation, TDelegate>(
@@ -175,7 +163,6 @@ public static class DeploymentTargetPersistenceRegistration
         where TDelegate : Delegate
     {
         services.TryAddSingleton<TImplementation>();
-        services.TryAddSingleton(serviceProvider =>
-            bind(serviceProvider.GetRequiredService<TImplementation>()));
+        services.TryAddSingleton(serviceProvider => bind(serviceProvider.GetRequiredService<TImplementation>()));
     }
 }

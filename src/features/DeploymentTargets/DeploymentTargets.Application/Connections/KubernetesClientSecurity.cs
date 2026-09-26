@@ -5,72 +5,77 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using k8s;
 using Pole.Features.DeploymentTargets.Application.Common;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Connections;
+
+internal union CreateCandidateKubernetesClientOutcome(
+    IKubernetes,
+    DeploymentTargetConnectionRejected);
+
+public union CreateStoredKubernetesClientOutcome(
+    IKubernetes,
+    StoredDeploymentTargetConnectionUnavailable);
 
 internal static class KubernetesClientSecurity
 {
     internal static readonly TimeSpan HttpClientTimeout = TimeSpan.FromSeconds(30);
     internal static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(10);
 
-    public static Result<IKubernetes, DeploymentTargetConnectionRejected> CreateForCandidate(
+    public static CreateCandidateKubernetesClientOutcome CreateForCandidate(
         CanonicalKubeconfigCredential credential,
         CancellationToken cancellationToken)
     {
         try
         {
-            return new Ok<IKubernetes>(CreateFromCanonicalCore(credential, cancellationToken));
+            return CreateFromCanonicalCore(credential, cancellationToken);
         }
         catch (InvalidKubernetesClientConfigurationException)
         {
-            return new Err<DeploymentTargetConnectionRejected>(
-                ConnectionRejections.Validation(
+            return ConnectionRejections.Validation(
                     "connection",
-                    "The Kubernetes connection configuration is invalid."));
+                    "The Kubernetes connection configuration is invalid.");
         }
     }
 
-    public static Result<IKubernetes, StoredDeploymentTargetConnectionUnavailable> CreateForStored(
+    public static CreateStoredKubernetesClientOutcome CreateForStored(
         CanonicalKubeconfigCredential credential,
         CancellationToken cancellationToken)
     {
         try
         {
-            return new Ok<IKubernetes>(CreateFromCanonicalCore(credential, cancellationToken));
+            return CreateFromCanonicalCore(credential, cancellationToken);
         }
         catch (InvalidKubernetesClientConfigurationException)
         {
-            return new Err<StoredDeploymentTargetConnectionUnavailable>(new());
+            return new StoredDeploymentTargetConnectionUnavailable();
         }
     }
 
-    public static Result<IKubernetes, DeploymentTargetConnectionRejected> CreateInClusterForCandidate(
+    public static CreateCandidateKubernetesClientOutcome CreateInClusterForCandidate(
         CancellationToken cancellationToken)
     {
         try
         {
-            return new Ok<IKubernetes>(CreateInClusterCore(cancellationToken));
+            return CreateInClusterCore(cancellationToken);
         }
         catch (InvalidKubernetesClientConfigurationException)
         {
-            return new Err<DeploymentTargetConnectionRejected>(
-                ConnectionRejections.Validation(
+            return ConnectionRejections.Validation(
                     "connection",
-                    "The Kubernetes connection configuration is invalid."));
+                    "The Kubernetes connection configuration is invalid.");
         }
     }
 
-    public static Result<IKubernetes, StoredDeploymentTargetConnectionUnavailable> CreateInClusterForStored(
+    public static CreateStoredKubernetesClientOutcome CreateInClusterForStored(
         CancellationToken cancellationToken)
     {
         try
         {
-            return new Ok<IKubernetes>(CreateInClusterCore(cancellationToken));
+            return CreateInClusterCore(cancellationToken);
         }
         catch (InvalidKubernetesClientConfigurationException)
         {
-            return new Err<StoredDeploymentTargetConnectionUnavailable>(new());
+            return new StoredDeploymentTargetConnectionUnavailable();
         }
     }
 
@@ -281,8 +286,7 @@ internal static class KubernetesClientSecurity
         IReadOnlyList<byte[]> trustedAuthorities)
     {
         var existingSetup = configuration.FirstMessageHandlerSetup;
-        configuration.FirstMessageHandlerSetup = handler =>
-        {
+        configuration.FirstMessageHandlerSetup = handler => {
             existingSetup?.Invoke(handler);
             handler.AllowAutoRedirect = false;
             handler.ConnectTimeout = ConnectTimeout;
@@ -296,9 +300,7 @@ internal static class KubernetesClientSecurity
 
     private static RemoteCertificateValidationCallback CreateStrictCertificateValidator(
         string expectedHost,
-        IReadOnlyList<byte[]> trustedAuthorities) =>
-        (_, certificate, presentedChain, _) =>
-        {
+        IReadOnlyList<byte[]> trustedAuthorities) => (_, certificate, presentedChain, _) => {
             if (certificate is null)
                 return false;
 
@@ -347,8 +349,7 @@ internal static class KubernetesClientSecurity
                     return false;
 
                 var terminal = strictChain.ChainElements[^1].Certificate.RawData;
-                return trustedAuthorities.Any(authority =>
-                    authority.Length == terminal.Length &&
+                return trustedAuthorities.Any(authority => authority.Length == terminal.Length &&
                     CryptographicOperations.FixedTimeEquals(authority, terminal));
             }
             catch (Exception exception) when (

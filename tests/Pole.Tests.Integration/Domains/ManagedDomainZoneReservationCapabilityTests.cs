@@ -142,7 +142,7 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
         public bool RejectReference { get; init; }
         public int RegistrationCalls { get; private set; }
 
-        public Task<Result<Unit, DeploymentTargetReferenceChangeRejected>> ApplyChangesOutcomeAsync(
+        public Task<ApplyDeploymentTargetReferenceChangesOutcome> ApplyChangesOutcomeAsync(
             DeploymentTargetReferenceOwner owner,
             IReadOnlyCollection<string> addedDeploymentTargetIds,
             IReadOnlyCollection<string> removedDeploymentTargetIds,
@@ -150,28 +150,24 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
             CancellationToken cancellationToken = default)
         {
             RegistrationCalls += addedDeploymentTargetIds.Count;
-            return Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
+            return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
                 RejectReference
-                    ? new Err<DeploymentTargetReferenceChangeRejected>(
+                    ? new ApplyDeploymentTargetReferenceChangesOutcome(
                         new DeploymentTargetReferenceChangeRejected(
                             owner,
                             addedDeploymentTargetIds.Concat(removedDeploymentTargetIds).ToArray()))
-                    : new Ok<Unit>(Unit.Value));
+                    : new DeploymentTargetReferencesChanged());
         }
 
-        public Task<Result<
-            Unit,
-            DeploymentTargetWorkloadConfigurationFenceRejected>> FenceManyOutcomeAsync(
+        public Task<FenceDeploymentTargetWorkloadConfigurationsOutcome> FenceManyOutcomeAsync(
             IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<
-                Unit,
-                DeploymentTargetWorkloadConfigurationFenceRejected>>(
+            Task.FromResult<FenceDeploymentTargetWorkloadConfigurationsOutcome>(
                 RejectFence
-                    ? new Err<DeploymentTargetWorkloadConfigurationFenceRejected>(
+                    ? new FenceDeploymentTargetWorkloadConfigurationsOutcome(
                         new DeploymentTargetWorkloadConfigurationFenceRejected(requests))
-                    : new Ok<Unit>(Unit.Value));
+                    : new DeploymentTargetWorkloadConfigurationsFenced());
     }
 
 }
