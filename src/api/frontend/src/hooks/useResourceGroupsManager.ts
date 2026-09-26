@@ -76,7 +76,9 @@ export function useResourceGroupsManager({
     if (!enabled) return
     const controller = new AbortController()
     scopeController.current = controller
-    void load()
+    queueMicrotask(() => {
+      if (!controller.signal.aborted) void load()
+    })
     return () => {
       controller.abort()
       listController.current?.abort()
