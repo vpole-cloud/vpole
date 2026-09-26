@@ -63,7 +63,6 @@ public static class GetRuntimeCellsEndpoint
     {
         app.MapGet("/{ResourceGroupId}/runtime-cells", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetRuntimeCellsRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -71,7 +70,7 @@ public static class GetRuntimeCellsEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     IReadOnlyList<RuntimeCellDto> runtimeCells => Results.Ok(runtimeCells),
-                    ResourceGroupNotFound error => httpProblems.Map(error).ToHttpResult()
+                    ResourceGroupNotFound error => ResourceGroupHttpMappings.Map(error)
                 });
             })
             .WithName("GetRuntimeCells")

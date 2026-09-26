@@ -161,7 +161,7 @@ public sealed class CreateRedisServiceHandler(
                         newRedis.Name),
                     transaction.Session,
                     transactionCancellationToken);
-                if (!registration.TryGetValue(out _, out var registrationError))
+                if (registration is ResourceRegistrationMutationError registrationError)
                 {
                     return transaction.Abort(registrationError);
                 }

@@ -73,7 +73,7 @@ internal sealed class MongoFinalizeRedisDeletion(
                 redisId,
                 transaction.Session,
                 transactionCancellationToken);
-            if (!registration.TryGetValue(out _, out _))
+            if (registration is ResourceRegistrationMutationError)
             {
                 return transaction.Abort(new RedisDeletionFinalizationConflict(redisId));
             }

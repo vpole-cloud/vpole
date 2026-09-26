@@ -104,9 +104,9 @@ internal sealed class MongoBeginIsolationScopeDeletion(
             {
                 var reference = await guard.EnsureUnreferencedAsync(
                     tenantId, resourceGroupId, isolationScopeId, transaction.Session, ct);
-                if (reference is Err<IsolationScopeReferenced> referenced)
+                if (reference is IsolationScopeReferenced referenced)
                     return transaction.Abort(new BeginIsolationScopeDeletionOutcome(
-                        new IsolationScopeDeletionError(referenced.Value)));
+                        new IsolationScopeDeletionError(referenced)));
             }
 
             var deploymentGuard = await ensureNoUnfinishedDeployments(

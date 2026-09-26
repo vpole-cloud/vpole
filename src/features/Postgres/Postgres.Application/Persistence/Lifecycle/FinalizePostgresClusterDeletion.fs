@@ -93,7 +93,7 @@ type MongoFinalizePostgresClusterDeletion(
                                                 transaction.Session,
                                                 transactionCancellationToken)
 
-                                        match TypedResultInterop.toResult registrationResult with
+                                        match TypedResultInterop.resourceUnregistration registrationResult with
                                         | Error error ->
                                             return
                                                 transaction.Abort(

@@ -27,7 +27,7 @@ internal sealed class MongoResourcePlacementResolver(
     StoreOutboxWrites storeOutboxWrites,
     TimeProvider timeProvider)
 {
-    public async Task<Result<ResourcePlacement, ResourceGroupPlacementError>> InvokeAsync(
+    public async Task<ResolveResourceGroupPlacementOutcome> InvokeAsync(
         string tenantId,
         string resourceGroupId,
         string? isolationScopeId,
@@ -43,13 +43,13 @@ internal sealed class MongoResourcePlacementResolver(
             session,
             cancellationToken);
         if (context.Error is not null)
-            return new Err<ResourceGroupPlacementError>(context.Error.Value);
+            return context.Error.Value;
 
         var requested = await ResolveRequestedTargetAsync(
             deploymentTargetId,
             cancellationToken);
         if (requested.Error is not null)
-            return new Err<ResourceGroupPlacementError>(requested.Error.Value);
+            return requested.Error.Value;
 
         var existing = await runtimeCells
             .Find(
@@ -67,13 +67,13 @@ internal sealed class MongoResourcePlacementResolver(
                 session,
                 cancellationToken);
             return fenceError is null
-                ? new Ok<ResourcePlacement>(existing.ToPlacement())
-                : new Err<ResourceGroupPlacementError>(fenceError.Value);
+                ? existing.ToPlacement()
+                : fenceError.Value;
         }
 
         var admitted = await AdmitTargetAsync(deploymentTargetId, cancellationToken);
         if (admitted.Error is not null)
-            return new Err<ResourceGroupPlacementError>(admitted.Error.Value);
+            return admitted.Error.Value;
 
         if (!string.Equals(admitted.Target!.Id, requested.Target!.Id, StringComparison.Ordinal))
         {
@@ -93,8 +93,8 @@ internal sealed class MongoResourcePlacementResolver(
                     session,
                     cancellationToken);
                 return fenceError is null
-                    ? new Ok<ResourcePlacement>(existing.ToPlacement())
-                    : new Err<ResourceGroupPlacementError>(fenceError.Value);
+                    ? existing.ToPlacement()
+                    : fenceError.Value;
             }
         }
 
@@ -106,7 +106,7 @@ internal sealed class MongoResourcePlacementResolver(
             session,
             cancellationToken);
         if (fence is not null)
-            return new Err<ResourceGroupPlacementError>(fence.Value);
+            return fence.Value;
 
         var runtimeCell = await UpsertRuntimeCellAsync(
             context.ResourceGroup!,
@@ -116,7 +116,7 @@ internal sealed class MongoResourcePlacementResolver(
             session,
             cancellationToken);
         if (!runtimeCell.Created)
-            return new Ok<ResourcePlacement>(runtimeCell.Cell.ToPlacement());
+            return runtimeCell.Cell.ToPlacement();
 
         var reference = await applyDeploymentTargetReferenceChanges(
             new DeploymentTargetReferenceOwner(
@@ -128,10 +128,9 @@ internal sealed class MongoResourcePlacementResolver(
             cancellationToken);
         if (reference is Err<DeploymentTargetReferenceChangeRejected>)
         {
-            return new Err<ResourceGroupPlacementError>(
-                new ResourceGroupPlacementError(
+            return new ResourceGroupPlacementError(
                     new ResourceGroupPlacementDeploymentTargetReferenceRejected(
-                        runtimeCell.Cell.DeploymentTargetId)));
+                        runtimeCell.Cell.DeploymentTargetId));
         }
 
         await storeOutboxWrites(
@@ -142,10 +141,10 @@ internal sealed class MongoResourcePlacementResolver(
                     runtimeCell.Cell.Id,
                     runtimeCell.Cell.DesiredGeneration))],
             cancellationToken);
-        return new Ok<ResourcePlacement>(runtimeCell.Cell.ToPlacement());
+        return runtimeCell.Cell.ToPlacement();
     }
 
-    public async Task<Result<IReadOnlyList<ResourcePlacement>, ResourceGroupPlacementError>>
+    public async Task<ResolveResourceGroupPlacementsOutcome>
         InvokeManyAsync(
             string tenantId,
             string resourceGroupId,
@@ -178,7 +177,7 @@ internal sealed class MongoResourcePlacementResolver(
             session,
             cancellationToken);
         if (context.Error is not null)
-            return new Err<ResourceGroupPlacementError>(context.Error.Value);
+            return context.Error.Value;
 
         var existing = await runtimeCells
             .Find(
@@ -200,14 +199,13 @@ internal sealed class MongoResourcePlacementResolver(
         {
             var admitted = await AdmitTargetAsync(targetId, cancellationToken);
             if (admitted.Error is not null)
-                return new Err<ResourceGroupPlacementError>(admitted.Error.Value);
+                return admitted.Error.Value;
             if (!string.Equals(admitted.Target!.Id, targetId, StringComparison.Ordinal))
             {
-                return new Err<ResourceGroupPlacementError>(
-                    new ResourceGroupPlacementError(
+                return new ResourceGroupPlacementError(
                         new ResourceGroupPlacementTargetResolutionChanged(
                             targetId,
-                            admitted.Target.Id)));
+                            admitted.Target.Id));
             }
         }
 
@@ -219,7 +217,7 @@ internal sealed class MongoResourcePlacementResolver(
             session,
             cancellationToken);
         if (fence is not null)
-            return new Err<ResourceGroupPlacementError>(fence.Value);
+            return fence.Value;
 
         foreach (var targetId in missingTargetIds)
         {
@@ -244,10 +242,9 @@ internal sealed class MongoResourcePlacementResolver(
                 cancellationToken);
             if (reference is Err<DeploymentTargetReferenceChangeRejected>)
             {
-                return new Err<ResourceGroupPlacementError>(
-                    new ResourceGroupPlacementError(
+                return new ResourceGroupPlacementError(
                         new ResourceGroupPlacementDeploymentTargetReferenceRejected(
-                            runtimeCell.Cell.DeploymentTargetId)));
+                            runtimeCell.Cell.DeploymentTargetId));
             }
 
             await storeOutboxWrites(
@@ -260,7 +257,7 @@ internal sealed class MongoResourcePlacementResolver(
                 cancellationToken);
         }
 
-        return new Ok<IReadOnlyList<ResourcePlacement>>(
+        return new ResourcePlacements(
             normalizedTargetIds
                 .Select(targetId => byTarget[targetId].ToPlacement())
                 .ToArray());

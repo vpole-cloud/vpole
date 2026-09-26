@@ -164,14 +164,14 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             await guard.WaitUntilCheckedAsync().WaitAsync(TestTimeout);
             using var session = await DbContext.Client.StartSessionAsync();
             session.StartTransaction();
-            (await registrar.RegisterAsync(
+            Assert.IsType<RegisteredResource>((await registrar.RegisterAsync(
                 resourceGroup.TenantId,
                 resourceGroup.Id,
                 new ResourceRegistrationDescriptor(
                     ResourceTypeId.Create("pole/web-service"),
                     "racing-resource",
                     "Racing resource"),
-                session)).AssertSuccess();
+                session)).Value);
             await session.CommitTransactionAsync();
         }
         finally
@@ -247,12 +247,8 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             resourceGroup.TenantId,
             resourceGroup.Id);
 
-        var failure = result switch
-        {
-            Err<ResourceGroupOwnershipError> error => error.Value,
-            _ => throw new Xunit.Sdk.XunitException("Expected resource-group ownership failure.")
-        };
-        Assert.True(failure is ResourceGroupOwnershipDeleting);
+        var failure = Assert.IsType<ResourceGroupOwnershipError>(result.Value);
+        Assert.IsType<ResourceGroupOwnershipDeleting>(failure.Value);
     }
 
     private sealed class OneShotPausingDeploymentGuard

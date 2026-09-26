@@ -83,7 +83,7 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
                 functionAppId,
                 transaction.Session,
                 ct);
-            if (!registration.TryGetValue(out _, out _))
+            if (registration is ResourceRegistrationMutationError)
                 return transaction.Abort(Conflict(functionAppId));
 
             var purge = await purgeDeployment(

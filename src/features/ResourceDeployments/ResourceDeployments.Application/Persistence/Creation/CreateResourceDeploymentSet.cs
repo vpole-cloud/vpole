@@ -153,12 +153,12 @@ internal sealed class MongoCreateResourceDeploymentSet(
             cancellationToken);
         return placementResult switch
         {
-            Err<ResourceGroupPlacementError> placementFailure =>
+            ResourceGroupPlacementError placementFailure =>
                 new Err<CreateResourceDeploymentError>(
-                    MapPlacementFailure(first.ResourceGroupId, placementFailure.Value)),
-            Ok<IReadOnlyList<ResourcePlacement>> success => await PersistResolvedDeploymentsAsync(
+                    MapPlacementFailure(first.ResourceGroupId, placementFailure)),
+            ResourcePlacements success => await PersistResolvedDeploymentsAsync(
                 request,
-                success.Value,
+                success.Items,
                 session,
                 cancellationToken)
         };

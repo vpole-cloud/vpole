@@ -72,7 +72,6 @@ public static class RetryRuntimeCellEndpoint
     {
         app.MapPost("/{ResourceGroupId}/runtime-cells/{CellId}/retry", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] RetryRuntimeCellRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -80,7 +79,7 @@ public static class RetryRuntimeCellEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     RuntimeCellDto runtimeCell => Results.Accepted(value: runtimeCell),
-                    RetryRuntimeCellError error => httpProblems.Map(error).ToHttpResult()
+                    RetryRuntimeCellError error => ResourceGroupHttpMappings.Map(error)
                 });
             })
             .WithName("RetryRuntimeCell")

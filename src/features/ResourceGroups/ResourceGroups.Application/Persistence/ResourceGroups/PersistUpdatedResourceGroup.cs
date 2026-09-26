@@ -4,11 +4,14 @@ using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 
-public delegate Task<Result<ResourceGroup, ResourceGroupRevisionConflict>>
+public union PersistUpdatedResourceGroupOutcome(
+    ResourceGroup,
+    ResourceGroupRevisionConflict);
+
+public delegate Task<PersistUpdatedResourceGroupOutcome>
     PersistUpdatedResourceGroup(
         ResourceGroup current,
         ResourceGroup replacement,
@@ -18,10 +21,10 @@ public delegate Task<Result<ResourceGroup, ResourceGroupRevisionConflict>>
 internal sealed class MongoPersistUpdatedResourceGroup(
     IMongoCollection<ResourceGroup> resourceGroups,
     StoreOutboxWrites storeOutboxWrites,
-    RunMongoOutcomeTransaction<Result<ResourceGroup, ResourceGroupRevisionConflict>>
+    RunMongoOutcomeTransaction<PersistUpdatedResourceGroupOutcome>
         runMongoTransaction)
 {
-    public Task<Result<ResourceGroup, ResourceGroupRevisionConflict>> InvokeAsync(
+    public Task<PersistUpdatedResourceGroupOutcome> InvokeAsync(
         ResourceGroup current,
         ResourceGroup replacement,
         ResourceGroupUpdatedEventChanges changes,
@@ -49,8 +52,7 @@ internal sealed class MongoPersistUpdatedResourceGroup(
                     cancellationToken: ct);
                 if (write.ModifiedCount != 1)
                 {
-                    return transaction.AbortError<ResourceGroup, ResourceGroupRevisionConflict>(
-                        new ResourceGroupRevisionConflict(current.Id));
+                    return transaction.Abort(new ResourceGroupRevisionConflict(current.Id));
                 }
             }
 
@@ -66,7 +68,7 @@ internal sealed class MongoPersistUpdatedResourceGroup(
                     EventCore = EventCore.Create(replacement.TenantId)
                 })],
                 ct);
-            return transaction.Commit(new Ok<ResourceGroup>(replacement));
+            return transaction.Commit(replacement);
         }, cancellationToken);
     }
 }

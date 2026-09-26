@@ -153,16 +153,12 @@ public static class ResourceGroupApplicationRegistration
             serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<ResourceGroup>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<Result<
-            ResourceGroup,
-            ResourceGroupRevisionConflict>>>(serviceProvider => serviceProvider
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistUpdatedResourceGroupOutcome>>(serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<Result<ResourceGroup, ResourceGroupRevisionConflict>>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<Result<
-            IsolationScope,
-            PersistCreatedIsolationScopeError>>>(serviceProvider => serviceProvider
+                .InvokeOutcomeAsync<PersistUpdatedResourceGroupOutcome>);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistCreatedIsolationScopeOutcome>>(serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<Result<IsolationScope, PersistCreatedIsolationScopeError>>);
+                .InvokeOutcomeAsync<PersistCreatedIsolationScopeOutcome>);
         services.TryAddSingleton<RunMongoOutcomeTransaction<RetryRuntimeCellResult>>(
             serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()

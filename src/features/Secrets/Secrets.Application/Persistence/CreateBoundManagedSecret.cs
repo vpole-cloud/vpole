@@ -36,7 +36,7 @@ internal sealed class MongoCreateBoundManagedSecret(
         deploymentId = SecretIdentity.ObjectId(deploymentId);
         var consumerType = ResourceTypeId.Create(prepared.Owner.ResourceType);
         if (await admitScope(prepared.TenantId, resourceGroupId, isolationScopeId,
-                new(consumerType, prepared.Owner.ResourceId), session, ct) is Err<ResourceScopeReferenceUnavailable> ||
+                new(consumerType, prepared.Owner.ResourceId), session, ct) is ResourceScopeReferenceUnavailable ||
             await admitDeployments(prepared.TenantId, resourceGroupId, isolationScopeId, consumerType,
                 prepared.Owner.ResourceId, false, [deploymentId], session, ct) is Err<ResourceDeploymentReferenceUnavailable>)
             return new Err<ManagedSecretError>(new ManagedSecretReferenceRejected());
@@ -48,7 +48,7 @@ internal sealed class MongoCreateBoundManagedSecret(
             prepared.KubernetesType == ManagedSecretKubernetesType.BasicAuthentication
                 ? KubernetesSecretType.BasicAuthentication : KubernetesSecretType.Opaque, now);
         if (await registrar.RegisterAsync(secret.TenantId, secret.ResourceGroupId,
-                new(SecretResource.Type, secret.Id, secret.Name), session, ct) is Err<ResourceRegistrationMutationError>)
+                new(SecretResource.Type, secret.Id, secret.Name), session, ct) is ResourceRegistrationMutationError)
             return new Err<ManagedSecretError>(new ManagedSecretReferenceRejected());
         try
         {

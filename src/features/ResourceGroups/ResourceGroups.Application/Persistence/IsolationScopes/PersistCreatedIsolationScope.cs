@@ -2,7 +2,6 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
 
@@ -10,7 +9,11 @@ public union PersistCreatedIsolationScopeError(
     ResourceGroupRevisionConflict,
     IsolationScopeNameConflict);
 
-public delegate Task<Result<IsolationScope, PersistCreatedIsolationScopeError>>
+public union PersistCreatedIsolationScopeOutcome(
+    IsolationScope,
+    PersistCreatedIsolationScopeError);
+
+public delegate Task<PersistCreatedIsolationScopeOutcome>
     PersistCreatedIsolationScope(
         ResourceGroup resourceGroup,
         IsolationScope isolationScope,
@@ -20,10 +23,10 @@ internal sealed class MongoPersistCreatedIsolationScope(
     IMongoCollection<ResourceGroup> resourceGroups,
     IMongoCollection<IsolationScope> isolationScopes,
     StoreOutboxWrites storeOutboxWrites,
-    RunMongoOutcomeTransaction<Result<IsolationScope, PersistCreatedIsolationScopeError>>
+    RunMongoOutcomeTransaction<PersistCreatedIsolationScopeOutcome>
         runMongoTransaction)
 {
-    public Task<Result<IsolationScope, PersistCreatedIsolationScopeError>> InvokeAsync(
+    public Task<PersistCreatedIsolationScopeOutcome> InvokeAsync(
         ResourceGroup resourceGroup,
         IsolationScope isolationScope,
         CancellationToken cancellationToken = default)
@@ -42,8 +45,8 @@ internal sealed class MongoPersistCreatedIsolationScope(
                 .AnyAsync(ct);
             if (existing)
             {
-                return transaction.AbortError<IsolationScope, PersistCreatedIsolationScopeError>(
-                    new(new IsolationScopeNameConflict(
+                return transaction.Abort(new PersistCreatedIsolationScopeError(
+                    new IsolationScopeNameConflict(
                         isolationScope.ResourceGroupId,
                         isolationScope.NormalizedName)));
             }
@@ -61,8 +64,8 @@ internal sealed class MongoPersistCreatedIsolationScope(
                 cancellationToken: ct);
             if (fence.ModifiedCount != 1)
             {
-                return transaction.AbortError<IsolationScope, PersistCreatedIsolationScopeError>(
-                    new(new ResourceGroupRevisionConflict(resourceGroup.Id)));
+                return transaction.Abort(new PersistCreatedIsolationScopeError(
+                    new ResourceGroupRevisionConflict(resourceGroup.Id)));
             }
 
             await isolationScopes.InsertOneAsync(
@@ -73,7 +76,7 @@ internal sealed class MongoPersistCreatedIsolationScope(
                 transaction.Session,
                 [OutboxWrite.Create(isolationScope.ToCreatedEvent())],
                 ct);
-            return transaction.Commit(new Ok<IsolationScope>(isolationScope));
+            return transaction.Commit(isolationScope);
         }, cancellationToken);
     }
 }

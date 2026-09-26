@@ -262,7 +262,7 @@ module private CreatePostgresClusterWorkflow =
                             transaction.Session,
                             ct)
 
-                    match TypedResultInterop.toResult registrationResult with
+                    match TypedResultInterop.resourceRegistration registrationResult with
                     | Error error ->
                         return
                             transaction.Abort(

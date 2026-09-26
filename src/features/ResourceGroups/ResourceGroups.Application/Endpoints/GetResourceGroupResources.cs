@@ -23,7 +23,6 @@ public static class GetResourceGroupResources
     {
         app.MapGet("/{ResourceGroupId}/resources", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetResourceGroupResourcesRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -31,7 +30,7 @@ public static class GetResourceGroupResources
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     PaginatedResponse<ResourceRegistrationDto> page => Results.Ok(page),
-                    ResourceGroupNotFound error => httpProblems.Map(error).ToHttpResult()
+                    ResourceGroupNotFound error => ResourceGroupHttpMappings.Map(error)
                 });
             })
             .WithName("GetResourceGroupResources")

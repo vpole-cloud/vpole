@@ -271,7 +271,7 @@ public sealed class CreateFunctionAppHandler(
                         created.FunctionApp.Name),
                     transaction.Session,
                     ct);
-                if (!registration.TryGetValue(out _, out var registrationError))
+                if (registration is ResourceRegistrationMutationError registrationError)
                 {
                     return transaction.Abort(new CreateFunctionAppError(registrationError));
                 }

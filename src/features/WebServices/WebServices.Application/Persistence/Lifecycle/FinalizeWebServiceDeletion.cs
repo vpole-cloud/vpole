@@ -68,7 +68,7 @@ internal sealed class MongoFinalizeWebServiceDeletion(
                 webServiceId,
                 transaction.Session,
                 ct);
-            if (!registration.TryGetValue(out _, out var registrationError))
+            if (registration is ResourceRegistrationMutationError registrationError)
             {
                 return transaction.Abort(new WebServiceFinalizationError(registrationError));
             }

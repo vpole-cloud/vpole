@@ -59,7 +59,7 @@ internal sealed class MongoPersistSecretBinding(
                 current.IsolationScopeId,
                 new ResourceScopeConsumerReference(type, binding.ConsumerId),
                 tx.Session,
-                token) is Err<ResourceScopeReferenceUnavailable> ||
+                token) is ResourceScopeReferenceUnavailable ||
                 await admitDeployments(
                     current.TenantId,
                     current.ResourceGroupId,

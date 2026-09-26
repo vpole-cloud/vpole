@@ -95,8 +95,10 @@ public sealed class CreateWebServiceHandler(
             request.TenantId,
             request.Body.ResourceGroupId,
             cancellationToken);
-        if (!ownership.TryGetValue(out var resourceGroup, out var ownershipError))
+        if (ownership is ResourceGroupOwnershipError ownershipError)
             return Error(new CreateWebServiceError(ownershipError));
+
+        var resourceGroup = (ResourceGroupOwnership)ownership.Value;
 
         var isolationScopeId = request.Body.Placement.IsolationScopeId
             ?? resourceGroup.DefaultIsolationScopeId;
@@ -349,7 +351,7 @@ public sealed class CreateWebServiceHandler(
                 webService.Name),
             transaction.Session,
             cancellationToken);
-        if (!registration.TryGetValue(out _, out var registrationError))
+        if (registration is ResourceRegistrationMutationError registrationError)
             return Abort(transaction, new CreateWebServiceError(registrationError));
 
         var release = WebServiceReleaseFactory.CreatePending(

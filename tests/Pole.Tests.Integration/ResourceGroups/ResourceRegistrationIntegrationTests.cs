@@ -57,9 +57,10 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
             commitOnError: false);
 
         Assert.Equal(
-            first.AssertSuccess().RegistrationId,
-            repeated.AssertSuccess().RegistrationId);
-        Assert.IsType<ResourceRegistrationIdentityConflict>(conflict.AssertFailure().Value);
+            Assert.IsType<RegisteredResource>(first.Value).RegistrationId,
+            Assert.IsType<RegisteredResource>(repeated.Value).RegistrationId);
+        Assert.IsType<ResourceRegistrationIdentityConflict>(
+            Assert.IsType<ResourceRegistrationMutationError>(conflict.Value).Value);
         Assert.Equal(1L, await DbContext.ResourceRegistrations.CountDocumentsAsync(
             Builders<ResourceRegistration>.Filter.Empty));
     }
@@ -72,14 +73,14 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
         using (var session = await DbContext.Client.StartSessionAsync())
         {
             session.StartTransaction();
-            (await registrar.RegisterAsync(
+            Assert.IsType<RegisteredResource>((await registrar.RegisterAsync(
                 group.TenantId,
                 group.Id,
                 new ResourceRegistrationDescriptor(
                     WebServiceType,
                     "rolled-back",
                     "Rolled back"),
-                session)).AssertSuccess();
+                session)).Value);
             await session.AbortTransactionAsync();
         }
 
@@ -106,7 +107,8 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
                 session,
                 cancellationToken),
             commitOnError: false);
-        Assert.IsType<ResourceRegistrationResourceGroupNotFound>(crossTenant.AssertFailure().Value);
+        Assert.IsType<ResourceRegistrationResourceGroupNotFound>(
+            Assert.IsType<ResourceRegistrationMutationError>(crossTenant.Value).Value);
     }
 
     [Fact]
@@ -139,8 +141,8 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
                 cancellationToken));
 
         Assert.NotEqual(
-            first.AssertSuccess().RegistrationId,
-            second.AssertSuccess().RegistrationId);
+            Assert.IsType<RegisteredResource>(first.Value).RegistrationId,
+            Assert.IsType<RegisteredResource>(second.Value).RegistrationId);
         var registrations = await DbContext.ResourceRegistrations
             .Find(registration => registration.ResourceId == descriptor.ResourceId)
             .ToListAsync();
@@ -178,7 +180,7 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
                 descriptor,
                 session,
                 cancellationToken));
-        Assert.Equal("acme", registered.AssertSuccess().OwningPluginId);
+        Assert.Equal("acme", Assert.IsType<RegisteredResource>(registered.Value).OwningPluginId);
 
         var updateConflict = await InTransactionAsync((session, cancellationToken) =>
             platformRegistrar.UpdateAsync(
@@ -189,7 +191,7 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
                 cancellationToken),
             commitOnError: false);
         Assert.IsType<ResourceRegistrationIdentityConflict>(
-            updateConflict.AssertFailure().Value);
+            Assert.IsType<ResourceRegistrationMutationError>(updateConflict.Value).Value);
 
         using (var session = await DbContext.Client.StartSessionAsync())
         {
@@ -201,7 +203,7 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
                 descriptor.ResourceId,
                 session);
             Assert.IsType<ResourceRegistrationIdentityConflict>(
-                unregisterConflict.AssertFailure().Value);
+                Assert.IsType<ResourceRegistrationMutationError>(unregisterConflict.Value).Value);
             await session.AbortTransactionAsync();
         }
 
@@ -219,12 +221,12 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
         using (var session = await DbContext.Client.StartSessionAsync())
         {
             session.StartTransaction();
-            (await pluginRegistrar.UnregisterAsync(
+            Assert.IsType<ResourceUnregistered>((await pluginRegistrar.UnregisterAsync(
                 group.TenantId,
                 group.Id,
                 descriptor.ResourceTypeId,
                 descriptor.ResourceId,
-                session)).AssertSuccess();
+                session)).Value);
             await session.CommitTransactionAsync();
         }
 
@@ -258,7 +260,7 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
                 group.Id,
                 descriptor with { DisplayName = "After" },
                 session);
-            firstUpdate = updated.AssertSuccess();
+            firstUpdate = Assert.IsType<RegisteredResource>(updated.Value);
             Assert.Equal("After", firstUpdate.DisplayName);
             await session.CommitTransactionAsync();
         }
@@ -279,7 +281,7 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
                 session);
             Assert.Equal(
                 registrationAfterFirstUpdate.UpdatedAtUtc,
-                repeatedUpdate.AssertSuccess().UpdatedAtUtc);
+                Assert.IsType<RegisteredResource>(repeatedUpdate.Value).UpdatedAtUtc);
             await session.CommitTransactionAsync();
         }
         var groupAfterRepeatedUpdate = await DbContext.ResourceGroups
@@ -299,12 +301,12 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
         {
             using var session = await DbContext.Client.StartSessionAsync();
             session.StartTransaction();
-            (await registrar.UnregisterAsync(
+            Assert.IsType<ResourceUnregistered>((await registrar.UnregisterAsync(
                 group.TenantId,
                 group.Id,
                 WebServiceType,
                 descriptor.ResourceId,
-                session)).AssertSuccess();
+                session)).Value);
             await session.CommitTransactionAsync();
         }
 
@@ -381,16 +383,16 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
         Assert.Equal(ServerErrorCategory.DuplicateKey, exception.WriteError?.Category);
     }
 
-    private async Task<Result<RegisteredResource, ResourceRegistrationMutationError>>
+    private async Task<ResourceRegistrationOutcome>
         InTransactionAsync(
             Func<IClientSessionHandle, CancellationToken,
-                Task<Result<RegisteredResource, ResourceRegistrationMutationError>>> operation,
+                Task<ResourceRegistrationOutcome>> operation,
             bool commitOnError = true)
     {
         using var session = await DbContext.Client.StartSessionAsync();
         session.StartTransaction();
         var result = await operation(session, CancellationToken.None);
-        if (result is Ok<RegisteredResource> || commitOnError)
+        if (result is RegisteredResource || commitOnError)
             await session.CommitTransactionAsync();
         else
             await session.AbortTransactionAsync();

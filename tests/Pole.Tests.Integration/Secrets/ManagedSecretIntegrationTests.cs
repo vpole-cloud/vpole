@@ -266,7 +266,7 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
 
     private async Task<ResourceDeployment> StageConsumer(ResourceGroup group, ManagedSecretOwner owner, IClientSessionHandle session)
     {
-        Assert.IsType<Ok<RegisteredResource>>((await Services.GetRequiredService<IResourceRegistrar>().RegisterAsync(
+        Assert.IsType<RegisteredResource>((await Services.GetRequiredService<IResourceRegistrar>().RegisterAsync(
             group.TenantId, group.Id, new(ResourceTypeId.Create(owner.ResourceType), owner.ResourceId, "consumer"), session)).Value);
         var now = DateTime.UtcNow;
         var placement = ResolvedResourcePlacement.Create(Id(), TestData.DefaultDeploymentTargetId, "test-namespace", 1, 1,

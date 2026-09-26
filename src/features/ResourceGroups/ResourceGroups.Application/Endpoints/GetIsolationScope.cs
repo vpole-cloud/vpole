@@ -72,7 +72,6 @@ public static class GetIsolationScopeEndpoint
     {
         app.MapGet("/{ResourceGroupId}/isolation-scopes/{ScopeId}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetIsolationScopeRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -80,8 +79,8 @@ public static class GetIsolationScopeEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     IsolationScopeDto scope => Results.Ok(scope),
-                    ResourceGroupNotFound error => httpProblems.Map(error).ToHttpResult(),
-                    IsolationScopeNotFound error => httpProblems.Map(error).ToHttpResult()
+                    ResourceGroupNotFound error => ResourceGroupHttpMappings.Map(error),
+                    IsolationScopeNotFound error => ResourceGroupHttpMappings.Map(error)
                 });
             })
             .WithName("GetIsolationScope")

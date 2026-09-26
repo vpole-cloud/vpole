@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceGroups.Contracts;
@@ -38,23 +37,33 @@ public union ResourceRegistrationMutationError(
     ResourceRegistrationIdentityConflict,
     ResourceRegistrationNotFound);
 
+public union ResourceRegistrationOutcome(
+    RegisteredResource,
+    ResourceRegistrationMutationError);
+
+public sealed record ResourceUnregistered;
+
+public union ResourceUnregistrationOutcome(
+    ResourceUnregistered,
+    ResourceRegistrationMutationError);
+
 public interface IResourceRegistrar
 {
-    Task<Result<RegisteredResource, ResourceRegistrationMutationError>> RegisterAsync(
+    Task<ResourceRegistrationOutcome> RegisterAsync(
         string tenantId,
         string resourceGroupId,
         ResourceRegistrationDescriptor resource,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-    Task<Result<RegisteredResource, ResourceRegistrationMutationError>> UpdateAsync(
+    Task<ResourceRegistrationOutcome> UpdateAsync(
         string tenantId,
         string resourceGroupId,
         ResourceRegistrationDescriptor resource,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-    Task<Result<Unit, ResourceRegistrationMutationError>> UnregisterAsync(
+    Task<ResourceUnregistrationOutcome> UnregisterAsync(
         string tenantId,
         string resourceGroupId,
         ResourceTypeId resourceTypeId,

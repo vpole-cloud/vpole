@@ -35,7 +35,7 @@ internal sealed class MongoReleaseManagedSecret(
         else
         {
             if (await registrar.UnregisterAsync(tenantId, current.ResourceGroupId, SecretResource.Type,
-                    current.Id, session, ct) is Err<ResourceRegistrationMutationError>)
+                    current.Id, session, ct) is ResourceRegistrationMutationError)
                 return new Err<ManagedSecretError>(new ManagedSecretReferenceRejected());
             await secrets.DeleteOneAsync(session, SecretFilters.Identity(tenantId, current.Id), cancellationToken: ct);
             await versions.DeleteManyAsync(session, SecretFilters.Versions(tenantId, current.Id), cancellationToken: ct);

@@ -1,5 +1,3 @@
-using Pole.ResultType;
-
 namespace Pole.Features.ResourceGroups.Contracts;
 
 public sealed record ResourceGroupOwnershipNotFound(string ResourceGroupId);
@@ -10,7 +8,11 @@ public union ResourceGroupOwnershipError(
     ResourceGroupOwnershipNotFound,
     ResourceGroupOwnershipDeleting);
 
-public delegate Task<Result<ResourceGroupOwnership, ResourceGroupOwnershipError>>
+public union GetResourceGroupOwnershipOutcome(
+    ResourceGroupOwnership,
+    ResourceGroupOwnershipError);
+
+public delegate Task<GetResourceGroupOwnershipOutcome>
     GetResourceGroupOwnership(
         string tenantId,
         string resourceGroupId,
