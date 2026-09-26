@@ -43,10 +43,12 @@ public sealed class RevokeWebServiceDeploymentTokenHandler(
             request.ActorUserId.Value,
             DateTime.UtcNow,
             cancellationToken);
-        return result.TryGetValue(out _, out var error)
-            ? new RevokeWebServiceDeploymentTokenOutcome(
-                new RevokeWebServiceDeploymentTokenResponse(request.TokenId))
-            : new RevokeWebServiceDeploymentTokenOutcome(error);
+        return result switch
+        {
+            WebServiceDeploymentTokenRevoked =>
+                new RevokeWebServiceDeploymentTokenResponse(request.TokenId),
+            WebServiceDeploymentTokenNotFound error => error
+        };
     }
 }
 

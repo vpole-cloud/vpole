@@ -167,7 +167,7 @@ public sealed class RetryWebServiceDeploymentHandler(
             updated,
             updated.ToUpdatedEvent(eventDeployments),
             cancellationToken);
-        if (!persisted.TryGetValue(out _, out var persistenceError))
+        if (persisted is WebServiceUpdateConflict persistenceError)
             return transaction.Abort(Error(
                 new RetryWebServiceDeploymentError(persistenceError)));
 

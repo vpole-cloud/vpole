@@ -11,6 +11,7 @@ using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence.Lifecycle;
+using Pole.Features.WebServices.Application.Persistence.Mutations;
 using Pole.Features.WebServices.Application.Persistence.Reads;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
@@ -109,7 +110,7 @@ public sealed class DeleteWebServiceHandler(
                     webService,
                     deleting,
                     transactionCancellationToken);
-                if (!replace.TryGetValue(out _, out var replaceError))
+                if (replace is WebServiceUpdateConflict replaceError)
                     return transaction.Abort(
                         Error(new DeleteWebServiceError(replaceError)));
 

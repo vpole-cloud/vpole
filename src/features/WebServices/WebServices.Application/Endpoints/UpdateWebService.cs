@@ -176,7 +176,7 @@ public sealed class UpdateWebServiceHandler(
                     nextWebService.ToUpdatedEvent(
                         WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments)),
                     ct);
-                if (!persisted.TryGetValue(out _, out var persistenceError))
+                if (persisted is WebServiceUpdateConflict persistenceError)
                 {
                     return transaction.Abort(
                         Error(new UpdateWebServiceError(persistenceError)));

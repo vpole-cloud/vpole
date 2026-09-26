@@ -1,13 +1,16 @@
 using MongoDB.Driver;
 using Pole.Features.WebServices.Application.Persistence.Mutations;
 using Pole.Features.WebServices.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.WebServices.Application.Persistence.Lifecycle;
 
 public sealed record WebServiceDeletionAccepted;
 
-public delegate Task<Result<WebServiceDeletionAccepted, WebServiceUpdateConflict>>
+public union BeginWebServiceDeletionResult(
+    WebServiceDeletionAccepted,
+    WebServiceUpdateConflict);
+
+public delegate Task<BeginWebServiceDeletionResult>
     BeginWebServiceDeletionOutcome(
         IClientSessionHandle session,
         WebService current,
@@ -17,7 +20,7 @@ public delegate Task<Result<WebServiceDeletionAccepted, WebServiceUpdateConflict
 internal sealed class MongoBeginWebServiceDeletion(
     IMongoCollection<WebService> webServices)
 {
-    public async Task<Result<WebServiceDeletionAccepted, WebServiceUpdateConflict>>
+    public async Task<BeginWebServiceDeletionResult>
         InvokeOutcomeAsync(
             IClientSessionHandle session,
             WebService current,
@@ -32,8 +35,7 @@ internal sealed class MongoBeginWebServiceDeletion(
             replacement,
             cancellationToken: cancellationToken);
         return result.ModifiedCount == 1
-            ? new Ok<WebServiceDeletionAccepted>(new WebServiceDeletionAccepted())
-            : new Err<WebServiceUpdateConflict>(
-                new WebServiceUpdateConflict(current.Id));
+            ? new WebServiceDeletionAccepted()
+            : new WebServiceUpdateConflict(current.Id);
     }
 }

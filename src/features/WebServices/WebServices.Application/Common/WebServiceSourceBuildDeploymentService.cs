@@ -94,10 +94,10 @@ public sealed class WebServiceSourceBuildDeploymentService(
                 updatedWebService,
                 updatedEvent,
                 ct);
-            if (update is Err<WebServiceUpdateConflict> updateConflict)
+            if (update is WebServiceUpdateConflict updateConflict)
             {
                 DeploySourceBuildWebServiceOutcome rejected = new SourceBuildWebServiceDeploymentError(
-                    new SourceBuildWebServiceUpdateConflict(updateConflict.Value.WebServiceId));
+                    new SourceBuildWebServiceUpdateConflict(updateConflict.WebServiceId));
                 return transaction.Abort(rejected);
             }
 

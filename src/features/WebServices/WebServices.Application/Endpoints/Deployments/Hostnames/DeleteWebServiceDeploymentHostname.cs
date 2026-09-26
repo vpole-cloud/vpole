@@ -175,7 +175,7 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
             updated.ToUpdatedEvent(
                 WebServiceDeploymentWorkflow.ToEventDeployments(deployments)),
             cancellationToken);
-        if (!persisted.TryGetValue(out _, out var persistenceError))
+        if (persisted is WebServiceUpdateConflict persistenceError)
             return Abort(transaction, new WebServiceDeploymentHostnameError(persistenceError));
 
         var release = WebServiceReleaseFactory.CreatePending(

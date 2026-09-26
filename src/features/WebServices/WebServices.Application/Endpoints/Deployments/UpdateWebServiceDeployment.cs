@@ -174,7 +174,7 @@ public sealed class UpdateWebServiceDeploymentHandler(
                     updated.ToUpdatedEvent(
                         WebServiceDeploymentWorkflow.ToEventDeployments(snapshots)),
                     token);
-                if (!saved.TryGetValue(out _, out var persistenceError))
+                if (saved is WebServiceUpdateConflict persistenceError)
                     return transaction.Abort(Error(
                         new UpdateWebServiceDeploymentError(persistenceError)));
 

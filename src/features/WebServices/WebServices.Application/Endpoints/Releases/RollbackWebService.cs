@@ -144,7 +144,7 @@ public sealed class RollbackWebServiceHandler(
                     updated,
                     updated.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments)),
                     ct);
-                if (!persisted.TryGetValue(out _, out var persistenceError))
+                if (persisted is WebServiceUpdateConflict persistenceError)
                     return transaction.Abort(Error(
                         new RollbackWebServiceError(persistenceError)));
 

@@ -182,7 +182,7 @@ public sealed class DeleteWebServiceDeploymentHandler(
                     updated,
                     updated.ToUpdatedEvent(eventDeployments),
                     token);
-                if (!saved.TryGetValue(out _, out var persistenceError))
+                if (saved is WebServiceUpdateConflict persistenceError)
                     return transaction.Abort(Error(
                         new DeleteWebServiceDeploymentError(persistenceError)));
 

@@ -13,6 +13,7 @@ using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Consumers;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Application.Persistence.Lifecycle;
+using Pole.Features.WebServices.Application.Persistence.Mutations;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 using Pole.ResultType;
@@ -143,7 +144,7 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
             session,
             snapshot,
             snapshot.BeginDeletion(DateTime.UtcNow));
-        Assert.False(staleDeletion.TryGetValue(out _, out _));
+        Assert.IsType<WebServiceUpdateConflict>(staleDeletion.Value);
         await session.AbortTransactionAsync();
         var stored = await Fixture.Database.WebServices()
             .Find(x => x.Id == created.WebServiceId)

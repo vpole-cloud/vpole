@@ -156,7 +156,7 @@ public sealed class UpdateWebServiceImageTagHandler(
                 transaction.Session, webService, updatedWebService,
                 updatedWebService.ToUpdatedEvent(
                     WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments)), ct);
-            if (!persisted.TryGetValue(out _, out var persistenceError))
+            if (persisted is WebServiceUpdateConflict persistenceError)
                 return transaction.Abort(Error(
                     new UpdateWebServiceImageTagError(persistenceError)));
 
