@@ -108,8 +108,9 @@ public sealed class UpdateWebServiceDeploymentHandler(
             request,
             current,
             cancellationToken);
-        if (!replacementCompute.TryGetValue(out var resolution, out var computeFailure))
+        if (replacementCompute is ComputeProfileResolutionError computeFailure)
             return Error(new UpdateWebServiceDeploymentError(computeFailure));
+        var resolution = (ReplacementComputeResolution)replacementCompute.Value;
         var replacement = resolution.Value;
 
         var desiredDeployments = deployments.Select(deployment =>
@@ -198,17 +199,14 @@ public sealed class UpdateWebServiceDeploymentHandler(
             cancellationToken);
     }
 
-    private async Task<Result<
-        ReplacementComputeResolution,
-        ComputeProfileResolutionError>>
+    private async Task<ReplacementComputeOutcome>
         ResolveReplacementComputeAsync(
             UpdateWebServiceDeploymentRequest request,
             PlacementSummaryDto current,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Body.ComputeProfileId))
-            return new Ok<ReplacementComputeResolution>(
-                new ReplacementComputeResolution(null));
+            return new ReplacementComputeResolution(null);
 
         var resolved = await resolveComputeProfiles(
             new ComputeProfileBatchResolutionRequest(
@@ -220,15 +218,18 @@ public sealed class UpdateWebServiceDeploymentHandler(
             cancellationToken);
         return resolved switch
         {
-            IReadOnlyList<ResolvedComputeProfile> profiles => new Ok<ReplacementComputeResolution>(
-                new ReplacementComputeResolution(
-                    profiles.Single().ToResourceDeploymentConfiguration())),
-            ComputeProfileResolutionError error => new Err<ComputeProfileResolutionError>(error)
+            IReadOnlyList<ResolvedComputeProfile> profiles => new ReplacementComputeResolution(
+                profiles.Single().ToResourceDeploymentConfiguration()),
+            ComputeProfileResolutionError error => error
         };
     }
 
     private sealed record ReplacementComputeResolution(
         ResourceDeploymentComputeConfiguration? Value);
+
+    private union ReplacementComputeOutcome(
+        ReplacementComputeResolution,
+        ComputeProfileResolutionError);
 
     private static ComputeConfigurationSummaryDto ToComputeSummary(
         ResourceDeploymentComputeConfiguration compute) =>

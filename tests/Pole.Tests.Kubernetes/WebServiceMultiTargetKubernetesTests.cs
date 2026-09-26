@@ -5,7 +5,6 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Domain;
-using Pole.ResultType;
 using Pole.Testing;
 using Pole.Workloads;
 using Xunit;
@@ -51,7 +50,7 @@ public sealed class WebServiceMultiTargetKubernetesTests(KubernetesClusterFixtur
         }
 
         var first = await ApplyAsync(clients[0], targets[0], webService, namespaceName);
-        Assert.True(first.TryGetValue(out _, out _));
+        Assert.IsType<WebServiceKubernetesApplied>(first.Value);
         var healthyBefore = await clients[0].AppsV1.ReadNamespacedDeploymentAsync(
             webService.Name,
             namespaceName);
@@ -62,11 +61,11 @@ public sealed class WebServiceMultiTargetKubernetesTests(KubernetesClusterFixtur
         unavailableConfiguration.Host = "http://127.0.0.1:1";
         using var unavailable = new KubernetesClient(unavailableConfiguration);
         var failed = await ApplyAsync(unavailable, targets[1], webService, namespaceName);
-        Assert.False(failed.TryGetValue(out _, out var failure));
+        var failure = Assert.IsType<WebServiceKubernetesApplyFailed>(failed.Value);
         Assert.Contains("applying", failure.Message, StringComparison.Ordinal);
 
         var retried = await ApplyAsync(clients[1], targets[1], webService, namespaceName);
-        Assert.True(retried.TryGetValue(out _, out _));
+        Assert.IsType<WebServiceKubernetesApplied>(retried.Value);
         var targetBDeployment = await clients[1].AppsV1.ReadNamespacedDeploymentAsync(
             webService.Name,
             namespaceName);
@@ -80,7 +79,7 @@ public sealed class WebServiceMultiTargetKubernetesTests(KubernetesClusterFixtur
         Assert.Equal("release-1", healthyAfter.Spec.Template.Metadata.Annotations["pole.server/releaseId"]);
     }
 
-    private static Task<Result<Unit, WebServiceKubernetesApplyFailed>> ApplyAsync(
+    private static Task<WebServiceKubernetesApplyOutcome> ApplyAsync(
         IKubernetes client,
         KubernetesLabTarget target,
         WebService webService,

@@ -7,7 +7,6 @@ using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Application.Persistence.Deployments;
 using Pole.Features.WebServices.Application.Persistence.Reads;
 using Pole.Features.WebServices.Domain;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.WebServices.Application.Kubernetes;
@@ -87,7 +86,7 @@ public sealed class WebServiceResourceDeploymentAdapter(
             inKubernetes,
             metadata,
             cancellationToken);
-        if (applyResult is Err<WebServiceKubernetesApplyFailed>)
+        if (applyResult is WebServiceKubernetesApplyFailed)
         {
             return ResourceDeploymentAdapterResult.Failed.Create(
                 "KubernetesApplyFailed",

@@ -115,16 +115,18 @@ public sealed class AddWebServiceDeploymentHandler(
         CancellationToken cancellationToken = default)
     {
         var stateResult = await LoadCurrentStateAsync(request, cancellationToken);
-        if (!stateResult.TryGetValue(out var state, out var stateError))
+        if (stateResult is AddWebServiceDeploymentStateError stateError)
             return Error(new AddWebServiceDeploymentError(stateError));
 
+        var state = (CurrentState)stateResult.Value;
         var placementResult = await ResolvePlacementAsync(
             request,
             state.WebService,
             cancellationToken);
-        if (!placementResult.TryGetValue(out var placement, out var placementError))
+        if (placementResult is AddWebServiceDeploymentError placementError)
             return Error(placementError);
 
+        var placement = (ResolvedAddition)placementResult.Value;
         return await ExecuteQuotaMutationAsync(
             request,
             state,
@@ -132,7 +134,7 @@ public sealed class AddWebServiceDeploymentHandler(
             cancellationToken);
     }
 
-    private async Task<Result<CurrentState, AddWebServiceDeploymentStateError>>
+    private async Task<LoadCurrentStateOutcome>
         LoadCurrentStateAsync(
         AddWebServiceDeploymentRequest request,
         CancellationToken cancellationToken)
@@ -143,15 +145,13 @@ public sealed class AddWebServiceDeploymentHandler(
             cancellationToken);
         if (webService is null)
         {
-            return new Err<AddWebServiceDeploymentStateError>(
-                new AddWebServiceDeploymentStateError(
-                    new WebServiceDeploymentNotFound(request.Id)));
+            return new AddWebServiceDeploymentStateError(
+                new WebServiceDeploymentNotFound(request.Id));
         }
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
         {
-            return new Err<AddWebServiceDeploymentStateError>(
-                new AddWebServiceDeploymentStateError(
-                    new WebServiceDeploymentUpdateUnavailable(request.Id)));
+            return new AddWebServiceDeploymentStateError(
+                new WebServiceDeploymentUpdateUnavailable(request.Id));
         }
 
         var deployments = await loadResourceDeploymentSet(
@@ -165,17 +165,16 @@ public sealed class AddWebServiceDeploymentHandler(
                 deploymentTargetId,
                 StringComparison.Ordinal)))
         {
-            return new Err<AddWebServiceDeploymentStateError>(
-                new AddWebServiceDeploymentStateError(
-                    new WebServiceDeploymentTargetAlreadyExists(
-                        request.Id,
-                        deploymentTargetId)));
+            return new AddWebServiceDeploymentStateError(
+                new WebServiceDeploymentTargetAlreadyExists(
+                    request.Id,
+                    deploymentTargetId));
         }
 
-        return new Ok<CurrentState>(new CurrentState(webService, deployments));
+        return new CurrentState(webService, deployments);
     }
 
-    private async Task<Result<ResolvedAddition, AddWebServiceDeploymentError>>
+    private async Task<ResolvePlacementOutcome>
         ResolvePlacementAsync(
         AddWebServiceDeploymentRequest request,
         WebService webService,
@@ -185,45 +184,41 @@ public sealed class AddWebServiceDeploymentHandler(
             CreateTargetAdmissionRequest(request, webService),
             cancellationToken);
         var targetResult = ToTargetResult(admission);
-        if (!targetResult.TryGetValue(out var target, out var targetError))
+        if (targetResult is DeploymentTargetPublicIngressAdmissionError targetError)
         {
-            return new Err<AddWebServiceDeploymentError>(
-                new AddWebServiceDeploymentError(targetError));
+            return new AddWebServiceDeploymentError(targetError);
         }
 
+        var target = (DeploymentTargetPublicIngressDto)targetResult.Value;
         var computeResult = await resolveComputeProfiles(
             CreateComputeResolutionRequest(request, target.DeploymentTargetId),
             cancellationToken);
         return computeResult switch
         {
-            IReadOnlyList<ResolvedComputeProfile> computes => new Ok<ResolvedAddition>(
-                new ResolvedAddition(target, computes.Single())),
-            ComputeProfileResolutionError error => new Err<AddWebServiceDeploymentError>(
-                new AddWebServiceDeploymentError(error))
+            IReadOnlyList<ResolvedComputeProfile> computes =>
+                new ResolvedAddition(target, computes.Single()),
+            ComputeProfileResolutionError error => new AddWebServiceDeploymentError(error)
         };
     }
 
-    private static Result<
-        DeploymentTargetPublicIngressDto,
-        DeploymentTargetPublicIngressAdmissionError> ToTargetResult(
+    private static TargetResolutionOutcome ToTargetResult(
         DeploymentTargetPublicIngressAdmissionResult admission) => admission switch
         {
-            DeploymentTargetPublicIngressDto ingress =>
-                new Ok<DeploymentTargetPublicIngressDto>(ingress),
+            DeploymentTargetPublicIngressDto ingress => ingress,
             DeploymentTargetNotFound error =>
-                TargetError(new DeploymentTargetPublicIngressAdmissionError(error)),
+                new DeploymentTargetPublicIngressAdmissionError(error),
             DeploymentTargetDisabled error =>
-                TargetError(new DeploymentTargetPublicIngressAdmissionError(error)),
+                new DeploymentTargetPublicIngressAdmissionError(error),
             DeploymentTargetDeletionRequested error =>
-                TargetError(new DeploymentTargetPublicIngressAdmissionError(error)),
+                new DeploymentTargetPublicIngressAdmissionError(error),
             DeploymentTargetNewWorkloadsDisabled error =>
-                TargetError(new DeploymentTargetPublicIngressAdmissionError(error)),
+                new DeploymentTargetPublicIngressAdmissionError(error),
             NoDeploymentTargetAcceptsPublicWorkloads error =>
-                TargetError(new DeploymentTargetPublicIngressAdmissionError(error)),
+                new DeploymentTargetPublicIngressAdmissionError(error),
             DeploymentTargetSelectionRequired error =>
-                TargetError(new DeploymentTargetPublicIngressAdmissionError(error)),
+                new DeploymentTargetPublicIngressAdmissionError(error),
             DeploymentTargetPublicIngressUnavailable error =>
-                TargetError(new DeploymentTargetPublicIngressAdmissionError(error))
+                new DeploymentTargetPublicIngressAdmissionError(error)
         };
 
     private Task<AddWebServiceDeploymentOutcome> ExecuteQuotaMutationAsync(
@@ -336,10 +331,6 @@ public sealed class AddWebServiceDeploymentHandler(
         return transaction.Commit(
             new AddWebServiceDeploymentOutcome(created.Single()));
     }
-
-    private static Err<DeploymentTargetPublicIngressAdmissionError>
-        TargetError(DeploymentTargetPublicIngressAdmissionError error) =>
-        new(error);
 
     private static AddWebServiceDeploymentOutcome Error(
         AddWebServiceDeploymentError error) =>
@@ -458,6 +449,18 @@ public sealed class AddWebServiceDeploymentHandler(
     private sealed record ResolvedAddition(
         DeploymentTargetPublicIngressDto PublicIngress,
         ResolvedComputeProfile Compute);
+
+    private union LoadCurrentStateOutcome(
+        CurrentState,
+        AddWebServiceDeploymentStateError);
+
+    private union ResolvePlacementOutcome(
+        ResolvedAddition,
+        AddWebServiceDeploymentError);
+
+    private union TargetResolutionOutcome(
+        DeploymentTargetPublicIngressDto,
+        DeploymentTargetPublicIngressAdmissionError);
 }
 
 public sealed class AddWebServiceDeploymentValidator : AbstractValidator<AddWebServiceDeploymentRequest>

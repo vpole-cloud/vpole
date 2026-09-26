@@ -95,12 +95,13 @@ public sealed class UpdateWebServiceImageTagHandler(
         CancellationToken cancellationToken = default)
     {
         var authorizationResult = await AuthorizeAsync(request, cancellationToken);
-        if (!authorizationResult.TryGetValue(out var authorization, out var authorizationError))
+        if (authorizationResult is WebServiceImageTagAuthorizationError authorizationError)
         {
             return Error(new WebServiceImageTagStateError(
                 authorizationError));
         }
 
+        var authorization = (ImageTagUpdateAuthorization)authorizationResult.Value;
         var webService = await loadWebServiceById(
             authorization.TenantId,
             request.Id,
@@ -210,9 +211,7 @@ public sealed class UpdateWebServiceImageTagHandler(
         }, cancellationToken);
     }
 
-    private async Task<Result<
-        ImageTagUpdateAuthorization,
-        WebServiceImageTagAuthorizationError>> AuthorizeAsync(
+    private async Task<ImageTagAuthorizationOutcome> AuthorizeAsync(
         UpdateWebServiceImageTagRequest request,
         CancellationToken cancellationToken)
     {
@@ -227,25 +226,23 @@ public sealed class UpdateWebServiceImageTagHandler(
 
         var tenantContext = tenantContextAccessor.Current;
         if (tenantContext is null)
-            return new Err<WebServiceImageTagAuthorizationError>(
+            return new WebServiceImageTagAuthorizationError(
                 new WebServiceImageTagUnauthorized());
 
         if (!tenantContext.IsPlatformAdmin && !tenantContext.Role.CanWrite())
-            return new Err<WebServiceImageTagAuthorizationError>(
+            return new WebServiceImageTagAuthorizationError(
                 new WebServiceImageTagForbidden());
 
-        return new Ok<ImageTagUpdateAuthorization>(new ImageTagUpdateAuthorization(
+        return new ImageTagUpdateAuthorization(
             tenantContext.TenantId,
             "User",
             request.ActorUserId.Value,
             request.ActorEmail.Value,
             DeploymentTokenId: null,
-            DeploymentTokenName: null));
+            DeploymentTokenName: null);
     }
 
-    private async Task<Result<
-        ImageTagUpdateAuthorization,
-        WebServiceImageTagAuthorizationError>> AuthorizeDeploymentTokenAsync(
+    private async Task<ImageTagAuthorizationOutcome> AuthorizeDeploymentTokenAsync(
         UpdateWebServiceImageTagRequest request,
         string rawToken,
         CancellationToken cancellationToken)
@@ -254,31 +251,31 @@ public sealed class UpdateWebServiceImageTagHandler(
         var token = await loadDeploymentTokenByHash(tokenHash, cancellationToken);
 
         if (token is null || token.RevokedAtUtc is not null)
-            return new Err<WebServiceImageTagAuthorizationError>(
+            return new WebServiceImageTagAuthorizationError(
                 new WebServiceImageTagUnauthorized());
 
         if (token.WebServiceId != request.Id)
-            return new Err<WebServiceImageTagAuthorizationError>(
+            return new WebServiceImageTagAuthorizationError(
                 new WebServiceImageTagForbidden());
 
         if (!string.IsNullOrWhiteSpace(request.TenantId) &&
             !string.Equals(request.TenantId, token.TenantId, StringComparison.Ordinal))
         {
-            return new Err<WebServiceImageTagAuthorizationError>(
+            return new WebServiceImageTagAuthorizationError(
                 new WebServiceImageTagForbidden());
         }
 
         if (!token.AllowedOperations.Contains(WebServiceDeploymentTokenOperations.UpdateImageTag))
-            return new Err<WebServiceImageTagAuthorizationError>(
+            return new WebServiceImageTagAuthorizationError(
                 new WebServiceImageTagForbidden());
 
-        return new Ok<ImageTagUpdateAuthorization>(new ImageTagUpdateAuthorization(
+        return new ImageTagUpdateAuthorization(
             token.TenantId,
             "DeploymentToken",
             ActorUserId: null,
             ActorEmail: null,
             token.Id,
-            token.Name));
+            token.Name);
     }
 
     private static string? ExtractBearerToken(string? authorizationHeader)
@@ -296,6 +293,10 @@ public sealed class UpdateWebServiceImageTagHandler(
         string? ActorEmail,
         string? DeploymentTokenId,
         string? DeploymentTokenName);
+
+    private union ImageTagAuthorizationOutcome(
+        ImageTagUpdateAuthorization,
+        WebServiceImageTagAuthorizationError);
 
     private static UpdateWebServiceImageTagOutcome Error(
         UpdateWebServiceImageTagError error) =>

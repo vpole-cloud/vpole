@@ -108,9 +108,10 @@ public sealed class CreateWebServiceHandler(
             isolationScopeId,
             request.Body.Placement.Targets,
             cancellationToken);
-        if (!targetsResult.TryGetValue(out var targets, out var targetsError))
+        if (targetsResult is CreateWebServicePlacementError targetsError)
             return Error(new CreateWebServiceError(targetsError));
 
+        var targets = (IReadOnlyList<ResolvedTargetRequest>)targetsResult.Value;
         var computeResult = await resolveComputeProfiles(
             new ComputeProfileBatchResolutionRequest(
                 request.TenantId,
@@ -160,9 +161,7 @@ public sealed class CreateWebServiceHandler(
             cancellationToken);
     }
 
-    private async Task<Result<
-        IReadOnlyList<ResolvedTargetRequest>,
-        CreateWebServicePlacementError>> ResolveTargetsAsync(
+    private async Task<ResolveTargetsOutcome> ResolveTargetsAsync(
         string tenantId,
         string isolationScopeId,
         IReadOnlyList<WebServiceDeploymentTargetRequest> requestedTargets,
@@ -213,12 +212,10 @@ public sealed class CreateWebServiceHandler(
                         []))));
         }
 
-        return new Ok<IReadOnlyList<ResolvedTargetRequest>>(resolved);
+        return (IReadOnlyList<ResolvedTargetRequest>)resolved;
     }
 
-    private async Task<Result<
-        IReadOnlyList<CreateResourceDeploymentRequest>,
-        CreateWebServiceError>> CreateDeploymentRequestsAsync(
+    private async Task<CreateDeploymentRequestsOutcome> CreateDeploymentRequestsAsync(
         WebService webService,
         IReadOnlyList<ResolvedTargetRequest> targets,
         IReadOnlyDictionary<string, ResolvedComputeProfile> computeByTarget,
@@ -245,7 +242,7 @@ public sealed class CreateWebServiceHandler(
             session,
             cancellationToken);
         if (zonesResult is GeneratedDomainZoneError zonesError)
-            return new Err<CreateWebServiceError>(new CreateWebServiceError(zonesError));
+            return new CreateWebServiceError(zonesError);
 
         var zones = (IReadOnlyList<TenantDomainZoneSnapshot>)zonesResult.Value;
 
@@ -268,7 +265,7 @@ public sealed class CreateWebServiceHandler(
             session,
             cancellationToken);
         if (bindingsResult is GeneratedHostnameBindingError bindingsError)
-            return new Err<CreateWebServiceError>(new CreateWebServiceError(bindingsError));
+            return new CreateWebServiceError(bindingsError);
 
         var bindings = (IReadOnlyList<HostnameBindingSnapshot>)bindingsResult.Value;
 
@@ -301,7 +298,7 @@ public sealed class CreateWebServiceHandler(
                 webService.ActiveRevision));
         }
 
-        return new Ok<IReadOnlyList<CreateResourceDeploymentRequest>>(requests);
+        return (IReadOnlyList<CreateResourceDeploymentRequest>)requests;
     }
 
     private async Task<QuotaAdmissionTransactionDecision<CreateWebServiceOutcome>> PersistAsync(
@@ -329,9 +326,11 @@ public sealed class CreateWebServiceHandler(
             computeByTarget,
             transaction.Session,
             cancellationToken);
-        if (!deploymentRequestsResult.TryGetValue(out var deploymentRequests, out var requestsError))
+        if (deploymentRequestsResult is CreateWebServiceError requestsError)
             return Abort(transaction, requestsError);
 
+        var deploymentRequests =
+            (IReadOnlyList<CreateResourceDeploymentRequest>)deploymentRequestsResult.Value;
         var deploymentsResult = await createResourceDeploymentSet(
             new CreateResourceDeploymentSetRequest(deploymentRequests),
             transaction.Session,
@@ -384,17 +383,25 @@ public sealed class CreateWebServiceHandler(
         CreateWebServiceError error) =>
         transaction.Abort(Error(error));
 
-    private static Err<CreateWebServicePlacementError> PlacementError(
+    private static ResolveTargetsOutcome PlacementError(
         NoDeploymentTargetAcceptsPublicWorkloads error) =>
-        new(new CreateWebServicePlacementError(error));
+        new CreateWebServicePlacementError(error);
 
-    private static Err<CreateWebServicePlacementError> PlacementError(
+    private static ResolveTargetsOutcome PlacementError(
         DeploymentTargetSelectionRequired error) =>
-        new(new CreateWebServicePlacementError(error));
+        new CreateWebServicePlacementError(error);
 
-    private static Err<CreateWebServicePlacementError> PlacementError(
+    private static ResolveTargetsOutcome PlacementError(
         CreateWebServiceTargetUnavailable error) =>
-        new(new CreateWebServicePlacementError(error));
+        new CreateWebServicePlacementError(error);
+
+    private union ResolveTargetsOutcome(
+        IReadOnlyList<ResolvedTargetRequest>,
+        CreateWebServicePlacementError);
+
+    private union CreateDeploymentRequestsOutcome(
+        IReadOnlyList<CreateResourceDeploymentRequest>,
+        CreateWebServiceError);
 
     private sealed record ResolvedTargetRequest(
         WebServiceDeploymentTargetRequest Request,
