@@ -49,6 +49,12 @@ reserved. Changing back to Public reserves the generated hostname before admitti
 the Public deployment. [Workload placement](../../../docs/workload-placement.md) describes the
 RuntimeCell ingress baseline and the target-specific source rules.
 
+Public ingress reconciliation checks the desired deployment generation again after Kubernetes
+accepts a Create or Replace. A superseded write is conditionally deleted using only the UID and
+resource version returned by that write, then rejected; a missing ingress or a newer mutation
+cannot be removed by the stale attempt. If Kubernetes omits that identity, reconciliation rejects
+the stale attempt without issuing an unfenced delete.
+
 ## Persistence boundary
 
 `WebServices.Application/Persistence` exposes named delegates for the exact operations used by

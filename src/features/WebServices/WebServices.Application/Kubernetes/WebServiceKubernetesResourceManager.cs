@@ -443,11 +443,17 @@ public static class WebServiceKubernetesResourceManager
         }
         try
         {
-            await kubernetes.NetworkingV1.CreateNamespacedIngressAsync(
+            var created = await kubernetes.NetworkingV1.CreateNamespacedIngressAsync(
                 desired,
                 webService.Namespace,
                 cancellationToken: cancellationToken);
-            return null;
+            return await RejectSupersededIngressWriteAsync(
+                kubernetes,
+                webService,
+                desired.Metadata.Name,
+                created,
+                cancellationToken,
+                isCurrentGeneration);
         }
         catch (HttpOperationException exception) when (
             exception.Response?.StatusCode == HttpStatusCode.Conflict)
@@ -476,12 +482,61 @@ public static class WebServiceKubernetesResourceManager
         }
 
         desired.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
-        await kubernetes.NetworkingV1.ReplaceNamespacedIngressAsync(
+        var replaced = await kubernetes.NetworkingV1.ReplaceNamespacedIngressAsync(
             desired,
             desired.Metadata.Name,
             webService.Namespace,
             cancellationToken: cancellationToken);
-        return null;
+        return await RejectSupersededIngressWriteAsync(
+            kubernetes,
+            webService,
+            desired.Metadata.Name,
+            replaced,
+            cancellationToken,
+            isCurrentGeneration);
+    }
+
+    private static async Task<WebServiceKubernetesApplyRejected?> RejectSupersededIngressWriteAsync(
+        IKubernetes kubernetes,
+        WebServiceInKubernetes webService,
+        string ingressName,
+        V1Ingress written,
+        CancellationToken cancellationToken,
+        Func<CancellationToken, Task<bool>>? isCurrentGeneration)
+    {
+        if (isCurrentGeneration is null || await isCurrentGeneration(cancellationToken))
+            return null;
+
+        var uid = written.Metadata?.Uid;
+        var resourceVersion = written.Metadata?.ResourceVersion;
+        if (!string.IsNullOrWhiteSpace(uid) &&
+            !string.IsNullOrWhiteSpace(resourceVersion))
+        {
+            try
+            {
+                await kubernetes.NetworkingV1.DeleteNamespacedIngressAsync(
+                    ingressName,
+                    webService.Namespace,
+                    body: new V1DeleteOptions
+                    {
+                        Preconditions = new V1Preconditions
+                        {
+                            Uid = uid,
+                            ResourceVersion = resourceVersion
+                        }
+                    },
+                    cancellationToken: cancellationToken);
+            }
+            catch (HttpOperationException exception) when (
+                exception.Response?.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Conflict)
+            {
+                // A newer generation has already removed or changed this exact ingress.
+            }
+        }
+
+        return new WebServiceKubernetesApplyRejected(
+            "DeploymentGenerationSuperseded",
+            "A newer deployment generation superseded this ingress write.");
     }
 
     private static bool IsOwnedIngress(
