@@ -355,7 +355,12 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
             $"kubernetes:kube-system:{id}",
             DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
             DeploymentTargetHealth.Healthy(connectionVersion, now),
-            DeploymentTargetCapabilities.Unknown(connectionVersion),
+            DeploymentTargetCapabilities.Observed(
+                connectionVersion,
+                now,
+                "v1.35.0",
+                new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
+                new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true)),
             DeploymentTargetTestData.CreateWorkloadConfiguration(),
             enabled: true,
             acceptsWorkloads: true,
