@@ -28,6 +28,7 @@ public static class WebServicePersistenceRegistration
         services.TryAddSingleton(serviceProvider => serviceProvider
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<WebServiceDeploymentToken>("WebServiceDeploymentTokens"));
+        services.AddCapability<MongoLoadWebServiceConnectionEndpoints, LoadWebServiceConnectionEndpoints>(x => x.InvokeAsync);
         services.AddCapability<MongoLoadWebServiceById, LoadWebServiceById>(x => x.InvokeAsync);
         services.AddCapability<MongoWebServiceExists, WebServiceExists>(x => x.InvokeAsync);
         services.AddCapability<MongoWebServiceExists, SourceBuildWebServiceExists>(x => x.InvokeAsync);

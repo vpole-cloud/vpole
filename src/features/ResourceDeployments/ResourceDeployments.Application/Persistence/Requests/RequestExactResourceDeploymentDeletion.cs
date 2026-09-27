@@ -8,6 +8,7 @@ namespace Pole.Features.ResourceDeployments.Application.Persistence.Requests;
 internal sealed class MongoRequestExactResourceDeploymentDeletion(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     StoreOutboxWrites storeOutboxWrites,
+    ResourceDeploymentConnectionGuard connectionGuard,
     TimeProvider timeProvider)
 {
     public async Task<ResourceDeploymentMutationOutcome> InvokeAsync(
@@ -19,6 +20,10 @@ internal sealed class MongoRequestExactResourceDeploymentDeletion(
             session,
             "Resource deployment mutations");
         ArgumentNullException.ThrowIfNull(request);
+        if (!await connectionGuard.FenceAsync(
+                request.TenantId, request.ResourceType, request.ResourceId, session, cancellationToken))
+            return new ResourceDeploymentMutationError(new ResourceDeploymentMutationNotFound(request.ResourceId));
+
         var loaded = await ResourceDeploymentMutationSupport.LoadExactAsync(
             resourceDeployments,
             request,
@@ -51,7 +56,7 @@ internal sealed class MongoRequestExactResourceDeploymentDeletion(
         var updated = current.RequestDeletion(
             timeProvider.GetUtcNow().UtcDateTime,
             request.ResourceRevision);
-        return updated.Revision == current.Revision
+        var mutation = updated.Revision == current.Revision
             ? current.ToPlacementSummaryDto()
             : await ResourceDeploymentMutationSupport.ReplaceAndEnqueueAsync(
                 resourceDeployments,
@@ -60,5 +65,12 @@ internal sealed class MongoRequestExactResourceDeploymentDeletion(
                 updated,
                 session,
                 cancellationToken);
+        if (mutation is ResourceDeploymentMutationError)
+            return mutation;
+        var connectionConflict = await connectionGuard.ReconcileAsync(
+            request.TenantId, request.ResourceType, request.ResourceId, session, cancellationToken);
+        return connectionConflict is null
+            ? mutation
+            : new ResourceDeploymentMutationError(connectionConflict);
     }
 }

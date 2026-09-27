@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Pole.Features.ResourceConnections.Contracts</AssemblyName>
+    <RootNamespace>Pole.Features.ResourceConnections.Contracts</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../shared/Workloads/Workloads.csproj" />
+    <PackageReference Include="MongoDB.Driver" />
+  </ItemGroup>
+</Project>

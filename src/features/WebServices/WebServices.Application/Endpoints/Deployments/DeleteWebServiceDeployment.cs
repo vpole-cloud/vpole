@@ -185,6 +185,9 @@ public sealed class DeleteWebServiceDeploymentHandler(
                 if (saved is WebServiceUpdateConflict persistenceError)
                     return transaction.Abort(Error(
                         new DeleteWebServiceDeploymentError(persistenceError)));
+                if (saved is WebServiceConnectionConflict connectionConflict)
+                    return transaction.Abort(Error(
+                        new DeleteWebServiceDeploymentError(connectionConflict)));
 
                 var releaseDeployments = WebServiceDeploymentWorkflow
                     .ToReleaseDeployments(retainedSnapshots)

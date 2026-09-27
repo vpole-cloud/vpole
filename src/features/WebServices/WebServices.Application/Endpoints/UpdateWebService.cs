@@ -226,6 +226,11 @@ public sealed class UpdateWebServiceHandler(
                     return transaction.Abort(
                         Error(new UpdateWebServiceError(persistenceError)));
                 }
+                if (persisted is WebServiceConnectionConflict connectionConflict)
+                {
+                    return transaction.Abort(
+                        Error(new UpdateWebServiceError(connectionConflict)));
+                }
 
                 var release = WebServiceReleaseFactory.CreatePending(
                     nextWebService.TenantId,

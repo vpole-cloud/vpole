@@ -8,6 +8,7 @@ namespace Pole.Features.ResourceDeployments.Application.Persistence.Requests;
 internal sealed class MongoRequestResourceDeploymentSetDeletion(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     StoreOutboxWrites storeOutboxWrites,
+    ResourceDeploymentConnectionGuard connectionGuard,
     TimeProvider timeProvider)
 {
     public async Task<ResourceDeploymentSetMutationOutcome> InvokeAsync(
@@ -19,6 +20,10 @@ internal sealed class MongoRequestResourceDeploymentSetDeletion(
             session,
             "Resource deployment mutations");
         ArgumentNullException.ThrowIfNull(request);
+        if (!await connectionGuard.FenceAsync(
+                request.TenantId, request.ResourceType, request.ResourceId, session, cancellationToken))
+            return new ResourceDeploymentMutationError(new ResourceDeploymentMutationNotFound(request.ResourceId));
+
         ResourceDeploymentMutationSupport.EnsureSetIsNonEmptyAndUnique(
             request.Deployments,
             deployment => deployment.ResourceDeploymentId,
@@ -83,6 +88,11 @@ internal sealed class MongoRequestResourceDeploymentSetDeletion(
                     new ResourceDeploymentChanged(request.ResourceId, original.Id));
             }
         }
+
+        var connectionConflict = await connectionGuard.ReconcileAsync(
+            request.TenantId, request.ResourceType, request.ResourceId, session, cancellationToken);
+        if (connectionConflict is not null)
+            return new ResourceDeploymentMutationError(connectionConflict);
 
         await storeOutboxWrites(
             session,

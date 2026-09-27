@@ -1,3 +1,6 @@
+using Pole.Features.ResourceConnections.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.WebServices.Application.Common;
 using MongoDB.Driver;
 using Pole.Features.WebServices.Application.Persistence.Mutations;
 using Pole.Features.WebServices.Domain;
@@ -18,6 +21,8 @@ public delegate Task<BeginWebServiceDeletionResult>
         CancellationToken cancellationToken = default);
 
 internal sealed class MongoBeginWebServiceDeletion(
+    FenceRegisteredResource fenceRegisteredResource,
+    CascadeConnectionsForResourceDeletion cascadeConnections,
     IMongoCollection<WebService> webServices)
 {
     public async Task<BeginWebServiceDeletionResult>
@@ -29,6 +34,15 @@ internal sealed class MongoBeginWebServiceDeletion(
     {
         WebServicePersistenceGuards.EnsureTransaction(session, "Web service deletion start");
         WebServicePersistenceGuards.EnsureSameIdentity(current, replacement);
+        var registration = await fenceRegisteredResource(
+            current.TenantId, WebServiceResourceDeployment.ResourceType, current.Id, session, cancellationToken);
+        if (registration is null)
+            return new WebServiceUpdateConflict(current.Id);
+        var cascade = await cascadeConnections(
+            current.TenantId, WebServiceResourceDeployment.ResourceType, current.Id, session, cancellationToken);
+        if (cascade is ResourceConnectionCascadeConflict)
+            return new WebServiceUpdateConflict(current.Id);
+
         var result = await webServices.ReplaceOneAsync(
             session,
             WebServiceFilters.AtRevision(current),

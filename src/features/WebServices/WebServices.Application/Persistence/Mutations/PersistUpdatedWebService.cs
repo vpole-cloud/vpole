@@ -1,3 +1,6 @@
+using Pole.Features.ResourceConnections.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.WebServices.Application.Common;
 using MongoDB.Driver;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
@@ -8,7 +11,12 @@ public sealed record WebServiceUpdateAccepted;
 
 public sealed record WebServiceUpdateConflict(string WebServiceId);
 
+public sealed record WebServiceConnectionConflict(
+    string WebServiceId,
+    string ConnectionId);
+
 public union PersistWebServiceUpdateResult(
+    WebServiceConnectionConflict,
     WebServiceUpdateAccepted,
     WebServiceUpdateConflict);
 
@@ -22,7 +30,9 @@ public delegate Task<PersistWebServiceUpdateResult>
 
 internal sealed class MongoPersistUpdatedWebService(
     IMongoCollection<WebService> webServices,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites,
+    FenceRegisteredResource fenceRegisteredResource,
+    ReconcileConnectionsForResource reconcileConnections)
 {
     public async Task<PersistWebServiceUpdateResult>
         InvokeOutcomeAsync(
@@ -47,6 +57,11 @@ internal sealed class MongoPersistUpdatedWebService(
                 "A web service update event must preserve tenant and resource identity.");
         }
 
+        var registration = await fenceRegisteredResource(
+            current.TenantId, WebServiceResourceDeployment.ResourceType, current.Id, session, cancellationToken);
+        if (registration is null)
+            return new WebServiceUpdateConflict(current.Id);
+
         var result = await webServices.ReplaceOneAsync(
             session,
             WebServiceFilters.AtRevision(current),
@@ -56,6 +71,11 @@ internal sealed class MongoPersistUpdatedWebService(
         {
             return new WebServiceUpdateConflict(current.Id);
         }
+
+        var connections = await reconcileConnections(
+            current.TenantId, WebServiceResourceDeployment.ResourceType, current.Id, session, cancellationToken);
+        if (connections is ResourceConnectionTopologyConflict conflict)
+            return new WebServiceConnectionConflict(current.Id, conflict.ConnectionId);
 
         await storeOutboxWrites(
             session,

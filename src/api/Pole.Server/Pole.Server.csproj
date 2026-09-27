@@ -44,6 +44,7 @@
       <ProjectReference Include="..\..\features\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
       <ProjectReference Include="..\..\features\Quotas\Quotas.Domain\Quotas.Domain.csproj" />
       <ProjectReference Include="..\..\features\RedisServices\RedisServices.Application\RedisServices.Application.csproj" />
+      <ProjectReference Include="..\..\features\ResourceConnections\ResourceConnections.Application\ResourceConnections.Application.csproj" />
       <ProjectReference Include="..\..\features\ResourceDeployments\ResourceDeployments.Application\ResourceDeployments.Application.csproj" />
       <ProjectReference Include="..\..\features\ResourceGroups\ResourceGroups.Application\ResourceGroups.Application.csproj" />
       <ProjectReference Include="..\..\features\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />

@@ -163,6 +163,9 @@ public sealed class RollbackWebServiceHandler(
                 if (persisted is WebServiceUpdateConflict persistenceError)
                     return transaction.Abort(Error(
                         new RollbackWebServiceError(persistenceError)));
+                if (persisted is WebServiceConnectionConflict connectionConflict)
+                    return transaction.Abort(Error(
+                        new RollbackWebServiceError(connectionConflict)));
 
                 var release = WebServiceReleaseFactory.CreatePending(
                     updated.TenantId,

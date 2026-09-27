@@ -17,6 +17,7 @@ internal sealed class MongoCreateResourceDeploymentSet(
     FenceDeploymentTargetWorkloadConfigurations fenceDeploymentTargetWorkloadConfigurations,
     FenceResolvedComputeProfiles fenceResolvedComputeProfiles,
     FenceStorageProfileResolution fenceStorageProfileResolution,
+    ResourceDeploymentConnectionGuard connectionGuard,
     TimeProvider timeProvider)
 {
     public async Task<CreateResourceDeploymentSetOutcome> InvokeAsync(
@@ -74,6 +75,10 @@ internal sealed class MongoCreateResourceDeploymentSet(
                 "Each deployment must have one unique target matching its compute snapshot.",
                 nameof(request));
         }
+
+        if (!await connectionGuard.FenceAsync(
+                first.TenantId, first.ResourceType, first.ResourceId, session, cancellationToken))
+            return new CreateResourceDeploymentError(new ResourcePlacementUnavailable(first.ResourceGroupId));
 
         var targetFenceRequests = request.Deployments
             .Select(item => new DeploymentTargetWorkloadConfigurationFenceRequest(
@@ -220,6 +225,12 @@ internal sealed class MongoCreateResourceDeploymentSet(
             session,
             deployments,
             cancellationToken: cancellationToken);
+        var first = request.Deployments[0];
+        var connectionConflict = await connectionGuard.ReconcileAsync(
+            first.TenantId, first.ResourceType, first.ResourceId, session, cancellationToken);
+        if (connectionConflict is not null)
+            return new CreateResourceDeploymentError(connectionConflict);
+
         await storeOutboxWrites(
             session,
             deployments

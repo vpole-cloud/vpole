@@ -87,6 +87,7 @@ public union AddWebServiceDeploymentError(
     GeneratedHostnameBindingError,
     CreateResourceDeploymentError,
     AdvanceResourceDeploymentRevisionError,
+    WebServiceConnectionConflict,
     WebServiceUpdateConflict,
     QuotaExecutionError);
 
@@ -353,6 +354,10 @@ public sealed class AddWebServiceDeploymentHandler(
             return Abort(
                 transaction,
                 new AddWebServiceDeploymentError(persistenceError));
+        if (persisted is WebServiceConnectionConflict connectionConflict)
+            return Abort(
+                transaction,
+                new AddWebServiceDeploymentError(connectionConflict));
 
         await persistCurrentWebServiceRelease(
             transaction.Session,

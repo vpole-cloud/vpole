@@ -10,6 +10,7 @@ using Pole.Features.Postgres.Application;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Postgres.Events;
+using Pole.Features.ResourceConnections.Application;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.Tenants.Domain;
@@ -61,6 +62,7 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
             [typeof(PostgresClusterCreatedEvent).Assembly],
             []);
         services.AddPostgresFeature(configuration);
+        services.AddResourceConnectionsFeature();
         services.AddTestDeploymentTargets();
         ReplaceTenantAuthorizationWithFake(services);
         ConfigureServices(services);

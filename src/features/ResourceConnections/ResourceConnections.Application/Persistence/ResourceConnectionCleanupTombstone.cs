@@ -1,0 +1,112 @@
+using System.Collections.Immutable;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
+using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.ResourceConnections.Domain;
+
+namespace Pole.Features.ResourceConnections.Application.Persistence;
+
+// Hidden from the public connection API. Retained cleanup authority repairs a
+// late Kubernetes write even after the public declaration has been removed.
+public sealed record ResourceConnectionCleanupTombstone(
+    [property: BsonId]
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string Id,
+    string TenantId,
+    long Generation,
+    ImmutableList<ConnectionTargetSnapshot> Targets,
+    DateTime CompletedAtUtc);
+
+public delegate Task<ResourceConnectionCleanupTombstone?> LoadResourceConnectionTombstone(
+    string tenantId,
+    string connectionId,
+    CancellationToken cancellationToken = default);
+
+public delegate Task<IReadOnlyList<ResourceConnectionCleanupTombstone>>
+    LoadResourceConnectionTombstoneRecoveryPage(
+        string? afterId,
+        int pageSize,
+        CancellationToken cancellationToken = default);
+
+internal static class ResourceConnectionTombstoneFilters
+{
+    public static FilterDefinition<ResourceConnectionCleanupTombstone> ByTenantAndId(
+        string tenantId,
+        string connectionId) =>
+        Builders<ResourceConnectionCleanupTombstone>.Filter.And(
+            Builders<ResourceConnectionCleanupTombstone>.Filter.Eq(
+                item => item.TenantId,
+                tenantId),
+            Builders<ResourceConnectionCleanupTombstone>.Filter.Eq(
+                item => item.Id,
+                connectionId));
+
+    public static FilterDefinition<ResourceConnectionCleanupTombstone> AfterId(string? id) =>
+        id is null
+            ? Builders<ResourceConnectionCleanupTombstone>.Filter.Empty
+            : Builders<ResourceConnectionCleanupTombstone>.Filter.Gt(item => item.Id, id);
+}
+
+internal sealed class MongoResourceConnectionTombstonePersistence(
+    IMongoCollection<ResourceConnection> connections,
+    IMongoCollection<ResourceConnectionCleanupTombstone> tombstones,
+    RunMongoOutcomeTransaction<bool> transactions,
+    TimeProvider timeProvider)
+{
+    public async Task<ResourceConnectionCleanupTombstone?> LoadAsync(
+        string tenantId,
+        string connectionId,
+        CancellationToken cancellationToken = default) =>
+        await tombstones.Find(ResourceConnectionTombstoneFilters.ByTenantAndId(
+                tenantId,
+                connectionId))
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<ResourceConnectionCleanupTombstone>> LoadPageAsync(
+        string? afterId,
+        int pageSize,
+        CancellationToken cancellationToken = default) =>
+        await tombstones.Find(ResourceConnectionTombstoneFilters.AfterId(afterId))
+            .SortBy(item => item.Id)
+            .Limit(pageSize)
+            .ToListAsync(cancellationToken);
+
+    public Task PurgeIfCompleteAsync(
+        ResourceConnection observed,
+        CancellationToken cancellationToken = default) =>
+        transactions(async (transaction, ct) =>
+        {
+            var current = await connections.Find(
+                    transaction.Session,
+                    ResourceConnectionFilters.AtRevision(
+                        observed.TenantId,
+                        observed.Id,
+                        observed.Revision))
+                .FirstOrDefaultAsync(ct);
+            if (current is null || !current.IsCleanupComplete)
+                return transaction.Commit(false);
+
+            var deleting = (DeletingResourceConnection)current.Lifecycle;
+            var tombstone = new ResourceConnectionCleanupTombstone(
+                current.Id,
+                current.TenantId,
+                current.Generation,
+                deleting.Targets.Select(target => target.Snapshot).ToImmutableList(),
+                timeProvider.GetUtcNow().UtcDateTime);
+            await tombstones.InsertOneAsync(
+                transaction.Session,
+                tombstone,
+                cancellationToken: ct);
+            var removed = await connections.DeleteOneAsync(
+                transaction.Session,
+                ResourceConnectionFilters.AtRevision(
+                    current.TenantId,
+                    current.Id,
+                    current.Revision),
+                cancellationToken: ct);
+            return removed.DeletedCount == 1
+                ? transaction.Commit(true)
+                : transaction.Abort(false);
+        }, cancellationToken);
+}

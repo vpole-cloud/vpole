@@ -1,3 +1,5 @@
+using Pole.Features.ResourceConnections.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
@@ -22,6 +24,8 @@ public delegate Task<BeginFunctionAppDeletionOutcome>
         CancellationToken cancellationToken = default);
 
 internal sealed class MongoBeginFunctionAppDeletion(
+    FenceRegisteredResource fenceRegisteredResource,
+    CascadeConnectionsForResourceDeletion cascadeConnections,
     IMongoCollection<FunctionApp> functionApps,
     IMongoCollection<FunctionRouteBinding> functionRouteBindings,
     IMongoCollection<FunctionTimerState> functionTimerStates,
@@ -35,6 +39,15 @@ internal sealed class MongoBeginFunctionAppDeletion(
     {
         if (!session.IsInTransaction)
             throw new InvalidOperationException("Function App deletion requires an active transaction.");
+        var registration = await fenceRegisteredResource(
+            current.TenantId, FunctionResourceDeployment.ResourceType, current.Id, session, cancellationToken);
+        if (registration is null)
+            return new FunctionAppDeletionChanged(current.Id);
+        var cascade = await cascadeConnections(
+            current.TenantId, FunctionResourceDeployment.ResourceType, current.Id, session, cancellationToken);
+        if (cascade is ResourceConnectionCascadeConflict)
+            return new FunctionAppDeletionChanged(current.Id);
+
         var appResult = await functionApps.UpdateOneAsync(
             session,
             FunctionAppFilters.ForDeletion(current),

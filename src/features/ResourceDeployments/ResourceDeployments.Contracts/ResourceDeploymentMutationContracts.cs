@@ -40,7 +40,12 @@ public sealed record ResourceDeploymentRetryUnavailable(
     string ResourceId,
     string ResourceDeploymentId);
 
+public sealed record ResourceDeploymentConnectionConflict(
+    string ResourceId,
+    string ConnectionId);
+
 public union ResourceDeploymentMutationError(
+    ResourceDeploymentConnectionConflict,
     ResourceDeploymentMutationNotFound,
     ResourceDeploymentChanged,
     ResourceDeploymentCardinalityConflict,

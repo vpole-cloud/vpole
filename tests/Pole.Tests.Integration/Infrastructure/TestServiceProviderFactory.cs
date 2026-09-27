@@ -14,10 +14,14 @@ using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Outbox.Application.Persistence;
+using Pole.Features.Postgres.Application;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.ResourceDeployments.Application;
+using Pole.Features.ResourceConnections.Application;
 using Pole.Features.ResourceGroups.Application;
+using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.RedisServices.Application;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Search.Application;
@@ -52,6 +56,7 @@ public static class TestServiceProviderFactory
         typeof(QuotaEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,
         typeof(ResourceDeploymentFeature).Assembly,
+        typeof(ResourceConnectionsFeature).Assembly,
         typeof(DomainZoneEndpoints).Assembly,
         typeof(DeploymentTargetFeature).Assembly,
         typeof(SearchEndpoints).Assembly,
@@ -91,6 +96,13 @@ public static class TestServiceProviderFactory
         services.AddResourceDeploymentsFeature(
             configuration);
         services.AddResourceGroupsFeature(configuration);
+        services.AddRedisServicesFeature();
+        services.AddPostgresFeature(configuration);
+        services.AddResourceConnectionsFeature();
+        services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ =>
+            (tenantId, runtimeCellId, targetId, namespaceName, cancellationToken) =>
+                Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
+                    new RuntimeCellIngressBaselineReady()));
         services.AddSecretsFeature();
         services.AddTenantsFeature();
         services.AddUsersFeature(configuration);

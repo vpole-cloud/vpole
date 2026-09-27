@@ -22,6 +22,7 @@ internal static class ResourceDeploymentPersistenceRegistration
         this IServiceCollection services)
     {
         services.TryAddScoped<ResourceDeploymentIsolationProjection>();
+        services.TryAddScoped<ResourceDeploymentConnectionGuard>();
         services.TryAddSingleton(serviceProvider => serviceProvider
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<ResourceDeployment>("ResourceDeployments"));
@@ -76,6 +77,10 @@ internal static class ResourceDeploymentPersistenceRegistration
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoLoadResourceDeploymentSet, LoadResourceDeploymentSet>(
+            services,
+            implementation => implementation.InvokeAsync);
+        AddCapability<MongoLoadResourceDeploymentConnectionPlacements,
+            LoadResourceDeploymentConnectionPlacements>(
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoLoadExactResourceDeployment, LoadExactResourceDeployment>(

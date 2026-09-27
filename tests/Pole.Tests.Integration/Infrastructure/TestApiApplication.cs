@@ -38,12 +38,17 @@ using Pole.Features.Outbox.Application.Migrations;
 using Pole.Features.Outbox.Application.Persistence;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
+using Pole.Features.Postgres.Application;
+using Pole.Features.ResourceConnections.Application;
+using Pole.Features.RedisServices.Application;
+using Pole.Features.ResourceConnections.Application.Migrations;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Migrations;
 using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Migrations;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Search.Application;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Secrets.Application;
@@ -86,6 +91,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         typeof(QuotaEndpoints).Assembly,
         typeof(ResourceGroupEndpoints).Assembly,
         typeof(ResourceDeploymentFeature).Assembly,
+        typeof(ResourceConnectionsFeature).Assembly,
         typeof(DomainZoneEndpoints).Assembly,
         typeof(GitProviderEndpoints).Assembly,
         typeof(ContainerRegistryFeature).Assembly,
@@ -181,6 +187,13 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddFunctionAppsFeature();
         builder.Services.AddResourceDeploymentsFeature(builder.Configuration);
         builder.Services.AddResourceGroupsFeature(builder.Configuration);
+        builder.Services.AddResourceConnectionsFeature();
+        builder.Services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ =>
+            (tenantId, runtimeCellId, targetId, namespaceName, cancellationToken) =>
+                Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
+                    new RuntimeCellIngressBaselineReady()));
+        builder.Services.AddRedisServicesFeature();
+        builder.Services.AddPostgresFeature(builder.Configuration);
         builder.Services.AddSecretsFeature();
         builder.Services.AddTenantsFeature();
         builder.Services.AddUsersFeature(builder.Configuration);
@@ -283,6 +296,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         await new DeploymentTargetReferenceMigration().Up(fixture.Database);
         await new ResourceGroupPlacementMigration().Up(fixture.Database);
         await new ResourceRegistrationMigration().Up(fixture.Database);
+        await new ResourceConnectionIndexesMigration().Up(fixture.Database);
         await new ResourceDeploymentMigration().Up(fixture.Database);
         await new ResourceDeploymentSchemaValidationMigration().Up(fixture.Database);
         await new WebServiceReleaseSchemaValidationMigration().Up(fixture.Database);
@@ -317,6 +331,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapDeploymentTargetEncryptionEndpoints()
             .MapWebServiceEndpoints()
             .MapResourceDeploymentEndpoints()
+            .MapResourceConnectionEndpoints()
             .MapFunctionAppEndpoints()
             .MapQuotaEndpoints()
             .MapSearchEndpoints()

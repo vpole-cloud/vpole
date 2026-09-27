@@ -17,7 +17,9 @@ public sealed record ResourceRegistration(
     string DisplayName,
     string? OwningPluginId,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    // Written by topology declarations and placement mutations in one transaction.
+    long ReferenceFence);
 
 public static class ResourceRegistrationFactory
 {
@@ -77,7 +79,8 @@ public static class ResourceRegistrationFactory
                 MaximumDisplayNameLength),
             normalizedPluginId,
             createdAtUtc,
-            createdAtUtc);
+            createdAtUtc,
+            ReferenceFence: 0);
     }
 
     public static ResourceRegistration UpdateDisplayName(

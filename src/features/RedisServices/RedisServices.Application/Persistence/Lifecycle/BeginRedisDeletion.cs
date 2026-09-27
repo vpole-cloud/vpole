@@ -1,3 +1,6 @@
+using Pole.Features.ResourceConnections.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.RedisServices.Application.Common;
 using MongoDB.Driver;
 using Pole.Features.RedisServices.Domain;
 
@@ -18,6 +21,8 @@ public delegate Task<BeginRedisDeletionOutcome> BeginRedisDeletion(
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoBeginRedisDeletion(
+    FenceRegisteredResource fenceRegisteredResource,
+    CascadeConnectionsForResourceDeletion cascadeConnections,
     IMongoCollection<Redis> redisServices)
 {
     public async Task<BeginRedisDeletionOutcome> InvokeAsync(
@@ -30,6 +35,15 @@ internal sealed class MongoBeginRedisDeletion(
             session,
             "Redis deletion start");
         RedisPersistenceGuards.EnsureDeletionTransition(current, replacement);
+
+        var registration = await fenceRegisteredResource(
+            current.TenantId, RedisResourceDeployment.ResourceType, current.Id, session, cancellationToken);
+        if (registration is null)
+            return new RedisDeletionConflict(current.Id);
+        var cascade = await cascadeConnections(
+            current.TenantId, RedisResourceDeployment.ResourceType, current.Id, session, cancellationToken);
+        if (cascade is ResourceConnectionCascadeConflict)
+            return new RedisDeletionConflict(current.Id);
 
         var replace = await redisServices.ReplaceOneAsync(
             session,

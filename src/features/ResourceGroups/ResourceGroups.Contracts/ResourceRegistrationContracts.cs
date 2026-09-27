@@ -71,3 +71,12 @@ public interface IResourceRegistrar
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 }
+
+// Acquires a write on the tenant's resource registration in the caller's Mongo
+// transaction, so a connection can resolve placements against a stable owner.
+public delegate Task<RegisteredResource?> FenceRegisteredResource(
+    string tenantId,
+    ResourceTypeId resourceTypeId,
+    string resourceId,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);

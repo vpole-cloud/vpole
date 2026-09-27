@@ -82,23 +82,27 @@ public union UpdateWebServiceError(
     GeneratedHostnameBindingError,
     ResourceDeploymentMutationError,
     AdvanceResourceDeploymentRevisionError,
+    WebServiceConnectionConflict,
     WebServiceUpdateConflict,
     QuotaExecutionError);
 
 public union RedeployWebServiceError(
     WebServiceLifecycleMutationStateError,
     ResourceDeploymentMutationError,
+    WebServiceConnectionConflict,
     WebServiceUpdateConflict);
 
 public union RollbackWebServiceError(
     RollbackWebServiceStateError,
     ResourceDeploymentMutationError,
+    WebServiceConnectionConflict,
     WebServiceUpdateConflict,
     QuotaExecutionError);
 
 public union UpdateWebServiceImageTagError(
     WebServiceImageTagStateError,
     ResourceDeploymentMutationError,
+    WebServiceConnectionConflict,
     WebServiceUpdateConflict);
 
 public union UpdateWebServiceDeploymentError(
@@ -106,6 +110,7 @@ public union UpdateWebServiceDeploymentError(
     ComputeProfileResolutionError,
     ResourceDeploymentMutationError,
     AdvanceResourceDeploymentRevisionError,
+    WebServiceConnectionConflict,
     WebServiceUpdateConflict,
     QuotaExecutionError);
 
@@ -113,6 +118,7 @@ public union DeleteWebServiceDeploymentError(
     DeleteWebServiceDeploymentStateError,
     ResourceDeploymentMutationError,
     AdvanceResourceDeploymentRevisionError,
+    WebServiceConnectionConflict,
     WebServiceUpdateConflict,
     QuotaExecutionError);
 
@@ -120,6 +126,7 @@ public union RetryWebServiceDeploymentError(
     WebServiceDeploymentMutationStateError,
     ResourceDeploymentMutationError,
     AdvanceResourceDeploymentRevisionError,
+    WebServiceConnectionConflict,
     WebServiceUpdateConflict);
 
 public union WebServiceDeploymentHostnameError(
@@ -128,6 +135,7 @@ public union WebServiceDeploymentHostnameError(
     CustomHostnameBindingError,
     ResourceDeploymentMutationError,
     AdvanceResourceDeploymentRevisionError,
+    WebServiceConnectionConflict,
     WebServiceUpdateConflict);
 
 public sealed record WebServiceHostnameAttachmentUnavailable(string WebServiceId);

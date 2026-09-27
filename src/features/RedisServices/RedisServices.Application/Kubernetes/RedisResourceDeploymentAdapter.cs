@@ -4,6 +4,7 @@ using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.RedisServices.Application.Persistence.Reads;
+using Pole.Features.RedisServices.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 
 namespace Pole.Features.RedisServices.Application.Kubernetes;
@@ -72,9 +73,9 @@ public sealed class RedisResourceDeploymentAdapter(
         return ResourceDeploymentAdapterResult.Succeeded.Create(
         [
             ResourceDeploymentEndpointDto.Create(
-                "Redis",
+                RedisConnectionEndpoints.RuntimeEndpointKind,
                 inKubernetes.ClusterLocalHost,
-                port: 6379,
+                port: RedisConnectionEndpoints.Redis.TcpPort,
                 scheme: "redis")
         ]);
     }

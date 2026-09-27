@@ -1,0 +1,38 @@
+using MongoDB.Driver;
+using Pole.Features.ResourceConnections.Contracts;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
+using Pole.Workloads;
+
+namespace Pole.Features.ResourceDeployments.Application.Persistence;
+
+internal sealed class ResourceDeploymentConnectionGuard(
+    FenceRegisteredResource fenceRegisteredResource,
+    ReconcileConnectionsForResource reconcileConnections)
+{
+    public async Task<bool> FenceAsync(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken) =>
+        await fenceRegisteredResource(
+            tenantId, resourceType, resourceId, session, cancellationToken) is not null;
+
+    public async Task<ResourceDeploymentConnectionConflict?> ReconcileAsync(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await reconcileConnections(
+            tenantId, resourceType, resourceId, session, cancellationToken);
+        return outcome switch
+        {
+            ResourceConnectionTopologyValid => null,
+            ResourceConnectionTopologyConflict conflict =>
+                new ResourceDeploymentConnectionConflict(resourceId, conflict.ConnectionId)
+        };
+    }
+}

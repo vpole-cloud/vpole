@@ -203,6 +203,8 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
             cancellationToken);
         if (persisted is WebServiceUpdateConflict persistenceError)
             return Abort(transaction, new WebServiceDeploymentHostnameError(persistenceError));
+        if (persisted is WebServiceConnectionConflict connectionConflict)
+            return Abort(transaction, new WebServiceDeploymentHostnameError(connectionConflict));
 
         var release = WebServiceReleaseFactory.CreatePending(
             updated.TenantId,

@@ -160,6 +160,9 @@ public sealed class UpdateWebServiceImageTagHandler(
             if (persisted is WebServiceUpdateConflict persistenceError)
                 return transaction.Abort(Error(
                     new UpdateWebServiceImageTagError(persistenceError)));
+            if (persisted is WebServiceConnectionConflict connectionConflict)
+                return transaction.Abort(Error(
+                    new UpdateWebServiceImageTagError(connectionConflict)));
 
             if (authorization.DeploymentTokenId is not null)
             {

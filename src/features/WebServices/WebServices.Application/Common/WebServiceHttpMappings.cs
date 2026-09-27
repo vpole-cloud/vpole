@@ -33,6 +33,13 @@ public static class WebServiceHttpMappings
     public static HttpProblem MapError(GetWebServiceDeploymentHostnamesError error) =>
         MapGetDeploymentHostnamesError(error);
 
+    public static HttpProblem MapError(WebServiceConnectionConflict error) => Problem(
+        HttpStatusCode.Conflict,
+        "web-services.connection-conflict",
+        "Web service change would break a resource connection",
+        ("webServiceId", error.WebServiceId),
+        ("connectionId", error.ConnectionId));
+
     public static HttpProblem MapError(WebServiceUpdateConflict error) => Problem(
         HttpStatusCode.Conflict,
         "web-services.update.concurrent-change",
@@ -61,6 +68,7 @@ public static class WebServiceHttpMappings
         GeneratedHostnameBindingError binding => DomainContractHttpMappings.MapGeneratedBindingError(binding),
         CreateResourceDeploymentError deployment => ResourceDeploymentContractHttpMappings.MapDeploymentError(deployment),
         AdvanceResourceDeploymentRevisionError revision => ResourceDeploymentContractHttpMappings.MapRevisionError(revision),
+        WebServiceConnectionConflict conflict => MapError(conflict),
         WebServiceUpdateConflict conflict => MapError(conflict),
         QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
     };
@@ -73,6 +81,7 @@ public static class WebServiceHttpMappings
         GeneratedHostnameBindingError binding => DomainContractHttpMappings.MapGeneratedBindingError(binding),
         ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
         AdvanceResourceDeploymentRevisionError revision => ResourceDeploymentContractHttpMappings.MapRevisionError(revision),
+        WebServiceConnectionConflict conflict => MapError(conflict),
         WebServiceUpdateConflict conflict => MapError(conflict),
         QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
     };
@@ -90,6 +99,7 @@ public static class WebServiceHttpMappings
     {
         WebServiceLifecycleMutationStateError state => MapLifecycleMutationStateError(state),
         ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
+        WebServiceConnectionConflict conflict => MapError(conflict),
         WebServiceUpdateConflict conflict => MapError(conflict)
     };
 
@@ -97,6 +107,7 @@ public static class WebServiceHttpMappings
     {
         RollbackWebServiceStateError state => MapRollbackStateError(state),
         ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
+        WebServiceConnectionConflict conflict => MapError(conflict),
         WebServiceUpdateConflict conflict => MapError(conflict),
         QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
     };
@@ -114,6 +125,7 @@ public static class WebServiceHttpMappings
     {
         WebServiceImageTagStateError state => MapImageTagStateError(state),
         ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
+        WebServiceConnectionConflict conflict => MapError(conflict),
         WebServiceUpdateConflict conflict => MapError(conflict)
     };
 
@@ -123,6 +135,7 @@ public static class WebServiceHttpMappings
         ComputeProfileResolutionError compute => ComputeProfileContractHttpMappings.MapResolutionError(compute),
         ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
         AdvanceResourceDeploymentRevisionError revision => ResourceDeploymentContractHttpMappings.MapRevisionError(revision),
+        WebServiceConnectionConflict conflict => MapError(conflict),
         WebServiceUpdateConflict conflict => MapError(conflict),
         QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
     };
@@ -132,6 +145,7 @@ public static class WebServiceHttpMappings
         DeleteWebServiceDeploymentStateError state => MapDeleteDeploymentStateError(state),
         ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
         AdvanceResourceDeploymentRevisionError revision => ResourceDeploymentContractHttpMappings.MapRevisionError(revision),
+        WebServiceConnectionConflict conflict => MapError(conflict),
         WebServiceUpdateConflict conflict => MapError(conflict),
         QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
     };
@@ -141,6 +155,7 @@ public static class WebServiceHttpMappings
         WebServiceDeploymentMutationStateError state => MapDeploymentMutationStateError(state),
         ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
         AdvanceResourceDeploymentRevisionError revision => ResourceDeploymentContractHttpMappings.MapRevisionError(revision),
+        WebServiceConnectionConflict conflict => MapError(conflict),
         WebServiceUpdateConflict conflict => MapError(conflict)
     };
 
@@ -155,6 +170,7 @@ public static class WebServiceHttpMappings
         CustomHostnameBindingError hostname => DomainContractHttpMappings.MapCustomHostnameBindingError(hostname),
         ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
         AdvanceResourceDeploymentRevisionError revision => ResourceDeploymentContractHttpMappings.MapRevisionError(revision),
+        WebServiceConnectionConflict conflict => MapError(conflict),
         WebServiceUpdateConflict conflict => MapError(conflict)
     };
 
