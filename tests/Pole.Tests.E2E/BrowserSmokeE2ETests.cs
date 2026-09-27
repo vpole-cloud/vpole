@@ -1,12 +1,16 @@
+using System.Collections.Concurrent;
 using Microsoft.Playwright;
 using Pole.Testing;
 using Pole.Tests.E2E.Infrastructure;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Pole.Tests.E2E;
 
 [Collection(PoleE2ECollection.Name)]
-public sealed class BrowserSmokeE2ETests(PoleE2EFixture fixture)
+public sealed class BrowserSmokeE2ETests(
+    PoleE2EFixture fixture,
+    ITestOutputHelper output)
 {
     [Fact]
     public async Task User_can_sign_in_select_a_tenant_and_create_resource_groups_at_desktop_and_mobile_widths()
@@ -35,13 +39,51 @@ public sealed class BrowserSmokeE2ETests(PoleE2EFixture fixture)
                 IgnoreHTTPSErrors = true
             });
             var page = await context.NewPageAsync();
+            var navigation = new ConcurrentQueue<string>();
+            void Record(string item)
+            {
+                navigation.Enqueue(item);
+                while (navigation.Count > 20)
+                    navigation.TryDequeue(out _);
+            }
+            page.Response += (_, response) =>
+            {
+                var resourceType = response.Request.ResourceType;
+                if (resourceType == "document" || response.Status >= 300)
+                    Record($"{resourceType} {response.Status} {SafePath(response.Url)}");
+            };
+            page.RequestFailed += (_, request) =>
+                Record($"request-failed {request.ResourceType} {SafePath(request.Url)}");
+            page.PageError += (_, error) =>
+            {
+                var errorText = error.ToString();
+                var kind = new[] { "TypeError", "ReferenceError", "SyntaxError", "RangeError" }
+                    .FirstOrDefault(errorText.Contains) ?? "Other";
+                Record($"page-error {kind}");
+            };
             await page.GotoAsync(fixture.FrontendBaseAddress.ToString(), new PageGotoOptions
             {
                 WaitUntil = WaitUntilState.NetworkIdle
             });
 
-            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in" }).ClickAsync();
-            await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);
+            try
+            {
+                await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in" }).ClickAsync();
+            }
+            catch (TimeoutException)
+            {
+                await CaptureAuthDiagnosticAsync(page, name, "login-button", navigation);
+                throw;
+            }
+            try
+            {
+                await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);
+            }
+            catch (TimeoutException)
+            {
+                await CaptureAuthDiagnosticAsync(page, name, "username-field", navigation);
+                throw;
+            }
             await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password" })
                 .FillAsync(fixture.Alpha.Password);
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In" }).ClickAsync();
@@ -91,5 +133,46 @@ public sealed class BrowserSmokeE2ETests(PoleE2EFixture fixture)
         using var response = await fixture.Api.SendAsync(request, cancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.NoContent, response.StatusCode);
     }
+
+    private async Task CaptureAuthDiagnosticAsync(
+        IPage page,
+        string viewport,
+        string step,
+        ConcurrentQueue<string> navigation)
+    {
+        try
+        {
+            output.WriteLine($"Browser auth timeout: viewport={viewport}, step={step}, path={SafePath(page.Url)}");
+            foreach (var item in navigation)
+                output.WriteLine($"Browser auth navigation: {item}");
+            var directory = Path.Combine(".artifacts", "browser-auth-diagnostics");
+            Directory.CreateDirectory(directory);
+            var screenshot = Path.GetFullPath(Path.Combine(
+                directory,
+                $"{step}-{Guid.NewGuid():N}.png"));
+            await page.ScreenshotAsync(new PageScreenshotOptions
+            {
+                Path = screenshot,
+                Timeout = 5000
+            });
+            output.WriteLine($"Browser auth screenshot: {screenshot}");
+        }
+        catch (Exception error)
+        {
+            try
+            {
+                output.WriteLine($"Browser auth diagnostic unavailable: {error.GetType().Name}");
+            }
+            catch (Exception)
+            {
+                // Preserve the original locator timeout if diagnostic output also fails.
+            }
+        }
+    }
+
+    private static string SafePath(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            ? uri.GetLeftPart(UriPartial.Path)
+            : "unavailable";
 
 }
