@@ -319,6 +319,126 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             request.Path.EndsWith("/ingresses/api-ing", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Apply_PublicGenerationSupersededAfterIngressWriteDeletesOnlyReturnedIdentity(
+        bool replace)
+    {
+        var reader = new RecordingReader(CreateWebService());
+        using var handler = new RecordingKubernetesHandler
+        {
+            ConflictIngressCreate = replace,
+            IngressReadResponse = CurrentIngressJson(),
+            IngressWriteResponse = CurrentIngressJson(resourceVersion: "8"),
+            BlockIngressWriteResponse = true,
+            CurrentIngressUid = "ingress-uid",
+            CurrentIngressResourceVersion = "8"
+        };
+        using var kubernetes = new Kubernetes(
+            new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
+            handler);
+        var subject = new WebServiceResourceDeploymentAdapter(
+            reader.LoadSnapshot,
+            reader.LoadById,
+            reader.LoadExactDeployment,
+            UnexpectedRegistryAccess,
+            new FixedKubernetesClientProvider(kubernetes),
+            SuccessfulPolicy);
+
+        var applyTask = subject.ApplyAsync(CreateContext(includeIngress: true));
+        await handler.IngressWriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        reader.CurrentGeneration = 2;
+        handler.ContinueIngressWrite.TrySetResult();
+        var result = await applyTask;
+
+        var failed = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
+        Assert.Equal("DeploymentGenerationSuperseded", failed.FailureCode);
+        var deletion = Assert.Single(handler.Requests, request =>
+            request.Method == HttpMethod.Delete &&
+            request.Path.EndsWith("/ingresses/api-ing", StringComparison.Ordinal));
+        AssertIngressDeletePreconditions(deletion, "ingress-uid", "8");
+        Assert.True(handler.IngressDeleted);
+        Assert.Equal(HttpStatusCode.OK, handler.IngressDeleteResponseStatus);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Apply_PublicStaleWriteDoesNotDeleteChangedOrRemovedIngress(
+        bool removedBeforeCompensation)
+    {
+        var reader = new RecordingReader(CreateWebService());
+        using var handler = new RecordingKubernetesHandler
+        {
+            IngressWriteResponse = CurrentIngressJson(resourceVersion: "8"),
+            BlockIngressWriteResponse = true,
+            IngressMissingOnDelete = removedBeforeCompensation,
+            CurrentIngressUid = "ingress-uid",
+            CurrentIngressResourceVersion = "9"
+        };
+        using var kubernetes = new Kubernetes(
+            new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
+            handler);
+        var subject = new WebServiceResourceDeploymentAdapter(
+            reader.LoadSnapshot,
+            reader.LoadById,
+            reader.LoadExactDeployment,
+            UnexpectedRegistryAccess,
+            new FixedKubernetesClientProvider(kubernetes),
+            SuccessfulPolicy);
+
+        var applyTask = subject.ApplyAsync(CreateContext(includeIngress: true));
+        await handler.IngressWriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        reader.CurrentGeneration = 2;
+        handler.ContinueIngressWrite.TrySetResult();
+        var result = await applyTask;
+
+        var failed = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
+        Assert.Equal("DeploymentGenerationSuperseded", failed.FailureCode);
+        var deletion = Assert.Single(handler.Requests, request =>
+            request.Method == HttpMethod.Delete &&
+            request.Path.EndsWith("/ingresses/api-ing", StringComparison.Ordinal));
+        AssertIngressDeletePreconditions(deletion, "ingress-uid", "8");
+        Assert.False(handler.IngressDeleted);
+        Assert.Equal(
+            removedBeforeCompensation ? HttpStatusCode.NotFound : HttpStatusCode.Conflict,
+            handler.IngressDeleteResponseStatus);
+    }
+
+    [Fact]
+    public async Task Apply_PublicStaleWriteWithoutReturnedIdentityNeverDeletesIngress()
+    {
+        var reader = new RecordingReader(CreateWebService());
+        using var handler = new RecordingKubernetesHandler
+        {
+            IngressWriteResponse = JsonSerializer.Serialize(new { metadata = new { name = "api-ing" } }),
+            BlockIngressWriteResponse = true
+        };
+        using var kubernetes = new Kubernetes(
+            new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
+            handler);
+        var subject = new WebServiceResourceDeploymentAdapter(
+            reader.LoadSnapshot,
+            reader.LoadById,
+            reader.LoadExactDeployment,
+            UnexpectedRegistryAccess,
+            new FixedKubernetesClientProvider(kubernetes),
+            SuccessfulPolicy);
+
+        var applyTask = subject.ApplyAsync(CreateContext(includeIngress: true));
+        await handler.IngressWriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        reader.CurrentGeneration = 2;
+        handler.ContinueIngressWrite.TrySetResult();
+        var result = await applyTask;
+
+        var failed = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
+        Assert.Equal("DeploymentGenerationSuperseded", failed.FailureCode);
+        Assert.DoesNotContain(handler.Requests, request =>
+            request.Method == HttpMethod.Delete &&
+            request.Path.EndsWith("/ingresses/api-ing", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task Apply_PublicPolicySourceFailureStillAttemptsHttp01RevocationBeforeWorkloadApply()
     {
@@ -567,27 +687,42 @@ public sealed class WebServiceResourceDeploymentAdapterTests
                 Id = ResourceId
             });
 
-    private static string CurrentIngressJson() => JsonSerializer.Serialize(new
+    private static void AssertIngressDeletePreconditions(
+        RecordedRequest request,
+        string uid,
+        string resourceVersion)
     {
-        metadata = new
+        using var body = JsonDocument.Parse(request.Body);
+        var preconditions = body.RootElement.GetProperty("preconditions");
+        Assert.Equal(uid, preconditions.GetProperty("uid").GetString());
+        Assert.Equal(resourceVersion, preconditions.GetProperty("resourceVersion").GetString());
+    }
+
+    private static string CurrentIngressJson(
+        string uid = "ingress-uid",
+        string resourceVersion = "7") => JsonSerializer.Serialize(new
         {
-            uid = "ingress-uid",
-            resourceVersion = "7",
-            labels = new WorkloadIdentityLabels(
-                TenantId,
-                ResourceGroupId,
-                IsolationScopeId,
-                RuntimeCellId,
-                TargetId,
-                "WebService",
-                ResourceId,
-                DeploymentId).ToDictionary(),
-            annotations = new Dictionary<string, string>
+            metadata = new
             {
-                ["pole.server/deploymentGeneration"] = "1"
+                name = "api-ing",
+                @namespace = KubernetesNamespace,
+                uid,
+                resourceVersion,
+                labels = new WorkloadIdentityLabels(
+                    TenantId,
+                    ResourceGroupId,
+                    IsolationScopeId,
+                    RuntimeCellId,
+                    TargetId,
+                    "WebService",
+                    ResourceId,
+                    DeploymentId).ToDictionary(),
+                annotations = new Dictionary<string, string>
+                {
+                    ["pole.server/deploymentGeneration"] = "1"
+                }
             }
-        }
-    });
+        });
 
     private sealed class RecordingReader(WebService webService)
     {
@@ -675,10 +810,21 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         public List<RecordedRequest> Requests { get; } = [];
         public bool ConflictIngressCreate { get; init; }
         public bool BlockIngressRead { get; init; }
+        public bool BlockIngressWriteResponse { get; init; }
         public string? IngressReadResponse { get; init; }
+        public string? IngressWriteResponse { get; init; }
+        public bool IngressMissingOnDelete { get; init; }
+        public string? CurrentIngressUid { get; set; }
+        public string? CurrentIngressResourceVersion { get; set; }
+        public bool IngressDeleted => _ingressDeleted;
+        public HttpStatusCode? IngressDeleteResponseStatus { get; private set; }
         public TaskCompletionSource IngressReadStarted { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ContinueIngressRead { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource IngressWriteStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ContinueIngressWrite { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         protected override async Task<HttpResponseMessage> SendAsync(
@@ -699,6 +845,23 @@ public sealed class WebServiceResourceDeploymentAdapterTests
                 {
                     RequestMessage = request,
                     Content = new StringContent("{}", Encoding.UTF8, "application/json")
+                };
+            }
+            var ingressWrite =
+                (request.Method == HttpMethod.Post &&
+                 request.RequestUri.AbsolutePath.EndsWith("/ingresses", StringComparison.Ordinal)) ||
+                (request.Method == HttpMethod.Put &&
+                 request.RequestUri.AbsolutePath.EndsWith("/ingresses/api-ing", StringComparison.Ordinal));
+            if (ingressWrite && IngressWriteResponse is not null)
+            {
+                IngressWriteStarted.TrySetResult();
+                if (BlockIngressWriteResponse)
+                    await ContinueIngressWrite.Task.WaitAsync(cancellationToken);
+                return new HttpResponseMessage(
+                    request.Method == HttpMethod.Post ? HttpStatusCode.Created : HttpStatusCode.OK)
+                {
+                    RequestMessage = request,
+                    Content = new StringContent(IngressWriteResponse, Encoding.UTF8, "application/json")
                 };
             }
             if (request.Method == HttpMethod.Get &&
@@ -723,7 +886,34 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             }
             if (request.Method == HttpMethod.Delete &&
                 request.RequestUri.AbsolutePath.EndsWith("/ingresses/api-ing", StringComparison.Ordinal))
+            {
+                if (IngressMissingOnDelete)
+                {
+                    IngressDeleteResponseStatus = HttpStatusCode.NotFound;
+                    return new HttpResponseMessage(HttpStatusCode.NotFound)
+                    {
+                        RequestMessage = request,
+                        Content = new StringContent("{}", Encoding.UTF8, "application/json")
+                    };
+                }
+                if (CurrentIngressUid is not null && CurrentIngressResourceVersion is not null)
+                {
+                    using var deletion = JsonDocument.Parse(body);
+                    var preconditions = deletion.RootElement.GetProperty("preconditions");
+                    if (preconditions.GetProperty("uid").GetString() != CurrentIngressUid ||
+                        preconditions.GetProperty("resourceVersion").GetString() != CurrentIngressResourceVersion)
+                    {
+                        IngressDeleteResponseStatus = HttpStatusCode.Conflict;
+                        return new HttpResponseMessage(HttpStatusCode.Conflict)
+                        {
+                            RequestMessage = request,
+                            Content = new StringContent("{}", Encoding.UTF8, "application/json")
+                        };
+                    }
+                }
                 _ingressDeleted = true;
+                IngressDeleteResponseStatus = HttpStatusCode.OK;
+            }
             var absentIngressRead = request.Method == HttpMethod.Get &&
                 request.RequestUri!.AbsolutePath.Contains("/ingresses/", StringComparison.Ordinal);
             return new HttpResponseMessage(
