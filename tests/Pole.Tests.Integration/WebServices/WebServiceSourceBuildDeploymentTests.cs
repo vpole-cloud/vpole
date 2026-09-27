@@ -1,10 +1,11 @@
 using System.Collections.Immutable;
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Events;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Consumers;
@@ -26,8 +27,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
     [Fact]
     public async Task SourceBuildDeployment_CreatesTypedProvenanceAndCompletionEvent()
     {
-        var webService = TestData.SeedWebService(ObjectId.GenerateNewId().ToString());
-        await Fixture.Database.WebServices().InsertOneAsync(webService);
+        var webService = await SeedWebServiceAsync();
         var deployments = new[]
         {
             CreatePlacement("507f1f77bcf86cd799439051", "507f1f77bcf86cd799439061"),
@@ -101,8 +101,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
     [Fact]
     public async Task SourceBuildDeployment_AbortsOnTypedResourceDeploymentRejection()
     {
-        var webService = TestData.SeedWebService(ObjectId.GenerateNewId().ToString());
-        await Fixture.Database.WebServices().InsertOneAsync(webService);
+        var webService = await SeedWebServiceAsync();
         var deployment = CreatePlacement(
             "507f1f77bcf86cd799439051",
             "507f1f77bcf86cd799439061");
@@ -137,8 +136,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
     [Fact]
     public async Task SourceBuildDeployment_DoesNotReapplyRemovedTarget()
     {
-        var webService = TestData.SeedWebService(ObjectId.GenerateNewId().ToString());
-        await Fixture.Database.WebServices().InsertOneAsync(webService);
+        var webService = await SeedWebServiceAsync();
         var desired = CreatePlacement("507f1f77bcf86cd799439051", "507f1f77bcf86cd799439061");
         var removed = CreatePlacement("507f1f77bcf86cd799439052", "507f1f77bcf86cd799439062") with
         {
@@ -157,6 +155,33 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             .Find(item => item.Id == result.ReleaseId).SingleAsync();
         Assert.Equal(desired.DeploymentId,
             Assert.Single(release.Deployments).ResourceDeploymentId);
+    }
+
+    private async Task<WebService> SeedWebServiceAsync()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var webService = TestData.SeedWebService(group.Id);
+        await DbContext.RunOutcomeInTransactionAsync<RegisteredResource>(
+            async (transaction, cancellationToken) =>
+            {
+                var registration = await Services.GetRequiredService<IResourceRegistrar>()
+                    .RegisterAsync(
+                        webService.TenantId,
+                        group.Id,
+                        new ResourceRegistrationDescriptor(
+                            WebServiceResourceDeployment.ResourceType,
+                            webService.Id,
+                            webService.Name),
+                        transaction.Session,
+                        cancellationToken);
+                var registered = Assert.IsType<RegisteredResource>(registration.Value);
+                await Fixture.Database.WebServices().InsertOneAsync(
+                    transaction.Session,
+                    webService,
+                    cancellationToken: cancellationToken);
+                return transaction.Commit(registered);
+            });
+        return webService;
     }
 
     private WebServiceSourceBuildDeploymentService CreateService(
