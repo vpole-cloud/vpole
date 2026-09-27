@@ -203,10 +203,13 @@ Use a named delegate when an operation:
 Example:
 
 ```csharp
-public delegate Task<Result<ResourceSnapshot, LoadResourceError>> LoadResource(
+public delegate Task<LoadResourceOutcome> LoadResource(
     LoadResourceRequest request,
     CancellationToken cancellationToken = default);
 ```
+
+`LoadResourceOutcome` is the operation-specific union of `ResourceSnapshot` and
+`LoadResourceError`.
 
 Injecting two or three explicit delegates is preferred to injecting a broad
 interface and using one method. A handler with an excessive number of delegates
