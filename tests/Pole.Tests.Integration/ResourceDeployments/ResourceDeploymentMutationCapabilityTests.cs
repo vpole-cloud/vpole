@@ -368,6 +368,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
             [first.RuntimeCell, second.RuntimeCell]);
         await fixture.DbContext.ResourceDeployments.InsertManyAsync(
             [first.Deployment, second.Deployment]);
+        await InsertRegistrationAsync();
         var placementLookup = CreateRecordingPlacementLookup();
         var fence = new RecordingComputeProfileFence();
         var mutations = CreateMutations(fence, placementLookup);
@@ -433,6 +434,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
             [first.RuntimeCell, second.RuntimeCell]);
         await fixture.DbContext.ResourceDeployments.InsertManyAsync(
             [first.Deployment, second.Deployment]);
+        await InsertRegistrationAsync();
         var mutations = CreateMutations();
 
         var result = await RunSetMutationAsync(
@@ -551,6 +553,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         var timeProvider = new FixedTimeProvider(new DateTimeOffset(
             MutationAtUtc,
             TimeSpan.Zero));
+        var connectionGuard = Services.GetRequiredService<ResourceDeploymentConnectionGuard>();
         return new MutationOperations(
             new MongoRequestResourceDeploymentApply(
                 fixture.DbContext.ResourceDeployments,
@@ -561,6 +564,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
             new MongoRequestResourceDeploymentDeletion(
                 fixture.DbContext.ResourceDeployments,
                 storeOutboxWrites,
+                connectionGuard,
                 timeProvider).InvokeAsync,
             new MongoRetryExactResourceDeployment(
                 fixture.DbContext.ResourceDeployments,
@@ -575,6 +579,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
             new MongoRequestResourceDeploymentSetDeletion(
                 fixture.DbContext.ResourceDeployments,
                 storeOutboxWrites,
+                connectionGuard,
                 timeProvider).InvokeAsync);
     }
 
@@ -650,7 +655,21 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
     {
         await fixture.DbContext.RuntimeCells.InsertOneAsync(runtimeCell);
         await fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
+        await InsertRegistrationAsync();
     }
+
+    private Task InsertRegistrationAsync() =>
+        fixture.DbContext.ResourceRegistrations.InsertOneAsync(
+            ResourceRegistrationFactory.Create(
+                TenantId,
+                ResourceGroupId,
+                TestResourceType,
+                ResourceId,
+                "test-resource",
+                owningPluginId: null,
+                new ResourceRegistrationFactory.CreateOptions(
+                    ObjectId.GenerateNewId().ToString(),
+                    CreatedAtUtc)));
 
     private Task<ResourceDeployment> LoadDeploymentAsync() =>
         fixture.DbContext.ResourceDeployments

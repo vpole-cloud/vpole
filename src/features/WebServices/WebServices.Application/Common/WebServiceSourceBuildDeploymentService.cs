@@ -100,6 +100,12 @@ public sealed class WebServiceSourceBuildDeploymentService(
                     new SourceBuildWebServiceUpdateConflict(updateConflict.WebServiceId));
                 return transaction.Abort(rejected);
             }
+            if (update is WebServiceConnectionConflict connectionConflict)
+            {
+                DeploySourceBuildWebServiceOutcome rejected = new SourceBuildWebServiceDeploymentError(
+                    new SourceBuildWebServiceUpdateConflict(connectionConflict.WebServiceId));
+                return transaction.Abort(rejected);
+            }
 
             var release = WebServiceReleaseFactory.CreatePending(
                 request.TenantId,
@@ -138,6 +144,10 @@ public sealed class WebServiceSourceBuildDeploymentService(
         string webServiceId,
         ResourceDeploymentMutationError error) => error switch
         {
+            ResourceDeploymentConnectionConflict => new(
+                webServiceId,
+                new SourceBuildResourceDeploymentRejection(
+                    new SourceBuildResourceDeploymentPlacementUnavailable(null))),
             ResourceDeploymentMutationNotFound notFound => new(
                 webServiceId,
                 new SourceBuildResourceDeploymentRejection(

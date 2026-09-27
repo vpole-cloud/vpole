@@ -10,6 +10,8 @@ using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Migrations;
 using Pole.Features.RedisServices.Events;
+using Pole.Features.ResourceConnections.Application;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.RedisServices.Tests.Integration.Infrastructure;
 using Xunit;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -34,13 +36,17 @@ public sealed class RedisFeatureHostTests(MongoReplicaSetFixture fixture)
             configuration,
             typeof(RedisServicesFeatureRegistration).Assembly,
             typeof(RedisServiceCreatedEvent).Assembly,
-            (services, _) => services.AddRedisServicesFeature(),
+            (services, _) => services.AddRedisServicesFeature().AddResourceConnectionsFeature(),
             endpoints => endpoints.MapRedisServiceEndpoints(),
             new FeatureScopedMigration("pole.redis", new RedisSchemaValidationMigration()),
             services =>
         {
             services.AddSingleton(fixture.Client);
             services.AddSingleton(fixture.Database);
+            services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ =>
+                (tenantId, runtimeCellId, targetId, namespaceName, ct) =>
+                    Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
+                        new RuntimeCellIngressBaselineReady()));
             services.AddTestDeploymentTargets();
             var storage = new TestStorageDiscoveryService("standard");
             services.AddSingleton<DiscoverKubernetesStorageClasses>(storage.GetStorageClassesAsync);

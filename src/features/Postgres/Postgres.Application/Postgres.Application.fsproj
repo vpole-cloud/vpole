@@ -25,6 +25,7 @@
         <Compile Include="Persistence\PostgresFilters.fs" />
         <Compile Include="Persistence\PostgresPersistenceGuards.fs" />
         <Compile Include="Persistence\Reads\LoadPostgresClusterById.fs" />
+        <Compile Include="Persistence\Reads\LoadPostgresConnectionEndpoints.fs" />
         <Compile Include="Persistence\Reads\LoadPostgresClusterPage.fs" />
         <Compile Include="Persistence\Credentials\PostgresCredentialErrors.fs" />
         <Compile Include="Persistence\Credentials\CreatePostgresCredential.fs" />
@@ -67,6 +68,7 @@
         <PackageReference Include="KubernetesClient" />
     </ItemGroup>
     <ItemGroup>
+      <ProjectReference Include="../../ResourceConnections/ResourceConnections.Contracts/ResourceConnections.Contracts.csproj" />
       <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
       <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts.HttpMapping\DeploymentTargets.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
@@ -84,6 +86,7 @@
       <ProjectReference Include="..\..\Quotas\Quotas.Contracts.HttpMapping\Quotas.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\Quotas\Quotas.Primitives\Quotas.Primitives.csproj" />
       <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
+      <ProjectReference Include="..\Postgres.Contracts\Postgres.Contracts.csproj" />
       <ProjectReference Include="..\Postgres.Domain\Postgres.Domain.fsproj" />
       <ProjectReference Include="..\Postgres.Events\Postgres.Events.fsproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />

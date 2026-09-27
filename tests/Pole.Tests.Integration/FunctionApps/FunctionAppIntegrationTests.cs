@@ -10,6 +10,7 @@ using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -20,7 +21,7 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
     [Fact]
-    public async Task Create_maps_resource_group_not_found_from_placement_to_function_outcome()
+    public async Task Create_maps_resource_group_not_found_from_registration_to_function_outcome()
     {
         var result = await Mediator.Send(new CreateFunctionAppRequest(
             new CreateFunctionAppRequestBody(
@@ -31,14 +32,14 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
                 []),
             TestData.TenantId));
 
-        Assert.IsType<ResourcePlacementResourceGroupNotFound>(result.HandlerOutcome() switch
+        Assert.IsType<ResourceRegistrationResourceGroupNotFound>(result.HandlerOutcome() switch
         {
             CreateFunctionAppError error => error switch
             {
-                CreateResourceDeploymentError deploymentError => deploymentError switch
+                ResourceRegistrationMutationError registrationError => registrationError switch
                 {
-                    ResourcePlacementResourceGroupNotFound notFound => notFound,
-                    _ => throw new InvalidOperationException("Expected a Resource Group not-found placement outcome.")
+                    ResourceRegistrationResourceGroupNotFound notFound => notFound,
+                    _ => throw new InvalidOperationException("Expected a Resource Group not-found registration outcome.")
                 },
                 _ => throw new InvalidOperationException("Expected a Resource Group not-found outcome.")
             },

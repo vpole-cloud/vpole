@@ -8,6 +8,7 @@ namespace Pole.Features.ResourceDeployments.Application.Persistence.Requests;
 internal sealed class MongoRequestResourceDeploymentDeletion(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     StoreOutboxWrites storeOutboxWrites,
+    ResourceDeploymentConnectionGuard connectionGuard,
     TimeProvider timeProvider)
 {
     public async Task<ResourceDeploymentMutationOutcome> InvokeAsync(
@@ -19,6 +20,10 @@ internal sealed class MongoRequestResourceDeploymentDeletion(
             session,
             "Resource deployment mutations");
         ArgumentNullException.ThrowIfNull(request);
+        if (!await connectionGuard.FenceAsync(
+                request.TenantId, request.ResourceType, request.ResourceId, session, cancellationToken))
+            return new ResourceDeploymentMutationError(new ResourceDeploymentMutationNotFound(request.ResourceId));
+
         var loaded = await ResourceDeploymentMutationSupport.LoadSingleAsync(
             resourceDeployments,
             request,
@@ -41,7 +46,7 @@ internal sealed class MongoRequestResourceDeploymentDeletion(
         }
 
         var updated = current.RequestDeletion(timeProvider.GetUtcNow().UtcDateTime);
-        return updated.Revision == current.Revision
+        var mutation = updated.Revision == current.Revision
             ? current.ToPlacementSummaryDto()
             : await ResourceDeploymentMutationSupport.ReplaceAndEnqueueAsync(
                 resourceDeployments,
@@ -50,5 +55,12 @@ internal sealed class MongoRequestResourceDeploymentDeletion(
                 updated,
                 session,
                 cancellationToken);
+        if (mutation is ResourceDeploymentMutationError)
+            return mutation;
+        var connectionConflict = await connectionGuard.ReconcileAsync(
+            request.TenantId, request.ResourceType, request.ResourceId, session, cancellationToken);
+        return connectionConflict is null
+            ? mutation
+            : new ResourceDeploymentMutationError(connectionConflict);
     }
 }

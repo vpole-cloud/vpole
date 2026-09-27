@@ -10,6 +10,7 @@ open Pole.Features.Postgres.Application.Persistence.Lifecycle
 open Pole.Features.Postgres.Application.Persistence.Mutations
 open Pole.Features.Postgres.Application.Persistence.Reads
 open Pole.Features.Postgres.Domain
+open Pole.Features.Postgres.Contracts
 
 [<RequireQualifiedAccess>]
 module PostgresPersistenceRegistration =
@@ -19,6 +20,13 @@ module PostgresPersistenceRegistration =
                 serviceProvider
                     .GetRequiredService<IMongoDatabase>()
                     .GetCollection<PostgresCluster>("Postgres")))
+        |> ignore
+        services.AddScoped<MongoLoadPostgresConnectionEndpoints>() |> ignore
+        services.AddScoped<LoadPostgresConnectionEndpoints>(
+            Func<IServiceProvider, LoadPostgresConnectionEndpoints>(fun provider ->
+                LoadPostgresConnectionEndpoints(fun tenantId resourceId session cancellationToken ->
+                    provider.GetRequiredService<MongoLoadPostgresConnectionEndpoints>()
+                        .InvokeAsync(tenantId, resourceId, session, cancellationToken))))
         |> ignore
         services.AddScoped<MongoLoadPostgresClusterById>() |> ignore
         services.AddScoped<LoadPostgresClusterById>(

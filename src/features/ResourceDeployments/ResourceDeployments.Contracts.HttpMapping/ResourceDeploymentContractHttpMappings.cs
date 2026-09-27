@@ -41,6 +41,7 @@ public static class ResourceDeploymentContractHttpMappings
     public static HttpProblem MapDeploymentError(
         CreateResourceDeploymentError error) => error switch
         {
+            ResourceDeploymentConnectionConflict conflict => MapConnectionConflict(conflict),
             ResourceDeploymentTargetConfigurationChanged changed => Problem(
                 HttpStatusCode.Conflict,
                 "resource-deployments.target-changed",
@@ -76,6 +77,7 @@ public static class ResourceDeploymentContractHttpMappings
     public static HttpProblem MapMutationError(
         ResourceDeploymentMutationError error) => error switch
         {
+            ResourceDeploymentConnectionConflict conflict => MapConnectionConflict(conflict),
             ResourceDeploymentMutationNotFound notFound => Problem(
                 HttpStatusCode.NotFound,
                 "resource-deployments.not-found",
@@ -124,6 +126,13 @@ public static class ResourceDeploymentContractHttpMappings
                 "Compute profile changed",
                 ("computeProfileIds", changed.ComputeProfileIds))
         };
+
+    public static HttpProblem MapConnectionConflict(ResourceDeploymentConnectionConflict error) => Problem(
+        HttpStatusCode.Conflict,
+        "resource-deployments.connection-conflict",
+        "Placement change would break a resource connection",
+        ("resourceId", error.ResourceId),
+        ("connectionId", error.ConnectionId));
 
     public static HttpProblem MapComputeError(
         LoadCurrentResourceDeploymentComputeError error) => error switch

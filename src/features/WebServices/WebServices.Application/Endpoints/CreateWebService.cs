@@ -347,6 +347,18 @@ public sealed class CreateWebServiceHandler(
 
         var deploymentRequests =
             (IReadOnlyList<CreateResourceDeploymentRequest>)deploymentRequestsResult.Value;
+        var registration = await resourceRegistrar.RegisterAsync(
+            webService.TenantId,
+            webService.ResourceGroupId,
+            new ResourceRegistrationDescriptor(
+                WebServiceResourceDeployment.ResourceType,
+                webService.Id,
+                webService.Name),
+            transaction.Session,
+            cancellationToken);
+        if (registration is ResourceRegistrationMutationError registrationError)
+            return Abort(transaction, new CreateWebServiceError(registrationError));
+
         var deploymentsResult = await createResourceDeploymentSet(
             new CreateResourceDeploymentSetRequest(deploymentRequests),
             transaction.Session,
@@ -359,17 +371,6 @@ public sealed class CreateWebServiceHandler(
         var createdEvent = webService.ToCreateEvent(
             WebServiceDeploymentWorkflow.ToEventDeployments(deployments));
         await persistCreatedWebService(transaction.Session, webService, createdEvent, cancellationToken);
-        var registration = await resourceRegistrar.RegisterAsync(
-            webService.TenantId,
-            webService.ResourceGroupId,
-            new ResourceRegistrationDescriptor(
-                WebServiceResourceDeployment.ResourceType,
-                webService.Id,
-                webService.Name),
-            transaction.Session,
-            cancellationToken);
-        if (registration is ResourceRegistrationMutationError registrationError)
-            return Abort(transaction, new CreateWebServiceError(registrationError));
 
         var release = WebServiceReleaseFactory.CreatePending(
             webService.TenantId,

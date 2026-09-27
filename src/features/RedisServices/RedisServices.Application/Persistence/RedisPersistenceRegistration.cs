@@ -6,6 +6,7 @@ using Pole.Features.RedisServices.Application.Persistence.Lifecycle;
 using Pole.Features.RedisServices.Application.Persistence.Mutations;
 using Pole.Features.RedisServices.Application.Persistence.Reads;
 using Pole.Features.RedisServices.Domain;
+using Pole.Features.RedisServices.Contracts;
 
 namespace Pole.Features.RedisServices.Application.Persistence;
 
@@ -20,6 +21,9 @@ public static class RedisPersistenceRegistration
             serviceProvider
                 .GetRequiredService<IMongoDatabase>()
                 .GetCollection<Redis>(RedisCollectionName));
+        services.AddScoped<MongoLoadRedisConnectionEndpoints>();
+        services.AddScoped<LoadRedisConnectionEndpoints>(provider =>
+            provider.GetRequiredService<MongoLoadRedisConnectionEndpoints>().InvokeAsync);
         services.AddScoped<MongoLoadRedisById>();
         services.AddScoped<MongoLoadRedisPage>();
         services.AddScoped<MongoPersistCreatedRedis>();

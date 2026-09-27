@@ -197,6 +197,23 @@ public delegate Task<IReadOnlyList<PlacementSummaryDto>> LoadResourceDeploymentS
     string resourceId,
     CancellationToken cancellationToken = default);
 
+// Internal server-resolved identity for policy construction. This is never a
+// tenant-facing placement summary or caller-provided selector.
+public sealed record ResourceDeploymentConnectionPlacement(
+    string DeploymentId,
+    string DeploymentTargetId,
+    string RuntimeCellId,
+    string KubernetesNamespace,
+    bool DeletionRequested);
+
+public delegate Task<IReadOnlyList<ResourceDeploymentConnectionPlacement>>
+    LoadResourceDeploymentConnectionPlacements(
+    string tenantId,
+    ResourceTypeId resourceType,
+    string resourceId,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
+
 public delegate Task<PlacementSummaryDto?> LoadExactResourceDeployment(
     string tenantId,
     ResourceTypeId resourceType,

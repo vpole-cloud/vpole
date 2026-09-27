@@ -18,7 +18,8 @@ type PostgresResourceDeploymentMetadata =
 module PostgresClusterKubernetesBuilder =
     let buildResourceName (clusterId : string) = $"pg-{clusterId}"
 
-    let buildReadWriteServiceName (clusterId : string) = $"{buildResourceName clusterId}-rw"
+    let buildReadWriteServiceName (clusterId : string) =
+        Pole.Features.Postgres.Contracts.PostgresConnectionEndpoints.BuildReadWriteServiceName clusterId
     let buildDatabaseName (clusterId : string) = clusterId
 
     let buildLabels (cluster : PostgresCluster) (metadata : PostgresResourceDeploymentMetadata) =

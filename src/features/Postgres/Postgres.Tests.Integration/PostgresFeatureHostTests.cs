@@ -10,6 +10,8 @@ using Pole.Features.Postgres.Application;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Postgres.Events;
+using Pole.Features.ResourceConnections.Application;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Postgres.Tests.Integration.Infrastructure;
 using Xunit;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -38,13 +40,17 @@ public sealed class PostgresFeatureHostTests(MongoReplicaSetFixture fixture)
             configuration,
             typeof(PostgresFeatureRegistration).Assembly,
             typeof(PostgresClusterCreatedEvent).Assembly,
-            (services, settings) => services.AddPostgresFeature(settings),
+            (services, settings) => services.AddPostgresFeature(settings).AddResourceConnectionsFeature(),
             endpoints => endpoints.MapPostgresClusterEndpoints(),
             null,
             services =>
         {
             services.AddSingleton(fixture.Client);
             services.AddSingleton(fixture.Database);
+            services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ =>
+                (tenantId, runtimeCellId, targetId, namespaceName, ct) =>
+                    Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
+                        new RuntimeCellIngressBaselineReady()));
             services.AddTestDeploymentTargets();
             var storage = new TestStorageDiscoveryService("standard");
             services.AddSingleton<DiscoverKubernetesStorageClasses>(storage.GetStorageClassesAsync);

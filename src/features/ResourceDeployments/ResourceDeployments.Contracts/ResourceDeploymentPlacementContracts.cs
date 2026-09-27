@@ -65,6 +65,7 @@ public sealed record ResourcePlacementResourceGroupNotFound(string ResourceGroup
 public sealed record ResourcePlacementDeleting(string DeploymentTargetId);
 
 public union CreateResourceDeploymentError(
+    ResourceDeploymentConnectionConflict,
     ResourceDeploymentTargetConfigurationChanged,
     ResourceDeploymentComputeConfigurationChanged,
     ResourceDeploymentStorageConfigurationChanged,

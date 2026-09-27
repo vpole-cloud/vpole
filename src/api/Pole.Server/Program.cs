@@ -26,6 +26,7 @@ using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Postgres.Application;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.RedisServices.Application;
+using Pole.Features.ResourceConnections.Application;
 using Pole.Features.RedisServices.Application.Migrations;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceGroups.Application;
@@ -54,12 +55,14 @@ Assembly[] serviceAssemblies = [
     typeof(WebServiceEndpoints).Assembly, typeof(FunctionAppFeature).Assembly,
     typeof(FunctionRuntimeFeature).Assembly,
     typeof(RedisServicesFeatureRegistration).Assembly,
+    typeof(ResourceConnectionsFeature).Assembly,
     typeof(PostgresFeatureRegistration).Assembly
 ];
 Assembly[] serviceEventAssemblies = [
     typeof(Pole.Features.WebServices.Events.WebServiceCreatedEvent).Assembly,
     typeof(Pole.Features.Functions.Events.FunctionAppCreatedEvent).Assembly,
     typeof(Pole.Features.RedisServices.Events.RedisServiceCreatedEvent).Assembly,
+    typeof(Pole.Features.ResourceConnections.Events.ResourceConnectionCreatedEvent).Assembly,
     typeof(Pole.Features.Postgres.Events.PostgresClusterCreatedEvent).Assembly
 ];
 Assembly[] assemblies = [.. PolePlatform.ApplicationAssemblies, .. serviceAssemblies];
@@ -75,6 +78,7 @@ builder.Services.AddPolePlatform(configuration, serviceAssemblies, serviceEventA
     .AddFunctionRuntimeFeature(configuration)
     .AddWebServicesFeature()
     .AddRedisServicesFeature()
+    .AddResourceConnectionsFeature()
     .AddPostgresFeature(configuration)
     .AddHangfireWithMongo(configuration)
     .AddOpenApi();
@@ -124,6 +128,7 @@ app.Services
     .ScheduleSourceBuildRecurringJobs()
     .ScheduleResourceGroupRecurringJobs()
     .ScheduleResourceDeploymentRecurringJobs()
+    .ScheduleResourceConnectionRecurringJobs()
     .ScheduleSecretProjectionRecurringJobs()
     .ScheduleContainerRegistryRecurringJobs();
 

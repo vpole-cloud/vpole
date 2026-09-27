@@ -226,6 +226,19 @@ public sealed class CreateFunctionAppHandler(
             quotaError => new CreateFunctionAppError(quotaError),
             async (transaction, ct) =>
             {
+                var registration = await resourceRegistrar.RegisterAsync(
+                    request.TenantId,
+                    request.Body.ResourceGroupId,
+                    new ResourceRegistrationDescriptor(
+                        FunctionResourceDeployment.ResourceType,
+                        createOptions.FunctionAppId,
+                        request.Body.Name),
+                    transaction.Session,
+                    ct);
+                if (registration is ResourceRegistrationMutationError registrationError)
+                {
+                    return transaction.Abort(new CreateFunctionAppError(registrationError));
+                }
                 var deploymentResult = await createResourceDeployment(
                     new CreateResourceDeploymentRequest(
                         deploymentId,
@@ -263,19 +276,6 @@ public sealed class CreateFunctionAppHandler(
                     transaction.Session,
                     created,
                     ct);
-                var registration = await resourceRegistrar.RegisterAsync(
-                    created.FunctionApp.TenantId,
-                    created.FunctionApp.ResourceGroupId,
-                    new ResourceRegistrationDescriptor(
-                        FunctionResourceDeployment.ResourceType,
-                        created.FunctionApp.Id,
-                        created.FunctionApp.Name),
-                    transaction.Session,
-                    ct);
-                if (registration is ResourceRegistrationMutationError registrationError)
-                {
-                    return transaction.Abort(new CreateFunctionAppError(registrationError));
-                }
                 return transaction.Commit(new CreateFunctionAppResponse(
                     created.FunctionApp.Id,
                     created.Revision.Id,

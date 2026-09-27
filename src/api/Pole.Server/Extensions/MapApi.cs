@@ -4,6 +4,7 @@ using Pole.Platform.Hosting;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.ResourceConnections.Application;
 using Pole.Features.WebServices.Application.Common;
 namespace Pole.Server.Extensions;
 
@@ -16,6 +17,7 @@ public static class MapApi
             .MapFunctionAppEndpoints()
             .MapWebServiceEndpoints()
             .MapRedisServiceEndpoints()
+            .MapResourceConnectionEndpoints()
             .MapPostgresClusterEndpoints();
         return app;
     }

@@ -135,6 +135,8 @@ public static class ResourceGroupApplicationRegistration
             implementation => implementation.InvokeAsync);
         services.TryAddScoped<MongoResourceRegistrationMutations>();
         services.TryAddScoped<MongoResourceRegistrationReads>();
+        services.AddCapability<MongoResourceRegistrationConnectionFence,
+            FenceRegisteredResource>(implementation => implementation.InvokeAsync);
         services.TryAddScoped<IResourceRegistrar>(serviceProvider =>
             new BoundResourceRegistrar(
                 serviceProvider.GetRequiredService<MongoResourceRegistrationMutations>(),

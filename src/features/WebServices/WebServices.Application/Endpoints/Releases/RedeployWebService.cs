@@ -123,6 +123,9 @@ public sealed class RedeployWebServiceHandler(
             if (persisted is WebServiceUpdateConflict persistenceError)
                 return transaction.Abort(Error(
                     new RedeployWebServiceError(persistenceError)));
+            if (persisted is WebServiceConnectionConflict connectionConflict)
+                return transaction.Abort(Error(
+                    new RedeployWebServiceError(connectionConflict)));
 
             var release = WebServiceReleaseFactory.CreatePending(
                 updated.TenantId,

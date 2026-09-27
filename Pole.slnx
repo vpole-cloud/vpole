@@ -84,11 +84,18 @@
     <Project Path="src/features/Domains/Domains.Domain/Domains.Domain.csproj" />
   </Folder>
   <Folder Name="/features/RedisServices/">
+    <Project Path="src/features/RedisServices/RedisServices.Contracts/RedisServices.Contracts.csproj" />
     <Project Path="src/features/RedisServices/RedisServices.Tests/RedisServices.Tests.csproj" />
     <Project Path="src/features/RedisServices/RedisServices.Tests.Integration/RedisServices.Tests.Integration.csproj" />
     <Project Path="src/features/RedisServices/RedisServices.Application/RedisServices.Application.csproj" />
     <Project Path="src/features/RedisServices/RedisServices.Domain/RedisServices.Domain.csproj" />
     <Project Path="src/features/RedisServices/RedisServices.Events/RedisServices.Events.csproj" />
+  </Folder>
+  <Folder Name="/features/ResourceConnections/">
+    <Project Path="src/features/ResourceConnections/ResourceConnections.Application/ResourceConnections.Application.csproj" />
+    <Project Path="src/features/ResourceConnections/ResourceConnections.Domain/ResourceConnections.Domain.csproj" />
+    <Project Path="src/features/ResourceConnections/ResourceConnections.Events/ResourceConnections.Events.csproj" />
+    <Project Path="src/features/ResourceConnections/ResourceConnections.Tests/ResourceConnections.Tests.csproj" />
   </Folder>
   <Folder Name="/features/Postgres/">
     <Project Path="src/features/Postgres/Postgres.Tests/Postgres.Tests.csproj" />
@@ -160,4 +167,6 @@
     <Project Path="src/features/Secrets/Secrets.Events/Secrets.Events.csproj" />
     <Project Path="src/features/Secrets/Secrets.Application/Secrets.Application.csproj" />
   </Folder>
+  <Project Path="src/features/Postgres/Postgres.Contracts/Postgres.Contracts.csproj" />
+  <Project Path="src/features/ResourceConnections/ResourceConnections.Contracts/ResourceConnections.Contracts.csproj" />
 </Solution>
