@@ -28,6 +28,7 @@ public abstract record DeploymentTargetNetworkPolicy
 
     public bool AllowsWorkloads(DeploymentTarget target) =>
         this is AttestedNetworkPolicy evidence && Matches(target) &&
+        target.Capabilities.NetworkPolicyCapabilities.CanManage &&
         (evidence.Enforcement == NetworkPolicyEnforcement.Supported || evidence.AllowIsolationNotEnforced);
 }
 

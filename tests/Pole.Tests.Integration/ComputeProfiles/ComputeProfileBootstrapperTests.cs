@@ -74,7 +74,8 @@ public sealed class ComputeProfileBootstrapperTests
             "local-cluster",
             "in-cluster",
             1,
-            new DeploymentTargetWorkloadConfigurationLookupDto(1, null),
+            new DeploymentTargetWorkloadConfigurationLookupDto(
+                1, null, new DeploymentTargetNetworkSourcesDto(null, null, null)),
             1,
             Enabled: true,
             AcceptsWorkloads: true,

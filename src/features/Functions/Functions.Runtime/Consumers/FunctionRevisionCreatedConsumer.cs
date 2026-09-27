@@ -2,44 +2,102 @@ using MassTransit;
 using Microsoft.Extensions.Logging;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Lifecycle;
+using Pole.Features.Functions.Application.Persistence.Reads;
 using Pole.Features.Functions.Application.Persistence.Runtime.Provisioning;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Events;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Provisioning;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Events;
 
 namespace Pole.Features.Functions.Runtime.Consumers;
 
 public sealed class FunctionRevisionCreatedConsumer(
     LoadFunctionRevisionProvisioningSubject loadProvisioningSubject,
+    LoadFunctionAppById loadFunctionAppById,
+    LoadExactResourceDeploymentRuntimePlacement loadDeploymentPlacement,
     IFunctionResourcePlacementResolver placementResolver,
     IFunctionRevisionKubernetesManager kubernetesManager,
     FailFunctionRevision failFunctionRevision,
     IEnumerable<IFunctionRevisionProvisioner> provisioners,
     ILogger<FunctionRevisionCreatedConsumer> logger)
-    : IConsumer<FunctionRevisionCreatedEvent>
+    : IConsumer<FunctionRevisionCreatedEvent>,
+      IConsumer<ResourceDeploymentAppliedEvent>
 {
     public Task Consume(ConsumeContext<FunctionRevisionCreatedEvent> context) =>
         HandleAsync(context.Message, context.CancellationToken);
 
+    public Task Consume(ConsumeContext<ResourceDeploymentAppliedEvent> context) =>
+        HandleAppliedAsync(context.Message, context.CancellationToken);
+
     public async Task HandleAsync(
         FunctionRevisionCreatedEvent message,
         CancellationToken cancellationToken = default)
-    {
-        var tenantId = message.EventCore.TenantId;
-        var subject = await loadProvisioningSubject(
-            tenantId,
+        => await HandleRevisionAsync(
+            message.EventCore.TenantId,
             message.FunctionAppId,
             message.RevisionId,
+            message.Placement,
+            cancellationToken);
+
+    public async Task HandleAppliedAsync(
+        ResourceDeploymentAppliedEvent message,
+        CancellationToken cancellationToken = default)
+    {
+        if (!string.Equals(
+                message.ResourceType,
+                FunctionResourceDeployment.ResourceType.Value,
+                StringComparison.Ordinal))
+            return;
+
+        var tenantId = message.EventCore.TenantId;
+        var app = await loadFunctionAppById(tenantId, message.ResourceId, cancellationToken);
+        if (app is null || app.DesiredState == FunctionAppDesiredState.Deleting ||
+            app.PendingRevisionId is not { } pendingRevisionId ||
+            !string.Equals(app.Placement.ResourceDeploymentId, message.ResourceDeploymentId, StringComparison.Ordinal) ||
+            !string.Equals(app.Placement.RuntimeCellId, message.RuntimeCellId, StringComparison.Ordinal))
+            return;
+
+        var deployment = await loadDeploymentPlacement(
+            tenantId,
+            FunctionResourceDeployment.ResourceType,
+            app.Id,
+            message.ResourceDeploymentId,
+            cancellationToken);
+        if (deployment is null ||
+            !string.Equals(deployment.Status, "Applied", StringComparison.Ordinal) ||
+            !string.Equals(deployment.DesiredOperation, "Apply", StringComparison.Ordinal) ||
+            deployment.DesiredGeneration != message.Generation ||
+            !string.Equals(deployment.RuntimeCellId, message.RuntimeCellId, StringComparison.Ordinal) ||
+            !string.Equals(deployment.DeploymentTargetId, app.Placement.DeploymentTargetId, StringComparison.Ordinal))
+            return;
+
+        await HandleRevisionAsync(tenantId, app.Id, pendingRevisionId, null, cancellationToken);
+    }
+
+    private async Task HandleRevisionAsync(
+        string tenantId,
+        string functionAppId,
+        string revisionId,
+        FunctionPlacementSnapshot? expectedPlacement,
+        CancellationToken cancellationToken)
+    {
+        var subject = await loadProvisioningSubject(
+            tenantId,
+            functionAppId,
+            revisionId,
             cancellationToken);
         if (subject is null)
             throw new InvalidOperationException("Function App or revision no longer exists.");
         var app = subject.App;
         var revision = subject.Revision;
-        if (revision.Status is not (ProvisioningFunctionRevisionStatus or ReadyFunctionRevisionStatus))
+        if (revision.Status is not (ProvisioningFunctionRevisionStatus or ReadyFunctionRevisionStatus) ||
+            app.DesiredState == FunctionAppDesiredState.Deleting ||
+            !string.Equals(app.PendingRevisionId, revision.Id, StringComparison.Ordinal))
             return;
 
-        if (!Matches(message.Placement, app.Placement))
+        if (expectedPlacement is not null && !Matches(expectedPlacement, app.Placement))
             throw new InvalidOperationException("Function revision event placement does not match the Function App.");
         var placementResult = await placementResolver.ResolveAsync(app, cancellationToken: cancellationToken);
         if (placementResult is FunctionResourcePlacementUnavailable)
@@ -54,6 +112,15 @@ public sealed class FunctionRevisionCreatedConsumer(
                 cancellationToken);
             if (applied is FunctionRevisionKubernetesOperationError applyFailure)
             {
+                if (applyFailure.Value is FunctionRevisionGatewaySourceUnavailable)
+                {
+                    logger.LogWarning(
+                        "[function-revision-provisioning-deferred] Gateway source is unavailable for revision {RevisionId} of Function App {FunctionAppId}: {Reason}",
+                        revision.Id,
+                        app.Id,
+                        applyFailure.Message());
+                    return;
+                }
                 logger.LogError(
                     "[function-revision-provisioning-failed] Kubernetes could not apply revision {RevisionId} for Function App {FunctionAppId}: {Reason}",
                     revision.Id,
@@ -99,15 +166,29 @@ public sealed class FunctionRevisionCreatedConsumer(
         }
 
         var outcome = await provisioner.ProvisionAsync(kubernetesRevision, cancellationToken);
-        if (outcome.Succeeded)
-            return;
-        await FailAsync(
-            tenantId,
-            app,
-            revision,
-            outcome.FailureCode ?? "provisioning",
-            outcome.FailureMessage ?? "Function revision provisioning failed.",
-            cancellationToken);
+        switch (outcome.Value)
+        {
+            case FunctionRevisionProvisioningCompleted:
+                return;
+            case FunctionRevisionProvisioningDeferred deferred:
+                logger.LogWarning(
+                    "[function-revision-provisioning-deferred] Revision {RevisionId} of Function App {FunctionAppId}: {Reason}",
+                    revision.Id,
+                    app.Id,
+                    deferred.Reason);
+                return;
+            case FunctionRevisionProvisioningFailed failed:
+                await FailAsync(
+                    tenantId,
+                    app,
+                    revision,
+                    failed.Code,
+                    failed.Message,
+                    cancellationToken);
+                return;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(outcome));
+        }
     }
 
     private static bool Matches(

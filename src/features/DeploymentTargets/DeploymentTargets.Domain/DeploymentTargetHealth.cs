@@ -20,11 +20,26 @@ public sealed record DeploymentTargetNamespaceCapabilities(
         new(false, false, false, false, false);
 }
 
+public sealed record DeploymentTargetNetworkPolicyCapabilities(
+    bool CanGet,
+    bool CanCreate,
+    bool CanUpdate,
+    bool CanPatch,
+    bool CanDelete)
+{
+    public static DeploymentTargetNetworkPolicyCapabilities Unknown { get; } =
+        new(false, false, false, false, false);
+
+    [BsonIgnore]
+    public bool CanManage => CanGet && CanCreate && CanUpdate && CanPatch && CanDelete;
+}
+
 public sealed record DeploymentTargetCapabilities(
     long ConnectionVersion,
     DateTime? ObservedAtUtc,
     string? KubernetesVersion,
-    DeploymentTargetNamespaceCapabilities NamespaceCapabilities)
+    DeploymentTargetNamespaceCapabilities NamespaceCapabilities,
+    DeploymentTargetNetworkPolicyCapabilities NetworkPolicyCapabilities)
 {
     [BsonIgnore]
     public bool IsKnown => ObservedAtUtc is not null;
@@ -34,15 +49,18 @@ public sealed record DeploymentTargetCapabilities(
             DeploymentTargetValueGuard.Positive(connectionVersion, nameof(connectionVersion)),
             ObservedAtUtc: null,
             KubernetesVersion: null,
-            DeploymentTargetNamespaceCapabilities.Unknown);
+            DeploymentTargetNamespaceCapabilities.Unknown,
+            DeploymentTargetNetworkPolicyCapabilities.Unknown);
 
     public static DeploymentTargetCapabilities Observed(
         long connectionVersion,
         DateTime observedAtUtc,
         string kubernetesVersion,
-        DeploymentTargetNamespaceCapabilities namespaceCapabilities)
+        DeploymentTargetNamespaceCapabilities namespaceCapabilities,
+        DeploymentTargetNetworkPolicyCapabilities networkPolicyCapabilities)
     {
         ArgumentNullException.ThrowIfNull(namespaceCapabilities);
+        ArgumentNullException.ThrowIfNull(networkPolicyCapabilities);
 
         return new DeploymentTargetCapabilities(
             DeploymentTargetValueGuard.Positive(connectionVersion, nameof(connectionVersion)),
@@ -51,7 +69,8 @@ public sealed record DeploymentTargetCapabilities(
                 kubernetesVersion,
                 nameof(kubernetesVersion),
                 DeploymentTargetValueGuard.MaximumKubernetesVersionLength),
-            namespaceCapabilities);
+            namespaceCapabilities,
+            networkPolicyCapabilities);
     }
 }
 

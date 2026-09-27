@@ -199,6 +199,35 @@ IDs rather than names or deployment generations. A resource's `Name` is immutabl
 lifetime, but deletion and recreation can reuse that name with a new ID. The new instance must
 not match the previous instance's workload selectors or inherit its durable bindings.
 
+Every RuntimeCell namespace has an owned ingress-only deny-all NetworkPolicy before any
+workload is applied. Reconciliation checks the persisted tenant, cell, target, and namespace
+and repairs the baseline before applying a workload or positively scaling a Function revision.
+A failed policy write is a retryable reconciliation failure, never a Ready claim. The baseline selects all
+pods in the cell, including pods created later by other controllers. It does not restrict
+egress. Workload policies select stable tenant/cell/deployment ID labels, so sharing an
+IsolationScope or RuntimeCell never grants traffic between resources.
+
+Provider-owned exceptions are narrow: a Public WebService permits only the configured
+ingress controller source to its numeric pod target port; its ACME HTTP01 solver policy
+permits that same source to solver-labeled pods on port 8089. Functions permit the configured
+gateway source to their Agent port 8080. PostgreSQL permits same-deployment replication on
+5432 and, for CloudNativePG mode, the configured operator source on 5432 and 8000. Missing
+sources fail closed. Policy ownership labels and independent deployment-generation/target-
+configuration revisions fence retries and source rotations. A bounded recovery scan selects
+Applied deployments for verification after five minutes; the existing outbox, claim, and retry
+path re-applies the same desired generation and logical resource revision. Ready RuntimeCells
+are likewise requeued for baseline repair after five minutes, including empty cells. This is
+scheduled repair, not an immediate revocation or convergence guarantee.
+
+WebServices default to `Private`. A Private service has no public hostname reservation,
+Ingress, or public endpoint, and its pods remain behind the RuntimeCell ingress deny rule.
+Choosing `Public` requires a public ingress source and resolved ingress configuration on
+every selected target. Switching a service from Public to Private removes its public Ingress
+and revokes both the application and HTTP01 policy allowances; switching back reserves a
+public hostname before applying the public deployment. A target-source change is picked up
+by the bounded reconciliation scan, which closes an obsolete allowance before reporting a
+missing replacement source.
+
 The agreed IaC-facing address is `(tenant, resource type, normalized name)`, represented as
 `kind + name` (or `kind/name`); typed reference fields may omit the kind. Group and isolation
 scope remain ownership/admission constraints, not name qualifiers. Providers enforce naming

@@ -32,7 +32,7 @@ public sealed class FunctionRevisionProvisionerTests
 
         var outcome = await provisioner.ProvisionAsync(subject, CancellationToken.None);
 
-        Assert.True(outcome.Succeeded);
+        Assert.IsType<FunctionRevisionProvisioningCompleted>(outcome.Value);
         Assert.Equal([0], manager.ScaleRequests);
         Assert.Equal(subject.Revision.Id, lifecycle.MarkedReadyRevisionId);
         Assert.Equal(subject.Revision.Id, lifecycle.PromotedRevisionId);
@@ -59,7 +59,7 @@ public sealed class FunctionRevisionProvisionerTests
 
         var outcome = await provisioner.ProvisionAsync(subject, CancellationToken.None);
 
-        Assert.True(outcome.Succeeded);
+        Assert.IsType<FunctionRevisionProvisioningCompleted>(outcome.Value);
         Assert.Empty(manager.ScaleRequests);
         Assert.Null(lifecycle.MarkedReadyRevisionId);
         Assert.Equal(subject.Revision.Id, lifecycle.PromotedRevisionId);
@@ -89,9 +89,9 @@ public sealed class FunctionRevisionProvisionerTests
 
         var outcome = await provisioner.ProvisionAsync(subject, CancellationToken.None);
 
-        Assert.False(outcome.Succeeded);
-        Assert.Equal("promotion", outcome.FailureCode);
-        Assert.Equal("Function revision is not ready for promotion.", outcome.FailureMessage);
+        var failed = Assert.IsType<FunctionRevisionProvisioningFailed>(outcome.Value);
+        Assert.Equal("promotion", failed.Code);
+        Assert.Equal("Function revision is not ready for promotion.", failed.Message);
         Assert.Equal([0], manager.ScaleRequests);
     }
 
@@ -112,10 +112,66 @@ public sealed class FunctionRevisionProvisionerTests
 
         var outcome = await provisioner.ProvisionAsync(subject, CancellationToken.None);
 
-        Assert.False(outcome.Succeeded);
-        Assert.Equal("agent-metadata", outcome.FailureCode);
+        var failed = Assert.IsType<FunctionRevisionProvisioningFailed>(outcome.Value);
+        Assert.Equal("agent-metadata", failed.Code);
         Assert.Equal([0], manager.ScaleRequests);
         Assert.Null(lifecycle.PromotedRevisionId);
+    }
+
+    [Fact]
+    public async Task Gateway_source_restoration_resumes_activation_without_failing_revision()
+    {
+        var subject = CreateSubject();
+        var endpoint = new FunctionEndpoint("10.0.0.1", 8080, "pod-1");
+        var activator = new RecoveringGatewayActivator(endpoint, subject);
+        var manager = new RecordingManager();
+        var lifecycle = new RecordingLifecycle();
+        var provisioner = new FunctionRevisionProvisioner(
+            activator,
+            new MetadataClient(Metadata(subject, "pod-1")),
+            manager,
+            lifecycle.MarkReadyAsync,
+            lifecycle.PromoteAsync,
+            NullLogger<FunctionRevisionProvisioner>.Instance);
+
+        var deferred = await provisioner.ProvisionAsync(subject, CancellationToken.None);
+        Assert.IsType<FunctionRevisionProvisioningDeferred>(deferred.Value);
+        Assert.Empty(manager.ScaleRequests);
+        Assert.Null(lifecycle.MarkedReadyRevisionId);
+
+        activator.GatewaySourceAvailable = true;
+        var recovered = await provisioner.ProvisionAsync(subject, CancellationToken.None);
+
+        Assert.IsType<FunctionRevisionProvisioningCompleted>(recovered.Value);
+        Assert.Equal(subject.Revision.Id, lifecycle.MarkedReadyRevisionId);
+        Assert.Equal(subject.Revision.Id, lifecycle.PromotedRevisionId);
+    }
+
+    [Fact]
+    public async Task Gateway_source_missing_at_minimum_scale_defers_without_stopping_revision()
+    {
+        var subject = CreateSubject();
+        var endpoint = new FunctionEndpoint("10.0.0.1", 8080, "pod-1");
+        var manager = new RecordingManager
+        {
+            ScaleResult = new FunctionRevisionKubernetesOperationError(
+                new FunctionRevisionGatewaySourceUnavailable(
+                    "The Function gateway source is not configured."))
+        };
+        var lifecycle = new RecordingLifecycle();
+        var provisioner = new FunctionRevisionProvisioner(
+            new ReadyActivator(endpoint, subject),
+            new MetadataClient(Metadata(subject, "pod-1")),
+            manager,
+            lifecycle.MarkReadyAsync,
+            lifecycle.PromoteAsync,
+            NullLogger<FunctionRevisionProvisioner>.Instance);
+
+        var deferred = await provisioner.ProvisionAsync(subject, CancellationToken.None);
+
+        Assert.IsType<FunctionRevisionProvisioningDeferred>(deferred.Value);
+        Assert.Single(manager.ScaleRequests);
+        Assert.Null(lifecycle.MarkedReadyRevisionId);
     }
 
     private static FunctionAgentMetadataResponse Metadata(
@@ -199,6 +255,30 @@ public sealed class FunctionRevisionProvisionerTests
                 DateTimeOffset.UtcNow));
     }
 
+    private sealed class RecoveringGatewayActivator(
+        FunctionEndpoint endpoint,
+        FunctionRevisionInKubernetes subject) : IFunctionRevisionActivator
+    {
+        public bool GatewaySourceAvailable { get; set; }
+
+        public Task<FunctionRevisionActivationOutcome> EnsureActiveAsync(
+            FunctionRevisionInKubernetes revision,
+            CancellationToken cancellationToken = default,
+            bool forceScaleFence = false) =>
+            Task.FromResult<FunctionRevisionActivationOutcome>(GatewaySourceAvailable
+                ? new FunctionEndpointSnapshot(
+                    new FunctionServiceKey(
+                        subject.Placement.DeploymentTargetId,
+                        subject.Namespace,
+                        subject.ServiceName),
+                    [endpoint],
+                    DateTimeOffset.UtcNow)
+                : new FunctionRevisionActivationError(
+                    new FunctionActivationScaleRejected(
+                        new FunctionRevisionGatewaySourceUnavailable(
+                            "The Function gateway source is not configured."))));
+    }
+
     private sealed class MetadataClient(FunctionAgentMetadataResponse metadata) : IFunctionAgentClient
     {
         public Task<FunctionAgentProtocolResponse<FunctionAgentMetadataResponse>> GetMetadataAsync(
@@ -244,6 +324,8 @@ public sealed class FunctionRevisionProvisionerTests
     private sealed class RecordingManager : IFunctionRevisionKubernetesManager
     {
         public List<int> ScaleRequests { get; } = [];
+        public FunctionRevisionKubernetesMutationOutcome ScaleResult { get; set; } =
+            new FunctionRevisionKubernetesMutationCompleted();
 
         public Task<FunctionRevisionKubernetesMutationOutcome> ApplyAsync(
             FunctionRevisionInKubernetes revision,
@@ -261,8 +343,7 @@ public sealed class FunctionRevisionProvisionerTests
             CancellationToken cancellationToken = default)
         {
             ScaleRequests.Add(replicas);
-            return Task.FromResult<FunctionRevisionKubernetesMutationOutcome>(
-                new FunctionRevisionKubernetesMutationCompleted());
+            return Task.FromResult(ScaleResult);
         }
 
         public Task<FunctionRevisionKubernetesMutationOutcome> ScaleAsync(

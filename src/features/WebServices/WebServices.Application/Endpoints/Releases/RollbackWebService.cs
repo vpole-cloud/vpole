@@ -35,6 +35,8 @@ public static class RollbackWebService
                     {
                         RollbackWebServiceResponse value =>
                             Results.Accepted(value: value),
+                        RollbackWebServicePublicSpecIncompatible incompatible =>
+                            MapRollbackWebServicePublicSpecIncompatible(incompatible),
                         RollbackWebServiceError error =>
                             MapError(error)
                     }))
@@ -61,8 +63,13 @@ public sealed record RollbackWebServiceResponse(
     string ReleaseId,
     IReadOnlyList<PlacementSummaryDto> Deployments);
 
+public sealed record RollbackWebServicePublicSpecIncompatible(
+    string WebServiceId,
+    long TargetRevision);
+
 public union RollbackWebServiceOutcome(
     RollbackWebServiceResponse,
+    RollbackWebServicePublicSpecIncompatible,
     RollbackWebServiceError);
 
 public sealed class RollbackWebServiceHandler(
@@ -98,6 +105,15 @@ public sealed class RollbackWebServiceHandler(
                 new WebServiceReleaseNotFound(
                     webService.Id,
                     request.Body.TargetRevision)));
+        if (webService.Exposure.Mode is WebServiceExposureMode.Public &&
+            !CreateWebServiceRequestBodyValidator.HasPublicIngressTarget(
+                sourceRelease.Spec.ToDto().Config.PortMappings))
+        {
+            return new RollbackWebServiceOutcome(
+                new RollbackWebServicePublicSpecIncompatible(
+                    webService.Id,
+                    sourceRelease.ResourceRevision));
+        }
 
         var deploymentInventory = await loadResourceDeploymentSet(
             webService.TenantId,
@@ -161,7 +177,8 @@ public sealed class RollbackWebServiceHandler(
                     correlationId: null,
                     new WebServiceReleaseFactory.CreateOptions(
                         ObjectId.GenerateNewId().ToString(),
-                        timeProvider.GetUtcNow().UtcDateTime));
+                        timeProvider.GetUtcNow().UtcDateTime),
+                    updated.Exposure);
                 await persistCurrentWebServiceRelease(transaction.Session, release, ct);
 
                 return transaction.Commit(new RollbackWebServiceOutcome(

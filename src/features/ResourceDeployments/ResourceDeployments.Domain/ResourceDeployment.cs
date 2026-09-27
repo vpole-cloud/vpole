@@ -193,6 +193,32 @@ public sealed record ResourceDeployment(
         };
     }
 
+    // Recheck applied infrastructure without minting a new provider release. WebServices
+    // resolves its durable release by this exact desired generation and resource revision.
+    public ResourceDeployment RequestVerification(DateTime requestedAtUtc)
+    {
+        if (State is not AppliedResourceDeploymentState ||
+            DesiredOperation != ResourceDeploymentOperation.Apply)
+        {
+            throw new InvalidOperationException("Only an applied deployment can request verification.");
+        }
+
+        var normalizedRequestedAtUtc = ResourceDeploymentValueGuard.UpdatedUtc(
+            requestedAtUtc,
+            UpdatedAtUtc,
+            nameof(requestedAtUtc));
+        return this with
+        {
+            Revision = checked(Revision + 1),
+            State = new PendingResourceDeploymentState(
+                DesiredGeneration,
+                DesiredOperation,
+                AttemptCount: 0,
+                normalizedRequestedAtUtc),
+            UpdatedAtUtc = normalizedRequestedAtUtc
+        };
+    }
+
     public ResourceDeployment Retry(DateTime requestedAtUtc)
     {
         if (State is not FailedResourceDeploymentState failed ||

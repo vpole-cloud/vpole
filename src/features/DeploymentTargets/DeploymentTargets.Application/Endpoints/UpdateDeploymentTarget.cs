@@ -62,6 +62,7 @@ public sealed class UpdateDeploymentTargetHandler(
             request.Body.Enabled,
             request.Body.AcceptsWorkloads,
             request.Body.WorkloadConfiguration.Ingress?.ToDomain(),
+            request.Body.WorkloadConfiguration.NetworkSources.ToDomain(),
             DeploymentTargetClock.UtcNowAfter(timeProvider, target.UpdatedAtUtc));
 
         if (updated.Revision == target.Revision)

@@ -92,6 +92,10 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
             return Error(new WebServiceDeploymentMutationStateError(
                 new WebServiceNotFound(request.Id)));
         }
+        if (webService.Exposure.Mode is WebServiceExposureMode.Private)
+        {
+            return Error(new WebServiceHostnameAttachmentUnavailable(webService.Id));
+        }
 
         var deployment = await loadExactResourceDeployment(
             request.TenantId,
@@ -213,7 +217,8 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
             null,
             new WebServiceReleaseFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
-                timeProvider.GetUtcNow().UtcDateTime));
+                timeProvider.GetUtcNow().UtcDateTime),
+            updated.Exposure);
         await persistRelease(transaction.Session, release, cancellationToken);
         return transaction.Commit(new AddWebServiceDeploymentHostnameOutcome(changed));
     }

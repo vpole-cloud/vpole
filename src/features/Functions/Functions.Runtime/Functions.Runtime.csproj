@@ -22,6 +22,7 @@
     <ProjectReference Include="..\Functions.Events\Functions.Events.csproj" />
     <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
     <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
+    <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
     <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />
     <ProjectReference Include="..\..\..\shared\Kubernetes\Kubernetes.csproj" />
     <ProjectReference Include="..\..\..\shared\Observability\Observability.csproj" />

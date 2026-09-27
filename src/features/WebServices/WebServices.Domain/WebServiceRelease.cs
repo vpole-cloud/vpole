@@ -40,7 +40,8 @@ public sealed record WebServiceRelease(
     string? CorrelationId,
     WebServiceReleaseProvenance? Provenance,
     ImmutableList<WebServiceReleaseDeployment> Deployments,
-    WebServiceSpec Spec);
+    WebServiceSpec Spec,
+    WebServiceExposure Exposure);
 
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(typeof(ExternalImageTagUpdateProvenance), typeof(SourceBuildReleaseProvenance))]
@@ -73,9 +74,12 @@ public static class WebServiceReleaseFactory
         string tenantId, string webServiceId, long resourceRevision, WebServiceReleaseAction action,
         string? actorUserId, string? actorEmail, WebServiceSpec spec,
         IEnumerable<WebServiceReleaseDeployment> deployments, string? traceId, string? correlationId,
-        CreateOptions options, WebServiceReleaseProvenance? provenance = null)
+        CreateOptions options,
+        WebServiceExposure exposure,
+        WebServiceReleaseProvenance? provenance = null)
     {
         ArgumentNullException.ThrowIfNull(spec);
+        ArgumentNullException.ThrowIfNull(exposure);
         ArgumentNullException.ThrowIfNull(deployments);
         var entries = deployments.ToImmutableList();
         if (entries.Count == 0)
@@ -87,7 +91,7 @@ public static class WebServiceReleaseFactory
         return new WebServiceRelease(options.Id, tenantId, webServiceId, resourceRevision, action,
             outcome, actorUserId, actorEmail, requestedAtUtc,
             outcome is WebServiceReleaseOutcome.Pending ? null : requestedAtUtc,
-            null, traceId, correlationId, provenance, entries, spec);
+            null, traceId, correlationId, provenance, entries, spec, exposure);
     }
 
     public static WebServiceRelease ApplyCompletion(

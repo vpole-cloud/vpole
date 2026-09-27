@@ -49,6 +49,7 @@ internal sealed class MongoLoadResourceDeploymentRuntimePlacement(
             deployment.ResolvedPlacement.DeploymentTargetId,
             deployment.ResolvedPlacement.KubernetesNamespace,
             deployment.Revision,
+            deployment.DesiredGeneration,
             ToContract(
                 deployment.ResolvedPlacement.Compute,
                 deployment.ResolvedPlacement.DeploymentTargetId),

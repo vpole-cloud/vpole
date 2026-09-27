@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -14,8 +15,10 @@ namespace Pole.Features.WebServices.Application.Kubernetes;
 public sealed class WebServiceResourceDeploymentAdapter(
     LoadWebServiceDeploymentSnapshot loadDeploymentSnapshot,
     LoadWebServiceById loadWebServiceById,
+    LoadExactResourceDeployment loadExactResourceDeployment,
     ResolveRuntimeRegistryAccess resolveRuntimeRegistryAccess,
-    IKubernetesClientProvider kubernetesClientProvider)
+    IKubernetesClientProvider kubernetesClientProvider,
+    ReconcileResourceIngressPolicy reconcileResourceIngressPolicy)
     : IResourceDeploymentAdapter
 {
     public async Task<ResourceDeploymentAdapterResult> ApplyAsync(
@@ -46,9 +49,33 @@ public sealed class WebServiceResourceDeploymentAdapter(
         }
 
         var webService = desired.WebService;
+        var resolvedIngress = context.Deployment.Placement.Ingress;
+        if (webService.Exposure.Mode is WebServiceExposureMode.Public &&
+            (resolvedIngress is null || resolvedIngress.Hostnames.Count == 0))
+        {
+            return ResourceDeploymentAdapterResult.Failed.Create(
+                "IngressConfigurationMissing",
+                "The public web service placement does not contain resolved ingress configuration.",
+                retryable: false);
+        }
+        if (webService.Exposure.Mode is WebServiceExposureMode.Private && resolvedIngress is not null)
+        {
+            return ResourceDeploymentAdapterResult.Failed.Create(
+                "PrivateIngressConfigurationUnexpected",
+                "The private web service placement contains ingress configuration.",
+                retryable: false);
+        }
+        var allowedTcpPorts = ResolvePublicIngressTargetPort(webService);
+        if (allowedTcpPorts is null)
+        {
+            return ResourceDeploymentAdapterResult.Failed.Create(
+                "PublicIngressTargetPortUnavailable",
+                "The public web-service target port could not be resolved.",
+                retryable: false);
+        }
         var inKubernetes = webService.ToKubernetes(
             context.Deployment.Placement.KubernetesNamespace,
-            context.Deployment.Placement.Ingress!,
+            context.Deployment.Placement.Ingress,
             context.Deployment.Placement.Compute,
             context.Deployment.FixedReplicas,
             new WorkloadIdentityLabels(
@@ -60,6 +87,46 @@ public sealed class WebServiceResourceDeploymentAdapter(
                 "WebService",
                 context.Deployment.ResourceId,
                 context.Deployment.Id));
+        var metadata = WebServiceResourceDeploymentMetadata.Create(
+            desired.ReleaseId,
+            context.Deployment.Id,
+            context.Deployment.RuntimeCellId,
+            context.Deployment.Placement.DeploymentTargetId,
+            context.Deployment.DesiredGeneration,
+            desired.ResourceRevision,
+            desired.RequestedAtUtc);
+        var policyFailure = await ReconcileIngressPoliciesAsync(
+            context,
+            webService.Exposure.Mode is WebServiceExposureMode.Public ? allowedTcpPorts : [],
+            webService.Exposure.Mode is WebServiceExposureMode.Public ? [8089] : [],
+            cancellationToken);
+        if (webService.Exposure.Mode is WebServiceExposureMode.Private)
+        {
+            if (policyFailure is { Retryable: false })
+                return policyFailure;
+            if (!await IsCurrentGenerationAsync(context, cancellationToken))
+            {
+                return ResourceDeploymentAdapterResult.Failed.Create(
+                    "DeploymentGenerationSuperseded",
+                    "A newer deployment generation superseded this ingress revocation.",
+                    retryable: true);
+            }
+            var ingressRevoked = await WebServiceKubernetesResourceManager.DeleteIngressForGenerationAsync(
+                kubernetes,
+                inKubernetes,
+                metadata,
+                cancellationToken,
+                ct => IsCurrentGenerationAsync(context, ct));
+            if (!ingressRevoked)
+            {
+                return ResourceDeploymentAdapterResult.Failed.Create(
+                    "IngressRevocationPending",
+                    "The private ingress revocation has not been confirmed for this deployment generation.",
+                    retryable: true);
+            }
+        }
+        if (policyFailure is not null)
+            return policyFailure;
 
         if (webService.Spec.Image.SecretName is not null)
         {
@@ -73,19 +140,15 @@ public sealed class WebServiceResourceDeploymentAdapter(
                 return credentialResult;
         }
 
-        var metadata = WebServiceResourceDeploymentMetadata.Create(
-            desired.ReleaseId,
-            context.Deployment.Id,
-            context.Deployment.RuntimeCellId,
-            context.Deployment.Placement.DeploymentTargetId,
-            context.Deployment.DesiredGeneration,
-            desired.ResourceRevision,
-            desired.RequestedAtUtc);
         var applyResult = await WebServiceKubernetesResourceManager.ApplyAsync(
             kubernetes,
             inKubernetes,
             metadata,
-            cancellationToken);
+            cancellationToken,
+            ingressAlreadyRemoved: webService.Exposure.Mode is WebServiceExposureMode.Private,
+            isCurrentGeneration: webService.Exposure.Mode is WebServiceExposureMode.Public
+                ? ct => IsCurrentGenerationAsync(context, ct)
+                : null);
         if (applyResult is WebServiceKubernetesApplyFailed)
         {
             return ResourceDeploymentAdapterResult.Failed.Create(
@@ -93,9 +156,18 @@ public sealed class WebServiceResourceDeploymentAdapter(
                 "Kubernetes could not apply the web service deployment.",
                 retryable: true);
         }
+        if (applyResult is WebServiceKubernetesApplyRejected rejected)
+        {
+            return ResourceDeploymentAdapterResult.Failed.Create(
+                rejected.FailureCode,
+                rejected.Message,
+                retryable: true);
+        }
 
         return ResourceDeploymentAdapterResult.Succeeded.Create(
-            context.Deployment.Placement.Ingress!.Hostnames.Select(hostname =>
+            webService.Exposure.Mode is WebServiceExposureMode.Private
+                ? []
+                : context.Deployment.Placement.Ingress!.Hostnames.Select(hostname =>
                 ResourceDeploymentEndpointDto.Create(
                     "Ingress",
                     hostname,
@@ -114,6 +186,14 @@ public sealed class WebServiceResourceDeploymentAdapter(
         var kubernetes = await kubernetesClientProvider.GetAsync(
             context.Deployment.Placement.DeploymentTargetId,
             cancellationToken);
+
+        var policyCleanupFailure = await ReconcileIngressPoliciesAsync(
+            context,
+            [],
+            [],
+            cancellationToken);
+        if (policyCleanupFailure is not null)
+            return policyCleanupFailure;
 
         var webService = await loadWebServiceById(
             context.Deployment.TenantId,
@@ -152,15 +232,7 @@ public sealed class WebServiceResourceDeploymentAdapter(
         }
 
         var ingress = context.Deployment.Placement.Ingress;
-        if (ingress is null)
-        {
-            return ResourceDeploymentAdapterResult.Failed.Create(
-                "IngressConfigurationMissing",
-                "The web service placement does not contain resolved ingress configuration.",
-                retryable: false);
-        }
-
-        if (ingress.Hostnames.Count == 0)
+        if (ingress is not null && ingress.Hostnames.Count == 0)
         {
             return ResourceDeploymentAdapterResult.Failed.Create(
                 "IngressHostnamesMissing",
@@ -169,6 +241,72 @@ public sealed class WebServiceResourceDeploymentAdapter(
         }
 
         return null;
+    }
+
+    private static ImmutableList<int>? ResolvePublicIngressTargetPort(WebService webService)
+    {
+        if (webService.Exposure.Mode is WebServiceExposureMode.Private)
+            return [];
+        var targetPort = webService.Spec.Config.PortMappings.FirstOrDefault()?.TargetPort;
+        return int.TryParse(targetPort, System.Globalization.NumberStyles.None,
+                   System.Globalization.CultureInfo.InvariantCulture, out var port) &&
+               port is >= 1 and <= 65535
+            ? [port]
+            : null;
+    }
+
+    private async Task<bool> IsCurrentGenerationAsync(
+        ResourceDeploymentReconciliationContext context,
+        CancellationToken cancellationToken)
+    {
+        var current = await loadExactResourceDeployment(
+            context.Deployment.TenantId,
+            context.Deployment.ResourceType,
+            context.Deployment.ResourceId,
+            context.Deployment.Id,
+            cancellationToken);
+        return current?.DesiredGeneration == context.Deployment.DesiredGeneration;
+    }
+
+    private async Task<ResourceDeploymentAdapterResult.Failed?> ReconcileIngressPoliciesAsync(
+        ResourceDeploymentReconciliationContext context,
+        ImmutableList<int> publicTcpPorts,
+        ImmutableList<int> http01TcpPorts,
+        CancellationToken cancellationToken)
+    {
+        ResourceDeploymentAdapterResult.Failed? failure = null;
+        foreach (var (purpose, ports) in new[]
+                 {
+                     (ResourceIngressPolicyPurpose.WebServicePublic, publicTcpPorts),
+                     (ResourceIngressPolicyPurpose.WebServiceHttp01, http01TcpPorts)
+                 })
+        {
+            var result = await reconcileResourceIngressPolicy(
+                new ResourceIngressPolicyRequest(
+                    context.Deployment.TenantId,
+                    context.Deployment.ResourceType,
+                    context.Deployment.ResourceId,
+                    context.Deployment.Id,
+                    context.Deployment.RuntimeCellId,
+                    context.Deployment.Placement.DeploymentTargetId,
+                    context.Deployment.Placement.KubernetesNamespace,
+                    purpose,
+                    context.Deployment.DesiredGeneration,
+                    context.Deployment.Placement.TargetWorkloadConfigurationRevision,
+                    ports),
+                cancellationToken);
+            if (result is not ResourceIngressPolicyApplied)
+            {
+                var ownershipConflict = result is ResourceIngressPolicyOwnershipConflict;
+                failure ??= ResourceDeploymentAdapterResult.Failed.Create(
+                    result is ResourceIngressPolicySourceUnavailable
+                        ? "PublicIngressSourceUnavailable"
+                        : "IngressPolicyReconciliationFailed",
+                    "Kubernetes could not reconcile the web-service ingress policy.",
+                    retryable: !ownershipConflict);
+            }
+        }
+        return failure;
     }
 
     private async Task<ResourceDeploymentAdapterResult.Failed?> ApplyRegistryCredentialAsync(

@@ -3,7 +3,8 @@
 The WebServices feature owns the logical desired state, release history, deployment tokens, and
 lifecycle of tenant-scoped web services. One WebService can have several physical
 `ResourceDeployment` instances, each bound to a deployment target with its own fixed replica
-count, resolved compute snapshot, runtime cell, generation, operational status, and hostnames.
+count, resolved compute snapshot, runtime cell, generation, operational status, and optional
+hostnames.
 MongoDB remains the source of truth, but application consumers do not receive a feature-wide
 database context.
 
@@ -18,6 +19,10 @@ pending and failed desired targets still consume quota. See
 [tenant quotas](../../../docs/quotas.md#placement-aware-accounting). Generated Kubernetes Deployments
 consume only the persisted physical snapshot.
 
+Rollback restores the selected succeeded release's specification while retaining the service's
+current exposure mode. If that mode is Public, a historical specification without a numeric TCP
+target port is rejected before any deployment, quota, release, or outbox mutation.
+
 Shared desired-state changes advance one logical resource revision and transactionally fan out to
 the desired deployment set. Update, rollback, redeploy, image-tag and source-build releases exclude
 targets already being removed; inventory and finalization still retain those targets for cleanup.
@@ -26,11 +31,23 @@ Release entries identify the exact deployment, resource revision, generation, an
 track, allowing an aggregate release to report success, failure, or partial failure without a
 completion from one target masking the state of another.
 
-Public hostname ownership belongs to the Domains feature. Every physical deployment receives one
-immutable generated hostname under its target's public base domain and may have additional aliases
-under tenant-owned zones. The resolved ingress class, issuer, base domain, and complete hostname
-set are snapshotted in `ResourceDeployment`; Kubernetes rendering never rebuilds them from mutable
-target or domain state.
+Web Services default to `Private`: creation does not reserve a public hostname or create an Ingress,
+and no public endpoint is advertised. `Public` is an explicit exposure choice that requires a
+configured ingress source and public ingress settings on every selected target. Public hostname
+ownership belongs to the Domains feature. Each Public physical deployment receives one immutable
+generated hostname under its target's public base domain and may have additional aliases under
+tenant-owned zones. Its resolved ingress class, issuer, base domain, and complete hostname set are
+snapshotted in `ResourceDeployment`; Kubernetes rendering never rebuilds them from mutable target
+or domain state. Releases snapshot the logical exposure mode alongside the spec and deployment
+generations, so later completions cannot reinterpret an older Public release as Private or vice
+versa.
+
+Changing Public to Private clears each deployment's ingress snapshot and reconciles removal of
+its Ingress and public traffic allowances. The generated hostname binding is released only after
+that deployment's matching Private apply succeeds; a failed or delayed apply keeps the binding
+reserved. Changing back to Public reserves the generated hostname before admitting and applying
+the Public deployment. [Workload placement](../../../docs/workload-placement.md) describes the
+RuntimeCell ingress baseline and the target-specific source rules.
 
 ## Persistence boundary
 

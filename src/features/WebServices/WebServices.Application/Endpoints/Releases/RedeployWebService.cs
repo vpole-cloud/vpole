@@ -137,7 +137,8 @@ public sealed class RedeployWebServiceHandler(
                 correlationId: null,
                 new WebServiceReleaseFactory.CreateOptions(
                     ObjectId.GenerateNewId().ToString(),
-                    timeProvider.GetUtcNow().UtcDateTime));
+                    timeProvider.GetUtcNow().UtcDateTime),
+                updated.Exposure);
             await persistCurrentWebServiceRelease(transaction.Session, release, ct);
 
             return transaction.Commit(new RedeployWebServiceOutcome(

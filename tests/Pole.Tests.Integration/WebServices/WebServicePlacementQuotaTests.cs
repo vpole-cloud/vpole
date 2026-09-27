@@ -95,7 +95,7 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
 
         var updated = (await Mediator.Send(new UpdateWebServiceRequest(
             created.WebServiceId,
-            new UpdateWebServiceRequestBody(scaling, []),
+            new UpdateWebServiceRequestBody(scaling, [], WebServiceExposureMode.Public),
             TestData.TenantId))).AssertSuccess();
 
         Assert.Single(updated.Deployments);
@@ -138,7 +138,7 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
         };
         (await Mediator.Send(new UpdateWebServiceRequest(
             created.WebServiceId,
-            new UpdateWebServiceRequestBody(scaling, []),
+            new UpdateWebServiceRequestBody(scaling, [], WebServiceExposureMode.Public),
             TestData.TenantId))).AssertSuccess();
         await AssertUsageAsync(3750, 5120, 10, 1);
 
@@ -338,7 +338,7 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
 
         var updated = (await Mediator.Send(new UpdateWebServiceRequest(
             created.WebServiceId,
-            new UpdateWebServiceRequestBody(scaling, []),
+            new UpdateWebServiceRequestBody(scaling, [], WebServiceExposureMode.Public),
             TestData.TenantId))).AssertSuccess();
 
         Assert.Equal(2, updated.Deployments.Count);

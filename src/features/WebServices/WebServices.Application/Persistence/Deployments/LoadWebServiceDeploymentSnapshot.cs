@@ -51,6 +51,7 @@ internal sealed class MongoLoadWebServiceDeploymentSnapshot(
                 webService with
                 {
                     Spec = release.Spec,
+                    Exposure = release.Exposure,
                     ActiveRevision = release.ResourceRevision
                 },
                 release.Id,

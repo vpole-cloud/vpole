@@ -77,13 +77,11 @@ internal static class DeploymentTargetAdmissionSupport
     public static bool HasRequiredCapabilities(
         DeploymentTargetLookupDto target,
         DeploymentTargetRequiredCapabilities requiredCapabilities) => (!requiredCapabilities.HasFlag(DeploymentTargetRequiredCapabilities.PublicIngress) ||
-         target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null) &&
+         target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null &&
+         target.WorkloadConfiguration.NetworkSources.PublicIngress is not null) &&
         (!requiredCapabilities.HasFlag(
              DeploymentTargetRequiredCapabilities.FunctionRuntimeConnectivity) ||
-         string.Equals(
-             target.ConnectionKind,
-             "InCluster",
-             StringComparison.Ordinal));
+         target.WorkloadConfiguration.NetworkSources.FunctionGateway is not null);
 
     public static DeploymentTargetPublicIngressDto ToPublicIngressDto(
         DeploymentTargetLookupDto target)
@@ -94,7 +92,8 @@ internal static class DeploymentTargetAdmissionSupport
             target.WorkloadConfiguration.Revision,
             ingress.IngressClassName,
             ingress.ClusterIssuerName,
-            ingress.PublicBaseDomain!);
+            ingress.PublicBaseDomain!,
+            target.WorkloadConfiguration.NetworkSources.PublicIngress!);
     }
 
     public static string NormalizeDeploymentTargetId(

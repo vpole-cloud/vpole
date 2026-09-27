@@ -47,6 +47,28 @@ public sealed class RuntimeCellRecoveryPersistence(
 
             switch (current.State)
             {
+                case ReadyRuntimeCellState when
+                    current.UpdatedAtUtc <= RuntimeCellVerificationSchedule.DueBefore(now):
+                    var verification = current.RequestReconciliation(now);
+                    var replacement = await runtimeCells.ReplaceOneAsync(
+                        transaction.Session,
+                        RuntimeCellFilters.AtDesiredGenerationAndState<ReadyRuntimeCellState>(
+                            current, current.DesiredGeneration),
+                        verification,
+                        cancellationToken: ct);
+                    if (replacement.ModifiedCount == 1)
+                    {
+                        await storeOutboxWrites(
+                            transaction.Session,
+                            [OutboxWrite.Create(
+                                verification.ToReconciliationRequestedEvent(),
+                                RuntimeCellPendingKey.Reconciliation(
+                                    verification.Id,
+                                    verification.DesiredGeneration))],
+                            ct);
+                    }
+                    break;
+
                 case ProvisioningRuntimeCellState:
                     await storeOutboxWrites(
                         transaction.Session,

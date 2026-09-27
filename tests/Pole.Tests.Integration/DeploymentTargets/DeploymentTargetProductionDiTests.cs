@@ -22,6 +22,7 @@ using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime;
 using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Endpoints;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.WebServices.Application.Kubernetes;
@@ -152,12 +153,25 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
         var storageFailure = await Assert.ThrowsAsync<TestProviderInfrastructureException>(
             () => discoverStorageClasses(
                 DeploymentTargetId));
+        var target = DeploymentTargetNetworkPolicyTests.Target().AttestForTests().ToLookupDto();
+        var configuredTarget = target with
+        {
+            WorkloadConfiguration = target.WorkloadConfiguration with
+            {
+                NetworkSources = target.WorkloadConfiguration.NetworkSources with
+                {
+                    FunctionGateway = new DeploymentTargetCidrNetworkSourceDto("192.0.2.9/32")
+                }
+            }
+        };
         var functionFailure = await Assert.ThrowsAsync<TestProviderInfrastructureException>(
             () => new FunctionRevisionKubernetesManager(
                 provider,
                 (id, ct) => Task.FromResult<LookupDeploymentTargetOutcome>(
-                    new LookupDeploymentTargetOutcome(
-                        DeploymentTargetNetworkPolicyTests.Target().AttestForTests().ToLookupDto())),
+                    new LookupDeploymentTargetOutcome(configuredTarget)),
+                (tenantId, runtimeCellId, targetId, kubernetesNamespace, ct) =>
+                    Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
+                        new RuntimeCellIngressBaselineReady()),
                 []).ApplyAsync(
                     new FunctionRevisionInKubernetes(
                         null!,
@@ -193,6 +207,7 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
         services.AddSingleton<MongoRunTransaction>();
         services.AddKubernetes(configuration)
             .AddDeploymentTargetsFeature(configuration);
+        services.AddResourceGroupsFeature(configuration);
         services.AddFunctionRuntimeFeature(configuration);
 
         // AddKubernetes also contributes unrelated feature registrations. Resolve every
@@ -201,6 +216,7 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
         using var scope = provider.CreateScope();
 
         AssertResolved<IFunctionRevisionKubernetesManager>(provider);
+        AssertResolved<EnsureRuntimeCellIngressBaseline>(provider);
         AssertResolved<PrepareDeploymentTargetConnection>(provider);
         AssertResolved<CreateDeploymentTargetKubernetesClient>(provider);
         AssertResolved<ProbeDeploymentTargetConnection>(provider);

@@ -192,7 +192,8 @@ public sealed class UpdateWebServiceDeploymentHandler(
                     null,
                     new WebServiceReleaseFactory.CreateOptions(
                         ObjectId.GenerateNewId().ToString(),
-                        timeProvider.GetUtcNow().UtcDateTime));
+                        timeProvider.GetUtcNow().UtcDateTime),
+                    updated.Exposure);
                 await persistRelease(transaction.Session, release, token);
                 return transaction.Commit(new UpdateWebServiceDeploymentOutcome(changed));
             },

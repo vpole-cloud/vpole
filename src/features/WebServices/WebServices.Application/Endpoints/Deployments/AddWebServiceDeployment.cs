@@ -81,6 +81,7 @@ public union AddWebServiceDeploymentStateError(
 public union AddWebServiceDeploymentError(
     AddWebServiceDeploymentStateError,
     DeploymentTargetPublicIngressAdmissionError,
+    DeploymentTargetNewWorkloadAdmissionError,
     ComputeProfileResolutionError,
     GeneratedDomainZoneError,
     GeneratedHostnameBindingError,
@@ -96,6 +97,7 @@ public union AddWebServiceDeploymentOutcome(
 public sealed class AddWebServiceDeploymentHandler(
     LoadWebServiceById loadWebServiceById,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
+    AdmitDeploymentTargetForNewWorkload admitDeploymentTarget,
     AdmitDeploymentTargetPublicIngressForNewWorkload admitPublicIngress,
     ResolveComputeProfiles resolveComputeProfiles,
     GetOrCreateGeneratedDomainZone getOrCreateGeneratedDomainZone,
@@ -180,25 +182,56 @@ public sealed class AddWebServiceDeploymentHandler(
         WebService webService,
         CancellationToken cancellationToken)
     {
-        var admission = await admitPublicIngress(
-            CreateTargetAdmissionRequest(request, webService),
-            cancellationToken);
-        var targetResult = ToTargetResult(admission);
-        if (targetResult is DeploymentTargetPublicIngressAdmissionError targetError)
+        ResolvedAddition placement;
+        if (webService.Exposure.Mode is WebServiceExposureMode.Public)
         {
-            return new AddWebServiceDeploymentError(targetError);
+            var admission = await admitPublicIngress(
+                CreateTargetAdmissionRequest(request, webService),
+                cancellationToken);
+            var targetResult = ToTargetResult(admission);
+            if (targetResult is DeploymentTargetPublicIngressAdmissionError targetError)
+                return new AddWebServiceDeploymentError(targetError);
+            var target = (DeploymentTargetPublicIngressDto)targetResult.Value;
+            var computeResult = await resolveComputeProfiles(
+                CreateComputeResolutionRequest(request, target.DeploymentTargetId),
+                cancellationToken);
+            if (computeResult is ComputeProfileResolutionError publicComputeError)
+                return new AddWebServiceDeploymentError(publicComputeError);
+            placement = new ResolvedAddition(
+                target.DeploymentTargetId,
+                target.WorkloadConfigurationRevision,
+                ResourceDeploymentIngressConfiguration.Create(
+                    target.IngressClassName,
+                    target.ClusterIssuerName,
+                    target.PublicBaseDomain,
+                    []),
+                ((IReadOnlyList<ResolvedComputeProfile>)computeResult.Value).Single());
         }
-
-        var target = (DeploymentTargetPublicIngressDto)targetResult.Value;
-        var computeResult = await resolveComputeProfiles(
-            CreateComputeResolutionRequest(request, target.DeploymentTargetId),
-            cancellationToken);
-        return computeResult switch
+        else
         {
-            IReadOnlyList<ResolvedComputeProfile> computes =>
-                new ResolvedAddition(target, computes.Single()),
-            ComputeProfileResolutionError error => new AddWebServiceDeploymentError(error)
-        };
+            var admission = await admitDeploymentTarget(
+                new DeploymentTargetAdmissionRequest(
+                    request.TenantId,
+                    WebServiceResourceDeployment.ResourceType,
+                    webService.IsolationScopeId,
+                    request.Body.DeploymentTargetId!.Trim(),
+                    DeploymentTargetRequiredCapabilities.None),
+                cancellationToken);
+            if (admission is DeploymentTargetNewWorkloadAdmissionError targetError)
+                return new AddWebServiceDeploymentError(targetError);
+            var target = (DeploymentTargetLookupDto)admission.Value;
+            var computeResult = await resolveComputeProfiles(
+                CreateComputeResolutionRequest(request, target.Id),
+                cancellationToken);
+            if (computeResult is ComputeProfileResolutionError computeError)
+                return new AddWebServiceDeploymentError(computeError);
+            placement = new ResolvedAddition(
+                target.Id,
+                target.WorkloadConfiguration.Revision,
+                null,
+                ((IReadOnlyList<ResolvedComputeProfile>)computeResult.Value).Single());
+        }
+        return placement;
     }
 
     private static TargetResolutionOutcome ToTargetResult(
@@ -264,35 +297,32 @@ public sealed class AddWebServiceDeploymentHandler(
         var current = state.WebService;
         var updated = current.AdvancePlacementDesiredState();
         var deploymentId = ObjectId.GenerateNewId().ToString();
+        string? hostname = null;
+        if (placement.Ingress is not null)
+        {
+            var zoneResult = await getOrCreateGeneratedDomainZone(
+                CreateGeneratedZoneRequest(current, placement),
+                transaction.Session,
+                cancellationToken);
+            if (zoneResult is GeneratedDomainZoneError zoneError)
+                return Abort(transaction, new AddWebServiceDeploymentError(zoneError));
 
-        var zoneResult = await getOrCreateGeneratedDomainZone(
-            CreateGeneratedZoneRequest(current, placement),
-            transaction.Session,
-            cancellationToken);
-        if (zoneResult is GeneratedDomainZoneError zoneError)
-            return Abort(
-                transaction,
-                new AddWebServiceDeploymentError(zoneError));
-
-        var zone = (TenantDomainZoneSnapshot)zoneResult.Value;
-
-        var bindingResult = await createGeneratedHostnameBinding(
-            CreateGeneratedBindingRequest(current, placement, zone.Id, deploymentId),
-            transaction.Session,
-            cancellationToken);
-        if (bindingResult is GeneratedHostnameBindingError bindingError)
-            return Abort(
-                transaction,
-                new AddWebServiceDeploymentError(bindingError));
-
-        var binding = (HostnameBindingSnapshot)bindingResult.Value;
+            var zone = (TenantDomainZoneSnapshot)zoneResult.Value;
+            var bindingResult = await createGeneratedHostnameBinding(
+                CreateGeneratedBindingRequest(current, placement, zone.Id, deploymentId),
+                transaction.Session,
+                cancellationToken);
+            if (bindingResult is GeneratedHostnameBindingError bindingError)
+                return Abort(transaction, new AddWebServiceDeploymentError(bindingError));
+            hostname = ((HostnameBindingSnapshot)bindingResult.Value).Hostname;
+        }
 
         var createdResult = await createDeployments(
             CreateDeploymentSetRequest(
                 request,
                 updated,
                 placement,
-                binding.Hostname,
+                hostname,
                 deploymentId),
             transaction.Session,
             cancellationToken);
@@ -367,9 +397,9 @@ public sealed class AddWebServiceDeploymentHandler(
         ResolvedAddition placement) =>
         new(
             webService.TenantId,
-            placement.PublicIngress.DeploymentTargetId,
-            placement.PublicIngress.PublicBaseDomain,
-            placement.PublicIngress.WorkloadConfigurationRevision);
+            placement.DeploymentTargetId,
+            placement.Ingress!.PublicBaseDomain!,
+            placement.TargetWorkloadConfigurationRevision);
 
     private static CreateGeneratedHostnameBindingRequest CreateGeneratedBindingRequest(
         WebService webService,
@@ -379,7 +409,7 @@ public sealed class AddWebServiceDeploymentHandler(
         new(
             webService.TenantId,
             zoneId,
-            placement.PublicIngress.DeploymentTargetId,
+            placement.DeploymentTargetId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
             deploymentId,
@@ -389,7 +419,7 @@ public sealed class AddWebServiceDeploymentHandler(
         AddWebServiceDeploymentRequest request,
         WebService webService,
         ResolvedAddition placement,
-        string hostname,
+        string? hostname,
         string deploymentId) =>
         new(
         [
@@ -401,13 +431,16 @@ public sealed class AddWebServiceDeploymentHandler(
                 webService.ResourceGroupId,
                 webService.IsolationScopeId,
                 new ResolvedResourceDeploymentTarget(
-                    placement.PublicIngress.DeploymentTargetId,
-                    placement.PublicIngress.WorkloadConfigurationRevision,
-                    ResourceDeploymentIngressConfiguration.Create(
-                        placement.PublicIngress.IngressClassName,
-                        placement.PublicIngress.ClusterIssuerName,
-                        placement.PublicIngress.PublicBaseDomain,
-                        [hostname])),
+                    placement.DeploymentTargetId,
+                    placement.TargetWorkloadConfigurationRevision,
+                    placement.Ingress is null
+                        ? null
+                        : ResourceDeploymentIngressConfiguration.Create(
+                            placement.Ingress.IngressClassName,
+                            placement.Ingress.ClusterIssuerName,
+                            placement.Ingress.PublicBaseDomain!,
+                            [hostname ?? throw new InvalidOperationException(
+                                "A public deployment hostname is required.")])),
                 placement.Compute.ToResourceDeploymentConfiguration(),
                 Storage: null,
                 ResourcePlacementCapability.MultiTarget,
@@ -440,14 +473,17 @@ public sealed class AddWebServiceDeploymentHandler(
             null,
             new WebServiceReleaseFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
-                timeProvider.GetUtcNow().UtcDateTime));
+                timeProvider.GetUtcNow().UtcDateTime),
+            webService.Exposure);
 
     private sealed record CurrentState(
         WebService WebService,
         IReadOnlyList<PlacementSummaryDto> Deployments);
 
     private sealed record ResolvedAddition(
-        DeploymentTargetPublicIngressDto PublicIngress,
+        string DeploymentTargetId,
+        long TargetWorkloadConfigurationRevision,
+        ResourceDeploymentIngressConfiguration? Ingress,
         ResolvedComputeProfile Compute);
 
     private union LoadCurrentStateOutcome(

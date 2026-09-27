@@ -21,17 +21,25 @@ public sealed record WebService(
     WebServiceLifecycle Lifecycle)
 {
     public WebService UpdateDesiredState(WebServiceSpec spec, IEnumerable<string> tags)
+        => UpdateDesiredState(spec, tags, Exposure);
+
+    public WebService UpdateDesiredState(
+        WebServiceSpec spec,
+        IEnumerable<string> tags,
+        WebServiceExposure exposure)
     {
         EnsureActive();
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(tags);
+        ArgumentNullException.ThrowIfNull(exposure);
 
         var normalizedTags = WebServiceFactory.NormalizeTags(tags);
-        return Equals(Spec, spec) && Tags.SetEquals(normalizedTags)
+        return Equals(Spec, spec) && Tags.SetEquals(normalizedTags) && Equals(Exposure, exposure)
             ? this
             : this with
             {
                 Spec = spec,
+                Exposure = exposure,
                 Tags = normalizedTags,
                 ActiveRevision = checked(ActiveRevision + 1),
                 Revision = checked(Revision + 1)
@@ -93,14 +101,28 @@ public sealed record WebServiceSpec(
 /// Logical exposure policy, deliberately not a concrete hostname. Deployment hostname ownership
 /// and concrete FQDNs are held by Domains/ResourceDeployments.
 /// </summary>
-public sealed record WebServiceExposure(string GeneratedHostnameLabelPrefix)
+public enum WebServiceExposureMode
+{
+    Private,
+    Public
+}
+
+public sealed record WebServiceExposure(
+    [property: BsonRepresentation(BsonType.String)] WebServiceExposureMode Mode,
+    string GeneratedHostnameLabelPrefix)
 {
     public const string DefaultGeneratedHostnameLabelPrefix = "webservice";
 
-    public static WebServiceExposure Create(string? generatedHostnameLabelPrefix = null) =>
-        new(string.IsNullOrWhiteSpace(generatedHostnameLabelPrefix)
+    public static WebServiceExposure Create(
+        WebServiceExposureMode mode = WebServiceExposureMode.Private,
+        string? generatedHostnameLabelPrefix = null)
+    {
+        if (!Enum.IsDefined(mode))
+            throw new ArgumentOutOfRangeException(nameof(mode));
+        return new(mode, string.IsNullOrWhiteSpace(generatedHostnameLabelPrefix)
             ? DefaultGeneratedHostnameLabelPrefix
             : generatedHostnameLabelPrefix.Trim().ToLowerInvariant());
+    }
 }
 
 public sealed record AutoscalingSpec(
@@ -160,7 +182,7 @@ public static class WebServiceFactory
             RequiredObjectId(resourceGroupId, nameof(resourceGroupId)),
             RequiredObjectId(isolationScopeId, nameof(isolationScopeId)),
             spec,
-            WebServiceExposure.Create(exposure.GeneratedHostnameLabelPrefix),
+            WebServiceExposure.Create(exposure.Mode, exposure.GeneratedHostnameLabelPrefix),
             Positive(options.ActiveRevision, nameof(options.ActiveRevision)),
             NormalizeTags(options.Tags),
             options.Events ?? ImmutableList<ServiceEvent>.Empty,

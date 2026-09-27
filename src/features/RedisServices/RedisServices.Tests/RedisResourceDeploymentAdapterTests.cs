@@ -156,6 +156,7 @@ public sealed class RedisResourceDeploymentAdapterTests
     {
         var placement = new ResourceDeploymentResolvedPlacementSnapshot(
             TargetId,
+            TargetWorkloadConfigurationRevision: 1,
             KubernetesNamespace,
             Ingress: null,
             includeStorage

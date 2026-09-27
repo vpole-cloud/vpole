@@ -686,7 +686,16 @@ public sealed class PoleE2EFixture : IAsyncLifetime
                 "pole-lab")
             .WithEnvironment(
                 "DeploymentTargets__Bootstrap__WorkloadConfiguration__Ingress__PublicBaseDomain",
-                _kubernetesTarget.PublicBaseDomain);
+                _kubernetesTarget.PublicBaseDomain)
+            .WithEnvironment(
+                "DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__PublicIngress__Namespace",
+                "kube-system")
+            .WithEnvironment(
+                "DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__PublicIngress__PodLabels__app.kubernetes.io/name",
+                "traefik")
+            .WithEnvironment(
+                "DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__PublicIngress__PodLabels__app.kubernetes.io/instance",
+                "traefik-kube-system");
     }
 
     private string DescribeStartupStates(IEnumerable<string> resourceNames)

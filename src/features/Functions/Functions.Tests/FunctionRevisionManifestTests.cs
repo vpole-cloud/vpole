@@ -39,6 +39,10 @@ public sealed class FunctionRevisionManifestTests
         Assert.Equal(
             subject.Placement.ResourceDeploymentId,
             deployment.Spec.Template.Metadata.Labels["pole.io/resource-deployment-id"]);
+        Assert.Equal(subject.App.TenantId, deployment.Spec.Template.Metadata.Labels["pole.io/tenant-id"]);
+        Assert.Equal(
+            subject.Placement.RuntimeCellId,
+            deployment.Spec.Template.Metadata.Labels["pole.io/runtime-cell-id"]);
         Assert.Equal(deployment.Spec.Template.Metadata.Labels, subject.ToService().Metadata.Labels);
         Assert.Equal(deployment.Spec.Selector.MatchLabels, deployment.Spec.Template.Metadata.Labels
             .Where(pair => deployment.Spec.Selector.MatchLabels.ContainsKey(pair.Key))

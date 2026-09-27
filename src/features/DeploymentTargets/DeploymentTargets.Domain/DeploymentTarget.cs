@@ -116,6 +116,7 @@ public sealed record DeploymentTarget(
         bool enabled,
         bool acceptsWorkloads,
         DeploymentTargetIngressConfiguration? ingress,
+        DeploymentTargetNetworkSources networkSources,
         DateTime updatedAtUtc)
     {
         var normalizedDisplayName = DeploymentTargetValueGuard.Required(
@@ -126,7 +127,7 @@ public sealed record DeploymentTarget(
             throw new InvalidOperationException("A disabled deployment target cannot accept new workloads.");
         if (acceptsWorkloads && DeletionRequestedAtUtc is not null)
             throw new InvalidOperationException("A deployment target pending deletion cannot accept new workloads.");
-        var workloadConfiguration = WorkloadConfiguration.Reconfigure(ingress);
+        var workloadConfiguration = WorkloadConfiguration.Reconfigure(ingress, networkSources);
         if (string.Equals(DisplayName, normalizedDisplayName, StringComparison.Ordinal) &&
             Enabled == enabled &&
             AcceptsWorkloads == acceptsWorkloads &&
@@ -326,7 +327,8 @@ public static class DeploymentTargetFactory
             options.CreatedAtUtc,
             nameof(options.CreatedAtUtc));
         var normalizedWorkloadConfiguration = DeploymentTargetWorkloadConfiguration.Create(
-            workloadConfiguration.Ingress);
+            workloadConfiguration.Ingress,
+            workloadConfiguration.NetworkSources);
 
         if (!enabled && acceptsWorkloads)
         {

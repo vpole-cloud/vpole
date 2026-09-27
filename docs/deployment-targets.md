@@ -12,7 +12,7 @@ Each target has a stable ID, display name, stable cluster identity, connection v
 - Validation observations are compare-and-set against both target revision and connection version. They do not increment the configuration revision.
 - Credential rotation increments both the target revision and connection version and must resolve to the same stable cluster identity. Changing credentials cannot retarget an existing target ID.
 
-The stable identity is derived from the `kube-system` namespace UID. Validation also records the Kubernetes server version and self-subject access results for get/create/update/patch/delete on namespaces.
+The stable identity is derived from the `kube-system` namespace UID. Validation also records the Kubernetes server version and self-subject access results for get/create/update/patch/delete on namespaces and NetworkPolicies.
 
 The default target is stored in the singleton `DeploymentTargetSettings` document. The local cluster has no special `IsManagementCluster` flag. RuntimeCell placement persists the selected target for each isolation scope, and ResourceDeployment persists the target selected for each adopted workload. The default is therefore not mutable through the current platform API.
 
@@ -41,6 +41,45 @@ After envelope-encryption initialization and database migrations, startup runs a
 5. After that transaction, MongoDB is the source of truth. Startup configuration is not consulted to replace or rotate the stored connection.
 
 `DeploymentTargets:Bootstrap:Mode` supports `Auto`, `InCluster`, and `Kubeconfig`. `Auto` selects `Kubeconfig` in Development and `InCluster` in every other environment. Development can set an absolute `KubeconfigPath` and optional `KubeconfigContext`; otherwise Pole reads one absolute `KUBECONFIG` file or the standard user kubeconfig. Merged `KUBECONFIG` lists are rejected so the imported credential is deterministic.
+
+Bootstrap network sources are explicit under `DeploymentTargets:Bootstrap:WorkloadConfiguration:NetworkSources`.
+`Pods` maps each purpose (`PublicIngress`, `FunctionGateway`, `PostgresOperator`) to a required
+namespace and nonempty pod-label map. `Cidrs` maps the same purposes to a canonical
+IPv4 or IPv6 CIDR; validation rejects the unrestricted `/0` prefix, and the administrator
+must limit the range to the required CNI-visible source addresses. A purpose may occur in
+only one map. Invalid labels, CIDRs, duplicate purposes, and unknown numeric purposes fail
+startup. Empty maps configure no source. For example:
+
+```json
+{
+  "DeploymentTargets": {
+    "Bootstrap": {
+      "WorkloadConfiguration": {
+        "NetworkSources": {
+          "Pods": {
+            "PublicIngress": {
+              "Namespace": "kube-system",
+              "PodLabels": {
+                "app.kubernetes.io/name": "traefik",
+                "app.kubernetes.io/instance": "traefik-kube-system"
+              }
+            }
+          },
+          "Cidrs": {}
+        }
+      }
+    }
+  }
+}
+```
+
+The platform target create/update API uses a `networkSources` object with optional named
+purposes. Each source has a JSON `kind` discriminator: `Pod` with `namespace` and `podLabels`,
+or `Cidr` with `cidr`. Pod namespace and labels form one conjunctive Kubernetes policy peer;
+they are not alternate identities. CIDR sources identify addresses visible to the CNI, which
+may differ from the original sender after NAT. Configure only the addresses actually required
+by the cluster's routing path. Tenant available-target metadata reports readiness, not these
+platform source identities.
 
 Set `DeploymentTargets:Bootstrap:Enabled=false` only for specialized test or recovery hosts that intentionally start without a default target.
 
@@ -93,6 +132,12 @@ New and bootstrap targets default to `Unknown` enforcement and cannot admit work
 Healthy Kubernetes API access and permission discovery do **not** prove that a CNI enforces
 NetworkPolicy. Logical resource groups can still be created.
 
+The target probe checks the platform identity's `get`, `create`, `update`, `patch`, and `delete`
+authorization for cluster-scoped `namespaces` and `networking.k8s.io/networkpolicies` across
+Pole-managed namespaces. Missing NetworkPolicy writer permissions mark the target degraded
+and workload readiness `EnforcementRequired` with reason `WriterPermissionsMissing`. A CNI
+attestation remains a separate operator decision; an RBAC check is not enforcement evidence.
+
 A platform administrator records an operator attestation with
 `PUT /api/v1/platform/deployment-targets/{id}/network-policy`:
 
@@ -135,14 +180,21 @@ so revoking an attestation appears on the next read without waiting for workload
 Reasons never contain provider errors, namespace names, or other tenants' workload identities.
 Search `Applied` remains a workload lifecycle status; it is not evidence of isolation.
 
-`EnforcementAttested` only describes the target's capability. It does not claim that baseline
-isolation policies have been installed: baseline NetworkPolicy generation is tracked separately
-in #45. Changing this setting does not remove running workloads or install policies.
+`EnforcementAttested` only describes the target's capability. RuntimeCell lifecycle creates an
+ingress-only deny-all NetworkPolicy before the cell becomes Ready, and the workload writer
+re-ensures that owned baseline before each apply. A failed or foreign policy keeps creation
+and apply retryable or visibly conflicted. Kubernetes API acceptance is not synchronous proof
+that the CNI has converged. The explicit `allowIsolationNotEnforced` override still causes Pole
+to write policies but reports `IsolationNotEnforced` rather than claiming isolation. No egress
+policy is installed. NetworkPolicy cannot restrict node-local traffic, and host-network or
+port-forward probes do not establish ordinary pod-to-pod enforcement.
 
 The reconciliation worker rechecks current readiness immediately before an apply, covering
 requests queued before an attestation was revoked. It records retryable
 `NetworkPolicyEnforcementRequired` when blocked. Delete reconciliation remains available.
-This check does not actively test the data plane or revoke already-running pods.
+This check does not actively test the data plane or revoke already-running pods. Live validation
+uses reachable positive controls and denied ordinary peer pods; externally deleted or tampered
+policies are repaired by bounded reconciliation, with no claim of a zero-packet repair window.
 Function revision provisioning, activation, and autoscaling also use this current-readiness
 check at their shared Kubernetes writer: revision apply and replica increases require evidence
 or the explicit override, even when the resource deployment was previously Applied. Diagnostic

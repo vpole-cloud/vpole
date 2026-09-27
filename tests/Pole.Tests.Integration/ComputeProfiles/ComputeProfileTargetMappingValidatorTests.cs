@@ -190,7 +190,8 @@ public sealed class ComputeProfileTargetMappingValidatorTests
                     "test-cluster",
                     "test",
                     1,
-                    new DeploymentTargetWorkloadConfigurationLookupDto(1, null),
+                    new DeploymentTargetWorkloadConfigurationLookupDto(
+                        1, null, new DeploymentTargetNetworkSourcesDto(null, null, null)),
                     1,
                     Enabled: true,
                     AcceptsWorkloads: true,

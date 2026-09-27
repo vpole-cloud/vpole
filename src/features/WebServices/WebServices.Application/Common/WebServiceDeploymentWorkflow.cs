@@ -109,9 +109,20 @@ internal static class WebServiceDeploymentWorkflow
             deployment.DeploymentId,
             deployment.DeploymentRevision,
             deployment.Compute.Profile,
+            replacementIngress is null
+                ? new PreserveIngress()
+                : new ReplaceIngress(replacementIngress),
             replacementCompute,
-            replacementIngress,
             fixedReplicas);
+
+    public static ResourceDeploymentSetApplyItem ToSetApplyItemForExposure(
+        PlacementSummaryDto deployment,
+        ResourceDeploymentIngressChange ingressChange) =>
+        new(
+            deployment.DeploymentId,
+            deployment.DeploymentRevision,
+            deployment.Compute.Profile,
+            ingressChange);
 
     public static ResourceDeploymentExactMutationRequest ToExactApplyRequest(
         string tenantId,

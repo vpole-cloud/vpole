@@ -191,7 +191,8 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
             null,
             new WebServiceReleaseFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
-                timeProvider.GetUtcNow().UtcDateTime));
+                timeProvider.GetUtcNow().UtcDateTime),
+            updated.Exposure);
         await persistRelease(transaction.Session, release, cancellationToken);
         return transaction.Commit(new DeleteWebServiceDeploymentHostnameOutcome(changed));
     }

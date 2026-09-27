@@ -47,6 +47,17 @@ internal static class WebServiceFilters
             ById(webService.TenantId, webService.Id),
             Builders<WebService>.Filter.Eq(item => item.Revision, webService.Revision));
 
+    public static FilterDefinition<WebService> PrivateActiveRevision(
+        string tenantId,
+        string webServiceId,
+        long activeRevision) =>
+        Builders<WebService>.Filter.And(
+            ById(tenantId, webServiceId),
+            Builders<WebService>.Filter.Eq(item => item.ActiveRevision, activeRevision),
+            Builders<WebService>.Filter.Eq(
+                item => item.Exposure.Mode,
+                WebServiceExposureMode.Private));
+
     public static FilterDefinition<WebService> InLifecycle<TLifecycle>(
         string tenantId,
         string webServiceId)

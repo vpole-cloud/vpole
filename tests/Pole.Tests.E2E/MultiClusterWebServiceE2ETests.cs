@@ -191,7 +191,8 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
                     ingressClassName = "traefik",
                     clusterIssuerName = "pole-lab",
                     publicBaseDomain = target.PublicBaseDomain
-                }
+                },
+                networkSources = LabNetworkSources()
             },
             connection = new
             {
@@ -232,13 +233,28 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
                     ingressClassName = "traefik",
                     clusterIssuerName = "pole-lab",
                     publicBaseDomain = target.LabTarget.PublicBaseDomain
-                }
+                },
+                networkSources = LabNetworkSources()
             },
             revision = target.Revision
         });
         var json = await SendJsonAsync(request, cancellationToken);
         return target with { Revision = json.GetProperty("revision").GetInt64() };
     }
+
+    private static object LabNetworkSources() => new
+    {
+        publicIngress = new
+        {
+            kind = "Pod",
+            @namespace = "kube-system",
+            podLabels = new Dictionary<string, string>
+            {
+                ["app.kubernetes.io/name"] = "traefik",
+                ["app.kubernetes.io/instance"] = "traefik-kube-system"
+            }
+        }
+    };
 
     private async Task<CreatedComputeProfile> CreateComputeProfileAsync(
         string targetAId,
@@ -304,6 +320,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         {
             name,
             resourceGroupId,
+            exposure = "Public",
             spec = new
             {
                 image = new { server = "docker.io", name = "library/nginx", tag = "1.27.5-alpine" },

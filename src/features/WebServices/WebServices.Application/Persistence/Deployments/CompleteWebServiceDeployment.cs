@@ -36,8 +36,10 @@ public delegate Task<CompleteWebServiceDeploymentOutcome> CompleteWebServiceDepl
 
 internal sealed class MongoCompleteWebServiceDeployment(
     IMongoCollection<WebServiceRelease> releases,
+    IMongoCollection<WebService> webServices,
     RunMongoOutcomeTransaction<CompleteWebServiceDeploymentOutcome> runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites,
+    LoadHostnameBindingsForDeploymentInTransaction loadHostnameBindingsForDeployment,
     DeleteHostnameBindingsForDeployment deleteHostnameBindingsForDeployment,
     GetExactResourceDeploymentFinalizationReadiness getExactResourceDeploymentFinalizationReadiness,
     PurgeExactDeletedResourceDeployment purgeExactDeletedResourceDeployment)
@@ -108,6 +110,52 @@ internal sealed class MongoCompleteWebServiceDeployment(
                     if (purge is ResourceDeploymentFinalizationConflict conflict)
                     {
                         return transaction.Abort(new WebServiceFinalizationError(conflict));
+                    }
+                }
+            }
+
+            if (completion.Operation == WebServiceReleaseDeploymentOperation.Apply &&
+                completion.Succeeded)
+            {
+                var current = await webServices.Find(
+                        transaction.Session,
+                        WebServiceFilters.ById(tenantId, webServiceId))
+                    .FirstOrDefaultAsync(ct);
+                if (current is { Exposure.Mode: WebServiceExposureMode.Private } &&
+                    current.ActiveRevision == completion.ResourceRevision)
+                {
+                    var bindings = await loadHostnameBindingsForDeployment(
+                        tenantId,
+                        WebServiceResourceDeployment.ResourceType,
+                        webServiceId,
+                        completion.ResourceDeploymentId,
+                        transaction.Session,
+                        ct);
+                    if (bindings.Count > 0)
+                    {
+                        var fence = await webServices.UpdateOneAsync(
+                            transaction.Session,
+                            WebServiceFilters.PrivateActiveRevision(
+                                tenantId,
+                                webServiceId,
+                                completion.ResourceRevision),
+                            Builders<WebService>.Update.Inc(service => service.Revision, 1),
+                            cancellationToken: ct);
+                        if (fence.ModifiedCount == 1)
+                        {
+                            var cleanup = await deleteHostnameBindingsForDeployment(
+                                tenantId,
+                                WebServiceResourceDeployment.ResourceType,
+                                webServiceId,
+                                completion.ResourceDeploymentId,
+                                transaction.Session,
+                                ct);
+                            if (cleanup is HostnameBindingCleanupError cleanupError)
+                            {
+                                return transaction.Abort(
+                                    new WebServiceFinalizationError(cleanupError));
+                            }
+                        }
                     }
                 }
             }

@@ -43,6 +43,12 @@ public sealed class DeploymentTargetProbeTests
         Assert.Equal(
             new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
             observation.Capabilities.NamespaceCapabilities);
+        Assert.Equal(
+            new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true),
+            observation.Capabilities.NetworkPolicyCapabilities);
+        Assert.Equal(
+            ["get", "create", "update", "patch", "delete"],
+            handler.ReviewedNetworkPolicyVerbs);
     }
 
     [Fact]
@@ -69,6 +75,25 @@ public sealed class DeploymentTargetProbeTests
         Assert.True(observation.Capabilities.NamespaceCapabilities.CanPatch);
     }
 
+    [Fact]
+    public async Task ProbeAsync_MissingNetworkPolicyPermission_DegradesTargetReadiness()
+    {
+        var handler = new KubernetesProbeHandler(
+            deniedVerb: "create",
+            deniedResource: "networkpolicies");
+        using var kubernetes = CreateClient(handler);
+
+        var observation = await CreateProbe(ObservedAt).InvokeAsync(
+            kubernetes,
+            connectionVersion: 7);
+
+        Assert.False(observation.IsUsable);
+        Assert.Equal("InsufficientNetworkPolicyPermissions", observation.Health.FailureCode);
+        Assert.True(observation.Capabilities.NamespaceCapabilities.CanCreate);
+        Assert.False(observation.Capabilities.NetworkPolicyCapabilities.CanCreate);
+        Assert.True(observation.Capabilities.NetworkPolicyCapabilities.CanGet);
+    }
+
     private static DeploymentTargetProbe CreateProbe(DateTimeOffset utcNow) =>
         new(
             new FixedTimeProvider(utcNow),
@@ -89,9 +114,12 @@ public sealed class DeploymentTargetProbeTests
         public override DateTimeOffset GetUtcNow() => utcNow;
     }
 
-    private sealed class KubernetesProbeHandler(string? deniedVerb = null) : DelegatingHandler
+    private sealed class KubernetesProbeHandler(
+        string? deniedVerb = null,
+        string? deniedResource = null) : DelegatingHandler
     {
         public List<string> ReviewedVerbs { get; } = [];
+        public List<string> ReviewedNetworkPolicyVerbs { get; } = [];
         public List<string> RequestedPaths { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(
@@ -148,9 +176,30 @@ public sealed class DeploymentTargetProbeTests
                 .GetProperty("resourceAttributes")
                 .GetProperty("verb")
                 .GetString();
+            var resource = document.RootElement
+                .GetProperty("spec")
+                .GetProperty("resourceAttributes")
+                .GetProperty("resource")
+                .GetString();
+            var group = document.RootElement
+                .GetProperty("spec")
+                .GetProperty("resourceAttributes")
+                .GetProperty("group")
+                .GetString();
             Assert.False(string.IsNullOrWhiteSpace(verb));
-            ReviewedVerbs.Add(verb);
-            var allowed = !string.Equals(verb, deniedVerb, StringComparison.Ordinal);
+            if (resource == "namespaces")
+            {
+                Assert.Equal(string.Empty, group);
+                ReviewedVerbs.Add(verb);
+            }
+            else
+            {
+                Assert.Equal("networkpolicies", resource);
+                Assert.Equal("networking.k8s.io", group);
+                ReviewedNetworkPolicyVerbs.Add(verb);
+            }
+            var allowed = !string.Equals(verb, deniedVerb, StringComparison.Ordinal) ||
+                          !string.Equals(resource, deniedResource ?? "namespaces", StringComparison.Ordinal);
             return Json(
                 $$"""
                 {

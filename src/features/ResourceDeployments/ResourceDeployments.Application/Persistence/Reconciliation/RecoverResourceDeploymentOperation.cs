@@ -33,6 +33,15 @@ internal sealed class RecoverResourceDeploymentOperation(
 
             switch (current.State)
             {
+                case AppliedResourceDeploymentState when
+                    current.DesiredOperation == ResourceDeploymentOperation.Apply &&
+                    current.UpdatedAtUtc <= ResourceDeploymentVerificationSchedule.DueBefore(now):
+                    return transaction.Commit(await PersistRecoveryAsync(
+                        current,
+                        current.RequestVerification(now),
+                        transaction.Session,
+                        ct));
+
                 case PendingResourceDeploymentState:
                     await storeOutboxWrites(
                         transaction.Session,
@@ -41,9 +50,9 @@ internal sealed class RecoverResourceDeploymentOperation(
                     return transaction.Commit(0L);
 
                 case ReconcilingResourceDeploymentState
-                    {
-                        LeaseExpiresAtUtc: var leaseExpiresAtUtc
-                    } when leaseExpiresAtUtc <= now:
+                {
+                    LeaseExpiresAtUtc: var leaseExpiresAtUtc
+                } when leaseExpiresAtUtc <= now:
                     return transaction.Commit(await PersistRecoveryAsync(
                         current,
                         current.RecoverStaleClaim(now),
@@ -52,10 +61,10 @@ internal sealed class RecoverResourceDeploymentOperation(
                         staleClaimRecoveryCount: 1));
 
                 case FailedResourceDeploymentState
-                    {
-                        Retryable: true,
-                        RetryNotBeforeUtc: var retryAtUtc
-                    } when retryAtUtc <= now:
+                {
+                    Retryable: true,
+                    RetryNotBeforeUtc: var retryAtUtc
+                } when retryAtUtc <= now:
                     return transaction.Commit(await PersistRecoveryAsync(
                         current,
                         current.Retry(now),

@@ -147,7 +147,8 @@ public sealed class WebServiceDeploymentConsumerTests(MongoReplicaSetFixture fix
             "correlation-1",
             new WebServiceReleaseFactory.CreateOptions(
                 MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
-                DateTime.UtcNow));
+                DateTime.UtcNow),
+            WebServiceExposure.Create(WebServiceExposureMode.Public));
 
         await Fixture.Database.WebServiceReleases().InsertOneAsync(release);
         return release;

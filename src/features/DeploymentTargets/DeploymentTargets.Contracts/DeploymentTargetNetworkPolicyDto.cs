@@ -22,6 +22,7 @@ public enum NetworkPolicyReadiness
 public enum NetworkPolicyReason
 {
     EnforcementNotEstablished,
+    WriterPermissionsMissing,
     OperatorAttestedSupported,
     OperatorAttestedUnsupported
 }

@@ -18,7 +18,7 @@ public sealed class WebServiceReleaseSchemaValidationMigration : IMigration
         {
             ["bsonType"] = "object",
             ["additionalProperties"] = false,
-            ["required"] = new BsonArray { "_id", "TenantId", "WebServiceId", "ResourceRevision", "Action", "Outcome", "ActorUserId", "ActorEmail", "RequestedAtUtc", "CompletedAtUtc", "FailureMessage", "TraceId", "CorrelationId", "Provenance", "Deployments", "Spec" },
+            ["required"] = new BsonArray { "_id", "TenantId", "WebServiceId", "ResourceRevision", "Action", "Outcome", "ActorUserId", "ActorEmail", "RequestedAtUtc", "CompletedAtUtc", "FailureMessage", "TraceId", "CorrelationId", "Provenance", "Deployments", "Spec", "Exposure" },
             ["properties"] = new BsonDocument
             {
                 ["_id"] = new BsonDocument("bsonType", "objectId"),
@@ -27,11 +27,27 @@ public sealed class WebServiceReleaseSchemaValidationMigration : IMigration
                 ["ResourceRevision"] = new BsonDocument { ["bsonType"] = "long", ["minimum"] = 1 },
                 ["Action"] = new BsonDocument("enum", new BsonArray { "Create", "Update", "Redeploy", "Rollback", "ImageTagUpdate", "SourceBuild", "AddDeployment", "UpdateDeployment", "RemoveDeployment", "RetryDeployment", "HostnameChanged" }),
                 ["Outcome"] = new BsonDocument("enum", new BsonArray { "Pending", "Succeeded", "PartiallyFailed", "Failed", "Superseded" }),
-                ["ActorUserId"] = NullableString(), ["ActorEmail"] = NullableString(),
-                ["RequestedAtUtc"] = new BsonDocument("bsonType", "date"), ["CompletedAtUtc"] = Nullable("date"),
-                ["FailureMessage"] = NullableString(), ["TraceId"] = NullableString(), ["CorrelationId"] = NullableString(), ["Provenance"] = Nullable("object"),
+                ["ActorUserId"] = NullableString(),
+                ["ActorEmail"] = NullableString(),
+                ["RequestedAtUtc"] = new BsonDocument("bsonType", "date"),
+                ["CompletedAtUtc"] = Nullable("date"),
+                ["FailureMessage"] = NullableString(),
+                ["TraceId"] = NullableString(),
+                ["CorrelationId"] = NullableString(),
+                ["Provenance"] = Nullable("object"),
                 ["Deployments"] = new BsonDocument { ["bsonType"] = "array", ["minItems"] = 1, ["items"] = DeploymentSchema() },
-                ["Spec"] = new BsonDocument("bsonType", "object")
+                ["Spec"] = new BsonDocument("bsonType", "object"),
+                ["Exposure"] = new BsonDocument
+                {
+                    ["bsonType"] = "object",
+                    ["additionalProperties"] = false,
+                    ["required"] = new BsonArray { "Mode", "GeneratedHostnameLabelPrefix" },
+                    ["properties"] = new BsonDocument
+                    {
+                        ["Mode"] = new BsonDocument("enum", new BsonArray { "Private", "Public" }),
+                        ["GeneratedHostnameLabelPrefix"] = new BsonDocument("bsonType", "string")
+                    }
+                }
             }
         });
         using var names = await context.ListCollectionNamesAsync(new ListCollectionNamesOptions { Filter = new BsonDocument("name", CollectionName) }, cancellationToken);
@@ -39,7 +55,9 @@ public sealed class WebServiceReleaseSchemaValidationMigration : IMigration
         {
             await context.CreateCollectionAsync(CollectionName, new CreateCollectionOptions<BsonDocument>
             {
-                Validator = new BsonDocumentFilterDefinition<BsonDocument>(validator), ValidationLevel = DocumentValidationLevel.Strict, ValidationAction = DocumentValidationAction.Error
+                Validator = new BsonDocumentFilterDefinition<BsonDocument>(validator),
+                ValidationLevel = DocumentValidationLevel.Strict,
+                ValidationAction = DocumentValidationAction.Error
             }, cancellationToken);
             return;
         }
@@ -48,14 +66,20 @@ public sealed class WebServiceReleaseSchemaValidationMigration : IMigration
 
     private static BsonDocument DeploymentSchema() => new()
     {
-        ["bsonType"] = "object", ["additionalProperties"] = false,
+        ["bsonType"] = "object",
+        ["additionalProperties"] = false,
         ["required"] = new BsonArray { "ResourceDeploymentId", "DeploymentTargetId", "ResourceRevision", "DeploymentGeneration", "Operation", "Outcome", "CompletedAtUtc", "FailureCode", "FailureMessage" },
         ["properties"] = new BsonDocument
         {
-            ["ResourceDeploymentId"] = new BsonDocument("bsonType", "string"), ["DeploymentTargetId"] = new BsonDocument("bsonType", "string"),
-            ["ResourceRevision"] = new BsonDocument { ["bsonType"] = "long", ["minimum"] = 1 }, ["DeploymentGeneration"] = new BsonDocument { ["bsonType"] = "long", ["minimum"] = 1 },
-            ["Operation"] = new BsonDocument("enum", new BsonArray { "Apply", "Delete" }), ["Outcome"] = new BsonDocument("enum", new BsonArray { "Pending", "Succeeded", "Failed", "Removed" }),
-            ["CompletedAtUtc"] = Nullable("date"), ["FailureCode"] = NullableString(), ["FailureMessage"] = NullableString()
+            ["ResourceDeploymentId"] = new BsonDocument("bsonType", "string"),
+            ["DeploymentTargetId"] = new BsonDocument("bsonType", "string"),
+            ["ResourceRevision"] = new BsonDocument { ["bsonType"] = "long", ["minimum"] = 1 },
+            ["DeploymentGeneration"] = new BsonDocument { ["bsonType"] = "long", ["minimum"] = 1 },
+            ["Operation"] = new BsonDocument("enum", new BsonArray { "Apply", "Delete" }),
+            ["Outcome"] = new BsonDocument("enum", new BsonArray { "Pending", "Succeeded", "Failed", "Removed" }),
+            ["CompletedAtUtc"] = Nullable("date"),
+            ["FailureCode"] = NullableString(),
+            ["FailureMessage"] = NullableString()
         }
     };
     private static BsonDocument NullableString() => Nullable("string");

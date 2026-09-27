@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Text.Json;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.DeploymentTargets.Application.Common;
@@ -242,7 +244,9 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
                 renamed.DisplayName,
                 renamed.Enabled,
                 renamed.AcceptsWorkloads,
-                new DeploymentTargetWorkloadConfigurationRequestBody(Ingress: null),
+                new DeploymentTargetWorkloadConfigurationRequestBody(
+                    Ingress: null,
+                    NetworkSources: new DeploymentTargetNetworkSourcesRequestBody(null, null, null)),
                 renamed.Revision));
 
         Assert.Equal(HttpStatusCode.OK, disabledIngressResponse.StatusCode);
@@ -253,6 +257,128 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
             renamed.WorkloadConfiguration.Revision + 1,
             withoutIngress.WorkloadConfiguration.Revision);
         Assert.Null(withoutIngress.WorkloadConfiguration.Ingress);
+    }
+
+    [Fact]
+    public async Task NetworkSources_CreateAndUpdate_PersistTypedIdentityAndAdvanceRevision()
+    {
+        SetPlatformAdmin();
+        var body = CreateBody(
+            "Source-configured cluster",
+            "https://cluster-one.test:6443",
+            CreateCertificateAuthorityData(),
+            FirstToken);
+        var publicSource = new DeploymentTargetPodNetworkSourceRequestBody(
+            "ingress-system",
+            new Dictionary<string, string> { ["app.kubernetes.io/name"] = "traefik" });
+        body = body with
+        {
+            WorkloadConfiguration = body.WorkloadConfiguration with
+            {
+                NetworkSources = new DeploymentTargetNetworkSourcesRequestBody(publicSource, null, null)
+            }
+        };
+
+        var response = await Client.PostAsJsonAsync("/api/v1/platform/deployment-targets/", body);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = Assert.IsType<DeploymentTargetDto>(
+            await response.Content.ReadFromJsonAsync<DeploymentTargetDto>());
+        var returnedPublic = Assert.IsType<DeploymentTargetPodNetworkSourceDto>(
+            created.WorkloadConfiguration.NetworkSources.PublicIngress);
+        Assert.Equal("ingress-system", returnedPublic.Namespace);
+        Assert.Equal("traefik", returnedPublic.PodLabels["app.kubernetes.io/name"]);
+        var persisted = await Fixture.DbContext.DeploymentTargets
+            .Find(target => target.Id == created.Id)
+            .SingleAsync();
+        Assert.IsType<DeploymentTargetPodNetworkSource>(
+            persisted.WorkloadConfiguration.NetworkSources.PublicIngress);
+
+        var newSources = created.WorkloadConfiguration.NetworkSources.ToRequestBody() with
+        {
+            FunctionGateway = new DeploymentTargetCidrNetworkSourceRequestBody("192.0.2.9/32")
+        };
+        var update = await Client.PutAsJsonAsync(
+            $"/api/v1/platform/deployment-targets/{created.Id}",
+            new UpdateDeploymentTargetRequestBody(
+                created.DisplayName,
+                created.Enabled,
+                created.AcceptsWorkloads,
+                created.WorkloadConfiguration.ToRequestBody() with { NetworkSources = newSources },
+                created.Revision));
+
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        var configured = Assert.IsType<DeploymentTargetDto>(
+            await update.Content.ReadFromJsonAsync<DeploymentTargetDto>());
+        Assert.Equal(created.WorkloadConfiguration.Revision + 1, configured.WorkloadConfiguration.Revision);
+        Assert.Equal("192.0.2.9/32", Assert.IsType<DeploymentTargetCidrNetworkSourceDto>(
+            configured.WorkloadConfiguration.NetworkSources.FunctionGateway).Cidr);
+
+        var attestResponse = await Client.PutAsJsonAsync(
+            $"/api/v1/platform/deployment-targets/{configured.Id}/network-policy",
+            new UpdateDeploymentTargetNetworkPolicyBody(
+                NetworkPolicyEnforcement.Supported,
+                false,
+                configured.Revision));
+        Assert.Equal(HttpStatusCode.OK, attestResponse.StatusCode);
+        var availableResponse = await Client.GetAsync(
+            "/api/v1/deployment-targets/available?resourceType=pole/web-service&requiresPublicIngress=false");
+        Assert.Equal(HttpStatusCode.OK, availableResponse.StatusCode);
+        var availableJson = await availableResponse.Content.ReadAsStringAsync();
+        Assert.Contains(configured.Id, availableJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("ingress-system", availableJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("192.0.2.9", availableJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task NetworkSources_RejectPaddedLabelAndUnknownJsonKind()
+    {
+        SetPlatformAdmin();
+        var created = await CreateTargetAsync();
+        var invalidSource = new DeploymentTargetPodNetworkSourceRequestBody(
+            "ingress-system",
+            new Dictionary<string, string> { ["app.kubernetes.io/name"] = " traefik " });
+        var update = new UpdateDeploymentTargetRequestBody(
+            created.DisplayName,
+            created.Enabled,
+            created.AcceptsWorkloads,
+            created.WorkloadConfiguration.ToRequestBody() with
+            {
+                NetworkSources = new DeploymentTargetNetworkSourcesRequestBody(
+                    invalidSource, null, null)
+            },
+            created.Revision);
+
+        var invalidLabelResponse = await Client.PutAsJsonAsync(
+            $"/api/v1/platform/deployment-targets/{created.Id}", update);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidLabelResponse.StatusCode);
+
+        var valid = update with
+        {
+            WorkloadConfiguration = update.WorkloadConfiguration with
+            {
+                NetworkSources = new DeploymentTargetNetworkSourcesRequestBody(
+                    invalidSource with
+                    {
+                        PodLabels = new Dictionary<string, string>
+                        {
+                            ["app.kubernetes.io/name"] = "traefik"
+                        }
+                    }, null, null)
+            }
+        };
+        var json = JsonSerializer.Serialize(valid, JsonSerializerOptions.Web);
+        Assert.Contains("\"kind\":\"Pod\"", json, StringComparison.Ordinal);
+        json = json.Replace("\"kind\":\"Pod\"", "\"kind\":\"Unknown\"", StringComparison.Ordinal);
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var unknownKindResponse = await Client.PutAsync(
+            $"/api/v1/platform/deployment-targets/{created.Id}", content);
+        Assert.Equal(HttpStatusCode.BadRequest, unknownKindResponse.StatusCode);
+
+        var persisted = await Fixture.DbContext.DeploymentTargets
+            .Find(target => target.Id == created.Id)
+            .SingleAsync();
+        Assert.Equal(created.Revision, persisted.Revision);
     }
 
     [Fact]

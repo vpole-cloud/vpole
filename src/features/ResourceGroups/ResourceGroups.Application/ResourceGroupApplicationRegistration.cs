@@ -57,6 +57,23 @@ public static class ResourceGroupApplicationRegistration
         services.AddCapability<RuntimeCellNamespaceNameGenerator,
             GenerateRuntimeCellNamespaceName>(implementation => implementation.Invoke);
         services.TryAddScoped<KubernetesRuntimeCellNamespaceManager>();
+        services.TryAddScoped<KubernetesEnsureRuntimeCellIngressBaseline>();
+        services.TryAddSingleton<EnsureRuntimeCellIngressBaseline>(serviceProvider =>
+        {
+            var scopeFactory = serviceProvider.GetRequiredService<IServiceScopeFactory>();
+            return async (tenantId, runtimeCellId, deploymentTargetId, kubernetesNamespace, cancellationToken) =>
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                return await scope.ServiceProvider
+                    .GetRequiredService<KubernetesEnsureRuntimeCellIngressBaseline>()
+                    .InvokeAsync(
+                        tenantId,
+                        runtimeCellId,
+                        deploymentTargetId,
+                        kubernetesNamespace,
+                        cancellationToken);
+            };
+        });
         services.TryAddScoped<EnsureRuntimeCellNamespace>(serviceProvider => serviceProvider
             .GetRequiredService<KubernetesRuntimeCellNamespaceManager>()
             .EnsureCreatedAsync);

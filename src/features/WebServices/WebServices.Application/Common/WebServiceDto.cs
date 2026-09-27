@@ -80,7 +80,9 @@ public sealed record CreateWebServiceDeploymentTokenResponse(
     WebServiceDeploymentTokenDto Token,
     string RawToken);
 
-public sealed record WebServiceExposureDto(string GeneratedHostnameLabelPrefix);
+public sealed record WebServiceExposureDto(
+    string Mode,
+    string GeneratedHostnameLabelPrefix);
 
 public sealed record WebServiceSpecDto(
     ImageInfoDto Image,
@@ -113,7 +115,7 @@ public record ProbeConfigDto(
     int SuccessThreshold
 );
 
-public sealed record WebServiceConfigDto( 
+public sealed record WebServiceConfigDto(
     ImmutableDictionary<string, string> EnvironmentVariables,
     ImmutableList<PortMappingDto> PortMappings
 );
@@ -203,7 +205,7 @@ public static class WebServiceDtoExtensions
         token.LastUsedSource
     );
     public static WebServiceExposureDto ToDto(this WebServiceExposure exposure) =>
-        new(exposure.GeneratedHostnameLabelPrefix);
+        new(exposure.Mode.ToString(), exposure.GeneratedHostnameLabelPrefix);
     public static WebServiceSpecDto ToDto(this WebServiceSpec spec) => new(
         spec.Image.ToDto(),
         spec.Config.ToDto(),
@@ -224,7 +226,7 @@ public static class WebServiceDtoExtensions
         probes.Liveness.ToDto(),
         probes.Readiness.ToDto()
     );
-    
+
     public static ProbeConfigDto ToDto(this ProbeConfig probe) => new(
         probe.Path,
         probe.Port,
@@ -245,7 +247,7 @@ public static class WebServiceDtoExtensions
         image.Name,
         image.Tag
     );
-    
+
     public static WebServiceSpec ToDomain(this WebServiceSpecDto dto) => new(
         dto.Image.ToDomain(),
         dto.Config.ToDomain(),

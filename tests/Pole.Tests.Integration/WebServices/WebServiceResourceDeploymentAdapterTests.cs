@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using k8s;
 using Pole.Features.ContainerRegistries.Contracts;
+using Pole.Features.Core.Kubernetes;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
@@ -14,6 +15,7 @@ using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Pole.Tests.Integration.ResourceDeployments;
+using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.WebServices;
@@ -25,15 +27,28 @@ public sealed class WebServiceResourceDeploymentAdapterTests
     {
         var webService = CreateWebService();
         var reader = new RecordingReader(webService);
-        using var handler = new RecordingKubernetesHandler();
+        var policyRequests = new List<ResourceIngressPolicyRequest>();
+        Task<ReconcileResourceIngressPolicyOutcome> ApplyPolicy(
+            ResourceIngressPolicyRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            policyRequests.Add(request);
+            return Task.FromResult<ReconcileResourceIngressPolicyOutcome>(new ResourceIngressPolicyApplied());
+        }
+        using var handler = new RecordingKubernetesHandler
+        {
+            IngressReadResponse = CurrentIngressJson()
+        };
         using var kubernetes = new Kubernetes(
             new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
             handler);
         var subject = new WebServiceResourceDeploymentAdapter(
             reader.LoadSnapshot,
             reader.LoadById,
+            reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
-            new FixedKubernetesClientProvider(kubernetes));
+            new FixedKubernetesClientProvider(kubernetes),
+            ApplyPolicy);
         var context = CreateContext(includeIngress: true);
 
         var result = await subject.ApplyAsync(context);
@@ -48,6 +63,11 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             Assert.Equal(443, endpoint.Port);
             Assert.Equal("https", endpoint.Scheme);
         });
+        Assert.Equal(
+            [ResourceIngressPolicyPurpose.WebServicePublic, ResourceIngressPolicyPurpose.WebServiceHttp01],
+            policyRequests.Select(request => request.Purpose));
+        Assert.Equal([8080], policyRequests[0].AllowedTcpPorts);
+        Assert.Equal([8089], policyRequests[1].AllowedTcpPorts);
         Assert.Equal(
             [(TenantId, ResourceId, DeploymentId, 1L, 1L)],
             reader.ApplyRequests);
@@ -117,7 +137,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
     }
 
     [Fact]
-    public async Task Apply_WithoutResolvedIngress_FailsBeforeResourceLookupOrKubernetes()
+    public async Task Apply_PublicServiceWithoutResolvedIngress_FailsBeforeKubernetes()
     {
         var reader = new RecordingReader(CreateWebService());
         using var handler = new RecordingKubernetesHandler();
@@ -127,8 +147,10 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         var subject = new WebServiceResourceDeploymentAdapter(
             reader.LoadSnapshot,
             reader.LoadById,
+            reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
-            new FixedKubernetesClientProvider(kubernetes));
+            new FixedKubernetesClientProvider(kubernetes),
+            SuccessfulPolicy);
 
         var result = await subject.ApplyAsync(
             CreateContext(includeIngress: false));
@@ -136,9 +158,250 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         var failed = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
         Assert.Equal("IngressConfigurationMissing", failed.FailureCode);
         Assert.False(failed.Retryable);
-        Assert.Empty(reader.ApplyRequests);
+        Assert.Equal(
+            [(TenantId, ResourceId, DeploymentId, 1L, 1L)],
+            reader.ApplyRequests);
         Assert.Empty(reader.DeleteRequests);
         Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task Apply_PrivateServiceDeletesOwnedIngressAndReconcilesDenyTombstone()
+    {
+        var webService = CreateWebService() with
+        {
+            Exposure = WebServiceExposure.Create(WebServiceExposureMode.Private)
+        };
+        var policyRequests = new List<ResourceIngressPolicyRequest>();
+        Task<ReconcileResourceIngressPolicyOutcome> ApplyPolicy(
+            ResourceIngressPolicyRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            policyRequests.Add(request);
+            return Task.FromResult<ReconcileResourceIngressPolicyOutcome>(new ResourceIngressPolicyApplied());
+        }
+        var reader = new RecordingReader(webService);
+        using var handler = new RecordingKubernetesHandler
+        {
+            IngressReadResponse = CurrentIngressJson()
+        };
+        using var kubernetes = new Kubernetes(
+            new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
+            handler);
+        var subject = new WebServiceResourceDeploymentAdapter(
+            reader.LoadSnapshot,
+            reader.LoadById,
+            reader.LoadExactDeployment,
+            UnexpectedRegistryAccess,
+            new FixedKubernetesClientProvider(kubernetes),
+            ApplyPolicy);
+
+        var result = await subject.ApplyAsync(CreateContext(includeIngress: false));
+
+        var succeeded = Assert.IsType<ResourceDeploymentAdapterResult.Succeeded>(result);
+        Assert.Empty(succeeded.Endpoints);
+        Assert.Equal(2, policyRequests.Count);
+        Assert.All(policyRequests, request => Assert.Empty(request.AllowedTcpPorts));
+        Assert.Contains(handler.Requests, request => request.Method == HttpMethod.Delete &&
+            request.Path.EndsWith($"/ingresses/{WebServiceInKubernetes.BuildIngressName(webService.Name)}", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Apply_PrivateSupersededGenerationDoesNotDeleteIngress()
+    {
+        var webService = CreateWebService() with
+        {
+            Exposure = WebServiceExposure.Create(WebServiceExposureMode.Private)
+        };
+        var reader = new RecordingReader(webService) { CurrentGeneration = 2 };
+        using var handler = new RecordingKubernetesHandler
+        {
+            IngressReadResponse = CurrentIngressJson()
+        };
+        using var kubernetes = new Kubernetes(
+            new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
+            handler);
+        var subject = new WebServiceResourceDeploymentAdapter(
+            reader.LoadSnapshot,
+            reader.LoadById,
+            reader.LoadExactDeployment,
+            UnexpectedRegistryAccess,
+            new FixedKubernetesClientProvider(kubernetes),
+            SuccessfulPolicy);
+
+        var result = await subject.ApplyAsync(CreateContext(includeIngress: false));
+
+        var failed = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
+        Assert.Equal("DeploymentGenerationSuperseded", failed.FailureCode);
+        Assert.True(failed.Retryable);
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task Apply_PublicSupersededGenerationDoesNotCreateIngress()
+    {
+        var reader = new RecordingReader(CreateWebService()) { CurrentGeneration = 2 };
+        using var handler = new RecordingKubernetesHandler
+        {
+            IngressReadResponse = CurrentIngressJson()
+        };
+        using var kubernetes = new Kubernetes(
+            new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
+            handler);
+        var subject = new WebServiceResourceDeploymentAdapter(
+            reader.LoadSnapshot,
+            reader.LoadById,
+            reader.LoadExactDeployment,
+            UnexpectedRegistryAccess,
+            new FixedKubernetesClientProvider(kubernetes),
+            SuccessfulPolicy);
+
+        var result = await subject.ApplyAsync(CreateContext(includeIngress: true));
+
+        Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
+        Assert.DoesNotContain(handler.Requests, request =>
+            request.Path.EndsWith("/ingresses", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Apply_PublicGenerationSupersededDuringIngressReadDoesNotReplaceIngress()
+    {
+        var reader = new RecordingReader(CreateWebService());
+        var ingressLabels = new WorkloadIdentityLabels(
+            TenantId,
+            ResourceGroupId,
+            IsolationScopeId,
+            RuntimeCellId,
+            TargetId,
+            "WebService",
+            ResourceId,
+            DeploymentId).ToDictionary();
+        var ingressJson = JsonSerializer.Serialize(new
+        {
+            metadata = new
+            {
+                uid = "ingress-uid",
+                resourceVersion = "7",
+                labels = ingressLabels,
+                annotations = new Dictionary<string, string>
+                {
+                    ["pole.server/deploymentGeneration"] = "1"
+                }
+            }
+        });
+        using var handler = new RecordingKubernetesHandler
+        {
+            ConflictIngressCreate = true,
+            BlockIngressRead = true,
+            IngressReadResponse = ingressJson
+        };
+        using var kubernetes = new Kubernetes(
+            new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
+            handler);
+        var subject = new WebServiceResourceDeploymentAdapter(
+            reader.LoadSnapshot,
+            reader.LoadById,
+            reader.LoadExactDeployment,
+            UnexpectedRegistryAccess,
+            new FixedKubernetesClientProvider(kubernetes),
+            SuccessfulPolicy);
+
+        var applyTask = subject.ApplyAsync(CreateContext(includeIngress: true));
+        await handler.IngressReadStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        reader.CurrentGeneration = 2;
+        handler.ContinueIngressRead.TrySetResult();
+        var result = await applyTask;
+
+        var failed = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
+        Assert.Equal("DeploymentGenerationSuperseded", failed.FailureCode);
+        Assert.DoesNotContain(handler.Requests, request =>
+            request.Method == HttpMethod.Put &&
+            request.Path.EndsWith("/ingresses/api-ing", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Apply_PublicPolicySourceFailureStillAttemptsHttp01RevocationBeforeWorkloadApply()
+    {
+        var webService = CreateWebService();
+        var policyRequests = new List<ResourceIngressPolicyRequest>();
+        Task<ReconcileResourceIngressPolicyOutcome> ApplyPolicy(
+            ResourceIngressPolicyRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            policyRequests.Add(request);
+            return Task.FromResult<ReconcileResourceIngressPolicyOutcome>(
+                request.Purpose is ResourceIngressPolicyPurpose.WebServicePublic
+                    ? new ResourceIngressPolicySourceUnavailable()
+                    : new ResourceIngressPolicyApplied());
+        }
+        var reader = new RecordingReader(webService);
+        using var handler = new RecordingKubernetesHandler
+        {
+            IngressReadResponse = CurrentIngressJson()
+        };
+        using var kubernetes = new Kubernetes(
+            new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
+            handler);
+        var subject = new WebServiceResourceDeploymentAdapter(
+            reader.LoadSnapshot,
+            reader.LoadById,
+            reader.LoadExactDeployment,
+            UnexpectedRegistryAccess,
+            new FixedKubernetesClientProvider(kubernetes),
+            ApplyPolicy);
+
+        var result = await subject.ApplyAsync(CreateContext(includeIngress: true));
+
+        var failed = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
+        Assert.Equal("PublicIngressSourceUnavailable", failed.FailureCode);
+        Assert.Equal(2, policyRequests.Count);
+        Assert.Equal(ResourceIngressPolicyPurpose.WebServiceHttp01, policyRequests[1].Purpose);
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task Apply_PrivateRevokesPublicExposureBeforeRegistryCredentialFailure()
+    {
+        var webService = CreateWebService() with
+        {
+            Exposure = WebServiceExposure.Create(WebServiceExposureMode.Private),
+            Spec = CreateWebService().Spec with
+            {
+                Image = new ImageInfo("registry.example.test", "pole/api", "1.0", "registry-pull")
+            }
+        };
+        var policyRequests = new List<ResourceIngressPolicyRequest>();
+        Task<ReconcileResourceIngressPolicyOutcome> ApplyPolicy(
+            ResourceIngressPolicyRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            policyRequests.Add(request);
+            return Task.FromResult<ReconcileResourceIngressPolicyOutcome>(new ResourceIngressPolicyApplied());
+        }
+        var reader = new RecordingReader(webService);
+        using var handler = new RecordingKubernetesHandler
+        {
+            IngressReadResponse = CurrentIngressJson()
+        };
+        using var kubernetes = new Kubernetes(
+            new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
+            handler);
+        var subject = new WebServiceResourceDeploymentAdapter(
+            reader.LoadSnapshot,
+            reader.LoadById,
+            reader.LoadExactDeployment,
+            UnavailableRegistryAccess,
+            new FixedKubernetesClientProvider(kubernetes),
+            ApplyPolicy);
+
+        var result = await subject.ApplyAsync(CreateContext(includeIngress: false));
+
+        var failed = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
+        Assert.Equal("RegistryCredentialUnavailable", failed.FailureCode);
+        Assert.Equal(2, policyRequests.Count);
+        Assert.All(policyRequests, request => Assert.Empty(request.AllowedTcpPorts));
+        Assert.Contains(handler.Requests, request => request.Method == HttpMethod.Delete &&
+            request.Path.EndsWith($"/ingresses/{WebServiceInKubernetes.BuildIngressName(webService.Name)}", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -152,8 +415,10 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         var subject = new WebServiceResourceDeploymentAdapter(
             reader.LoadSnapshot,
             reader.LoadById,
+            reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
-            new FixedKubernetesClientProvider(kubernetes));
+            new FixedKubernetesClientProvider(kubernetes),
+            SuccessfulPolicy);
 
         var result = await subject.DeleteAsync(
             CreateContext(includeIngress: true));
@@ -172,11 +437,88 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         });
     }
 
+    [Fact]
+    public async Task Delete_AttemptsBothPolicyClearsWhenTheFirstWriteFails()
+    {
+        var policyRequests = new List<ResourceIngressPolicyRequest>();
+        Task<ReconcileResourceIngressPolicyOutcome> ApplyPolicy(
+            ResourceIngressPolicyRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            policyRequests.Add(request);
+            return Task.FromResult<ReconcileResourceIngressPolicyOutcome>(
+                request.Purpose is ResourceIngressPolicyPurpose.WebServicePublic
+                    ? new ResourceIngressPolicyUnavailable()
+                    : new ResourceIngressPolicyApplied());
+        }
+        var reader = new RecordingReader(CreateWebService());
+        using var handler = new RecordingKubernetesHandler();
+        using var kubernetes = new Kubernetes(
+            new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
+            handler);
+        var subject = new WebServiceResourceDeploymentAdapter(
+            reader.LoadSnapshot,
+            reader.LoadById,
+            reader.LoadExactDeployment,
+            UnexpectedRegistryAccess,
+            new FixedKubernetesClientProvider(kubernetes),
+            ApplyPolicy);
+
+        var result = await subject.DeleteAsync(CreateContext(includeIngress: true));
+
+        var failed = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
+        Assert.Equal("IngressPolicyReconciliationFailed", failed.FailureCode);
+        Assert.Equal(
+            [ResourceIngressPolicyPurpose.WebServicePublic, ResourceIngressPolicyPurpose.WebServiceHttp01],
+            policyRequests.Select(request => request.Purpose));
+    }
+
+    [Fact]
+    public async Task Delete_MissingLogicalResourceStillWritesPolicyTombstones()
+    {
+        var reader = new RecordingReader(CreateWebService()) { MissingLogicalResource = true };
+        var policyRequests = new List<ResourceIngressPolicyRequest>();
+        Task<ReconcileResourceIngressPolicyOutcome> ApplyPolicy(
+            ResourceIngressPolicyRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            policyRequests.Add(request);
+            return Task.FromResult<ReconcileResourceIngressPolicyOutcome>(
+                request.Purpose is ResourceIngressPolicyPurpose.WebServicePublic
+                    ? new ResourceIngressPolicySourceUnavailable()
+                    : new ResourceIngressPolicyApplied());
+        }
+        using var handler = new RecordingKubernetesHandler();
+        using var kubernetes = new Kubernetes(
+            new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
+            handler);
+        var subject = new WebServiceResourceDeploymentAdapter(
+            reader.LoadSnapshot,
+            reader.LoadById,
+            reader.LoadExactDeployment,
+            UnexpectedRegistryAccess,
+            new FixedKubernetesClientProvider(kubernetes),
+            ApplyPolicy);
+
+        var result = await subject.DeleteAsync(CreateContext(includeIngress: false));
+
+        var failed = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
+        Assert.Equal("PublicIngressSourceUnavailable", failed.FailureCode);
+        Assert.True(failed.Retryable);
+        Assert.Equal(
+            [ResourceIngressPolicyPurpose.WebServicePublic, ResourceIngressPolicyPurpose.WebServiceHttp01],
+            policyRequests.Select(request => request.Purpose));
+        Assert.All(policyRequests, request => Assert.Empty(request.AllowedTcpPorts));
+        Assert.Empty(handler.Requests);
+        Assert.Empty(reader.DeleteRequests);
+    }
+
     private static ResourceDeploymentReconciliationContext CreateContext(
         bool includeIngress)
     {
         var placement = new ResourceDeploymentResolvedPlacementSnapshot(
             TargetId,
+            TargetWorkloadConfigurationRevision: 1,
             KubernetesNamespace,
             includeIngress
                 ? new ResourceDeploymentIngressConfiguration(
@@ -219,14 +561,38 @@ public sealed class WebServiceResourceDeploymentAdapterTests
                     new ProbeConfig("/health", "8080"),
                     new ProbeConfig("/health", "8080"),
                     new ProbeConfig("/health", "8080"))),
-            exposure: WebServiceExposure.Create(),
+            exposure: WebServiceExposure.Create(WebServiceExposureMode.Public),
             options: WebServiceFactory.DefaultOptions with
             {
                 Id = ResourceId
             });
 
+    private static string CurrentIngressJson() => JsonSerializer.Serialize(new
+    {
+        metadata = new
+        {
+            uid = "ingress-uid",
+            resourceVersion = "7",
+            labels = new WorkloadIdentityLabels(
+                TenantId,
+                ResourceGroupId,
+                IsolationScopeId,
+                RuntimeCellId,
+                TargetId,
+                "WebService",
+                ResourceId,
+                DeploymentId).ToDictionary(),
+            annotations = new Dictionary<string, string>
+            {
+                ["pole.server/deploymentGeneration"] = "1"
+            }
+        }
+    });
+
     private sealed class RecordingReader(WebService webService)
     {
+        public bool MissingLogicalResource { get; init; }
+        public long CurrentGeneration { get; set; } = 1;
         public List<(string TenantId, string ResourceId, string DeploymentId, long ResourceRevision, long Generation)>
             ApplyRequests
         { get; } = [];
@@ -257,8 +623,31 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             CancellationToken cancellationToken = default)
         {
             DeleteRequests.Add((tenantId, webServiceId));
-            return Task.FromResult<WebService?>(webService);
+            return Task.FromResult<WebService?>(MissingLogicalResource ? null : webService);
         }
+
+        public Task<PlacementSummaryDto?> LoadExactDeployment(
+            string tenantId,
+            Pole.Workloads.ResourceTypeId resourceType,
+            string resourceId,
+            string deploymentId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<PlacementSummaryDto?>(new PlacementSummaryDto(
+                DeploymentId,
+                IsolationScopeId,
+                RuntimeCellId,
+                TargetId,
+                DesiredGeneration: CurrentGeneration,
+                ObservedGeneration: 0,
+                Status: "Pending",
+                FailureCode: null,
+                Compute: new ComputeConfigurationSummaryDto(
+                    new ComputeProfileReference("profile-1", 1),
+                    "test",
+                    new ComputeResourceValuesDto(100, 128),
+                    new ComputeResourceValuesDto(100, 128),
+                    []),
+                Endpoints: []));
     }
 
     private static Task<ResolveRuntimeRegistryAccessOutcome>
@@ -268,9 +657,29 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         throw new Xunit.Sdk.XunitException(
             "An image without a pull secret must not request registry credentials.");
 
+    private static Task<ResolveRuntimeRegistryAccessOutcome> UnavailableRegistryAccess(
+        string tenantId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<ResolveRuntimeRegistryAccessOutcome>(
+            new ResolveRuntimeRegistryAccessError(
+                new TenantContainerRegistryNotReady(tenantId)));
+
+    private static Task<ReconcileResourceIngressPolicyOutcome> SuccessfulPolicy(
+        ResourceIngressPolicyRequest request,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<ReconcileResourceIngressPolicyOutcome>(new ResourceIngressPolicyApplied());
+
     private sealed class RecordingKubernetesHandler : DelegatingHandler
     {
+        private bool _ingressDeleted;
         public List<RecordedRequest> Requests { get; } = [];
+        public bool ConflictIngressCreate { get; init; }
+        public bool BlockIngressRead { get; init; }
+        public string? IngressReadResponse { get; init; }
+        public TaskCompletionSource IngressReadStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ContinueIngressRead { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -283,8 +692,44 @@ public sealed class WebServiceResourceDeploymentAdapterTests
                 request.Method,
                 request.RequestUri!.AbsolutePath,
                 body));
+            if (ConflictIngressCreate && request.Method == HttpMethod.Post &&
+                request.RequestUri.AbsolutePath.EndsWith("/ingresses", StringComparison.Ordinal))
+            {
+                return new HttpResponseMessage(HttpStatusCode.Conflict)
+                {
+                    RequestMessage = request,
+                    Content = new StringContent("{}", Encoding.UTF8, "application/json")
+                };
+            }
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri.AbsolutePath.EndsWith("/ingresses/api-ing", StringComparison.Ordinal))
+            {
+                IngressReadStarted.TrySetResult();
+                if (BlockIngressRead)
+                    await ContinueIngressRead.Task.WaitAsync(cancellationToken);
+                if (_ingressDeleted || IngressReadResponse is null)
+                {
+                    return new HttpResponseMessage(HttpStatusCode.NotFound)
+                    {
+                        RequestMessage = request,
+                        Content = new StringContent("{}", Encoding.UTF8, "application/json")
+                    };
+                }
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    RequestMessage = request,
+                    Content = new StringContent(IngressReadResponse ?? "{}", Encoding.UTF8, "application/json")
+                };
+            }
+            if (request.Method == HttpMethod.Delete &&
+                request.RequestUri.AbsolutePath.EndsWith("/ingresses/api-ing", StringComparison.Ordinal))
+                _ingressDeleted = true;
+            var absentIngressRead = request.Method == HttpMethod.Get &&
+                request.RequestUri!.AbsolutePath.Contains("/ingresses/", StringComparison.Ordinal);
             return new HttpResponseMessage(
-                request.Method == HttpMethod.Delete
+                absentIngressRead
+                    ? HttpStatusCode.NotFound
+                    : request.Method == HttpMethod.Delete
                     ? HttpStatusCode.OK
                     : HttpStatusCode.Created)
             {

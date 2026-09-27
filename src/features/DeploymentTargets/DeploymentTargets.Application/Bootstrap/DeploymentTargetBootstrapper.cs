@@ -163,7 +163,9 @@ internal sealed class DeploymentTargetBootstrapper(
                 configuredIngress.IngressClassName,
                 configuredIngress.ClusterIssuerName,
                 configuredIngress.PublicBaseDomain);
-        return DeploymentTargetWorkloadConfiguration.Create(ingress);
+        return DeploymentTargetWorkloadConfiguration.Create(
+            ingress,
+            options.Bootstrap.WorkloadConfiguration.NetworkSources.ToDomain());
     }
 
     private static string ResolveKubeconfigPath(string? configuredPath)

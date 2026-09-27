@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -56,6 +57,7 @@ public static class CreateWebService
 public sealed record CreateWebServiceTargetUnavailable(string DeploymentTargetId);
 
 public union CreateWebServicePlacementError(
+    NoDeploymentTargetAcceptsWorkloads,
     NoDeploymentTargetAcceptsPublicWorkloads,
     DeploymentTargetSelectionRequired,
     CreateWebServiceTargetUnavailable);
@@ -76,6 +78,7 @@ public union CreateWebServiceOutcome(
 
 public sealed class CreateWebServiceHandler(
     GetResourceGroupOwnership getResourceGroupOwnership,
+    ListEligibleDeploymentTargetsForNewWorkload listEligibleWorkloads,
     ListEligiblePublicIngressDeploymentTargetsForNewWorkload listEligibleTargets,
     ResolveComputeProfiles resolveComputeProfiles,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
@@ -107,6 +110,7 @@ public sealed class CreateWebServiceHandler(
             request.TenantId,
             isolationScopeId,
             request.Body.Placement.Targets,
+            request.Body.Exposure,
             cancellationToken);
         if (targetsResult is CreateWebServicePlacementError targetsError)
             return Error(new CreateWebServiceError(targetsError));
@@ -165,31 +169,50 @@ public sealed class CreateWebServiceHandler(
         string tenantId,
         string isolationScopeId,
         IReadOnlyList<WebServiceDeploymentTargetRequest> requestedTargets,
+        WebServiceExposureMode exposureMode,
         CancellationToken cancellationToken)
     {
-        var admission = new DeploymentTargetAdmissionRequest(
-            tenantId,
-            WebServiceResourceDeployment.ResourceType,
-            isolationScopeId,
-            ExplicitDeploymentTargetId: null,
-            DeploymentTargetRequiredCapabilities.PublicIngress);
-        var eligible = await listEligibleTargets(
-            admission,
-            cancellationToken);
+        var eligible = exposureMode is WebServiceExposureMode.Public
+            ? (await listEligibleTargets(
+                new DeploymentTargetAdmissionRequest(
+                    tenantId,
+                    WebServiceResourceDeployment.ResourceType,
+                    isolationScopeId,
+                    ExplicitDeploymentTargetId: null,
+                    DeploymentTargetRequiredCapabilities.PublicIngress),
+                cancellationToken))
+                .Select(target => new EligibleTarget(
+                    target.DeploymentTargetId,
+                    target.WorkloadConfigurationRevision,
+                    ResourceDeploymentIngressConfiguration.Create(
+                        target.IngressClassName,
+                        target.ClusterIssuerName,
+                        target.PublicBaseDomain,
+                        [])))
+                .ToArray()
+            : (await listEligibleWorkloads(cancellationToken))
+                .Where(target => target.AcceptsWorkloads && !target.DeletionRequested && target.Enabled)
+                .Select(target => new EligibleTarget(
+                    target.Id,
+                    target.WorkloadConfiguration.Revision,
+                    null))
+                .ToArray();
 
         var byId = eligible.ToDictionary(target => target.DeploymentTargetId, StringComparer.Ordinal);
         var resolved = new List<ResolvedTargetRequest>(requestedTargets.Count);
         foreach (var requested in requestedTargets)
         {
-            DeploymentTargetPublicIngressDto target;
+            EligibleTarget target;
             if (string.IsNullOrWhiteSpace(requested.DeploymentTargetId))
             {
                 if (requestedTargets.Count != 1)
                     return PlacementError(new DeploymentTargetSelectionRequired(
                         eligible.Select(item => item.DeploymentTargetId).ToArray()));
-                if (eligible.Count == 0)
-                    return PlacementError(new NoDeploymentTargetAcceptsPublicWorkloads());
-                if (eligible.Count > 1)
+                if (eligible.Length == 0)
+                    return exposureMode is WebServiceExposureMode.Public
+                        ? PlacementError(new NoDeploymentTargetAcceptsPublicWorkloads())
+                        : PlacementError(new NoDeploymentTargetAcceptsWorkloads());
+                if (eligible.Length > 1)
                     return PlacementError(new DeploymentTargetSelectionRequired(
                         eligible.Select(item => item.DeploymentTargetId).ToArray()));
                 target = eligible[0];
@@ -205,11 +228,7 @@ public sealed class CreateWebServiceHandler(
                 new ResolvedResourceDeploymentTarget(
                     target.DeploymentTargetId,
                     target.WorkloadConfigurationRevision,
-                    ResourceDeploymentIngressConfiguration.Create(
-                        target.IngressClassName,
-                        target.ClusterIssuerName,
-                        target.PublicBaseDomain,
-                        []))));
+                    target.Ingress)));
         }
 
         return (IReadOnlyList<ResolvedTargetRequest>)resolved;
@@ -225,56 +244,51 @@ public sealed class CreateWebServiceHandler(
         var deployments = targets.Select(target => new PendingDeploymentRequest(
             target,
             ObjectId.GenerateNewId().ToString())).ToArray();
-        var zoneRequests = new GetOrCreateGeneratedZoneRequest[deployments.Length];
-        for (var index = 0; index < deployments.Length; index++)
+        IReadOnlyList<HostnameBindingSnapshot> bindings = [];
+        if (webService.Exposure.Mode is WebServiceExposureMode.Public)
         {
-            var target = deployments[index].Target;
-            var ingress = target.Target.Ingress!;
-            zoneRequests[index] = new GetOrCreateGeneratedZoneRequest(
-                webService.TenantId,
-                target.Target.DeploymentTargetId,
-                ingress.PublicBaseDomain!,
-                target.Target.WorkloadConfigurationRevision);
+            var zoneRequests = deployments.Select(pending =>
+            {
+                var target = pending.Target.Target;
+                var ingress = target.Ingress!;
+                return new GetOrCreateGeneratedZoneRequest(
+                    webService.TenantId,
+                    target.DeploymentTargetId,
+                    ingress.PublicBaseDomain!,
+                    target.WorkloadConfigurationRevision);
+            }).ToArray();
+            var zonesResult = await getOrCreateGeneratedDomainZones(
+                zoneRequests,
+                session,
+                cancellationToken);
+            if (zonesResult is GeneratedDomainZoneError zonesError)
+                return new CreateWebServiceError(zonesError);
+
+            var zones = (IReadOnlyList<TenantDomainZoneSnapshot>)zonesResult.Value;
+            var bindingRequests = deployments.Select((pending, index) =>
+                new CreateGeneratedHostnameBindingRequest(
+                    webService.TenantId,
+                    zones[index].Id,
+                    pending.Target.Target.DeploymentTargetId,
+                    WebServiceResourceDeployment.ResourceType,
+                    webService.Id,
+                    pending.DeploymentId,
+                    $"{webService.Exposure.GeneratedHostnameLabelPrefix}-{webService.Id}")).ToArray();
+            var bindingsResult = await createGeneratedHostnameBindings(
+                bindingRequests,
+                session,
+                cancellationToken);
+            if (bindingsResult is GeneratedHostnameBindingError bindingsError)
+                return new CreateWebServiceError(bindingsError);
+            bindings = (IReadOnlyList<HostnameBindingSnapshot>)bindingsResult.Value;
         }
-
-        var zonesResult = await getOrCreateGeneratedDomainZones(
-            zoneRequests,
-            session,
-            cancellationToken);
-        if (zonesResult is GeneratedDomainZoneError zonesError)
-            return new CreateWebServiceError(zonesError);
-
-        var zones = (IReadOnlyList<TenantDomainZoneSnapshot>)zonesResult.Value;
-
-        var bindingRequests = new CreateGeneratedHostnameBindingRequest[deployments.Length];
-        for (var index = 0; index < deployments.Length; index++)
-        {
-            var pending = deployments[index];
-            bindingRequests[index] = new CreateGeneratedHostnameBindingRequest(
-                webService.TenantId,
-                zones[index].Id,
-                pending.Target.Target.DeploymentTargetId,
-                WebServiceResourceDeployment.ResourceType,
-                webService.Id,
-                pending.DeploymentId,
-                $"{webService.Exposure.GeneratedHostnameLabelPrefix}-{webService.Id}");
-        }
-
-        var bindingsResult = await createGeneratedHostnameBindings(
-            bindingRequests,
-            session,
-            cancellationToken);
-        if (bindingsResult is GeneratedHostnameBindingError bindingsError)
-            return new CreateWebServiceError(bindingsError);
-
-        var bindings = (IReadOnlyList<HostnameBindingSnapshot>)bindingsResult.Value;
 
         var requests = new List<CreateResourceDeploymentRequest>(deployments.Length);
         for (var index = 0; index < deployments.Length; index++)
         {
             var pending = deployments[index];
             var target = pending.Target;
-            var ingress = target.Target.Ingress!;
+            var ingress = target.Target.Ingress;
             requests.Add(new CreateResourceDeploymentRequest(
                 pending.DeploymentId,
                 webService.TenantId,
@@ -284,11 +298,13 @@ public sealed class CreateWebServiceHandler(
                 webService.IsolationScopeId,
                 target.Target with
                 {
-                    Ingress = ResourceDeploymentIngressConfiguration.Create(
-                        ingress.IngressClassName,
-                        ingress.ClusterIssuerName,
-                        ingress.PublicBaseDomain,
-                        [bindings[index].Hostname])
+                    Ingress = ingress is null
+                        ? null
+                        : ResourceDeploymentIngressConfiguration.Create(
+                            ingress.IngressClassName,
+                            ingress.ClusterIssuerName,
+                            ingress.PublicBaseDomain,
+                            [bindings[index].Hostname])
                 },
                 computeByTarget[target.Target.DeploymentTargetId]
                     .ToResourceDeploymentConfiguration(),
@@ -317,7 +333,7 @@ public sealed class CreateWebServiceHandler(
             request.Body.ResourceGroupId,
             isolationScopeId,
             spec,
-            WebServiceExposure.Create(),
+            WebServiceExposure.Create(request.Body.Exposure),
             options);
 
         var deploymentRequestsResult = await CreateDeploymentRequestsAsync(
@@ -368,7 +384,8 @@ public sealed class CreateWebServiceHandler(
             eventCore.CorrelationId,
             new WebServiceReleaseFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
-                timeProvider.GetUtcNow().UtcDateTime));
+                timeProvider.GetUtcNow().UtcDateTime),
+            webService.Exposure);
         await persistCurrentWebServiceRelease(transaction.Session, release, cancellationToken);
 
         return transaction.Commit(new CreateWebServiceOutcome(
@@ -382,6 +399,10 @@ public sealed class CreateWebServiceHandler(
         QuotaAdmissionTransactionContext<CreateWebServiceOutcome> transaction,
         CreateWebServiceError error) =>
         transaction.Abort(Error(error));
+
+    private static ResolveTargetsOutcome PlacementError(
+        NoDeploymentTargetAcceptsWorkloads error) =>
+        new CreateWebServicePlacementError(error);
 
     private static ResolveTargetsOutcome PlacementError(
         NoDeploymentTargetAcceptsPublicWorkloads error) =>
@@ -410,6 +431,11 @@ public sealed class CreateWebServiceHandler(
     private sealed record PendingDeploymentRequest(
         ResolvedTargetRequest Target,
         string DeploymentId);
+
+    private sealed record EligibleTarget(
+        string DeploymentTargetId,
+        long WorkloadConfigurationRevision,
+        ResourceDeploymentIngressConfiguration? Ingress);
 }
 
 public sealed record CreateWebServiceRequest(
@@ -424,7 +450,17 @@ public sealed record CreateWebServiceRequestBody(
     string ResourceGroupId,
     WebServiceSpecDto Spec,
     WebServicePlacementRequest Placement,
-    ImmutableHashSet<string> Tags);
+    ImmutableHashSet<string> Tags,
+    [property: JsonConverter(typeof(WebServiceExposureModeJsonConverter))]
+    WebServiceExposureMode Exposure = WebServiceExposureMode.Private);
+
+public sealed class WebServiceExposureModeJsonConverter
+    : JsonStringEnumConverter<WebServiceExposureMode>
+{
+    public WebServiceExposureModeJsonConverter() : base(allowIntegerValues: false)
+    {
+    }
+}
 
 public sealed record WebServicePlacementRequest(
     string? IsolationScopeId,
@@ -457,6 +493,22 @@ public sealed class CreateWebServiceRequestBodyValidator : AbstractValidator<Cre
         RuleFor(body => body.ResourceGroupId).NotEmpty().MongoObjectId("Resource group ID");
         RuleFor(body => body.Spec).NotNull().SetValidator(new WebServiceSpecDtoValidator());
         RuleFor(body => body.Placement).NotNull().SetValidator(new WebServicePlacementRequestValidator());
+        RuleFor(body => body.Exposure).IsInEnum();
+        RuleFor(body => body)
+            .Must(body => body.Exposure is not WebServiceExposureMode.Public ||
+                          HasPublicIngressTarget(body.Spec?.Config?.PortMappings))
+            .WithMessage("Public web services require a numeric TCP target port for their routed service port.");
+    }
+
+    internal static bool HasPublicIngressTarget(ImmutableList<PortMappingDto>? mappings)
+    {
+        var mapping = mappings?.FirstOrDefault();
+        if (mapping is null || !string.Equals(mapping.Protocol, "TCP", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var targetPort = mapping.TargetPort;
+        return int.TryParse(targetPort, System.Globalization.NumberStyles.None,
+                   System.Globalization.CultureInfo.InvariantCulture, out var port) &&
+               port is >= 1 and <= 65535;
     }
 }
 

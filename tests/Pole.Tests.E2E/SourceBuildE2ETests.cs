@@ -149,6 +149,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         {
             name,
             resourceGroupId,
+            exposure = "Public",
             tags = new[] { "e2e", "source-build" },
             spec = new
             {

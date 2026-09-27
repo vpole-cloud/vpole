@@ -18,6 +18,7 @@ public sealed class ResourceDeploymentReconciler(
     LoadResourcePlacement loadResourcePlacement,
     ResolveResourceDeploymentAdapter resolveResourceDeploymentAdapter,
     LookupDeploymentTarget lookupDeploymentTarget,
+    EnsureRuntimeCellIngressBaseline ensureRuntimeCellIngressBaseline,
     ResourceDeploymentMetrics metrics,
     ILogger<ResourceDeploymentReconciler> logger)
 {
@@ -94,6 +95,28 @@ public sealed class ResourceDeploymentReconciler(
                     "NetworkPolicyEnforcementRequired",
                     "NetworkPolicy enforcement has not been established for this target.",
                     retryable: true,
+                    cancellationToken);
+                return;
+            }
+
+            var ingressBaseline = await ensureRuntimeCellIngressBaseline(
+                claimed.TenantId,
+                claimed.RuntimeCellId,
+                claimed.ResolvedPlacement.DeploymentTargetId,
+                claimed.ResolvedPlacement.KubernetesNamespace,
+                cancellationToken);
+            if (ingressBaseline is not RuntimeCellIngressBaselineReady)
+            {
+                var placementMismatch = ingressBaseline is RuntimeCellIngressBaselinePlacementMismatch;
+                await PersistFailureAsync(
+                    claimed,
+                    generation,
+                    operation,
+                    placementMismatch ? "IngressBaselinePlacementMismatch" : "IngressBaselineUnavailable",
+                    placementMismatch
+                        ? "The runtime-cell ingress baseline belongs to another placement."
+                        : "The runtime-cell ingress baseline could not be established.",
+                    retryable: !placementMismatch,
                     cancellationToken);
                 return;
             }

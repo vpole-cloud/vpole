@@ -386,6 +386,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
                             new ComputeProfileReference(
                                 ResourceDeploymentTestData.ComputeProfileId,
                                 1),
+                            new PreserveIngress(),
                             ReplacementCompute: ResourceDeploymentTestData.ContractCompute(
                                 TargetId,
                                 revision: 2)),
@@ -395,6 +396,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
                             new ComputeProfileReference(
                                 ResourceDeploymentTestData.ComputeProfileId,
                                 1),
+                            new PreserveIngress(),
                             ReplacementCompute: ResourceDeploymentTestData.ContractCompute(
                                 secondTargetId,
                                 revision: 2))
@@ -496,7 +498,8 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
             ExpectedDeploymentRevision: 1,
             new ComputeProfileReference(
                 ResourceDeploymentTestData.ComputeProfileId,
-                ComputeProfileRevision: 1));
+                ComputeProfileRevision: 1),
+            new PreserveIngress());
 
         await AssertStructuralRequestRejectedAsync(session =>
             mutations.SetApply(

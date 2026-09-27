@@ -75,7 +75,7 @@ public sealed record WebServiceResourceDeploymentMetadata(
 public readonly record struct WebServiceInKubernetes(
     WebService WebService,
     string Namespace,
-    ResourceDeploymentIngressConfiguration IngressConfiguration,
+    ResourceDeploymentIngressConfiguration? IngressConfiguration,
     ResourceDeploymentComputeConfiguration ComputeConfiguration,
     int FixedReplicas,
     WorkloadIdentityLabels PlacementIdentity)
@@ -83,14 +83,18 @@ public readonly record struct WebServiceInKubernetes(
     public static WebServiceInKubernetes Create(
         WebService webService,
         string kubernetesNamespace,
-        ResourceDeploymentIngressConfiguration ingressConfiguration,
+        ResourceDeploymentIngressConfiguration? ingressConfiguration,
         ResourceDeploymentComputeConfiguration computeConfiguration,
         int fixedReplicas,
         WorkloadIdentityLabels placementIdentity)
     {
         ArgumentNullException.ThrowIfNull(webService);
         ArgumentException.ThrowIfNullOrWhiteSpace(kubernetesNamespace);
-        ArgumentNullException.ThrowIfNull(ingressConfiguration);
+        if (webService.Exposure.Mode is WebServiceExposureMode.Public &&
+            (ingressConfiguration is null || ingressConfiguration.Hostnames.Count == 0))
+            throw new ArgumentException("Public web services require resolved ingress hostnames.", nameof(ingressConfiguration));
+        if (webService.Exposure.Mode is WebServiceExposureMode.Private && ingressConfiguration is not null)
+            throw new ArgumentException("Private web services cannot have ingress configuration.", nameof(ingressConfiguration));
         ArgumentNullException.ThrowIfNull(computeConfiguration);
         ArgumentOutOfRangeException.ThrowIfLessThan(fixedReplicas, 1);
 
@@ -266,8 +270,11 @@ public readonly record struct WebServiceInKubernetes(
         Data = WebService.Spec.Config.EnvironmentVariables.ToDictionary(),
     };
 
-    public V1Ingress ToIngress()
+    public V1Ingress? ToIngress(
+        WebServiceDeploymentMetadata? deploymentMetadata = null)
     {
+        if (IngressConfiguration is null)
+            return null;
         var serviceName = ServiceName;
         var servicePort = GetIngressServicePort(WebService);
         var hostnames = IngressConfiguration.Hostnames;
@@ -280,10 +287,11 @@ public readonly record struct WebServiceInKubernetes(
                 Name = IngressName,
                 NamespaceProperty = Namespace,
                 Labels = IdentityLabels(),
-                Annotations = _defaultAnnotations.Concat(new Dictionary<string, string>
-                {
-                    ["cert-manager.io/cluster-issuer"] = IngressConfiguration.ClusterIssuerName,
-                }).ToDictionary(),
+                Annotations = BuildPodTemplateAnnotations(deploymentMetadata)
+                    .Concat(new Dictionary<string, string>
+                    {
+                        ["cert-manager.io/cluster-issuer"] = IngressConfiguration.ClusterIssuerName,
+                    }).ToDictionary(),
             },
             Spec = new V1IngressSpec
             {

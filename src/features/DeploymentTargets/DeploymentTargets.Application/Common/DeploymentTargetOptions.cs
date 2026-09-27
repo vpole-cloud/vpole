@@ -32,6 +32,67 @@ public sealed class DeploymentTargetBootstrapOptions
 public sealed class DeploymentTargetBootstrapWorkloadConfigurationOptions
 {
     public DeploymentTargetBootstrapIngressOptions? Ingress { get; init; } = new();
+    public DeploymentTargetBootstrapNetworkSourcesOptions NetworkSources { get; init; } = new();
+}
+
+public enum DeploymentTargetBootstrapNetworkSourcePurpose
+{
+    PublicIngress,
+    FunctionGateway,
+    PostgresOperator
+}
+
+// Separate typed maps let IConfiguration bind each variant without a discriminator and
+// nullable variant fields. A purpose may occur in only one map, enforced at startup.
+public sealed class DeploymentTargetBootstrapNetworkSourcesOptions
+{
+    public Dictionary<DeploymentTargetBootstrapNetworkSourcePurpose, DeploymentTargetBootstrapPodSourceOptions> Pods { get; init; } = [];
+    public Dictionary<DeploymentTargetBootstrapNetworkSourcePurpose, string> Cidrs { get; init; } = [];
+
+    internal DeploymentTargetNetworkSources ToDomain() => new(
+        Resolve(DeploymentTargetBootstrapNetworkSourcePurpose.PublicIngress),
+        Resolve(DeploymentTargetBootstrapNetworkSourcePurpose.FunctionGateway),
+        Resolve(DeploymentTargetBootstrapNetworkSourcePurpose.PostgresOperator));
+
+    private DeploymentTargetNetworkSource? Resolve(DeploymentTargetBootstrapNetworkSourcePurpose purpose) =>
+        Pods.TryGetValue(purpose, out var pod)
+            ? DeploymentTargetPodNetworkSource.Create(pod.Namespace, pod.PodLabels)
+            : Cidrs.TryGetValue(purpose, out var cidr)
+                ? DeploymentTargetCidrNetworkSource.Create(cidr)
+                : null;
+
+    internal IEnumerable<string> ValidationFailures()
+    {
+        const string prefix = "DeploymentTargets:Bootstrap:WorkloadConfiguration:NetworkSources";
+        foreach (var purpose in Pods.Keys.Concat(Cidrs.Keys).Distinct())
+        {
+            if (!Enum.IsDefined(purpose))
+                yield return $"{prefix}: source purpose '{purpose}' is not supported.";
+            if (Pods.ContainsKey(purpose) && Cidrs.ContainsKey(purpose))
+                yield return $"{prefix}: '{purpose}' must have exactly one source variant.";
+        }
+
+        foreach (var (purpose, pod) in Pods)
+        {
+            if (pod is null || !DeploymentTargetPodNetworkSource.IsValidNamespace(pod.Namespace) ||
+                !DeploymentTargetPodNetworkSource.IsValid(pod.PodLabels))
+            {
+                yield return $"{prefix}:Pods:{purpose} requires an exact namespace and nonempty valid pod labels.";
+            }
+        }
+
+        foreach (var (purpose, cidr) in Cidrs)
+        {
+            if (!DeploymentTargetCidrNetworkSource.IsValid(cidr))
+                yield return $"{prefix}:Cidrs:{purpose} must be a bounded IP network.";
+        }
+    }
+}
+
+public sealed class DeploymentTargetBootstrapPodSourceOptions
+{
+    public string Namespace { get; init; } = string.Empty;
+    public Dictionary<string, string> PodLabels { get; init; } = [];
 }
 
 public sealed class DeploymentTargetBootstrapIngressOptions
@@ -79,6 +140,7 @@ public sealed class DeploymentTargetOptionsValidator : IValidateOptions<Deployme
         }
         else
         {
+            failures.AddRange(workloadConfiguration.NetworkSources.ValidationFailures());
             var ingress = workloadConfiguration.Ingress;
             if (ingress is not null &&
                 !DeploymentTargetIngressConfiguration.IsValidKubernetesResourceName(

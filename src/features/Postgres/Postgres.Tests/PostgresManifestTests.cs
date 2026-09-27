@@ -24,6 +24,7 @@ public sealed class PostgresManifestTests
     public void BuildCluster_UsesNamespaceSpecAndSecretReference()
     {
         var (cluster, settings) = CreateOperatorSubject();
+        var placementMetadata = Metadata();
         var clusterManifest = JsonSerializer.SerializeToNode(
             PostgresClusterKubernetesBuilder.buildCluster(
                 cluster,
@@ -31,7 +32,7 @@ public sealed class PostgresManifestTests
                 "pole-data",
                 "fast-db",
                 Compute(),
-                Metadata(),
+                placementMetadata,
                 settings))!.AsObject();
         var metadata = clusterManifest["metadata"]!.AsObject();
         var spec = clusterManifest["spec"]!.AsObject();
@@ -54,6 +55,9 @@ public sealed class PostgresManifestTests
         Assert.Equal(
             "Postgres",
             inheritedMetadata["labels"]!["pole.io/resource-type"]!.GetValue<string>());
+        Assert.Equal(TestData.TenantId, inheritedMetadata["labels"]!["pole.io/tenant-id"]!.GetValue<string>());
+        Assert.Equal(placementMetadata.RuntimeCellId, inheritedMetadata["labels"]!["pole.io/runtime-cell-id"]!.GetValue<string>());
+        Assert.Equal(placementMetadata.DeploymentId, inheritedMetadata["labels"]!["pole.io/resource-deployment-id"]!.GetValue<string>());
         Assert.Equal(
             "pole/postgresql",
             inheritedMetadata["annotations"]!["pole.io/resource-type"]!.GetValue<string>());
@@ -122,6 +126,7 @@ public sealed class PostgresManifestTests
     public void BuildStatefulSet_UsesConfiguredImageAndSecretBackedEnvironment()
     {
         var (cluster, settings) = CreateStatefulSetSubject();
+        var placementMetadata = Metadata();
 
         var statefulSet = PostgresStatefulSetKubernetesBuilder.buildStatefulSet(
             cluster,
@@ -129,7 +134,7 @@ public sealed class PostgresManifestTests
             "pole-data",
             "fast-db",
             Compute(runtimeClassName: "kata"),
-            Metadata(),
+            placementMetadata,
             settings);
 
         Assert.Equal("apps/v1", statefulSet.ApiVersion);
@@ -147,6 +152,9 @@ public sealed class PostgresManifestTests
         Assert.Equal(
             statefulSet.Spec.Template.Metadata.Labels["pole.io/resource-deployment-id"],
             statefulSet.Spec.Selector.MatchLabels["pole.io/resource-deployment-id"]);
+        Assert.Equal(TestData.TenantId, statefulSet.Spec.Template.Metadata.Labels["pole.io/tenant-id"]);
+        Assert.Equal(placementMetadata.RuntimeCellId, statefulSet.Spec.Template.Metadata.Labels["pole.io/runtime-cell-id"]);
+        Assert.Equal(placementMetadata.DeploymentId, statefulSet.Spec.Template.Metadata.Labels["pole.io/resource-deployment-id"]);
         Assert.Equal(
             "pole/postgresql",
             statefulSet.Metadata.Annotations["pole.io/resource-type"]);

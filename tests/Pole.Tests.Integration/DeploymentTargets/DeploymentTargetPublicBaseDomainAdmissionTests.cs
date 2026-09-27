@@ -81,11 +81,19 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
     }
 
     [Fact]
-    public async Task TenantAwareAvailability_RequiresPublicIngressBaseDomain()
+    public async Task TenantAwareAvailability_RequiresPublicIngressSourceAndBaseDomain()
     {
         var publicTarget = CreateTarget("apps.example.test");
         var privateTarget = CreateTarget(publicBaseDomain: null);
-        await fixture.DbContext.DeploymentTargets.InsertManyAsync([publicTarget, privateTarget]);
+        var sourceConfigured = CreateTarget("another.example.test");
+        var missingSource = sourceConfigured with
+        {
+            WorkloadConfiguration = sourceConfigured.WorkloadConfiguration with
+            {
+                NetworkSources = DeploymentTargetNetworkSources.None
+            }
+        };
+        await fixture.DbContext.DeploymentTargets.InsertManyAsync([publicTarget, privateTarget, missingSource]);
         var admission = CreateWorkloadPlacementAdmission();
         var request = new DeploymentTargetAdmissionRequest(
             ObjectId.GenerateNewId().ToString(),
@@ -104,12 +112,16 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
             request with { ExplicitDeploymentTargetId = privateTarget.Id });
         Assert.True(
             Assert.IsType<DeploymentTargetNewWorkloadAdmissionError>(privateAdmission.Value).Value is DeploymentTargetRequiredCapabilitiesUnavailable);
+        var missingSourceAdmission = await admission(
+            request with { ExplicitDeploymentTargetId = missingSource.Id });
+        Assert.True(
+            Assert.IsType<DeploymentTargetNewWorkloadAdmissionError>(missingSourceAdmission.Value).Value is DeploymentTargetRequiredCapabilitiesUnavailable);
     }
 
     [Fact]
-    public async Task FunctionRuntimeConnectivity_AdmitsOnlyInClusterTargets()
+    public async Task FunctionRuntimeConnectivity_RequiresConfiguredSourceOnAnyTarget()
     {
-        var inCluster = CreateTarget(publicBaseDomain: null);
+        var inCluster = CreateTarget(publicBaseDomain: null, functionGateway: true);
         var remote = CreateTarget(publicBaseDomain: null) with
         {
             Connection = new KubeconfigDeploymentTargetConnection(
@@ -118,7 +130,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
                 "https://remote.example.test",
                 null!)
         };
-        var remoteServiceAccount = CreateTarget(publicBaseDomain: null) with
+        var remoteServiceAccount = CreateTarget(publicBaseDomain: null, functionGateway: true) with
         {
             Connection = new ServiceAccountDeploymentTargetConnection(
                 1,
@@ -143,10 +155,43 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         Assert.True(
             Assert.IsType<DeploymentTargetNewWorkloadAdmissionError>(rejected.Value).Value is DeploymentTargetRequiredCapabilitiesUnavailable);
 
-        var serviceAccountRejected = await admission(
+        var serviceAccountAdmitted = await admission(
             request with { ExplicitDeploymentTargetId = remoteServiceAccount.Id });
-        Assert.True(
-            Assert.IsType<DeploymentTargetNewWorkloadAdmissionError>(serviceAccountRejected.Value).Value is DeploymentTargetRequiredCapabilitiesUnavailable);
+        Assert.Equal(remoteServiceAccount.Id,
+            Assert.IsType<DeploymentTargetLookupDto>(serviceAccountAdmitted.Value).Id);
+    }
+
+    [Theory]
+    [InlineData(nameof(DeploymentTargetNetworkPolicyCapabilities.CanGet))]
+    [InlineData(nameof(DeploymentTargetNetworkPolicyCapabilities.CanCreate))]
+    [InlineData(nameof(DeploymentTargetNetworkPolicyCapabilities.CanUpdate))]
+    [InlineData(nameof(DeploymentTargetNetworkPolicyCapabilities.CanPatch))]
+    [InlineData(nameof(DeploymentTargetNetworkPolicyCapabilities.CanDelete))]
+    public async Task MongoAdmissionAndFence_ExcludeTargetMissingAnyPolicyWriterVerb(string missingVerb)
+    {
+        var target = CreateTarget("apps.example.test");
+        var capabilities = target.Capabilities.NetworkPolicyCapabilities;
+        capabilities = missingVerb switch
+        {
+            nameof(DeploymentTargetNetworkPolicyCapabilities.CanGet) => capabilities with { CanGet = false },
+            nameof(DeploymentTargetNetworkPolicyCapabilities.CanCreate) => capabilities with { CanCreate = false },
+            nameof(DeploymentTargetNetworkPolicyCapabilities.CanUpdate) => capabilities with { CanUpdate = false },
+            nameof(DeploymentTargetNetworkPolicyCapabilities.CanPatch) => capabilities with { CanPatch = false },
+            nameof(DeploymentTargetNetworkPolicyCapabilities.CanDelete) => capabilities with { CanDelete = false },
+            _ => throw new ArgumentOutOfRangeException(nameof(missingVerb))
+        };
+        target = target with
+        {
+            Capabilities = target.Capabilities with { NetworkPolicyCapabilities = capabilities }
+        };
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+
+        Assert.Empty(await CreateEligibleLoader()(DeploymentTargetRequiredCapabilities.PublicIngress));
+        Assert.Equal(0, await fixture.DbContext.DeploymentTargets.CountDocumentsAsync(
+            DeploymentTargetFilters.FenceableWorkloadConfigurations(
+                [new DeploymentTargetWorkloadConfigurationFenceRequest(
+                    target.Id,
+                    target.WorkloadConfiguration.Revision)])));
     }
 
     [Fact]
@@ -296,7 +341,8 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
                         new DeploymentTargetIngressConfigurationRequestBody(
                             "traefik",
                             "letsencrypt-prod",
-                            "new.example.test")),
+                            "new.example.test"),
+                        new DeploymentTargetNetworkSourcesRequestBody(null, null, null)),
                     current.Revision)));
 
         _ = result switch
@@ -373,7 +419,9 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
             .Project(item => item.DefaultDeploymentTargetId)
             .FirstOrDefaultAsync(cancellationToken);
 
-    private static DeploymentTarget CreateTarget(string? publicBaseDomain)
+    private static DeploymentTarget CreateTarget(
+        string? publicBaseDomain,
+        bool functionGateway = false)
     {
         var id = ObjectId.GenerateNewId().ToString();
         var now = DateTime.UtcNow;
@@ -383,12 +431,27 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
             $"kubernetes:kube-system:{id}",
             DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
             DeploymentTargetHealth.Healthy(connectionVersion, now),
-            DeploymentTargetCapabilities.Unknown(connectionVersion),
+            DeploymentTargetCapabilities.Observed(
+                connectionVersion,
+                now,
+                "v1.30.0",
+                new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
+                new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true)),
             DeploymentTargetWorkloadConfiguration.Create(
                 DeploymentTargetIngressConfiguration.Create(
                     "traefik",
                     "letsencrypt-prod",
-                    publicBaseDomain)),
+                    publicBaseDomain),
+                new DeploymentTargetNetworkSources(
+                    publicBaseDomain is null
+                        ? null
+                        : DeploymentTargetPodNetworkSource.Create(
+                            "kube-system",
+                            new Dictionary<string, string> { ["app.kubernetes.io/name"] = "traefik" }),
+                    functionGateway
+                        ? DeploymentTargetCidrNetworkSource.Create("192.0.2.9/32")
+                        : null,
+                    null)),
             enabled: true,
             acceptsWorkloads: true,
             new DeploymentTargetFactory.CreateOptions(id, now)).AttestForTests();

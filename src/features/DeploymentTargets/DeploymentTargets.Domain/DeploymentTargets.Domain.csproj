@@ -12,5 +12,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\shared\Encryption\Encryption.csproj" />
     <ProjectReference Include="..\..\..\shared\Dns\Dns.csproj" />
+    <ProjectReference Include="..\..\..\shared\Kubernetes.Validation\Kubernetes.Validation.csproj" />
   </ItemGroup>
 </Project>

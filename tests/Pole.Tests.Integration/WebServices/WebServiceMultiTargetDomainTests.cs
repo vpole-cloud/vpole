@@ -31,7 +31,8 @@ public sealed class WebServiceMultiTargetDomainTests
             ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(), revision,
             WebServiceReleaseAction.Update, null, null, CreateService().Spec, [first, second],
             null, null, new WebServiceReleaseFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
+                ObjectId.GenerateNewId().ToString(), DateTime.UtcNow),
+            CreateService().Exposure);
 
         var succeeded = WebServiceReleaseFactory.ApplyCompletion(
             release, first.ResourceDeploymentId, revision, 6, WebServiceReleaseDeploymentOperation.Apply,
@@ -62,7 +63,8 @@ public sealed class WebServiceMultiTargetDomainTests
             ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(), revision,
             WebServiceReleaseAction.Update, null, null, CreateService().Spec, [failedEntry, succeededEntry],
             null, null, new WebServiceReleaseFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
+                ObjectId.GenerateNewId().ToString(), DateTime.UtcNow),
+            CreateService().Exposure);
 
         var partiallyCompleted = WebServiceReleaseFactory.ApplyCompletion(
             release, failedEntry.ResourceDeploymentId, revision, 6,
@@ -93,7 +95,7 @@ public sealed class WebServiceMultiTargetDomainTests
                 new ImageInfo("registry.example.test", "team/api", "latest"),
                 new WebServiceConfig(ImmutableDictionary<string, string>.Empty, ImmutableList<PortMapping>.Empty),
                 null, new ProbeSpec(probe, probe, probe)),
-            WebServiceExposure.Create(),
+            WebServiceExposure.Create(WebServiceExposureMode.Public),
             WebServiceFactory.DefaultOptions with
             {
                 Id = ObjectId.GenerateNewId().ToString(),

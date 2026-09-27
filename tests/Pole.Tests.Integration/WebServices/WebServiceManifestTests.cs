@@ -177,6 +177,7 @@ public sealed class WebServiceManifestTests
         var manifest = CreateSubject();
 
         var ingress = manifest.ToIngress();
+        Assert.NotNull(ingress);
         Assert.Equal(
             ["api.example.com", "api.example.net"],
             ingress.Spec.Rules.Select(rule => rule.Host));
@@ -303,7 +304,7 @@ public sealed class WebServiceManifestTests
             resourceGroupId: ResourceGroupId,
             isolationScopeId: IsolationScopeId,
             spec: spec,
-            exposure: WebServiceExposure.Create(),
+            exposure: WebServiceExposure.Create(WebServiceExposureMode.Public),
             options: options);
         return webService.ToKubernetes(
             "pole-apps",

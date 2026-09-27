@@ -12,7 +12,7 @@ public static class WebServiceInKubernetesxtensions
     {
         public WebServiceInKubernetes ToKubernetes(
             string kubernetesNamespace,
-            ResourceDeploymentIngressConfiguration ingressConfiguration,
+            ResourceDeploymentIngressConfiguration? ingressConfiguration,
             ResourceDeploymentComputeConfiguration computeConfiguration,
             int fixedReplicas,
             WorkloadIdentityLabels placementIdentity) =>

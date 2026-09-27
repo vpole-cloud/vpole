@@ -19,7 +19,9 @@ public sealed record WebServiceCreatedEvent(
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
-public sealed record WebServiceExposureSnapshot(string GeneratedHostnameLabelPrefix);
+public sealed record WebServiceExposureSnapshot(
+    string Mode,
+    string GeneratedHostnameLabelPrefix);
 public sealed record WebServiceDesiredDeploymentSnapshot(
     string ResourceDeploymentId,
     string DeploymentTargetId,

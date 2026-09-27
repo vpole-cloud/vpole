@@ -118,9 +118,18 @@ public sealed record ResourceDeploymentSetApplyItem(
     string ResourceDeploymentId,
     long ExpectedDeploymentRevision,
     ComputeProfileReference ExpectedCompute,
+    ResourceDeploymentIngressChange IngressChange,
     ResourceDeploymentComputeConfiguration? ReplacementCompute = null,
-    ResourceDeploymentIngressConfiguration? ReplacementIngress = null,
     int? FixedReplicas = null);
+
+public abstract record ResourceDeploymentIngressChange;
+
+public sealed record PreserveIngress : ResourceDeploymentIngressChange;
+
+public sealed record ClearIngress : ResourceDeploymentIngressChange;
+
+public sealed record ReplaceIngress(ResourceDeploymentIngressConfiguration Configuration)
+    : ResourceDeploymentIngressChange;
 
 public sealed record ResourceDeploymentSetApplyRequest(
     string TenantId,

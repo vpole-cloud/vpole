@@ -369,7 +369,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             ObjectId.GenerateNewId().ToString(),
             1,
             TestData.ValidWebServiceSpecSnapshot(),
-            new WebServiceExposureSnapshot("portal"),
+            new WebServiceExposureSnapshot("Public", "portal"),
             ImmutableHashSet<string>.Empty,
             ImmutableList.Create(new WebServiceDesiredDeploymentSnapshot(
                 ObjectId.GenerateNewId().ToString(),
@@ -393,7 +393,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             ObjectId.GenerateNewId().ToString(),
             2,
             TestData.ValidWebServiceSpecSnapshot(),
-            new WebServiceExposureSnapshot("portal"),
+            new WebServiceExposureSnapshot("Public", "portal"),
             ImmutableHashSet<string>.Empty,
             ImmutableList.Create(new WebServiceDesiredDeploymentSnapshot(
                 ObjectId.GenerateNewId().ToString(),

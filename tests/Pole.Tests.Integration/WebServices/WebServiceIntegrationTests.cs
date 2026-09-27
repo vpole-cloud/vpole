@@ -12,6 +12,7 @@ using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Application.Endpoints.Deployments;
+using Pole.Features.WebServices.Application.Endpoints.Deployments.Hostnames;
 using Pole.Features.WebServices.Application.Endpoints.Releases;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Application.Persistence.Deployments;
@@ -32,7 +33,14 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     public async Task Create_PersistsGeneratedHostnameAndMultiTargetPlacementSnapshot()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var result = await Mediator.Send(TestData.CreateWebServiceRequest(group.Id));
+        var request = TestData.CreateWebServiceRequest(group.Id) with
+        {
+            Body = TestData.CreateWebServiceRequest(group.Id).Body with
+            {
+                Exposure = WebServiceExposureMode.Public
+            }
+        };
+        var result = await Mediator.Send(request);
         var created = result.AssertSuccess();
 
         var service = await Fixture.Database.WebServices()
@@ -56,6 +64,203 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(WebServiceResourceDeployment.ResourceType.Value, registration.ResourceTypeId);
         Assert.Equal(group.Id, registration.ResourceGroupId);
         Assert.Equal(service.Name, registration.DisplayName);
+    }
+
+    [Fact]
+    public async Task Create_PrivateByDefault_PersistsNoHostnameOrIngress()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var request = TestData.CreateWebServiceRequest(group.Id) with
+        {
+            Body = TestData.CreateWebServiceRequest(group.Id).Body with
+            {
+                Exposure = WebServiceExposureMode.Private
+            }
+        };
+
+        var created = (await Mediator.Send(request)).AssertSuccess();
+        var service = await Fixture.Database.WebServices()
+            .Find(item => item.Id == created.WebServiceId).SingleAsync();
+        var deployment = Assert.Single(created.Deployments);
+
+        Assert.Equal(WebServiceExposureMode.Private, service.Exposure.Mode);
+        Assert.Equal("Private", service.ToDto([deployment]).Exposure.Mode);
+        Assert.Null(deployment.Ingress);
+        Assert.Empty(await Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings")
+            .Find(binding => binding.ResourceId == service.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task Update_PrivateToPublic_AdmitsTargetsAndCreatesGeneratedHostname()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var template = TestData.CreateWebServiceRequest(group.Id);
+        var created = (await Mediator.Send(template with
+        {
+            Body = template.Body with { Exposure = WebServiceExposureMode.Private }
+        })).AssertSuccess();
+        Assert.Null(Assert.Single(created.Deployments).Ingress);
+
+        var updated = (await Mediator.Send(new UpdateWebServiceRequest(
+            created.WebServiceId,
+            new UpdateWebServiceRequestBody(
+                TestData.ValidWebServiceSpec(),
+                [],
+                WebServiceExposureMode.Public),
+            TestData.TenantId))).AssertSuccess();
+
+        var service = await Fixture.Database.WebServices()
+            .Find(item => item.Id == created.WebServiceId).SingleAsync();
+        var deployment = Assert.Single(updated.Deployments);
+        Assert.Equal(WebServiceExposureMode.Public, service.Exposure.Mode);
+        Assert.Single(deployment.Ingress!.Hostnames);
+        Assert.Single(await Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings")
+            .Find(binding => binding.ResourceId == created.WebServiceId).ToListAsync());
+        var release = await Fixture.Database.WebServiceReleases()
+            .Find(item => item.WebServiceId == created.WebServiceId && item.ResourceRevision == 2)
+            .SingleAsync();
+        Assert.Equal(WebServiceExposureMode.Public, release.Exposure.Mode);
+    }
+
+    [Fact]
+    public async Task Update_PublicToPrivate_ReleasesHostnameOnlyAfterAppliedRevocation()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var template = TestData.CreateWebServiceRequest(group.Id);
+        var created = (await Mediator.Send(template with
+        {
+            Body = template.Body with { Exposure = WebServiceExposureMode.Public }
+        })).AssertSuccess();
+
+        var privateUpdate = (await Mediator.Send(new UpdateWebServiceRequest(
+            created.WebServiceId,
+            new UpdateWebServiceRequestBody(
+                TestData.ValidWebServiceSpec(),
+                [],
+                WebServiceExposureMode.Private),
+            TestData.TenantId))).AssertSuccess();
+        var deployment = Assert.Single(privateUpdate.Deployments);
+        var hostnameBindings = Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings");
+        Assert.Null(deployment.Ingress);
+        Assert.Single(await hostnameBindings
+            .Find(binding => binding.ResourceId == created.WebServiceId).ToListAsync());
+
+        var completion = await Services.GetRequiredService<CompleteWebServiceDeployment>()(
+            TestData.TenantId,
+            created.WebServiceId,
+            new WebServiceDeploymentCompletion(
+                deployment.DeploymentId,
+                privateUpdate.ResourceRevision,
+                deployment.DesiredGeneration,
+                WebServiceReleaseDeploymentOperation.Apply,
+                Succeeded: true,
+                Retryable: false,
+                DateTime.UtcNow,
+                FailureCode: null,
+                FailureMessage: null,
+                EventCore.Create(TestData.TenantId)));
+
+        Assert.IsType<WebServiceDeploymentCompletionRecorded>(completion.Value);
+        Assert.Empty(await hostnameBindings
+            .Find(binding => binding.ResourceId == created.WebServiceId).ToListAsync());
+        var privateService = await Fixture.Database.WebServices()
+            .Find(item => item.Id == created.WebServiceId).SingleAsync();
+        Assert.Equal(WebServiceExposureMode.Private, privateService.Exposure.Mode);
+    }
+
+    [Fact]
+    public async Task Update_RePublicBeforeOldPrivateCompletion_PreservesCurrentHostnameBinding()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var template = TestData.CreateWebServiceRequest(group.Id);
+        var created = (await Mediator.Send(template with
+        {
+            Body = template.Body with { Exposure = WebServiceExposureMode.Public }
+        })).AssertSuccess();
+
+        var privateUpdate = (await Mediator.Send(new UpdateWebServiceRequest(
+            created.WebServiceId,
+            new UpdateWebServiceRequestBody(
+                TestData.ValidWebServiceSpec(), [], WebServiceExposureMode.Private),
+            TestData.TenantId))).AssertSuccess();
+        var stalePrivateDeployment = Assert.Single(privateUpdate.Deployments);
+        var publicUpdate = (await Mediator.Send(new UpdateWebServiceRequest(
+            created.WebServiceId,
+            new UpdateWebServiceRequestBody(
+                TestData.ValidWebServiceSpec(), [], WebServiceExposureMode.Public),
+            TestData.TenantId))).AssertSuccess();
+        var publicDeployment = Assert.Single(publicUpdate.Deployments);
+
+        var completion = await Services.GetRequiredService<CompleteWebServiceDeployment>()(
+            TestData.TenantId,
+            created.WebServiceId,
+            new WebServiceDeploymentCompletion(
+                stalePrivateDeployment.DeploymentId,
+                privateUpdate.ResourceRevision,
+                stalePrivateDeployment.DesiredGeneration,
+                WebServiceReleaseDeploymentOperation.Apply,
+                Succeeded: true,
+                Retryable: false,
+                DateTime.UtcNow,
+                FailureCode: null,
+                FailureMessage: null,
+                EventCore.Create(TestData.TenantId)));
+
+        Assert.IsType<WebServiceDeploymentCompletionRecorded>(completion.Value);
+        Assert.NotNull(publicDeployment.Ingress);
+        Assert.Single(await Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings")
+            .Find(binding => binding.ResourceId == created.WebServiceId).ToListAsync());
+        var current = await Fixture.Database.WebServices()
+            .Find(item => item.Id == created.WebServiceId).SingleAsync();
+        Assert.Equal(WebServiceExposureMode.Public, current.Exposure.Mode);
+    }
+
+    [Fact]
+    public async Task Create_PublicWithAnyTargetMissingIngressSourceRejectsWholeRequest()
+    {
+        var unavailableTargetId = ObjectId.GenerateNewId().ToString();
+        Services.GetRequiredService<TestDeploymentTargetLookup>()
+            .AddIneligiblePublicIngressTarget(unavailableTargetId, "apps.missing-source.test.local");
+        await Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles")
+            .ReplaceOneAsync(
+                profile => profile.Id == TestData.DefaultComputeProfileId,
+                TestData.SeedComputeProfile(deploymentTargetIds:
+                    [TestData.DefaultDeploymentTargetId, unavailableTargetId]));
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var template = TestData.CreateWebServiceRequest(group.Id);
+        var request = template with
+        {
+            Body = template.Body with
+            {
+                Exposure = WebServiceExposureMode.Public,
+                Placement = new WebServicePlacementRequest(null,
+                [
+                    new WebServiceDeploymentTargetRequest(TestData.DefaultDeploymentTargetId),
+                    new WebServiceDeploymentTargetRequest(unavailableTargetId)
+                ])
+            }
+        };
+        var hostnameBindings = Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings");
+        var bindingsBefore = await hostnameBindings.CountDocumentsAsync(binding =>
+            binding.TenantId == TestData.TenantId &&
+            binding.ResourceType == WebServiceResourceDeployment.ResourceType.Value);
+        var eventsBefore = await DbContext.CountOutboxMessagesAsync(
+            "pole.web-services/v1/web-service-created");
+
+        var error = (await Mediator.Send(request)).AssertFailure();
+        var placementError = Assert.IsType<CreateWebServicePlacementError>(error.Value);
+        Assert.IsType<CreateWebServiceTargetUnavailable>(placementError.Value);
+        Assert.Empty(await DbContext.ResourceDeployments
+            .Find(deployment => deployment.ResourceGroupId == group.Id)
+            .ToListAsync());
+        Assert.Equal(bindingsBefore, await hostnameBindings.CountDocumentsAsync(binding =>
+            binding.TenantId == TestData.TenantId &&
+            binding.ResourceType == WebServiceResourceDeployment.ResourceType.Value));
+        Assert.Empty(await DbContext.ResourceRegistrations
+            .Find(registration => registration.ResourceGroupId == group.Id)
+            .ToListAsync());
+        Assert.Equal(eventsBefore, await DbContext.CountOutboxMessagesAsync(
+            "pole.web-services/v1/web-service-created"));
     }
 
     [Fact]
@@ -96,6 +301,60 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseAction.AddDeployment, release.Action);
         Assert.Equal(2, release.Deployments.Count);
+    }
+
+    [Fact]
+    public async Task AddDeployment_PrivateDoesNotRequirePublicIngressSource()
+    {
+        var secondTargetId = ObjectId.GenerateNewId().ToString();
+        Services.GetRequiredService<TestDeploymentTargetLookup>()
+            .AddIneligiblePublicIngressTarget(secondTargetId, "apps.private-only.test.local");
+        await Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles")
+            .ReplaceOneAsync(
+                profile => profile.Id == TestData.DefaultComputeProfileId,
+                TestData.SeedComputeProfile(deploymentTargetIds:
+                    [TestData.DefaultDeploymentTargetId, secondTargetId]));
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var template = TestData.CreateWebServiceRequest(group.Id);
+        var created = (await Mediator.Send(template with
+        {
+            Body = template.Body with { Exposure = WebServiceExposureMode.Private }
+        })).AssertSuccess();
+
+        var result = await Mediator.Send(new AddWebServiceDeploymentRequest(
+            created.WebServiceId,
+            new WebServiceDeploymentTargetRequest(secondTargetId, FixedReplicas: 2),
+            TestData.TenantId));
+        var added = Assert.IsType<PlacementSummaryDto>(result.AssertSuccess().Value);
+
+        Assert.Equal(secondTargetId, added.DeploymentTargetId);
+        Assert.Null(added.Ingress);
+        Assert.Empty(await Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings")
+            .Find(binding => binding.ResourceDeploymentId == added.DeploymentId).ToListAsync());
+    }
+
+    [Fact]
+    public async Task AddCustomHostname_PrivateServiceIsRejected()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var template = TestData.CreateWebServiceRequest(group.Id);
+        var created = (await Mediator.Send(template with
+        {
+            Body = template.Body with { Exposure = WebServiceExposureMode.Private }
+        })).AssertSuccess();
+        var deployment = Assert.Single(created.Deployments);
+
+        var result = await Mediator.Send(new AddWebServiceDeploymentHostnameRequest(
+            created.WebServiceId,
+            deployment.DeploymentId,
+            new AddWebServiceDeploymentHostnameBody(
+                ObjectId.GenerateNewId().ToString(),
+                "custom"),
+            TestData.TenantId));
+        var outcome = result.AssertSuccess();
+
+        var error = Assert.IsType<WebServiceDeploymentHostnameError>(outcome.Value);
+        Assert.IsType<WebServiceHostnameAttachmentUnavailable>(error.Value);
     }
 
     [Fact]
@@ -145,7 +404,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         };
 
         var result = await Mediator.Send(new UpdateWebServiceRequest(created.WebServiceId,
-            new UpdateWebServiceRequestBody(spec, ["stable"]), TestData.TenantId));
+            new UpdateWebServiceRequestBody(spec, ["stable"], WebServiceExposureMode.Public), TestData.TenantId));
         var updated = result.AssertSuccess();
         Assert.Equal(2, updated.ResourceRevision);
         Assert.All(updated.Deployments, deployment => Assert.Equal(2, deployment.ResourceRevision));
@@ -415,8 +674,11 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     public async Task Rollback_RestoresSucceededReleaseSpec()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id)))
-            .AssertSuccess();
+        var template = TestData.CreateWebServiceRequest(group.Id);
+        var created = (await Mediator.Send(template with
+        {
+            Body = template.Body with { Exposure = WebServiceExposureMode.Private }
+        })).AssertSuccess();
         await Fixture.Database.WebServiceReleases().UpdateOneAsync(
             release => release.WebServiceId == created.WebServiceId &&
                        release.ResourceRevision == 1,
@@ -429,7 +691,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         };
         (await Mediator.Send(new UpdateWebServiceRequest(
             created.WebServiceId,
-            new UpdateWebServiceRequestBody(updatedSpec, []),
+            new UpdateWebServiceRequestBody(updatedSpec, [], WebServiceExposureMode.Public),
             TestData.TenantId))).AssertSuccess();
 
         var rollback = (await Mediator.Send(new RollbackWebServiceRequest(
@@ -441,10 +703,120 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         var saved = await Fixture.Database.WebServices()
             .Find(service => service.Id == created.WebServiceId).SingleAsync();
         Assert.Equal("1.27", saved.Spec.Image.Tag);
+        Assert.Equal(WebServiceExposureMode.Public, saved.Exposure.Mode);
         var release = await Fixture.Database.WebServiceReleases()
             .Find(item => item.Id == rollback.ReleaseId).SingleAsync();
         Assert.Equal(WebServiceReleaseAction.Rollback, release.Action);
         Assert.Equal("1.27", release.Spec.Image.Tag);
+    }
+
+    [Fact]
+    public async Task Rollback_PublicRejectsHistoricalUdpSpecWithoutMutation()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var template = TestData.CreateWebServiceRequest(group.Id);
+        var privateSpec = TestData.ValidWebServiceSpec() with
+        {
+            Config = TestData.ValidWebServiceSpec().Config with
+            {
+                PortMappings = [new Pole.Features.WebServices.Application.Common.PortMappingDto(
+                    80, "http", "UDP", "datagram")]
+            }
+        };
+        var created = (await Mediator.Send(template with
+        {
+            Body = template.Body with
+            {
+                Exposure = WebServiceExposureMode.Private,
+                Spec = privateSpec
+            }
+        })).AssertSuccess();
+        await Fixture.Database.WebServiceReleases().UpdateOneAsync(
+            release => release.WebServiceId == created.WebServiceId &&
+                       release.ResourceRevision == 1,
+            Builders<WebServiceRelease>.Update
+                .Set(release => release.Outcome, WebServiceReleaseOutcome.Succeeded)
+                .Set(release => release.CompletedAtUtc, DateTime.UtcNow));
+        (await Mediator.Send(new UpdateWebServiceRequest(
+            created.WebServiceId,
+            new UpdateWebServiceRequestBody(
+                TestData.ValidWebServiceSpec(), [], WebServiceExposureMode.Public),
+            TestData.TenantId))).AssertSuccess();
+
+        var beforeService = await Fixture.Database.WebServices()
+            .Find(service => service.Id == created.WebServiceId).SingleAsync();
+        var beforeDeployment = await DbContext.ResourceDeployments
+            .Find(deployment => deployment.ResourceId == created.WebServiceId).SingleAsync();
+        var beforeReleaseCount = await Fixture.Database.WebServiceReleases()
+            .CountDocumentsAsync(release => release.WebServiceId == created.WebServiceId);
+        var beforeUpdatedEvents = await DbContext.CountOutboxMessagesAsync(
+            "pole.web-services/v1/web-service-updated");
+
+        var result = await Mediator.Send(new RollbackWebServiceRequest(
+            created.WebServiceId,
+            new RollbackWebServiceRequestBody(1),
+            TestData.TenantId));
+
+        var incompatible = Assert.IsType<RollbackWebServicePublicSpecIncompatible>(
+            ResultAssertionExtensions.AssertSuccess<RollbackWebServiceOutcome>(result).Value);
+        Assert.Equal(created.WebServiceId, incompatible.WebServiceId);
+        Assert.Equal(1, incompatible.TargetRevision);
+        var afterService = await Fixture.Database.WebServices()
+            .Find(service => service.Id == created.WebServiceId).SingleAsync();
+        var afterDeployment = await DbContext.ResourceDeployments
+            .Find(deployment => deployment.ResourceId == created.WebServiceId).SingleAsync();
+        Assert.Equal(beforeService.ActiveRevision, afterService.ActiveRevision);
+        Assert.Equal(beforeService.Revision, afterService.Revision);
+        Assert.Equal(beforeDeployment.DesiredGeneration, afterDeployment.DesiredGeneration);
+        Assert.Equal(beforeReleaseCount, await Fixture.Database.WebServiceReleases()
+            .CountDocumentsAsync(release => release.WebServiceId == created.WebServiceId));
+        Assert.Equal(beforeUpdatedEvents, await DbContext.CountOutboxMessagesAsync(
+            "pole.web-services/v1/web-service-updated"));
+    }
+
+    [Fact]
+    public async Task Rollback_PrivateAllowsHistoricalUdpSpec()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var template = TestData.CreateWebServiceRequest(group.Id);
+        var privateSpec = TestData.ValidWebServiceSpec() with
+        {
+            Config = TestData.ValidWebServiceSpec().Config with
+            {
+                PortMappings = [new Pole.Features.WebServices.Application.Common.PortMappingDto(
+                    80, "http", "UDP", "datagram")]
+            }
+        };
+        var created = (await Mediator.Send(template with
+        {
+            Body = template.Body with
+            {
+                Exposure = WebServiceExposureMode.Private,
+                Spec = privateSpec
+            }
+        })).AssertSuccess();
+        await Fixture.Database.WebServiceReleases().UpdateOneAsync(
+            release => release.WebServiceId == created.WebServiceId &&
+                       release.ResourceRevision == 1,
+            Builders<WebServiceRelease>.Update
+                .Set(release => release.Outcome, WebServiceReleaseOutcome.Succeeded)
+                .Set(release => release.CompletedAtUtc, DateTime.UtcNow));
+        (await Mediator.Send(new UpdateWebServiceRequest(
+            created.WebServiceId,
+            new UpdateWebServiceRequestBody(
+                TestData.ValidWebServiceSpec(), [], WebServiceExposureMode.Private),
+            TestData.TenantId))).AssertSuccess();
+
+        var rollback = (await Mediator.Send(new RollbackWebServiceRequest(
+            created.WebServiceId,
+            new RollbackWebServiceRequestBody(1),
+            TestData.TenantId))).AssertSuccess();
+
+        var service = await Fixture.Database.WebServices()
+            .Find(item => item.Id == created.WebServiceId).SingleAsync();
+        Assert.Equal(WebServiceExposureMode.Private, service.Exposure.Mode);
+        Assert.Equal("UDP", service.Spec.Config.PortMappings.Single().Protocol);
+        Assert.Equal(3, rollback.ResourceRevision);
     }
 
     [Fact]
@@ -476,7 +848,8 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             null,
             null,
             new WebServiceReleaseFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(), DateTime.UtcNow)) with
+                ObjectId.GenerateNewId().ToString(), DateTime.UtcNow),
+            WebServiceExposure.Create(WebServiceExposureMode.Public)) with
         {
             Outcome = WebServiceReleaseOutcome.Succeeded,
             CompletedAtUtc = DateTime.UtcNow

@@ -5,6 +5,7 @@ namespace Pole.Features.ResourceDeployments.Contracts;
 
 public sealed record ResourceDeploymentResolvedPlacementSnapshot(
     string DeploymentTargetId,
+    long TargetWorkloadConfigurationRevision,
     string KubernetesNamespace,
     ResourceDeploymentIngressConfiguration? Ingress,
     ResourceDeploymentStorageConfiguration? Storage,

@@ -14,7 +14,8 @@ internal static class WebServicesEventExtensions
             ImmutableList<WebServiceDesiredDeploymentSnapshot> deployments) =>
             new(webService.Id, webService.Name, webService.ResourceGroupId, webService.IsolationScopeId,
                 webService.Revision, webService.Spec.ToSnapshot(), webService.Exposure.ToSnapshot(),
-                webService.Tags, deployments) { EventCore = EventCore.Create(webService.TenantId) };
+                webService.Tags, deployments)
+            { EventCore = EventCore.Create(webService.TenantId) };
 
         internal WebServiceDeletedEvent ToDeleteEvent() =>
             new(webService.Id, webService.Name, webService.ResourceGroupId, webService.IsolationScopeId,
@@ -25,7 +26,8 @@ internal static class WebServicesEventExtensions
             ImmutableList<WebServiceDesiredDeploymentSnapshot> deployments) =>
             new(webService.Id, webService.Name, webService.ResourceGroupId, webService.IsolationScopeId,
                 webService.Revision, webService.Spec.ToSnapshot(), webService.Exposure.ToSnapshot(),
-                webService.Tags, deployments) { EventCore = EventCore.Create(webService.TenantId) };
+                webService.Tags, deployments)
+            { EventCore = EventCore.Create(webService.TenantId) };
     }
 
     extension(WebServiceCreatedEvent createEvent)
@@ -33,7 +35,9 @@ internal static class WebServicesEventExtensions
         internal WebService ToWebService() => WebServiceFactory.Create(
             createEvent.Name, createEvent.EventCore.TenantId, createEvent.ResourceGroupId,
             createEvent.IsolationScopeId, createEvent.Spec.ToDomain(),
-            WebServiceExposure.Create(createEvent.Exposure.GeneratedHostnameLabelPrefix),
+            WebServiceExposure.Create(
+                Enum.Parse<WebServiceExposureMode>(createEvent.Exposure.Mode),
+                createEvent.Exposure.GeneratedHostnameLabelPrefix),
             WebServiceFactory.DefaultOptions with
             {
                 Id = createEvent.WebServiceId,
@@ -56,7 +60,8 @@ internal static class WebServicesEventExtensions
 
     extension(WebServiceExposure exposure)
     {
-        private WebServiceExposureSnapshot ToSnapshot() => new(exposure.GeneratedHostnameLabelPrefix);
+        private WebServiceExposureSnapshot ToSnapshot() => new(
+            exposure.Mode.ToString(), exposure.GeneratedHostnameLabelPrefix);
     }
 
     extension(ImageInfo image) { private WebServiceImageInfoSnapshot ToSnapshot() => new(image.Server, image.Name, image.Tag, image.SecretName); }

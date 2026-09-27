@@ -77,7 +77,11 @@ export function useWebServicesManager({
     }
   }
 
-  const loadAvailableTargets = useCallback(async (isolationScopeId?: string) => {
+  const loadAvailableTargets = useCallback(async (
+    isolationScopeId?: string,
+    requiresPublicIngress = true,
+    signal?: AbortSignal,
+  ) => {
     if (!tenantId) {
       setAvailableTargets([])
       setTargetsStatus('idle')
@@ -92,11 +96,15 @@ export function useWebServicesManager({
         isolationScopeId,
         token,
         tenantId,
+        signal,
+        requiresPublicIngress,
       )
+      if (signal?.aborted) return []
       setAvailableTargets(targets)
       setTargetsStatus('success')
       return targets
     } catch (loadError) {
+      if (signal?.aborted) return []
       setAvailableTargets([])
       setTargetsStatus('error')
       setTargetsError(errorMessage(loadError, 'Unable to load eligible deployment targets.'))

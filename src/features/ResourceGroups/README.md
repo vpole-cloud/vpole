@@ -38,6 +38,18 @@ Events assembly.
 Registration lifecycle events are intentionally absent because no asynchronous projection or
 external consumer currently needs them.
 
+## RuntimeCell ingress baseline
+
+ResourceGroups also owns the RuntimeCell namespace lifecycle. It installs an ingress-only
+deny-all NetworkPolicy in every RuntimeCell namespace before marking the cell Ready or allowing
+workload application. The policy selects all pods in the cell, including pods introduced later
+by other controllers, while leaving egress unrestricted. Reconciliation checks policy ownership
+before repairing it; a conflicting owner or failed policy write keeps the cell unavailable for
+new workload application. Ready cells are requeued for baseline verification after five minutes,
+including cells with no deployments. This is bounded repair of recorded desired state, not a
+claim that CNI enforcement converges synchronously or that externally deleted policies are
+repaired before any packet can arrive.
+
 ## Tenant API
 
 ResourceGroup list responses expose `resourceCount`, loaded for the complete page with one grouped
