@@ -18,11 +18,24 @@ public sealed record RuntimeCellIngressBaselineUnavailable(
     string RuntimeCellId,
     RuntimeCellIngressBaselineFailureReason Reason);
 
+public enum RuntimeCellIngressBaselineTargetFailureReason
+{
+    NotFound,
+    Disabled,
+    DefaultNotConfigured,
+    ConnectionUnavailable
+}
+
+public sealed record RuntimeCellIngressBaselineTargetUnavailable(
+    string RuntimeCellId,
+    RuntimeCellIngressBaselineTargetFailureReason Reason);
+
 public union EnsureRuntimeCellIngressBaselineOutcome(
     RuntimeCellIngressBaselineReady,
     RuntimeCellIngressBaselineNotReady,
     RuntimeCellIngressBaselinePlacementMismatch,
-    RuntimeCellIngressBaselineUnavailable);
+    RuntimeCellIngressBaselineUnavailable,
+    RuntimeCellIngressBaselineTargetUnavailable);
 
 public delegate Task<EnsureRuntimeCellIngressBaselineOutcome> EnsureRuntimeCellIngressBaseline(
     string tenantId,

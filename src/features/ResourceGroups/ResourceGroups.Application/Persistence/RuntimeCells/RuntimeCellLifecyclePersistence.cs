@@ -150,6 +150,8 @@ public sealed class RuntimeCellLifecyclePersistence(
                 nameof(outcome)),
             RuntimeCellNamespaceOwnershipConflict => "NamespaceOwnershipConflict",
             RuntimeCellNamespaceUnavailable => "NamespaceOperationFailed",
+            RuntimeCellDeploymentTargetUnavailable targetUnavailable =>
+                $"DeploymentTarget{targetUnavailable.Reason}",
             RuntimeCellNetworkPolicyOwnershipConflict => "NetworkPolicyOwnershipConflict",
             RuntimeCellNetworkPolicyUnavailable => "NetworkPolicyApplyFailed"
         };

@@ -85,8 +85,33 @@ public sealed class ResourceDeploymentReconciler(
             var targetResult = await lookupDeploymentTarget(
                 claimed.ResolvedPlacement.DeploymentTargetId,
                 cancellationToken);
-            if (targetResult is not DeploymentTargetLookupDto target ||
-                !target.NetworkPolicy.AllowsWorkloads)
+            if (targetResult is not DeploymentTargetLookupDto target)
+            {
+                await PersistFailureAsync(
+                    claimed,
+                    generation,
+                    operation,
+                    "DeploymentTargetNotFound",
+                    "The deployment target is unavailable.",
+                    retryable: true,
+                    cancellationToken);
+                return;
+            }
+
+            if (!target.Enabled)
+            {
+                await PersistFailureAsync(
+                    claimed,
+                    generation,
+                    operation,
+                    "DeploymentTargetDisabled",
+                    "The deployment target is disabled.",
+                    retryable: true,
+                    cancellationToken);
+                return;
+            }
+
+            if (!target.NetworkPolicy.AllowsWorkloads)
             {
                 await PersistFailureAsync(
                     claimed,
@@ -105,6 +130,19 @@ public sealed class ResourceDeploymentReconciler(
                 claimed.ResolvedPlacement.DeploymentTargetId,
                 claimed.ResolvedPlacement.KubernetesNamespace,
                 cancellationToken);
+            if (ingressBaseline is RuntimeCellIngressBaselineTargetUnavailable targetUnavailable)
+            {
+                await PersistFailureAsync(
+                    claimed,
+                    generation,
+                    operation,
+                    $"DeploymentTarget{targetUnavailable.Reason}",
+                    "The deployment target Kubernetes client is unavailable.",
+                    retryable: true,
+                    cancellationToken);
+                return;
+            }
+
             if (ingressBaseline is not RuntimeCellIngressBaselineReady)
             {
                 var placementMismatch = ingressBaseline is RuntimeCellIngressBaselinePlacementMismatch;
