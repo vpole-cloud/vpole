@@ -1,4 +1,5 @@
 using Pole.Features.ResourceGroups.Application.Persistence.RuntimeCells;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
@@ -37,6 +38,21 @@ internal sealed class KubernetesEnsureRuntimeCellIngressBaseline(
             RuntimeCellNamespaceUnavailable => new RuntimeCellIngressBaselineUnavailable(
                 runtimeCellId,
                 RuntimeCellIngressBaselineFailureReason.NamespaceUnavailable),
+            RuntimeCellDeploymentTargetUnavailable targetUnavailable =>
+                new RuntimeCellIngressBaselineTargetUnavailable(
+                    runtimeCellId,
+                    targetUnavailable.Reason switch
+                    {
+                        DeploymentTargetUnavailableReason.NotFound =>
+                            RuntimeCellIngressBaselineTargetFailureReason.NotFound,
+                        DeploymentTargetUnavailableReason.Disabled =>
+                            RuntimeCellIngressBaselineTargetFailureReason.Disabled,
+                        DeploymentTargetUnavailableReason.DefaultNotConfigured =>
+                            RuntimeCellIngressBaselineTargetFailureReason.DefaultNotConfigured,
+                        DeploymentTargetUnavailableReason.ConnectionUnavailable =>
+                            RuntimeCellIngressBaselineTargetFailureReason.ConnectionUnavailable,
+                        _ => throw new ArgumentOutOfRangeException(nameof(targetUnavailable))
+                    }),
             RuntimeCellNetworkPolicyOwnershipConflict => new RuntimeCellIngressBaselineUnavailable(
                 runtimeCellId,
                 RuntimeCellIngressBaselineFailureReason.PolicyOwnershipConflict),

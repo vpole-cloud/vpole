@@ -53,14 +53,19 @@ public sealed class ResourceDeploymentTargetRoutingTests(
     }
 
     [Theory]
-    [InlineData(NetworkPolicyReadiness.EnforcementAttested, true, true)]
-    [InlineData(NetworkPolicyReadiness.IsolationNotEnforced, true, true)]
-    [InlineData(NetworkPolicyReadiness.EnforcementRequired, true, false)]
-    [InlineData(NetworkPolicyReadiness.EnforcementAttested, false, false)]
+    [InlineData(NetworkPolicyReadiness.EnforcementAttested, true, true, true, null)]
+    [InlineData(NetworkPolicyReadiness.IsolationNotEnforced, true, true, true, null)]
+    [InlineData(NetworkPolicyReadiness.EnforcementRequired, true, true, false, null)]
+    [InlineData(NetworkPolicyReadiness.EnforcementAttested, false, true, false, null)]
+    [InlineData(NetworkPolicyReadiness.EnforcementAttested, true, false, false, null)]
+    [InlineData(NetworkPolicyReadiness.EnforcementAttested, true, true, false,
+        RuntimeCellIngressBaselineTargetFailureReason.ConnectionUnavailable)]
     public async Task ReconciliationOnTargetB_ChecksCurrentEnforcementBeforeApplying(
         NetworkPolicyReadiness readiness,
         bool baselineReady,
-        bool allowed)
+        bool targetEnabled,
+        bool allowed,
+        RuntimeCellIngressBaselineTargetFailureReason? baselineTargetFailure)
     {
         var now = DateTime.UtcNow;
         var runtimeCell = RuntimeCellFactory.Create(
@@ -114,19 +119,26 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         };
         using var metrics = new ResourceDeploymentMetrics();
         var persistence = CreateReconciliationCapabilities(settings);
+        var baselineCalls = 0;
         var reconciler = new ResourceDeploymentReconciler(
             persistence.Claim,
             persistence.PersistSuccess,
             persistence.PersistFailure,
             Services.GetRequiredService<LoadResourcePlacement>(),
             _ => (adapter, ResourcePlacementCapability.SingleTarget),
-            (id, ct) => LookupTarget(id, ct, readiness),
+            (id, ct) => LookupTarget(id, ct, readiness, targetEnabled),
             (tenantId, cellId, targetId, kubernetesNamespace, ct) =>
-                Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(baselineReady
-                    ? new RuntimeCellIngressBaselineReady()
-                    : new RuntimeCellIngressBaselineUnavailable(
-                        cellId,
-                        RuntimeCellIngressBaselineFailureReason.PolicyUnavailable)),
+            {
+                baselineCalls++;
+                return Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
+                    baselineTargetFailure is { } reason
+                        ? new RuntimeCellIngressBaselineTargetUnavailable(cellId, reason)
+                        : baselineReady
+                            ? new RuntimeCellIngressBaselineReady()
+                            : new RuntimeCellIngressBaselineUnavailable(
+                                cellId,
+                                RuntimeCellIngressBaselineFailureReason.PolicyUnavailable));
+            },
             metrics,
             NullLogger<ResourceDeploymentReconciler>.Instance);
 
@@ -142,12 +154,18 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             Assert.Empty(provider.RequestedTargetIds);
             var blocked = await fixture.DbContext.ResourceDeployments.Find(item => item.Id == DeploymentId).SingleAsync();
             Assert.Equal(
-                readiness == NetworkPolicyReadiness.EnforcementRequired
-                    ? "NetworkPolicyEnforcementRequired"
-                    : "IngressBaselineUnavailable",
+                !targetEnabled
+                    ? "DeploymentTargetDisabled"
+                    : readiness == NetworkPolicyReadiness.EnforcementRequired
+                        ? "NetworkPolicyEnforcementRequired"
+                        : baselineTargetFailure is { } reason
+                            ? $"DeploymentTarget{reason}"
+                            : "IngressBaselineUnavailable",
                 Assert.IsType<FailedResourceDeploymentState>(blocked.State).FailureCode);
+            Assert.Equal(targetEnabled && readiness != NetworkPolicyReadiness.EnforcementRequired ? 1 : 0, baselineCalls);
             return;
         }
+        Assert.Equal(1, baselineCalls);
         Assert.Equal([TargetBId], provider.RequestedTargetIds);
         Assert.Equal(0, provider.DefaultRequestCount);
         Assert.Same(targetB, adapter.Kubernetes);
@@ -248,11 +266,13 @@ public sealed class ResourceDeploymentTargetRoutingTests(
     private static Task<LookupDeploymentTargetOutcome> LookupTarget(
         string id,
         CancellationToken cancellationToken,
-        NetworkPolicyReadiness readiness = NetworkPolicyReadiness.EnforcementAttested) =>
+        NetworkPolicyReadiness readiness = NetworkPolicyReadiness.EnforcementAttested,
+        bool enabled = true) =>
         Task.FromResult<LookupDeploymentTargetOutcome>(
             new LookupDeploymentTargetOutcome(DeploymentTargetNetworkPolicyTests.Target().ToLookupDto() with
             {
                 Id = id,
+                Enabled = enabled,
                 NetworkPolicy = new(
                     NetworkPolicyEnforcementStatus.Unknown,
                     readiness,

@@ -12,6 +12,10 @@ public sealed record RuntimeCellNamespaceOwnershipConflict(string KubernetesName
 
 public sealed record RuntimeCellNamespaceUnavailable(string KubernetesNamespace);
 
+public sealed record RuntimeCellDeploymentTargetUnavailable(
+    string KubernetesNamespace,
+    DeploymentTargetUnavailableReason Reason);
+
 public sealed record RuntimeCellNamespaceDeletionPending(string KubernetesNamespace);
 
 public sealed record RuntimeCellNetworkPolicyOwnershipConflict(string KubernetesNamespace);
@@ -22,6 +26,7 @@ public union RuntimeCellEnsureOutcome(
     Unit,
     RuntimeCellNamespaceOwnershipConflict,
     RuntimeCellNamespaceUnavailable,
+    RuntimeCellDeploymentTargetUnavailable,
     RuntimeCellNetworkPolicyOwnershipConflict,
     RuntimeCellNetworkPolicyUnavailable);
 
@@ -78,9 +83,11 @@ public sealed class KubernetesRuntimeCellNamespaceManager(
         {
             throw;
         }
-        catch (DeploymentTargetUnavailableException)
+        catch (DeploymentTargetUnavailableException exception)
         {
-            return DeploymentTargetFailure(runtimeCell.KubernetesNamespace);
+            return new RuntimeCellDeploymentTargetUnavailable(
+                runtimeCell.KubernetesNamespace,
+                exception.Reason);
         }
         catch (HttpOperationException)
         {

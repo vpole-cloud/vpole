@@ -425,12 +425,31 @@ public sealed class RuntimeCellNamespaceTests
             RuntimeCellNamespaceUnavailable failure => failure,
             RuntimeCellNamespaceOwnershipConflict => throw new Xunit.Sdk.XunitException(
                 "Expected a sanitized namespace-provider failure, got an ownership conflict."),
+            RuntimeCellDeploymentTargetUnavailable => throw new Xunit.Sdk.XunitException(
+                "Expected a Kubernetes API failure, got a deployment target failure."),
             RuntimeCellNetworkPolicyOwnershipConflict or RuntimeCellNetworkPolicyUnavailable =>
                 throw new Xunit.Sdk.XunitException("Network policy must not be attempted when namespace creation fails."),
             Unit => throw new Xunit.Sdk.XunitException(
                 "Expected a sanitized namespace-provider failure, got success.")
         };
         Assert.DoesNotContain("provider-secret-token", unavailable.KubernetesNamespace, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(DeploymentTargetUnavailableReason.NotFound)]
+    [InlineData(DeploymentTargetUnavailableReason.Disabled)]
+    [InlineData(DeploymentTargetUnavailableReason.ConnectionUnavailable)]
+    public async Task TargetUnavailable_PreservesTypedReasonBeforeNamespaceWrite(
+        DeploymentTargetUnavailableReason reason)
+    {
+        var subject = new KubernetesRuntimeCellNamespaceManager(
+            new ThrowingKubernetesClientProvider(
+                new DeploymentTargetUnavailableException(DeploymentTargetId, reason)));
+
+        var outcome = await subject.EnsureCreatedAsync(CreateRuntimeCell());
+
+        var unavailable = Assert.IsType<RuntimeCellDeploymentTargetUnavailable>(outcome.Value);
+        Assert.Equal(reason, unavailable.Reason);
     }
 
     [Fact]
